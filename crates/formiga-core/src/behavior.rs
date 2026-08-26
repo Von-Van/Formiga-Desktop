@@ -7,6 +7,7 @@ pub struct BehaviorContext {
     pub nearest_creature_position: Option<Point>,
     pub nearest_creature_id: Option<crate::CreatureId>,
     pub on_window_ledge: bool,
+    pub reachable_window_ledge: bool,
     pub window_changed_nearby: bool,
     pub hour_utc: u8,
 }
@@ -28,12 +29,20 @@ pub fn choose_action<R: Rng + ?Sized>(
         (desktop.cursor.velocity.x.powi(2) + desktop.cursor.velocity.y.powi(2)).sqrt();
     let night = context.hour_utc >= 22 || context.hour_utc < 6;
 
-    let mut scored = Vec::with_capacity(ActionKind::ALL.len());
-    for action in ActionKind::ALL {
+    let mut scored = Vec::with_capacity(ActionKind::AUTONOMOUS.len());
+    for action in ActionKind::AUTONOMOUS {
         let score = match action {
             ActionKind::Idle => 0.45 + d.comfort * 0.5 - d.boredom * 0.25,
             ActionKind::Traverse => 0.25 + d.boredom * 0.8 + p.activity * 0.5,
-            ActionKind::Perch => 0.15 + d.comfort * 0.7 + f32::from(context.on_window_ledge) * 0.5,
+            ActionKind::Perch => {
+                if context.on_window_ledge {
+                    0.45 + d.comfort * 0.7
+                } else if context.reachable_window_ledge {
+                    0.6 + p.curiosity * 0.75 + d.boredom * 0.35
+                } else {
+                    -2.0
+                }
+            }
             ActionKind::Sleep => {
                 d.sleep_pressure * 1.2 + (1.0 - d.energy) + f32::from(night) * p.sleep_timing * 0.35
             }
@@ -72,6 +81,7 @@ pub fn choose_action<R: Rng + ?Sized>(
             ActionKind::Greet => social_score(creature, context, 130.0, 0.45),
             ActionKind::Follow => social_score(creature, context, 240.0, 0.35),
             ActionKind::SocialPlay => social_score(creature, context, 100.0, p.playfulness * 0.55),
+            ActionKind::Dragged | ActionKind::Landing => -2.0,
         };
         let habit = creature
             .state

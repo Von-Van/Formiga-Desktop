@@ -8,7 +8,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.97"
@@ -18,9 +18,14 @@ authors = ["Formiga contributors"]
 anyhow = "1.0.104"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 directories = "5.0.1"
+egui = "0.36.1"
+egui-wgpu = "0.36.1"
+egui-winit = "0.36.1"
 getrandom = "0.4.3"
+gif = "0.13.3"
 png = "0.18.1"
 pollster = "0.4.0"
+rfd = "0.17.2"
 rand = { version = "0.9.5", features = ["serde"] }
 rand_chacha = { version = "0.9.0", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -30,7 +35,7 @@ thiserror = "2.0.20"
 time = { version = "0.3.55", features = ["formatting", "macros", "parsing", "serde"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-wgpu = "28.0.0"
+wgpu = "30.0.1"
 winit = "0.30.13"
 
 [profile.release]

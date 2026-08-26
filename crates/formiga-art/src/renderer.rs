@@ -166,6 +166,15 @@ impl Pose {
                 eyes_closed: false,
                 play_lift: 0,
             },
+            ActionKind::Landing => Self {
+                bob: -2 - walk.abs(),
+                squash_x: -walk,
+                squash_y: walk,
+                step_a: walk * 2,
+                step_b: alternate * 2,
+                eyes_closed: false,
+                play_lift: 1,
+            },
             _ => Self {
                 bob: frame as i32 % 2,
                 squash_x: 0,
@@ -808,6 +817,7 @@ mod tests {
         let desktop = DesktopSnapshot {
             monitors: vec![MonitorInfo {
                 id: 1,
+                display_key: formiga_core::DisplayKey([1; 16]),
                 bounds: DesktopRect {
                     x: 0.0,
                     y: 0.0,

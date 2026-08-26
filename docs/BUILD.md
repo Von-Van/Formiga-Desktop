@@ -1,31 +1,40 @@
 # Building Formiga
 
-## Development
-
 Rust 1.97.1 is pinned by `rust-toolchain.toml`.
 
+## Development checks
+
 ```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo run -p formiga-tools -- contact-sheet --output contact-sheet.png
-cargo run -p formiga-tools -- animation-preview --seed 17 --output animation-preview.png
 cargo run -p formiga-tools -- simulate 181
 cargo run -p formiga-desktop
 ```
 
-The desktop binary is supported on macOS 14+ and Windows 10/11 x64. The simulation, art, and save
-tests are platform-independent.
+The desktop binary supports macOS 14+ and Windows 10/11 x64. Core simulation, art, habitat,
+persistence, drag-state, and occlusion-region tests are platform-independent. Native overlay and
+proxy behavior still requires the manual OS matrix in `TEST_MATRIX.md`.
 
-## macOS bundle
+## macOS universal preview
 
-Run `bash scripts/package-macos.sh` on macOS. It creates a universal ad-hoc-signed app and ZIP in
-`dist/`. Set `FORMIGA_CODESIGN_IDENTITY` to a Developer ID Application identity for a distribution
-build. Notarization requires the release owner's Apple credentials and is intentionally not embedded
-in the repository.
+Run `bash scripts/package-macos.sh` on macOS. It creates an arm64/x86_64 universal app, ad-hoc signs
+it when no identity is supplied, and writes a ZIP plus SHA-256 checksum to `dist/`.
 
-## Windows package
+Set `FORMIGA_CODESIGN_IDENTITY` to a Developer ID Application identity for distribution signing.
+Notarization requires release-owner Apple credentials and is intentionally not embedded in the
+repository.
 
-Run `./scripts/package-windows.ps1` in PowerShell on Windows. With WiX 4 installed, it creates a
-per-user MSI and portable ZIP in `dist/`; use `-SkipInstaller` for the ZIP only. Authenticode signing
-requires the release owner's certificate and is intentionally left as a release-secret step.
+Unsigned/ad-hoc portfolio preview: after downloading, Control-click the app and choose **Open**. Do
+not advise users to disable Gatekeeper globally.
 
-GitHub Actions tests both OS implementations and creates unsigned internal artifacts on every run.
+## Windows preview
+
+Run `./scripts/package-windows.ps1` in PowerShell. With WiX 4 installed it creates a per-user MSI,
+portable ZIP, and SHA-256 checksum files. Use `-SkipInstaller` for the ZIP only.
+
+Unsigned portfolio preview: Windows SmartScreen may show **More info → Run anyway**. Authenticode
+signing requires the release owner's certificate and remains a release-secret hook.
+
+GitHub Actions checks both operating systems and packages unsigned preview artifacts. Tags matching
+`v*` feed the release workflow.

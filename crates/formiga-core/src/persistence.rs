@@ -61,11 +61,17 @@ impl SaveStore {
 
     fn load_path(&self, path: &Path) -> Result<SaveFile, PersistenceError> {
         let bytes = fs::read(path)?;
-        let save: SaveFile = serde_json::from_slice(&bytes)?;
-        if save.save_version != crate::SAVE_VERSION {
-            return Err(PersistenceError::UnsupportedVersion(save.save_version));
+        let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+        let version = value
+            .get("save_version")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+            .unwrap_or_default();
+        match version {
+            crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
+            1 => migrate_v1(value),
+            unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
-        Ok(save)
     }
 
     fn temporary_path(&self) -> PathBuf {
@@ -75,6 +81,20 @@ impl SaveStore {
     fn backup_path(&self) -> PathBuf {
         self.path.with_extension("json.bak")
     }
+}
+
+fn migrate_v1(mut value: serde_json::Value) -> Result<SaveFile, PersistenceError> {
+    let primary_only = value
+        .pointer("/settings/primary_display_only")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
+    let mut save: SaveFile = serde_json::from_value(value)?;
+    save.save_version = crate::SAVE_VERSION;
+    if primary_only {
+        save.settings.habitat.preset = crate::HabitatPreset::PrimaryDisplay;
+    }
+    Ok(save)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -138,6 +158,30 @@ mod tests {
         replacement.settings.reduce_motion = true;
         store.save(&replacement).unwrap();
         assert_eq!(store.load().unwrap(), Some(replacement));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v1_primary_display_setting() {
+        let mut value = serde_json::to_value(example_save()).unwrap();
+        value["save_version"] = serde_json::Value::from(1);
+        let settings = value["settings"].as_object_mut().unwrap();
+        settings.remove("direct_manipulation");
+        settings.remove("habitat");
+        settings.remove("application_occlusion_rules");
+        settings.insert("primary_display_only".into(), serde_json::Value::Bool(true));
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v1-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let migrated = SaveStore::new(&path).load().unwrap().unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(
+            migrated.settings.habitat.preset,
+            crate::HabitatPreset::PrimaryDisplay
+        );
+        assert!(migrated.settings.direct_manipulation);
         let _ = fs::remove_dir_all(directory);
     }
 }

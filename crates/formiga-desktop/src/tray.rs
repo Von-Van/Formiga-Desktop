@@ -8,10 +8,11 @@ pub struct TrayState {
     _tray: TrayIcon,
     pub visible: CheckMenuItem,
     pub paused: CheckMenuItem,
+    pub settings: MenuItem,
+    pub gather: MenuItem,
     pub window_ledges: CheckMenuItem,
     pub cursor_reactions: CheckMenuItem,
     pub launch_at_login: CheckMenuItem,
-    pub primary_only: CheckMenuItem,
     pub reduce_motion: CheckMenuItem,
     pub scale_2: CheckMenuItem,
     pub scale_3: CheckMenuItem,
@@ -28,6 +29,8 @@ pub enum TrayAction {
     ResetColony,
     Quit,
     OpenLogs,
+    OpenSettings,
+    GatherCreatures,
     None,
 }
 
@@ -35,18 +38,14 @@ impl TrayState {
     pub fn new(settings: &Settings) -> Result<Self> {
         let visible = CheckMenuItem::new("Show ecosystem", true, settings.visible, None);
         let paused = CheckMenuItem::new("Pause ecosystem", true, settings.paused, None);
+        let settings_item = MenuItem::new("Settings…", true, None);
+        let gather = MenuItem::new("Gather creatures", true, None);
         let window_ledges =
             CheckMenuItem::new("Use window ledges", true, settings.window_ledges, None);
         let cursor_reactions =
             CheckMenuItem::new("React to cursor", true, settings.cursor_reactions, None);
         let launch_at_login =
             CheckMenuItem::new("Launch at login", true, settings.launch_at_login, None);
-        let primary_only = CheckMenuItem::new(
-            "Primary display only",
-            true,
-            settings.primary_display_only,
-            None,
-        );
         let reduce_motion = CheckMenuItem::new("Reduce motion", true, settings.reduce_motion, None);
         let scale_2 = CheckMenuItem::new("Small (2x)", true, settings.display_scale == 2, None);
         let scale_3 = CheckMenuItem::new("Medium (3x)", true, settings.display_scale == 3, None);
@@ -60,10 +59,11 @@ impl TrayState {
         let menu = Menu::with_items(&[
             &visible,
             &paused,
+            &settings_item,
+            &gather,
             &separator_a,
             &window_ledges,
             &cursor_reactions,
-            &primary_only,
             &reduce_motion,
             &launch_at_login,
             &separator_b,
@@ -84,10 +84,11 @@ impl TrayState {
             _tray: tray,
             visible,
             paused,
+            settings: settings_item,
+            gather,
             window_ledges,
             cursor_reactions,
             launch_at_login,
-            primary_only,
             reduce_motion,
             scale_2,
             scale_3,
@@ -105,6 +106,12 @@ impl TrayState {
         }
         if event.id() == self.open_logs.id() {
             return TrayAction::OpenLogs;
+        }
+        if event.id() == self.settings.id() {
+            return TrayAction::OpenSettings;
+        }
+        if event.id() == self.gather.id() {
+            return TrayAction::GatherCreatures;
         }
         if event.id() == self.reset.id() {
             let confirmed = self
@@ -134,9 +141,6 @@ impl TrayState {
         } else if event.id() == self.launch_at_login.id() {
             settings.launch_at_login = !settings.launch_at_login;
             self.launch_at_login.set_checked(settings.launch_at_login);
-        } else if event.id() == self.primary_only.id() {
-            settings.primary_display_only = !settings.primary_display_only;
-            self.primary_only.set_checked(settings.primary_display_only);
         } else if event.id() == self.reduce_motion.id() {
             settings.reduce_motion = !settings.reduce_motion;
             self.reduce_motion.set_checked(settings.reduce_motion);
@@ -157,6 +161,18 @@ impl TrayState {
         self.scale_2.set_checked(scale == 2);
         self.scale_3.set_checked(scale == 3);
         self.scale_4.set_checked(scale == 4);
+    }
+
+    pub fn sync(&self, settings: &Settings) {
+        self.visible.set_checked(settings.visible);
+        self.paused.set_checked(settings.paused);
+        self.window_ledges.set_checked(settings.window_ledges);
+        self.cursor_reactions.set_checked(settings.cursor_reactions);
+        self.launch_at_login.set_checked(settings.launch_at_login);
+        self.reduce_motion.set_checked(settings.reduce_motion);
+        self.scale_2.set_checked(settings.display_scale == 2);
+        self.scale_3.set_checked(settings.display_scale == 3);
+        self.scale_4.set_checked(settings.display_scale == 4);
     }
 }
 

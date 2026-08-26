@@ -2,7 +2,9 @@
 
 mod app;
 mod gpu;
+mod interaction;
 mod platform;
+mod settings;
 mod tray;
 
 use anyhow::Result;

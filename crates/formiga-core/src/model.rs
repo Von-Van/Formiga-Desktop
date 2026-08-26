@@ -7,6 +7,18 @@ pub type CreatureId = u64;
 pub type WindowKey = u64;
 pub type MonitorId = u64;
 
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct DisplayKey(pub [u8; 16]);
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ApplicationKey {
+    MacBundleId(String),
+    WindowsAumid(String),
+    WindowsExecutableHash([u8; 32]),
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     pub x: f32,
@@ -51,11 +63,26 @@ impl DesktopRect {
             y: point.y.clamp(self.y, self.bottom()),
         }
     }
+
+    pub fn intersection(self, other: Self) -> Option<Self> {
+        let x = self.x.max(other.x);
+        let y = self.y.max(other.y);
+        let right = self.right().min(other.right());
+        let bottom = self.bottom().min(other.bottom());
+        (right > x && bottom > y).then_some(Self {
+            x,
+            y,
+            width: right - x,
+            height: bottom - y,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MonitorInfo {
     pub id: MonitorId,
+    #[serde(default)]
+    pub display_key: DisplayKey,
     pub bounds: DesktopRect,
     pub usable_bounds: DesktopRect,
     pub scale_factor: f32,
@@ -69,6 +96,10 @@ pub struct DesktopWindow {
     pub z_order: u32,
     pub visible: bool,
     pub minimized: bool,
+    #[serde(default)]
+    pub application: Option<ApplicationKey>,
+    #[serde(default)]
+    pub application_name: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -185,10 +216,29 @@ pub enum ActionKind {
     Greet,
     Follow,
     SocialPlay,
+    Dragged,
+    Landing,
 }
 
 impl ActionKind {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
+        Self::Idle,
+        Self::Traverse,
+        Self::Perch,
+        Self::Sleep,
+        Self::InvestigateCursor,
+        Self::AvoidCursor,
+        Self::ReactToWindow,
+        Self::RideWindow,
+        Self::SoloPlay,
+        Self::Greet,
+        Self::Follow,
+        Self::SocialPlay,
+        Self::Dragged,
+        Self::Landing,
+    ];
+
+    pub const AUTONOMOUS: [Self; 12] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -278,16 +328,59 @@ pub struct ArrivalState {
     pub arrived: [bool; 3],
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HabitatZoneKind {
+    #[default]
+    Allowed,
+    Excluded,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HabitatZone {
+    pub id: u64,
+    pub display: DisplayKey,
+    pub normalized_bounds: DesktopRect,
+    pub kind: HabitatZoneKind,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HabitatPreset {
+    #[default]
+    EntireDesktop,
+    PrimaryDisplay,
+    BottomEdge,
+    BottomCorners,
+    LowerHalf,
+    Custom,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct HabitatPolicy {
+    pub preset: HabitatPreset,
+    pub zones: Vec<HabitatZone>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationOcclusionRule {
+    pub application: ApplicationKey,
+    pub display_name: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub visible: bool,
     pub paused: bool,
     pub display_scale: u8,
-    pub primary_display_only: bool,
     pub window_ledges: bool,
     pub cursor_reactions: bool,
     pub reduce_motion: bool,
     pub launch_at_login: bool,
+    pub direct_manipulation: bool,
+    pub habitat: HabitatPolicy,
+    pub application_occlusion_rules: Vec<ApplicationOcclusionRule>,
 }
 
 impl Default for Settings {
@@ -296,11 +389,13 @@ impl Default for Settings {
             visible: true,
             paused: false,
             display_scale: 3,
-            primary_display_only: false,
             window_ledges: true,
             cursor_reactions: true,
             reduce_motion: false,
             launch_at_login: false,
+            direct_manipulation: true,
+            habitat: HabitatPolicy::default(),
+            application_occlusion_rules: Vec::new(),
         }
     }
 }
@@ -354,6 +449,29 @@ pub enum WorldEvent {
     CreatureWoke {
         creature_id: CreatureId,
     },
+    DragStarted {
+        creature_id: CreatureId,
+    },
+    DragEnded {
+        creature_id: CreatureId,
+        surface: SurfaceKind,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WorldCommand {
+    BeginDrag {
+        creature_id: CreatureId,
+        cursor: Point,
+    },
+    UpdateDrag {
+        cursor: Point,
+    },
+    EndDrag {
+        cursor: Point,
+    },
+    CancelDrag,
+    GatherCreatures,
 }
 
 mod duration_millis {

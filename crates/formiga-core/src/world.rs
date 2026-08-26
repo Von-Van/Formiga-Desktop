@@ -13,6 +13,26 @@ pub struct World {
     rngs: BTreeMap<CreatureId, ChaCha12Rng>,
     events: Vec<WorldEvent>,
     last_windows: BTreeMap<WindowKey, DesktopRect>,
+    drag: Option<DragSession>,
+    ledge_journeys: BTreeMap<CreatureId, LedgeJourney>,
+}
+
+#[derive(Clone)]
+struct DragSession {
+    creature_id: CreatureId,
+    grab_offset: Point,
+    original_position: Point,
+    original_surface: SurfaceAttachment,
+    original_action: ActionKind,
+}
+
+#[derive(Clone)]
+struct LedgeJourney {
+    start: Point,
+    target: Point,
+    surface: SurfaceAttachment,
+    elapsed: f32,
+    duration: f32,
 }
 
 impl World {
@@ -51,6 +71,8 @@ impl World {
             rngs,
             events: Vec::new(),
             last_windows: BTreeMap::new(),
+            drag: None,
+            ledge_journeys: BTreeMap::new(),
         }
     }
 
@@ -74,6 +96,13 @@ impl World {
         let creature_views = self.save.creatures.clone();
         let mut relationship_updates = Vec::new();
         for creature in &mut self.save.creatures {
+            if self
+                .drag
+                .as_ref()
+                .is_some_and(|drag| drag.creature_id == creature.id)
+            {
+                continue;
+            }
             if creature.state.arrival_delay_secs > 0.0 {
                 let previous_delay = creature.state.arrival_delay_secs;
                 creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
@@ -87,6 +116,52 @@ impl World {
             update_drives(creature, dt);
             creature.state.cursor_cooldown = (creature.state.cursor_cooldown - dt).max(0.0);
             creature.state.action_elapsed += dt;
+
+            if let Some((position, complete, surface)) =
+                self.ledge_journeys.get_mut(&creature.id).map(|journey| {
+                    journey.elapsed += dt;
+                    let progress = (journey.elapsed / journey.duration).clamp(0.0, 1.0);
+                    let arc = (progress * std::f32::consts::PI).sin()
+                        * journey
+                            .start
+                            .distance(journey.target)
+                            .mul_add(0.12, 24.0)
+                            .min(90.0);
+                    (
+                        Point {
+                            x: journey.start.x + (journey.target.x - journey.start.x) * progress,
+                            y: journey.start.y + (journey.target.y - journey.start.y) * progress
+                                - arc,
+                        },
+                        progress >= 1.0,
+                        journey.surface.clone(),
+                    )
+                })
+            {
+                creature.state.facing_right = position.x >= creature.state.position.x;
+                creature.state.position = position;
+                if complete {
+                    self.ledge_journeys.remove(&creature.id);
+                    creature.state.surface = surface;
+                    creature.state.action = ActionKind::Perch;
+                    creature.state.action_elapsed = 0.0;
+                    creature.state.action_duration = 3.5;
+                    creature.state.velocity = Point::default();
+                    self.events.push(WorldEvent::ActionCompleted {
+                        creature_id: creature.id,
+                        action: ActionKind::Landing,
+                    });
+                    self.events.push(WorldEvent::SurfaceChanged {
+                        creature_id: creature.id,
+                        kind: SurfaceKind::WindowLedge,
+                    });
+                    self.events.push(WorldEvent::ActionStarted {
+                        creature_id: creature.id,
+                        action: ActionKind::Perch,
+                    });
+                }
+                continue;
+            }
 
             let nearest = creature_views
                 .iter()
@@ -104,9 +179,29 @@ impl World {
                 nearest_creature_position: nearest.map(|item| item.1),
                 nearest_creature_id: nearest.map(|item| item.2),
                 on_window_ledge: creature.state.surface.kind == SurfaceKind::WindowLedge,
+                reachable_window_ledge: creature.state.surface.kind == SurfaceKind::ScreenFloor
+                    && find_nearby_ledge(creature, desktop, &self.save.settings.habitat).is_some(),
                 window_changed_nearby: window_changed.contains(&creature.id),
                 hour_utc: now.hour(),
             };
+
+            if context.window_changed_nearby
+                && creature.state.action != ActionKind::ReactToWindow
+                && creature.state.action_elapsed >= 0.25
+            {
+                creature.state.action = ActionKind::ReactToWindow;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 2.2;
+                creature.state.drives.arousal = (creature.state.drives.arousal + 0.3).min(1.0);
+                self.events.push(WorldEvent::WindowReaction {
+                    creature_id: creature.id,
+                    action: ActionKind::ReactToWindow,
+                });
+                self.events.push(WorldEvent::ActionStarted {
+                    creature_id: creature.id,
+                    action: ActionKind::ReactToWindow,
+                });
+            }
 
             if creature.state.action_elapsed >= creature.state.action_duration {
                 let old = creature.state.action;
@@ -121,20 +216,30 @@ impl World {
                     .rngs
                     .get_mut(&creature.id)
                     .expect("creature RNG exists");
-                let next = choose_action(creature, desktop, context, rng);
+                let selected = choose_action(creature, desktop, context, rng);
+                let mut next = selected;
+                if selected == ActionKind::Perch
+                    && creature.state.surface.kind == SurfaceKind::ScreenFloor
+                    && let Some((target, surface)) =
+                        find_nearby_ledge(creature, desktop, &self.save.settings.habitat)
+                {
+                    let distance = creature.state.position.distance(target);
+                    self.ledge_journeys.insert(
+                        creature.id,
+                        LedgeJourney {
+                            start: creature.state.position,
+                            target,
+                            surface,
+                            elapsed: 0.0,
+                            duration: (distance / 320.0).clamp(0.9, 2.2),
+                        },
+                    );
+                    next = ActionKind::Landing;
+                }
                 creature.state.action = next;
                 creature.state.action_elapsed = 0.0;
                 creature.state.action_duration = action_duration(next, rng);
-                if next == ActionKind::Perch
-                    && creature.state.surface.kind == SurfaceKind::ScreenFloor
-                    && attach_to_nearby_ledge(creature, desktop)
-                {
-                    self.events.push(WorldEvent::SurfaceChanged {
-                        creature_id: creature.id,
-                        kind: SurfaceKind::WindowLedge,
-                    });
-                }
-                reinforce_habit(creature, next, now.hour());
+                reinforce_habit(creature, selected, now.hour());
                 self.events.push(WorldEvent::ActionStarted {
                     creature_id: creature.id,
                     action: next,
@@ -183,7 +288,7 @@ impl World {
             }
 
             execute_action(creature, desktop, context, dt, nearest);
-            constrain_to_surface(creature, desktop);
+            constrain_to_surface(creature, desktop, &self.save.settings.habitat);
         }
         for (a, b, gain) in relationship_updates {
             if let Some(creature) = self
@@ -205,7 +310,19 @@ impl World {
                 *affinity = (*affinity + gain).min(1.0);
             }
         }
-        keep_creatures_on_screens(&mut self.save.creatures, desktop);
+        let unconstrained: Vec<_> = self
+            .drag
+            .as_ref()
+            .map(|drag| drag.creature_id)
+            .into_iter()
+            .chain(self.ledge_journeys.keys().copied())
+            .collect();
+        keep_creatures_in_habitat(
+            &mut self.save.creatures,
+            desktop,
+            &self.save.settings.habitat,
+            &unconstrained,
+        );
         self.last_windows = desktop
             .windows
             .iter()
@@ -215,6 +332,176 @@ impl World {
 
     pub fn drain_events(&mut self) -> impl Iterator<Item = WorldEvent> + '_ {
         self.events.drain(..)
+    }
+
+    pub fn is_dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    pub fn handle_command(&mut self, command: WorldCommand, desktop: &DesktopSnapshot) -> bool {
+        match command {
+            WorldCommand::BeginDrag {
+                creature_id,
+                cursor,
+            } => self.begin_drag(creature_id, cursor),
+            WorldCommand::UpdateDrag { cursor } => self.update_drag(cursor, desktop),
+            WorldCommand::EndDrag { cursor } => self.end_drag(cursor, desktop),
+            WorldCommand::CancelDrag => self.cancel_drag(),
+            WorldCommand::GatherCreatures => {
+                self.gather_creatures(desktop);
+                true
+            }
+        }
+    }
+
+    fn begin_drag(&mut self, creature_id: CreatureId, cursor: Point) -> bool {
+        if self.drag.is_some() || !self.save.settings.direct_manipulation {
+            return false;
+        }
+        let Some(creature) = self.save.creatures.iter_mut().find(|creature| {
+            creature.id == creature_id && creature.state.arrival_delay_secs <= 0.0
+        }) else {
+            return false;
+        };
+        self.drag = Some(DragSession {
+            creature_id,
+            grab_offset: Point {
+                x: cursor.x - creature.state.position.x,
+                y: cursor.y - creature.state.position.y,
+            },
+            original_position: creature.state.position,
+            original_surface: creature.state.surface.clone(),
+            original_action: creature.state.action,
+        });
+        creature.state.action = ActionKind::Dragged;
+        creature.state.action_elapsed = 0.0;
+        creature.state.action_duration = f32::MAX;
+        creature.state.velocity = Point::default();
+        creature.state.surface.window_key = None;
+        self.events.push(WorldEvent::DragStarted { creature_id });
+        true
+    }
+
+    fn update_drag(&mut self, cursor: Point, desktop: &DesktopSnapshot) -> bool {
+        let Some(drag) = &self.drag else { return false };
+        let Some(creature) = self
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == drag.creature_id)
+        else {
+            self.drag = None;
+            return false;
+        };
+        creature.state.position = Point {
+            x: cursor.x - drag.grab_offset.x,
+            y: cursor.y - drag.grab_offset.y,
+        };
+        if let Some(monitor) = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.bounds.contains(cursor))
+        {
+            creature.state.surface.monitor_id = monitor.id;
+        }
+        true
+    }
+
+    fn end_drag(&mut self, cursor: Point, desktop: &DesktopSnapshot) -> bool {
+        let Some(drag) = self.drag.take() else {
+            return false;
+        };
+        let policy = self.save.settings.habitat.clone();
+        let Some(creature) = self
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == drag.creature_id)
+        else {
+            return false;
+        };
+        let support = find_drop_support(cursor, desktop, &policy).or_else(|| {
+            nearest_habitat_point(&policy, &desktop.monitors, cursor).map(
+                |(monitor_id, position)| {
+                    (
+                        position,
+                        SurfaceAttachment {
+                            kind: SurfaceKind::ScreenFloor,
+                            monitor_id,
+                            window_key: None,
+                            relative_x: 0.5,
+                        },
+                    )
+                },
+            )
+        });
+        let Some((position, surface)) = support else {
+            creature.state.position = drag.original_position;
+            creature.state.surface = drag.original_surface;
+            creature.state.action = drag.original_action;
+            return false;
+        };
+        creature.state.position = position;
+        creature.state.surface = surface.clone();
+        creature.state.velocity = Point::default();
+        creature.state.action_elapsed = 0.0;
+        if self.save.settings.paused || self.save.settings.reduce_motion {
+            creature.state.action = ActionKind::Idle;
+            creature.state.action_duration = 3.0;
+        } else {
+            creature.state.action = ActionKind::Landing;
+            creature.state.action_duration = 0.55;
+        }
+        creature.state.drives.arousal = (creature.state.drives.arousal + 0.08).min(1.0);
+        self.events.push(WorldEvent::DragEnded {
+            creature_id: creature.id,
+            surface: surface.kind,
+        });
+        self.events.push(WorldEvent::SurfaceChanged {
+            creature_id: creature.id,
+            kind: surface.kind,
+        });
+        true
+    }
+
+    fn cancel_drag(&mut self) -> bool {
+        let Some(drag) = self.drag.take() else {
+            return false;
+        };
+        if let Some(creature) = self
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == drag.creature_id)
+        {
+            creature.state.position = drag.original_position;
+            creature.state.surface = drag.original_surface;
+            creature.state.action = drag.original_action;
+            creature.state.action_elapsed = 0.0;
+            creature.state.velocity = Point::default();
+        }
+        true
+    }
+
+    fn gather_creatures(&mut self, desktop: &DesktopSnapshot) {
+        let policy = self.save.settings.habitat.clone();
+        for creature in &mut self.save.creatures {
+            if let Some((monitor_id, position)) =
+                nearest_habitat_point(&policy, &desktop.monitors, creature.state.position)
+            {
+                creature.state.position = position;
+                creature.state.surface = SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id,
+                    window_key: None,
+                    relative_x: 0.5,
+                };
+                creature.state.action = ActionKind::Idle;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 3.0;
+                creature.state.velocity = Point::default();
+            }
+        }
     }
 
     pub fn reset(&mut self, colony_seed: [u8; 32], now: OffsetDateTime, desktop: &DesktopSnapshot) {
@@ -547,7 +834,6 @@ fn execute_action(
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.09).max(0.0);
         }
         ActionKind::ReactToWindow => {
-            creature.state.facing_right = !creature.state.facing_right;
             creature.state.velocity.x = if creature.state.facing_right {
                 speed * 1.4
             } else {
@@ -593,19 +879,42 @@ fn reinforce_habit(creature: &mut Creature, action: ActionKind, hour_utc: u8) {
     *value = (*value + 0.015).min(1.0);
 }
 
-fn keep_creatures_on_screens(creatures: &mut [Creature], desktop: &DesktopSnapshot) {
+fn keep_creatures_in_habitat(
+    creatures: &mut [Creature],
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+    unconstrained: &[CreatureId],
+) {
     let primary = desktop
         .monitors
         .iter()
         .find(|monitor| monitor.primary)
         .or_else(|| desktop.monitors.first());
     for creature in creatures {
+        if unconstrained.contains(&creature.id) {
+            continue;
+        }
         let monitor = desktop
             .monitors
             .iter()
             .find(|monitor| monitor.id == creature.state.surface.monitor_id)
             .or(primary);
         if let Some(monitor) = monitor {
+            let regions = accessible_regions(policy, monitor);
+            if regions.is_empty() {
+                if let Some((monitor_id, position)) =
+                    nearest_habitat_point(policy, &desktop.monitors, creature.state.position)
+                {
+                    creature.state.position = position;
+                    creature.state.surface = SurfaceAttachment {
+                        kind: SurfaceKind::ScreenFloor,
+                        monitor_id,
+                        window_key: None,
+                        relative_x: 0.5,
+                    };
+                }
+                continue;
+            }
             let bounds = monitor.usable_bounds;
             if creature.state.position.x <= bounds.x + 8.0 {
                 creature.state.position.x = bounds.x + 8.0;
@@ -614,18 +923,16 @@ fn keep_creatures_on_screens(creatures: &mut [Creature], desktop: &DesktopSnapsh
                 creature.state.position.x = bounds.right() - 8.0;
                 creature.state.facing_right = false;
             }
-            if !bounds.contains(creature.state.position) {
-                creature.state.position = Point {
-                    x: creature
-                        .state
-                        .position
-                        .x
-                        .clamp(bounds.x + 8.0, bounds.right() - 8.0),
-                    y: bounds.bottom() - 4.0,
-                };
+            if !regions
+                .iter()
+                .any(|region| region.contains(creature.state.position))
+                && let Some((monitor_id, position)) =
+                    nearest_habitat_point(policy, &desktop.monitors, creature.state.position)
+            {
+                creature.state.position = position;
                 creature.state.surface = SurfaceAttachment {
                     kind: SurfaceKind::ScreenFloor,
-                    monitor_id: monitor.id,
+                    monitor_id,
                     window_key: None,
                     relative_x: 0.5,
                 };
@@ -717,7 +1024,11 @@ fn update_surface_attachments(
     }
 }
 
-fn attach_to_nearby_ledge(creature: &mut Creature, desktop: &DesktopSnapshot) -> bool {
+fn find_nearby_ledge(
+    creature: &Creature,
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+) -> Option<(Point, SurfaceAttachment)> {
     let candidate = desktop
         .windows
         .iter()
@@ -730,31 +1041,71 @@ fn attach_to_nearby_ledge(creature: &mut Creature, desktop: &DesktopSnapshot) ->
                 .clamp(window.bounds.x + 12.0, window.bounds.right() - 12.0);
             let dx = (creature.state.position.x - ledge_x).abs();
             let dy = (creature.state.position.y - window.bounds.y).abs();
-            (dx <= 160.0 && dy <= 320.0).then_some((dx + dy * 0.45, window, ledge_x))
+            let monitor = desktop.monitors.iter().find(|monitor| {
+                monitor.bounds.contains(Point {
+                    x: ledge_x,
+                    y: window.bounds.y,
+                })
+            })?;
+            (dx <= 260.0
+                && dy <= 640.0
+                && habitat_contains(
+                    policy,
+                    monitor,
+                    Point {
+                        x: ledge_x,
+                        y: window.bounds.y,
+                    },
+                ))
+            .then_some((dx + dy * 0.3, window, ledge_x, monitor.id))
         })
         .min_by(|a, b| a.0.total_cmp(&b.0));
-    let Some((_, window, ledge_x)) = candidate else {
-        return false;
-    };
-    creature.state.position = Point {
-        x: ledge_x,
-        y: window.bounds.y,
-    };
-    creature.state.surface = SurfaceAttachment {
-        kind: SurfaceKind::WindowLedge,
-        monitor_id: creature.state.surface.monitor_id,
-        window_key: Some(window.key),
-        relative_x: ((ledge_x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95),
-    };
-    true
+    candidate.map(|(_, window, ledge_x, monitor_id)| {
+        (
+            Point {
+                x: ledge_x,
+                y: window.bounds.y,
+            },
+            SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id,
+                window_key: Some(window.key),
+                relative_x: ((ledge_x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95),
+            },
+        )
+    })
 }
 
-fn constrain_to_surface(creature: &mut Creature, desktop: &DesktopSnapshot) {
+fn constrain_to_surface(
+    creature: &mut Creature,
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+) {
     if let Some(key) = creature.state.surface.window_key
         && let Some(window) = desktop.windows.iter().find(|window| window.key == key)
     {
-        let min_x = window.bounds.x + 12.0;
-        let max_x = window.bounds.right() - 12.0;
+        let Some(monitor) = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.id == creature.state.surface.monitor_id)
+        else {
+            return;
+        };
+        let intervals: Vec<_> = accessible_regions(policy, monitor)
+            .into_iter()
+            .filter(|region| window.bounds.y >= region.y && window.bounds.y <= region.bottom())
+            .filter_map(|region| {
+                let min = (window.bounds.x + 12.0).max(region.x + 8.0);
+                let max = (window.bounds.right() - 12.0).min(region.right() - 8.0);
+                (max > min).then_some((min, max))
+            })
+            .collect();
+        let Some((min_x, max_x)) = intervals.iter().copied().min_by(|a, b| {
+            distance_to_interval(creature.state.position.x, *a)
+                .total_cmp(&distance_to_interval(creature.state.position.x, *b))
+        }) else {
+            return;
+        };
         if creature.state.position.x <= min_x {
             creature.state.position.x = min_x;
             creature.state.facing_right = true;
@@ -768,31 +1119,124 @@ fn constrain_to_surface(creature: &mut Creature, desktop: &DesktopSnapshot) {
     }
 }
 
+fn distance_to_interval(value: f32, interval: (f32, f32)) -> f32 {
+    if value < interval.0 {
+        interval.0 - value
+    } else if value > interval.1 {
+        value - interval.1
+    } else {
+        0.0
+    }
+}
+
+fn find_drop_support(
+    cursor: Point,
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+) -> Option<(Point, SurfaceAttachment)> {
+    let monitor = desktop
+        .monitors
+        .iter()
+        .find(|monitor| monitor.bounds.contains(cursor))
+        .or_else(|| desktop.monitors.iter().find(|monitor| monitor.primary))
+        .or_else(|| desktop.monitors.first())?;
+    let regions = accessible_regions(policy, monitor);
+    let mut candidates = Vec::new();
+    for window in desktop
+        .windows
+        .iter()
+        .filter(|window| window.visible && !window.minimized)
+    {
+        let x = cursor
+            .x
+            .clamp(window.bounds.x + 12.0, window.bounds.right() - 12.0);
+        let point = Point {
+            x,
+            y: window.bounds.y,
+        };
+        if point.y >= cursor.y && regions.iter().any(|region| region.contains(point)) {
+            candidates.push((
+                cursor.distance(point),
+                point,
+                SurfaceAttachment {
+                    kind: SurfaceKind::WindowLedge,
+                    monitor_id: monitor.id,
+                    window_key: Some(window.key),
+                    relative_x: ((x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95),
+                },
+            ));
+        }
+    }
+    for region in regions {
+        let point = Point {
+            x: cursor.x.clamp(region.x + 8.0, region.right() - 8.0),
+            y: region.bottom() - 4.0,
+        };
+        if point.y >= cursor.y {
+            candidates.push((
+                cursor.distance(point),
+                point,
+                SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id: monitor.id,
+                    window_key: None,
+                    relative_x: ((point.x - region.x) / region.width).clamp(0.0, 1.0),
+                },
+            ));
+        }
+    }
+    candidates
+        .into_iter()
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, point, surface)| (point, surface))
+}
+
 fn window_change_near_creatures(
     previous: &BTreeMap<WindowKey, DesktopRect>,
     desktop: &DesktopSnapshot,
     creatures: &[Creature],
 ) -> Vec<CreatureId> {
-    let mut changed = Vec::new();
+    let mut changed = std::collections::BTreeSet::new();
     for window in &desktop.windows {
         let moved = previous
             .get(&window.key)
             .is_none_or(|old| old != &window.bounds);
         if moved {
             for creature in creatures {
-                let expanded = DesktopRect {
-                    x: window.bounds.x - 80.0,
-                    y: window.bounds.y - 80.0,
-                    width: window.bounds.width + 160.0,
-                    height: window.bounds.height + 160.0,
-                };
-                if expanded.contains(creature.state.position) {
-                    changed.push(creature.id);
+                if distance_to_rect(creature.state.position, window.bounds) <= 260.0 {
+                    changed.insert(creature.id);
                 }
             }
         }
     }
-    changed
+    for (key, bounds) in previous {
+        if !desktop.windows.iter().any(|window| window.key == *key) {
+            for creature in creatures {
+                if distance_to_rect(creature.state.position, *bounds) <= 260.0 {
+                    changed.insert(creature.id);
+                }
+            }
+        }
+    }
+    changed.into_iter().collect()
+}
+
+fn distance_to_rect(point: Point, rect: DesktopRect) -> f32 {
+    let dx = if point.x < rect.x {
+        rect.x - point.x
+    } else if point.x > rect.right() {
+        point.x - rect.right()
+    } else {
+        0.0
+    };
+    let dy = if point.y < rect.y {
+        rect.y - point.y
+    } else if point.y > rect.bottom() {
+        point.y - rect.bottom()
+    } else {
+        0.0
+    };
+    (dx * dx + dy * dy).sqrt()
 }
 
 #[cfg(test)]
@@ -804,6 +1248,7 @@ mod tests {
         DesktopSnapshot {
             monitors: vec![MonitorInfo {
                 id: 1,
+                display_key: DisplayKey([1; 16]),
                 bounds: DesktopRect {
                     x: 0.0,
                     y: 0.0,
@@ -895,6 +1340,8 @@ mod tests {
             z_order: 0,
             visible: true,
             minimized: false,
+            application: None,
+            application_name: None,
         });
         let mut world = World::new([8; 32], created, &desktop);
         let creature = &mut world.save.creatures[0];
@@ -930,6 +1377,198 @@ mod tests {
         assert_eq!(
             world.save.creatures[0].state.action,
             ActionKind::ReactToWindow
+        );
+    }
+
+    #[test]
+    fn drag_release_lands_inside_the_desktop_habitat() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([21; 32], created, &desktop);
+        let creature_id = world.save.creatures[0].id;
+        let original = world.save.creatures[0].state.position;
+        assert!(world.handle_command(
+            WorldCommand::BeginDrag {
+                creature_id,
+                cursor: original,
+            },
+            &desktop,
+        ));
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Dragged);
+        assert!(world.handle_command(
+            WorldCommand::UpdateDrag {
+                cursor: Point { x: 900.0, y: 300.0 },
+            },
+            &desktop,
+        ));
+        assert!(world.handle_command(
+            WorldCommand::EndDrag {
+                cursor: Point { x: 900.0, y: 300.0 },
+            },
+            &desktop,
+        ));
+        let creature = &world.save.creatures[0];
+        assert_eq!(creature.state.action, ActionKind::Landing);
+        assert!(
+            desktop.monitors[0]
+                .usable_bounds
+                .contains(creature.state.position)
+        );
+        assert_eq!(creature.state.surface.kind, SurfaceKind::ScreenFloor);
+    }
+
+    #[test]
+    fn cancelled_drag_restores_the_last_safe_state() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([22; 32], created, &desktop);
+        let creature_id = world.save.creatures[0].id;
+        let original_position = world.save.creatures[0].state.position;
+        let original_surface = world.save.creatures[0].state.surface.clone();
+        let original_action = world.save.creatures[0].state.action;
+        assert!(world.handle_command(
+            WorldCommand::BeginDrag {
+                creature_id,
+                cursor: original_position,
+            },
+            &desktop,
+        ));
+        world.handle_command(
+            WorldCommand::UpdateDrag {
+                cursor: Point {
+                    x: -500.0,
+                    y: -500.0,
+                },
+            },
+            &desktop,
+        );
+        assert!(world.handle_command(WorldCommand::CancelDrag, &desktop));
+        let creature = &world.save.creatures[0];
+        assert_eq!(creature.state.position, original_position);
+        assert_eq!(creature.state.surface, original_surface);
+        assert_eq!(creature.state.action, original_action);
+    }
+
+    #[test]
+    fn nearby_window_change_interrupts_a_long_running_action() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        let mut world = World::new([31; 32], created, &desktop);
+        world.tick(created, 0.05, &desktop);
+        let position = world.save.creatures[0].state.position;
+        world.save.creatures[0].state.action = ActionKind::Sleep;
+        world.save.creatures[0].state.action_elapsed = 5.0;
+        world.save.creatures[0].state.action_duration = 100.0;
+        desktop.windows.push(DesktopWindow {
+            key: 91,
+            bounds: DesktopRect {
+                x: position.x - 180.0,
+                y: position.y - 260.0,
+                width: 360.0,
+                height: 120.0,
+            },
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        world.tick(created, 0.05, &desktop);
+        assert_eq!(
+            world.save.creatures[0].state.action,
+            ActionKind::ReactToWindow
+        );
+        assert!(world.drain_events().any(|event| matches!(
+            event,
+            WorldEvent::WindowReaction {
+                action: ActionKind::ReactToWindow,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn ledge_journey_visibly_moves_before_attaching() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        let mut world = World::new([32; 32], created, &desktop);
+        let start = world.save.creatures[0].state.position;
+        desktop.windows.push(DesktopWindow {
+            key: 92,
+            bounds: DesktopRect {
+                x: start.x - 100.0,
+                y: start.y - 300.0,
+                width: 300.0,
+                height: 220.0,
+            },
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        let (target, surface) = find_nearby_ledge(
+            &world.save.creatures[0],
+            &desktop,
+            &world.save.settings.habitat,
+        )
+        .expect("test window should expose a reachable ledge");
+        let creature_id = world.save.creatures[0].id;
+        world.save.creatures[0].state.action = ActionKind::Landing;
+        world.ledge_journeys.insert(
+            creature_id,
+            LedgeJourney {
+                start,
+                target,
+                surface,
+                elapsed: 0.0,
+                duration: 1.0,
+            },
+        );
+        world.tick(created, 0.4, &desktop);
+        let midway = world.save.creatures[0].state.position;
+        assert_ne!(midway, start);
+        assert_ne!(midway, target);
+        world.tick(created, 0.7, &desktop);
+        let creature = &world.save.creatures[0];
+        assert_eq!(creature.state.position, target);
+        assert_eq!(creature.state.surface.kind, SurfaceKind::WindowLedge);
+        assert_eq!(creature.state.action, ActionKind::Perch);
+    }
+
+    #[test]
+    fn most_creatures_discover_a_reachable_window_within_one_minute() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut discovered = 0;
+        for seed_byte in 0_u8..20 {
+            let mut desktop = desktop();
+            let mut world = World::new([seed_byte; 32], created, &desktop);
+            let start = world.save.creatures[0].state.position;
+            desktop.windows.push(DesktopWindow {
+                key: 100 + u64::from(seed_byte),
+                bounds: DesktopRect {
+                    x: start.x - 180.0,
+                    y: start.y - 320.0,
+                    width: 420.0,
+                    height: 250.0,
+                },
+                z_order: 0,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            });
+            for _ in 0..1_200 {
+                world.tick(created, 0.05, &desktop);
+                if world.save.creatures[0].state.surface.kind == SurfaceKind::WindowLedge {
+                    discovered += 1;
+                    break;
+                }
+            }
+        }
+        assert!(
+            discovered >= 16,
+            "only {discovered}/20 creatures found the ledge"
         );
     }
 }

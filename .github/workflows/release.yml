@@ -1,0 +1,57 @@
+name: portfolio-preview-release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  package-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: bash scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/Formiga-0.2.0-universal-macos.zip*
+
+  package-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - run: dotnet tool install --global wix --version 4.0.5
+      - shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/Formiga-0.2.0-windows-x64.*
+
+  publish:
+    needs: [package-macos, package-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            Unsigned portfolio preview. Review README.md and docs/BUILD.md for Gatekeeper and
+            SmartScreen guidance. SHA-256 checksum files are included for every download.
+          files: release/*

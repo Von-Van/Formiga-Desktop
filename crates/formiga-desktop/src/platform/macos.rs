@@ -9,14 +9,28 @@ use core_graphics::display::{
 use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGRect;
-use formiga_core::{CursorSnapshot, DesktopRect, DesktopWindow, MonitorInfo, Point};
-use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
+use formiga_core::{
+    ApplicationKey, CursorSnapshot, DesktopRect, DesktopWindow, DisplayKey, MonitorInfo, Point,
+};
+use objc2_app_kit::{NSRunningApplication, NSView, NSWindowCollectionBehavior};
 use std::fs;
 use std::process::Command;
 use std::time::Duration;
+use winit::monitor::MonitorHandle;
+use winit::platform::macos::MonitorHandleExtMacOS;
 use winit::platform::macos::WindowExtMacOS;
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::Window;
+
+pub fn display_key(monitor: &MonitorHandle) -> DisplayKey {
+    let id = monitor.native_id();
+    let mut bytes = [0_u8; 16];
+    bytes[..4].copy_from_slice(&id.to_le_bytes());
+    bytes[4..8].copy_from_slice(&(!id).to_le_bytes());
+    bytes[8..12].copy_from_slice(b"macD");
+    bytes[12..].copy_from_slice(b"ispl");
+    DisplayKey(bytes)
+}
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
@@ -41,14 +55,48 @@ pub fn configure_native_overlay(window: &Window) {
         ns_window.setIgnoresMouseEvents(true);
         ns_window.setOpaque(false);
         ns_window.setHasShadow(false);
-        let behavior = unsafe { ns_window.collectionBehavior() }
+        let behavior = ns_window.collectionBehavior()
             | NSWindowCollectionBehavior::CanJoinAllSpaces
             | NSWindowCollectionBehavior::Stationary
             | NSWindowCollectionBehavior::IgnoresCycle
             | NSWindowCollectionBehavior::FullScreenAuxiliary;
-        unsafe { ns_window.setCollectionBehavior(behavior) };
+        ns_window.setCollectionBehavior(behavior);
     }
 }
+
+pub fn configure_interaction_proxy(window: &Window) {
+    let _ = window.set_cursor_hittest(false);
+    #[allow(deprecated)]
+    window.set_has_shadow(false);
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+    if let Some(ns_window) = view.window() {
+        ns_window.setIgnoresMouseEvents(true);
+        ns_window.setOpaque(false);
+        ns_window.setHasShadow(false);
+        let behavior = ns_window.collectionBehavior()
+            | NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::IgnoresCycle
+            | NSWindowCollectionBehavior::FullScreenAuxiliary;
+        ns_window.setCollectionBehavior(behavior);
+    }
+}
+
+pub fn set_interaction_hittest(window: &Window, enabled: bool) {
+    let _ = window.set_cursor_hittest(enabled);
+}
+
+pub fn set_interaction_shape(_window: &Window, _mask: &[bool], _scale: u8) {}
+
+pub fn begin_interaction_capture(_window: &Window) {}
+
+pub fn end_interaction_capture() {}
 
 pub fn canonical_monitor_bounds(
     physical_x: i32,
@@ -130,6 +178,12 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
             core_graphics::window::kCGWindowNumber
         })
         .unwrap_or(0);
+        let owner_pid = number(&dictionary, unsafe {
+            core_graphics::window::kCGWindowOwnerPID
+        });
+        if owner_pid == Some(std::process::id() as i32) {
+            continue;
+        }
         if layer != 0 || key <= 0 {
             continue;
         }
@@ -147,6 +201,7 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
         if bounds.size.width < 120.0 || bounds.size.height < 80.0 {
             continue;
         }
+        let owner = owner_pid.and_then(application_for_pid);
         windows.push(DesktopWindow {
             key: key as u64,
             bounds: DesktopRect {
@@ -158,9 +213,46 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
             z_order: z_order as u32,
             visible: true,
             minimized: false,
+            application: owner.as_ref().map(|(key, _)| key.clone()),
+            application_name: owner.map(|(_, name)| name),
         });
     }
     windows
+}
+
+fn application_for_pid(pid: i32) -> Option<(ApplicationKey, String)> {
+    let application = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
+    let bundle = application.bundleIdentifier()?.to_string();
+    let name = application
+        .localizedName()
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| bundle.clone());
+    Some((ApplicationKey::MacBundleId(bundle), name))
+}
+
+pub fn browse_application() -> Option<(ApplicationKey, String)> {
+    let path = rfd::FileDialog::new()
+        .set_title("Choose a macOS application")
+        .set_directory("/Applications")
+        .pick_file()?;
+    let output = Command::new("plutil")
+        .args(["-extract", "CFBundleIdentifier", "raw", "-o", "-"])
+        .arg(path.join("Contents/Info.plist"))
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let bundle = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    if bundle.is_empty() {
+        return None;
+    }
+    let name = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&bundle)
+        .to_owned();
+    Some((ApplicationKey::MacBundleId(bundle), name))
 }
 
 fn number(

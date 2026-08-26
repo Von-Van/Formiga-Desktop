@@ -9,7 +9,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
+gif.workspace = true
 png.workspace = true
 sha2.workspace = true
 time.workspace = true
-

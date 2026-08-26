@@ -9,9 +9,14 @@ rust-version.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
 directories.workspace = true
+egui.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
 pollster.workspace = true
+rfd.workspace = true
+sha2.workspace = true
 time.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -23,17 +28,19 @@ winit.workspace = true
 core-foundation = "0.9.4"
 core-graphics = "0.23.2"
 libc = "0.2.189"
-objc2 = "0.5.2"
-objc2-app-kit = { version = "0.2.2", features = ["NSResponder", "NSView", "NSWindow"] }
-objc2-foundation = "0.2.2"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", features = ["NSResponder", "NSRunningApplication", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-foundation = "0.3.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61.3", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_Storage_Packaging_Appx",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
