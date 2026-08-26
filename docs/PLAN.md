@@ -1,27 +1,27 @@
 # Formiga roadmap
 
-## v0.2 portfolio interaction release
+## v0.25 expressive creature release
 
 Implemented in this release:
 
-- decorated settings application;
-- alpha-aware, non-activating creature dragging;
-- habitat presets and normalized allowed/excluded rectangles;
-- interactive desktop habitat editing and safe relocation;
-- privacy-safe application selection and local visual occlusion;
-- explicit v1→v2 save migration;
-- stable display/application identities;
-- portfolio assets, documentation, CI, and preview packaging.
+- layered face atlas with state- and activity-aware expressions;
+- two-dimensional cursor gaze and deterministic irregular blinking;
+- family-specific gesture-capable forelimbs for every action;
+- coordinated head-appendage and tail secondary motion;
+- pre-baked temporary activity effects;
+- deterministic v1/v2→v3 save migration;
+- expression, gesture, animation, and contact-sheet art tools;
+- v0.2 dragging, habitats, window reactions, and application occlusion retained.
 
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Post-v0.2
+## Post-v0.25
 
 - Behavioral observation storage, research/Lab UI, export, and ML experiments.
 - Accessories, seasonal history, audio, breeding, and new colony mechanics.
 - Cross-monitor autonomous travel, side climbing, direct petting, and auto-update.
 - Linux investigation only after the macOS and Windows experience is stable.
 
-The post-v0.2 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than
+The post-v0.25 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than
 coupling persistence or analytics to the behavior engine.

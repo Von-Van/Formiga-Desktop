@@ -100,6 +100,10 @@ impl Canvas {
     }
 
     pub fn fill_circle(&mut self, center_x: i32, center_y: i32, radius: i32, color: Rgba) {
+        if radius == 0 {
+            self.set(center_x, center_y, color);
+            return;
+        }
         self.fill_ellipse(center_x, center_y, radius, radius, color);
     }
 
@@ -187,5 +191,20 @@ impl Canvas {
             }
         }
         found.then_some((min_x, min_y, max_x, max_y))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_pixel_lines_are_visible_and_connected() {
+        let mut canvas = Canvas::new(8, 8);
+        let color = Rgba::new(1, 2, 3, 255);
+        canvas.line(1, 1, 6, 4, 1, color);
+        assert_eq!(canvas.get(1, 1), color);
+        assert_eq!(canvas.get(6, 4), color);
+        assert!(canvas.pixels().iter().filter(|pixel| pixel.a > 0).count() >= 6);
     }
 }

@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
-use formiga_art::{AnimationSpec, CreatureRenderer, FRAME_SIZE};
+use formiga_art::{
+    AnimationSpec, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, PixelPoint,
+};
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, Creature, CreatureId, CursorSnapshot, DesktopRect,
     DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile, accessible_regions,
@@ -36,15 +38,20 @@ struct OcclusionUniform {
 }
 
 struct SpriteGpu {
-    _texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
+    _body_texture: wgpu::Texture,
+    body_bind_group: wgpu::BindGroup,
+    _face_texture: wgpu::Texture,
+    face_bind_group: wgpu::BindGroup,
     reduce_motion: bool,
-    atlas_width: u32,
-    atlas_height: u32,
+    body_atlas_width: u32,
+    body_atlas_height: u32,
+    face_atlas_width: u32,
+    face_atlas_height: u32,
+    face_anchors: Vec<PixelPoint>,
 }
 
 const ATLAS_COLUMNS: u32 = 10;
-const GAZE_VARIANTS: u32 = 3;
+const FACE_ATLAS_COLUMNS: u32 = 18;
 
 pub struct OverlayRenderer {
     pub window: Arc<Window>,
@@ -282,7 +289,7 @@ impl OverlayRenderer {
         });
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("creature vertices"),
-            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 24]),
+            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 48]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let zone_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -338,16 +345,18 @@ impl OverlayRenderer {
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
-        let mut vertices = Vec::with_capacity(visible.len() * 6);
+        let mut vertices = Vec::with_capacity(visible.len() * 12);
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
-            let gaze = gaze_direction(creature, cursor, save.settings.cursor_reactions);
-            vertices.extend_from_slice(&self.vertices_for(
+            let face_state = CreatureRenderer::resolve_face_state(
                 creature,
-                save.settings.display_scale,
-                sprite,
-                gaze,
-            ));
+                cursor,
+                save.settings.cursor_reactions,
+            );
+            let (body, face) =
+                self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
+            vertices.extend_from_slice(&body);
+            vertices.extend_from_slice(&face);
         }
         if !vertices.is_empty() {
             self.queue
@@ -414,10 +423,14 @@ impl OverlayRenderer {
             pass.set_bind_group(0, &self.occlusion_bind_group, &[]);
             for (index, creature) in visible.iter().enumerate() {
                 if let Some(sprite) = self.sprites.get(&creature.id) {
-                    let start = (index * 6 * std::mem::size_of::<Vertex>()) as u64;
-                    let end = start + (6 * std::mem::size_of::<Vertex>()) as u64;
-                    pass.set_bind_group(1, &sprite.bind_group, &[]);
-                    pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
+                    let body_start = (index * 12 * std::mem::size_of::<Vertex>()) as u64;
+                    let body_end = body_start + (6 * std::mem::size_of::<Vertex>()) as u64;
+                    pass.set_bind_group(1, &sprite.body_bind_group, &[]);
+                    pass.set_vertex_buffer(0, self.vertex_buffer.slice(body_start..body_end));
+                    pass.draw(0..6, 0..1);
+                    let face_end = body_end + (6 * std::mem::size_of::<Vertex>()) as u64;
+                    pass.set_bind_group(1, &sprite.face_bind_group, &[]);
+                    pass.set_vertex_buffer(0, self.vertex_buffer.slice(body_end..face_end));
                     pass.draw(0..6, 0..1);
                 }
             }
@@ -519,12 +532,12 @@ impl OverlayRenderer {
             .get(&creature.id)
             .is_none_or(|sprite| sprite.reduce_motion != reduce_motion);
         if requires_bake {
-            let (atlas_width, atlas_height, pixels) = build_atlas_pixels(creature, reduce_motion);
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("procedural creature atlas"),
+            let atlas = build_atlas_pixels(creature, reduce_motion);
+            let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("procedural creature body atlas"),
                 size: wgpu::Extent3d {
-                    width: atlas_width,
-                    height: atlas_height,
+                    width: atlas.body_width,
+                    height: atlas.body_height,
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -536,31 +549,79 @@ impl OverlayRenderer {
             });
             self.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &texture,
+                    texture: &body_texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                &pixels,
+                &atlas.body_pixels,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(atlas_width * 4),
-                    rows_per_image: Some(atlas_height),
+                    bytes_per_row: Some(atlas.body_width * 4),
+                    rows_per_image: Some(atlas.body_height),
                 },
                 wgpu::Extent3d {
-                    width: atlas_width,
-                    height: atlas_height,
+                    width: atlas.body_width,
+                    height: atlas.body_height,
                     depth_or_array_layers: 1,
                 },
             );
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("creature frame bindings"),
+            let body_view = body_texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let body_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("creature body frame bindings"),
                 layout: &self.bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
+                        resource: wgpu::BindingResource::TextureView(&body_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            });
+            let face_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("procedural creature face atlas"),
+                size: wgpu::Extent3d {
+                    width: atlas.face_width,
+                    height: atlas.face_height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &face_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &atlas.face_pixels,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(atlas.face_width * 4),
+                    rows_per_image: Some(atlas.face_height),
+                },
+                wgpu::Extent3d {
+                    width: atlas.face_width,
+                    height: atlas.face_height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            let face_view = face_texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let face_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("creature face frame bindings"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&face_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
@@ -571,11 +632,16 @@ impl OverlayRenderer {
             self.sprites.insert(
                 creature.id,
                 SpriteGpu {
-                    _texture: texture,
-                    bind_group,
+                    _body_texture: body_texture,
+                    body_bind_group,
+                    _face_texture: face_texture,
+                    face_bind_group,
                     reduce_motion,
-                    atlas_width,
-                    atlas_height,
+                    body_atlas_width: atlas.body_width,
+                    body_atlas_height: atlas.body_height,
+                    face_atlas_width: atlas.face_width,
+                    face_atlas_height: atlas.face_height,
+                    face_anchors: atlas.face_anchors,
                 },
             );
         }
@@ -586,8 +652,8 @@ impl OverlayRenderer {
         creature: &Creature,
         display_scale: u8,
         sprite: &SpriteGpu,
-        gaze_x: i8,
-    ) -> [Vertex; 6] {
+        face_state: FaceRenderState,
+    ) -> ([Vertex; 6], [Vertex; 6]) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
         let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
@@ -601,18 +667,18 @@ impl OverlayRenderer {
         let bottom = 1.0 - local_y / self.config.height as f32 * 2.0;
         let spec = AnimationSpec::for_action(creature.state.action);
         let frame = ((creature.state.action_elapsed * spec.fps as f32) as u8) % spec.frames;
-        let slot = atlas_slot(creature.state.action, frame, gaze_x);
+        let slot = atlas_slot(creature.state.action, frame);
         let column = slot % ATLAS_COLUMNS;
         let row = slot / ATLAS_COLUMNS;
-        let mut u_left = column as f32 * FRAME_SIZE as f32 / sprite.atlas_width as f32;
-        let mut u_right = (column + 1) as f32 * FRAME_SIZE as f32 / sprite.atlas_width as f32;
-        let v_top = row as f32 * FRAME_SIZE as f32 / sprite.atlas_height as f32;
-        let v_bottom = (row + 1) as f32 * FRAME_SIZE as f32 / sprite.atlas_height as f32;
+        let mut u_left = column as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
+        let mut u_right = (column + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
+        let v_top = row as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
+        let v_bottom = (row + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
         if !creature.state.facing_right {
             std::mem::swap(&mut u_left, &mut u_right);
         }
         let occlusion_enabled = (creature.state.action != ActionKind::Dragged) as u8 as f32;
-        [
+        let body = [
             Vertex {
                 position: [left, top],
                 uv: [u_left, v_top],
@@ -643,7 +709,71 @@ impl OverlayRenderer {
                 uv: [u_left, v_bottom],
                 occlusion_enabled,
             },
-        ]
+        ];
+
+        let anchor = sprite.face_anchors[slot as usize];
+        let anchor_x = if creature.state.facing_right {
+            anchor.x
+        } else {
+            FRAME_SIZE as i32 - anchor.x
+        } as f32;
+        let face_center_x = local_x - sprite_size / 2.0 + anchor_x * display_scale as f32;
+        let face_center_y = local_y - sprite_size + anchor.y as f32 * display_scale as f32;
+        let face_size = FACE_FRAME_SIZE as f32 * display_scale as f32;
+        let face_left = (face_center_x - face_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let face_right = (face_center_x + face_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let face_top = 1.0 - (face_center_y - face_size / 2.0) / self.config.height as f32 * 2.0;
+        let face_bottom = 1.0 - (face_center_y + face_size / 2.0) / self.config.height as f32 * 2.0;
+        let mut source_face_state = face_state;
+        if !creature.state.facing_right {
+            source_face_state.gaze.x = -source_face_state.gaze.x;
+        }
+        let face_slot = face_atlas_slot(source_face_state);
+        let face_column = face_slot % FACE_ATLAS_COLUMNS;
+        let face_row = face_slot / FACE_ATLAS_COLUMNS;
+        let mut face_u_left =
+            face_column as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
+        let mut face_u_right =
+            (face_column + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
+        if !creature.state.facing_right {
+            std::mem::swap(&mut face_u_left, &mut face_u_right);
+        }
+        let face_v_top = face_row as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
+        let face_v_bottom =
+            (face_row + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
+        let face = [
+            Vertex {
+                position: [face_left, face_top],
+                uv: [face_u_left, face_v_top],
+                occlusion_enabled,
+            },
+            Vertex {
+                position: [face_right, face_top],
+                uv: [face_u_right, face_v_top],
+                occlusion_enabled,
+            },
+            Vertex {
+                position: [face_right, face_bottom],
+                uv: [face_u_right, face_v_bottom],
+                occlusion_enabled,
+            },
+            Vertex {
+                position: [face_left, face_top],
+                uv: [face_u_left, face_v_top],
+                occlusion_enabled,
+            },
+            Vertex {
+                position: [face_right, face_bottom],
+                uv: [face_u_right, face_v_bottom],
+                occlusion_enabled,
+            },
+            Vertex {
+                position: [face_left, face_bottom],
+                uv: [face_u_left, face_v_bottom],
+                occlusion_enabled,
+            },
+        ];
+        (body, face)
     }
 }
 
@@ -728,44 +858,99 @@ fn subtract_rect(source: DesktopRect, cut: DesktopRect) -> Vec<DesktopRect> {
     .collect()
 }
 
-fn build_atlas_pixels(creature: &Creature, reduce_motion: bool) -> (u32, u32, Vec<u8>) {
-    let total_slots = total_animation_frames() * GAZE_VARIANTS;
-    let rows = total_slots.div_ceil(ATLAS_COLUMNS);
-    let width = ATLAS_COLUMNS * FRAME_SIZE;
-    let height = rows * FRAME_SIZE;
-    let mut pixels = vec![0_u8; (width * height * 4) as usize];
-    for gaze_x in -1_i8..=1 {
-        for action in ActionKind::ALL {
-            let spec = AnimationSpec::for_action(action);
-            for frame in 0..spec.frames {
-                let canvas = CreatureRenderer::render_frame_with_options(
-                    &creature.appearance,
-                    action,
-                    frame,
-                    true,
-                    reduce_motion,
-                    gaze_x,
-                );
-                let slot = atlas_slot(action, frame, gaze_x);
-                blit_atlas_frame(
-                    &mut pixels,
-                    width,
-                    slot % ATLAS_COLUMNS * FRAME_SIZE,
-                    slot / ATLAS_COLUMNS * FRAME_SIZE,
-                    &canvas.rgba_bytes(),
-                );
+struct AtlasPixels {
+    body_width: u32,
+    body_height: u32,
+    body_pixels: Vec<u8>,
+    face_width: u32,
+    face_height: u32,
+    face_pixels: Vec<u8>,
+    face_anchors: Vec<PixelPoint>,
+}
+
+fn build_atlas_pixels(creature: &Creature, reduce_motion: bool) -> AtlasPixels {
+    let body_slots = total_animation_frames();
+    let body_rows = body_slots.div_ceil(ATLAS_COLUMNS);
+    let body_width = ATLAS_COLUMNS * FRAME_SIZE;
+    let body_height = body_rows * FRAME_SIZE;
+    let mut body_pixels = vec![0_u8; (body_width * body_height * 4) as usize];
+    let mut face_anchors = vec![PixelPoint::default(); body_slots as usize];
+    for action in ActionKind::ALL {
+        let spec = AnimationSpec::for_action(action);
+        for frame in 0..spec.frames {
+            let rendered = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                action,
+                frame,
+                reduce_motion,
+            );
+            let slot = atlas_slot(action, frame);
+            face_anchors[slot as usize] = rendered.face_anchor;
+            blit_atlas_frame(
+                &mut body_pixels,
+                body_width,
+                slot % ATLAS_COLUMNS * FRAME_SIZE,
+                slot / ATLAS_COLUMNS * FRAME_SIZE,
+                FRAME_SIZE,
+                &rendered.canvas.rgba_bytes(),
+            );
+        }
+    }
+
+    let face_slots = formiga_art::ExpressionKind::ALL.len() as u32
+        * formiga_art::EyelidPose::ALL.len() as u32
+        * 9;
+    let face_rows = face_slots.div_ceil(FACE_ATLAS_COLUMNS);
+    let face_width = FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE;
+    let face_height = face_rows * FACE_FRAME_SIZE;
+    let mut face_pixels = vec![0_u8; (face_width * face_height * 4) as usize];
+    for expression in formiga_art::ExpressionKind::ALL {
+        for eyelids in formiga_art::EyelidPose::ALL {
+            for gaze_y in -1_i8..=1 {
+                for gaze_x in -1_i8..=1 {
+                    let state = FaceRenderState {
+                        expression,
+                        eyelids,
+                        gaze: formiga_art::GazeDirection::new(gaze_x, gaze_y),
+                    };
+                    let face = CreatureRenderer::render_face_frame(&creature.appearance, state);
+                    let slot = face_atlas_slot(state);
+                    blit_atlas_frame(
+                        &mut face_pixels,
+                        face_width,
+                        slot % FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE,
+                        slot / FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE,
+                        FACE_FRAME_SIZE,
+                        &face.rgba_bytes(),
+                    );
+                }
             }
         }
     }
-    (width, height, pixels)
+    AtlasPixels {
+        body_width,
+        body_height,
+        body_pixels,
+        face_width,
+        face_height,
+        face_pixels,
+        face_anchors,
+    }
 }
 
-fn blit_atlas_frame(target: &mut [u8], width: u32, origin_x: u32, origin_y: u32, frame: &[u8]) {
-    for y in 0..FRAME_SIZE {
-        let source_start = (y * FRAME_SIZE * 4) as usize;
+fn blit_atlas_frame(
+    target: &mut [u8],
+    width: u32,
+    origin_x: u32,
+    origin_y: u32,
+    frame_size: u32,
+    frame: &[u8],
+) {
+    for y in 0..frame_size {
+        let source_start = (y * frame_size * 4) as usize;
         let target_start = ((origin_y + y) * width * 4 + origin_x * 4) as usize;
-        target[target_start..target_start + (FRAME_SIZE * 4) as usize]
-            .copy_from_slice(&frame[source_start..source_start + (FRAME_SIZE * 4) as usize]);
+        target[target_start..target_start + (frame_size * 4) as usize]
+            .copy_from_slice(&frame[source_start..source_start + (frame_size * 4) as usize]);
     }
 }
 
@@ -776,34 +961,23 @@ fn total_animation_frames() -> u32 {
         .sum()
 }
 
-fn atlas_slot(action: ActionKind, frame: u8, gaze_x: i8) -> u32 {
+fn atlas_slot(action: ActionKind, frame: u8) -> u32 {
     let action_offset: u32 = ActionKind::ALL
         .into_iter()
         .take_while(|candidate| *candidate != action)
         .map(|candidate| u32::from(AnimationSpec::for_action(candidate).frames))
         .sum();
-    let gaze_group = u32::from((gaze_x.clamp(-1, 1) + 1) as u8);
-    gaze_group * total_animation_frames() + action_offset + u32::from(frame)
+    action_offset + u32::from(frame)
 }
 
-fn gaze_direction(creature: &Creature, cursor: CursorSnapshot, enabled: bool) -> i8 {
-    if !enabled || !cursor.available || creature.state.position.distance(cursor.position) > 240.0 {
-        return 0;
-    }
-    let delta = cursor.position.x - creature.state.position.x;
-    if delta.abs() < 8.0 {
-        0
-    } else if delta > 0.0 {
-        1
-    } else {
-        -1
-    }
+fn face_atlas_slot(state: FaceRenderState) -> u32 {
+    state.expression.index() * 27 + state.eyelids.index() * 9 + state.gaze.index()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use formiga_core::{ApplicationKey, Point};
+    use formiga_core::{ApplicationKey, DisplayKey, MonitorInfo, Point, World};
 
     fn window(
         key: u64,
@@ -896,5 +1070,45 @@ mod tests {
             enabled: false,
         };
         assert!(visible_occlusion_rects(windows[0].bounds, &windows, &[rule]).is_empty());
+    }
+
+    #[test]
+    fn layered_atlas_stays_below_one_megabyte_per_creature() {
+        let desktop = formiga_core::DesktopSnapshot {
+            monitors: vec![MonitorInfo {
+                id: 1,
+                display_key: DisplayKey([1; 16]),
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 836.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let world = World::new([7; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
+        let started = std::time::Instant::now();
+        let atlas = build_atlas_pixels(&world.save.creatures[0], false);
+        let bake_time = started.elapsed();
+        let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
+        eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
+        assert!(total_bytes < 1_048_576, "atlas uses {total_bytes} bytes");
+        assert!(total_bytes < atlas.body_pixels.len() * 3);
+        assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+        if !cfg!(debug_assertions) {
+            assert!(
+                bake_time < std::time::Duration::from_millis(75),
+                "release atlas bake took {bake_time:?}"
+            );
+        }
     }
 }

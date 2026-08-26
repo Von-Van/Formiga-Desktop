@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1 => migrate_v1(value),
+            1 | 2 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -83,18 +83,124 @@ impl SaveStore {
     }
 }
 
-fn migrate_v1(mut value: serde_json::Value) -> Result<SaveFile, PersistenceError> {
+fn migrate_legacy(
+    mut value: serde_json::Value,
+    source_version: u32,
+) -> Result<SaveFile, PersistenceError> {
     let primary_only = value
         .pointer("/settings/primary_display_only")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
+    if let Some(creatures) = value
+        .get_mut("creatures")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for creature in creatures {
+            let Some(appearance) = creature
+                .get_mut("appearance")
+                .and_then(serde_json::Value::as_object_mut)
+            else {
+                continue;
+            };
+            migrate_appearance(appearance);
+        }
+    }
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
-    if primary_only {
+    if source_version == 1 && primary_only {
         save.settings.habitat.preset = crate::HabitatPreset::PrimaryDisplay;
     }
     Ok(save)
+}
+
+fn migrate_appearance(appearance: &mut serde_json::Map<String, serde_json::Value>) {
+    use serde_json::{Value, json};
+
+    let appendage_style = appearance
+        .remove("appendage_style")
+        .unwrap_or_else(|| Value::String("None".into()));
+    let appendage_size = appearance
+        .remove("appendage_size")
+        .unwrap_or_else(|| Value::from(3));
+    appearance.insert(
+        "head_appendages".into(),
+        json!({
+            "style": appendage_style,
+            "size": appendage_size,
+        }),
+    );
+
+    let eye_size = appearance
+        .remove("eye_size")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(1)
+        .clamp(1, 2);
+    let eye_spacing = appearance
+        .remove("eye_spacing")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(5)
+        .clamp(3, 7);
+    let vertical_offset = appearance
+        .remove("eye_height")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(0)
+        .clamp(-2, 2);
+    let signature = appearance
+        .get("face_signature")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let family = appearance
+        .get("family")
+        .and_then(Value::as_str)
+        .unwrap_or("Blob")
+        .to_owned();
+
+    appearance.insert(
+        "face".into(),
+        json!({
+            "eye_shape": select_gene(signature, 0, &["Round", "Tall", "SoftSquare"]),
+            "eye_size": eye_size,
+            "eye_spacing": eye_spacing,
+            "vertical_offset": vertical_offset,
+            "pupil_style": select_gene(signature, 2, &["Dot", "Wide", "Spark"]),
+            "highlight_style": select_gene(signature, 4, &["Single", "Double", "Diagonal"]),
+            "brow_style": select_gene(signature, 6, &["None", "Soft", "Bold"]),
+            "mouth_style": select_gene(signature, 8, &["Tiny", "Smile", "Cat", "Beak"]),
+            "cheek_style": select_gene(signature, 10, &["None", "Dots", "Blush"]),
+        }),
+    );
+    let (style, tip_style) = match family.as_str() {
+        "Hopper" => ("MittenArm", "Mitten"),
+        "SoftQuadruped" => ("FrontPaw", "Paw"),
+        _ if signature & 1 == 0 => ("SoftNub", "Round"),
+        _ => ("Pseudopod", "Round"),
+    };
+    appearance.insert(
+        "forelimbs".into(),
+        json!({
+            "style": style,
+            "length": 3 + (signature >> 12) % 5,
+            "thickness": 1 + (signature >> 15) % 2,
+            "tip_style": tip_style,
+            "rest_pose": select_gene(signature, 16, &["AtSides", "Folded", "Together"]),
+        }),
+    );
+    appearance.insert(
+        "effect_motif".into(),
+        Value::String(
+            select_gene(
+                signature,
+                18,
+                &["None", "Dot", "Star", "Heart", "Leaf", "Spark"],
+            )
+            .into(),
+        ),
+    );
+}
+
+fn select_gene(signature: u64, shift: u32, values: &'static [&'static str]) -> &'static str {
+    values[((signature >> shift) as usize) % values.len()]
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -147,6 +253,24 @@ mod tests {
         }
     }
 
+    fn downgrade_appearances_to_v2(value: &mut serde_json::Value) {
+        let creatures = value["creatures"].as_array_mut().unwrap();
+        for creature in creatures {
+            let appearance = creature["appearance"].as_object_mut().unwrap();
+            let face = appearance.remove("face").unwrap();
+            appearance.insert("eye_size".into(), face["eye_size"].clone());
+            appearance.insert("eye_spacing".into(), face["eye_spacing"].clone());
+            appearance.insert("eye_height".into(), face["vertical_offset"].clone());
+            let head_appendages = appearance.remove("head_appendages").unwrap();
+            let style = head_appendages["style"].clone();
+            let size = head_appendages["size"].clone();
+            appearance.insert("appendage_style".into(), style);
+            appearance.insert("appendage_size".into(), size);
+            appearance.remove("forelimbs");
+            appearance.remove("effect_motif");
+        }
+    }
+
     #[test]
     fn round_trips_atomically() {
         let directory = std::env::temp_dir().join(format!("formiga-save-{}", std::process::id()));
@@ -182,6 +306,78 @@ mod tests {
             crate::HabitatPreset::PrimaryDisplay
         );
         assert!(migrated.settings.direct_manipulation);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v2_creature_identity_and_resolves_art_genes_deterministically() {
+        let desktop = crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([9; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1280.0,
+                    height: 736.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let original = crate::World::new([11; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop).save;
+        let creature = &original.creatures[0];
+        let legacy_eye_size = creature.appearance.face.eye_size;
+        let legacy_eye_spacing = creature.appearance.face.eye_spacing;
+        let legacy_eye_height = creature.appearance.face.vertical_offset;
+        let legacy_appendage = creature.appearance.head_appendages.style;
+        let mut value = serde_json::to_value(&original).unwrap();
+        value["save_version"] = serde_json::Value::from(2);
+        downgrade_appearances_to_v2(&mut value);
+
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v2-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let first_path = directory.join("first.json");
+        let second_path = directory.join("second.json");
+        let bytes = serde_json::to_vec(&value).unwrap();
+        fs::write(&first_path, &bytes).unwrap();
+        fs::write(&second_path, &bytes).unwrap();
+        let first = SaveStore::new(&first_path).load().unwrap().unwrap();
+        let second = SaveStore::new(&second_path).load().unwrap().unwrap();
+        let migrated = &first.creatures[0];
+
+        assert_eq!(first, second);
+        assert_eq!(first.save_version, crate::SAVE_VERSION);
+        assert_eq!(first.colony_seed, original.colony_seed);
+        assert_eq!(migrated.id, creature.id);
+        assert_eq!(migrated.generation, creature.generation);
+        assert_eq!(migrated.personality, creature.personality);
+        assert_eq!(migrated.state.relationships, creature.state.relationships);
+        assert_eq!(migrated.appearance.family, creature.appearance.family);
+        assert_eq!(
+            migrated.appearance.palette_index,
+            creature.appearance.palette_index
+        );
+        assert_eq!(
+            migrated.appearance.marking_seed,
+            creature.appearance.marking_seed
+        );
+        assert_eq!(
+            migrated.appearance.face_signature,
+            creature.appearance.face_signature
+        );
+        assert_eq!(migrated.appearance.face.eye_size, legacy_eye_size);
+        assert_eq!(migrated.appearance.face.eye_spacing, legacy_eye_spacing);
+        assert_eq!(migrated.appearance.face.vertical_offset, legacy_eye_height);
+        assert_eq!(migrated.appearance.head_appendages.style, legacy_appendage);
         let _ = fs::remove_dir_all(directory);
     }
 }

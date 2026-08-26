@@ -1,4 +1,4 @@
-# Formiga v0.2 architecture
+# Formiga v0.25 architecture
 
 Formiga separates platform observation, deterministic simulation, procedural art, and presentation.
 `formiga-core` contains no GUI or GPU code; OS adapters cannot decide creature behavior, and the art
@@ -28,9 +28,16 @@ A 256-bit colony seed derives named ChaCha streams for appearance, personality, 
 flavor, runtime decisions, and each mini. Resolved genomes are stored in the save so future generator
 changes cannot silently redesign an existing creature.
 
-Blob, hopper, and soft-quadruped rigs share a stable two-eye face grammar. Authored clips manipulate
-normalized anchors, squash, tilt, planted contacts, layer order, and secondary motion. Markings are
-body-local, then each frame is rasterized at integer coordinates into a nearest-filtered atlas.
+Blob, hopper, and soft-quadruped rigs share a stable two-eye face grammar. Every body frame records a
+face anchor and family-specific forelimb targets. Authored clips manipulate those anchors, squash,
+planted contacts, limb gestures, and secondary tail/head-appendage motion. Markings and temporary
+activity effects remain body-local and are rasterized at integer coordinates.
+
+The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face atlas per creature.
+The face atlas contains eleven expressions, nine gaze directions, and three eyelid states. Runtime
+work is limited to selecting two texture slots and drawing two nearest-filtered quads; expression
+changes add no simulation, particle, or desktop-polling loop. Together the cached textures remain
+below 1 MB per creature.
 
 ## Desktop composition
 
@@ -62,5 +69,5 @@ creature opts out per vertex.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 2 migrates v1's primary-display flag to an equivalent habitat policy. There is deliberately
-no history database or telemetry layer.
+Version 3 migrates v1 habitat settings and deterministically resolves v2 face, forelimb, and effect
+genes without replacing colony identity. There is deliberately no history database or telemetry layer.

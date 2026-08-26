@@ -2,6 +2,24 @@
 
 All notable changes are documented here.
 
+## [0.25.0] - 2026-08-26
+
+### Added
+
+- Layered face atlas with eleven expressions, nine gaze directions, and open/half/closed eyelids.
+- State- and activity-aware expression resolution with deterministic irregular blinking.
+- Family-specific blob pseudopods, hopper mitten hands, and quadruped front-paw gestures.
+- Pre-baked sleep, investigation, play, greeting, social, and startle effects.
+- Expression and gesture art-lab contact-sheet commands.
+- Deterministic v2→v3 save migration for resolved face, forelimb, and effect genes.
+
+### Changed
+
+- Replaced three gaze-duplicated body atlases with one body atlas and one compact face atlas.
+- Interaction masks now use the fully composited expressive frame.
+- Fixed one-pixel line rasterization, improving facial and appendage clarity.
+- Updated portfolio assets and release metadata for v0.25.0.
+
 ## [0.2.0] - 2026-08-25
 
 ### Added

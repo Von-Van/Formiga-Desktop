@@ -18,7 +18,15 @@ readability and animation stability. The contact-sheet tool exercises uncurated 
 
 Each family evaluates normalized poses against generated anchors, then rasterizes integer pixels.
 This makes walk, rest, sleep, cursor, window, social, dragged, and landing actions reusable across
-different proportions. Atlas baking moves procedural work out of the presentation loop.
+different proportions. Family-specific forelimbs use the same action contracts to reach, wave,
+brace, balance, tuck, and play. Atlas baking moves procedural work out of the presentation loop.
+
+### Expression without full-body atlas multiplication
+
+The body atlas is gaze-free and records one face anchor per frame. A separate 16×16 atlas combines
+eleven expressions, nine gaze directions, and three eyelid poses. Rendering one additional tiny quad
+is cheaper than the prior three complete gaze-specific body copies, while deterministic blink timing
+and drive-aware expression selection make the same face feel substantially more alive.
 
 ### Selective input without a global hook
 
@@ -37,7 +45,7 @@ screen capture, window titles, or content inspection.
 ## Reliability strategy
 
 The simulation and RNG are platform-independent. Injected time accelerates the 30/90/180-day colony
-schedule; v2 migrates v1 saves without regenerating identity; atomic writes retain a backup; removed
+schedule; v3 migrates v1/v2 saves without regenerating identity; atomic writes retain a backup; removed
 supports or displays always resolve to a safe habitat point. CI denies Clippy warnings and exercises
 both platform builds.
 

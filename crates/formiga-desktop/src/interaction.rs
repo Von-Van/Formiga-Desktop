@@ -92,6 +92,8 @@ impl InteractionProxy {
 
         let spec = AnimationSpec::for_action(creature.state.action);
         let frame = ((creature.state.action_elapsed * spec.fps as f32) as u8) % spec.frames;
+        let face_state =
+            CreatureRenderer::resolve_face_state(creature, cursor, settings.cursor_reactions);
         let signature = MaskSignature {
             action: creature.state.action,
             frame,
@@ -100,13 +102,13 @@ impl InteractionProxy {
             scale,
         };
         if self.signature != Some(signature) {
-            let canvas = CreatureRenderer::render_frame_with_options(
+            let canvas = CreatureRenderer::render_composited_frame(
                 &creature.appearance,
                 creature.state.action,
                 frame,
                 creature.state.facing_right,
                 settings.reduce_motion,
-                0,
+                face_state,
             );
             self.mask = canvas.pixels().iter().map(|pixel| pixel.a > 16).collect();
             platform::set_interaction_shape(&self.window, &self.mask, scale);

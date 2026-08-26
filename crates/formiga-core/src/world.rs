@@ -596,21 +596,23 @@ fn generate_creature(
             2,
             5,
         ),
-        appendage_style: if let Some(parent) = parent {
-            if appearance_rng.random_bool(0.75) {
-                parent.appearance.appendage_style
+        head_appendages: HeadAppendageGenome {
+            style: if let Some(parent) = parent {
+                if appearance_rng.random_bool(0.75) {
+                    parent.appearance.head_appendages.style
+                } else {
+                    random_head_appendage(&mut appearance_rng)
+                }
             } else {
-                random_appendage(&mut appearance_rng)
-            }
-        } else {
-            random_appendage(&mut appearance_rng)
+                random_head_appendage(&mut appearance_rng)
+            },
+            size: mutate_parent(
+                parent.map(|p| p.appearance.head_appendages.size),
+                &mut appearance_rng,
+                2,
+                7,
+            ),
         },
-        appendage_size: mutate_parent(
-            parent.map(|p| p.appearance.appendage_size),
-            &mut appearance_rng,
-            2,
-            7,
-        ),
         tail_style: if let Some(parent) = parent {
             if appearance_rng.random_bool(0.75) {
                 parent.appearance.tail_style
@@ -626,15 +628,21 @@ fn generate_creature(
             2,
             10,
         ),
-        eye_size: parent
-            .map(|p| p.appearance.eye_size)
-            .unwrap_or_else(|| appearance_rng.random_range(1..=2)),
-        eye_spacing: parent
-            .map(|p| p.appearance.eye_spacing)
-            .unwrap_or_else(|| appearance_rng.random_range(3..=7)),
-        eye_height: parent
-            .map(|p| p.appearance.eye_height)
-            .unwrap_or_else(|| appearance_rng.random_range(-2..=2)),
+        face: generate_face(parent.map(|p| p.appearance.face), &mut appearance_rng),
+        forelimbs: generate_forelimbs(
+            family,
+            parent.map(|p| p.appearance.forelimbs),
+            &mut appearance_rng,
+        ),
+        effect_motif: if let Some(parent) = parent {
+            if appearance_rng.random_bool(0.65) {
+                parent.appearance.effect_motif
+            } else {
+                random_effect_motif(&mut appearance_rng)
+            }
+        } else {
+            random_effect_motif(&mut appearance_rng)
+        },
         palette_index,
         pattern: if let Some(parent) = parent {
             if appearance_rng.random_bool(0.6) {
@@ -737,14 +745,144 @@ fn mutate_float<R: Rng + ?Sized>(parent: Option<f32>, rng: &mut R, min: f32, max
         .unwrap_or_else(|| rng.random_range(min..max))
 }
 
-fn random_appendage<R: Rng + ?Sized>(rng: &mut R) -> AppendageStyle {
+fn random_head_appendage<R: Rng + ?Sized>(rng: &mut R) -> HeadAppendageStyle {
     match rng.random_range(0..6) {
-        0 => AppendageStyle::None,
-        1 => AppendageStyle::Round,
-        2 => AppendageStyle::Pointed,
-        3 => AppendageStyle::Leaf,
-        4 => AppendageStyle::Droop,
-        _ => AppendageStyle::Antenna,
+        0 => HeadAppendageStyle::None,
+        1 => HeadAppendageStyle::Round,
+        2 => HeadAppendageStyle::Pointed,
+        3 => HeadAppendageStyle::Leaf,
+        4 => HeadAppendageStyle::Droop,
+        _ => HeadAppendageStyle::Antenna,
+    }
+}
+
+fn generate_face<R: Rng + ?Sized>(parent: Option<FaceGenome>, rng: &mut R) -> FaceGenome {
+    if let Some(parent) = parent {
+        return FaceGenome {
+            // These genes form the inherited face signature shared by the colony.
+            eye_shape: parent.eye_shape,
+            eye_size: parent.eye_size,
+            eye_spacing: parent.eye_spacing,
+            vertical_offset: parent.vertical_offset,
+            pupil_style: parent.pupil_style,
+            highlight_style: parent.highlight_style,
+            brow_style: if rng.random_bool(0.28) {
+                random_brow(rng)
+            } else {
+                parent.brow_style
+            },
+            mouth_style: if rng.random_bool(0.2) {
+                random_mouth(rng)
+            } else {
+                parent.mouth_style
+            },
+            cheek_style: if rng.random_bool(0.35) {
+                random_cheek(rng)
+            } else {
+                parent.cheek_style
+            },
+        };
+    }
+    FaceGenome {
+        eye_shape: match rng.random_range(0..3) {
+            0 => EyeShape::Round,
+            1 => EyeShape::Tall,
+            _ => EyeShape::SoftSquare,
+        },
+        eye_size: rng.random_range(1..=2),
+        eye_spacing: rng.random_range(4..=7),
+        vertical_offset: rng.random_range(-1..=1),
+        pupil_style: match rng.random_range(0..3) {
+            0 => PupilStyle::Dot,
+            1 => PupilStyle::Wide,
+            _ => PupilStyle::Spark,
+        },
+        highlight_style: match rng.random_range(0..3) {
+            0 => HighlightStyle::Single,
+            1 => HighlightStyle::Double,
+            _ => HighlightStyle::Diagonal,
+        },
+        brow_style: random_brow(rng),
+        mouth_style: random_mouth(rng),
+        cheek_style: random_cheek(rng),
+    }
+}
+
+fn generate_forelimbs<R: Rng + ?Sized>(
+    family: BodyFamily,
+    parent: Option<ForelimbGenome>,
+    rng: &mut R,
+) -> ForelimbGenome {
+    let (style, tip_style) = match family {
+        BodyFamily::Blob => (
+            if rng.random_bool(0.5) {
+                ForelimbStyle::SoftNub
+            } else {
+                ForelimbStyle::Pseudopod
+            },
+            LimbTipStyle::Round,
+        ),
+        BodyFamily::Hopper => (ForelimbStyle::MittenArm, LimbTipStyle::Mitten),
+        BodyFamily::SoftQuadruped => (ForelimbStyle::FrontPaw, LimbTipStyle::Paw),
+    };
+    ForelimbGenome {
+        style: parent.map_or(style, |value| value.style),
+        length: mutate_parent(parent.map(|value| value.length), rng, 3, 7),
+        thickness: mutate_parent(parent.map(|value| value.thickness), rng, 1, 2),
+        tip_style: parent.map_or(tip_style, |value| value.tip_style),
+        rest_pose: if let Some(parent) = parent {
+            if rng.random_bool(0.3) {
+                random_rest_pose(rng)
+            } else {
+                parent.rest_pose
+            }
+        } else {
+            random_rest_pose(rng)
+        },
+    }
+}
+
+fn random_brow<R: Rng + ?Sized>(rng: &mut R) -> BrowStyle {
+    match rng.random_range(0..3) {
+        0 => BrowStyle::None,
+        1 => BrowStyle::Soft,
+        _ => BrowStyle::Bold,
+    }
+}
+
+fn random_mouth<R: Rng + ?Sized>(rng: &mut R) -> MouthStyle {
+    match rng.random_range(0..4) {
+        0 => MouthStyle::Tiny,
+        1 => MouthStyle::Smile,
+        2 => MouthStyle::Cat,
+        _ => MouthStyle::Beak,
+    }
+}
+
+fn random_cheek<R: Rng + ?Sized>(rng: &mut R) -> CheekStyle {
+    match rng.random_range(0..3) {
+        0 => CheekStyle::None,
+        1 => CheekStyle::Dots,
+        _ => CheekStyle::Blush,
+    }
+}
+
+fn random_rest_pose<R: Rng + ?Sized>(rng: &mut R) -> RestPose {
+    match rng.random_range(0..3) {
+        0 => RestPose::AtSides,
+        1 => RestPose::Folded,
+        _ => RestPose::Together,
+    }
+}
+
+fn random_effect_motif<R: Rng + ?Sized>(rng: &mut R) -> EffectMotif {
+    match rng.random_range(0..6) {
+        0 => EffectMotif::None,
+        1 => EffectMotif::Dot,
+        2 => EffectMotif::Star,
+        3 => EffectMotif::Heart,
+        4 => EffectMotif::Leaf,
+        _ => EffectMotif::Spark,
     }
 }
 
@@ -1320,6 +1458,26 @@ mod tests {
         assert_eq!(
             parent.appearance.palette_index,
             mini.appearance.palette_index
+        );
+        assert_eq!(
+            parent.appearance.face.eye_shape,
+            mini.appearance.face.eye_shape
+        );
+        assert_eq!(
+            parent.appearance.face.eye_size,
+            mini.appearance.face.eye_size
+        );
+        assert_eq!(
+            parent.appearance.face.eye_spacing,
+            mini.appearance.face.eye_spacing
+        );
+        assert_eq!(
+            parent.appearance.face.pupil_style,
+            mini.appearance.face.pupil_style
+        );
+        assert_eq!(
+            parent.appearance.face.highlight_style,
+            mini.appearance.face.highlight_style
         );
         assert_ne!(parent.appearance.marking_seed, mini.appearance.marking_seed);
         assert_ne!(parent.personality, mini.personality);

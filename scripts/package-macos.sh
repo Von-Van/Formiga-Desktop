@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 repo_dir="$(cd "$script_dir/.." && pwd)"
 dist_dir="$repo_dir/dist"
 app_dir="$dist_dir/Formiga.app"
-version="${FORMIGA_VERSION:-0.2.0}"
+version="${FORMIGA_VERSION:-0.25.0}"
 archive="$dist_dir/Formiga-$version-universal-macos.zip"
 
 cd "$repo_dir"

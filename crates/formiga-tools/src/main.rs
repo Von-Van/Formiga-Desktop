@@ -1,5 +1,7 @@
 use anyhow::{Context, Result, bail};
-use formiga_art::{CreatureRenderer, FRAME_SIZE};
+use formiga_art::{
+    CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE, FaceRenderState, GazeDirection,
+};
 use formiga_core::*;
 use sha2::{Digest, Sha256};
 use std::fs::File;
@@ -15,6 +17,14 @@ fn main() -> Result<()> {
             output_argument_with_default(&args, "animation-preview.png"),
             seed_argument(&args),
         ),
+        Some("expression-sheet") => expression_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/expression-sheet.png",
+        )),
+        Some("gesture-sheet") => gesture_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/gesture-sheet.png",
+        )),
         Some("portfolio-hero") => {
             portfolio_hero(output_argument_with_default(&args, "docs/assets/hero.png"))
         }
@@ -29,7 +39,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
@@ -121,6 +131,101 @@ fn contact_sheet(path: PathBuf) -> Result<()> {
     write_png(&path, COLS * cell, ROWS * cell, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
+}
+
+fn expression_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 3;
+    let creatures = reference_creatures();
+    let cell = FRAME_SIZE * SCALE;
+    let width = ExpressionKind::ALL.len() as u32 * cell;
+    let height = creatures.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for (row, creature) in creatures.iter().enumerate() {
+        for (column, expression) in ExpressionKind::ALL.into_iter().enumerate() {
+            let rendered = CreatureRenderer::render_composited_frame(
+                &creature.appearance,
+                ActionKind::Idle,
+                0,
+                true,
+                false,
+                FaceRenderState {
+                    expression,
+                    eyelids: EyelidPose::Open,
+                    gaze: GazeDirection::default(),
+                },
+            );
+            blit_scaled(
+                &mut pixels,
+                width,
+                column as u32 * cell,
+                row as u32 * cell,
+                &rendered.rgba_bytes(),
+                SCALE,
+            );
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn gesture_sheet(path: PathBuf) -> Result<()> {
+    const COLS: u32 = 7;
+    const SCALE: u32 = 3;
+    let creatures = reference_creatures();
+    let cell = FRAME_SIZE * SCALE;
+    let rows_per_family = 2;
+    let width = COLS * cell;
+    let height = creatures.len() as u32 * rows_per_family * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for (family_index, creature) in creatures.iter().enumerate() {
+        for (action_index, action) in ActionKind::ALL.into_iter().enumerate() {
+            let spec = formiga_art::AnimationSpec::for_action(action);
+            let frame = (action_index as u8 + 1) % spec.frames;
+            let rendered =
+                CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
+            let column = action_index as u32 % COLS;
+            let local_row = action_index as u32 / COLS;
+            let row = family_index as u32 * rows_per_family + local_row;
+            blit_scaled(
+                &mut pixels,
+                width,
+                column * cell,
+                row * cell,
+                &rendered.rgba_bytes(),
+                SCALE,
+            );
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn reference_creatures() -> Vec<Creature> {
+    let desktop = fixture_desktop();
+    [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| {
+        (0_u64..1_000)
+            .find_map(|index| {
+                let mut seed = [0_u8; 32];
+                seed.copy_from_slice(&Sha256::digest(format!(
+                    "formiga-reference-{family:?}-{index}"
+                )));
+                let creature = World::new(seed, OffsetDateTime::UNIX_EPOCH, &desktop)
+                    .save
+                    .creatures
+                    .remove(0);
+                (creature.appearance.family == family).then_some(creature)
+            })
+            .expect("a deterministic reference seed exists for every family")
+    })
+    .collect()
 }
 
 fn portfolio_hero(path: PathBuf) -> Result<()> {

@@ -592,7 +592,7 @@ fn applications_tab(
 }
 
 fn about_tab(ui: &mut egui::Ui, outcome: &mut SettingsOutcome, save_location: &str) {
-    ui.heading("Formiga 0.2.0");
+    ui.heading(format!("Formiga {}", env!("CARGO_PKG_VERSION")));
     ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
     ui.add_space(8.0);
     ui.label("Local-only. No accounts, network service, screenshots, window titles, keystrokes, or telemetry.");

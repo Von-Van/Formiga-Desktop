@@ -9,7 +9,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1→v2 migration | CI | CI |
+| v1/v2→v3 migration | CI | CI |
+| 1,000 genomes × all actions and layered face checks | CI | CI |
+| Layered atlas under 1 MB per creature | CI | CI |
 | Habitat region algebra | CI | CI |
 | Drag state/cancel/landing | CI | CI |
 | Alpha-mask and occlusion geometry | CI | CI |
@@ -32,6 +34,6 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
 | Spaces/virtual desktops and full-screen | pending | pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
-| Package install, relaunch, and v1 migration | pending | pending | pending | pending |
+| Package install, relaunch, and v1/v2 migration | pending | pending | pending | pending |
 
 Unsigned preview status must remain explicit until signing credentials are configured.
