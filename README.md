@@ -1,5 +1,7 @@
 # Formiga
 
+<p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
+
 ![A small Formiga colony living among desktop windows](docs/assets/hero.png)
 
 Formiga is a local-only desktop ecosystem for macOS and Windows. Seeded procedural creatures live
@@ -23,7 +25,12 @@ disable operating-system security.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
 
-The v0.25 expressive-art release adds a readable emotional and physical performance to the existing
+The v0.31 background-efficiency release keeps the expressive emotional and physical performance while
+reducing idle desktop work. Full-screen applications cover Formiga by default, active movement is
+presented only as quickly as the simulation can produce distinct positions, and resting or hidden
+monitor overlays stop redrawing when nothing has changed.
+
+The expressive-art system adds a readable emotional and physical performance to the existing
 desktop interactions:
 
 - Read state and activity through eleven expressions, two-dimensional gaze, eyelids, and irregular blinks.
@@ -94,7 +101,7 @@ cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.p
 
 ## Status
 
-Formiga v0.25 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.31 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 

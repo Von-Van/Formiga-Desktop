@@ -564,6 +564,7 @@ pub struct Settings {
     pub reduce_motion: bool,
     pub launch_at_login: bool,
     pub direct_manipulation: bool,
+    pub fullscreen_app_occlusion: bool,
     pub habitat: HabitatPolicy,
     pub application_occlusion_rules: Vec<ApplicationOcclusionRule>,
 }
@@ -579,6 +580,7 @@ impl Default for Settings {
             reduce_motion: false,
             launch_at_login: false,
             direct_manipulation: true,
+            fullscreen_app_occlusion: true,
             habitat: HabitatPolicy::default(),
             application_occlusion_rules: Vec::new(),
         }

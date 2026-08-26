@@ -2,6 +2,29 @@
 
 All notable changes are documented here.
 
+## [0.31.0] - 2026-08-26
+
+### Added
+
+- Default-on full-screen application occlusion on macOS and Windows, detected exclusively from
+  safe display and window geometry.
+- An Applications setting for opting out of automatic full-screen hiding.
+- A close-up coral mascot app icon, peeking from a mint shelter with expressive eyes and hands,
+  designed to remain readable down to system-tray sizes.
+
+### Changed
+
+- Replaced the fixed 50 Hz active wake-up with adaptive 4–20 Hz simulation deadlines.
+- Capped moving presentation at the 20 Hz simulation rate and matched pose-only presentation to
+  each authored animation's actual frame rate.
+- Native drag-proxy position, size, visibility, and generated alpha masks are now cached.
+- Empty or fully occluded monitor overlays stop presenting after one clearing frame.
+- Full-screen displays hide their overlay and interaction proxies, preventing compositor work and
+  invisible input interception while Formiga is covered.
+- Application owner identity lookups are deduplicated within each desktop-window scan.
+- Application-occlusion geometry is recalculated and its GPU uniform uploaded only when window or
+  rule state changes.
+
 ## [0.25.0] - 2026-08-26
 
 ### Added

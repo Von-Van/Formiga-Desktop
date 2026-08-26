@@ -290,6 +290,23 @@ mod tests {
     }
 
     #[test]
+    fn current_save_without_fullscreen_preference_defaults_to_occlusion() {
+        let mut value = serde_json::to_value(example_save()).unwrap();
+        value["settings"]
+            .as_object_mut()
+            .unwrap()
+            .remove("fullscreen_app_occlusion");
+        let directory =
+            std::env::temp_dir().join(format!("formiga-fullscreen-default-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let loaded = SaveStore::new(&path).load().unwrap().unwrap();
+        assert!(loaded.settings.fullscreen_app_occlusion);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
     fn migrates_v1_primary_display_setting() {
         let mut value = serde_json::to_value(example_save()).unwrap();
         value["save_version"] = serde_json::Value::from(1);

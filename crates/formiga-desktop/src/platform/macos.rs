@@ -13,6 +13,7 @@ use formiga_core::{
     ApplicationKey, CursorSnapshot, DesktopRect, DesktopWindow, DisplayKey, MonitorInfo, Point,
 };
 use objc2_app_kit::{NSRunningApplication, NSView, NSWindowCollectionBehavior};
+use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
 use std::time::Duration;
@@ -166,6 +167,7 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
         return Vec::new();
     };
     let mut windows = Vec::new();
+    let mut owners = BTreeMap::new();
     for (z_order, raw) in array.iter().enumerate() {
         let raw = *raw;
         let dictionary =
@@ -201,7 +203,12 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
         if bounds.size.width < 120.0 || bounds.size.height < 80.0 {
             continue;
         }
-        let owner = owner_pid.and_then(application_for_pid);
+        let owner = owner_pid.and_then(|pid| {
+            owners
+                .entry(pid)
+                .or_insert_with(|| application_for_pid(pid))
+                .clone()
+        });
         windows.push(DesktopWindow {
             key: key as u64,
             bounds: DesktopRect {

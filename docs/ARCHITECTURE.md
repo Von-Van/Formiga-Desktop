@@ -1,4 +1,4 @@
-# Formiga v0.25 architecture
+# Formiga v0.31 architecture
 
 Formiga separates platform observation, deterministic simulation, procedural art, and presentation.
 `formiga-core` contains no GUI or GPU code; OS adapters cannot decide creature behavior, and the art
@@ -67,7 +67,9 @@ creature opts out per vertex.
 
 ## Runtime cadence
 
-- Simulation and cursor sampling: 20 Hz.
+- Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
+- Presentation: 20 Hz for movement and each authored clip's native 2–8 Hz for pose-only activity.
+- Full-screen or empty monitor overlays stop presenting until they become visible or dirty again.
 - Window geometry: 4 Hz while active, 1 Hz at rest.
 - Behavior selection: action boundaries, capped at 2 Hz.
 - Presentation: up to 30 Hz active, 4 Hz resting, 2 Hz paused.

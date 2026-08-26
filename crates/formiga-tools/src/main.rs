@@ -6,7 +6,7 @@ use formiga_art::{
 use formiga_core::*;
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
@@ -33,7 +33,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/formiga-demo.gif",
         )),
-        Some("app-icon") => app_icon(output_argument_with_default(&args, "packaging/shared")),
+        Some("app-icon") => app_icon(
+            output_argument_with_default(&args, "packaging/shared"),
+            source_argument(&args),
+        ),
         Some("shelter-sheet") => shelter_sheet(output_argument_with_default(
             &args,
             "docs/assets/shelter-sheet.png",
@@ -45,7 +48,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
@@ -68,6 +71,13 @@ fn seed_argument(args: &[String]) -> u64 {
         .find(|window| window[0] == "--seed")
         .and_then(|window| window[1].parse().ok())
         .unwrap_or(17)
+}
+
+fn source_argument(args: &[String]) -> PathBuf {
+    args.windows(2)
+        .find(|window| window[0] == "--source")
+        .map(|window| PathBuf::from(&window[1]))
+        .unwrap_or_else(|| PathBuf::from("packaging/shared/Formiga-mascot-master.png"))
 }
 
 fn animation_preview(path: PathBuf, seed_number: u64) -> Result<()> {
@@ -421,14 +431,19 @@ fn portfolio_colony() -> Vec<Creature> {
     world.save.creatures
 }
 
-fn app_icon(directory: PathBuf) -> Result<()> {
+fn app_icon(directory: PathBuf, source: PathBuf) -> Result<()> {
     std::fs::create_dir_all(&directory)
         .with_context(|| format!("create {}", directory.display()))?;
     let png_path = directory.join("Formiga.png");
     let ico_path = directory.join("Formiga.ico");
     let icns_path = directory.join("Formiga.icns");
 
-    let mac_pixels = app_icon_pixels(1024);
+    let (source_width, source_height, source_pixels) = read_rgba_png(&source)?;
+    anyhow::ensure!(
+        source_width == source_height,
+        "icon source must be square, got {source_width}x{source_height}"
+    );
+    let mac_pixels = resize_rgba_square(&source_pixels, source_width, 1024);
     write_png(&png_path, 1024, 1024, &mac_pixels)?;
 
     let icon_sizes = [
@@ -441,7 +456,8 @@ fn app_icon(directory: PathBuf) -> Result<()> {
     ];
     let mut icns_chunks = Vec::new();
     for (kind, size) in icon_sizes {
-        icns_chunks.push((kind, encode_png(size, size, &app_icon_pixels(size))?));
+        let pixels = resize_rgba_square(&source_pixels, source_width, size);
+        icns_chunks.push((kind, encode_png(size, size, &pixels)?));
     }
     let icns_length = 8_usize
         + icns_chunks
@@ -462,7 +478,7 @@ fn app_icon(directory: PathBuf) -> Result<()> {
 
     // Modern Windows icon resources can contain a PNG-compressed 256 px image. Writing the tiny
     // ICO container here keeps packaging deterministic and avoids an image-conversion dependency.
-    let windows_pixels = app_icon_pixels(256);
+    let windows_pixels = resize_rgba_square(&source_pixels, source_width, 256);
     let png_bytes = encode_png(256, 256, &windows_pixels)?;
     let mut ico = BufWriter::new(
         File::create(&ico_path).with_context(|| format!("create {}", ico_path.display()))?,
@@ -499,41 +515,37 @@ fn encode_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn app_icon_pixels(size: u32) -> Vec<u8> {
-    let mut pixels = vec![0_u8; (size * size * 4) as usize];
-    fill_gradient(
-        &mut pixels,
-        size,
-        size,
-        [29, 57, 59, 255],
-        [89, 151, 119, 255],
+fn read_rgba_png(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
+    let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut decoder = png::Decoder::new(BufReader::new(file));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info()?;
+    let size = reader
+        .output_buffer_size()
+        .context("decoded icon is too large")?;
+    let mut pixels = vec![0; size];
+    let info = reader.next_frame(&mut pixels)?;
+    pixels.truncate(info.buffer_size());
+    anyhow::ensure!(
+        info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight,
+        "icon source must decode to 8-bit RGBA"
     );
-    let corner_radius = size as f32 * 0.19;
-    for y in 0..size {
-        for x in 0..size {
-            let nearest_x = (x as f32).clamp(corner_radius, size as f32 - corner_radius);
-            let nearest_y = (y as f32).clamp(corner_radius, size as f32 - corner_radius);
-            let dx = x as f32 - nearest_x;
-            let dy = y as f32 - nearest_y;
-            if dx * dx + dy * dy > corner_radius * corner_radius {
-                let index = ((y * size + x) * 4) as usize;
-                pixels[index..index + 4].fill(0);
-            }
+    Ok((info.width, info.height, pixels))
+}
+
+fn resize_rgba_square(source: &[u8], source_size: u32, target_size: u32) -> Vec<u8> {
+    let mut output = vec![0; (target_size * target_size * 4) as usize];
+    for y in 0..target_size {
+        let source_y = y * source_size / target_size;
+        for x in 0..target_size {
+            let source_x = x * source_size / target_size;
+            let source_index = ((source_y * source_size + source_x) * 4) as usize;
+            let target_index = ((y * target_size + x) * 4) as usize;
+            output[target_index..target_index + 4]
+                .copy_from_slice(&source[source_index..source_index + 4]);
         }
     }
-    let creature = &portfolio_colony()[0];
-    let rendered = CreatureRenderer::render_frame(&creature.appearance, ActionKind::Greet, 2, true);
-    blit_scaled_anchor(
-        &mut pixels,
-        size,
-        size,
-        size / 2,
-        size * 88 / 100,
-        &rendered.rgba_bytes(),
-        (size / 64).max(4),
-        None,
-    );
-    pixels
+    output
 }
 
 fn shelter_sheet(path: PathBuf) -> Result<()> {

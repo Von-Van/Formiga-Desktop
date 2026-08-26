@@ -1,5 +1,12 @@
 # Formiga roadmap
 
+## v0.31 background-efficiency release
+
+- Full-screen applications cover the ecosystem by default on each affected display.
+- Adaptive 4–20 Hz scheduling, cached native proxy state, dirty overlays, and clip-rate presentation keep
+  background CPU/GPU work proportional to visible creature activity.
+- No new permissions, monitoring, networking, or behavioral data storage are introduced.
+
 ## v0.25 expressive creature release
 
 Implemented in this release:
@@ -17,12 +24,12 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Post-v0.25
+## Post-v0.31
 
 - Behavioral observation storage, research/Lab UI, export, and ML experiments.
 - Accessories, seasonal history, audio, breeding, and new colony mechanics.
 - Cross-monitor autonomous travel, side climbing, direct petting, and auto-update.
 - Linux investigation only after the macOS and Windows experience is stable.
 
-The post-v0.25 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than
+The post-v0.31 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than
 coupling persistence or analytics to the behavior engine.

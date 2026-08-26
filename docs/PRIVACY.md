@@ -10,6 +10,8 @@ The desktop adapters read only:
 - system idle duration;
 - visible top-level window rectangles and front-to-back order;
 - a stable application owner identity for user-selected visual occlusion rules.
+- whether an ordinary application window matches a display's full bounds, used for default
+  full-screen hiding.
 
 On macOS, application identity is the public bundle identifier. On Windows it is preferably the
 AppUserModel ID; conventional applications fall back to a SHA-256 digest of the canonical executable

@@ -2,12 +2,13 @@ use crate::platform;
 use anyhow::{Context, Result};
 use formiga_art::{AnimationSpec, CreatureRenderer, FRAME_SIZE};
 use formiga_core::{Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings};
+use std::collections::HashMap;
 use std::sync::Arc;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Cursor, CursorIcon, Window, WindowId, WindowLevel};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct MaskSignature {
     action: formiga_core::ActionKind,
     frame: u8,
@@ -16,14 +17,33 @@ struct MaskSignature {
     scale: u8,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct MaskArtworkSignature {
+    action: formiga_core::ActionKind,
+    frame: u8,
+    facing_right: bool,
+    reduce_motion: bool,
+}
+
 pub struct InteractionProxy {
     pub window: Arc<Window>,
     pub creature_id: CreatureId,
     monitor_id: u64,
     logical_bounds: DesktopRect,
-    mask: Vec<bool>,
+    mask: Arc<[bool]>,
+    mask_cache: HashMap<MaskArtworkSignature, Arc<[bool]>>,
     signature: Option<MaskSignature>,
     hit_enabled: bool,
+    physical_position: Option<PhysicalPosition<i32>>,
+    physical_size: Option<u32>,
+    visible: bool,
+    interactive: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProxyRuntimeState {
+    pub dragging: bool,
+    pub occluded: bool,
 }
 
 impl InteractionProxy {
@@ -50,9 +70,14 @@ impl InteractionProxy {
             creature_id,
             monitor_id: 0,
             logical_bounds: DesktopRect::default(),
-            mask: vec![false; (FRAME_SIZE * FRAME_SIZE) as usize],
+            mask: vec![false; (FRAME_SIZE * FRAME_SIZE) as usize].into(),
+            mask_cache: HashMap::new(),
             signature: None,
             hit_enabled: false,
+            physical_position: None,
+            physical_size: None,
+            visible: false,
+            interactive: false,
         })
     }
 
@@ -67,7 +92,7 @@ impl InteractionProxy {
         monitor: &MonitorInfo,
         overlay_origin: PhysicalPosition<i32>,
         cursor: CursorSnapshot,
-        dragging: bool,
+        runtime: ProxyRuntimeState,
     ) {
         self.monitor_id = monitor.id;
         let scale = settings.display_scale;
@@ -85,10 +110,16 @@ impl InteractionProxy {
             overlay_origin.x + (local_anchor_x - physical_size as f32 * 0.5).round() as i32,
             overlay_origin.y + (local_anchor_y - physical_size as f32).round() as i32,
         );
-        self.window.set_outer_position(position);
-        let _ = self
-            .window
-            .request_inner_size(PhysicalSize::new(physical_size, physical_size));
+        if self.physical_position != Some(position) {
+            self.window.set_outer_position(position);
+            self.physical_position = Some(position);
+        }
+        if self.physical_size != Some(physical_size) {
+            let _ = self
+                .window
+                .request_inner_size(PhysicalSize::new(physical_size, physical_size));
+            self.physical_size = Some(physical_size);
+        }
 
         let spec = AnimationSpec::for_action(creature.state.action);
         let frame = ((creature.state.action_elapsed * spec.fps as f32) as u8) % spec.frames;
@@ -102,33 +133,55 @@ impl InteractionProxy {
             scale,
         };
         if self.signature != Some(signature) {
-            let canvas = CreatureRenderer::render_composited_frame(
-                &creature.appearance,
-                creature.state.action,
+            let artwork = MaskArtworkSignature {
+                action: creature.state.action,
                 frame,
-                creature.state.facing_right,
-                settings.reduce_motion,
-                face_state,
-            );
-            self.mask = canvas.pixels().iter().map(|pixel| pixel.a > 16).collect();
+                facing_right: creature.state.facing_right,
+                reduce_motion: settings.reduce_motion,
+            };
+            self.mask = self
+                .mask_cache
+                .entry(artwork)
+                .or_insert_with(|| {
+                    let canvas = CreatureRenderer::render_composited_frame(
+                        &creature.appearance,
+                        creature.state.action,
+                        frame,
+                        creature.state.facing_right,
+                        settings.reduce_motion,
+                        face_state,
+                    );
+                    canvas
+                        .pixels()
+                        .iter()
+                        .map(|pixel| pixel.a > 16)
+                        .collect::<Vec<_>>()
+                        .into()
+                })
+                .clone();
             platform::set_interaction_shape(&self.window, &self.mask, scale);
             self.signature = Some(signature);
         }
 
+        self.interactive = !runtime.occluded;
         let opaque = cursor.available && self.hit_test(cursor.position.x, cursor.position.y);
-        let should_hit = dragging || opaque;
+        let should_hit = !runtime.occluded && (runtime.dragging || opaque);
         if should_hit != self.hit_enabled {
             platform::set_interaction_hittest(&self.window, should_hit);
             self.hit_enabled = should_hit;
         }
         let visible = settings.visible
             && settings.direct_manipulation
-            && creature.state.arrival_delay_secs <= 0.0;
-        self.window.set_visible(visible);
+            && creature.state.arrival_delay_secs <= 0.0
+            && !runtime.occluded;
+        if self.visible != visible {
+            self.window.set_visible(visible);
+            self.visible = visible;
+        }
     }
 
     pub fn hit_test(&self, desktop_x: f32, desktop_y: f32) -> bool {
-        hit_mask(&self.mask, self.logical_bounds, desktop_x, desktop_y)
+        self.interactive && hit_mask(&self.mask, self.logical_bounds, desktop_x, desktop_y)
     }
 
     pub fn begin_capture(&self) {

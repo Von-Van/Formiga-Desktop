@@ -1,12 +1,13 @@
-use crate::gpu::OverlayRenderer;
-use crate::interaction::InteractionProxy;
+use crate::gpu::{OverlayRenderer, monitor_has_fullscreen_window};
+use crate::interaction::{InteractionProxy, ProxyRuntimeState};
 use crate::platform;
 use crate::settings::{SettingsOutcome, SettingsWindow};
 use crate::tray::{TrayAction, TrayState};
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
+use formiga_art::AnimationSpec;
 use formiga_core::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -118,13 +119,9 @@ impl FormigaApp {
                 (World::new(new_colony_seed()?, now, &desktop), true)
             }
         };
-        for overlay in self.overlays.values() {
-            let enabled = world.save.settings.visible
-                && !accessible_regions(&world.save.settings.habitat, &overlay.monitor).is_empty();
-            overlay.window.set_visible(enabled);
-        }
         self.tray = Some(TrayState::new(&world.save.settings)?);
         self.world = Some(world);
+        self.sync_overlay_visibility();
         self.save()?;
         if first_launch {
             self.show_settings(event_loop);
@@ -189,11 +186,6 @@ impl FormigaApp {
                 .find(|overlay| overlay.monitor.id == info.id)
             {
                 overlay.monitor = info.clone();
-                if let Some(world) = &self.world {
-                    let enabled = world.save.settings.visible
-                        && !accessible_regions(&world.save.settings.habitat, info).is_empty();
-                    overlay.window.set_visible(enabled);
-                }
                 continue;
             }
             let attributes = Window::default_attributes()
@@ -213,11 +205,6 @@ impl FormigaApp {
             );
             platform::configure_native_overlay(&window);
             let renderer = pollster::block_on(OverlayRenderer::new(window, info.clone()))?;
-            if let Some(world) = &self.world {
-                let enabled = world.save.settings.visible
-                    && !accessible_regions(&world.save.settings.habitat, info).is_empty();
-                renderer.window.set_visible(enabled);
-            }
             self.overlays.insert(renderer.window.id(), renderer);
         }
         let monitors: Vec<_> = discovered.into_iter().map(|(info, _, _)| info).collect();
@@ -227,7 +214,42 @@ impl FormigaApp {
         }
         self.monitors = monitors;
         self.last_display_scan = Instant::now();
+        self.sync_overlay_visibility();
         Ok(())
+    }
+
+    fn sync_overlay_visibility(&mut self) {
+        let Some(world) = &self.world else { return };
+        let settings = &world.save.settings;
+        let dragged_monitors: BTreeSet<_> = world
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.action == ActionKind::Dragged)
+            .map(|creature| creature.state.surface.monitor_id)
+            .collect();
+        for overlay in self.overlays.values_mut() {
+            let fullscreen = settings.fullscreen_app_occlusion
+                && monitor_has_fullscreen_window(overlay.monitor.bounds, &self.cached_windows);
+            let enabled = settings.visible
+                && !accessible_regions(&settings.habitat, &overlay.monitor).is_empty()
+                && (!fullscreen || dragged_monitors.contains(&overlay.monitor.id));
+            overlay.set_visible(enabled);
+        }
+    }
+
+    fn tick_interval(&self) -> Duration {
+        let Some(world) = &self.world else {
+            return Duration::from_millis(250);
+        };
+        if world.is_dragging() {
+            return Duration::from_millis(50);
+        }
+        if !world.save.settings.visible || !self.overlays.values().any(OverlayRenderer::is_visible)
+        {
+            return Duration::from_millis(250);
+        }
+        world_tick_interval(world)
     }
 
     fn snapshot(&mut self) -> DesktopSnapshot {
@@ -236,8 +258,11 @@ impl FormigaApp {
             .available
             .then_some((cursor.position, Instant::now()));
         platform::normalize_cursor(&mut cursor, &self.monitors);
-        let creatures_are_moving = self.world.as_ref().is_some_and(world_is_moving);
-        let scan_interval = if creatures_are_moving {
+        let frequent_window_scan = self
+            .world
+            .as_ref()
+            .is_some_and(world_needs_frequent_window_scan);
+        let scan_interval = if frequent_window_scan {
             Duration::from_millis(250)
         } else {
             Duration::from_secs(1)
@@ -256,12 +281,13 @@ impl FormigaApp {
         }
     }
 
-    fn tick(&mut self) {
+    fn tick(&mut self) -> bool {
         let now = Instant::now();
-        let dt = now.duration_since(self.last_tick).as_secs_f32().min(0.2);
-        if dt < 0.045 {
-            return;
+        let tick_interval = self.tick_interval();
+        if now.duration_since(self.last_tick) < tick_interval {
+            return false;
         }
+        let dt = now.duration_since(self.last_tick).as_secs_f32().min(0.2);
         self.last_tick = now;
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
@@ -307,25 +333,31 @@ impl FormigaApp {
         {
             tracing::error!(%error, "periodic save failed");
         }
-        let paused = self
+        self.sync_overlay_visibility();
+        let interval = self
             .world
             .as_ref()
-            .is_some_and(|world| world.save.settings.paused);
-        let interval = if paused {
-            Duration::from_millis(500)
-        } else if self.world.as_ref().is_some_and(world_is_moving) {
-            Duration::from_millis(33)
-        } else {
-            Duration::from_millis(250)
-        };
+            .map(world_redraw_interval)
+            .unwrap_or(Duration::from_millis(250));
         if now >= self.redraw_due {
-            for overlay in self.overlays.values() {
-                if overlay.window.is_visible().unwrap_or(true) {
-                    overlay.window.request_redraw();
+            if let Some(world) = &self.world {
+                let habitat_editor = self.habitat_editor.as_ref().map(|editor| &editor.draft);
+                for overlay in self.overlays.values() {
+                    if overlay.is_visible()
+                        && overlay.needs_redraw(&world.save, habitat_editor, &self.cached_windows)
+                    {
+                        overlay.window.request_redraw();
+                    }
                 }
             }
-            self.redraw_due = now + interval;
+            let phased_deadline = self.redraw_due + interval;
+            self.redraw_due = if phased_deadline > now {
+                phased_deadline
+            } else {
+                now + interval
+            };
         }
+        true
     }
 
     fn handle_menu(&mut self, event_loop: &ActiveEventLoop, event: &MenuEvent) {
@@ -436,13 +468,20 @@ impl FormigaApp {
                 .find(|overlay| overlay.monitor.id == monitor.id)
                 .and_then(|overlay| overlay.window.outer_position().ok())
                 .unwrap_or(PhysicalPosition::new(0, 0));
+            let dragging_this = dragging && creature.state.action == ActionKind::Dragged;
+            let fullscreen_hidden = world.save.settings.fullscreen_app_occlusion
+                && !dragging_this
+                && monitor_has_fullscreen_window(monitor.bounds, &self.cached_windows);
             proxy.sync(
                 creature,
                 &world.save.settings,
                 monitor,
                 origin,
                 self.current_cursor,
-                dragging && creature.state.action == ActionKind::Dragged,
+                ProxyRuntimeState {
+                    dragging: dragging_this,
+                    occluded: fullscreen_hidden,
+                },
             );
         }
     }
@@ -537,21 +576,26 @@ impl FormigaApp {
     }
 
     fn finish_settings_change(&mut self, previous_launch: bool) {
-        let Some(world) = &mut self.world else { return };
-        if world.save.settings.launch_at_login != previous_launch
-            && let Err(error) = platform::set_launch_at_login(world.save.settings.launch_at_login)
         {
-            tracing::error!(%error, "could not update launch-at-login");
-            world.save.settings.launch_at_login = previous_launch;
+            let Some(world) = &mut self.world else { return };
+            if world.save.settings.launch_at_login != previous_launch
+                && let Err(error) =
+                    platform::set_launch_at_login(world.save.settings.launch_at_login)
+            {
+                tracing::error!(%error, "could not update launch-at-login");
+                world.save.settings.launch_at_login = previous_launch;
+            }
+            if let Some(tray) = &self.tray {
+                tray.sync(&world.save.settings);
+            }
         }
-        if let Some(tray) = &self.tray {
-            tray.sync(&world.save.settings);
-        }
+        self.sync_overlay_visibility();
         for overlay in self.overlays.values() {
-            let enabled = world.save.settings.visible
-                && !accessible_regions(&world.save.settings.habitat, &overlay.monitor).is_empty();
-            overlay.window.set_visible(enabled);
+            if overlay.is_visible() {
+                overlay.window.request_redraw();
+            }
         }
+        self.redraw_due = Instant::now();
         let _ = self.save();
     }
 
@@ -1020,8 +1064,8 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 }
             }
             WindowEvent::CloseRequested => {
-                if let Some(overlay) = self.overlays.get(&window_id) {
-                    overlay.window.set_visible(false);
+                if let Some(overlay) = self.overlays.get_mut(&window_id) {
+                    overlay.set_visible(false);
                 }
             }
             _ => {}
@@ -1034,18 +1078,13 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         {
             tracing::error!(%error, "could not refresh displays");
         }
-        self.tick();
-        self.sync_interaction_proxies(event_loop);
-        let wait = if self
-            .world
-            .as_ref()
-            .is_some_and(|world| world.save.settings.paused)
-        {
-            Duration::from_millis(250)
-        } else {
-            Duration::from_millis(20)
-        };
-        event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + wait));
+        let ticked = self.tick();
+        if ticked {
+            self.sync_interaction_proxies(event_loop);
+        }
+        let tick_interval = self.tick_interval();
+        let deadline = self.last_tick + tick_interval;
+        event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
@@ -1127,13 +1166,12 @@ fn resized_zone(
     }
 }
 
-fn world_is_moving(world: &World) -> bool {
+fn world_needs_frequent_window_scan(world: &World) -> bool {
     if world.save.settings.paused {
         return false;
     }
     world.save.creatures.iter().any(|creature| {
-        creature.state.arrival_delay_secs > 0.0
-            || creature.state.velocity.x.abs() > 0.1
+        creature.state.velocity.x.abs() > 0.1
             || matches!(
                 creature.state.action,
                 ActionKind::Traverse
@@ -1141,12 +1179,78 @@ fn world_is_moving(world: &World) -> bool {
                     | ActionKind::AvoidCursor
                     | ActionKind::ReactToWindow
                     | ActionKind::RideWindow
-                    | ActionKind::SoloPlay
-                    | ActionKind::Greet
                     | ActionKind::Follow
-                    | ActionKind::SocialPlay
                     | ActionKind::Dragged
                     | ActionKind::Landing
             )
     })
+}
+
+fn world_has_spatial_motion(world: &World) -> bool {
+    if world.save.settings.paused {
+        return false;
+    }
+    world.save.creatures.iter().any(|creature| {
+        creature.state.velocity.x.abs() > 0.1
+            || matches!(
+                creature.state.action,
+                ActionKind::Traverse
+                    | ActionKind::InvestigateCursor
+                    | ActionKind::AvoidCursor
+                    | ActionKind::ReactToWindow
+                    | ActionKind::Follow
+                    | ActionKind::Dragged
+                    | ActionKind::Landing
+            )
+    })
+}
+
+fn world_redraw_interval(world: &World) -> Duration {
+    if world.is_dragging() {
+        return Duration::from_millis(50);
+    }
+    if world.save.settings.paused {
+        return Duration::from_secs(1);
+    }
+    // The simulation itself advances at 20 Hz, so presenting faster would only repeat identical
+    // positions. Pose-only activities follow their authored atlas frame rate instead.
+    if world_has_spatial_motion(world) {
+        return Duration::from_millis(50);
+    }
+    let fps = world
+        .save
+        .creatures
+        .iter()
+        .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+        .map(|creature| AnimationSpec::for_action(creature.state.action).fps)
+        .max()
+        .unwrap_or(2)
+        .max(1);
+    Duration::from_secs_f32(1.0 / f32::from(fps))
+}
+
+fn world_tick_interval(world: &World) -> Duration {
+    if world.is_dragging() {
+        return Duration::from_millis(50);
+    }
+    if world.save.settings.paused {
+        return Duration::from_millis(250);
+    }
+    if world_has_spatial_motion(world) {
+        return Duration::from_millis(50);
+    }
+    let has_expressive_action = world.save.creatures.iter().any(|creature| {
+        creature.state.arrival_delay_secs <= 0.0
+            && AnimationSpec::for_action(creature.state.action).fps >= 8
+    });
+    let needs_responsive_gaze =
+        world.save.settings.cursor_reactions
+            && world.save.creatures.iter().any(|creature| {
+                matches!(creature.state.action, ActionKind::Idle | ActionKind::Perch)
+            });
+    if has_expressive_action || needs_responsive_gaze {
+        Duration::from_millis(100)
+    } else {
+        Duration::from_millis(200)
+    }
 }

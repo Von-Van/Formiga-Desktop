@@ -2,6 +2,7 @@ use formiga_core::{
     ApplicationKey, CursorSnapshot, DesktopRect, DesktopWindow, DisplayKey, MonitorInfo, Point,
 };
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -34,6 +35,8 @@ use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::Window;
 
 static ENUMERATED: Mutex<Vec<DesktopWindow>> = Mutex::new(Vec::new());
+static ENUMERATED_OWNERS: Mutex<BTreeMap<u32, Option<(ApplicationKey, String)>>> =
+    Mutex::new(BTreeMap::new());
 
 pub fn display_key(monitor: &MonitorHandle) -> DisplayKey {
     let digest: [u8; 32] = Sha256::digest(monitor.native_id().as_bytes()).into();
@@ -286,6 +289,10 @@ pub fn cursor_and_idle(previous: Option<(Point, Instant)>) -> (CursorSnapshot, D
 
 pub fn visible_windows() -> Vec<DesktopWindow> {
     ENUMERATED.lock().expect("window list poisoned").clear();
+    ENUMERATED_OWNERS
+        .lock()
+        .expect("window owner cache poisoned")
+        .clear();
     unsafe {
         let _ = EnumWindows(Some(enum_window), LPARAM(0));
     }
@@ -334,7 +341,12 @@ unsafe extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     if width >= 120 && height >= 80 {
-        let owner = application_for_pid(process_id);
+        let owner = ENUMERATED_OWNERS
+            .lock()
+            .expect("window owner cache poisoned")
+            .entry(process_id)
+            .or_insert_with(|| application_for_pid(process_id))
+            .clone();
         let mut windows = ENUMERATED.lock().expect("window list poisoned");
         let z_order = windows.len() as u32;
         windows.push(DesktopWindow {

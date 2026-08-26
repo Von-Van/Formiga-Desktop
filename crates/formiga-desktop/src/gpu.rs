@@ -33,7 +33,7 @@ struct ZoneVertex {
 const MAX_OCCLUSION_RECTS: usize = 64;
 
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 struct OcclusionUniform {
     rects: [[f32; 4]; MAX_OCCLUSION_RECTS],
     metadata: [u32; 4],
@@ -78,6 +78,15 @@ pub struct OverlayRenderer {
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
+    last_occlusion: Option<OcclusionUniform>,
+    occlusion_windows: Vec<DesktopWindow>,
+    occlusion_rules: Vec<ApplicationOcclusionRule>,
+    occlusion_fullscreen_enabled: bool,
+    occlusion_monitor_bounds: DesktopRect,
+    occlusion_rects: Vec<DesktopRect>,
+    occlusion_initialized: bool,
+    has_visual_content: bool,
+    visible: bool,
 }
 
 impl OverlayRenderer {
@@ -323,7 +332,31 @@ impl OverlayRenderer {
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             shelter: None,
+            last_occlusion: None,
+            occlusion_windows: Vec::new(),
+            occlusion_rules: Vec::new(),
+            occlusion_fullscreen_enabled: false,
+            occlusion_monitor_bounds: DesktopRect::default(),
+            occlusion_rects: Vec::new(),
+            occlusion_initialized: false,
+            has_visual_content: false,
+            visible: false,
         })
+    }
+
+    pub fn set_visible(&mut self, visible: bool) {
+        if self.visible == visible {
+            return;
+        }
+        self.window.set_visible(visible);
+        self.visible = visible;
+        if visible {
+            self.window.request_redraw();
+        }
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -342,18 +375,23 @@ impl OverlayRenderer {
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
     ) -> Result<()> {
+        self.update_occlusion_cache(save, windows);
+        let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
+        let occlusion = self.occlusion_uniform(&self.occlusion_rects);
         let visible: Vec<&Creature> = save
             .creatures
             .iter()
             .filter(|creature| {
                 creature.state.surface.monitor_id == self.monitor.id
                     && creature.state.arrival_delay_secs <= 0.0
+                    && (!monitor_fully_occluded || creature.state.action == ActionKind::Dragged)
             })
             .collect();
         for creature in &visible {
             self.ensure_sprite(creature, save.settings.reduce_motion);
         }
-        let shelter_visible = save.home.is_active()
+        let shelter_visible = !monitor_fully_occluded
+            && save.home.is_active()
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
@@ -389,9 +427,11 @@ impl OverlayRenderer {
             self.queue
                 .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
         }
-        let occlusion = self.occlusion_uniform(windows, &save.settings.application_occlusion_rules);
-        self.queue
-            .write_buffer(&self.occlusion_buffer, 0, bytemuck::bytes_of(&occlusion));
+        if self.last_occlusion != Some(occlusion) {
+            self.queue
+                .write_buffer(&self.occlusion_buffer, 0, bytemuck::bytes_of(&occlusion));
+            self.last_occlusion = Some(occlusion);
+        }
         let zone_vertices = habitat_editor
             .map(|policy| self.zone_vertices(policy))
             .unwrap_or_default();
@@ -401,6 +441,10 @@ impl OverlayRenderer {
                 0,
                 bytemuck::cast_slice(&zone_vertices),
             );
+        }
+        let has_visual_content = !vertices.is_empty() || !zone_vertices.is_empty();
+        if !has_visual_content && !self.has_visual_content {
+            return Ok(());
         }
         let output = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(output) => output,
@@ -477,7 +521,63 @@ impl OverlayRenderer {
         }
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(output);
+        self.has_visual_content = has_visual_content;
         Ok(())
+    }
+
+    pub fn needs_redraw(
+        &self,
+        save: &SaveFile,
+        habitat_editor: Option<&HabitatPolicy>,
+        windows: &[DesktopWindow],
+    ) -> bool {
+        if self.has_visual_content || habitat_editor.is_some() {
+            return true;
+        }
+        let occlusion_rects = visible_occlusion_rects(
+            self.monitor.bounds,
+            windows,
+            &save.settings.application_occlusion_rules,
+            save.settings.fullscreen_app_occlusion,
+        );
+        let fully_occluded = rects_cover(self.monitor.bounds, &occlusion_rects);
+        let creature_visible = save.creatures.iter().any(|creature| {
+            creature.state.surface.monitor_id == self.monitor.id
+                && creature.state.arrival_delay_secs <= 0.0
+                && (!fully_occluded || creature.state.action == ActionKind::Dragged)
+        });
+        let shelter_visible = !fully_occluded
+            && save.home.is_active()
+            && save.home.display == Some(self.monitor.display_key)
+            && resolved_home_anchor(
+                &save.home,
+                &self.monitor,
+                save.settings.display_scale,
+                &save.settings.habitat,
+            )
+            .is_some();
+        creature_visible || shelter_visible
+    }
+
+    fn update_occlusion_cache(&mut self, save: &SaveFile, windows: &[DesktopWindow]) {
+        let rules = &save.settings.application_occlusion_rules;
+        let fullscreen = save.settings.fullscreen_app_occlusion;
+        let changed = !self.occlusion_initialized
+            || self.occlusion_monitor_bounds != self.monitor.bounds
+            || self.occlusion_fullscreen_enabled != fullscreen
+            || self.occlusion_windows != windows
+            || self.occlusion_rules != *rules;
+        if !changed {
+            return;
+        }
+        self.occlusion_rects =
+            visible_occlusion_rects(self.monitor.bounds, windows, rules, fullscreen);
+        self.occlusion_windows.clear();
+        self.occlusion_windows.extend_from_slice(windows);
+        self.occlusion_rules.clone_from(rules);
+        self.occlusion_fullscreen_enabled = fullscreen;
+        self.occlusion_monitor_bounds = self.monitor.bounds;
+        self.occlusion_initialized = true;
     }
 
     fn zone_vertices(&self, policy: &HabitatPolicy) -> Vec<ZoneVertex> {
@@ -506,12 +606,7 @@ impl OverlayRenderer {
         vertices
     }
 
-    fn occlusion_uniform(
-        &self,
-        windows: &[DesktopWindow],
-        rules: &[ApplicationOcclusionRule],
-    ) -> OcclusionUniform {
-        let rects = visible_occlusion_rects(self.monitor.bounds, windows, rules);
+    fn occlusion_uniform(&self, rects: &[DesktopRect]) -> OcclusionUniform {
         let mut uniform = OcclusionUniform::zeroed();
         for (target, rect) in uniform.rects.iter_mut().zip(rects.iter()) {
             *target = [
@@ -914,7 +1009,11 @@ pub(crate) fn visible_occlusion_rects(
     monitor: DesktopRect,
     windows: &[DesktopWindow],
     rules: &[ApplicationOcclusionRule],
+    fullscreen_app_occlusion: bool,
 ) -> Vec<DesktopRect> {
+    if fullscreen_app_occlusion && monitor_has_fullscreen_window(monitor, windows) {
+        return vec![monitor];
+    }
     let selected: BTreeSet<_> = rules
         .iter()
         .filter(|rule| rule.enabled)
@@ -954,6 +1053,37 @@ pub(crate) fn visible_occlusion_rects(
         }
     }
     output
+}
+
+pub(crate) fn monitor_has_fullscreen_window(
+    monitor: DesktopRect,
+    windows: &[DesktopWindow],
+) -> bool {
+    windows.iter().any(|window| {
+        window.visible && !window.minimized && bounds_match_monitor(window.bounds, monitor)
+    })
+}
+
+fn bounds_match_monitor(window: DesktopRect, monitor: DesktopRect) -> bool {
+    const EDGE_TOLERANCE: f32 = 3.0;
+    (window.x - monitor.x).abs() <= EDGE_TOLERANCE
+        && (window.y - monitor.y).abs() <= EDGE_TOLERANCE
+        && (window.right() - monitor.right()).abs() <= EDGE_TOLERANCE
+        && (window.bottom() - monitor.bottom()).abs() <= EDGE_TOLERANCE
+}
+
+fn rects_cover(target: DesktopRect, covering: &[DesktopRect]) -> bool {
+    let mut remaining = vec![target];
+    for cut in covering {
+        remaining = remaining
+            .into_iter()
+            .flat_map(|rect| subtract_rect(rect, *cut))
+            .collect();
+        if remaining.is_empty() {
+            return true;
+        }
+    }
+    false
 }
 
 fn subtract_rect(source: DesktopRect, cut: DesktopRect) -> Vec<DesktopRect> {
@@ -1170,6 +1300,7 @@ mod tests {
             },
             &windows,
             &[rule],
+            false,
         );
         assert!(
             rects
@@ -1202,7 +1333,78 @@ mod tests {
             display_name: "Selected".into(),
             enabled: false,
         };
-        assert!(visible_occlusion_rects(windows[0].bounds, &windows, &[rule]).is_empty());
+        assert!(visible_occlusion_rects(windows[0].bounds, &windows, &[rule], false).is_empty());
+    }
+
+    #[test]
+    fn fullscreen_window_occludes_by_default_without_an_application_rule() {
+        let monitor = DesktopRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let windows = [window(1, 0, monitor, None)];
+        assert_eq!(
+            visible_occlusion_rects(monitor, &windows, &[], true),
+            vec![monitor]
+        );
+    }
+
+    #[test]
+    fn fullscreen_occlusion_can_be_disabled() {
+        let monitor = DesktopRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let windows = [window(1, 0, monitor, None)];
+        assert!(visible_occlusion_rects(monitor, &windows, &[], false).is_empty());
+    }
+
+    #[test]
+    fn maximized_work_area_window_is_not_treated_as_fullscreen() {
+        let monitor = DesktopRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let windows = [window(
+            1,
+            0,
+            DesktopRect {
+                x: 0.0,
+                y: 24.0,
+                width: 1920.0,
+                height: 1016.0,
+            },
+            None,
+        )];
+        assert!(visible_occlusion_rects(monitor, &windows, &[], true).is_empty());
+    }
+
+    #[test]
+    fn fullscreen_window_only_occludes_its_own_monitor() {
+        let left = DesktopRect {
+            x: -1920.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let right = DesktopRect {
+            x: 0.0,
+            y: 0.0,
+            width: 2560.0,
+            height: 1440.0,
+        };
+        let windows = [window(1, 0, left, None)];
+        assert_eq!(
+            visible_occlusion_rects(left, &windows, &[], true),
+            vec![left]
+        );
+        assert!(visible_occlusion_rects(right, &windows, &[], true).is_empty());
     }
 
     #[test]

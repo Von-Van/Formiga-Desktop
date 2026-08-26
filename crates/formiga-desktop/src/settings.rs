@@ -544,6 +544,14 @@ fn applications_tab(
     windows: &[DesktopWindow],
     outcome: &mut SettingsOutcome,
 ) {
+    ui.checkbox(
+        &mut settings.fullscreen_app_occlusion,
+        "Hide creatures behind full-screen applications",
+    );
+    ui.label(
+        "Enabled by default. Detection uses only window and display bounds, without reading application content.",
+    );
+    ui.separator();
     ui.label("Selected application windows visually cover creatures inside their visible area.");
     let mut remove = None;
     for (index, rule) in settings.application_occlusion_rules.iter_mut().enumerate() {

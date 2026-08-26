@@ -32,7 +32,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Selected app occlusion and rule removal | pending | pending | pending | pending |
 | Window ordering/minimize/close | pending | pending | pending | pending |
 | Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
-| Spaces/virtual desktops and full-screen | pending | pending | pending | pending |
+| Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
 | Package install, relaunch, and v1/v2 migration | pending | pending | pending | pending |
 
