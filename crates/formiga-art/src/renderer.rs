@@ -130,6 +130,7 @@ impl AnimationSpec {
             ActionKind::Idle | ActionKind::Perch | ActionKind::RideWindow => {
                 Self { frames: 4, fps: 4 }
             }
+            ActionKind::Homebound => Self { frames: 2, fps: 2 },
             _ => Self { frames: 4, fps: 8 },
         }
     }
@@ -332,7 +333,7 @@ impl Pose {
                 appendage_lift: -1,
                 tail_sway: 0,
             },
-            ActionKind::Perch => Self {
+            ActionKind::Perch | ActionKind::Homebound => Self {
                 bob: 2,
                 squash_x: 1,
                 squash_y: -1,
@@ -1096,6 +1097,7 @@ fn limb_targets(
             ),
         ),
         ActionKind::Perch => offset_pair(left, right, ((3, 3), (-3, 3))),
+        ActionKind::Homebound => offset_pair(left, right, ((4, 3), (-4, 3))),
         ActionKind::Sleep => offset_pair(left, right, ((3, 1), (-3, 1))),
         ActionKind::InvestigateCursor => {
             offset_pair(left, right, ((2, 2), (length + 2, -2 + pulse)))
@@ -1517,7 +1519,7 @@ fn expression_for_action(action: ActionKind) -> ExpressionKind {
     match action {
         ActionKind::Idle => ExpressionKind::Neutral,
         ActionKind::Traverse | ActionKind::RideWindow => ExpressionKind::Focused,
-        ActionKind::Perch => ExpressionKind::Content,
+        ActionKind::Perch | ActionKind::Homebound => ExpressionKind::Content,
         ActionKind::Sleep => ExpressionKind::Sleepy,
         ActionKind::InvestigateCursor => ExpressionKind::Curious,
         ActionKind::AvoidCursor => ExpressionKind::Worried,
@@ -1573,6 +1575,7 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
                 ExpressionKind::Content
             }
         }
+        ActionKind::Homebound => ExpressionKind::Content,
         ActionKind::InvestigateCursor => {
             if drives.arousal > 0.5 {
                 ExpressionKind::Focused

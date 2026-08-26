@@ -20,7 +20,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos
-          path: dist/Formiga-0.2.0-universal-macos.zip*
+          path: dist/Formiga-*-macOS-universal.*
 
   package-windows:
     runs-on: windows-2022
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: dist/Formiga-0.2.0-windows-x64.*
+          path: dist/Formiga-*-windows-x64.*
 
   publish:
     needs: [package-macos, package-windows]

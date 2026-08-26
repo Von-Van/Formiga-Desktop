@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
 const ARRIVAL_DAYS: [i64; 3] = [30, 90, 180];
+const HOME_DURATION: time::Duration = time::Duration::minutes(15);
+const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
 
 pub struct World {
     pub save: SaveFile,
@@ -39,12 +41,19 @@ impl World {
     pub fn new(colony_seed: [u8; 32], now: OffsetDateTime, desktop: &DesktopSnapshot) -> Self {
         let streams = SeedStream::new(colony_seed);
         let creature = generate_creature(&streams, 0, desktop, None);
+        let home_display = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.primary)
+            .or_else(|| desktop.monitors.first())
+            .map(|monitor| monitor.display_key);
         let save = SaveFile {
             save_version: crate::SAVE_VERSION,
             colony_seed,
             created_at_utc: now,
             maximum_seen_utc: now,
             arrival_state: ArrivalState::default(),
+            home: ColonyHome::from_seed(colony_seed, home_display, Some(now), None),
             settings: Settings::default(),
             creatures: vec![creature],
         };
@@ -81,7 +90,17 @@ impl World {
             self.save.maximum_seen_utc = now;
         }
         self.process_arrivals(desktop);
+        let home_active = self.update_home_cycle(desktop);
         if self.save.settings.paused {
+            return;
+        }
+        if home_active {
+            self.tick_homebound_creatures(dt);
+            self.last_windows = desktop
+                .windows
+                .iter()
+                .map(|window| (window.key, window.bounds))
+                .collect();
             return;
         }
 
@@ -179,8 +198,15 @@ impl World {
                 nearest_creature_position: nearest.map(|item| item.1),
                 nearest_creature_id: nearest.map(|item| item.2),
                 on_window_ledge: creature.state.surface.kind == SurfaceKind::WindowLedge,
-                reachable_window_ledge: creature.state.surface.kind == SurfaceKind::ScreenFloor
-                    && find_nearby_ledge(creature, desktop, &self.save.settings.habitat).is_some(),
+                // A ledge is a destination, not a one-time upgrade from the desktop floor.
+                // Continuing to search while perched lets creatures climb between stacked
+                // application windows and later descend when the desktop arrangement changes.
+                reachable_window_ledge: find_nearby_ledge(
+                    creature,
+                    desktop,
+                    &self.save.settings.habitat,
+                )
+                .is_some(),
                 window_changed_nearby: window_changed.contains(&creature.id),
                 hour_utc: now.hour(),
             };
@@ -219,7 +245,6 @@ impl World {
                 let selected = choose_action(creature, desktop, context, rng);
                 let mut next = selected;
                 if selected == ActionKind::Perch
-                    && creature.state.surface.kind == SurfaceKind::ScreenFloor
                     && let Some((target, surface)) =
                         find_nearby_ledge(creature, desktop, &self.save.settings.habitat)
                 {
@@ -231,7 +256,7 @@ impl World {
                             target,
                             surface,
                             elapsed: 0.0,
-                            duration: (distance / 320.0).clamp(0.9, 2.2),
+                            duration: (distance / 280.0).clamp(1.0, 2.6),
                         },
                     );
                     next = ActionKind::Landing;
@@ -338,6 +363,139 @@ impl World {
         self.drag.is_some()
     }
 
+    fn update_home_cycle(&mut self, desktop: &DesktopSnapshot) -> bool {
+        let timeline_now = self.save.maximum_seen_utc;
+        if self
+            .save
+            .home
+            .active_since_utc
+            .is_some_and(|started| timeline_now - started >= HOME_DURATION)
+        {
+            self.dismiss_home(timeline_now, false);
+        }
+
+        let due = !self.save.home.is_active()
+            && self
+                .save
+                .home
+                .last_disappeared_utc
+                .is_none_or(|ended| timeline_now - ended >= HOME_COOLDOWN);
+        if due && self.drag.is_none() && self.resolve_home_monitor(desktop).is_some() {
+            self.save.home.active_since_utc = Some(timeline_now);
+            self.ledge_journeys.clear();
+            self.events.push(WorldEvent::HomeAppeared);
+        }
+
+        if self.save.home.is_active() {
+            self.place_colony_at_home(desktop);
+        }
+        self.save.home.is_active()
+    }
+
+    fn resolve_home_monitor(&mut self, desktop: &DesktopSnapshot) -> Option<MonitorInfo> {
+        let preferred = self.save.home.display;
+        let monitor = preferred
+            .and_then(|display| {
+                desktop.monitors.iter().find(|monitor| {
+                    monitor.display_key == display
+                        && !accessible_regions(&self.save.settings.habitat, monitor).is_empty()
+                })
+            })
+            .or_else(|| {
+                desktop.monitors.iter().find(|monitor| {
+                    monitor.primary
+                        && !accessible_regions(&self.save.settings.habitat, monitor).is_empty()
+                })
+            })
+            .or_else(|| {
+                desktop.monitors.iter().find(|monitor| {
+                    !accessible_regions(&self.save.settings.habitat, monitor).is_empty()
+                })
+            })?
+            .clone();
+        self.save.home.display = Some(monitor.display_key);
+        Some(monitor)
+    }
+
+    fn place_colony_at_home(&mut self, desktop: &DesktopSnapshot) {
+        let Some(monitor) = self.resolve_home_monitor(desktop) else {
+            return;
+        };
+        let Some(anchor) = resolved_home_anchor(
+            &self.save.home,
+            &monitor,
+            self.save.settings.display_scale,
+            &self.save.settings.habitat,
+        ) else {
+            return;
+        };
+        let inward = match self.save.home.corner {
+            HomeCorner::BottomLeft => 1.0,
+            HomeCorner::BottomRight => -1.0,
+        };
+        for creature in &mut self.save.creatures {
+            let offset = inward * f32::from(creature.generation) * 18.0;
+            let mut position = Point {
+                x: anchor.x + offset,
+                y: anchor.y,
+            };
+            if !habitat_contains(&self.save.settings.habitat, &monitor, position) {
+                position = anchor;
+            }
+            creature.state.position = position;
+            creature.state.velocity = Point::default();
+            creature.state.facing_right = inward > 0.0;
+            creature.state.surface = SurfaceAttachment {
+                kind: SurfaceKind::ScreenFloor,
+                monitor_id: monitor.id,
+                window_key: None,
+                relative_x: ((position.x - monitor.usable_bounds.x) / monitor.usable_bounds.width)
+                    .clamp(0.0, 1.0),
+            };
+            if creature.state.action != ActionKind::Homebound {
+                creature.state.action = ActionKind::Homebound;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = HOME_DURATION.whole_seconds() as f32;
+            }
+        }
+    }
+
+    fn tick_homebound_creatures(&mut self, dt: f32) {
+        for creature in &mut self.save.creatures {
+            if creature.state.arrival_delay_secs > 0.0 {
+                let previous_delay = creature.state.arrival_delay_secs;
+                creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
+                if creature.state.arrival_delay_secs == 0.0 {
+                    self.events.push(WorldEvent::CreatureSpawned {
+                        creature_id: creature.id,
+                    });
+                }
+                continue;
+            }
+            creature.state.action_elapsed += dt;
+            creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.01).min(1.0);
+            creature.state.drives.arousal = (creature.state.drives.arousal - dt * 0.04).max(0.0);
+        }
+    }
+
+    fn dismiss_home(&mut self, now: OffsetDateTime, interrupted: bool) {
+        if !self.save.home.is_active() {
+            return;
+        }
+        self.save.home.active_since_utc = None;
+        self.save.home.last_disappeared_utc = Some(now);
+        for creature in &mut self.save.creatures {
+            if creature.state.action == ActionKind::Homebound {
+                creature.state.action = ActionKind::Idle;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 2.5;
+                creature.state.velocity = Point::default();
+            }
+        }
+        self.events
+            .push(WorldEvent::HomeDisappeared { interrupted });
+    }
+
     pub fn handle_command(&mut self, command: WorldCommand, desktop: &DesktopSnapshot) -> bool {
         match command {
             WorldCommand::BeginDrag {
@@ -358,11 +516,15 @@ impl World {
         if self.drag.is_some() || !self.save.settings.direct_manipulation {
             return false;
         }
-        let Some(creature) = self.save.creatures.iter_mut().find(|creature| {
+        let Some(creature_index) = self.save.creatures.iter().position(|creature| {
             creature.id == creature_id && creature.state.arrival_delay_secs <= 0.0
         }) else {
             return false;
         };
+        if self.save.home.is_active() {
+            self.dismiss_home(self.save.maximum_seen_utc, true);
+        }
+        let creature = &mut self.save.creatures[creature_index];
         self.drag = Some(DragSession {
             creature_id,
             grab_offset: Point {
@@ -1167,10 +1329,12 @@ fn find_nearby_ledge(
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
 ) -> Option<(Point, SurfaceAttachment)> {
+    let current_window = creature.state.surface.window_key;
     let candidate = desktop
         .windows
         .iter()
         .filter(|window| window.visible && !window.minimized && window.bounds.width >= 120.0)
+        .filter(|window| Some(window.key) != current_window)
         .filter_map(|window| {
             let ledge_x = creature
                 .state
@@ -1185,8 +1349,8 @@ fn find_nearby_ledge(
                     y: window.bounds.y,
                 })
             })?;
-            (dx <= 260.0
-                && dy <= 640.0
+            (dx <= 360.0
+                && (36.0..=640.0).contains(&dy)
                 && habitat_contains(
                     policy,
                     monitor,
@@ -1195,7 +1359,9 @@ fn find_nearby_ledge(
                         y: window.bounds.y,
                     },
                 ))
-            .then_some((dx + dy * 0.3, window, ledge_x, monitor.id))
+            // Nearby intermediate ledges remain easiest, while the vertical-progress bonus makes
+            // a visibly different elevation preferable to another almost-level window.
+            .then_some((dx * 0.65 + dy * 0.12, window, ledge_x, monitor.id))
         })
         .min_by(|a, b| a.0.total_cmp(&b.0));
     candidate.map(|(_, window, ledge_x, monitor_id)| {
@@ -1406,6 +1572,11 @@ mod tests {
         }
     }
 
+    fn let_colony_wander(world: &mut World, now: OffsetDateTime) {
+        world.save.home.active_since_utc = None;
+        world.save.home.last_disappeared_utc = Some(now);
+    }
+
     #[test]
     fn colony_arrives_on_calendar_thresholds() {
         let created = datetime!(2026-01-01 0:00 UTC);
@@ -1502,6 +1673,7 @@ mod tests {
             application_name: None,
         });
         let mut world = World::new([8; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
         let creature = &mut world.save.creatures[0];
         creature.state.surface = SurfaceAttachment {
             kind: SurfaceKind::WindowLedge,
@@ -1612,6 +1784,7 @@ mod tests {
         let created = datetime!(2026-01-01 0:00 UTC);
         let mut desktop = desktop();
         let mut world = World::new([31; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
         world.tick(created, 0.05, &desktop);
         let position = world.save.creatures[0].state.position;
         world.save.creatures[0].state.action = ActionKind::Sleep;
@@ -1650,6 +1823,7 @@ mod tests {
         let created = datetime!(2026-01-01 0:00 UTC);
         let mut desktop = desktop();
         let mut world = World::new([32; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
         let start = world.save.creatures[0].state.position;
         desktop.windows.push(DesktopWindow {
             key: 92,
@@ -1701,6 +1875,7 @@ mod tests {
         for seed_byte in 0_u8..20 {
             let mut desktop = desktop();
             let mut world = World::new([seed_byte; 32], created, &desktop);
+            let_colony_wander(&mut world, created);
             let start = world.save.creatures[0].state.position;
             desktop.windows.push(DesktopWindow {
                 key: 100 + u64::from(seed_byte),
@@ -1728,5 +1903,195 @@ mod tests {
             discovered >= 16,
             "only {discovered}/20 creatures found the ledge"
         );
+    }
+
+    #[test]
+    fn perched_creature_can_choose_a_different_window_height() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        desktop.windows.extend([
+            DesktopWindow {
+                key: 201,
+                bounds: DesktopRect {
+                    x: 360.0,
+                    y: 610.0,
+                    width: 460.0,
+                    height: 210.0,
+                },
+                z_order: 1,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            },
+            DesktopWindow {
+                key: 202,
+                bounds: DesktopRect {
+                    x: 470.0,
+                    y: 330.0,
+                    width: 520.0,
+                    height: 300.0,
+                },
+                z_order: 0,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            },
+        ]);
+        let mut world = World::new([41; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
+        let creature = &mut world.save.creatures[0];
+        creature.state.position = Point { x: 590.0, y: 610.0 };
+        creature.state.surface = SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id: 1,
+            window_key: Some(201),
+            relative_x: 0.5,
+        };
+
+        let (target, surface) = find_nearby_ledge(creature, &desktop, &world.save.settings.habitat)
+            .expect("the upper window should be a reachable transfer");
+        assert_eq!(surface.window_key, Some(202));
+        assert_eq!(target.y, 330.0);
+    }
+
+    #[test]
+    fn creatures_explore_multiple_window_levels() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut explorers = 0;
+        for seed_byte in 0_u8..20 {
+            let mut desktop = desktop();
+            let mut world = World::new([seed_byte; 32], created, &desktop);
+            let_colony_wander(&mut world, created);
+            let start = world.save.creatures[0].state.position;
+            desktop.windows.extend([
+                DesktopWindow {
+                    key: 300 + u64::from(seed_byte) * 3,
+                    bounds: DesktopRect {
+                        x: start.x - 180.0,
+                        y: start.y - 190.0,
+                        width: 410.0,
+                        height: 150.0,
+                    },
+                    z_order: 2,
+                    visible: true,
+                    minimized: false,
+                    application: None,
+                    application_name: None,
+                },
+                DesktopWindow {
+                    key: 301 + u64::from(seed_byte) * 3,
+                    bounds: DesktopRect {
+                        x: start.x - 90.0,
+                        y: start.y - 390.0,
+                        width: 440.0,
+                        height: 180.0,
+                    },
+                    z_order: 1,
+                    visible: true,
+                    minimized: false,
+                    application: None,
+                    application_name: None,
+                },
+                DesktopWindow {
+                    key: 302 + u64::from(seed_byte) * 3,
+                    bounds: DesktopRect {
+                        x: start.x - 210.0,
+                        y: start.y - 590.0,
+                        width: 520.0,
+                        height: 190.0,
+                    },
+                    z_order: 0,
+                    visible: true,
+                    minimized: false,
+                    application: None,
+                    application_name: None,
+                },
+            ]);
+            let mut visited = std::collections::BTreeSet::new();
+            for _ in 0..2_400 {
+                world.tick(created, 0.05, &desktop);
+                if let Some(key) = world.save.creatures[0].state.surface.window_key {
+                    visited.insert(key);
+                }
+                if visited.len() >= 2 {
+                    explorers += 1;
+                    break;
+                }
+            }
+        }
+        assert!(
+            explorers >= 16,
+            "only {explorers}/20 creatures explored more than one window level"
+        );
+    }
+
+    #[test]
+    fn home_appears_for_fifteen_minutes_then_observes_its_cooldown() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([52; 32], created, &desktop);
+        world.tick(created, 0.05, &desktop);
+        assert!(world.save.home.is_active());
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Homebound);
+        assert_eq!(world.save.home.display, Some(DisplayKey([1; 16])));
+
+        world.tick(
+            created + time::Duration::minutes(14) + time::Duration::seconds(59),
+            0.05,
+            &desktop,
+        );
+        assert!(world.save.home.is_active());
+        world.tick(created + time::Duration::minutes(15), 0.05, &desktop);
+        assert!(!world.save.home.is_active());
+        assert_eq!(
+            world.save.home.last_disappeared_utc,
+            Some(created + time::Duration::minutes(15))
+        );
+
+        world.tick(
+            created + time::Duration::minutes(29) + time::Duration::seconds(59),
+            0.05,
+            &desktop,
+        );
+        assert!(!world.save.home.is_active());
+        world.tick(created + time::Duration::minutes(30), 0.05, &desktop);
+        assert!(world.save.home.is_active());
+    }
+
+    #[test]
+    fn dragging_a_homebound_creature_dismisses_the_shelter_and_starts_cooldown() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([53; 32], created, &desktop);
+        world.tick(created, 0.05, &desktop);
+        let creature_id = world.save.creatures[0].id;
+        let position = world.save.creatures[0].state.position;
+        assert!(world.handle_command(
+            WorldCommand::BeginDrag {
+                creature_id,
+                cursor: position,
+            },
+            &desktop,
+        ));
+        assert!(!world.save.home.is_active());
+        assert_eq!(world.save.home.last_disappeared_utc, Some(created));
+        assert!(
+            world
+                .drain_events()
+                .any(|event| matches!(event, WorldEvent::HomeDisappeared { interrupted: true }))
+        );
+
+        assert!(world.handle_command(
+            WorldCommand::EndDrag {
+                cursor: Point { x: 720.0, y: 500.0 },
+            },
+            &desktop,
+        ));
+        world.tick(created + time::Duration::minutes(14), 0.05, &desktop);
+        assert!(!world.save.home.is_active());
+        world.tick(created + time::Duration::minutes(15), 0.05, &desktop);
+        assert!(world.save.home.is_active());
     }
 }

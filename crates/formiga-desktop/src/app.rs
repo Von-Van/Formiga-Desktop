@@ -110,12 +110,12 @@ impl FormigaApp {
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
         let now = OffsetDateTime::now_utc();
-        let world = match self.save_store.load() {
-            Ok(Some(save)) => World::from_save(save),
-            Ok(None) => World::new(new_colony_seed()?, now, &desktop),
+        let (world, first_launch) = match self.save_store.load() {
+            Ok(Some(save)) => (World::from_save(save), false),
+            Ok(None) => (World::new(new_colony_seed()?, now, &desktop), true),
             Err(error) => {
                 tracing::error!(%error, "save could not be loaded; starting a new colony");
-                World::new(new_colony_seed()?, now, &desktop)
+                (World::new(new_colony_seed()?, now, &desktop), true)
             }
         };
         for overlay in self.overlays.values() {
@@ -126,6 +126,9 @@ impl FormigaApp {
         self.tray = Some(TrayState::new(&world.save.settings)?);
         self.world = Some(world);
         self.save()?;
+        if first_launch {
+            self.show_settings(event_loop);
+        }
         Ok(())
     }
 
@@ -290,6 +293,8 @@ impl FormigaApp {
                     WorldEvent::CreatureSpawned { .. }
                         | WorldEvent::ActionStarted { .. }
                         | WorldEvent::SurfaceChanged { .. }
+                        | WorldEvent::HomeAppeared
+                        | WorldEvent::HomeDisappeared { .. }
                 );
                 tracing::debug!(?event, "world event");
             }

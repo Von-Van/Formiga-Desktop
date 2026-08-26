@@ -16,10 +16,18 @@ The desktop binary supports macOS 14+ and Windows 10/11 x64. Core simulation, ar
 persistence, drag-state, and occlusion-region tests are platform-independent. Native overlay and
 proxy behavior still requires the manual OS matrix in `TEST_MATRIX.md`.
 
+## Downloads for nontechnical users
+
+Tagged builds publish four ready-to-run files on GitHub Releases. Recommend the macOS DMG and
+Windows MSI; the ZIP files are portable alternatives. Opening Formiga for the first time creates a
+colony and opens Settings automatically. No Rust installation, command line, or separate runtime is
+needed.
+
 ## macOS universal preview
 
 Run `bash scripts/package-macos.sh` on macOS. It creates an arm64/x86_64 universal app, ad-hoc signs
-it when no identity is supplied, and writes a ZIP plus SHA-256 checksum to `dist/`.
+it when no identity is supplied, and writes a drag-to-Applications DMG, ZIP, and SHA-256 checksums
+to `dist/`.
 
 Set `FORMIGA_CODESIGN_IDENTITY` to a Developer ID Application identity for distribution signing.
 Notarization requires release-owner Apple credentials and is intentionally not embedded in the
@@ -30,8 +38,9 @@ not advise users to disable Gatekeeper globally.
 
 ## Windows preview
 
-Run `./scripts/package-windows.ps1` in PowerShell. With WiX 4 installed it creates a per-user MSI,
-portable ZIP, and SHA-256 checksum files. Use `-SkipInstaller` for the ZIP only.
+Run `./scripts/package-windows.ps1` in PowerShell. With WiX 4 installed it creates a per-user MSI
+with Desktop and Start-menu shortcuts, a portable ZIP, and SHA-256 checksum files. Use
+`-SkipInstaller` for the ZIP only.
 
 Unsigned portfolio preview: Windows SmartScreen may show **More info → Run anyway**. Authenticode
 signing requires the release owner's certificate and remains a release-secret hook.

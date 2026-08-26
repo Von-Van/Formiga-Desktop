@@ -320,10 +320,11 @@ pub enum ActionKind {
     SocialPlay,
     Dragged,
     Landing,
+    Homebound,
 }
 
 impl ActionKind {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -338,6 +339,7 @@ impl ActionKind {
         Self::SocialPlay,
         Self::Dragged,
         Self::Landing,
+        Self::Homebound,
     ];
 
     pub const AUTONOMOUS: [Self; 12] = [
@@ -431,6 +433,87 @@ pub struct ArrivalState {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HomeCorner {
+    #[default]
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShelterStyle {
+    #[default]
+    LeafTent,
+    MushroomHut,
+    CushionDen,
+    PaperHouse,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShelterGenome {
+    pub style: ShelterStyle,
+    pub palette_index: u8,
+    pub accent_index: u8,
+    pub width: u8,
+    pub height: u8,
+    pub detail_seed: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ColonyHome {
+    pub display: Option<DisplayKey>,
+    pub corner: HomeCorner,
+    pub shelter: ShelterGenome,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub active_since_utc: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub last_disappeared_utc: Option<OffsetDateTime>,
+}
+
+impl ColonyHome {
+    pub fn from_seed(
+        seed: [u8; 32],
+        display: Option<DisplayKey>,
+        active_since_utc: Option<OffsetDateTime>,
+        last_disappeared_utc: Option<OffsetDateTime>,
+    ) -> Self {
+        let detail_seed = u64::from_le_bytes(seed[8..16].try_into().unwrap());
+        Self {
+            display,
+            corner: if seed[0] & 1 == 0 {
+                HomeCorner::BottomLeft
+            } else {
+                HomeCorner::BottomRight
+            },
+            shelter: ShelterGenome {
+                style: match seed[1] % 4 {
+                    0 => ShelterStyle::LeafTent,
+                    1 => ShelterStyle::MushroomHut,
+                    2 => ShelterStyle::CushionDen,
+                    _ => ShelterStyle::PaperHouse,
+                },
+                palette_index: seed[2] % 12,
+                accent_index: seed[3] % 12,
+                width: 34 + seed[4] % 9,
+                height: 27 + seed[5] % 10,
+                detail_seed,
+            },
+            active_since_utc,
+            last_disappeared_utc,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active_since_utc.is_some()
+    }
+}
+
+impl Default for ColonyHome {
+    fn default() -> Self {
+        Self::from_seed([0; 32], None, None, None)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HabitatZoneKind {
     #[default]
     Allowed,
@@ -511,6 +594,8 @@ pub struct SaveFile {
     #[serde(with = "time::serde::rfc3339")]
     pub maximum_seen_utc: OffsetDateTime,
     pub arrival_state: ArrivalState,
+    #[serde(default)]
+    pub home: ColonyHome,
     pub settings: Settings,
     pub creatures: Vec<Creature>,
 }
@@ -557,6 +642,10 @@ pub enum WorldEvent {
     DragEnded {
         creature_id: CreatureId,
         surface: SurfaceKind,
+    },
+    HomeAppeared,
+    HomeDisappeared {
+        interrupted: bool,
     },
 }
 

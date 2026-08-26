@@ -5,6 +5,7 @@
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleDisplayName</key><string>Formiga</string>
     <key>CFBundleExecutable</key><string>Formiga</string>
+    <key>CFBundleIconFile</key><string>Formiga</string>
     <key>CFBundleIdentifier</key><string>com.formiga.desktop</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>Formiga</string>

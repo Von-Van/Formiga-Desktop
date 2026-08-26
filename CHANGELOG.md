@@ -12,6 +12,12 @@ All notable changes are documented here.
 - Pre-baked sleep, investigation, play, greeting, social, and startle effects.
 - Expression and gesture art-lab contact-sheet commands.
 - Deterministic v2→v3 save migration for resolved face, forelimb, and effect genes.
+- Drag-to-Applications macOS DMG and normal per-user Windows installer packaging.
+- Generated cross-platform application icon and first-launch Settings onboarding.
+- Seeded bottom-corner colony homes with four procedurally rendered shelter families.
+- Persistent 15-minute home visits and 15-minute minimum reappearance cooldowns.
+- Drag-to-dismiss home behavior and calm activity-coordinated homebound poses.
+- Deterministic v3→v4 migration for shelter identity and durable home timing.
 
 ### Changed
 
@@ -19,6 +25,9 @@ All notable changes are documented here.
 - Interaction masks now use the fully composited expressive frame.
 - Fixed one-pixel line rasterization, improving facial and appendage clarity.
 - Updated portfolio assets and release metadata for v0.25.0.
+- Creatures now transfer between reachable window ledges at different heights instead of treating
+  the first ledge as a permanent horizontal track.
+- Release automation now publishes the current-version DMG, MSI, and portable ZIP artifacts.
 
 ## [0.2.0] - 2026-08-25
 

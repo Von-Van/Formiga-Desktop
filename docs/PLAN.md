@@ -9,8 +9,9 @@ Implemented in this release:
 - family-specific gesture-capable forelimbs for every action;
 - coordinated head-appendage and tail secondary motion;
 - pre-baked temporary activity effects;
-- deterministic v1/v2→v3 save migration;
+- deterministic v1/v2/v3→v4 save migration;
 - expression, gesture, animation, and contact-sheet art tools;
+- persistent bottom-corner homes, generated shelter art, and drag-to-dismiss cooldown behavior;
 - v0.2 dragging, habitats, window reactions, and application occlusion retained.
 
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording

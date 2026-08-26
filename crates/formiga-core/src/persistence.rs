@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1 | 2 => migrate_legacy(value, version),
+            1..=3 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -91,9 +91,10 @@ fn migrate_legacy(
         .pointer("/settings/primary_display_only")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
-    if let Some(creatures) = value
-        .get_mut("creatures")
-        .and_then(serde_json::Value::as_array_mut)
+    if source_version <= 2
+        && let Some(creatures) = value
+            .get_mut("creatures")
+            .and_then(serde_json::Value::as_array_mut)
     {
         for creature in creatures {
             let Some(appearance) = creature
@@ -111,6 +112,8 @@ fn migrate_legacy(
     if source_version == 1 && primary_only {
         save.settings.habitat.preset = crate::HabitatPreset::PrimaryDisplay;
     }
+    save.home =
+        crate::ColonyHome::from_seed(save.colony_seed, None, None, Some(save.maximum_seen_utc));
     Ok(save)
 }
 
@@ -248,6 +251,7 @@ mod tests {
             created_at_utc: datetime!(2026-01-01 0:00 UTC),
             maximum_seen_utc: datetime!(2026-01-01 0:00 UTC),
             arrival_state: ArrivalState::default(),
+            home: crate::ColonyHome::default(),
             settings: Settings::default(),
             creatures: Vec::new(),
         }
@@ -378,6 +382,36 @@ mod tests {
         assert_eq!(migrated.appearance.face.eye_spacing, legacy_eye_spacing);
         assert_eq!(migrated.appearance.face.vertical_offset, legacy_eye_height);
         assert_eq!(migrated.appearance.head_appendages.style, legacy_appendage);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v3_with_a_deterministic_home_and_cooldown() {
+        let mut original = example_save();
+        original.colony_seed = [37; 32];
+        let mut value = serde_json::to_value(&original).unwrap();
+        value["save_version"] = serde_json::Value::from(3);
+        value.as_object_mut().unwrap().remove("home");
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v3-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let first_path = directory.join("first.json");
+        let second_path = directory.join("second.json");
+        let bytes = serde_json::to_vec(&value).unwrap();
+        fs::write(&first_path, &bytes).unwrap();
+        fs::write(&second_path, &bytes).unwrap();
+
+        let first = SaveStore::new(&first_path).load().unwrap().unwrap();
+        let second = SaveStore::new(&second_path).load().unwrap().unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.save_version, crate::SAVE_VERSION);
+        assert_eq!(first.home.corner, crate::HomeCorner::BottomRight);
+        assert_eq!(first.home.shelter, second.home.shelter);
+        assert_eq!(first.home.active_since_utc, None);
+        assert_eq!(
+            first.home.last_disappeared_utc,
+            Some(first.maximum_seen_utc)
+        );
         let _ = fs::remove_dir_all(directory);
     }
 }

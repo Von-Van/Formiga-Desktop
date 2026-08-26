@@ -22,10 +22,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetLastInputInfo, LASTINPUTINFO, ReleaseCapture, SetCapture,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetCursorPos, GetWindowLongW, GetWindowRect,
-    GetWindowThreadProcessId, HWND_TOPMOST, IsWindowVisible, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SetWindowLongW, SetWindowPos, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TRANSPARENT, WS_POPUP,
+    EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetCursorPos, GetWindowLongW,
+    GetWindowRect, GetWindowThreadProcessId, HWND_TOPMOST, IsIconic, IsWindowVisible,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowLongW, SetWindowPos, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
 };
 use windows::core::{BOOL, PWSTR};
 use winit::monitor::MonitorHandle;
@@ -293,7 +293,10 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
 }
 
 unsafe extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
-    if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+    if !unsafe { IsWindowVisible(hwnd) }.as_bool()
+        || unsafe { IsIconic(hwnd) }.as_bool()
+        || is_desktop_chrome(hwnd)
+    {
         return BOOL(1);
     }
     let mut process_id = 0;
@@ -350,6 +353,18 @@ unsafe extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
         });
     }
     BOOL(1)
+}
+
+fn is_desktop_chrome(hwnd: HWND) -> bool {
+    let mut buffer = [0_u16; 128];
+    let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
+    if length <= 0 {
+        return false;
+    }
+    matches!(
+        String::from_utf16_lossy(&buffer[..length as usize]).as_str(),
+        "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW"
+    )
 }
 
 fn application_for_pid(process_id: u32) -> Option<(ApplicationKey, String)> {

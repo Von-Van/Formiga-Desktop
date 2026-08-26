@@ -2,10 +2,12 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AnimationSpec, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, PixelPoint,
+    SHELTER_SIZE, ShelterRenderer,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, Creature, CreatureId, CursorSnapshot, DesktopRect,
-    DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile, accessible_regions,
+    DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile, ShelterGenome,
+    accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -50,6 +52,12 @@ struct SpriteGpu {
     face_anchors: Vec<PixelPoint>,
 }
 
+struct ShelterGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    genome: ShelterGenome,
+}
+
 const ATLAS_COLUMNS: u32 = 10;
 const FACE_ATLAS_COLUMNS: u32 = 18;
 
@@ -69,6 +77,7 @@ pub struct OverlayRenderer {
     vertex_buffer: wgpu::Buffer,
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
+    shelter: Option<ShelterGpu>,
 }
 
 impl OverlayRenderer {
@@ -289,7 +298,7 @@ impl OverlayRenderer {
         });
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("creature vertices"),
-            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 48]),
+            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 60]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let zone_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -313,6 +322,7 @@ impl OverlayRenderer {
             vertex_buffer,
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
+            shelter: None,
         })
     }
 
@@ -343,9 +353,26 @@ impl OverlayRenderer {
         for creature in &visible {
             self.ensure_sprite(creature, save.settings.reduce_motion);
         }
+        let shelter_visible = save.home.is_active()
+            && save.home.display == Some(self.monitor.display_key)
+            && resolved_home_anchor(
+                &save.home,
+                &self.monitor,
+                save.settings.display_scale,
+                &save.settings.habitat,
+            )
+            .is_some();
+        if shelter_visible {
+            self.ensure_shelter(save.home.shelter);
+        }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
-        let mut vertices = Vec::with_capacity(visible.len() * 12);
+        let mut vertices =
+            Vec::with_capacity(visible.len() * 12 + usize::from(shelter_visible) * 6);
+        if shelter_visible && let Some(shelter_vertices) = self.shelter_vertices(save) {
+            vertices.extend_from_slice(&shelter_vertices);
+        }
+        let shelter_vertex_count = if shelter_visible { 6 } else { 0 };
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state(
@@ -421,9 +448,22 @@ impl OverlayRenderer {
             }
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.occlusion_bind_group, &[]);
+            if shelter_vertex_count > 0
+                && let Some(shelter) = &self.shelter
+            {
+                pass.set_bind_group(1, &shelter.bind_group, &[]);
+                pass.set_vertex_buffer(
+                    0,
+                    self.vertex_buffer
+                        .slice(..(shelter_vertex_count * std::mem::size_of::<Vertex>()) as u64),
+                );
+                pass.draw(0..shelter_vertex_count as u32, 0..1);
+            }
             for (index, creature) in visible.iter().enumerate() {
                 if let Some(sprite) = self.sprites.get(&creature.id) {
-                    let body_start = (index * 12 * std::mem::size_of::<Vertex>()) as u64;
+                    let body_start = ((shelter_vertex_count + index * 12)
+                        * std::mem::size_of::<Vertex>())
+                        as u64;
                     let body_end = body_start + (6 * std::mem::size_of::<Vertex>()) as u64;
                     pass.set_bind_group(1, &sprite.body_bind_group, &[]);
                     pass.set_vertex_buffer(0, self.vertex_buffer.slice(body_start..body_end));
@@ -645,6 +685,99 @@ impl OverlayRenderer {
                 },
             );
         }
+    }
+
+    fn ensure_shelter(&mut self, genome: ShelterGenome) {
+        if self
+            .shelter
+            .as_ref()
+            .is_some_and(|shelter| shelter.genome == genome)
+        {
+            return;
+        }
+        let pixels = ShelterRenderer::render(&genome).rgba_bytes();
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("procedural colony shelter"),
+            size: wgpu::Extent3d {
+                width: SHELTER_SIZE,
+                height: SHELTER_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(SHELTER_SIZE * 4),
+                rows_per_image: Some(SHELTER_SIZE),
+            },
+            wgpu::Extent3d {
+                width: SHELTER_SIZE,
+                height: SHELTER_SIZE,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("procedural shelter bind group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.shelter = Some(ShelterGpu {
+            _texture: texture,
+            bind_group,
+            genome,
+        });
+    }
+
+    fn shelter_vertices(&self, save: &SaveFile) -> Option<[Vertex; 6]> {
+        let anchor = resolved_home_anchor(
+            &save.home,
+            &self.monitor,
+            save.settings.display_scale,
+            &save.settings.habitat,
+        )?;
+        let size = SHELTER_SIZE as f32 * f32::from(save.settings.display_scale);
+        let local_x = (anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor;
+        let local_y = (anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor;
+        let left = (local_x - size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let right = (local_x + size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - (local_y - size) / self.config.height as f32 * 2.0;
+        let bottom = 1.0 - local_y / self.config.height as f32 * 2.0;
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        Some([
+            vertex([left, top], [0.0, 0.0]),
+            vertex([right, top], [1.0, 0.0]),
+            vertex([right, bottom], [1.0, 1.0]),
+            vertex([left, top], [0.0, 0.0]),
+            vertex([right, bottom], [1.0, 1.0]),
+            vertex([left, bottom], [0.0, 1.0]),
+        ])
     }
 
     fn vertices_for(

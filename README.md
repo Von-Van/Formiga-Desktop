@@ -6,6 +6,21 @@ Formiga is a local-only desktop ecosystem for macOS and Windows. Seeded procedur
 in transparent desktop overlays, develop simple habits, perch on ordinary windows, react to the
 cursor, and eventually grow into a four-creature colony.
 
+## Download and run
+
+Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
+for your computer—no terminal or development tools are required:
+
+- **macOS 14+:** download the `macOS-universal.dmg`, open it, and drag Formiga to Applications.
+- **Windows 10/11:** download the `windows-x64.msi` and follow the installer. It adds normal Desktop
+  and Start-menu shortcuts.
+
+Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
+Show/Hide, Pause, Gather Creatures, Settings, and Quit. The current portfolio downloads are unsigned,
+so macOS may require Control-click → **Open**, while Windows may require **More info → Run anyway**.
+Those warnings disappear once release signing credentials are added; Formiga never asks users to
+disable operating-system security.
+
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
 
 The v0.25 expressive-art release adds a readable emotional and physical performance to the existing
@@ -18,6 +33,10 @@ desktop interactions:
 - Limit the colony to presets or up to 32 allowed/excluded rectangles across displays.
 - Let selected applications visually cover creatures without inspecting window content.
 - Watch creatures hop to reachable ledges, patrol window tops, and startle when nearby windows move.
+- Watch creatures transfer between stacked windows instead of remaining on the desktop floor.
+- Discover a deterministic corner home with one of four generated shelter families; a home visit
+  lasts 15 minutes and cannot return until its 15-minute cooldown has elapsed.
+- Dismiss the shelter immediately by dragging a homebound creature back into the desktop world.
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
 - Load v0.1 colonies through an identity-preserving save migration.
 
@@ -39,6 +58,8 @@ per-app OS z-order manipulation.
 ![Expression grammar across blob, hopper, and soft-quadruped families](docs/assets/expression-sheet.png)
 
 ![Activity-coordinated gestures across every action](docs/assets/gesture-sheet.png)
+
+![Deterministic leaf-tent, mushroom, cushion, and paper-house shelters](docs/assets/shelter-sheet.png)
 
 ## Workspace
 
@@ -67,6 +88,8 @@ cargo run -p formiga-tools -- contact-sheet --output docs/assets/contact-sheet.p
 cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/animation-preview.png
 cargo run -p formiga-tools -- expression-sheet --output docs/assets/expression-sheet.png
 cargo run -p formiga-tools -- gesture-sheet --output docs/assets/gesture-sheet.png
+cargo run -p formiga-tools -- app-icon --output packaging/shared
+cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
 ```
 
 ## Status

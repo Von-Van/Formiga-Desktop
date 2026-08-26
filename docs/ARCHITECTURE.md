@@ -12,11 +12,11 @@ macOS / Windows adapters
                        DesktopSnapshot
                               │
                               ▼
- formiga-core: drives → utility selection → action state machines → surfaces
+formiga-core: drives → utility selection → action state machines → surfaces
           │                         │
           │                         └── in-memory WorldEvent stream
           ▼
- formiga-art: genome → family rig → normalized pose → deterministic atlas
+formiga-art: genome → family rig → normalized pose → deterministic atlas
           │
           ▼
  formiga-desktop: per-monitor overlays + interaction proxies + occlusion uniforms
@@ -38,6 +38,12 @@ The face atlas contains eleven expressions, nine gaze directions, and three eyel
 work is limited to selecting two texture slots and drawing two nearest-filtered quads; expression
 changes add no simulation, particle, or desktop-polling loop. Together the cached textures remain
 below 1 MB per creature.
+
+The colony seed also resolves a bottom-corner preference and a compact shelter genome. Leaf tents,
+mushroom huts, cushion dens, and paper houses are rasterized once to a static 64×64 texture. A
+persisted home lifecycle alternates a maximum 15-minute visit with a minimum 15-minute cooldown.
+While active, creatures use a calm `Homebound` pose at the resolved habitat-safe corner. Beginning
+a creature drag dismisses the shelter before capture and starts the cooldown immediately.
 
 ## Desktop composition
 
@@ -69,5 +75,7 @@ creature opts out per vertex.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 3 migrates v1 habitat settings and deterministically resolves v2 face, forelimb, and effect
-genes without replacing colony identity. There is deliberately no history database or telemetry layer.
+Version 4 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+and assigns v3 colonies a deterministic shelter without replacing creature identity. Home timestamps
+survive relaunches and clock rollback uses the existing maximum-seen UTC guard. There is deliberately
+no history database or telemetry layer.

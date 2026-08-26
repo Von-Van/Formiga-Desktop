@@ -1,7 +1,42 @@
-use crate::{DesktopRect, HabitatPolicy, HabitatPreset, HabitatZoneKind, MonitorInfo, Point};
+use crate::{
+    ColonyHome, DesktopRect, HabitatPolicy, HabitatPreset, HabitatZoneKind, HomeCorner,
+    MonitorInfo, Point,
+};
 
 pub const MAX_HABITAT_ZONES: usize = 32;
 const MIN_REGION_SIZE: f32 = 48.0;
+
+pub fn home_anchor(home: &ColonyHome, monitor: &MonitorInfo, display_scale: u8) -> Point {
+    let shelter_half_width = 32.0 * f32::from(display_scale) / monitor.scale_factor.max(1.0);
+    let margin = shelter_half_width + 8.0;
+    Point {
+        x: match home.corner {
+            HomeCorner::BottomLeft => monitor.usable_bounds.x + margin,
+            HomeCorner::BottomRight => monitor.usable_bounds.right() - margin,
+        },
+        y: monitor.usable_bounds.bottom() - 4.0,
+    }
+}
+
+pub fn resolved_home_anchor(
+    home: &ColonyHome,
+    monitor: &MonitorInfo,
+    display_scale: u8,
+    policy: &HabitatPolicy,
+) -> Option<Point> {
+    let desired = home_anchor(home, monitor, display_scale);
+    accessible_regions(policy, monitor)
+        .into_iter()
+        .map(|region| {
+            let point = Point {
+                x: desired.x.clamp(region.x + 8.0, region.right() - 8.0),
+                y: region.bottom() - 4.0,
+            };
+            (desired.distance(point), point)
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, point)| point)
+}
 
 pub fn accessible_regions(policy: &HabitatPolicy, monitor: &MonitorInfo) -> Vec<DesktopRect> {
     if policy.preset == HabitatPreset::PrimaryDisplay && !monitor.primary {

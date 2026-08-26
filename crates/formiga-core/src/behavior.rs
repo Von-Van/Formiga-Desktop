@@ -35,10 +35,10 @@ pub fn choose_action<R: Rng + ?Sized>(
             ActionKind::Idle => 0.45 + d.comfort * 0.5 - d.boredom * 0.25,
             ActionKind::Traverse => 0.25 + d.boredom * 0.8 + p.activity * 0.5,
             ActionKind::Perch => {
-                if context.on_window_ledge {
+                if context.reachable_window_ledge {
+                    0.82 + p.curiosity * 0.8 + d.boredom * 0.5
+                } else if context.on_window_ledge {
                     0.45 + d.comfort * 0.7
-                } else if context.reachable_window_ledge {
-                    0.6 + p.curiosity * 0.75 + d.boredom * 0.35
                 } else {
                     -2.0
                 }
@@ -81,7 +81,7 @@ pub fn choose_action<R: Rng + ?Sized>(
             ActionKind::Greet => social_score(creature, context, 130.0, 0.45),
             ActionKind::Follow => social_score(creature, context, 240.0, 0.35),
             ActionKind::SocialPlay => social_score(creature, context, 100.0, p.playfulness * 0.55),
-            ActionKind::Dragged | ActionKind::Landing => -2.0,
+            ActionKind::Dragged | ActionKind::Landing | ActionKind::Homebound => -2.0,
         };
         let habit = creature
             .state

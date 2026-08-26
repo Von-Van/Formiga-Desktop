@@ -1,11 +1,12 @@
 use anyhow::{Context, Result, bail};
 use formiga_art::{
     CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE, FaceRenderState, GazeDirection,
+    SHELTER_SIZE, ShelterRenderer,
 };
 use formiga_core::*;
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
@@ -32,6 +33,11 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/formiga-demo.gif",
         )),
+        Some("app-icon") => app_icon(output_argument_with_default(&args, "packaging/shared")),
+        Some("shelter-sheet") => shelter_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/shelter-sheet.png",
+        )),
         Some("simulate") => simulate(
             args.get(2)
                 .and_then(|value| value.parse().ok())
@@ -39,7 +45,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
@@ -415,6 +421,197 @@ fn portfolio_colony() -> Vec<Creature> {
     world.save.creatures
 }
 
+fn app_icon(directory: PathBuf) -> Result<()> {
+    std::fs::create_dir_all(&directory)
+        .with_context(|| format!("create {}", directory.display()))?;
+    let png_path = directory.join("Formiga.png");
+    let ico_path = directory.join("Formiga.ico");
+    let icns_path = directory.join("Formiga.icns");
+
+    let mac_pixels = app_icon_pixels(1024);
+    write_png(&png_path, 1024, 1024, &mac_pixels)?;
+
+    let icon_sizes = [
+        (*b"ic10", 1024_u32),
+        (*b"ic09", 512),
+        (*b"ic08", 256),
+        (*b"ic07", 128),
+        (*b"icp5", 32),
+        (*b"icp4", 16),
+    ];
+    let mut icns_chunks = Vec::new();
+    for (kind, size) in icon_sizes {
+        icns_chunks.push((kind, encode_png(size, size, &app_icon_pixels(size))?));
+    }
+    let icns_length = 8_usize
+        + icns_chunks
+            .iter()
+            .map(|(_, png)| 8 + png.len())
+            .sum::<usize>();
+    let mut icns = BufWriter::new(
+        File::create(&icns_path).with_context(|| format!("create {}", icns_path.display()))?,
+    );
+    icns.write_all(b"icns")?;
+    icns.write_all(&(icns_length as u32).to_be_bytes())?;
+    for (kind, png) in icns_chunks {
+        icns.write_all(&kind)?;
+        icns.write_all(&((png.len() + 8) as u32).to_be_bytes())?;
+        icns.write_all(&png)?;
+    }
+    icns.flush()?;
+
+    // Modern Windows icon resources can contain a PNG-compressed 256 px image. Writing the tiny
+    // ICO container here keeps packaging deterministic and avoids an image-conversion dependency.
+    let windows_pixels = app_icon_pixels(256);
+    let png_bytes = encode_png(256, 256, &windows_pixels)?;
+    let mut ico = BufWriter::new(
+        File::create(&ico_path).with_context(|| format!("create {}", ico_path.display()))?,
+    );
+    ico.write_all(&0_u16.to_le_bytes())?; // reserved
+    ico.write_all(&1_u16.to_le_bytes())?; // image
+    ico.write_all(&1_u16.to_le_bytes())?; // one entry
+    ico.write_all(&[0, 0, 0, 0])?; // 256x256, true color, reserved
+    ico.write_all(&1_u16.to_le_bytes())?; // color planes
+    ico.write_all(&32_u16.to_le_bytes())?;
+    ico.write_all(&(png_bytes.len() as u32).to_le_bytes())?;
+    ico.write_all(&22_u32.to_le_bytes())?;
+    ico.write_all(&png_bytes)?;
+    ico.flush()?;
+
+    println!(
+        "wrote {}, {}, and {}",
+        png_path.display(),
+        icns_path.display(),
+        ico_path.display()
+    );
+    Ok(())
+}
+
+fn encode_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(pixels)?;
+    }
+    Ok(bytes)
+}
+
+fn app_icon_pixels(size: u32) -> Vec<u8> {
+    let mut pixels = vec![0_u8; (size * size * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        size,
+        size,
+        [29, 57, 59, 255],
+        [89, 151, 119, 255],
+    );
+    let corner_radius = size as f32 * 0.19;
+    for y in 0..size {
+        for x in 0..size {
+            let nearest_x = (x as f32).clamp(corner_radius, size as f32 - corner_radius);
+            let nearest_y = (y as f32).clamp(corner_radius, size as f32 - corner_radius);
+            let dx = x as f32 - nearest_x;
+            let dy = y as f32 - nearest_y;
+            if dx * dx + dy * dy > corner_radius * corner_radius {
+                let index = ((y * size + x) * 4) as usize;
+                pixels[index..index + 4].fill(0);
+            }
+        }
+    }
+    let creature = &portfolio_colony()[0];
+    let rendered = CreatureRenderer::render_frame(&creature.appearance, ActionKind::Greet, 2, true);
+    blit_scaled_anchor(
+        &mut pixels,
+        size,
+        size,
+        size / 2,
+        size * 88 / 100,
+        &rendered.rgba_bytes(),
+        (size / 64).max(4),
+        None,
+    );
+    pixels
+}
+
+fn shelter_sheet(path: PathBuf) -> Result<()> {
+    const COLS: u32 = 4;
+    const ROWS: u32 = 3;
+    const SCALE: u32 = 3;
+    const PADDING: u32 = 24;
+    let cell = SHELTER_SIZE * SCALE + PADDING;
+    let width = COLS * cell;
+    let height = ROWS * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [18, 29, 34, 255],
+        [35, 55, 54, 255],
+    );
+    for index in 0..COLS * ROWS {
+        let mut seed = [0_u8; 32];
+        seed.copy_from_slice(&Sha256::digest(format!("formiga-shelter-{index}")));
+        seed[1] = index as u8 % 4;
+        let home = ColonyHome::from_seed(seed, None, None, None);
+        let shelter = ShelterRenderer::render(&home.shelter);
+        let x = index % COLS * cell + PADDING / 2;
+        let y = index / COLS * cell + PADDING / 2;
+        blit_scaled_square_alpha(
+            &mut pixels,
+            width,
+            x,
+            y,
+            &shelter.rgba_bytes(),
+            SHELTER_SIZE,
+            SCALE,
+        );
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn blit_scaled_square_alpha(
+    target: &mut [u8],
+    target_width: u32,
+    origin_x: u32,
+    origin_y: u32,
+    source: &[u8],
+    source_size: u32,
+    scale: u32,
+) {
+    for sy in 0..source_size {
+        for sx in 0..source_size {
+            let source_index = ((sy * source_size + sx) * 4) as usize;
+            let color = [
+                source[source_index],
+                source[source_index + 1],
+                source[source_index + 2],
+                source[source_index + 3],
+            ];
+            if color[3] == 0 {
+                continue;
+            }
+            for oy in 0..scale {
+                for ox in 0..scale {
+                    blend_pixel(
+                        target,
+                        target_width,
+                        origin_x + sx * scale + ox,
+                        origin_y + sy * scale + oy,
+                        color,
+                    );
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn draw_demo_creature(
     target: &mut [u8],
@@ -511,9 +708,30 @@ fn blit_scaled(
     source: &[u8],
     scale: u32,
 ) {
-    for sy in 0..FRAME_SIZE {
-        for sx in 0..FRAME_SIZE {
-            let source_index = ((sy * FRAME_SIZE + sx) * 4) as usize;
+    blit_scaled_square(
+        target,
+        target_width,
+        origin_x,
+        origin_y,
+        source,
+        FRAME_SIZE,
+        scale,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn blit_scaled_square(
+    target: &mut [u8],
+    target_width: u32,
+    origin_x: u32,
+    origin_y: u32,
+    source: &[u8],
+    source_size: u32,
+    scale: u32,
+) {
+    for sy in 0..source_size {
+        for sx in 0..source_size {
+            let source_index = ((sy * source_size + sx) * 4) as usize;
             for oy in 0..scale {
                 for ox in 0..scale {
                     let x = origin_x + sx * scale + ox;
