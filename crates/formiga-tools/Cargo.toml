@@ -1,0 +1,15 @@
+[package]
+name = "formiga-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+formiga-art = { path = "../formiga-art" }
+formiga-core = { path = "../formiga-core" }
+png.workspace = true
+sha2.workspace = true
+time.workspace = true
+

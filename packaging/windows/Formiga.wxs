@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Formiga"
+      Manufacturer="Formiga"
+      Version="0.1.0"
+      UpgradeCode="A66A84EB-D317-43B4-8765-1B1BB3D43A7B"
+      Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Formiga is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Formiga">
+        <Component Id="FormigaApplication" Guid="B637B021-7EEA-4897-87A6-1AC118979E47">
+          <File Id="FormigaExecutable" Source="$(FormigaExe)" Name="Formiga.exe" KeyPath="yes" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga"
+              Name="InstallPath"
+              Type="string"
+              Value="[INSTALLFOLDER]" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Formiga">
+        <Component Id="FormigaShortcut" Guid="D491F996-AF29-448B-BF2D-A0C10EF7938A">
+          <Shortcut
+              Id="ApplicationStartMenuShortcut"
+              Name="Formiga"
+              Target="[INSTALLFOLDER]Formiga.exe"
+              WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga"
+              Name="StartMenuShortcut"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Formiga" Level="1">
+      <ComponentRef Id="FormigaApplication" />
+      <ComponentRef Id="FormigaShortcut" />
+    </Feature>
+  </Package>
+</Wix>
