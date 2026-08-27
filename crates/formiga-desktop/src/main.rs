@@ -6,6 +6,7 @@ mod interaction;
 mod platform;
 mod settings;
 mod tray;
+mod updater;
 
 use anyhow::Result;
 use app::{FormigaApp, UserEvent};
@@ -30,10 +31,11 @@ fn main() -> Result<()> {
     }
     let event_loop = builder.build()?;
     let proxy = event_loop.create_proxy();
+    let menu_proxy = proxy.clone();
     MenuEvent::set_event_handler(Some(move |event| {
-        let _ = proxy.send_event(UserEvent::Menu(event));
+        let _ = menu_proxy.send_event(UserEvent::Menu(event));
     }));
-    let mut app = FormigaApp::new(log_dir)?;
+    let mut app = FormigaApp::new(log_dir, proxy)?;
     event_loop.run_app(&mut app)?;
     Ok(())
 }

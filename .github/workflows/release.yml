@@ -17,6 +17,9 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - run: bash scripts/package-macos.sh
+        env:
+          FORMIGA_VERSION: ${{ github.ref_name }}
+          FORMIGA_BUILD_NUMBER: ${{ github.run_number }}
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos
@@ -33,6 +36,8 @@ jobs:
       - run: dotnet tool install --global wix --version 4.0.5
       - shell: pwsh
         run: ./scripts/package-windows.ps1
+        env:
+          FORMIGA_VERSION: ${{ github.ref_name }}
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows

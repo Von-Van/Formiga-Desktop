@@ -1,3 +1,4 @@
+use crate::updater::UpdateStatus;
 use anyhow::Result;
 use formiga_core::Settings;
 use std::time::Instant;
@@ -19,6 +20,7 @@ pub struct TrayState {
     pub scale_4: CheckMenuItem,
     pub reset: MenuItem,
     pub open_logs: MenuItem,
+    pub check_updates: MenuItem,
     pub quit: MenuItem,
     reset_armed_at: Option<Instant>,
 }
@@ -31,6 +33,7 @@ pub enum TrayAction {
     OpenLogs,
     OpenSettings,
     GatherCreatures,
+    CheckForUpdates,
     None,
 }
 
@@ -52,6 +55,7 @@ impl TrayState {
         let scale_4 = CheckMenuItem::new("Large (4x)", true, settings.display_scale == 4, None);
         let reset = MenuItem::new("Start a new colony…", true, None);
         let open_logs = MenuItem::new("Open diagnostic logs", true, None);
+        let check_updates = MenuItem::new("Check for updates…", true, None);
         let quit = MenuItem::new("Quit Formiga", true, None);
         let separator_a = PredefinedMenuItem::separator();
         let separator_b = PredefinedMenuItem::separator();
@@ -73,6 +77,7 @@ impl TrayState {
             &separator_c,
             &reset,
             &open_logs,
+            &check_updates,
             &quit,
         ])?;
         let tray = TrayIconBuilder::new()
@@ -95,6 +100,7 @@ impl TrayState {
             scale_4,
             reset,
             open_logs,
+            check_updates,
             quit,
             reset_armed_at: None,
         })
@@ -106,6 +112,9 @@ impl TrayState {
         }
         if event.id() == self.open_logs.id() {
             return TrayAction::OpenLogs;
+        }
+        if event.id() == self.check_updates.id() {
+            return TrayAction::CheckForUpdates;
         }
         if event.id() == self.settings.id() {
             return TrayAction::OpenSettings;
@@ -173,6 +182,36 @@ impl TrayState {
         self.scale_2.set_checked(settings.display_scale == 2);
         self.scale_3.set_checked(settings.display_scale == 3);
         self.scale_4.set_checked(settings.display_scale == 4);
+    }
+
+    pub fn sync_update(&self, status: &UpdateStatus) {
+        match status {
+            UpdateStatus::Checking => {
+                self.check_updates.set_text("Checking for updates…");
+                self.check_updates.set_enabled(false);
+            }
+            UpdateStatus::Available(release) => {
+                self.check_updates
+                    .set_text(format!("Update available: {}…", release.version));
+                self.check_updates.set_enabled(true);
+            }
+            UpdateStatus::Downloading(release) => {
+                self.check_updates
+                    .set_text(format!("Downloading {}…", release.version));
+                self.check_updates.set_enabled(false);
+            }
+            UpdateStatus::Ready(downloaded) => {
+                self.check_updates.set_text(format!(
+                    "Install downloaded update {}…",
+                    downloaded.release.version
+                ));
+                self.check_updates.set_enabled(true);
+            }
+            _ => {
+                self.check_updates.set_text("Check for updates…");
+                self.check_updates.set_enabled(true);
+            }
+        }
     }
 }
 

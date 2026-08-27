@@ -1,3 +1,4 @@
+use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
 use formiga_core::{
     ApplicationOcclusionRule, DesktopRect, DesktopWindow, HabitatPolicy, HabitatPreset,
@@ -28,6 +29,10 @@ pub struct SettingsOutcome {
     pub reset_habitat_edit: bool,
     pub browse_application: bool,
     pub open_logs: bool,
+    pub automatic_update_checks: Option<bool>,
+    pub check_updates: bool,
+    pub download_update: bool,
+    pub install_update: bool,
 }
 
 pub struct SettingsWindow {
@@ -189,6 +194,11 @@ impl SettingsWindow {
         self.window.request_redraw();
     }
 
+    pub fn select_about(&mut self) {
+        self.tab = SettingsTab::About;
+        self.window.request_redraw();
+    }
+
     pub fn on_event(&mut self, event: &WindowEvent) -> bool {
         self.state.on_window_event(&self.window, event).repaint
     }
@@ -208,6 +218,8 @@ impl SettingsWindow {
         event_loop: &ActiveEventLoop,
         monitors: &[MonitorInfo],
         windows: &[DesktopWindow],
+        update_status: &UpdateStatus,
+        automatic_update_checks: bool,
     ) -> Result<SettingsOutcome> {
         let input = self.state.take_egui_input(&self.window);
         let context = self.context.clone();
@@ -229,6 +241,8 @@ impl SettingsWindow {
                 monitors,
                 windows,
                 editor_active,
+                update_status,
+                automatic_update_checks,
                 &mut outcome,
             );
         });
@@ -342,6 +356,8 @@ fn draw_settings(
     monitors: &[MonitorInfo],
     windows: &[DesktopWindow],
     editor_active: bool,
+    update_status: &UpdateStatus,
+    automatic_update_checks: bool,
     outcome: &mut SettingsOutcome,
 ) {
     egui::CentralPanel::default().show(root, |ui| {
@@ -363,7 +379,13 @@ fn draw_settings(
             SettingsTab::General => general_tab(ui, settings),
             SettingsTab::Habitat => habitat_tab(ui, settings, monitors, editor_active, outcome),
             SettingsTab::Applications => applications_tab(ui, settings, windows, outcome),
-            SettingsTab::About => about_tab(ui, outcome, save_location),
+            SettingsTab::About => about_tab(
+                ui,
+                outcome,
+                save_location,
+                update_status,
+                automatic_update_checks,
+            ),
         });
         ui.separator();
         if let Some(message) = error.as_deref() {
@@ -599,11 +621,90 @@ fn applications_tab(
     }
 }
 
-fn about_tab(ui: &mut egui::Ui, outcome: &mut SettingsOutcome, save_location: &str) {
-    ui.heading(format!("Formiga {}", env!("CARGO_PKG_VERSION")));
+fn about_tab(
+    ui: &mut egui::Ui,
+    outcome: &mut SettingsOutcome,
+    save_location: &str,
+    update_status: &UpdateStatus,
+    automatic_update_checks: bool,
+) {
+    ui.heading(format!("Formiga {APP_VERSION}"));
     ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
     ui.add_space(8.0);
-    ui.label("Local-only. No accounts, network service, screenshots, window titles, keystrokes, or telemetry.");
+    ui.label("No accounts, screenshots, window titles, keystrokes, behavioral uploads, or telemetry.");
+    ui.label("Optional update checks contact only the public Formiga repository on GitHub.");
+    let mut automatic = automatic_update_checks;
+    if ui
+        .checkbox(&mut automatic, "Check GitHub for updates automatically")
+        .changed()
+    {
+        outcome.automatic_update_checks = Some(automatic);
+    }
+    ui.add_space(6.0);
+    ui.group(|ui| {
+        ui.strong("Updates");
+        match update_status {
+            UpdateStatus::Idle => {
+                ui.label("No update check has run in this session.");
+                if ui.button("Check for Updates…").clicked() {
+                    outcome.check_updates = true;
+                }
+            }
+            UpdateStatus::Checking => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Checking GitHub Releases…");
+                });
+            }
+            UpdateStatus::UpToDate { .. } => {
+                ui.label("Formiga is up to date.");
+                if ui.button("Check Again").clicked() {
+                    outcome.check_updates = true;
+                }
+            }
+            UpdateStatus::Available(release) => {
+                let preview = if release.prerelease { " preview" } else { "" };
+                ui.label(format!("Formiga {}{preview} is available.", release.version));
+                if !release.notes.trim().is_empty() {
+                    ui.collapsing("Release notes", |ui| {
+                        ui.label(release.notes.trim());
+                    });
+                }
+                ui.hyperlink_to("View this release on GitHub", &release.page_url);
+                if ui.button("Download Verified Update").clicked() {
+                    outcome.download_update = true;
+                }
+            }
+            UpdateStatus::Downloading(release) => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(format!("Downloading Formiga {}…", release.version));
+                });
+            }
+            UpdateStatus::Ready(downloaded) => {
+                ui.label(format!(
+                    "Formiga {} is downloaded and SHA-256 verified.",
+                    downloaded.release.version
+                ));
+                #[cfg(target_os = "windows")]
+                let install_label = "Run Update Installer and Quit Formiga";
+                #[cfg(target_os = "macos")]
+                let install_label = "Open Update Disk Image";
+                if ui.button(install_label).clicked() {
+                    outcome.install_update = true;
+                }
+            }
+            UpdateStatus::Failed(message) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(241, 142, 119),
+                    format!("Update check failed: {message}"),
+                );
+                if ui.button("Try Again").clicked() {
+                    outcome.check_updates = true;
+                }
+            }
+        }
+    });
     ui.add_space(8.0);
     ui.label(format!("Save: {save_location}"));
     ui.label("License: MIT. Third-party dependency versions are recorded in Cargo.lock.");

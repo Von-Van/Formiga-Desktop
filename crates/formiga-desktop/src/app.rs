@@ -3,6 +3,9 @@ use crate::interaction::{InteractionProxy, ProxyRuntimeState};
 use crate::platform;
 use crate::settings::{SettingsOutcome, SettingsWindow};
 use crate::tray::{TrayAction, TrayState};
+use crate::updater::{
+    DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus, check_github, download_update,
+};
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use formiga_art::AnimationSpec;
@@ -17,13 +20,20 @@ use tray_icon::menu::MenuEvent;
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId, WindowLevel};
 
 #[derive(Debug)]
 pub enum UserEvent {
     Menu(MenuEvent),
+    Update(UpdateEvent),
+}
+
+#[derive(Debug)]
+pub enum UpdateEvent {
+    CheckFinished(std::result::Result<Option<UpdateRelease>, String>),
+    DownloadFinished(std::result::Result<DownloadedUpdate, String>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -75,12 +85,15 @@ pub struct FormigaApp {
     settings_window: Option<SettingsWindow>,
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
     habitat_editor: Option<HabitatEditor>,
+    event_proxy: EventLoopProxy<UserEvent>,
+    updates: UpdateController,
 }
 
 impl FormigaApp {
-    pub fn new(log_dir: PathBuf) -> Result<Self> {
+    pub fn new(log_dir: PathBuf, event_proxy: EventLoopProxy<UserEvent>) -> Result<Self> {
         let project = ProjectDirs::from("com", "Formiga", "Formiga")
             .context("resolve application data directory")?;
+        let updates = UpdateController::load(project.data_dir());
         Ok(Self {
             overlays: BTreeMap::new(),
             monitors: Vec::new(),
@@ -100,6 +113,8 @@ impl FormigaApp {
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
             habitat_editor: None,
+            event_proxy,
+            updates,
         })
     }
 
@@ -125,6 +140,12 @@ impl FormigaApp {
         self.save()?;
         if first_launch {
             self.show_settings(event_loop);
+        }
+        if self
+            .updates
+            .should_check_automatically(OffsetDateTime::now_utc())
+        {
+            self.start_update_check();
         }
         Ok(())
     }
@@ -360,6 +381,69 @@ impl FormigaApp {
         true
     }
 
+    fn start_update_check(&mut self) {
+        if !self.updates.begin_check() {
+            return;
+        }
+        self.sync_update_ui();
+        let proxy = self.event_proxy.clone();
+        std::thread::Builder::new()
+            .name("formiga-update-check".into())
+            .spawn(move || {
+                let result = check_github().map_err(|error| error.to_string());
+                let _ = proxy.send_event(UserEvent::Update(UpdateEvent::CheckFinished(result)));
+            })
+            .expect("spawn update-check worker");
+    }
+
+    fn start_update_download(&mut self) {
+        let Some((release, directory)) = self.updates.begin_download() else {
+            return;
+        };
+        self.sync_update_ui();
+        let proxy = self.event_proxy.clone();
+        std::thread::Builder::new()
+            .name("formiga-update-download".into())
+            .spawn(move || {
+                let result = download_update(release, directory).map_err(|error| error.to_string());
+                let _ = proxy.send_event(UserEvent::Update(UpdateEvent::DownloadFinished(result)));
+            })
+            .expect("spawn update-download worker");
+    }
+
+    fn handle_update_event(&mut self, event_loop: &ActiveEventLoop, event: UpdateEvent) {
+        let reveal = match event {
+            UpdateEvent::CheckFinished(result) => self.updates.finish_check(result),
+            UpdateEvent::DownloadFinished(result) => {
+                self.updates.finish_download(result);
+                true
+            }
+        };
+        if let UpdateStatus::Failed(error) = self.updates.status() {
+            tracing::warn!(%error, "update operation failed");
+        }
+        self.sync_update_ui();
+        if reveal {
+            self.show_update_settings(event_loop);
+        }
+    }
+
+    fn show_update_settings(&mut self, event_loop: &ActiveEventLoop) {
+        self.show_settings(event_loop);
+        if let Some(window) = &mut self.settings_window {
+            window.select_about();
+        }
+    }
+
+    fn sync_update_ui(&mut self) {
+        if let Some(tray) = &self.tray {
+            tray.sync_update(self.updates.status());
+        }
+        if let Some(window) = &self.settings_window {
+            window.window.request_redraw();
+        }
+    }
+
     fn handle_menu(&mut self, event_loop: &ActiveEventLoop, event: &MenuEvent) {
         let Some(previous_launch) = self
             .world
@@ -405,6 +489,17 @@ impl FormigaApp {
                     world.handle_command(WorldCommand::GatherCreatures, &desktop);
                 }
                 let _ = self.save();
+            }
+            TrayAction::CheckForUpdates => {
+                if matches!(
+                    self.updates.status(),
+                    UpdateStatus::Available(_) | UpdateStatus::Downloading(_) | UpdateStatus::Ready(_)
+                ) {
+                    self.show_update_settings(event_loop);
+                } else {
+                    self.show_update_settings(event_loop);
+                    self.start_update_check();
+                }
             }
             TrayAction::None => {}
         }
@@ -599,7 +694,11 @@ impl FormigaApp {
         let _ = self.save();
     }
 
-    fn handle_settings_outcome(&mut self, outcome: SettingsOutcome) {
+    fn handle_settings_outcome(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        outcome: SettingsOutcome,
+    ) {
         if let Some(settings) = outcome.applied {
             let previous_launch = self
                 .world
@@ -622,6 +721,38 @@ impl FormigaApp {
             && let Err(error) = platform::open_directory(&self.log_dir)
         {
             tracing::error!(%error, "could not open diagnostic log directory");
+        }
+        if let Some(enabled) = outcome.automatic_update_checks {
+            if let Err(error) = self.updates.set_automatic_checks(enabled) {
+                tracing::error!(%error, "could not save update preference");
+            }
+            if enabled
+                && self
+                    .updates
+                    .should_check_automatically(OffsetDateTime::now_utc())
+            {
+                self.start_update_check();
+            }
+        }
+        if outcome.check_updates {
+            self.start_update_check();
+        }
+        if outcome.download_update {
+            self.start_update_download();
+        }
+        if outcome.install_update
+            && let Some(downloaded) = self.updates.ready_update().cloned()
+        {
+            let _ = self.save();
+            match platform::launch_update(&downloaded.path) {
+                Ok(quit) if quit => event_loop.exit(),
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::error!(%error, "could not launch update installer");
+                    self.updates.fail(error.to_string());
+                    self.sync_update_ui();
+                }
+            }
         }
         if outcome.browse_application
             && let Some((application, display_name)) = platform::browse_application()
@@ -971,6 +1102,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::Menu(event) => self.handle_menu(event_loop, &event),
+            UserEvent::Update(event) => self.handle_update_event(event_loop, event),
         }
     }
 
@@ -1019,7 +1151,13 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
-                        match window.render(event_loop, &self.monitors, &self.cached_windows) {
+                        match window.render(
+                            event_loop,
+                            &self.monitors,
+                            &self.cached_windows,
+                            self.updates.status(),
+                            self.updates.automatic_checks(),
+                        ) {
                             Ok(value) => outcome = Some(value),
                             Err(error) => tracing::error!(%error, "settings render failed"),
                         }
@@ -1035,7 +1173,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 }
             }
             if let Some(outcome) = outcome {
-                self.handle_settings_outcome(outcome);
+                self.handle_settings_outcome(event_loop, outcome);
             }
             return;
         }

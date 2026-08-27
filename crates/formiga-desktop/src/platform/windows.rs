@@ -498,3 +498,12 @@ pub fn open_directory(path: &std::path::Path) -> anyhow::Result<()> {
     anyhow::ensure!(status.success(), "Windows could not open the directory");
     Ok(())
 }
+
+pub fn launch_update(path: &std::path::Path) -> anyhow::Result<bool> {
+    anyhow::ensure!(
+        path.extension().and_then(|value| value.to_str()) == Some("msi"),
+        "Windows updates must use an MSI installer"
+    );
+    Command::new("msiexec.exe").arg("/i").arg(path).spawn()?;
+    Ok(true)
+}

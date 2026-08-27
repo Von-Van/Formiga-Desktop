@@ -16,10 +16,14 @@ formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
 pollster.workspace = true
 rfd.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 time.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+ureq.workspace = true
 tray-icon = "0.24.2"
 wgpu.workspace = true
 winit.workspace = true

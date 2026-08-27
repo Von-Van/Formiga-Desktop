@@ -6,6 +6,10 @@ All notable changes are documented here.
 
 ### Added
 
+- Optional once-daily and manual GitHub release checks in the tray and About screen.
+- Background downloads for exact-platform DMG/MSI assets with size limits and mandatory SHA-256
+  verification before the installer can be opened.
+- Windows MSI handoff with clean Formiga shutdown and macOS DMG handoff for manual replacement.
 - Autonomous eating, drinking, and short sprinting behaviors with distinct drive outcomes.
 - Deterministic balls, yarn, tossed leaves, snacks, cups, and bowls derived from each creature's
   existing appearance genome and pre-baked into its animation atlas.
@@ -14,6 +18,7 @@ All notable changes are documented here.
 
 ### Changed
 
+- Tagged release versions now flow into the binary, macOS bundle, Windows MSI, and artifact names.
 - Solo play now visibly manipulates a generated toy instead of relying on an effect motif alone.
 - Desktop scheduling treats sprinting as spatial motion while eating and drinking remain low-cost
   pose-only clips.

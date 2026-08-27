@@ -324,6 +324,15 @@ pub fn open_directory(path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn launch_update(path: &std::path::Path) -> anyhow::Result<bool> {
+    anyhow::ensure!(
+        path.extension().and_then(|value| value.to_str()) == Some("dmg"),
+        "macOS updates must use a disk image"
+    );
+    Command::new("open").arg(path).spawn()?;
+    Ok(false)
+}
+
 fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")

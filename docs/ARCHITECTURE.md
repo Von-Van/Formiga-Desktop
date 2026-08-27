@@ -22,6 +22,12 @@ formiga-art: genome → family rig → normalized pose → deterministic atlas
  formiga-desktop: per-monitor overlays + interaction proxies + occlusion uniforms
 ```
 
+The assisted updater is a separate desktop-host service, not an input to `DesktopSnapshot` or the
+world simulation. At launch it may schedule one short-lived worker to read public GitHub release
+metadata. User-approved downloads run on a second short-lived worker, stream into a temporary file,
+enforce size limits, and become launchable only after SHA-256 verification. Completion returns to the
+main event loop through `UserEvent`; no async runtime, updater daemon, or render-loop polling is added.
+
 ## Procedural identity and animation
 
 A 256-bit colony seed derives named ChaCha streams for appearance, personality, markings, animation
@@ -84,4 +90,5 @@ State uses a versioned JSON file written by temporary-file, flush, atomic replac
 Version 4 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 and assigns v3 colonies a deterministic shelter without replacing creature identity. Home timestamps
 survive relaunches and clock rollback uses the existing maximum-seen UTC guard. There is deliberately
-no history database or telemetry layer.
+no history database or telemetry layer. Update preferences live in a separate `updates.json` file so
+network policy and check timing cannot alter or invalidate a colony save.

@@ -4,9 +4,10 @@
 
 ![A small Formiga colony living among desktop windows](docs/assets/hero.png)
 
-Formiga is a local-only desktop ecosystem for macOS and Windows. Seeded procedural creatures live
+Formiga is a privacy-first desktop ecosystem for macOS and Windows. Seeded procedural creatures live
 in transparent desktop overlays, develop simple habits, perch on ordinary windows, react to the
-cursor, and eventually grow into a four-creature colony.
+cursor, and eventually grow into a four-creature colony. The colony and its behavior stay local;
+the only optional network feature is a lightweight GitHub release check.
 
 Between those larger reactions, creatures now entertain themselves with generated toys, pause for
 small snacks and drinks, and occasionally sprint along their current desktop surface.
@@ -21,10 +22,13 @@ for your computer—no terminal or development tools are required:
   and Start-menu shortcuts.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
-Show/Hide, Pause, Gather Creatures, Settings, and Quit. The current portfolio downloads are unsigned,
-so macOS may require Control-click → **Open**, while Windows may require **More info → Run anyway**.
-Those warnings disappear once release signing credentials are added; Formiga never asks users to
-disable operating-system security.
+Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit. Formiga can check the
+public GitHub Releases page once per day, and the option can be disabled under **Settings → About**.
+It never silently installs an update: Windows opens a verified MSI, while macOS opens a verified DMG
+so the user can replace the app. The current portfolio downloads are unsigned, so macOS may require
+Control-click → **Open**, while Windows may require **More info → Run anyway**. Those warnings
+disappear once release signing credentials are added; Formiga never asks users to disable
+operating-system security.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
 
@@ -51,6 +55,8 @@ desktop interactions:
   lasts 15 minutes and cannot return until its 15-minute cooldown has elapsed.
 - Dismiss the shelter immediately by dragging a homebound creature back into the desktop world.
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
+- Check for new GitHub releases without blocking the desktop, verify downloads with SHA-256, and
+  hand the approved installer to the operating system.
 - Load v0.1 colonies through an identity-preserving save migration.
 
 ## What's cool about it?
@@ -69,6 +75,11 @@ per-app OS z-order manipulation.
 Passive-activity props are derived from the creature's stored markings and face signature. They are
 rasterized into the body atlas at load time, so colonies gain visual variety without loading external
 assets, running particles, or generating art during ordinary desktop use.
+
+The assisted updater is independent of the simulation and renderer. It makes no more than one
+automatic metadata request per 24 hours, does all network and hashing work on a background thread,
+accepts only the exact platform package name, and refuses to offer an installer until its SHA-256
+digest matches the release metadata or companion checksum file.
 
 ![One hundred uncurated deterministic creature seeds](docs/assets/contact-sheet.png)
 

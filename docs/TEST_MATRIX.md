@@ -16,6 +16,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Habitat region algebra | CI | CI |
 | Drag state/cancel/landing | CI | CI |
 | Alpha-mask and occlusion geometry | CI | CI |
+| Update version/asset selection and 24-hour throttle | CI | CI |
+| Update digest validation and unsafe-name rejection | CI | CI |
 | Universal app / x64 package | CI | CI |
 
 ## Manual release gates
@@ -36,5 +38,8 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
 | Package install, relaunch, and v1/v2 migration | pending | pending | pending | pending |
+| Manual and automatic GitHub update check | pending | pending | pending | pending |
+| Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
+| DMG/MSI handoff without silent installation | pending | pending | pending | pending |
 
 Unsigned preview status must remain explicit until signing credentials are configured.

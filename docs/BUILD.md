@@ -23,6 +23,13 @@ Windows MSI; the ZIP files are portable alternatives. Opening Formiga for the fi
 colony and opens Settings automatically. No Rust installation, command line, or separate runtime is
 needed.
 
+The release tag is the package source of truth. A tag such as `v0.32.0` builds an application that
+reports version `0.32.0`, places the same version in the macOS bundle and Windows MSI, and publishes
+the exact updater-compatible names `Formiga-0.32.0-macOS-universal.dmg` and
+`Formiga-0.32.0-windows-x64.msi`. Do not rename these two assets after publishing. Their companion
+`.sha256` files are the fallback verification source when GitHub release metadata does not provide a
+digest.
+
 ## macOS universal preview
 
 Run `bash scripts/package-macos.sh` on macOS. It creates an arm64/x86_64 universal app, ad-hoc signs
@@ -46,4 +53,5 @@ Unsigned portfolio preview: Windows SmartScreen may show **More info → Run any
 signing requires the release owner's certificate and remains a release-secret hook.
 
 GitHub Actions checks both operating systems and packages unsigned preview artifacts. Tags matching
-`v*` feed the release workflow.
+`v*` feed the release workflow. The current workflow marks portfolio builds as prereleases; the app
+intentionally checks those releases as well as stable releases.

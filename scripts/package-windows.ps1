@@ -7,6 +7,8 @@ $RepoDir = Split-Path -Parent $PSScriptRoot
 $DistDir = Join-Path $RepoDir "dist"
 $Exe = Join-Path $RepoDir "target\x86_64-pc-windows-msvc\release\formiga.exe"
 $Version = if ($env:FORMIGA_VERSION) { $env:FORMIGA_VERSION } else { "0.31.0" }
+$Version = $Version.TrimStart("v")
+$env:FORMIGA_BUILD_VERSION = $Version
 $Portable = Join-Path $DistDir "Formiga-$Version-windows-x64.zip"
 $Installer = Join-Path $DistDir "Formiga-$Version-windows-x64.msi"
 $PortableDir = Join-Path $DistDir "Formiga-portable"
@@ -40,6 +42,7 @@ try {
         wix build `
             -d "FormigaExe=$Exe" `
             -d "FormigaIcon=$Icon" `
+            -d "FormigaVersion=$Version" `
             -arch x64 `
             -o $Installer `
             (Join-Path $RepoDir "packaging\windows\Formiga.wxs")

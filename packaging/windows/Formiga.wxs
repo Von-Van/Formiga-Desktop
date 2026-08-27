@@ -3,7 +3,7 @@
   <Package
       Name="Formiga"
       Manufacturer="Formiga"
-      Version="0.31.0"
+      Version="$(FormigaVersion)"
       UpgradeCode="A66A84EB-D317-43B4-8765-1B1BB3D43A7B"
       Scope="perUser">
     <MajorUpgrade DowngradeErrorMessage="A newer version of Formiga is already installed." />

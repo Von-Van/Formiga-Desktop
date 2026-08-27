@@ -7,6 +7,14 @@
 - Utility-driven passive actions with distinct energy, comfort, boredom, and arousal outcomes.
 - No additional OS polling, particle system, runtime asset generation, or save migration.
 
+## Unreleased assisted-update pass
+
+- Optional once-daily and manual checks against public GitHub release metadata.
+- Exact-platform MSI/DMG selection, bounded background download, and SHA-256 verification.
+- Windows installer handoff and quit; macOS DMG handoff for manual app replacement.
+- Release tags provide the app, package, and installer versions used by update comparison.
+- No silent installation, telemetry, account, updater service, or extra simulation/rendering work.
+
 ## v0.31 background-efficiency release
 
 - Full-screen applications cover the ecosystem by default on each affected display.
@@ -35,7 +43,7 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
 
 - Behavioral observation storage, research/Lab UI, export, and ML experiments.
 - Accessories, seasonal history, audio, breeding, and new colony mechanics.
-- Cross-monitor autonomous travel, side climbing, direct petting, and auto-update.
+- Cross-monitor autonomous travel, side climbing, and direct petting.
 - Linux investigation only after the macOS and Windows experience is stable.
 
 The post-v0.31 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than
