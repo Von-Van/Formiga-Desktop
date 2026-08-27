@@ -59,7 +59,9 @@ struct ShelterGpu {
 }
 
 const ATLAS_COLUMNS: u32 = 10;
-const FACE_ATLAS_COLUMNS: u32 = 18;
+// There are exactly 27 eyelid/gaze combinations per expression. Keeping one expression per row
+// avoids padding slots and leaves enough texture budget for additional pre-baked body actions.
+const FACE_ATLAS_COLUMNS: u32 = 27;
 
 pub struct OverlayRenderer {
     pub window: Arc<Window>,

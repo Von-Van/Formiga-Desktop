@@ -26,6 +26,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/gesture-sheet.png",
         )),
+        Some("activity-sheet") => activity_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/activity-sheet.png",
+        )),
         Some("portfolio-hero") => {
             portfolio_hero(output_argument_with_default(&args, "docs/assets/hero.png"))
         }
@@ -48,7 +52,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
@@ -190,7 +194,7 @@ fn gesture_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 3;
     let creatures = reference_creatures();
     let cell = FRAME_SIZE * SCALE;
-    let rows_per_family = 2;
+    let rows_per_family = (ActionKind::ALL.len() as u32).div_ceil(COLS);
     let width = COLS * cell;
     let height = creatures.len() as u32 * rows_per_family * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
@@ -211,6 +215,51 @@ fn gesture_sheet(path: PathBuf) -> Result<()> {
                 &rendered.rgba_bytes(),
                 SCALE,
             );
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn activity_sheet(path: PathBuf) -> Result<()> {
+    const COLS: u32 = 8;
+    const SCALE: u32 = 3;
+    const PREVIEW_FRAMES: u8 = 4;
+    const ACTIONS: [ActionKind; 4] = [
+        ActionKind::SoloPlay,
+        ActionKind::Eat,
+        ActionKind::Drink,
+        ActionKind::Sprint,
+    ];
+    let creatures = reference_creatures();
+    let cell = FRAME_SIZE * SCALE;
+    let cells_per_family = ACTIONS.len() as u32 * u32::from(PREVIEW_FRAMES);
+    let rows_per_family = cells_per_family.div_ceil(COLS);
+    let width = COLS * cell;
+    let height = creatures.len() as u32 * rows_per_family * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for (family_index, creature) in creatures.iter().enumerate() {
+        for (action_index, action) in ACTIONS.into_iter().enumerate() {
+            let spec = formiga_art::AnimationSpec::for_action(action);
+            for frame in 0..PREVIEW_FRAMES {
+                let cell_index = action_index as u32 * u32::from(PREVIEW_FRAMES) + u32::from(frame);
+                let rendered = CreatureRenderer::render_frame(
+                    &creature.appearance,
+                    action,
+                    frame % spec.frames,
+                    true,
+                );
+                let row = family_index as u32 * rows_per_family + cell_index / COLS;
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    cell_index % COLS * cell,
+                    row * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+            }
         }
     }
     write_png(&path, width, height, &pixels)?;

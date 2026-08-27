@@ -8,6 +8,9 @@ Formiga is a local-only desktop ecosystem for macOS and Windows. Seeded procedur
 in transparent desktop overlays, develop simple habits, perch on ordinary windows, react to the
 cursor, and eventually grow into a four-creature colony.
 
+Between those larger reactions, creatures now entertain themselves with generated toys, pause for
+small snacks and drinks, and occasionally sprint along their current desktop surface.
+
 ## Download and run
 
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
@@ -36,6 +39,9 @@ desktop interactions:
 - Read state and activity through eleven expressions, two-dimensional gaze, eyelids, and irregular blinks.
 - See family-specific pseudopods, mitten hands, or front paws gesture in every activity.
 - Notice tiny pre-baked sleep, investigation, play, greeting, and startle effects without a particle loop.
+- Watch generated balls, yarn, leaves, snacks, cups, and bowls coordinate with each family's hands
+  or front paws during passive activities.
+- See energetic personalities break into short, higher-cost sprints without adding another runtime loop.
 - Drag a creature by its opaque pixels without blocking unrelated desktop clicks.
 - Limit the colony to presets or up to 32 allowed/excluded rectangles across displays.
 - Let selected applications visually cover creatures without inspecting window content.
@@ -60,11 +66,17 @@ only a creature's current alpha mask for dragging. Application hiding is a local
 computed from safe window rectangles and stable application identities—not screen capture or true
 per-app OS z-order manipulation.
 
+Passive-activity props are derived from the creature's stored markings and face signature. They are
+rasterized into the body atlas at load time, so colonies gain visual variety without loading external
+assets, running particles, or generating art during ordinary desktop use.
+
 ![One hundred uncurated deterministic creature seeds](docs/assets/contact-sheet.png)
 
 ![Expression grammar across blob, hopper, and soft-quadruped families](docs/assets/expression-sheet.png)
 
 ![Activity-coordinated gestures across every action](docs/assets/gesture-sheet.png)
+
+![Generated toys, snacks, drinkware, and sprint poses](docs/assets/activity-sheet.png)
 
 ![Deterministic leaf-tent, mushroom, cushion, and paper-house shelters](docs/assets/shelter-sheet.png)
 
@@ -95,6 +107,7 @@ cargo run -p formiga-tools -- contact-sheet --output docs/assets/contact-sheet.p
 cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/animation-preview.png
 cargo run -p formiga-tools -- expression-sheet --output docs/assets/expression-sheet.png
 cargo run -p formiga-tools -- gesture-sheet --output docs/assets/gesture-sheet.png
+cargo run -p formiga-tools -- activity-sheet --output docs/assets/activity-sheet.png
 cargo run -p formiga-tools -- app-icon --output packaging/shared
 cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
 ```

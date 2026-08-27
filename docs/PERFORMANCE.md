@@ -22,6 +22,7 @@ presenting empty, hidden, and fully occluded monitor overlays. Full-screen appli
 hides the native overlay itself, avoiding transparent full-display compositor work while covered.
 
 The procedural atlas budget is independently enforced in tests: body and face textures total less
-than 1 MB per creature. A local optimized test on 2026-08-26 produced an 866,304-byte layered atlas
-in 0.51 ms, comfortably below the 75 ms bake budget. Atlas generation occurs only when a creature
-loads or reduced-motion changes; runtime platform measurements remain pending in the table above.
+than 1 MB per creature. A local optimized test on 2026-08-27, including the generated passive props
+and three new action clips, produced a 1,041,408-byte layered atlas in 0.84 ms. Atlas generation
+occurs only when a creature loads or reduced-motion changes; runtime platform measurements remain
+pending in the table above.

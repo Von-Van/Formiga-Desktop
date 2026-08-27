@@ -1074,6 +1074,7 @@ fn update_drives(creature: &mut Creature, dt: f32) {
     let moving = matches!(
         creature.state.action,
         ActionKind::Traverse
+            | ActionKind::Sprint
             | ActionKind::InvestigateCursor
             | ActionKind::AvoidCursor
             | ActionKind::Follow
@@ -1085,8 +1086,14 @@ fn update_drives(creature: &mut Creature, dt: f32) {
             (creature.state.drives.sleep_pressure - dt * 0.05).max(0.0);
         creature.state.drives.arousal = (creature.state.drives.arousal - dt * 0.08).max(0.0);
     } else {
-        creature.state.drives.energy =
-            (creature.state.drives.energy - dt * if moving { 0.008 } else { 0.002 }).max(0.0);
+        let movement_cost = if creature.state.action == ActionKind::Sprint {
+            0.02
+        } else if moving {
+            0.008
+        } else {
+            0.002
+        };
+        creature.state.drives.energy = (creature.state.drives.energy - dt * movement_cost).max(0.0);
         creature.state.drives.sleep_pressure =
             (creature.state.drives.sleep_pressure + dt * 0.0025).min(1.0);
         creature.state.drives.boredom = (creature.state.drives.boredom + dt * 0.004).min(1.0);
@@ -1106,13 +1113,18 @@ fn execute_action(
     let speed = 24.0 + creature.personality.activity * 34.0;
     let mut target_x = None;
     match creature.state.action {
-        ActionKind::Traverse => {
+        ActionKind::Traverse | ActionKind::Sprint => {
             let direction = if creature.state.facing_right {
                 1.0
             } else {
                 -1.0
             };
-            creature.state.velocity.x = direction * speed;
+            let multiplier = if creature.state.action == ActionKind::Sprint {
+                2.35
+            } else {
+                1.0
+            };
+            creature.state.velocity.x = direction * speed * multiplier;
         }
         ActionKind::InvestigateCursor if desktop.cursor.available => {
             target_x = Some(desktop.cursor.position.x)
@@ -1132,6 +1144,17 @@ fn execute_action(
         }
         ActionKind::SoloPlay => {
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.09).max(0.0);
+        }
+        ActionKind::Eat => {
+            creature.state.drives.energy = (creature.state.drives.energy + dt * 0.025).min(1.0);
+            creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.018).min(1.0);
+            creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.018).max(0.0);
+        }
+        ActionKind::Drink => {
+            creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.024).min(1.0);
+            creature.state.drives.arousal = (creature.state.drives.arousal - dt * 0.04).max(0.0);
+            creature.state.drives.curiosity_satisfaction =
+                (creature.state.drives.curiosity_satisfaction + dt * 0.012).min(1.0);
         }
         ActionKind::ReactToWindow => {
             creature.state.velocity.x = if creature.state.facing_right {
@@ -1158,10 +1181,12 @@ fn action_duration<R: Rng + ?Sized>(action: ActionKind, rng: &mut R) -> f32 {
     let range = match action {
         ActionKind::Sleep => 18.0..45.0,
         ActionKind::Traverse | ActionKind::Follow => 4.0..11.0,
+        ActionKind::Sprint => 2.5..5.5,
         ActionKind::InvestigateCursor | ActionKind::AvoidCursor | ActionKind::ReactToWindow => {
             2.0..5.0
         }
         ActionKind::Greet | ActionKind::SocialPlay | ActionKind::SoloPlay => 3.0..8.0,
+        ActionKind::Eat | ActionKind::Drink => 5.0..9.0,
         _ => 3.0..10.0,
     };
     rng.random_range(range)
@@ -2093,5 +2118,47 @@ mod tests {
         assert!(!world.save.home.is_active());
         world.tick(created + time::Duration::minutes(15), 0.05, &desktop);
         assert!(world.save.home.is_active());
+    }
+
+    #[test]
+    fn passive_activity_actions_have_distinct_state_outcomes() {
+        let desktop = desktop();
+        let creature = World::new([61; 32], datetime!(2026-01-01 0:00 UTC), &desktop)
+            .save
+            .creatures
+            .remove(0);
+        let context = BehaviorContext {
+            nearest_creature_distance: None,
+            nearest_creature_position: None,
+            nearest_creature_id: None,
+            on_window_ledge: false,
+            reachable_window_ledge: false,
+            window_changed_nearby: false,
+            hour_utc: 12,
+        };
+
+        let mut eating = creature.clone();
+        eating.state.action = ActionKind::Eat;
+        eating.state.drives.energy = 0.25;
+        let energy_before = eating.state.drives.energy;
+        update_drives(&mut eating, 1.0);
+        execute_action(&mut eating, &desktop, context, 1.0, None);
+        assert!(eating.state.drives.energy > energy_before);
+
+        let mut drinking = creature.clone();
+        drinking.state.action = ActionKind::Drink;
+        drinking.state.drives.comfort = 0.2;
+        drinking.state.drives.arousal = 0.8;
+        execute_action(&mut drinking, &desktop, context, 1.0, None);
+        assert!(drinking.state.drives.comfort > 0.2);
+        assert!(drinking.state.drives.arousal < 0.8);
+
+        let mut sprinting = creature;
+        sprinting.state.action = ActionKind::Sprint;
+        sprinting.state.facing_right = true;
+        let start_x = sprinting.state.position.x;
+        let walking_speed = 24.0 + sprinting.personality.activity * 34.0;
+        execute_action(&mut sprinting, &desktop, context, 0.5, None);
+        assert!(sprinting.state.position.x - start_x > walking_speed * 0.5 * 2.0);
     }
 }

@@ -9,8 +9,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1/v2→v3 migration | CI | CI |
+| v1/v2/v3→v4 migration | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
+| Generated passive-prop determinism and alpha coverage | CI | CI |
 | Layered atlas under 1 MB per creature | CI | CI |
 | Habitat region algebra | CI | CI |
 | Drag state/cancel/landing | CI | CI |

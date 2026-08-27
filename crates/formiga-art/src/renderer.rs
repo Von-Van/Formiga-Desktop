@@ -126,6 +126,8 @@ impl AnimationSpec {
     pub fn for_action(action: ActionKind) -> Self {
         match action {
             ActionKind::Traverse | ActionKind::Follow => Self { frames: 6, fps: 10 },
+            ActionKind::Sprint => Self { frames: 6, fps: 12 },
+            ActionKind::Eat | ActionKind::Drink => Self { frames: 4, fps: 6 },
             ActionKind::Sleep => Self { frames: 2, fps: 2 },
             ActionKind::Idle | ActionKind::Perch | ActionKind::RideWindow => {
                 Self { frames: 4, fps: 4 }
@@ -198,6 +200,15 @@ impl CreatureRenderer {
                 draw_quadruped(&mut canvas, genome, palette, pose, action, frame)
             }
         };
+        draw_activity_prop(
+            &mut canvas,
+            genome,
+            palette,
+            face_anchor,
+            action,
+            frame,
+            reduce_motion,
+        );
         draw_effects(
             &mut canvas,
             genome,
@@ -323,6 +334,16 @@ impl Pose {
                 appendage_lift: walk,
                 tail_sway: alternate,
             },
+            ActionKind::Sprint => Self {
+                bob: -walk.abs() * bob_amount.max(1),
+                squash_x: walk.abs(),
+                squash_y: -walk.abs(),
+                step_a: walk * 3,
+                step_b: alternate * 3,
+                play_lift: walk.abs(),
+                appendage_lift: walk * 2,
+                tail_sway: alternate * 2,
+            },
             ActionKind::Sleep => Self {
                 bob: frame as i32 % 2,
                 squash_x: 3,
@@ -352,6 +373,16 @@ impl Pose {
                 play_lift: walk.abs(),
                 appendage_lift: 2 + walk.abs(),
                 tail_sway: walk * 2,
+            },
+            ActionKind::Eat | ActionKind::Drink => Self {
+                bob: i32::from(frame % 2),
+                squash_x: 1,
+                squash_y: -1,
+                step_a: 0,
+                step_b: 0,
+                play_lift: 0,
+                appendage_lift: 1,
+                tail_sway: if frame.is_multiple_of(3) { 1 } else { 0 },
             },
             ActionKind::AvoidCursor | ActionKind::ReactToWindow => Self {
                 bob: -walk.abs(),
@@ -1044,7 +1075,10 @@ fn draw_quadruped_forelimbs(
     limb_pose: LimbPose,
     ground: i32,
 ) {
-    if matches!(limb_pose.action, ActionKind::Traverse | ActionKind::Follow) {
+    if matches!(
+        limb_pose.action,
+        ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint
+    ) {
         draw_quad_leg(
             canvas,
             palette,
@@ -1088,7 +1122,7 @@ fn limb_targets(
     };
     match action {
         ActionKind::Idle => side_rest(),
-        ActionKind::Traverse => offset_pair(
+        ActionKind::Traverse | ActionKind::Sprint => offset_pair(
             left,
             right,
             (
@@ -1112,8 +1146,19 @@ fn limb_targets(
         ActionKind::SoloPlay => offset_pair(
             left,
             right,
-            ((2 + pulse, -length + 2), (-2 - pulse, -length + 2)),
+            match frame % 4 {
+                0 => ((2, length), (-2, length)),
+                1 => ((2, 1), (length + 1, -2)),
+                2 => ((length - 1, -length), (-length + 1, -length)),
+                _ => ((-length - 1, -2), (-2, 1)),
+            },
         ),
+        ActionKind::Eat => offset_pair(
+            left,
+            right,
+            ((length + 1, -1 + pulse), (-length - 1, -1 - pulse)),
+        ),
+        ActionKind::Drink => offset_pair(left, right, ((length - 1, 1), (-1, 1 - pulse))),
         ActionKind::Greet => offset_pair(left, right, ((2, 2), (length + pulse, -length - pulse))),
         ActionKind::Follow => offset_pair(left, right, ((-2, length - 2), (length + 2, -1))),
         ActionKind::SocialPlay => offset_pair(left, right, ((2, 1), (length + 2, -length + pulse))),
@@ -1354,6 +1399,128 @@ fn draw_quad_leg(
     canvas.fill_ellipse(x + step + 1, ground, 2, 1, palette.accent);
 }
 
+fn draw_activity_prop(
+    canvas: &mut Canvas,
+    genome: &AppearanceGenome,
+    palette: Palette,
+    face: PixelPoint,
+    action: ActionKind,
+    frame: u8,
+    reduce_motion: bool,
+) {
+    let phase = if reduce_motion { 0 } else { frame % 4 };
+    let variant = ((genome.marking_seed ^ u64::from(genome.face_signature)) % 4) as u8;
+    match action {
+        ActionKind::SoloPlay => {
+            let (x, y) = match phase {
+                0 => (face.x + 7, face.y + 8),
+                1 => (face.x + 10, face.y + 3),
+                2 => (face.x + 6, face.y - 7),
+                _ => (face.x + 3, face.y + 2),
+            };
+            draw_generated_toy(canvas, palette, genome.effect_motif, variant, x, y);
+        }
+        ActionKind::Eat => {
+            let x = face.x + 5 - i32::from(phase >= 2);
+            let y = face.y + 5 - i32::from(phase % 3);
+            draw_generated_snack(canvas, palette, variant, x, y, phase);
+        }
+        ActionKind::Drink => {
+            let x = face.x + 4;
+            let y = face.y + 7 - i32::from(phase == 1 || phase == 2) * 2;
+            draw_generated_drinkware(canvas, palette, variant, x, y);
+        }
+        _ => {}
+    }
+}
+
+fn draw_generated_toy(
+    canvas: &mut Canvas,
+    palette: Palette,
+    motif: EffectMotif,
+    variant: u8,
+    x: i32,
+    y: i32,
+) {
+    match variant {
+        0 => {
+            canvas.fill_circle(x, y, 3, palette.outline);
+            canvas.fill_circle(x, y, 2, palette.accent);
+            canvas.line(x - 1, y - 2, x + 2, y + 1, 1, palette.highlight);
+        }
+        1 => {
+            canvas.fill_circle(x, y, 3, palette.outline);
+            canvas.fill_circle(x, y, 2, palette.shadow);
+            canvas.line(x - 2, y, x + 2, y - 1, 1, palette.highlight);
+            canvas.line(x - 1, y + 2, x + 1, y - 2, 1, palette.accent);
+            canvas.line(x + 2, y + 1, x + 4, y + 2, 1, palette.shadow);
+        }
+        2 => {
+            canvas.line(x - 2, y + 2, x + 2, y - 2, 1, palette.outline);
+            canvas.fill_ellipse(x - 1, y, 2, 1, palette.accent);
+            canvas.fill_ellipse(x + 1, y - 1, 2, 1, palette.highlight);
+        }
+        _ => draw_motif(
+            canvas,
+            if motif == EffectMotif::None {
+                EffectMotif::Star
+            } else {
+                motif
+            },
+            x,
+            y,
+            palette.accent,
+        ),
+    }
+}
+
+fn draw_generated_snack(
+    canvas: &mut Canvas,
+    palette: Palette,
+    variant: u8,
+    x: i32,
+    y: i32,
+    phase: u8,
+) {
+    if phase == 3 {
+        canvas.set(x - 1, y, palette.accent);
+        canvas.set(x + 1, y + 1, palette.highlight);
+        return;
+    }
+    match variant % 3 {
+        0 => {
+            canvas.fill_circle(x, y, 2, palette.outline);
+            canvas.fill_circle(x, y, 1, palette.accent);
+            canvas.line(x, y - 2, x + 1, y - 4, 1, palette.shadow);
+        }
+        1 => {
+            canvas.fill_rect(x - 3, y - 2, 6, 5, palette.outline);
+            canvas.fill_rect(x - 2, y - 1, 4, 3, palette.accent);
+            canvas.set(x - 1, y, palette.shadow);
+            canvas.set(x + 1, y + 1, palette.shadow);
+        }
+        _ => {
+            canvas.line(x - 2, y + 2, x + 2, y - 2, 1, palette.outline);
+            canvas.fill_ellipse(x, y, 3, 1, palette.accent);
+            canvas.line(x - 1, y + 1, x + 1, y - 1, 1, palette.highlight);
+        }
+    }
+}
+
+fn draw_generated_drinkware(canvas: &mut Canvas, palette: Palette, variant: u8, x: i32, y: i32) {
+    if variant.is_multiple_of(2) {
+        canvas.fill_rect(x - 3, y - 3, 6, 5, palette.outline);
+        canvas.fill_rect(x - 2, y - 2, 4, 3, palette.highlight);
+        canvas.line(x + 3, y - 2, x + 4, y + 1, 1, palette.outline);
+    } else {
+        canvas.fill_ellipse(x, y, 4, 2, palette.outline);
+        canvas.fill_ellipse(x, y - 1, 3, 1, palette.highlight);
+        canvas.line(x - 3, y, x - 2, y + 2, 1, palette.outline);
+        canvas.line(x + 3, y, x + 2, y + 2, 1, palette.outline);
+    }
+    canvas.set(x, y - 2, palette.accent);
+}
+
 fn draw_effects(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
@@ -1391,6 +1558,24 @@ fn draw_effects(
             (face.y + pulse - 7).max(3),
             palette.accent,
         ),
+        ActionKind::Eat => {
+            if frame % 4 == 3 {
+                canvas.set((face.x + 6).min(44), face.y + 2, palette.accent);
+                canvas.set((face.x + 8).min(45), face.y + 4, palette.highlight);
+            }
+        }
+        ActionKind::Drink => {
+            if frame % 4 == 2 {
+                canvas.set((face.x + 10).min(45), face.y + 5, palette.highlight);
+            }
+        }
+        ActionKind::Sprint => {
+            let y = (face.y + 5).min(43);
+            canvas.line(face.x - 10, y - 3, face.x - 7, y - 3, 1, palette.accent);
+            if !reduce_motion {
+                canvas.line(face.x - 12, y, face.x - 8, y, 1, palette.highlight);
+            }
+        }
         ActionKind::Greet | ActionKind::SocialPlay => {
             draw_motif(
                 canvas,
@@ -1519,12 +1704,14 @@ fn expression_for_action(action: ActionKind) -> ExpressionKind {
     match action {
         ActionKind::Idle => ExpressionKind::Neutral,
         ActionKind::Traverse | ActionKind::RideWindow => ExpressionKind::Focused,
+        ActionKind::Sprint => ExpressionKind::Determined,
         ActionKind::Perch | ActionKind::Homebound => ExpressionKind::Content,
         ActionKind::Sleep => ExpressionKind::Sleepy,
         ActionKind::InvestigateCursor => ExpressionKind::Curious,
         ActionKind::AvoidCursor => ExpressionKind::Worried,
         ActionKind::ReactToWindow => ExpressionKind::Startled,
         ActionKind::SoloPlay | ActionKind::SocialPlay => ExpressionKind::Joy,
+        ActionKind::Eat | ActionKind::Drink => ExpressionKind::Content,
         ActionKind::Greet | ActionKind::Follow => ExpressionKind::Affectionate,
         ActionKind::Dragged => ExpressionKind::Curious,
         ActionKind::Landing => ExpressionKind::Determined,
@@ -1568,6 +1755,13 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
                 ExpressionKind::Content
             }
         }
+        ActionKind::Sprint => {
+            if creature.personality.playfulness > 0.68 && drives.arousal < 0.72 {
+                ExpressionKind::Joy
+            } else {
+                ExpressionKind::Determined
+            }
+        }
         ActionKind::Perch => {
             if drives.sleep_pressure > 0.65 {
                 ExpressionKind::Sleepy
@@ -1593,6 +1787,7 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
             }
         }
         ActionKind::SoloPlay => ExpressionKind::Joy,
+        ActionKind::Eat | ActionKind::Drink => ExpressionKind::Content,
         ActionKind::Greet | ActionKind::Follow | ActionKind::SocialPlay => {
             let affinity = creature
                 .state
@@ -1784,6 +1979,35 @@ mod tests {
             Sha256::digest(first.rgba_bytes()),
             Sha256::digest(second.rgba_bytes())
         );
+    }
+
+    #[test]
+    fn generated_activity_props_are_deterministic_distinct_and_opaque() {
+        let palette = PALETTES[2];
+        let mut hashes = std::collections::BTreeSet::new();
+        for variant in 0..4 {
+            let mut first = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            let mut second = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_generated_toy(&mut first, palette, EffectMotif::Spark, variant, 24, 24);
+            draw_generated_toy(&mut second, palette, EffectMotif::Spark, variant, 24, 24);
+            assert_eq!(first, second);
+            assert!(
+                AlphaMask::from_canvas(&first)
+                    .pixels
+                    .into_iter()
+                    .any(|pixel| pixel)
+            );
+            hashes.insert(Sha256::digest(first.rgba_bytes()).to_vec());
+        }
+        assert_eq!(hashes.len(), 4);
+
+        let mut snack = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        draw_generated_snack(&mut snack, palette, 1, 24, 24, 0);
+        let mut drinkware = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        draw_generated_drinkware(&mut drinkware, palette, 1, 24, 24);
+        assert!(snack.alpha_bounds().is_some());
+        assert!(drinkware.alpha_bounds().is_some());
+        assert_ne!(snack, drinkware);
     }
 
     #[test]

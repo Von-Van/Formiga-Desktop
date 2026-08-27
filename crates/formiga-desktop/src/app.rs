@@ -1175,6 +1175,7 @@ fn world_needs_frequent_window_scan(world: &World) -> bool {
             || matches!(
                 creature.state.action,
                 ActionKind::Traverse
+                    | ActionKind::Sprint
                     | ActionKind::InvestigateCursor
                     | ActionKind::AvoidCursor
                     | ActionKind::ReactToWindow
@@ -1195,6 +1196,7 @@ fn world_has_spatial_motion(world: &World) -> bool {
             || matches!(
                 creature.state.action,
                 ActionKind::Traverse
+                    | ActionKind::Sprint
                     | ActionKind::InvestigateCursor
                     | ActionKind::AvoidCursor
                     | ActionKind::ReactToWindow

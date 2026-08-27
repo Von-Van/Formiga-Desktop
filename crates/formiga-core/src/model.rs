@@ -315,6 +315,9 @@ pub enum ActionKind {
     ReactToWindow,
     RideWindow,
     SoloPlay,
+    Eat,
+    Drink,
+    Sprint,
     Greet,
     Follow,
     SocialPlay,
@@ -324,7 +327,7 @@ pub enum ActionKind {
 }
 
 impl ActionKind {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 18] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -334,6 +337,9 @@ impl ActionKind {
         Self::ReactToWindow,
         Self::RideWindow,
         Self::SoloPlay,
+        Self::Eat,
+        Self::Drink,
+        Self::Sprint,
         Self::Greet,
         Self::Follow,
         Self::SocialPlay,
@@ -342,7 +348,7 @@ impl ActionKind {
         Self::Homebound,
     ];
 
-    pub const AUTONOMOUS: [Self; 12] = [
+    pub const AUTONOMOUS: [Self; 15] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -352,6 +358,9 @@ impl ActionKind {
         Self::ReactToWindow,
         Self::RideWindow,
         Self::SoloPlay,
+        Self::Eat,
+        Self::Drink,
+        Self::Sprint,
         Self::Greet,
         Self::Follow,
         Self::SocialPlay,

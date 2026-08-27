@@ -2,6 +2,22 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Autonomous eating, drinking, and short sprinting behaviors with distinct drive outcomes.
+- Deterministic balls, yarn, tossed leaves, snacks, cups, and bowls derived from each creature's
+  existing appearance genome and pre-baked into its animation atlas.
+- Family-specific hand and front-paw poses for play, eating, drinking, and sprinting.
+- A generated passive-activity art sheet for reviewing every body family.
+
+### Changed
+
+- Solo play now visibly manipulates a generated toy instead of relying on an effect motif alone.
+- Desktop scheduling treats sprinting as spatial motion while eating and drinking remain low-cost
+  pose-only clips.
+
 ## [0.31.0] - 2026-08-26
 
 ### Added

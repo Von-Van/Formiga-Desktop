@@ -77,7 +77,24 @@ pub fn choose_action<R: Rng + ?Sized>(
                     -2.0
                 }
             }
-            ActionKind::SoloPlay => 0.05 + p.playfulness * d.boredom,
+            ActionKind::SoloPlay => 0.08 + p.playfulness * d.boredom * 0.95,
+            ActionKind::Eat => {
+                if d.energy < 0.78 {
+                    0.12 + (1.0 - d.energy) * 1.05 + d.comfort * 0.05
+                } else {
+                    -2.0
+                }
+            }
+            ActionKind::Drink => {
+                0.06 + d.boredom * 0.42 + (1.0 - d.comfort) * 0.38 + d.arousal * 0.12
+            }
+            ActionKind::Sprint => {
+                if d.energy > 0.35 {
+                    0.18 + p.activity * (0.55 + d.boredom * 0.85) + d.arousal * 0.15
+                } else {
+                    -2.0
+                }
+            }
             ActionKind::Greet => social_score(creature, context, 130.0, 0.45),
             ActionKind::Follow => social_score(creature, context, 240.0, 0.35),
             ActionKind::SocialPlay => social_score(creature, context, 100.0, p.playfulness * 0.55),
@@ -152,4 +169,90 @@ fn softmax_sample<R: Rng + ?Sized>(
         }
     }
     scored.last().map(|item| item.0).unwrap_or(ActionKind::Idle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DesktopRect, DisplayKey, MonitorInfo, World};
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha12Rng;
+
+    fn fixture() -> (Creature, DesktopSnapshot, BehaviorContext) {
+        let desktop = DesktopSnapshot {
+            monitors: vec![MonitorInfo {
+                id: 1,
+                display_key: DisplayKey([1; 16]),
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1280.0,
+                    height: 736.0,
+                },
+                scale_factor: 1.0,
+                primary: true,
+            }],
+            ..DesktopSnapshot::default()
+        };
+        let creature = World::new([73; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop)
+            .save
+            .creatures
+            .remove(0);
+        let context = BehaviorContext {
+            nearest_creature_distance: None,
+            nearest_creature_position: None,
+            nearest_creature_id: None,
+            on_window_ledge: false,
+            reachable_window_ledge: false,
+            window_changed_nearby: false,
+            hour_utc: 12,
+        };
+        (creature, desktop, context)
+    }
+
+    fn selection_count(
+        creature: &Creature,
+        desktop: &DesktopSnapshot,
+        context: BehaviorContext,
+        action: ActionKind,
+    ) -> usize {
+        let mut rng = ChaCha12Rng::from_seed([9; 32]);
+        (0..64)
+            .filter(|_| choose_action(creature, desktop, context, &mut rng) == action)
+            .count()
+    }
+
+    #[test]
+    fn passive_actions_become_preferred_in_their_intended_states() {
+        let (mut creature, desktop, context) = fixture();
+        creature.personality.activity = 0.0;
+        creature.personality.playfulness = 0.0;
+        creature.personality.sleep_timing = 0.0;
+        creature.personality.routine_affinity = 0.0;
+        creature.personality.decision_temperature = 0.08;
+        creature.state.drives.energy = 0.05;
+        creature.state.drives.sleep_pressure = 0.0;
+        creature.state.drives.boredom = 0.0;
+        let eat_count = selection_count(&creature, &desktop, context, ActionKind::Eat);
+        assert!(eat_count > 20, "eat selected {eat_count}/64 times");
+
+        creature.state.drives.energy = 1.0;
+        creature.state.drives.boredom = 0.4;
+        creature.state.drives.comfort = 0.0;
+        creature.state.drives.arousal = 1.0;
+        let drink_count = selection_count(&creature, &desktop, context, ActionKind::Drink);
+        assert!(drink_count > 20, "drink selected {drink_count}/64 times");
+
+        creature.personality.activity = 1.0;
+        creature.state.drives.boredom = 1.0;
+        creature.state.drives.comfort = 0.5;
+        let sprint_count = selection_count(&creature, &desktop, context, ActionKind::Sprint);
+        assert!(sprint_count > 35, "sprint selected {sprint_count}/64 times");
+    }
 }

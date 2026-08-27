@@ -33,6 +33,11 @@ face anchor and family-specific forelimb targets. Authored clips manipulate thos
 planted contacts, limb gestures, and secondary tail/head-appendage motion. Markings and temporary
 activity effects remain body-local and are rasterized at integer coordinates.
 
+Passive toys, snacks, and drinkware are deterministically derived from genes already stored in the
+appearance genome. Their colors, shape variants, motion phases, and hand targets are baked into the
+same action atlas as the creature. Eating and drinking therefore add no runtime asset lookup or
+procedural work; sprinting reuses the existing movement tick with a distinct six-frame gait.
+
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face atlas per creature.
 The face atlas contains eleven expressions, nine gaze directions, and three eyelid states. Runtime
 work is limited to selecting two texture slots and drawing two nearest-filtered quads; expression
@@ -68,11 +73,10 @@ creature opts out per vertex.
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
-- Presentation: 20 Hz for movement and each authored clip's native 2–8 Hz for pose-only activity.
+- Presentation: 20 Hz for movement and each authored clip's native 2–12 Hz for pose-only activity.
 - Full-screen or empty monitor overlays stop presenting until they become visible or dirty again.
 - Window geometry: 4 Hz while active, 1 Hz at rest.
 - Behavior selection: action boundaries, capped at 2 Hz.
-- Presentation: up to 30 Hz active, 4 Hz resting, 2 Hz paused.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
