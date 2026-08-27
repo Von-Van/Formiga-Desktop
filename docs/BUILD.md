@@ -24,10 +24,10 @@ colony and opens Settings automatically. No Rust installation, command line, or 
 needed.
 
 The release tag is the package source of truth and must be a full three-part semantic version:
-the updater parses the tag with `semver`, so `v0.36.0` is accepted and `v0.36` is rejected. A tag
-`v0.36.0` builds an application that reports version `0.36.0`, places the same version in the macOS
+the updater parses the tag with `semver`, so `v0.36.6` is accepted and `v0.36` is rejected. A tag
+`v0.36.6` builds an application that reports version `0.36.6`, places the same version in the macOS
 bundle and Windows MSI, and publishes the exact updater-compatible names
-`Formiga-0.36.0-macOS-universal.dmg` and `Formiga-0.36.0-windows-x64.msi`. Do not rename these two
+`Formiga-0.36.6-macOS-universal.dmg` and `Formiga-0.36.6-windows-x64.msi`. Do not rename these two
 assets after publishing. Their companion `.sha256` files are the fallback verification source when
 GitHub release metadata does not provide a digest.
 

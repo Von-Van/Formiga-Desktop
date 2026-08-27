@@ -2,7 +2,7 @@
 
 All notable changes are documented here.
 
-## [0.36.0] - 2026-08-27
+## [0.36.6] - 2026-08-27
 
 ### Added
 
@@ -22,6 +22,20 @@ All notable changes are documented here.
 - Solo play now visibly manipulates a generated toy instead of relying on an effect motif alone.
 - Desktop scheduling treats sprinting as spatial motion while eating and drinking remain low-cost
   pose-only clips.
+- Homebound creatures are spaced by their drawn width instead of a fixed 18 points, so the colony
+  no longer stacks onto a single point at the shelter.
+- Creature sprites are seated by each creature's authored under-body clearance, putting their feet
+  on the surface they stand on rather than hovering above it.
+
+### Fixed
+
+- Creatures at the shelter could not be picked up. Interaction proxies were positioned before they
+  were resized, and on macOS that offsets the window by the size difference; because both calls
+  only run when the value changes, a motionless creature never corrected it.
+- A press landing on an overlapping interaction proxy is resolved against the creature alpha masks,
+  so clicks reach the creature actually drawn under the cursor.
+- A drag whose mouse release was never delivered to the proxy window no longer wedges the session
+  and blocks every later grab.
 
 ## [0.31.0] - 2026-08-26
 
