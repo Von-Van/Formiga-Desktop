@@ -47,7 +47,7 @@ desktop interactions:
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
 - Load v0.1 colonies through an identity-preserving save migration.
 
-## Why it is technically interesting
+## What's cool about it?
 
 Formiga does not choose from premade pets. A 256-bit seed resolves a constrained genome, family rig,
 palette, markings, face grammar, forelimbs, personality, and independent RNG streams. Normalized
