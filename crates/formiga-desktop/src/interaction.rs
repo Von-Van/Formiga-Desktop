@@ -38,6 +38,7 @@ pub struct InteractionProxy {
     physical_size: Option<u32>,
     visible: bool,
     interactive: bool,
+    resting_baseline: Option<(bool, u32)>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -78,6 +79,7 @@ impl InteractionProxy {
             physical_size: None,
             visible: false,
             interactive: false,
+            resting_baseline: None,
         })
     }
 
@@ -98,14 +100,30 @@ impl InteractionProxy {
         let scale = settings.display_scale;
         let physical_size = FRAME_SIZE * u32::from(scale);
         let logical_size = physical_size as f32 / monitor.scale_factor;
+        // The overlay seats the sprite by the creature's authored under-body clearance so its feet
+        // meet the contact point. The grab mask has to move with it, or the clickable silhouette
+        // drifts above the creature the user can see.
+        let baseline = match self.resting_baseline {
+            Some((cached_motion, value)) if cached_motion == settings.reduce_motion => value,
+            _ => {
+                let value = CreatureRenderer::resting_baseline(
+                    &creature.appearance,
+                    settings.reduce_motion,
+                );
+                self.resting_baseline = Some((settings.reduce_motion, value));
+                value
+            }
+        };
+        let seat = (baseline * u32::from(scale)) as f32;
         self.logical_bounds = DesktopRect {
             x: creature.state.position.x - logical_size * 0.5,
-            y: creature.state.position.y - logical_size,
+            y: creature.state.position.y - logical_size + seat / monitor.scale_factor,
             width: logical_size,
             height: logical_size,
         };
         let local_anchor_x = (creature.state.position.x - monitor.bounds.x) * monitor.scale_factor;
-        let local_anchor_y = (creature.state.position.y - monitor.bounds.y) * monitor.scale_factor;
+        let local_anchor_y =
+            (creature.state.position.y - monitor.bounds.y) * monitor.scale_factor + seat;
         let position = PhysicalPosition::new(
             overlay_origin.x + (local_anchor_x - physical_size as f32 * 0.5).round() as i32,
             overlay_origin.y + (local_anchor_y - physical_size as f32).round() as i32,

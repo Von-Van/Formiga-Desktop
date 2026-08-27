@@ -50,6 +50,7 @@ struct SpriteGpu {
     face_atlas_width: u32,
     face_atlas_height: u32,
     face_anchors: Vec<PixelPoint>,
+    resting_baseline: u32,
 }
 
 struct ShelterGpu {
@@ -779,6 +780,10 @@ impl OverlayRenderer {
                     face_atlas_width: atlas.face_width,
                     face_atlas_height: atlas.face_height,
                     face_anchors: atlas.face_anchors,
+                    resting_baseline: CreatureRenderer::resting_baseline(
+                        &creature.appearance,
+                        reduce_motion,
+                    ),
                 },
             );
         }
@@ -887,10 +892,14 @@ impl OverlayRenderer {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
         let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
+        // Authored poses leave clearance under the body, so seat the frame by that clearance to
+        // put the creature's feet on the contact point instead of the frame's bottom edge. The
+        // interaction proxy applies the same shift, keeping the grab mask on the visible pixels.
+        let seat = sprite.resting_baseline as f32 * display_scale as f32;
         let local_x =
             (creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor;
         let local_y =
-            (creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor;
+            (creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor + seat;
         let left = (local_x - sprite_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let right = (local_x + sprite_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let top = 1.0 - (local_y - sprite_size) / self.config.height as f32 * 2.0;

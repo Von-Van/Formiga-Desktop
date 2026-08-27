@@ -631,7 +631,9 @@ fn about_tab(
     ui.heading(format!("Formiga {APP_VERSION}"));
     ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
     ui.add_space(8.0);
-    ui.label("No accounts, screenshots, window titles, keystrokes, behavioral uploads, or telemetry.");
+    ui.label(
+        "No accounts, screenshots, window titles, keystrokes, behavioral uploads, or telemetry.",
+    );
     ui.label("Optional update checks contact only the public Formiga repository on GitHub.");
     let mut automatic = automatic_update_checks;
     if ui
@@ -664,7 +666,10 @@ fn about_tab(
             }
             UpdateStatus::Available(release) => {
                 let preview = if release.prerelease { " preview" } else { "" };
-                ui.label(format!("Formiga {}{preview} is available.", release.version));
+                ui.label(format!(
+                    "Formiga {}{preview} is available.",
+                    release.version
+                ));
                 if !release.notes.trim().is_empty() {
                     ui.collapsing("Release notes", |ui| {
                         ui.label(release.notes.trim());

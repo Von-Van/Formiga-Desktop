@@ -7,6 +7,13 @@ use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
 const ARRIVAL_DAYS: [i64; 3] = [30, 90, 180];
+/// Width of a creature's art frame, matching `formiga_art::FRAME_SIZE`. The simulation crate
+/// cannot depend on the art crate, so shelter layout mirrors the constant the way `home_anchor`
+/// already mirrors the shelter's own half-width.
+const CREATURE_ART_WIDTH: f32 = 48.0;
+/// How far apart homebound creatures sit, as a fraction of their drawn width. Below roughly half
+/// they overlap enough to hide each other; much above it they stop reading as a colony at home.
+const HOME_SPACING_RATIO: f32 = 0.55;
 const HOME_DURATION: time::Duration = time::Duration::minutes(15);
 const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
 
@@ -433,8 +440,14 @@ impl World {
             HomeCorner::BottomLeft => 1.0,
             HomeCorner::BottomRight => -1.0,
         };
+        // Space the colony by a fraction of how wide a creature actually draws. A flat 18 points
+        // was narrower than a single creature at every supported scale, so the whole colony piled
+        // onto one point at the shelter and only the last creature drawn stayed visible.
+        let creature_width = CREATURE_ART_WIDTH * f32::from(self.save.settings.display_scale)
+            / monitor.scale_factor.max(1.0);
+        let spacing = creature_width * HOME_SPACING_RATIO;
         for creature in &mut self.save.creatures {
-            let offset = inward * f32::from(creature.generation) * 18.0;
+            let offset = inward * f32::from(creature.generation) * spacing;
             let mut position = Point {
                 x: anchor.x + offset,
                 y: anchor.y,
@@ -2083,6 +2096,45 @@ mod tests {
         assert!(!world.save.home.is_active());
         world.tick(created + time::Duration::minutes(30), 0.05, &desktop);
         assert!(world.save.home.is_active());
+    }
+
+    #[test]
+    fn homebound_colony_is_spaced_by_how_wide_a_creature_draws() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let monitor = &desktop.monitors[0];
+
+        for display_scale in [1_u8, 3, 5] {
+            let mut world = World::new([53; 32], created, &desktop);
+            world.save.settings.display_scale = display_scale;
+            // Give the colony four generations without waiting out the real arrival schedule.
+            while world.save.creatures.len() < 4 {
+                let generation = world.save.creatures.len() as u8;
+                let mut grown = world.save.creatures[0].clone();
+                grown.generation = generation;
+                grown.id = u64::from(generation) + 100;
+                world.save.creatures.push(grown);
+            }
+            world.tick(created, 0.05, &desktop);
+            assert!(world.save.home.is_active());
+
+            let creature_width =
+                CREATURE_ART_WIDTH * f32::from(display_scale) / monitor.scale_factor.max(1.0);
+            let mut xs: Vec<_> = world
+                .save
+                .creatures
+                .iter()
+                .map(|creature| creature.state.position.x)
+                .collect();
+            xs.sort_by(f32::total_cmp);
+            for pair in xs.windows(2) {
+                let gap = pair[1] - pair[0];
+                assert!(
+                    gap >= creature_width * 0.5,
+                    "scale {display_scale}: creatures {gap} apart but draw {creature_width} wide",
+                );
+            }
+        }
     }
 
     #[test]

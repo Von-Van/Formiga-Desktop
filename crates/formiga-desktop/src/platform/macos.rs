@@ -39,7 +39,10 @@ unsafe extern "C" {
         state_id: CGEventSourceStateID,
         event_type: u32,
     ) -> f64;
+    fn CGEventSourceButtonState(state_id: CGEventSourceStateID, button: u32) -> bool;
 }
+
+const CG_MOUSE_BUTTON_LEFT: u32 = 0;
 
 pub fn configure_native_overlay(window: &Window) {
     let _ = window.set_cursor_hittest(false);
@@ -95,9 +98,21 @@ pub fn set_interaction_hittest(window: &Window, enabled: bool) {
 
 pub fn set_interaction_shape(_window: &Window, _mask: &[bool], _scale: u8) {}
 
+/// AppKit routes every event of a mouse-down sequence to the window that received the press, so
+/// unlike Win32 there is no capture to acquire. The drag proxy keeps its hit region enabled for
+/// the duration of the drag, which is all that is needed for the release to arrive.
 pub fn begin_interaction_capture(_window: &Window) {}
 
 pub fn end_interaction_capture() {}
+
+pub fn left_button_down() -> bool {
+    unsafe {
+        CGEventSourceButtonState(
+            CGEventSourceStateID::CombinedSessionState,
+            CG_MOUSE_BUTTON_LEFT,
+        )
+    }
+}
 
 pub fn canonical_monitor_bounds(
     physical_x: i32,

@@ -312,9 +312,12 @@ impl FormigaApp {
         self.last_tick = now;
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
+        let left_button_down = platform::left_button_down();
         if let Some(world) = &mut self.world {
             if world.is_dragging() {
-                if desktop.cursor.available {
+                if !desktop.cursor.available {
+                    world.handle_command(WorldCommand::CancelDrag, &desktop);
+                } else if left_button_down {
                     world.handle_command(
                         WorldCommand::UpdateDrag {
                             cursor: desktop.cursor.position,
@@ -322,7 +325,17 @@ impl FormigaApp {
                         &desktop,
                     );
                 } else {
-                    world.handle_command(WorldCommand::CancelDrag, &desktop);
+                    // The proxy owns the release, but a press that ends outside it never reaches
+                    // the window. Without this the session stays open forever: the creature keeps
+                    // following the cursor and `begin_drag` refuses every later grab. Drop the
+                    // creature where the button actually came up rather than cancelling it back
+                    // to wherever the drag started.
+                    world.handle_command(
+                        WorldCommand::EndDrag {
+                            cursor: desktop.cursor.position,
+                        },
+                        &desktop,
+                    );
                 }
             }
             let mut filtered = desktop;
@@ -493,7 +506,9 @@ impl FormigaApp {
             TrayAction::CheckForUpdates => {
                 if matches!(
                     self.updates.status(),
-                    UpdateStatus::Available(_) | UpdateStatus::Downloading(_) | UpdateStatus::Ready(_)
+                    UpdateStatus::Available(_)
+                        | UpdateStatus::Downloading(_)
+                        | UpdateStatus::Ready(_)
                 ) {
                     self.show_update_settings(event_loop);
                 } else {
@@ -582,39 +597,44 @@ impl FormigaApp {
     }
 
     fn handle_proxy_event(&mut self, window_id: WindowId, event: &WindowEvent) -> bool {
-        let Some(creature_id) = self
-            .interaction_proxies
-            .get(&window_id)
-            .map(|proxy| proxy.creature_id)
-        else {
+        if !self.interaction_proxies.contains_key(&window_id) {
             return false;
-        };
+        }
         match event {
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
                 ..
             } => {
-                let hit = self
+                let cursor = self.current_cursor.position;
+                // macOS proxies carry no native window shape, so an opaque neighbouring square
+                // can receive a press aimed at the creature drawn underneath it. That happens
+                // constantly at the shelter, where the whole colony shares one corner. Resolve
+                // the press against the alpha masks instead of trusting the delivering window.
+                let hits: Vec<_> = self
                     .interaction_proxies
-                    .get(&window_id)
-                    .is_some_and(|proxy| {
-                        proxy.hit_test(
-                            self.current_cursor.position.x,
-                            self.current_cursor.position.y,
-                        )
-                    });
-                if hit {
+                    .iter()
+                    .filter(|(_, proxy)| proxy.hit_test(cursor.x, cursor.y))
+                    .map(|(id, proxy)| (*id, proxy.creature_id))
+                    .collect();
+                let draw_order: Vec<_> = self
+                    .world
+                    .as_ref()
+                    .map(|world| world.save.creatures.iter().map(|c| c.id).collect())
+                    .unwrap_or_default();
+                if let Some((target_window, target_creature)) =
+                    resolve_press_target(window_id, &hits, &draw_order)
+                {
                     let started = self.world.as_mut().is_some_and(|world| {
                         world.handle_command(
                             WorldCommand::BeginDrag {
-                                creature_id,
-                                cursor: self.current_cursor.position,
+                                creature_id: target_creature,
+                                cursor,
                             },
                             &DesktopSnapshot::default(),
                         )
                     });
-                    if started && let Some(proxy) = self.interaction_proxies.get(&window_id) {
+                    if started && let Some(proxy) = self.interaction_proxies.get(&target_window) {
                         proxy.begin_capture();
                     }
                 }
@@ -694,11 +714,7 @@ impl FormigaApp {
         let _ = self.save();
     }
 
-    fn handle_settings_outcome(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        outcome: SettingsOutcome,
-    ) {
+    fn handle_settings_outcome(&mut self, event_loop: &ActiveEventLoop, outcome: SettingsOutcome) {
         if let Some(settings) = outcome.applied {
             let previous_launch = self
                 .world
@@ -1304,6 +1320,25 @@ fn resized_zone(
     }
 }
 
+/// Chooses which interaction proxy owns a left-press.
+///
+/// The window that receives the press wins whenever its own alpha mask covers the cursor. When it
+/// does not — a transparent part of an overlapping proxy swallowed the click — the press goes to
+/// the mask that does cover the cursor, preferring the creature drawn last, because that is the
+/// one the user can actually see on top.
+fn resolve_press_target<I: Copy + PartialEq>(
+    pressed: I,
+    hits: &[(I, CreatureId)],
+    draw_order: &[CreatureId],
+) -> Option<(I, CreatureId)> {
+    if let Some(entry) = hits.iter().find(|(id, _)| *id == pressed) {
+        return Some(*entry);
+    }
+    hits.iter()
+        .max_by_key(|(_, creature)| draw_order.iter().position(|id| id == creature))
+        .copied()
+}
+
 fn world_needs_frequent_window_scan(world: &World) -> bool {
     if world.save.settings.paused {
         return false;
@@ -1388,9 +1423,52 @@ fn world_tick_interval(world: &World) -> Duration {
             && world.save.creatures.iter().any(|creature| {
                 matches!(creature.state.action, ActionKind::Idle | ActionKind::Perch)
             });
-    if has_expressive_action || needs_responsive_gaze {
+    // Interaction proxies only refresh their native hit region on a tick, so a resting creature
+    // still needs a responsive cadence to feel grabbable. Homebound creatures belong here too:
+    // they are the stillest state in the simulation and the one users reach for at the shelter.
+    let needs_responsive_grab = world.save.settings.direct_manipulation
+        && world.save.creatures.iter().any(|creature| {
+            matches!(
+                creature.state.action,
+                ActionKind::Idle | ActionKind::Perch | ActionKind::Homebound
+            )
+        });
+    if has_expressive_action || needs_responsive_gaze || needs_responsive_grab {
         Duration::from_millis(100)
     } else {
         Duration::from_millis(200)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_press_target;
+
+    #[test]
+    fn press_stays_on_the_window_whose_own_mask_covers_the_cursor() {
+        let hits = [(10u32, 1u64), (20u32, 2u64)];
+        let order = [1u64, 2u64];
+        assert_eq!(
+            resolve_press_target(20u32, &hits, &order),
+            Some((20u32, 2u64))
+        );
+    }
+
+    #[test]
+    fn press_on_a_transparent_overlap_reaches_the_creature_underneath() {
+        // The colony shares one corner at the shelter, so the press lands on proxy 30 even though
+        // only creatures 1 and 2 have opaque pixels under the cursor.
+        let hits = [(10u32, 1u64), (20u32, 2u64)];
+        let order = [1u64, 2u64, 3u64];
+        assert_eq!(
+            resolve_press_target(30u32, &hits, &order),
+            Some((20u32, 2u64)),
+            "should pick the creature drawn last, which is the visible one on top"
+        );
+    }
+
+    #[test]
+    fn press_over_no_creature_starts_no_drag() {
+        assert_eq!(resolve_press_target(30u32, &[], &[1u64]), None);
     }
 }

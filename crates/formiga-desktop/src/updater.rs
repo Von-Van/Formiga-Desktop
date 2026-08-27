@@ -417,7 +417,9 @@ mod tests {
         assert!(validate_digest("abc").is_err());
         assert!(validate_digest(&"a".repeat(64)).is_ok());
         assert_ne!(
-            Path::new("../Formiga.msi").file_name().and_then(|name| name.to_str()),
+            Path::new("../Formiga.msi")
+                .file_name()
+                .and_then(|name| name.to_str()),
             Some("../Formiga.msi")
         );
     }
@@ -428,9 +430,7 @@ mod tests {
         let next = Version::new(current.major, current.minor + 1, 0);
         let later = Version::new(current.major, current.minor + 2, 0);
         #[cfg(target_os = "macos")]
-        let package_name = |version: &Version| {
-            format!("Formiga-{version}-macOS-universal.dmg")
-        };
+        let package_name = |version: &Version| format!("Formiga-{version}-macOS-universal.dmg");
         #[cfg(target_os = "windows")]
         let package_name = |version: &Version| format!("Formiga-{version}-windows-x64.msi");
         let digest = format!("sha256:{}", "b".repeat(64));
@@ -465,10 +465,8 @@ mod tests {
 
     #[test]
     fn automatic_check_is_throttled_for_twenty_four_hours() {
-        let temporary = std::env::temp_dir().join(format!(
-            "formiga-updater-test-{}",
-            std::process::id()
-        ));
+        let temporary =
+            std::env::temp_dir().join(format!("formiga-updater-test-{}", std::process::id()));
         let mut controller = UpdateController::load(&temporary);
         let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
         assert!(controller.should_check_automatically(now));

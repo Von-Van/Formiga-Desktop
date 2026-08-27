@@ -20,7 +20,7 @@ use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetLastInputInfo, LASTINPUTINFO, ReleaseCapture, SetCapture,
+    GetAsyncKeyState, GetLastInputInfo, LASTINPUTINFO, ReleaseCapture, SetCapture, VK_LBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetCursorPos, GetWindowLongW,
@@ -163,6 +163,10 @@ pub fn end_interaction_capture() {
     unsafe {
         let _ = ReleaseCapture();
     }
+}
+
+pub fn left_button_down() -> bool {
+    unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) < 0 }
 }
 
 fn window_hwnd(window: &Window) -> Option<HWND> {

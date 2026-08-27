@@ -268,6 +268,35 @@ impl CreatureRenderer {
         body.canvas
     }
 
+    /// Empty rows beneath the creature's feet in its resting poses, in art pixels.
+    ///
+    /// Poses are authored inside the 48x48 frame with clearance under the body so hops and walk
+    /// cycles have somewhere to travel. Drawing a frame with its bottom edge on the contact point
+    /// therefore leaves the creature hovering above whatever it stands on: one or two pixels for
+    /// hoppers and soft quadrupeds, five or six for blobs. Renderers shift the sprite down by this
+    /// many pixels so the lowest resting pixel meets the surface.
+    ///
+    /// Only resting poses are measured, and the smallest clearance among them wins, so the value
+    /// is a stable property of the creature. Seating never shifts mid-animation, and airborne
+    /// frames keep reading as lift instead of sinking the creature into its perch.
+    pub fn resting_baseline(genome: &AppearanceGenome, reduce_motion: bool) -> u32 {
+        const RESTING: [ActionKind; 3] =
+            [ActionKind::Idle, ActionKind::Perch, ActionKind::Homebound];
+        RESTING
+            .into_iter()
+            .flat_map(|action| {
+                (0..AnimationSpec::for_action(action).frames).map(move |frame| (action, frame))
+            })
+            .filter_map(|(action, frame)| {
+                Self::render_body_frame(genome, action, frame, reduce_motion)
+                    .canvas
+                    .alpha_bounds()
+                    .map(|(_, _, _, max_y)| FRAME_SIZE - 1 - max_y)
+            })
+            .min()
+            .unwrap_or(0)
+    }
+
     pub fn resolve_face_state(
         creature: &Creature,
         cursor: CursorSnapshot,
@@ -2278,6 +2307,50 @@ mod tests {
                     "seed {index}, {expression:?} loses its two-eye grammar"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn resting_baseline_seats_every_family_on_its_contact_point() {
+        for family in [
+            BodyFamily::Blob,
+            BodyFamily::Hopper,
+            BodyFamily::SoftQuadruped,
+        ] {
+            let genome = genome(family);
+            let baseline = CreatureRenderer::resting_baseline(&genome, false);
+
+            // Seating by the baseline must not push any resting pose through the surface.
+            for action in [ActionKind::Idle, ActionKind::Perch, ActionKind::Homebound] {
+                for frame in 0..AnimationSpec::for_action(action).frames {
+                    let canvas =
+                        CreatureRenderer::render_body_frame(&genome, action, frame, false).canvas;
+                    let clearance = canvas
+                        .alpha_bounds()
+                        .map(|(_, _, _, max_y)| FRAME_SIZE - 1 - max_y)
+                        .expect("resting pose draws pixels");
+                    assert!(
+                        clearance >= baseline,
+                        "{family:?} {action:?} frame {frame} would sink {} px below its surface",
+                        baseline - clearance,
+                    );
+                }
+            }
+
+            // And at least one resting pose has to land exactly on it, or the creature still
+            // floats after seating.
+            let seated = [ActionKind::Idle, ActionKind::Perch, ActionKind::Homebound]
+                .into_iter()
+                .flat_map(|action| {
+                    (0..AnimationSpec::for_action(action).frames).map(move |frame| (action, frame))
+                })
+                .any(|(action, frame)| {
+                    CreatureRenderer::render_body_frame(&genome, action, frame, false)
+                        .canvas
+                        .alpha_bounds()
+                        .is_some_and(|(_, _, _, max_y)| FRAME_SIZE - 1 - max_y == baseline)
+                });
+            assert!(seated, "{family:?} never touches its contact point");
         }
     }
 }
