@@ -128,15 +128,24 @@ impl InteractionProxy {
             overlay_origin.x + (local_anchor_x - physical_size as f32 * 0.5).round() as i32,
             overlay_origin.y + (local_anchor_y - physical_size as f32).round() as i32,
         );
-        if self.physical_position != Some(position) {
-            self.window.set_outer_position(position);
-            self.physical_position = Some(position);
-        }
+        // Size before position, and re-apply the position whenever the size changes. winit's macOS
+        // `set_outer_position` flips the Y origin using the window's *current* frame height, and
+        // `request_inner_size` resizes from the bottom-left corner. Positioning first therefore
+        // lands the window off by the size delta -- the proxy is born 48x48 and grows to
+        // 48 * display_scale -- and both calls are change-gated, so nothing ever corrects it. A
+        // creature that moves repositions on the next tick and self-heals; one sitting still at
+        // the shelter stayed displaced for its whole visit, which put its clickable window well
+        // above the creature the user was aiming at.
         if self.physical_size != Some(physical_size) {
             let _ = self
                 .window
                 .request_inner_size(PhysicalSize::new(physical_size, physical_size));
             self.physical_size = Some(physical_size);
+            self.physical_position = None;
+        }
+        if self.physical_position != Some(position) {
+            self.window.set_outer_position(position);
+            self.physical_position = Some(position);
         }
 
         let spec = AnimationSpec::for_action(creature.state.action);
@@ -195,6 +204,11 @@ impl InteractionProxy {
         if self.visible != visible {
             self.window.set_visible(visible);
             self.visible = visible;
+            // Geometry applied to a window that has never been ordered in is not guaranteed to
+            // survive being shown, so re-apply it on the next sync rather than trusting the cache.
+            if visible {
+                self.physical_position = None;
+            }
         }
     }
 
