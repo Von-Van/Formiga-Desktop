@@ -1,13 +1,13 @@
 # Formiga roadmap
 
-## Unreleased passive-activity pass
+## v0.36 passive-activity pass
 
 - Deterministic generated toys, snacks, cups, and bowls baked into creature atlases.
 - Family-specific play, eating, and drinking gestures plus a six-frame sprint gait.
 - Utility-driven passive actions with distinct energy, comfort, boredom, and arousal outcomes.
 - No additional OS polling, particle system, runtime asset generation, or save migration.
 
-## Unreleased assisted-update pass
+## v0.36 assisted-update pass
 
 - Optional once-daily and manual checks against public GitHub release metadata.
 - Exact-platform MSI/DMG selection, bounded background download, and SHA-256 verification.

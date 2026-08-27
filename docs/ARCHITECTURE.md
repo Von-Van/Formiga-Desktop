@@ -1,4 +1,4 @@
-# Formiga v0.31 architecture
+# Formiga v0.36 architecture
 
 Formiga separates platform observation, deterministic simulation, procedural art, and presentation.
 `formiga-core` contains no GUI or GPU code; OS adapters cannot decide creature behavior, and the art

@@ -17,9 +17,14 @@ small snacks and drinks, and occasionally sprint along their current desktop sur
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download the `macOS-universal.dmg`, open it, and drag Formiga to Applications.
-- **Windows 10/11:** download the `windows-x64.msi` and follow the installer. It adds normal Desktop
-  and Start-menu shortcuts.
+- **macOS 14+:** download `Formiga-0.36.0-macOS-universal.dmg`, open it, and drag Formiga to
+  Applications.
+- **Windows 10/11:** download `Formiga-0.36.0-windows-x64.msi` and follow the installer. It adds
+  normal Desktop and Start-menu shortcuts.
+
+Every release names its downloads after its own version, so a later release publishes the same two
+names with its version in place of `0.36.0`. The assisted updater matches those exact names, so do
+not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit. Formiga can check the
@@ -125,7 +130,7 @@ cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.p
 
 ## Status
 
-Formiga v0.31 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.36 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 
