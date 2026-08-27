@@ -242,6 +242,7 @@ impl FormigaApp {
     fn sync_overlay_visibility(&mut self) {
         let Some(world) = &self.world else { return };
         let settings = &world.save.settings;
+        let editor_active = self.habitat_editor.is_some();
         let dragged_monitors: BTreeSet<_> = world
             .save
             .creatures
@@ -250,6 +251,7 @@ impl FormigaApp {
             .map(|creature| creature.state.surface.monitor_id)
             .collect();
         for overlay in self.overlays.values_mut() {
+            overlay.set_hittest_enabled(editor_active);
             let fullscreen = settings.fullscreen_app_occlusion
                 && monitor_has_fullscreen_window(overlay.monitor.bounds, &self.cached_windows);
             let enabled = settings.visible
@@ -815,10 +817,8 @@ impl FormigaApp {
             previous_paused,
             drag: None,
         });
-        for overlay in self.overlays.values() {
-            if let Err(error) = overlay.window.set_cursor_hittest(true) {
-                tracing::warn!(%error, "could not enable habitat editor input");
-            }
+        for overlay in self.overlays.values_mut() {
+            overlay.set_hittest_enabled(true);
             overlay.window.request_redraw();
         }
         if let Some(window) = &mut self.settings_window {
@@ -839,10 +839,8 @@ impl FormigaApp {
                 world.save.settings.habitat = editor.draft;
             }
         }
-        for overlay in self.overlays.values() {
-            if let Err(error) = overlay.window.set_cursor_hittest(false) {
-                tracing::warn!(%error, "could not restore overlay click-through");
-            }
+        for overlay in self.overlays.values_mut() {
+            overlay.set_hittest_enabled(false);
             overlay.window.request_redraw();
         }
         let habitat = self

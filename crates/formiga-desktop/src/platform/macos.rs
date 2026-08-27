@@ -45,7 +45,7 @@ unsafe extern "C" {
 const CG_MOUSE_BUTTON_LEFT: u32 = 0;
 
 pub fn configure_native_overlay(window: &Window) {
-    let _ = window.set_cursor_hittest(false);
+    set_overlay_hittest(window, false);
     #[allow(deprecated)]
     window.set_has_shadow(false);
     let Ok(handle) = window.window_handle() else {
@@ -56,7 +56,6 @@ pub fn configure_native_overlay(window: &Window) {
     };
     let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
     if let Some(ns_window) = view.window() {
-        ns_window.setIgnoresMouseEvents(true);
         ns_window.setOpaque(false);
         ns_window.setHasShadow(false);
         let behavior = ns_window.collectionBehavior()
@@ -65,6 +64,20 @@ pub fn configure_native_overlay(window: &Window) {
             | NSWindowCollectionBehavior::IgnoresCycle
             | NSWindowCollectionBehavior::FullScreenAuxiliary;
         ns_window.setCollectionBehavior(behavior);
+    }
+}
+
+pub fn set_overlay_hittest(window: &Window, enabled: bool) {
+    let _ = window.set_cursor_hittest(enabled);
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+    if let Some(ns_window) = view.window() {
+        ns_window.setIgnoresMouseEvents(!enabled);
     }
 }
 

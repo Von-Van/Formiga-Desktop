@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, POINT, RECT};
+use windows::Win32::Foundation::{COLORREF, CloseHandle, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Dwm::{
     DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
 };
@@ -24,9 +24,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetCursorPos, GetWindowLongW,
-    GetWindowRect, GetWindowThreadProcessId, HWND_TOPMOST, IsIconic, IsWindowVisible,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowLongW, SetWindowPos, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
+    GetWindowRect, GetWindowThreadProcessId, HWND_TOPMOST, IsIconic, IsWindowVisible, LWA_ALPHA,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetLayeredWindowAttributes,
+    SetWindowLongW, SetWindowPos, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
 };
 use windows::core::{BOOL, PWSTR};
 use winit::monitor::MonitorHandle;
@@ -46,23 +47,35 @@ pub fn display_key(monitor: &MonitorHandle) -> DisplayKey {
 }
 
 pub fn configure_native_overlay(window: &Window) {
-    let _ = window.set_cursor_hittest(false);
-    let Ok(handle) = window.window_handle() else {
+    set_overlay_hittest(window, false);
+}
+
+pub fn set_overlay_hittest(window: &Window, enabled: bool) {
+    // Keep winit's internal flag synchronized so later visibility changes rebuild the right
+    // styles. On Windows, disabled hit testing intentionally means LAYERED + TRANSPARENT: that is
+    // the documented combination that passes input through to windows in other processes.
+    let _ = window.set_cursor_hittest(enabled);
+    let Some(hwnd) = window_hwnd(window) else {
         return;
     };
-    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
-        return;
-    };
-    let hwnd = HWND(handle.hwnd.get() as *mut _);
     unsafe {
         let style = GetWindowLongW(hwnd, GWL_STYLE) as u32 | WS_POPUP.0;
         SetWindowLongW(hwnd, GWL_STYLE, style as i32);
-        let extended = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32
-            | WS_EX_LAYERED.0
-            | WS_EX_TRANSPARENT.0
-            | WS_EX_TOOLWINDOW.0
-            | WS_EX_NOACTIVATE.0;
+        let mut extended =
+            (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 | WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0)
+                & !WS_EX_APPWINDOW.0;
+        if enabled {
+            extended &= !(WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0);
+        } else {
+            extended |= WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0;
+        }
         SetWindowLongW(hwnd, GWL_EXSTYLE, extended as i32);
+        if !enabled {
+            // A layered HWND is not displayed until its layered attributes are initialized. The
+            // GPU surface uses DirectComposition, so its per-pixel alpha remains authoritative;
+            // this only sets the window-wide opacity to fully visible.
+            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
+        }
         let _ = SetWindowPos(
             hwnd,
             Some(HWND_TOPMOST),
@@ -70,7 +83,7 @@ pub fn configure_native_overlay(window: &Window) {
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
     }
 }

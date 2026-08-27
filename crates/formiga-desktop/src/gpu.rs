@@ -90,11 +90,12 @@ pub struct OverlayRenderer {
     occlusion_initialized: bool,
     has_visual_content: bool,
     visible: bool,
+    hittest_enabled: bool,
 }
 
 impl OverlayRenderer {
     pub async fn new(window: Arc<Window>, monitor: MonitorInfo) -> Result<Self> {
-        let instance = wgpu::Instance::default();
+        let instance = overlay_gpu_instance();
         let surface = instance
             .create_surface(window.clone())
             .context("create transparent surface")?;
@@ -129,14 +130,11 @@ impl OverlayRenderer {
             .copied()
             .find(wgpu::TextureFormat::is_srgb)
             .unwrap_or(caps.formats[0]);
-        let alpha_mode = [
-            wgpu::CompositeAlphaMode::PostMultiplied,
-            wgpu::CompositeAlphaMode::PreMultiplied,
-            wgpu::CompositeAlphaMode::Inherit,
-        ]
-        .into_iter()
-        .find(|mode| caps.alpha_modes.contains(mode))
-        .unwrap_or(caps.alpha_modes[0]);
+        let alpha_mode = overlay_alpha_preference()
+            .iter()
+            .copied()
+            .find(|mode| caps.alpha_modes.contains(mode))
+            .unwrap_or(caps.alpha_modes[0]);
         anyhow::ensure!(
             alpha_mode != wgpu::CompositeAlphaMode::Opaque,
             "GPU surface exposes no transparent alpha mode"
@@ -344,6 +342,7 @@ impl OverlayRenderer {
             occlusion_initialized: false,
             has_visual_content: false,
             visible: false,
+            hittest_enabled: false,
         })
     }
 
@@ -354,7 +353,20 @@ impl OverlayRenderer {
         self.window.set_visible(visible);
         self.visible = visible;
         if visible {
+            // Winit rebuilds native styles while showing a window, so restore the requested input
+            // mode after every hide/show cycle.
+            crate::platform::set_overlay_hittest(&self.window, self.hittest_enabled);
             self.window.request_redraw();
+        }
+    }
+
+    pub fn set_hittest_enabled(&mut self, enabled: bool) {
+        if self.hittest_enabled == enabled {
+            return;
+        }
+        self.hittest_enabled = enabled;
+        if self.visible {
+            crate::platform::set_overlay_hittest(&self.window, enabled);
         }
     }
 
@@ -1013,6 +1025,52 @@ impl OverlayRenderer {
             },
         ];
         (body, face)
+    }
+}
+
+/// Transparent composite alpha modes to try, most preferred first.
+///
+/// Overlay draws use `BlendState::ALPHA_BLENDING`, so the surface texture always ends up holding
+/// premultiplied color regardless of platform; only the compositor's interpretation differs.
+fn overlay_alpha_preference() -> &'static [wgpu::CompositeAlphaMode] {
+    #[cfg(target_os = "windows")]
+    {
+        // DirectComposition composites `DXGI_ALPHA_MODE_PREMULTIPLIED` only. wgpu maps
+        // `PostMultiplied` to `DXGI_ALPHA_MODE_STRAIGHT`, which DXGI does not support for
+        // composition swap chains even though it is advertised, leaving creatures invisible.
+        &[
+            wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::PostMultiplied,
+            wgpu::CompositeAlphaMode::Inherit,
+        ]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // CAMetalLayer advertises `PostMultiplied` as its only transparent mode but composites it
+        // as premultiplied, so it stays first on macOS.
+        &[
+            wgpu::CompositeAlphaMode::PostMultiplied,
+            wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::Inherit,
+        ]
+    }
+}
+
+fn overlay_gpu_instance() -> wgpu::Instance {
+    #[cfg(target_os = "windows")]
+    {
+        // An HWND swap chain cannot retain per-pixel transparency while WS_EX_LAYERED is active.
+        // DirectComposition can target a layered HWND, preserving both alpha and Windows' reliable
+        // cross-process click-through behavior.
+        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+        descriptor.backends = wgpu::Backends::DX12;
+        descriptor.backend_options.dx12.presentation_system =
+            wgpu::Dx12SwapchainKind::DxgiFromVisual;
+        wgpu::Instance::new(descriptor)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        wgpu::Instance::default()
     }
 }
 
