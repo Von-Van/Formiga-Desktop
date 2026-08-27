@@ -2,6 +2,28 @@
 
 All notable changes are documented here.
 
+## [0.37.0] - 2026-08-27
+
+### Fixed
+
+- Creatures were invisible on Windows overlays. The overlay needs `WS_EX_LAYERED` for reliable
+  cross-process click-through, but a plain HWND swap chain cannot keep per-pixel transparency while
+  that style is set, so every creature rendered blank. Overlays now present through
+  DirectComposition, which can target a layered HWND without discarding alpha.
+- The Windows overlay surface now requests premultiplied alpha. DirectComposition composites
+  `DXGI_ALPHA_MODE_PREMULTIPLIED` only, and the previously preferred `PostMultiplied` mode maps to
+  `DXGI_ALPHA_MODE_STRAIGHT`, which DXGI does not support for composition swap chains. macOS keeps
+  `PostMultiplied`, the only transparent mode CAMetalLayer reports.
+- Layered window attributes are initialized so the overlay HWND is presented at all, and the
+  requested input mode is reapplied after each hide/show cycle because winit rebuilds native window
+  styles when showing a window.
+
+### Changed
+
+- Windows overlays now require a DX12-capable adapter. DirectComposition is the only path that
+  preserves per-pixel alpha on a layered, click-through window, so the overlay instance no longer
+  falls back to the Vulkan or OpenGL backends.
+
 ## [0.36.6] - 2026-08-27
 
 ### Added
