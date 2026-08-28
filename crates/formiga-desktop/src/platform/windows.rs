@@ -342,6 +342,9 @@ unsafe extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
     if cloaked != 0 {
         return BOOL(1);
     }
+    if is_noninteractive_overlay(unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32) {
+        return BOOL(1);
+    }
     let mut rect = RECT::default();
     if unsafe {
         DwmGetWindowAttribute(
@@ -382,6 +385,22 @@ unsafe extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
         });
     }
     BOOL(1)
+}
+
+/// Heads-up displays that float above the desktop without ever taking input. They routinely span a
+/// whole monitor: the NVIDIA GeForce overlay keeps a `CEF-OSC-WIDGET` window sized to the primary
+/// display for as long as the driver is loaded. Counting one as an ordinary window makes fullscreen
+/// occlusion believe a fullscreen application is always present, which hides every creature on that
+/// monitor, and it also offers creatures an invisible ledge to walk along.
+///
+/// A window the user actually looks at fullscreen can be activated, is not click-through, and is
+/// neither layered nor a tool window, so none of these signatures match one.
+fn is_noninteractive_overlay(extended_style: u32) -> bool {
+    let cannot_activate = extended_style & WS_EX_NOACTIVATE.0 != 0;
+    let click_through = extended_style & WS_EX_TRANSPARENT.0 != 0;
+    let layered_tool_window =
+        extended_style & WS_EX_LAYERED.0 != 0 && extended_style & WS_EX_TOOLWINDOW.0 != 0;
+    cannot_activate || click_through || layered_tool_window
 }
 
 fn is_desktop_chrome(hwnd: HWND) -> bool {
@@ -523,4 +542,42 @@ pub fn launch_update(path: &std::path::Path) -> anyhow::Result<bool> {
     );
     Command::new("msiexec.exe").arg("/i").arg(path).spawn()?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Extended styles captured from live windows on a multi-monitor Windows 11 desktop.
+    const NVIDIA_GEFORCE_OVERLAY: u32 = 0x0808_0080;
+    const DISPLAY_MANAGER_OVERLAY: u32 = 0x0008_0088;
+    const DISCORD_APP_WINDOW: u32 = 0x0020_0000;
+    const CHROME_APP_WINDOW: u32 = 0x0020_0100;
+
+    #[test]
+    fn monitor_sized_driver_huds_are_not_ordinary_windows() {
+        // Both span a full monitor, so without this they read as a permanent fullscreen app.
+        assert!(is_noninteractive_overlay(NVIDIA_GEFORCE_OVERLAY));
+        assert!(is_noninteractive_overlay(DISPLAY_MANAGER_OVERLAY));
+    }
+
+    #[test]
+    fn ordinary_application_windows_still_count() {
+        // A maximized Discord or Chrome window must keep occluding creatures behind it.
+        assert!(!is_noninteractive_overlay(DISCORD_APP_WINDOW));
+        assert!(!is_noninteractive_overlay(CHROME_APP_WINDOW));
+        assert!(!is_noninteractive_overlay(0));
+    }
+
+    #[test]
+    fn each_overlay_signature_is_recognized_on_its_own() {
+        assert!(is_noninteractive_overlay(WS_EX_NOACTIVATE.0));
+        assert!(is_noninteractive_overlay(WS_EX_TRANSPARENT.0));
+        assert!(is_noninteractive_overlay(
+            WS_EX_LAYERED.0 | WS_EX_TOOLWINDOW.0
+        ));
+        // Layered alone is just transparency; a plain tool window is still interactive.
+        assert!(!is_noninteractive_overlay(WS_EX_LAYERED.0));
+        assert!(!is_noninteractive_overlay(WS_EX_TOOLWINDOW.0));
+    }
 }
