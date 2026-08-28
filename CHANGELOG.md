@@ -2,6 +2,37 @@
 
 All notable changes are documented here.
 
+## [0.38.0] - 2026-08-28
+
+### Added
+
+- Low-frequency `ClimbWindow`, `Dangle`, `InspectScreen`, and `PresentDiscovery` activities with
+  four-frame family-specific poses, expressions, gaze, and static reduced-motion variants.
+- Staged upward window routes that traverse to the nearest inner edge, climb at 44–62 logical
+  points/second, and mantle onto the ledge; downward transfers retain the existing hop.
+- Geometry-only inspection landmarks at safe-region and window thirds, per-creature dangle and
+  inspection cadence, and one colony-wide discovery cadence. All ambient countdowns stop while
+  Formiga is paused or hidden.
+- Eight deterministic gems, keys, leaves, shells, charms, and relics per creature, pre-baked into
+  one appended layered-texture row and shown with a temporary third quad only during discovery.
+- Fast-release creature tossing with a fixed three-sample cursor history, capped launch velocity,
+  gravity, swept ledge/floor collision, one soft bounce, a three-second recovery limit, and final
+  landing events. Slow releases retain precise placement.
+- An accelerated ambient-art sheet covering every family, new action frame, placement mode, and
+  discovery variant.
+
+### Changed
+
+- The body atlas remains at 90 unique frames by reusing the dragged clip for `Tossed`; the exact
+  combined body/face/trinket texture budget is 1,161,216 bytes per creature under a 1.2 MB limit.
+- GPU sprite placement and alpha-aware interaction proxies share a handhold-relative contract for
+  dangling art.
+- Drag update and release commands now carry normalized cursor velocity and distinguish placed from
+  tossed outcomes. Paused, reduced-motion, and disabled-window-ledge modes retain non-ballistic safe
+  behavior.
+- A defaulted transient `activity_variant` keeps existing v4 saves compatible without a version bump;
+  interrupted ambient activity and toss flight reload as idle and no discovery collection persists.
+
 ## [0.37.1] - 2026-08-27
 
 ### Fixed

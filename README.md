@@ -9,21 +9,23 @@ in transparent desktop overlays, develop simple habits, perch on ordinary window
 cursor, and eventually grow into a four-creature colony. The colony and its behavior stay local;
 the only optional network feature is a lightweight GitHub release check.
 
-Between those larger reactions, creatures now entertain themselves with generated toys, pause for
-small snacks and drinks, and occasionally sprint along their current desktop surface.
+Between those larger reactions, creatures entertain themselves with generated toys, pause for small
+snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
+landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
+of the way; a slow release keeps the existing precise placement behavior.
 
 ## Download and run
 
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.37.1-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.38.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.37.1-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.38.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.37.1`. The assisted updater matches those exact names, so do
+names with its version in place of `0.38.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
@@ -50,11 +52,16 @@ desktop interactions:
 - Notice tiny pre-baked sleep, investigation, play, greeting, and startle effects without a particle loop.
 - Watch generated balls, yarn, leaves, snacks, cups, and bowls coordinate with each family's hands
   or front paws during passive activities.
+- Catch low-frequency inspections, ledge dangling, and eight seed-and-palette-derived discovery
+  trinkets without screen capture, inventory, or runtime art generation.
 - See energetic personalities break into short, higher-cost sprints without adding another runtime loop.
 - Drag a creature by its opaque pixels without blocking unrelated desktop clicks.
+- Release a fast drag to toss a creature with a single soft bounce, or release slowly for precise
+  placement; reduced-motion and paused modes always use the precise path.
 - Limit the colony to presets or up to 32 allowed/excluded rectangles across displays.
 - Let selected applications visually cover creatures without inspecting window content.
-- Watch creatures hop to reachable ledges, patrol window tops, and startle when nearby windows move.
+- Watch creatures approach and climb up to higher ledges, hop down to lower ones, patrol window
+  tops, and startle when nearby windows move.
 - Watch creatures transfer between stacked windows instead of remaining on the desktop floor.
 - Discover a deterministic corner home with one of four generated shelter families; a home visit
   lasts 15 minutes and cannot return until its 15-minute cooldown has elapsed.
@@ -77,9 +84,10 @@ only a creature's current alpha mask for dragging. Application hiding is a local
 computed from safe window rectangles and stable application identities—not screen capture or true
 per-app OS z-order manipulation.
 
-Passive-activity props are derived from the creature's stored markings and face signature. They are
-rasterized into the body atlas at load time, so colonies gain visual variety without loading external
-assets, running particles, or generating art during ordinary desktop use.
+Passive-activity props are derived from the creature's stored markings and face signature. Toys and
+snacks are rasterized into the body atlas; eight temporary discovery trinkets occupy one appended row
+in the layered texture. Everything is baked when the creature loads, so ordinary desktop use does not
+load external assets, run particles, or generate art.
 
 The assisted updater is independent of the simulation and renderer. It makes no more than one
 automatic metadata request per 24 hours, does all network and hashing work on a background thread,
@@ -94,6 +102,8 @@ digest matches the release metadata or companion checksum file.
 
 ![Generated toys, snacks, drinkware, and sprint poses](docs/assets/activity-sheet.png)
 
+![Climbing, dangling, inspection, presentation poses, and all eight discovery trinkets](docs/assets/ambient-sheet.png)
+
 ![Deterministic leaf-tent, mushroom, cushion, and paper-house shelters](docs/assets/shelter-sheet.png)
 
 ## Workspace
@@ -101,7 +111,7 @@ digest matches the release metadata or companion checksum file.
 - `formiga-core` — deterministic simulation, behavior, habitats, colony timing, save migration.
 - `formiga-art` — genomes, procedural rasterization, rigs, poses, and animation atlases.
 - `formiga-desktop` — overlays, interaction proxies, settings, tray, GPU rendering, OS adapters.
-- `formiga-tools` — contact sheets, animation diagnostics, demo assets, accelerated-time simulation.
+- `formiga-tools` — contact sheets, ambient-art review, animation diagnostics, demo assets, accelerated-time simulation.
 
 ## Development
 
@@ -124,13 +134,14 @@ cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/a
 cargo run -p formiga-tools -- expression-sheet --output docs/assets/expression-sheet.png
 cargo run -p formiga-tools -- gesture-sheet --output docs/assets/gesture-sheet.png
 cargo run -p formiga-tools -- activity-sheet --output docs/assets/activity-sheet.png
+cargo run -p formiga-tools -- ambient-sheet --output docs/assets/ambient-sheet.png
 cargo run -p formiga-tools -- app-icon --output packaging/shared
 cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
 ```
 
 ## Status
 
-Formiga v0.37 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.38 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 
