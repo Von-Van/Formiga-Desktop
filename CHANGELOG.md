@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## [0.37.1] - 2026-08-27
+
+### Fixed
+
+- Creatures were hidden on any monitor covered by a driver HUD. The NVIDIA GeForce overlay keeps a
+  window sized to the primary display for as long as the driver is loaded, and fullscreen app
+  occlusion counted it as a fullscreen application, so creatures disappeared on that monitor
+  whenever the default occlusion setting was on. Windows that cannot be activated, are
+  click-through, or are layered tool windows are no longer treated as ordinary application windows,
+  which also stops creatures from walking along an invisible ledge across the screen.
+
 ## [0.37.0] - 2026-08-27
 
 ### Fixed
