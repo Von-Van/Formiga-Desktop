@@ -1,5 +1,16 @@
 # Formiga roadmap
 
+## v0.38 passive creature life and toss update
+
+- Four-frame family-specific climbing, dangling, screen-inspection, and discovery-presentation clips.
+- Opportunistic geometry-only inspection landmarks plus low-frequency per-creature/per-colony timers
+  that stop while Formiga is paused or hidden.
+- Staged upward window traversal and climbing with unchanged downward hops and safe route cancellation.
+- Eight deterministic, pre-baked temporary trinkets with no inventory, history, or runtime generation.
+- Fast-release tossing with fixed-capacity cursor sampling, swept support tests, one soft bounce, and
+  safe timeout recovery; slow drops and reduced-motion placement remain unchanged.
+- The existing adaptive simulation, 20 FPS ceiling, window scan cadence, and v4 save version remain.
+
 ## v0.36 passive-activity pass
 
 - Deterministic generated toys, snacks, cups, and bowls baked into creature atlases.
@@ -43,7 +54,7 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
 
 - Behavioral observation storage, research/Lab UI, export, and ML experiments.
 - Accessories, seasonal history, audio, breeding, and new colony mechanics.
-- Cross-monitor autonomous travel, side climbing, and direct petting.
+- Cross-monitor autonomous travel and direct petting.
 - Linux investigation only after the macOS and Windows experience is stable.
 
 The post-v0.31 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than

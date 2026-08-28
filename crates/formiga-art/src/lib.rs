@@ -8,6 +8,7 @@ pub type PixelCanvas = Canvas;
 pub use palette::{PALETTES, Palette};
 pub use renderer::{
     AlphaMask, AnimationAtlas, AnimationSpec, CreatureRenderer, ExpressionKind, EyelidPose,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, GazeDirection, PixelPoint, RenderedBodyFrame,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, PixelPoint,
+    PlaybackMode, RenderedBodyFrame,
 };
 pub use shelter::{SHELTER_SIZE, ShelterRenderer};

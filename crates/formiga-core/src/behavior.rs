@@ -98,7 +98,14 @@ pub fn choose_action<R: Rng + ?Sized>(
             ActionKind::Greet => social_score(creature, context, 130.0, 0.45),
             ActionKind::Follow => social_score(creature, context, 240.0, 0.35),
             ActionKind::SocialPlay => social_score(creature, context, 100.0, p.playfulness * 0.55),
-            ActionKind::Dragged | ActionKind::Landing | ActionKind::Homebound => -2.0,
+            ActionKind::Dragged
+            | ActionKind::Landing
+            | ActionKind::Homebound
+            | ActionKind::ClimbWindow
+            | ActionKind::Dangle
+            | ActionKind::InspectScreen
+            | ActionKind::PresentDiscovery
+            | ActionKind::Tossed => -2.0,
         };
         let habit = creature
             .state

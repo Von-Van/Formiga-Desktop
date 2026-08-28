@@ -324,10 +324,15 @@ pub enum ActionKind {
     Dragged,
     Landing,
     Homebound,
+    ClimbWindow,
+    Dangle,
+    InspectScreen,
+    PresentDiscovery,
+    Tossed,
 }
 
 impl ActionKind {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 23] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -346,6 +351,38 @@ impl ActionKind {
         Self::Dragged,
         Self::Landing,
         Self::Homebound,
+        Self::ClimbWindow,
+        Self::Dangle,
+        Self::InspectScreen,
+        Self::PresentDiscovery,
+        Self::Tossed,
+    ];
+
+    /// Unique body clips baked into the creature atlas. Tossing deliberately reuses the dragged
+    /// body clip, so it remains expressive without consuming another four 48x48 texture slots.
+    pub const BODY_CLIPS: [Self; 22] = [
+        Self::Idle,
+        Self::Traverse,
+        Self::Perch,
+        Self::Sleep,
+        Self::InvestigateCursor,
+        Self::AvoidCursor,
+        Self::ReactToWindow,
+        Self::RideWindow,
+        Self::SoloPlay,
+        Self::Eat,
+        Self::Drink,
+        Self::Sprint,
+        Self::Greet,
+        Self::Follow,
+        Self::SocialPlay,
+        Self::Dragged,
+        Self::Landing,
+        Self::Homebound,
+        Self::ClimbWindow,
+        Self::Dangle,
+        Self::InspectScreen,
+        Self::PresentDiscovery,
     ];
 
     pub const AUTONOMOUS: [Self; 15] = [
@@ -419,6 +456,10 @@ pub struct CreatureState {
     pub habits: BTreeMap<String, f32>,
     pub relationships: BTreeMap<CreatureId, f32>,
     pub cursor_cooldown: f32,
+    /// Runtime presentation selection for generated activity art. It is defaulted for v4 saves
+    /// and reset with interrupted actions, so it does not form a discovery collection.
+    #[serde(default)]
+    pub activity_variant: u8,
     /// Runtime-visible countdown used to stage several earned arrivals after a long absence.
     /// It is persisted so quitting during the reveal sequence cannot skip or duplicate a mini.
     #[serde(default)]
@@ -652,7 +693,12 @@ pub enum WorldEvent {
     },
     DragEnded {
         creature_id: CreatureId,
+        outcome: DragReleaseKind,
+    },
+    TossLanded {
+        creature_id: CreatureId,
         surface: SurfaceKind,
+        bounced: bool,
     },
     HomeAppeared,
     HomeDisappeared {
@@ -668,12 +714,20 @@ pub enum WorldCommand {
     },
     UpdateDrag {
         cursor: Point,
+        velocity: Point,
     },
     EndDrag {
         cursor: Point,
+        velocity: Point,
     },
     CancelDrag,
     GatherCreatures,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DragReleaseKind {
+    Placed(SurfaceKind),
+    Tossed { velocity: Point },
 }
 
 mod duration_millis {

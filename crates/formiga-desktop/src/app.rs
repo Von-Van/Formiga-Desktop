@@ -323,6 +323,7 @@ impl FormigaApp {
                     world.handle_command(
                         WorldCommand::UpdateDrag {
                             cursor: desktop.cursor.position,
+                            velocity: desktop.cursor.velocity,
                         },
                         &desktop,
                     );
@@ -335,6 +336,7 @@ impl FormigaApp {
                     world.handle_command(
                         WorldCommand::EndDrag {
                             cursor: desktop.cursor.position,
+                            velocity: desktop.cursor.velocity,
                         },
                         &desktop,
                     );
@@ -651,6 +653,7 @@ impl FormigaApp {
                     world.handle_command(
                         WorldCommand::EndDrag {
                             cursor: desktop.cursor.position,
+                            velocity: desktop.cursor.velocity,
                         },
                         &desktop,
                     );
@@ -1343,6 +1346,7 @@ fn world_needs_frequent_window_scan(world: &World) -> bool {
     }
     world.save.creatures.iter().any(|creature| {
         creature.state.velocity.x.abs() > 0.1
+            || creature.state.velocity.y.abs() > 0.1
             || matches!(
                 creature.state.action,
                 ActionKind::Traverse
@@ -1354,6 +1358,8 @@ fn world_needs_frequent_window_scan(world: &World) -> bool {
                     | ActionKind::Follow
                     | ActionKind::Dragged
                     | ActionKind::Landing
+                    | ActionKind::ClimbWindow
+                    | ActionKind::Tossed
             )
     })
 }
@@ -1364,6 +1370,7 @@ fn world_has_spatial_motion(world: &World) -> bool {
     }
     world.save.creatures.iter().any(|creature| {
         creature.state.velocity.x.abs() > 0.1
+            || creature.state.velocity.y.abs() > 0.1
             || matches!(
                 creature.state.action,
                 ActionKind::Traverse
@@ -1374,6 +1381,8 @@ fn world_has_spatial_motion(world: &World) -> bool {
                     | ActionKind::Follow
                     | ActionKind::Dragged
                     | ActionKind::Landing
+                    | ActionKind::ClimbWindow
+                    | ActionKind::Tossed
             )
     })
 }

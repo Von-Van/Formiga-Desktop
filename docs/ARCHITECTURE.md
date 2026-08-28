@@ -1,4 +1,4 @@
-# Formiga v0.36 architecture
+# Formiga architecture
 
 Formiga separates platform observation, deterministic simulation, procedural art, and presentation.
 `formiga-core` contains no GUI or GPU code; OS adapters cannot decide creature behavior, and the art
@@ -44,11 +44,22 @@ appearance genome. Their colors, shape variants, motion phases, and hand targets
 same action atlas as the creature. Eating and drinking therefore add no runtime asset lookup or
 procedural work; sprinting reuses the existing movement tick with a distinct six-frame gait.
 
-The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face atlas per creature.
-The face atlas contains eleven expressions, nine gaze directions, and three eyelid states. Runtime
-work is limited to selecting two texture slots and drawing two nearest-filtered quads; expression
-changes add no simulation, particle, or desktop-polling loop. Together the cached textures remain
-below 1 MB per creature.
+Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
+window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
+vertical climb, and a 0.6-second mantle; downward transfers keep the existing hop. A shared
+`FramePlacement` contract seats normal art by its feet and dangling art by its handhold, so the GPU
+quad and alpha-aware interaction proxy resolve the same bounds.
+
+Eight 16×16 gems, keys, leaves, shells, charms, and relic variants are derived from the creature seed
+and palette at atlas-build time. `activity_variant` selects one only while `PresentDiscovery` is
+active. There is no inventory, history, runtime generation, or persistent collection.
+
+The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
+The face texture contains eleven expressions, nine gaze directions, three eyelid states, and one
+eight-slot trinket row. The body atlas remains exactly 90 unique frames because `Tossed` reuses the
+dragged body clip. Runtime work normally selects two slots and draws two nearest-filtered quads;
+discovery alone adds one temporary quad. The combined textures are exactly 1,161,216 bytes per
+creature and are enforced below a 1.2 MB test limit.
 
 The colony seed also resolves a bottom-corner preference and a compact shelter genome. Leaf tents,
 mushroom huts, cushion dens, and paper houses are rasterized once to a static 64×64 texture. A
@@ -64,8 +75,11 @@ renderer conversion to physical pixels.
 
 Direct manipulation uses one small proxy per visible creature. A pre-baked one-bit frame mask shapes
 the Windows proxy and controls near-creature hit testing on macOS. The proxy preserves the grab
-offset, captures through release, and sends only drag commands to the simulation. Active drags are
-runtime-only; cancellation restores the last safe surface.
+offset, captures through release, and sends normalized cursor position and velocity to the
+simulation. Three fixed-capacity velocity samples cover roughly the final 150 ms without allocation.
+Slow releases use precise placement. Fast releases enter a runtime-only `Tossed` state with gravity,
+horizontal drag, swept downward support tests, at most one soft bounce, and a three-second recovery
+limit. There is no rotation, wall ricochet, creature collision, or general physics dependency.
 
 Habitat policies are the union of allowed rectangles (or a preset) minus excluded rectangles.
 Rectangles are normalized against privacy-safe display identities, so DPI and resolution changes do
@@ -83,12 +97,15 @@ creature opts out per vertex.
 - Full-screen or empty monitor overlays stop presenting until they become visible or dirty again.
 - Window geometry: 4 Hz while active, 1 Hz at rest.
 - Behavior selection: action boundaries, capped at 2 Hz.
+- Ambient countdowns: inspection 2–4 minutes per creature, dangling 4–8 minutes per perched
+  creature, and discovery 10–20 minutes per colony; countdowns stop while paused or hidden.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
 Version 4 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
-and assigns v3 colonies a deterministic shelter without replacing creature identity. Home timestamps
-survive relaunches and clock rollback uses the existing maximum-seen UTC guard. There is deliberately
-no history database or telemetry layer. Update preferences live in a separate `updates.json` file so
-network policy and check timing cannot alter or invalidate a colony save.
+and assigns v3 colonies a deterministic shelter without replacing creature identity. The defaulted
+transient `activity_variant` field preserves v4 compatibility; interrupted ambient and toss actions
+reload as idle. Home timestamps survive relaunches and clock rollback uses the existing maximum-seen
+UTC guard. There is deliberately no history database or telemetry layer. Update preferences live in
+a separate `updates.json` file so network policy and check timing cannot alter a colony save.

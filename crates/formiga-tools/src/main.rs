@@ -30,6 +30,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/activity-sheet.png",
         )),
+        Some("ambient-sheet") => ambient_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/ambient-sheet.png",
+        )),
         Some("portfolio-hero") => {
             portfolio_hero(output_argument_with_default(&args, "docs/assets/hero.png"))
         }
@@ -52,7 +56,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
@@ -262,6 +266,87 @@ fn activity_sheet(path: PathBuf) -> Result<()> {
             }
         }
     }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn ambient_sheet(path: PathBuf) -> Result<()> {
+    const COLS: u32 = 8;
+    const SCALE: u32 = 3;
+    const CELL_ART_SIZE: u32 = 64;
+    const ACTIONS: [ActionKind; 4] = [
+        ActionKind::ClimbWindow,
+        ActionKind::Dangle,
+        ActionKind::InspectScreen,
+        ActionKind::PresentDiscovery,
+    ];
+    let creatures = reference_creatures();
+    let cell = CELL_ART_SIZE * SCALE;
+    let rows_per_family = 3;
+    let width = COLS * cell;
+    let height = creatures.len() as u32 * rows_per_family * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [18, 27, 33, 255],
+        [29, 43, 47, 255],
+    );
+
+    for (family_index, creature) in creatures.iter().enumerate() {
+        let family_row = family_index as u32 * rows_per_family;
+        let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
+        for (action_index, action) in ACTIONS.into_iter().enumerate() {
+            for frame in 0..4_u8 {
+                let cell_index = action_index as u32 * 4 + u32::from(frame);
+                let column = cell_index % COLS;
+                let row = family_row + cell_index / COLS;
+                let cell_x = column * cell;
+                let cell_y = row * cell;
+                let contact_y = if action == ActionKind::Dangle { 8 } else { 56 };
+                draw_rect_alpha(
+                    &mut pixels,
+                    width,
+                    cell_x + 4 * SCALE,
+                    cell_y + contact_y * SCALE,
+                    (CELL_ART_SIZE - 8) * SCALE,
+                    SCALE,
+                    [118, 155, 157, 210],
+                );
+                let placement = formiga_art::FramePlacement::for_action(action, baseline);
+                let rendered =
+                    CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
+                blit_scaled_square_alpha(
+                    &mut pixels,
+                    width,
+                    cell_x + 8 * SCALE,
+                    cell_y + (contact_y as i32 + placement.origin_y) as u32 * SCALE,
+                    &rendered.rgba_bytes(),
+                    FRAME_SIZE,
+                    SCALE,
+                );
+            }
+        }
+
+        let trinket_row = family_row + 2;
+        for variant in 0..8_u8 {
+            let cell_x = u32::from(variant) * cell;
+            let cell_y = trinket_row * cell;
+            let trinket = CreatureRenderer::render_trinket(&creature.appearance, variant);
+            blit_scaled_square_alpha(
+                &mut pixels,
+                width,
+                cell_x + 16 * SCALE,
+                cell_y + 16 * SCALE,
+                &trinket.rgba_bytes(),
+                16,
+                6,
+            );
+        }
+    }
+
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())

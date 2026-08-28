@@ -116,24 +116,73 @@ pub struct RenderedBodyFrame {
     pub alpha_mask: AlphaMask,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlaybackMode {
+    Loop,
+    Hold,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct AnimationSpec {
     pub frames: u8,
     pub fps: u8,
+    pub playback: PlaybackMode,
 }
 
 impl AnimationSpec {
     pub fn for_action(action: ActionKind) -> Self {
-        match action {
-            ActionKind::Traverse | ActionKind::Follow => Self { frames: 6, fps: 10 },
-            ActionKind::Sprint => Self { frames: 6, fps: 12 },
-            ActionKind::Eat | ActionKind::Drink => Self { frames: 4, fps: 6 },
-            ActionKind::Sleep => Self { frames: 2, fps: 2 },
+        let (frames, fps, playback) = match action {
+            ActionKind::Traverse | ActionKind::Follow => (6, 10, PlaybackMode::Loop),
+            ActionKind::Sprint => (6, 12, PlaybackMode::Loop),
+            ActionKind::Eat | ActionKind::Drink => (4, 6, PlaybackMode::Loop),
+            ActionKind::Sleep => (2, 2, PlaybackMode::Loop),
             ActionKind::Idle | ActionKind::Perch | ActionKind::RideWindow => {
-                Self { frames: 4, fps: 4 }
+                (4, 4, PlaybackMode::Loop)
             }
-            ActionKind::Homebound => Self { frames: 2, fps: 2 },
-            _ => Self { frames: 4, fps: 8 },
+            ActionKind::Homebound => (2, 2, PlaybackMode::Loop),
+            ActionKind::ClimbWindow => (4, 6, PlaybackMode::Loop),
+            ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
+            ActionKind::InspectScreen => (4, 4, PlaybackMode::Loop),
+            ActionKind::PresentDiscovery => (4, 2, PlaybackMode::Hold),
+            _ => (4, 8, PlaybackMode::Loop),
+        };
+        Self {
+            frames,
+            fps,
+            playback,
+        }
+    }
+
+    pub const fn body_action(action: ActionKind) -> ActionKind {
+        match action {
+            ActionKind::Tossed => ActionKind::Dragged,
+            other => other,
+        }
+    }
+
+    pub fn frame_at(self, elapsed: f32) -> u8 {
+        let raw = (elapsed.max(0.0) * f32::from(self.fps)) as u8;
+        match self.playback {
+            PlaybackMode::Loop => raw % self.frames,
+            PlaybackMode::Hold => raw.min(self.frames - 1),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FramePlacement {
+    /// Top of the 48x48 body frame relative to the simulation contact point, in art pixels.
+    pub origin_y: i32,
+}
+
+impl FramePlacement {
+    pub fn for_action(action: ActionKind, resting_baseline: u32) -> Self {
+        Self {
+            origin_y: if action == ActionKind::Dangle {
+                -5
+            } else {
+                resting_baseline as i32 - FRAME_SIZE as i32
+            },
         }
     }
 }
@@ -190,14 +239,18 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
     ) -> RenderedBodyFrame {
+        let frame = if reduce_motion { 0 } else { frame };
         let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
         let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
-        let pose = Pose::new(genome, action, frame, reduce_motion);
+        let body_action = AnimationSpec::body_action(action);
+        let pose = Pose::new(genome, body_action, frame, reduce_motion);
         let mut face_anchor = match genome.family {
-            BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, action, frame),
-            BodyFamily::Hopper => draw_hopper(&mut canvas, genome, palette, pose, action, frame),
+            BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, body_action, frame),
+            BodyFamily::Hopper => {
+                draw_hopper(&mut canvas, genome, palette, pose, body_action, frame)
+            }
             BodyFamily::SoftQuadruped => {
-                draw_quadruped(&mut canvas, genome, palette, pose, action, frame)
+                draw_quadruped(&mut canvas, genome, palette, pose, body_action, frame)
             }
         };
         draw_activity_prop(
@@ -205,7 +258,7 @@ impl CreatureRenderer {
             genome,
             palette,
             face_anchor,
-            action,
+            body_action,
             frame,
             reduce_motion,
         );
@@ -214,7 +267,7 @@ impl CreatureRenderer {
             genome,
             palette,
             face_anchor,
-            action,
+            body_action,
             frame,
             reduce_motion,
         );
@@ -233,6 +286,13 @@ impl CreatureRenderer {
         let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
         let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
         draw_face(&mut canvas, genome, palette, 8, 7, state);
+        canvas
+    }
+
+    pub fn render_trinket(genome: &AppearanceGenome, variant: u8) -> Canvas {
+        let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
+        let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
+        draw_generated_trinket(&mut canvas, palette, variant % 8, genome.marking_seed);
         canvas
     }
 
@@ -432,6 +492,46 @@ impl Pose {
                 play_lift: 1,
                 appendage_lift: 1,
                 tail_sway: walk,
+            },
+            ActionKind::ClimbWindow => Self {
+                bob: -walk.abs(),
+                squash_x: 0,
+                squash_y: 1,
+                step_a: -walk * 2,
+                step_b: walk * 2,
+                play_lift: 1,
+                appendage_lift: 2 + walk.abs(),
+                tail_sway: alternate,
+            },
+            ActionKind::Dangle => Self {
+                bob: 0,
+                squash_x: -1,
+                squash_y: 1,
+                step_a: walk,
+                step_b: -walk,
+                play_lift: 1,
+                appendage_lift: 2,
+                tail_sway: alternate * 2,
+            },
+            ActionKind::InspectScreen => Self {
+                bob: i32::from(frame % 2),
+                squash_x: 1,
+                squash_y: -1,
+                step_a: 0,
+                step_b: -1,
+                play_lift: 1,
+                appendage_lift: 1 + walk.abs(),
+                tail_sway: alternate,
+            },
+            ActionKind::PresentDiscovery => Self {
+                bob: -i32::from(frame >= 1),
+                squash_x: -i32::from(frame >= 1),
+                squash_y: i32::from(frame >= 1),
+                step_a: 0,
+                step_b: 0,
+                play_lift: i32::from(frame >= 1),
+                appendage_lift: 2 + i32::from(frame >= 2),
+                tail_sway: i32::from(frame >= 2),
             },
             _ => Self {
                 bob: frame as i32 % 2,
@@ -1199,6 +1299,30 @@ fn limb_targets(
         ActionKind::Landing => {
             offset_pair(left, right, ((-length, length - 1), (length, length - 1)))
         }
+        ActionKind::ClimbWindow => offset_pair(
+            left,
+            right,
+            (
+                (-length + pulse, -length - 3),
+                (length - pulse, -length + 1),
+            ),
+        ),
+        ActionKind::Dangle => offset_pair(
+            left,
+            right,
+            ((-length + 1, -length - 4), (length - 1, -length - 4)),
+        ),
+        ActionKind::InspectScreen => {
+            offset_pair(left, right, ((1, -length + 2), (length - 1, 1 + pulse)))
+        }
+        ActionKind::PresentDiscovery => {
+            offset_pair(left, right, ((-2, -length - 4), (2, -length - 4)))
+        }
+        ActionKind::Tossed => offset_pair(
+            left,
+            right,
+            ((-1 + pulse, length + 2), (1 - pulse, length + 2)),
+        ),
     }
 }
 
@@ -1550,6 +1674,79 @@ fn draw_generated_drinkware(canvas: &mut Canvas, palette: Palette, variant: u8, 
     canvas.set(x, y - 2, palette.accent);
 }
 
+fn draw_generated_trinket(canvas: &mut Canvas, palette: Palette, variant: u8, detail_seed: u64) {
+    let accent = if detail_seed & 1 == 0 {
+        palette.accent
+    } else {
+        palette.highlight
+    };
+    match variant % 8 {
+        // Gem
+        0 => {
+            canvas.line(8, 2, 13, 7, 1, palette.outline);
+            canvas.line(13, 7, 8, 14, 1, palette.outline);
+            canvas.line(8, 14, 3, 7, 1, palette.outline);
+            canvas.line(3, 7, 8, 2, 1, palette.outline);
+            canvas.fill_ellipse(8, 8, 3, 4, accent);
+            canvas.line(6, 5, 9, 4, 1, palette.highlight);
+        }
+        // Key
+        1 => {
+            canvas.fill_circle(5, 5, 3, palette.outline);
+            canvas.fill_circle(5, 5, 1, Rgba::TRANSPARENT);
+            canvas.line(7, 7, 13, 13, 2, palette.outline);
+            canvas.line(7, 7, 13, 13, 1, accent);
+            canvas.line(11, 11, 13, 9, 1, palette.outline);
+        }
+        // Leaf
+        2 => {
+            canvas.fill_ellipse(8, 7, 5, 4, palette.outline);
+            canvas.fill_ellipse(8, 7, 4, 3, accent);
+            canvas.line(4, 11, 12, 3, 1, palette.shadow);
+            canvas.line(8, 7, 12, 8, 1, palette.highlight);
+        }
+        // Shell
+        3 => {
+            canvas.fill_ellipse(8, 9, 6, 4, palette.outline);
+            canvas.fill_ellipse(8, 8, 5, 3, accent);
+            canvas.line(8, 5, 8, 12, 1, palette.shadow);
+            canvas.line(5, 6, 6, 12, 1, palette.highlight);
+            canvas.line(11, 6, 10, 12, 1, palette.shadow);
+        }
+        // Ring charm
+        4 => {
+            canvas.fill_circle(8, 8, 5, palette.outline);
+            canvas.fill_circle(8, 8, 3, Rgba::TRANSPARENT);
+            canvas.fill_circle(8, 2, 2, accent);
+            canvas.set(7, 1, palette.highlight);
+        }
+        // Tiny bottle
+        5 => {
+            canvas.fill_rect(6, 2, 4, 3, palette.outline);
+            canvas.fill_rect(4, 5, 8, 9, palette.outline);
+            canvas.fill_rect(5, 6, 6, 7, palette.shadow);
+            canvas.fill_rect(5, 9, 6, 4, accent);
+            canvas.set(6, 7, palette.highlight);
+        }
+        // Star relic
+        6 => {
+            canvas.line(8, 2, 8, 14, 2, palette.outline);
+            canvas.line(2, 8, 14, 8, 2, palette.outline);
+            canvas.line(4, 4, 12, 12, 1, palette.outline);
+            canvas.line(12, 4, 4, 12, 1, palette.outline);
+            canvas.fill_circle(8, 8, 2, accent);
+            canvas.set(8, 7, palette.highlight);
+        }
+        // Odd little tablet
+        _ => {
+            canvas.fill_rect(3, 3, 10, 11, palette.outline);
+            canvas.fill_rect(4, 4, 8, 9, accent);
+            canvas.fill_circle(8, 7, 2, palette.shadow);
+            canvas.line(6, 11, 10, 11, 1, palette.highlight);
+        }
+    }
+}
+
 fn draw_effects(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
@@ -1623,6 +1820,29 @@ fn draw_effects(
             canvas.line(face.x - 7, y + 2, face.x - 9, y, 1, palette.accent);
             canvas.line(face.x + 7, y + 2, face.x + 9, y, 1, palette.accent);
         }
+        ActionKind::ClimbWindow => {
+            if !reduce_motion && frame.is_multiple_of(2) {
+                canvas.set((face.x + 8).min(45), (face.y - 5).max(2), palette.highlight);
+            }
+        }
+        ActionKind::InspectScreen => {
+            let x = (face.x + 7).min(43);
+            let y = (face.y + 1).clamp(4, 42);
+            canvas.fill_circle(x, y, 2, palette.outline);
+            canvas.fill_circle(x, y, 1, Rgba::TRANSPARENT);
+            canvas.line(x + 2, y + 2, x + 4, y + 4, 1, palette.accent);
+        }
+        ActionKind::PresentDiscovery => draw_motif(
+            canvas,
+            if genome.effect_motif == EffectMotif::None {
+                EffectMotif::Star
+            } else {
+                genome.effect_motif
+            },
+            (face.x + 9).min(44),
+            (face.y - 9 - pulse).max(3),
+            palette.highlight,
+        ),
         _ => {}
     }
 }
@@ -1744,6 +1964,11 @@ fn expression_for_action(action: ActionKind) -> ExpressionKind {
         ActionKind::Greet | ActionKind::Follow => ExpressionKind::Affectionate,
         ActionKind::Dragged => ExpressionKind::Curious,
         ActionKind::Landing => ExpressionKind::Determined,
+        ActionKind::ClimbWindow => ExpressionKind::Determined,
+        ActionKind::Dangle => ExpressionKind::Content,
+        ActionKind::InspectScreen => ExpressionKind::Curious,
+        ActionKind::PresentDiscovery => ExpressionKind::Joy,
+        ActionKind::Tossed => ExpressionKind::Startled,
     }
 }
 
@@ -1840,6 +2065,17 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
             }
         }
         ActionKind::Landing => ExpressionKind::Determined,
+        ActionKind::ClimbWindow => ExpressionKind::Determined,
+        ActionKind::Dangle => {
+            if drives.arousal > 0.5 {
+                ExpressionKind::Focused
+            } else {
+                ExpressionKind::Content
+            }
+        }
+        ActionKind::InspectScreen => ExpressionKind::Curious,
+        ActionKind::PresentDiscovery => ExpressionKind::Joy,
+        ActionKind::Tossed => ExpressionKind::Startled,
         ActionKind::Sleep => ExpressionKind::Sleepy,
     }
 }
@@ -1880,6 +2116,21 @@ fn resolve_gaze(
     cursor: CursorSnapshot,
     cursor_reactions: bool,
 ) -> GazeDirection {
+    match creature.state.action {
+        ActionKind::InspectScreen => {
+            return GazeDirection::new(
+                if creature.state.facing_right { 1 } else { -1 },
+                if creature.state.surface.kind == formiga_core::SurfaceKind::WindowLedge {
+                    1
+                } else {
+                    -1
+                },
+            );
+        }
+        ActionKind::Dangle => return GazeDirection::new(0, 1),
+        ActionKind::PresentDiscovery => return GazeDirection::new(0, -1),
+        _ => {}
+    }
     if !cursor_reactions
         || !cursor.available
         || creature.state.position.distance(cursor.position) > 240.0
@@ -2037,6 +2288,77 @@ mod tests {
         assert!(snack.alpha_bounds().is_some());
         assert!(drinkware.alpha_bounds().is_some());
         assert_ne!(snack, drinkware);
+    }
+
+    #[test]
+    fn generated_discoveries_have_eight_deterministic_opaque_silhouettes() {
+        let genome = genome(BodyFamily::Blob);
+        let mut hashes = std::collections::BTreeSet::new();
+        for variant in 0..8 {
+            let first = CreatureRenderer::render_trinket(&genome, variant);
+            let second = CreatureRenderer::render_trinket(&genome, variant);
+            assert_eq!(first, second);
+            assert!(first.alpha_bounds().is_some(), "variant {variant} is empty");
+            assert!(
+                first
+                    .pixels()
+                    .iter()
+                    .filter(|pixel| pixel.a > 0)
+                    .all(|pixel| pixel.a == u8::MAX),
+                "variant {variant} contains translucent runtime pixels"
+            );
+            hashes.insert(Sha256::digest(first.rgba_bytes()).to_vec());
+        }
+        assert_eq!(hashes.len(), 8);
+    }
+
+    #[test]
+    fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
+        for (action, fps) in [
+            (ActionKind::ClimbWindow, 6),
+            (ActionKind::Dangle, 3),
+            (ActionKind::InspectScreen, 4),
+            (ActionKind::PresentDiscovery, 2),
+        ] {
+            let spec = AnimationSpec::for_action(action);
+            assert_eq!(spec.frames, 4);
+            assert_eq!(spec.fps, fps);
+        }
+        let discovery = AnimationSpec::for_action(ActionKind::PresentDiscovery);
+        assert_eq!(discovery.playback, PlaybackMode::Hold);
+        assert_eq!(discovery.frame_at(20.0), 3);
+        assert_eq!(
+            AnimationSpec::body_action(ActionKind::Tossed),
+            ActionKind::Dragged
+        );
+        assert_eq!(
+            FramePlacement::for_action(ActionKind::Dangle, 5).origin_y,
+            -5
+        );
+        assert_eq!(
+            FramePlacement::for_action(ActionKind::Idle, 5).origin_y,
+            -43
+        );
+    }
+
+    #[test]
+    fn reduced_motion_ambient_body_variants_are_static() {
+        let genome = genome(BodyFamily::SoftQuadruped);
+        for action in [
+            ActionKind::ClimbWindow,
+            ActionKind::Dangle,
+            ActionKind::InspectScreen,
+            ActionKind::PresentDiscovery,
+        ] {
+            let first = CreatureRenderer::render_body_frame(&genome, action, 0, true);
+            for frame in 1..AnimationSpec::for_action(action).frames {
+                assert_eq!(
+                    first,
+                    CreatureRenderer::render_body_frame(&genome, action, frame, true),
+                    "{action:?} frame {frame} moves in reduced-motion mode"
+                );
+            }
+        }
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::platform;
 use anyhow::{Context, Result};
-use formiga_art::{AnimationSpec, CreatureRenderer, FRAME_SIZE};
+use formiga_art::{AnimationSpec, CreatureRenderer, FRAME_SIZE, FramePlacement};
 use formiga_core::{Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -114,19 +114,20 @@ impl InteractionProxy {
                 value
             }
         };
-        let seat = (baseline * u32::from(scale)) as f32;
+        let placement = FramePlacement::for_action(creature.state.action, baseline);
+        let origin_y = placement.origin_y as f32 * f32::from(scale);
         self.logical_bounds = DesktopRect {
             x: creature.state.position.x - logical_size * 0.5,
-            y: creature.state.position.y - logical_size + seat / monitor.scale_factor,
+            y: creature.state.position.y + origin_y / monitor.scale_factor,
             width: logical_size,
             height: logical_size,
         };
         let local_anchor_x = (creature.state.position.x - monitor.bounds.x) * monitor.scale_factor;
         let local_anchor_y =
-            (creature.state.position.y - monitor.bounds.y) * monitor.scale_factor + seat;
+            (creature.state.position.y - monitor.bounds.y) * monitor.scale_factor + origin_y;
         let position = PhysicalPosition::new(
             overlay_origin.x + (local_anchor_x - physical_size as f32 * 0.5).round() as i32,
-            overlay_origin.y + (local_anchor_y - physical_size as f32).round() as i32,
+            overlay_origin.y + local_anchor_y.round() as i32,
         );
         // Size before position, and re-apply the position whenever the size changes. winit's macOS
         // `set_outer_position` flips the Y origin using the window's *current* frame height, and
@@ -149,7 +150,7 @@ impl InteractionProxy {
         }
 
         let spec = AnimationSpec::for_action(creature.state.action);
-        let frame = ((creature.state.action_elapsed * spec.fps as f32) as u8) % spec.frames;
+        let frame = spec.frame_at(creature.state.action_elapsed);
         let face_state =
             CreatureRenderer::resolve_face_state(creature, cursor, settings.cursor_reactions);
         let signature = MaskSignature {
