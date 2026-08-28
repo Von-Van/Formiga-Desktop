@@ -23,7 +23,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos
-          path: dist/Formiga-*-macOS-universal.*
+          path: |
+            dist/Formiga-*-macOS-universal.dmg
+            dist/Formiga-*-macOS-universal.dmg.sha256
+            dist/Formiga-*-macOS-universal.zip
+            dist/Formiga-*-macOS-universal.zip.sha256
 
   package-windows:
     runs-on: windows-2022
@@ -41,7 +45,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: dist/Formiga-*-windows-x64.*
+          path: |
+            dist/Formiga-*-windows-x64.msi
+            dist/Formiga-*-windows-x64.msi.sha256
+            dist/Formiga-*-windows-x64.zip
+            dist/Formiga-*-windows-x64.zip.sha256
 
   publish:
     needs: [package-macos, package-windows]
