@@ -9,6 +9,12 @@ in transparent desktop overlays, develop simple habits, perch on ordinary window
 cursor, and eventually grow into a four-creature colony. The colony and its behavior stay local;
 the only optional network feature is a lightweight GitHub release check.
 
+Creatures now remember treatment and repeated experiences as compact counters and preferences rather
+than an activity log. A click pets a creature; tosses, pets, sleep, ledges, window rides, discoveries,
+play, home visits, and repeated placement gradually influence bounded behavior scores while the
+original generated personality remains recognizable. The read-only Colony profile surfaces those
+memories and learned descriptors, with the creature's name as its only editable field.
+
 Between those larger reactions, creatures entertain themselves with generated toys, pause for small
 snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
@@ -19,13 +25,13 @@ of the way; a slow release keeps the existing precise placement behavior.
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.38.1-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.39.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.38.1-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.39.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.38.1`. The assisted updater matches those exact names, so do
+names with its version in place of `0.39.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
@@ -56,6 +62,8 @@ desktop interactions:
   trinkets without screen capture, inventory, or runtime art generation.
 - See energetic personalities break into short, higher-cost sprints without adding another runtime loop.
 - Drag a creature by its opaque pixels without blocking unrelated desktop clicks.
+- Click without crossing the six-point drag threshold to pet a creature and see its greeting
+  response; maximum excursion prevents a drag-out-and-back gesture from being mistaken for a pet.
 - Release a fast drag to toss a creature with a single soft bounce, or release slowly for precise
   placement; reduced-motion and paused modes always use the precise path.
 - Limit the colony to presets or up to 32 allowed/excluded rectangles across displays.
@@ -65,7 +73,10 @@ desktop interactions:
 - Watch creatures transfer between stacked windows instead of remaining on the desktop floor.
 - Discover a deterministic corner home with one of four generated shelter families; a home visit
   lasts 15 minutes and cannot return until its 15-minute cooldown has elapsed.
-- Dismiss the shelter immediately by dragging a homebound creature back into the desktop world.
+- Pet a homebound creature without dismissing the shelter, or cross the drag threshold to dismiss
+  it and bring the creature back into the desktop world.
+- Review names, up to three learned descriptors, age, discoveries, favorite places, and closest
+  companions in the Colony tab; only the 1–24-character creature name is editable.
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
 - Check for new GitHub releases without blocking the desktop, verify downloads with SHA-256, and
   hand the approved installer to the operating system.
@@ -141,7 +152,7 @@ cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.p
 
 ## Status
 
-Formiga v0.38 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.39 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 

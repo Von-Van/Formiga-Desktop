@@ -1,4 +1,6 @@
-use crate::{ActionKind, Creature, DesktopSnapshot, Point};
+use crate::{
+    ActionChoice, ActionKind, Creature, DesktopSnapshot, LearnedTendencies, Point, routine_key,
+};
 use rand::Rng;
 
 #[derive(Clone, Copy, Debug)]
@@ -17,7 +19,7 @@ pub fn choose_action<R: Rng + ?Sized>(
     desktop: &DesktopSnapshot,
     context: BehaviorContext,
     rng: &mut R,
-) -> ActionKind {
+) -> ActionChoice {
     let p = &creature.personality;
     let d = &creature.state.drives;
     let cursor_distance = if desktop.cursor.available {
@@ -105,23 +107,98 @@ pub fn choose_action<R: Rng + ?Sized>(
             | ActionKind::Dangle
             | ActionKind::InspectScreen
             | ActionKind::PresentDiscovery
-            | ActionKind::Tossed => -2.0,
+            | ActionKind::Tossed
+            | ActionKind::PetReaction => -2.0,
         };
-        let habit = creature
-            .state
-            .habits
-            .get(&habit_key(creature, action, context.hour_utc))
-            .copied()
-            .unwrap_or_default();
+        let routine = creature.routines.strength(routine_key(
+            creature.state.surface.kind,
+            creature.state.surface.relative_x,
+            action,
+            context.hour_utc,
+        ));
+        let learned = (learned_modifier(creature, action)
+            + routine
+                * p.routine_affinity
+                * (0.1 + (f32::from(creature.tendencies.routine) + 100.0) / 200.0 * 0.1))
+            .clamp(-0.35, 0.35);
         let commitment = if action == creature.state.action {
             0.35
         } else {
             0.0
         };
-        scored.push((action, score + habit * p.routine_affinity + commitment));
+        scored.push((action, score + learned + commitment));
     }
 
-    softmax_sample(&scored, p.decision_temperature.max(0.08), rng)
+    let action = softmax_sample(&scored, p.decision_temperature.max(0.08), rng);
+    let (target_creature, target_point) = match action {
+        ActionKind::Greet | ActionKind::Follow | ActionKind::SocialPlay => (
+            context.nearest_creature_id,
+            context.nearest_creature_position,
+        ),
+        ActionKind::InvestigateCursor if desktop.cursor.available => {
+            (None, Some(desktop.cursor.position))
+        }
+        ActionKind::Traverse => (
+            None,
+            preferred_region_target(creature, desktop).filter(|_| {
+                rng.random::<u8>()
+                    <= creature
+                        .memory
+                        .preferred_region
+                        .map_or(0, |preferred| preferred.confidence)
+            }),
+        ),
+        _ => (None, None),
+    };
+    ActionChoice {
+        action,
+        target_creature,
+        target_point,
+    }
+}
+
+fn preferred_region_target(creature: &Creature, desktop: &DesktopSnapshot) -> Option<Point> {
+    let preferred = creature.memory.preferred_region?;
+    let monitor = desktop
+        .monitors
+        .iter()
+        .find(|monitor| monitor.display_key == preferred.display)?;
+    let column = f32::from(preferred.cell.min(8) % 3);
+    let row = f32::from(preferred.cell.min(8) / 3);
+    Some(Point {
+        x: monitor.usable_bounds.x + monitor.usable_bounds.width * ((column + 0.5) / 3.0),
+        y: monitor.usable_bounds.y + monitor.usable_bounds.height * ((row + 0.5) / 3.0),
+    })
+}
+
+fn learned_modifier(creature: &Creature, action: ActionKind) -> f32 {
+    let tendencies = creature.tendencies;
+    match action {
+        ActionKind::InvestigateCursor => LearnedTendencies::utility(tendencies.cursor_trust),
+        ActionKind::AvoidCursor => -LearnedTendencies::utility(tendencies.cursor_trust),
+        ActionKind::Perch => LearnedTendencies::utility(tendencies.climbing),
+        ActionKind::RideWindow => (LearnedTendencies::utility(tendencies.climbing)
+            + ride_confidence(creature))
+        .clamp(-0.35, 0.35),
+        ActionKind::ReactToWindow => -ride_confidence(creature),
+        ActionKind::Sleep => LearnedTendencies::utility(tendencies.sleep_security),
+        ActionKind::Traverse | ActionKind::Sprint => {
+            LearnedTendencies::utility(tendencies.exploration)
+        }
+        ActionKind::SoloPlay => LearnedTendencies::utility(tendencies.play),
+        ActionKind::Greet | ActionKind::Follow => {
+            LearnedTendencies::utility(tendencies.sociability)
+        }
+        ActionKind::SocialPlay => (LearnedTendencies::utility(tendencies.sociability)
+            + LearnedTendencies::utility(tendencies.play))
+        .clamp(-0.35, 0.35),
+        _ => 0.0,
+    }
+}
+
+fn ride_confidence(creature: &Creature) -> f32 {
+    let five_minute_blocks = (creature.memory.window_ride_seconds / (5 * 60)).min(100) as i8;
+    LearnedTendencies::utility(five_minute_blocks)
 }
 
 fn social_score(
@@ -143,15 +220,6 @@ fn social_score(
         }
         _ => -2.0,
     }
-}
-
-pub(crate) fn habit_key(creature: &Creature, action: ActionKind, hour_utc: u8) -> String {
-    let time_bucket = hour_utc / 6;
-    let zone = (creature.state.surface.relative_x.clamp(0.0, 0.999) * 3.0) as u8;
-    format!(
-        "{time_bucket}:{zone}:{:?}:{action:?}",
-        creature.state.surface.kind
-    )
 }
 
 fn softmax_sample<R: Rng + ?Sized>(
@@ -231,7 +299,19 @@ mod tests {
     ) -> usize {
         let mut rng = ChaCha12Rng::from_seed([9; 32]);
         (0..64)
-            .filter(|_| choose_action(creature, desktop, context, &mut rng) == action)
+            .filter(|_| choose_action(creature, desktop, context, &mut rng).action == action)
+            .count()
+    }
+
+    fn selection_count_large(
+        creature: &Creature,
+        desktop: &DesktopSnapshot,
+        context: BehaviorContext,
+        action: ActionKind,
+    ) -> usize {
+        let mut rng = ChaCha12Rng::from_seed([19; 32]);
+        (0..4_096)
+            .filter(|_| choose_action(creature, desktop, context, &mut rng).action == action)
             .count()
     }
 
@@ -261,5 +341,68 @@ mod tests {
         creature.state.drives.comfort = 0.5;
         let sprint_count = selection_count(&creature, &desktop, context, ActionKind::Sprint);
         assert!(sprint_count > 35, "sprint selected {sprint_count}/64 times");
+    }
+
+    #[test]
+    fn learned_climbing_changes_probability_monotonically_and_reversibly() {
+        let (mut creature, desktop, mut context) = fixture();
+        context.reachable_window_ledge = true;
+        creature.personality.decision_temperature = 0.5;
+        creature.tendencies.climbing = -100;
+        let low = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        creature.tendencies.climbing = 0;
+        let neutral = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        creature.tendencies.climbing = 100;
+        let high = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        creature.tendencies.climbing = -100;
+        let reversed = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        assert!(
+            low < neutral && neutral < high,
+            "{low} < {neutral} < {high}"
+        );
+        assert_eq!(low, reversed);
+    }
+
+    #[test]
+    fn every_learned_modifier_is_bounded_and_has_a_contrary_direction() {
+        let (mut creature, _, _) = fixture();
+        for value in [-100, 100] {
+            creature.tendencies = crate::LearnedTendencies {
+                cursor_trust: value,
+                sociability: value,
+                climbing: value,
+                sleep_security: value,
+                exploration: value,
+                play: value,
+                home_affinity: value,
+                routine: value,
+            };
+            for action in [
+                ActionKind::InvestigateCursor,
+                ActionKind::AvoidCursor,
+                ActionKind::Perch,
+                ActionKind::Sleep,
+                ActionKind::Traverse,
+                ActionKind::SoloPlay,
+                ActionKind::Greet,
+                ActionKind::SocialPlay,
+            ] {
+                assert!(learned_modifier(&creature, action).abs() <= 0.35);
+            }
+        }
+        creature.tendencies.cursor_trust = 100;
+        let trusting = learned_modifier(&creature, ActionKind::InvestigateCursor);
+        creature.tendencies.cursor_trust = -100;
+        let wary = learned_modifier(&creature, ActionKind::InvestigateCursor);
+        assert!(trusting > 0.0 && wary < 0.0);
+
+        creature.memory.window_ride_seconds = 5 * 60 - 1;
+        let before_five_minutes = ride_confidence(&creature);
+        creature.memory.window_ride_seconds = 5 * 60;
+        let after_five_minutes = ride_confidence(&creature);
+        creature.memory.window_ride_seconds = u32::MAX;
+        assert_eq!(before_five_minutes, 0.0);
+        assert!(after_five_minutes > before_five_minutes);
+        assert_eq!(ride_confidence(&creature), 0.35);
     }
 }

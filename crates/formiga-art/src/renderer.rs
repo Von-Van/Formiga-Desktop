@@ -156,6 +156,7 @@ impl AnimationSpec {
     pub const fn body_action(action: ActionKind) -> ActionKind {
         match action {
             ActionKind::Tossed => ActionKind::Dragged,
+            ActionKind::PetReaction => ActionKind::Greet,
             other => other,
         }
     }
@@ -179,7 +180,9 @@ impl FramePlacement {
     pub fn for_action(action: ActionKind, resting_baseline: u32) -> Self {
         Self {
             origin_y: if action == ActionKind::Dangle {
-                -5
+                // Seat the raised hands on the ledge instead of leaving their final pixels just
+                // below it. GPU placement and the native interaction proxy share this offset.
+                -7
             } else {
                 resting_baseline as i32 - FRAME_SIZE as i32
             },
@@ -1288,7 +1291,9 @@ fn limb_targets(
             ((length + 1, -1 + pulse), (-length - 1, -1 - pulse)),
         ),
         ActionKind::Drink => offset_pair(left, right, ((length - 1, 1), (-1, 1 - pulse))),
-        ActionKind::Greet => offset_pair(left, right, ((2, 2), (length + pulse, -length - pulse))),
+        ActionKind::Greet | ActionKind::PetReaction => {
+            offset_pair(left, right, ((2, 2), (length + pulse, -length - pulse)))
+        }
         ActionKind::Follow => offset_pair(left, right, ((-2, length - 2), (length + 2, -1))),
         ActionKind::SocialPlay => offset_pair(left, right, ((2, 1), (length + 2, -length + pulse))),
         ActionKind::Dragged => offset_pair(
@@ -1961,7 +1966,9 @@ fn expression_for_action(action: ActionKind) -> ExpressionKind {
         ActionKind::ReactToWindow => ExpressionKind::Startled,
         ActionKind::SoloPlay | ActionKind::SocialPlay => ExpressionKind::Joy,
         ActionKind::Eat | ActionKind::Drink => ExpressionKind::Content,
-        ActionKind::Greet | ActionKind::Follow => ExpressionKind::Affectionate,
+        ActionKind::Greet | ActionKind::Follow | ActionKind::PetReaction => {
+            ExpressionKind::Affectionate
+        }
         ActionKind::Dragged => ExpressionKind::Curious,
         ActionKind::Landing => ExpressionKind::Determined,
         ActionKind::ClimbWindow => ExpressionKind::Determined,
@@ -2076,6 +2083,7 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
         ActionKind::InspectScreen => ExpressionKind::Curious,
         ActionKind::PresentDiscovery => ExpressionKind::Joy,
         ActionKind::Tossed => ExpressionKind::Startled,
+        ActionKind::PetReaction => ExpressionKind::Affectionate,
         ActionKind::Sleep => ExpressionKind::Sleepy,
     }
 }
@@ -2332,8 +2340,12 @@ mod tests {
             ActionKind::Dragged
         );
         assert_eq!(
+            AnimationSpec::body_action(ActionKind::PetReaction),
+            ActionKind::Greet
+        );
+        assert_eq!(
             FramePlacement::for_action(ActionKind::Dangle, 5).origin_y,
-            -5
+            -7
         );
         assert_eq!(
             FramePlacement::for_action(ActionKind::Idle, 5).origin_y,

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AnimationSpec, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement,
-    PixelPoint, SHELTER_SIZE, ShelterRenderer,
+    MilestoneBubbleRenderer, PixelPoint, SHELTER_SIZE, ShelterRenderer,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, Creature, CreatureId, CursorSnapshot, DesktopRect,
@@ -59,6 +59,15 @@ struct ShelterGpu {
     genome: ShelterGenome,
 }
 
+struct BubbleGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    creature_id: CreatureId,
+    text: String,
+    width: u32,
+    height: u32,
+}
+
 const ATLAS_COLUMNS: u32 = 10;
 // There are exactly 27 eyelid/gaze combinations per expression. Keeping one expression per row
 // avoids padding slots and leaves enough texture budget for additional pre-baked body actions.
@@ -81,6 +90,7 @@ pub struct OverlayRenderer {
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
+    bubble: Option<BubbleGpu>,
     last_occlusion: Option<OcclusionUniform>,
     occlusion_windows: Vec<DesktopWindow>,
     occlusion_rules: Vec<ApplicationOcclusionRule>,
@@ -308,7 +318,7 @@ impl OverlayRenderer {
         });
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("creature vertices"),
-            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 78]),
+            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 84]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let zone_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -333,6 +343,7 @@ impl OverlayRenderer {
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             shelter: None,
+            bubble: None,
             last_occlusion: None,
             occlusion_windows: Vec::new(),
             occlusion_rules: Vec::new(),
@@ -389,6 +400,7 @@ impl OverlayRenderer {
         cursor: CursorSnapshot,
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
+        milestone: Option<(CreatureId, &str)>,
     ) -> Result<()> {
         self.update_occlusion_cache(save, windows);
         let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
@@ -420,8 +432,22 @@ impl OverlayRenderer {
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
-        let mut vertices =
-            Vec::with_capacity(visible.len() * 18 + usize::from(shelter_visible) * 6);
+        let bubble_creature = milestone.and_then(|(creature_id, text)| {
+            visible
+                .iter()
+                .find(|creature| creature.id == creature_id)
+                .map(|creature| (*creature, text))
+        });
+        if let Some((creature, text)) = bubble_creature {
+            self.ensure_bubble(creature.id, text);
+        } else {
+            self.bubble = None;
+        }
+        let mut vertices = Vec::with_capacity(
+            visible.len() * 18
+                + usize::from(shelter_visible) * 6
+                + usize::from(bubble_creature.is_some()) * 6,
+        );
         let mut creature_draws = Vec::with_capacity(visible.len());
         if shelter_visible && let Some(shelter_vertices) = self.shelter_vertices(save) {
             vertices.extend_from_slice(&shelter_vertices);
@@ -444,6 +470,14 @@ impl OverlayRenderer {
             }
             creature_draws.push((creature.id, start, trinket.is_some()));
         }
+        let bubble_start = vertices.len();
+        if let Some((creature, _)) = bubble_creature
+            && let Some(bubble_vertices) =
+                self.bubble_vertices(creature, save.settings.display_scale)
+        {
+            vertices.extend_from_slice(&bubble_vertices);
+        }
+        let bubble_vertex_count = vertices.len() - bubble_start;
         if !vertices.is_empty() {
             self.queue
                 .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
@@ -541,6 +575,15 @@ impl OverlayRenderer {
                         pass.draw(0..6, 0..1);
                     }
                 }
+            }
+            if bubble_vertex_count > 0
+                && let Some(bubble) = &self.bubble
+            {
+                let start = (bubble_start * std::mem::size_of::<Vertex>()) as u64;
+                let end = start + (bubble_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                pass.set_bind_group(1, &bubble.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
+                pass.draw(0..bubble_vertex_count as u32, 0..1);
             }
         }
         self.queue.submit(Some(encoder.finish()));
@@ -874,6 +917,76 @@ impl OverlayRenderer {
         });
     }
 
+    fn ensure_bubble(&mut self, creature_id: CreatureId, text: &str) {
+        if self
+            .bubble
+            .as_ref()
+            .is_some_and(|bubble| bubble.creature_id == creature_id && bubble.text == text)
+        {
+            return;
+        }
+        let canvas = MilestoneBubbleRenderer::render(text);
+        let width = canvas.width();
+        let height = canvas.height();
+        let pixels = canvas.rgba_bytes();
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("temporary milestone bubble"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("temporary milestone bubble bind group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.bubble = Some(BubbleGpu {
+            _texture: texture,
+            bind_group,
+            creature_id,
+            text: text.to_owned(),
+            width,
+            height,
+        });
+    }
+
     fn shelter_vertices(&self, save: &SaveFile) -> Option<[Vertex; 6]> {
         let anchor = resolved_home_anchor(
             &save.home,
@@ -888,6 +1001,41 @@ impl OverlayRenderer {
         let right = (local_x + size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let top = 1.0 - (local_y - size) / self.config.height as f32 * 2.0;
         let bottom = 1.0 - local_y / self.config.height as f32 * 2.0;
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        Some([
+            vertex([left, top], [0.0, 0.0]),
+            vertex([right, top], [1.0, 0.0]),
+            vertex([right, bottom], [1.0, 1.0]),
+            vertex([left, top], [0.0, 0.0]),
+            vertex([right, bottom], [1.0, 1.0]),
+            vertex([left, bottom], [0.0, 1.0]),
+        ])
+    }
+
+    fn bubble_vertices(&self, creature: &Creature, display_scale: u8) -> Option<[Vertex; 6]> {
+        let bubble = self
+            .bubble
+            .as_ref()
+            .filter(|bubble| bubble.creature_id == creature.id)?;
+        let scale = 2.0;
+        let width = bubble.width as f32 * scale;
+        let height = bubble.height as f32 * scale;
+        let local_x =
+            (creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor;
+        let contact_y =
+            (creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor;
+        let creature_height = FRAME_SIZE as f32 * f32::from(display_scale);
+        let center_x = local_x.clamp(width / 2.0, self.config.width as f32 - width / 2.0);
+        let bottom_px = (contact_y - creature_height - 6.0).max(height);
+        let top_px = bottom_px - height;
+        let left = (center_x - width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let right = (center_x + width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - top_px / self.config.height as f32 * 2.0;
+        let bottom = 1.0 - bottom_px / self.config.height as f32 * 2.0;
         let vertex = |position, uv| Vertex {
             position,
             uv,

@@ -1,5 +1,26 @@
 # Formiga roadmap
 
+## v0.39 lived-experience release
+
+- Ephemeral `WorldEvent`s project into typed counters, eight bounded learned tendencies, and a
+  fixed twelve-slot routine table; no event history is persisted.
+- Clicks within six logical points are pets, drag-out-and-back remains a drag, shelter petting does
+  not dismiss the home, and `PetReaction` reuses greeting art.
+- Repeated treatment, ledge time, riding, climbing, sleep, discoveries, play, home visits, and
+  placement alter existing utility scores by at most ±0.35 and remain reversible.
+- Deterministic cozy names and read-only Colony profiles surface up to three hysteretic descriptors,
+  age, discoveries, favorite places, and closest companions. Only names can be edited.
+- Profile badges persist until viewed; rare milestone bubbles use one temporary texture globally
+  and are limited to once per creature per 12 active hours.
+- Dangling handholds sit two source pixels higher, and the climb mantle now lifts inward continuously
+  without switching through a hitching landing pose.
+- Save version 6 migrates every v1–v5 colony, including the twelve strongest legacy habits.
+
+Release-page summary:
+
+> Creatures now remember how they are treated and gradually develop preferences for people, places,
+> ledges, sleep, play, exploration, and home—without storing an activity log.
+
 ## v0.38.1 calendar-arrival patch
 
 - Additional creatures arrive one hour, one week, and one calendar month after colony creation.
@@ -59,12 +80,26 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Post-v0.31
+## Progressive releases after v0.39
 
-- Behavioral observation storage, research/Lab UI, export, and ML experiments.
-- Accessories, seasonal history, audio, breeding, and new colony mechanics.
-- Cross-monitor autonomous travel and direct petting.
-- Linux investigation only after the macOS and Windows experience is stable.
+- **v0.40 Creature Bonds:** replace legacy float maps with at most six unordered four-score pair
+  records and target existing follow, sleep, presentation, play, greeting, inspection, and reaction
+  actions at companions.
+- **v0.41 Colony Rituals:** schedule one rare deterministic picnic, group nap, race, shelter
+  gathering, catch game, presentation, hatch day, quiet huddle, or late-night sleep pile without a
+  new loop or missed-event replay.
+- **v0.42 Desktop Topology:** derive bounded runtime-only islands, exposed corners, calm moving
+  platforms, and cursor invitations from geometry.
+- **v0.43 Window Routes:** derive bounded four-hop window constructions and short-lived narrow-gap
+  squeeze routes that cancel as soon as supporting geometry changes.
+- **v0.44 Inhabited Ecosystem:** add at most eight deterministic static colony objects with semantic
+  utility contributions and no physics.
+- **v0.45 Growing Home:** add at most six deterministic shelter decorations while preserving one
+  cached 64×64 shelter texture and one normal draw call.
+- **v0.46 Offline Seed Sharing:** encode original generation and a full 256-bit origin seed in a
+  checksummed, versioned, case-insensitive Base32 code with no server.
+- **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
+  allocation or hidden metadata.
 
-The post-v0.31 data layer must subscribe to the existing in-memory `WorldEvent` interface rather than
-coupling persistence or analytics to the behavior engine.
+Relationship values, objects, decorations, rituals, topology, seed import, and card export remain
+out of scope for v0.39 and retain their independent release gates.

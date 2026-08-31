@@ -14,10 +14,10 @@ resident memory, and notes. Do not publish target values as measured results.
 
 | Build | Machine | State | CPU avg | Memory | Status |
 |---|---|---|---:|---:|---|
-| v0.38.1 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.38.1 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.38.1 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.38.1 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.39.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.39.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.39.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.39.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -27,5 +27,11 @@ The procedural atlas budget is independently enforced in tests. The 90-frame bod
 layered face/trinket texture total exactly 1,161,216 bytes per creature, below the 1.2 MB limit; four
 creatures use 4,644,864 bytes (about 4.43 MiB) for creature textures. Atlas generation occurs only
 when a creature loads or reduced-motion changes. Ambient timers reuse simulation ticks, trinkets are
-pre-baked, and toss integration runs only at the existing movement cadence while airborne. Native
-CPU and resident-memory measurements remain pending in the table above.
+pre-baked, and toss integration runs only at the existing movement cadence while airborne.
+
+Lived experience adds no polling or behavior loop: existing world events project into fixed counters,
+eight bytes of tendency scores, and twelve bounded routine slots, while continuous exposure emits at
+most one compact observation per creature per 60 active visible seconds. `PetReaction` reuses an
+existing body clip, so the creature atlas remains unchanged. A milestone bubble allocates its small
+CPU canvas and GPU texture only for a five-second notice, permits one globally, and releases both at
+expiry. Native CPU and resident-memory measurements remain pending in the table above.

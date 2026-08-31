@@ -2,6 +2,44 @@
 
 All notable changes are documented here.
 
+## [0.39.0] - 2026-08-31
+
+### Added
+
+- Click-without-drag petting with a visible affectionate response that reuses the greeting body
+  clip and adds no creature-atlas frames.
+- Compact typed memories for pets, tosses, placements, interrupted and uninterrupted sleep,
+  ledges, window rides, climbs, discoveries, play, and home visits. One-minute active observations
+  update accumulated state and are discarded; cursor paths, coordinates, layouts, and event history
+  are never saved.
+- Eight bounded learned tendencies for cursor trust, sociability, climbing, sleep security,
+  exploration, play, home affinity, and routine. Their combined utility contribution is capped at
+  ±0.35 and contrary experiences can reverse every learned preference.
+- Deterministic cozy names and a Colony settings tab with learned descriptors, age, discoveries,
+  favorite display/region, and closest companion. Only names are editable; 1–24 trimmed Unicode
+  scalar values are accepted while control characters and line breaks are rejected.
+- Persistent profile badges with ±35/±25 descriptor hysteresis and optional five-second milestone
+  bubbles. Bubbles are globally singular, throttled to once per creature per 12 active hours, and
+  rendered into a temporary texture that is released when the notice ends.
+- `ActionChoice` targets for creatures and points, allowing repeated placement to gradually guide
+  ordinary traversal toward a preferred 3×3 display region.
+
+### Changed
+
+- Save version 6 replaces unbounded string-keyed habits with a fixed twelve-slot numeric routine
+  table and migrates the twelve strongest v1–v5 entries. It also adds stable creature origin,
+  colony order, name, memory, and tendency records within a 192-byte raw-memory and 2 KiB serialized
+  per-creature budget.
+- Every world event passes through the compact projection path before it can be drained. Diagnostic
+  logs retain event categories only, never names, coordinates, relationship values, or memory
+  payloads.
+- Direct manipulation now tracks maximum cursor excursion. Gestures at or below six logical points
+  are pets; larger gestures retain precise placement, tossing, cancellation, and in-flight re-grab.
+  Petting a homebound creature no longer dismisses its shelter.
+- Dangling art is raised two source pixels so hands sit on the window edge. Upward routes now lift
+  and move inward throughout a continuous climbing mantle, removing the brief landing-pose hitch
+  before a creature settles onto a ledge.
+
 ## [0.38.1] - 2026-08-31
 
 ### Changed

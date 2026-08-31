@@ -38,7 +38,14 @@ click history, clipboard contents, screenshots, pixels from other applications, 
 content. It does not require Accessibility, Screen Recording, Input Monitoring, administrator
 privileges, or elevated process access.
 
-The versioned JSON save contains the colony seed, resolved genomes, personality values, birth
-timestamps, current drives, positions, habits, relationships, arrival state, habitat zones,
-application rules, and settings. A one-file backup and local rotating diagnostic log support
-recovery and troubleshooting. Drag state is never persisted midway through a grab.
+The versioned JSON save contains the colony seed, resolved genomes, personality values, creature
+names and birth timestamps, current drives and positions, compact counters, bounded learned
+tendencies, twelve numeric routine slots, relationships, arrival state, habitat zones, application
+rules, and settings. It does not contain an event log, cursor paths, sampled event coordinates, or
+past window layouts. Profile fields other than a creature's name are read-only views of this local
+state.
+
+A one-file backup and local rotating diagnostic log support recovery and troubleshooting. Logs name
+event categories only; they do not record creature names, coordinates, relationship scores, or
+memory payloads. A descriptor bubble is rasterized locally only while visible and is discarded after
+five seconds. Drag state and in-progress interactions are never persisted.

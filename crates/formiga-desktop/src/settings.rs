@@ -1,9 +1,11 @@
 use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
 use formiga_core::{
-    ApplicationOcclusionRule, DesktopRect, DesktopWindow, HabitatPolicy, HabitatPreset,
-    HabitatZone, HabitatZoneKind, MonitorInfo, Settings, validate_habitat,
+    ApplicationOcclusionRule, Creature, CreatureId, DesktopRect, DesktopWindow, HabitatPolicy,
+    HabitatPreset, HabitatZone, HabitatZoneKind, MonitorInfo, Settings, profile_descriptors,
+    validate_creature_name, validate_habitat,
 };
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
@@ -14,6 +16,7 @@ use winit::window::{Window, WindowId};
 enum SettingsTab {
     #[default]
     General,
+    Colony,
     Habitat,
     Applications,
     About,
@@ -33,6 +36,8 @@ pub struct SettingsOutcome {
     pub check_updates: bool,
     pub download_update: bool,
     pub install_update: bool,
+    pub rename_creature: Option<(CreatureId, String)>,
+    pub viewed_profile: Option<CreatureId>,
 }
 
 pub struct SettingsWindow {
@@ -50,12 +55,16 @@ pub struct SettingsWindow {
     tab: SettingsTab,
     error: Option<String>,
     editor_active: bool,
+    creatures: Vec<Creature>,
+    creature_names: BTreeMap<CreatureId, String>,
+    selected_creature: Option<CreatureId>,
 }
 
 impl SettingsWindow {
     pub async fn new(
         event_loop: &ActiveEventLoop,
         settings: &Settings,
+        creatures: &[Creature],
         save_location: &std::path::Path,
     ) -> Result<Self> {
         let window = Arc::new(
@@ -141,6 +150,12 @@ impl SettingsWindow {
             tab: SettingsTab::default(),
             error: None,
             editor_active: false,
+            creatures: creatures.to_vec(),
+            creature_names: creatures
+                .iter()
+                .map(|creature| (creature.id, creature.name.clone()))
+                .collect(),
+            selected_creature: creatures.first().map(|creature| creature.id),
         })
     }
 
@@ -148,10 +163,21 @@ impl SettingsWindow {
         self.window.id()
     }
 
-    pub fn show(&mut self, settings: &Settings) {
+    pub fn show(&mut self, settings: &Settings, creatures: &[Creature]) {
         self.draft = settings.clone();
         self.saved = settings.clone();
         self.error = None;
+        self.creatures = creatures.to_vec();
+        self.creature_names = creatures
+            .iter()
+            .map(|creature| (creature.id, creature.name.clone()))
+            .collect();
+        if self
+            .selected_creature
+            .is_none_or(|selected| !creatures.iter().any(|creature| creature.id == selected))
+        {
+            self.selected_creature = creatures.first().map(|creature| creature.id);
+        }
         self.window.set_visible(true);
         self.window.focus_window();
         self.window.request_redraw();
@@ -220,7 +246,14 @@ impl SettingsWindow {
         windows: &[DesktopWindow],
         update_status: &UpdateStatus,
         automatic_update_checks: bool,
+        creatures: &[Creature],
     ) -> Result<SettingsOutcome> {
+        self.creatures = creatures.to_vec();
+        for creature in creatures {
+            self.creature_names
+                .entry(creature.id)
+                .or_insert_with(|| creature.name.clone());
+        }
         let input = self.state.take_egui_input(&self.window);
         let context = self.context.clone();
         let mut outcome = SettingsOutcome::default();
@@ -230,6 +263,9 @@ impl SettingsWindow {
         let mut tab = self.tab;
         let mut error = self.error.clone();
         let editor_active = self.editor_active;
+        let creatures = self.creatures.clone();
+        let mut creature_names = self.creature_names.clone();
+        let mut selected_creature = self.selected_creature;
         let full_output = context.run_ui(input, |ui| {
             draw_settings(
                 ui,
@@ -243,12 +279,17 @@ impl SettingsWindow {
                 editor_active,
                 update_status,
                 automatic_update_checks,
+                &creatures,
+                &mut creature_names,
+                &mut selected_creature,
                 &mut outcome,
             );
         });
         self.draft = draft;
         self.tab = tab;
         self.error = error;
+        self.creature_names = creature_names;
+        self.selected_creature = selected_creature;
         if let Some(applied) = &outcome.applied {
             self.saved = applied.clone();
         }
@@ -358,6 +399,9 @@ fn draw_settings(
     editor_active: bool,
     update_status: &UpdateStatus,
     automatic_update_checks: bool,
+    creatures: &[Creature],
+    creature_names: &mut BTreeMap<CreatureId, String>,
+    selected_creature: &mut Option<CreatureId>,
     outcome: &mut SettingsOutcome,
 ) {
     egui::CentralPanel::default().show(root, |ui| {
@@ -367,6 +411,16 @@ fn draw_settings(
         ui.horizontal(|ui| {
             for (candidate, label) in [
                 (SettingsTab::General, "General"),
+                (
+                    SettingsTab::Colony,
+                    if creatures.iter().any(|creature| {
+                        creature.memory.profile_revision > creature.memory.viewed_profile_revision
+                    }) {
+                        "Colony •"
+                    } else {
+                        "Colony"
+                    },
+                ),
                 (SettingsTab::Habitat, "Habitat"),
                 (SettingsTab::Applications, "Applications"),
                 (SettingsTab::About, "About"),
@@ -377,6 +431,15 @@ fn draw_settings(
         ui.separator();
         egui::ScrollArea::vertical().show(ui, |ui| match tab {
             SettingsTab::General => general_tab(ui, settings),
+            SettingsTab::Colony => colony_tab(
+                ui,
+                creatures,
+                creature_names,
+                selected_creature,
+                monitors,
+                error,
+                outcome,
+            ),
             SettingsTab::Habitat => habitat_tab(ui, settings, monitors, editor_active, outcome),
             SettingsTab::Applications => applications_tab(ui, settings, windows, outcome),
             SettingsTab::About => about_tab(
@@ -417,7 +480,7 @@ fn general_tab(ui: &mut egui::Ui, settings: &mut Settings) {
     ui.checkbox(&mut settings.paused, "Pause ambient behavior");
     ui.checkbox(
         &mut settings.direct_manipulation,
-        "Allow creatures to be dragged",
+        "Allow creatures to be petted and dragged",
     );
     ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement");
     ui.checkbox(&mut settings.window_ledges, "Use application-window ledges");
@@ -430,6 +493,153 @@ fn general_tab(ui: &mut egui::Ui, settings: &mut Settings) {
             ui.selectable_value(&mut settings.display_scale, scale, format!("{scale}×"));
         }
     });
+}
+
+fn colony_tab(
+    ui: &mut egui::Ui,
+    creatures: &[Creature],
+    creature_names: &mut BTreeMap<CreatureId, String>,
+    selected_creature: &mut Option<CreatureId>,
+    monitors: &[MonitorInfo],
+    error: &mut Option<String>,
+    outcome: &mut SettingsOutcome,
+) {
+    if creatures.is_empty() {
+        ui.label("Your first creature is still finding its way here.");
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        for creature in creatures {
+            let unread = creature.memory.profile_revision > creature.memory.viewed_profile_revision;
+            let label = if unread {
+                format!("{} •", creature.name)
+            } else {
+                creature.name.clone()
+            };
+            ui.selectable_value(selected_creature, Some(creature.id), label);
+        }
+    });
+    ui.add_space(8.0);
+    let Some(creature) = selected_creature
+        .and_then(|selected| creatures.iter().find(|creature| creature.id == selected))
+        .or_else(|| creatures.first())
+    else {
+        return;
+    };
+    *selected_creature = Some(creature.id);
+    outcome.viewed_profile = Some(creature.id);
+
+    ui.heading(&creature.name);
+    ui.label(
+        format!("{:?}", creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"),
+    );
+    let descriptors = profile_descriptors(creature);
+    if descriptors.is_empty() {
+        ui.label(egui::RichText::new("Still developing preferences").italics());
+    } else {
+        ui.label(
+            descriptors
+                .iter()
+                .map(|descriptor| descriptor.label())
+                .collect::<Vec<_>>()
+                .join(" • "),
+        );
+    }
+
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        ui.strong("Name");
+        ui.label("This is the only part of a creature profile that can be changed.");
+        let name = creature_names
+            .entry(creature.id)
+            .or_insert_with(|| creature.name.clone());
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(name).char_limit(24));
+            if ui.button("Save name").clicked() {
+                match validate_creature_name(name) {
+                    Ok(validated) => {
+                        *name = validated.clone();
+                        outcome.rename_creature = Some((creature.id, validated));
+                        *error = None;
+                    }
+                    Err(message) => *error = Some(message.to_string()),
+                }
+            }
+        });
+    });
+
+    ui.add_space(8.0);
+    ui.strong("Life here");
+    let days_alive = (time::OffsetDateTime::now_utc() - creature.born_at_utc)
+        .whole_days()
+        .max(0);
+    ui.label(format!("Has lived here for {days_alive} days"));
+    ui.label(format!(
+        "Has found {} trinkets",
+        creature.memory.discoveries_found
+    ));
+    ui.label(format!(
+        "Has climbed {} windows",
+        creature.memory.window_climbs
+    ));
+    ui.label(format!(
+        "Has been petted {} times",
+        creature.memory.times_petted
+    ));
+
+    if let Some(preferred) = creature.memory.preferred_region {
+        ui.label(format!(
+            "Favorite region: {} on {}",
+            region_label(preferred.cell),
+            display_label(preferred.display, monitors)
+        ));
+    } else if let Some(favorite) = creature.memory.favorite_display {
+        ui.label(format!(
+            "Favorite display: {}",
+            display_label(favorite.display, monitors)
+        ));
+    } else {
+        ui.label("Favorite place: still deciding");
+    }
+
+    let closest_friend = creature
+        .state
+        .relationships
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .and_then(|(id, _)| creatures.iter().find(|other| other.id == *id));
+    if let Some(friend) = closest_friend {
+        ui.label(format!("Closest to {}", friend.name));
+    } else {
+        ui.label("Closest friend: still getting acquainted");
+    }
+}
+
+fn display_label(display: formiga_core::DisplayKey, monitors: &[MonitorInfo]) -> String {
+    monitors
+        .iter()
+        .position(|monitor| monitor.display_key == display)
+        .map_or_else(
+            || "a previous display".to_owned(),
+            |index| format!("Display {}", index + 1),
+        )
+}
+
+fn region_label(cell: u8) -> &'static str {
+    [
+        "upper left",
+        "upper center",
+        "upper right",
+        "middle left",
+        "center",
+        "middle right",
+        "lower left",
+        "lower center",
+        "lower right",
+    ]
+    .get(usize::from(cell.min(8)))
+    .copied()
+    .unwrap_or("center")
 }
 
 fn habitat_tab(

@@ -17,4 +17,4 @@ pub use persistence::{PersistenceError, SaveStore};
 pub use rng::{SeedStream, new_colony_seed};
 pub use world::World;
 
-pub const SAVE_VERSION: u32 = 5;
+pub const SAVE_VERSION: u32 = 6;

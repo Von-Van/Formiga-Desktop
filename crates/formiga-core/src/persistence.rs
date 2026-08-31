@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=4 => migrate_legacy(value, version),
+            1..=5 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -106,6 +106,9 @@ fn migrate_legacy(
             migrate_appearance(appearance);
         }
     }
+    if source_version <= 5 {
+        migrate_lived_experience(&mut value);
+    }
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -122,6 +125,86 @@ fn migrate_legacy(
         }
     }
     Ok(save)
+}
+
+fn migrate_lived_experience(value: &mut serde_json::Value) {
+    use serde_json::{Value, json};
+
+    let colony_seed: [u8; 32] = value
+        .get("colony_seed")
+        .and_then(Value::as_array)
+        .and_then(|bytes| {
+            let bytes: Vec<u8> = bytes
+                .iter()
+                .map(Value::as_u64)
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .map(|byte| u8::try_from(byte).ok())
+                .collect::<Option<Vec<_>>>()?;
+            bytes.try_into().ok()
+        })
+        .unwrap_or_default();
+    let Some(creatures) = value.get_mut("creatures").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let mut names = Vec::with_capacity(creatures.len());
+    for (colony_order, creature) in creatures.iter_mut().enumerate() {
+        let generation = creature
+            .get("generation")
+            .and_then(Value::as_u64)
+            .and_then(|value| u8::try_from(value).ok())
+            .unwrap_or(colony_order as u8);
+        let name = crate::default_creature_name(colony_seed, generation, &names);
+        names.push(name.clone());
+        let routines = creature
+            .pointer_mut("/state/habits")
+            .map(Value::take)
+            .and_then(|habits| migrate_habits(&habits))
+            .unwrap_or_default();
+        if let Some(state) = creature.get_mut("state").and_then(Value::as_object_mut) {
+            state.remove("habits");
+        }
+        let Some(creature) = creature.as_object_mut() else {
+            continue;
+        };
+        creature.insert(
+            "origin".into(),
+            json!({
+                "source_colony_seed": colony_seed,
+                "source_generation": generation,
+            }),
+        );
+        creature.insert("colony_order".into(), Value::from(colony_order as u64));
+        creature.insert("name".into(), Value::String(name));
+        creature.insert("memory".into(), json!(crate::CreatureMemory::default()));
+        creature.insert(
+            "tendencies".into(),
+            json!(crate::LearnedTendencies::default()),
+        );
+        creature.insert("routines".into(), json!(routines));
+    }
+}
+
+fn migrate_habits(value: &serde_json::Value) -> Option<crate::RoutineTable> {
+    let habits = value.as_object()?;
+    let entries = habits
+        .iter()
+        .filter_map(|(legacy_key, strength)| {
+            let mut parts = legacy_key.split(':');
+            let time_bucket = parts.next()?.parse::<u8>().ok()?.min(3);
+            let region = parts.next()?.parse::<u8>().ok()?.min(2);
+            let surface = match parts.next()? {
+                "ScreenFloor" => crate::SurfaceKind::ScreenFloor,
+                "WindowLedge" => crate::SurfaceKind::WindowLedge,
+                _ => return None,
+            };
+            let action = crate::ActionKind::from_legacy_name(parts.next()?)?;
+            let relative_x = (f32::from(region) + 0.5) / 3.0;
+            let key = crate::routine_key(surface, relative_x, action, time_bucket * 6);
+            Some((key, strength.as_f64()? as f32))
+        })
+        .collect();
+    Some(crate::RoutineTable::from_ranked(entries))
 }
 
 fn legacy_birth_at(created_at_utc: time::OffsetDateTime, generation: u8) -> time::OffsetDateTime {
@@ -303,6 +386,23 @@ mod tests {
         replacement.settings.reduce_motion = true;
         store.save(&replacement).unwrap();
         assert_eq!(store.load().unwrap(), Some(replacement));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn corrupt_primary_recovers_the_previous_atomic_save_from_backup() {
+        let directory =
+            std::env::temp_dir().join(format!("formiga-backup-recovery-{}", std::process::id()));
+        let path = directory.join("colony.json");
+        let store = SaveStore::new(&path);
+        let original = example_save();
+        store.save(&original).unwrap();
+        let mut replacement = original.clone();
+        replacement.settings.reduce_motion = true;
+        store.save(&replacement).unwrap();
+        fs::write(&path, b"{not valid json").unwrap();
+
+        assert_eq!(store.load().unwrap(), Some(original));
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -504,6 +604,52 @@ mod tests {
             migrated.creatures[3].born_at_utc,
             created + time::Duration::days(180)
         );
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v5_names_origins_and_the_twelve_strongest_routines() {
+        let desktop = crate::DesktopSnapshot::default();
+        let original = crate::World::new([61; 32], datetime!(2026-02-03 4:05 UTC), &desktop).save;
+        let mut value = serde_json::to_value(&original).unwrap();
+        value["save_version"] = serde_json::Value::from(5);
+        let creature = value["creatures"][0].as_object_mut().unwrap();
+        for field in [
+            "origin",
+            "colony_order",
+            "name",
+            "memory",
+            "tendencies",
+            "routines",
+        ] {
+            creature.remove(field);
+        }
+        let habits = (0..16)
+            .map(|index| {
+                (
+                    format!("{}:{}:ScreenFloor:Idle", index % 4, index % 3),
+                    serde_json::Value::from(f64::from(index) / 16.0),
+                )
+            })
+            .collect();
+        creature["state"]["habits"] = serde_json::Value::Object(habits);
+
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v5-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let migrated = SaveStore::new(&path).load().unwrap().unwrap();
+        let creature = &migrated.creatures[0];
+
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(creature.origin.source_colony_seed, [61; 32]);
+        assert_eq!(creature.origin.source_generation, 0);
+        assert_eq!(creature.colony_order, 0);
+        assert!(!creature.name.is_empty());
+        assert!(creature.routines.len <= crate::MAX_ROUTINES as u8);
+        assert_eq!(creature.memory, crate::CreatureMemory::default());
+        assert_eq!(creature.tendencies, crate::LearnedTendencies::default());
         let _ = fs::remove_dir_all(directory);
     }
 }

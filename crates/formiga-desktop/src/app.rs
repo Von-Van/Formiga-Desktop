@@ -66,6 +66,13 @@ struct HabitatEditor {
     drag: Option<HabitatEditorDrag>,
 }
 
+#[derive(Clone, Debug)]
+struct MilestoneNotice {
+    creature_id: CreatureId,
+    text: String,
+    expires_at: Instant,
+}
+
 pub struct FormigaApp {
     overlays: BTreeMap<WindowId, OverlayRenderer>,
     monitors: Vec<MonitorInfo>,
@@ -87,6 +94,7 @@ pub struct FormigaApp {
     habitat_editor: Option<HabitatEditor>,
     event_proxy: EventLoopProxy<UserEvent>,
     updates: UpdateController,
+    milestone_notice: Option<MilestoneNotice>,
 }
 
 impl FormigaApp {
@@ -115,6 +123,7 @@ impl FormigaApp {
             habitat_editor: None,
             event_proxy,
             updates,
+            milestone_notice: None,
         })
     }
 
@@ -265,7 +274,7 @@ impl FormigaApp {
         let Some(world) = &self.world else {
             return Duration::from_millis(250);
         };
-        if world.is_dragging() {
+        if world.is_interacting() {
             return Duration::from_millis(50);
         }
         if !world.save.settings.visible || !self.overlays.values().any(OverlayRenderer::is_visible)
@@ -306,6 +315,13 @@ impl FormigaApp {
 
     fn tick(&mut self) -> bool {
         let now = Instant::now();
+        if self
+            .milestone_notice
+            .as_ref()
+            .is_some_and(|notice| now >= notice.expires_at)
+        {
+            self.milestone_notice = None;
+        }
         let tick_interval = self.tick_interval();
         if now.duration_since(self.last_tick) < tick_interval {
             return false;
@@ -316,12 +332,12 @@ impl FormigaApp {
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
         if let Some(world) = &mut self.world {
-            if world.is_dragging() {
+            if world.is_interacting() {
                 if !desktop.cursor.available {
-                    world.handle_command(WorldCommand::CancelDrag, &desktop);
+                    world.handle_command(WorldCommand::CancelInteraction, &desktop);
                 } else if left_button_down {
                     world.handle_command(
-                        WorldCommand::UpdateDrag {
+                        WorldCommand::UpdateInteraction {
                             cursor: desktop.cursor.position,
                             velocity: desktop.cursor.velocity,
                         },
@@ -334,7 +350,7 @@ impl FormigaApp {
                     // creature where the button actually came up rather than cancelling it back
                     // to wherever the drag started.
                     world.handle_command(
-                        WorldCommand::EndDrag {
+                        WorldCommand::EndInteraction {
                             cursor: desktop.cursor.position,
                             velocity: desktop.cursor.velocity,
                         },
@@ -351,6 +367,7 @@ impl FormigaApp {
             }
             world.tick(OffsetDateTime::now_utc(), dt, &filtered);
             let mut save_on_transition = false;
+            let mut milestone = None;
             for event in world.drain_events() {
                 save_on_transition |= matches!(
                     event,
@@ -360,7 +377,38 @@ impl FormigaApp {
                         | WorldEvent::HomeAppeared
                         | WorldEvent::HomeDisappeared { .. }
                 );
-                tracing::debug!(?event, "world event");
+                if let WorldEvent::ProfileChanged {
+                    creature_id,
+                    new_descriptor: Some(descriptor),
+                    show_milestone: true,
+                } = event
+                    && self.milestone_notice.is_none()
+                {
+                    milestone = Some((creature_id, descriptor.label().to_owned()));
+                }
+                tracing::debug!(event = world_event_category(&event), "world event");
+            }
+            if let Some((creature_id, text)) = milestone {
+                let can_show = world
+                    .save
+                    .creatures
+                    .iter()
+                    .find(|creature| creature.id == creature_id)
+                    .and_then(|creature| {
+                        self.monitors
+                            .iter()
+                            .find(|monitor| monitor.id == creature.state.surface.monitor_id)
+                    })
+                    .is_some_and(|monitor| {
+                        !monitor_has_fullscreen_window(monitor.bounds, &self.cached_windows)
+                    });
+                if can_show {
+                    self.milestone_notice = Some(MilestoneNotice {
+                        creature_id,
+                        text,
+                        expires_at: now + Duration::from_secs(5),
+                    });
+                }
             }
             if save_on_transition && let Err(error) = self.save() {
                 tracing::error!(%error, "transition save failed");
@@ -631,7 +679,7 @@ impl FormigaApp {
                 {
                     let started = self.world.as_mut().is_some_and(|world| {
                         world.handle_command(
-                            WorldCommand::BeginDrag {
+                            WorldCommand::BeginInteraction {
                                 creature_id: target_creature,
                                 cursor,
                             },
@@ -651,7 +699,7 @@ impl FormigaApp {
                 let desktop = self.snapshot();
                 if let Some(world) = &mut self.world {
                     world.handle_command(
-                        WorldCommand::EndDrag {
+                        WorldCommand::EndInteraction {
                             cursor: desktop.cursor.position,
                             velocity: desktop.cursor.velocity,
                         },
@@ -674,13 +722,18 @@ impl FormigaApp {
     }
 
     fn show_settings(&mut self, event_loop: &ActiveEventLoop) {
-        let Some(settings) = self.world.as_ref().map(|world| world.save.settings.clone()) else {
+        let Some((settings, creatures)) = self
+            .world
+            .as_ref()
+            .map(|world| (world.save.settings.clone(), world.save.creatures.clone()))
+        else {
             return;
         };
         if self.settings_window.is_none() {
             match pollster::block_on(SettingsWindow::new(
                 event_loop,
                 &settings,
+                &creatures,
                 self.save_store.path(),
             )) {
                 Ok(window) => self.settings_window = Some(window),
@@ -691,7 +744,7 @@ impl FormigaApp {
             }
         }
         if let Some(window) = &mut self.settings_window {
-            window.show(&settings);
+            window.show(&settings, &creatures);
         }
     }
 
@@ -720,6 +773,23 @@ impl FormigaApp {
     }
 
     fn handle_settings_outcome(&mut self, event_loop: &ActiveEventLoop, outcome: SettingsOutcome) {
+        let mut save_profile = false;
+        if let Some((creature_id, name)) = outcome.rename_creature
+            && let Some(world) = &mut self.world
+        {
+            match world.rename_creature(creature_id, &name) {
+                Ok(()) => save_profile = true,
+                Err(error) => tracing::warn!(%error, "invalid creature name rejected"),
+            }
+        }
+        if let Some(creature_id) = outcome.viewed_profile
+            && let Some(world) = &mut self.world
+        {
+            save_profile |= world.mark_profile_viewed(creature_id);
+        }
+        if save_profile {
+            let _ = self.save();
+        }
         if let Some(settings) = outcome.applied {
             let previous_launch = self
                 .world
@@ -1098,7 +1168,7 @@ impl FormigaApp {
             return Ok(());
         }
         if let Some(world) = &self.world {
-            if world.is_dragging() {
+            if world.is_interacting() {
                 return Ok(());
             }
             self.save_store.save(&world.save)?;
@@ -1165,6 +1235,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 return;
             }
             let mut outcome = None;
+            let creatures = self
+                .world
+                .as_ref()
+                .map(|world| world.save.creatures.clone())
+                .unwrap_or_default();
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
@@ -1174,6 +1249,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             &self.cached_windows,
                             self.updates.status(),
                             self.updates.automatic_checks(),
+                            &creatures,
                         ) {
                             Ok(value) => outcome = Some(value),
                             Err(error) => tracing::error!(%error, "settings render failed"),
@@ -1196,6 +1272,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         }
         match event {
             WindowEvent::RedrawRequested => {
+                let milestone = self
+                    .milestone_notice
+                    .as_ref()
+                    .filter(|notice| Instant::now() < notice.expires_at)
+                    .map(|notice| (notice.creature_id, notice.text.as_str()));
                 if let (Some(overlay), Some(world)) =
                     (self.overlays.get_mut(&window_id), &self.world)
                     && let Err(error) = overlay.render(
@@ -1203,6 +1284,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         self.current_cursor,
                         self.habitat_editor.as_ref().map(|editor| &editor.draft),
                         &self.cached_windows,
+                        milestone,
                     )
                 {
                     tracing::error!(%error, "overlay render failed");
@@ -1245,7 +1327,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.finish_habitat_editor(false);
         if let Some(world) = &mut self.world {
-            world.handle_command(WorldCommand::CancelDrag, &DesktopSnapshot::default());
+            world.handle_command(WorldCommand::CancelInteraction, &DesktopSnapshot::default());
         }
         let _ = self.save();
     }
@@ -1388,7 +1470,7 @@ fn world_has_spatial_motion(world: &World) -> bool {
 }
 
 fn world_redraw_interval(world: &World) -> Duration {
-    if world.is_dragging() {
+    if world.is_interacting() {
         return Duration::from_millis(50);
     }
     if world.save.settings.paused {
@@ -1412,7 +1494,7 @@ fn world_redraw_interval(world: &World) -> Duration {
 }
 
 fn world_tick_interval(world: &World) -> Duration {
-    if world.is_dragging() {
+    if world.is_interacting() {
         return Duration::from_millis(50);
     }
     if world.save.settings.paused {
@@ -1444,6 +1526,31 @@ fn world_tick_interval(world: &World) -> Duration {
         Duration::from_millis(100)
     } else {
         Duration::from_millis(200)
+    }
+}
+
+fn world_event_category(event: &WorldEvent) -> &'static str {
+    match event {
+        WorldEvent::CreatureSpawned { .. } => "creature_spawned",
+        WorldEvent::ActionStarted { .. } => "action_started",
+        WorldEvent::ActionCompleted { .. } => "action_completed",
+        WorldEvent::SurfaceChanged { .. } => "surface_changed",
+        WorldEvent::CursorReaction { .. } => "cursor_reaction",
+        WorldEvent::WindowReaction { .. } => "window_reaction",
+        WorldEvent::SocialInteraction { .. } => "social_interaction",
+        WorldEvent::CreatureSlept { .. } => "creature_slept",
+        WorldEvent::CreatureWoke { .. } => "creature_woke",
+        WorldEvent::CreatureRested { .. } => "creature_rested",
+        WorldEvent::SleepInterrupted { .. } => "sleep_interrupted",
+        WorldEvent::CreaturePetted { .. } => "creature_petted",
+        WorldEvent::CreaturePlaced { .. } => "creature_placed",
+        WorldEvent::ObservationElapsed { .. } => "observation_elapsed",
+        WorldEvent::ProfileChanged { .. } => "profile_changed",
+        WorldEvent::DragStarted { .. } => "drag_started",
+        WorldEvent::DragEnded { .. } => "drag_ended",
+        WorldEvent::TossLanded { .. } => "toss_landed",
+        WorldEvent::HomeAppeared => "home_appeared",
+        WorldEvent::HomeDisappeared { .. } => "home_disappeared",
     }
 }
 

@@ -12,9 +12,9 @@ macOS / Windows adapters
                        DesktopSnapshot
                               │
                               ▼
-formiga-core: drives → utility selection → action state machines → surfaces
+formiga-core: drives → bounded utility selection → action state machines → surfaces
           │                         │
-          │                         └── in-memory WorldEvent stream
+          │                         └── WorldEvent → compact state → ephemeral drain
           ▼
 formiga-art: genome → family rig → normalized pose → deterministic atlas
           │
@@ -46,9 +46,11 @@ procedural work; sprinting reuses the existing movement tick with a distinct six
 
 Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
 window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
-vertical climb, and a 0.6-second mantle; downward transfers keep the existing hop. A shared
-`FramePlacement` contract seats normal art by its feet and dangling art by its handhold, so the GPU
-quad and alpha-aware interaction proxy resolve the same bounds.
+vertical climb, and a 0.7-second continuous climbing mantle; downward transfers keep the existing
+hop. The mantle begins slightly below the ledge and eases upward and inward without switching to a
+landing pose. A shared `FramePlacement` contract seats normal art by its feet and dangling art by
+its slightly raised handhold, so the GPU quad and alpha-aware interaction proxy resolve the same
+bounds.
 
 Eight 16×16 gems, keys, leaves, shells, charms, and relic variants are derived from the creature seed
 and palette at atlas-build time. `activity_variant` selects one only while `PresentDiscovery` is
@@ -61,11 +63,34 @@ dragged body clip. Runtime work normally selects two slots and draws two nearest
 discovery alone adds one temporary quad. The combined textures are exactly 1,161,216 bytes per
 creature and are enforced below a 1.2 MB test limit.
 
+`PetReaction` maps to the existing greeting body clip, so lived experience does not grow that atlas.
+A newly earned profile descriptor may allocate one small bitmap-font speech-bubble texture for five
+seconds. Only one bubble exists globally; the GPU texture and CPU pixels are dropped at expiry, so
+there is no idle bubble resource.
+
 The colony seed also resolves a bottom-corner preference and a compact shelter genome. Leaf tents,
 mushroom huts, cushion dens, and paper houses are rasterized once to a static 64×64 texture. A
 persisted home lifecycle alternates a maximum 15-minute visit with a minimum 15-minute cooldown.
-While active, creatures use a calm `Homebound` pose at the resolved habitat-safe corner. Beginning
-a creature drag dismisses the shelter before capture and starts the cooldown immediately.
+While active, creatures use a calm `Homebound` pose at the resolved habitat-safe corner. A click can
+pet them in place; only crossing the six-logical-point drag threshold dismisses the shelter and
+starts the cooldown.
+
+## Lived-experience projection
+
+`World::emit` is the sole event queue path. Before events become visible through `drain_events`, a
+projection updates compact typed memory, bounded `i8` tendencies, fixed numeric routines, and profile
+revision state. The event vector is runtime-only and is emptied by the desktop host; no coordinates,
+cursor paths, window layouts, or historical events enter the save.
+
+The eight tendency fields stay in `-100..=100`. Learned action modifiers, including routine and
+successful-window-ride confidence, are clamped to ±0.35 after combination. Innate personality still
+sets the base utility and temperature, and contrary events move the same fields in the opposite
+direction. Every 60 active visible seconds becomes at most one summarized observation per creature;
+sampling stops while paused or hidden.
+
+Legacy string habits become twelve compact slots keyed by packed time bucket, display third, surface,
+and action. Repeated placement also records a recoverable preferred 3×3 display cell and can supply
+an ordinary `Traverse` target through `ActionChoice`; it does not add a pathfinding loop or action.
 
 ## Desktop composition
 
@@ -77,7 +102,9 @@ Direct manipulation uses one small proxy per visible creature. A pre-baked one-b
 the Windows proxy and controls near-creature hit testing on macOS. The proxy preserves the grab
 offset, captures through release, and sends normalized cursor position and velocity to the
 simulation. Three fixed-capacity velocity samples cover roughly the final 150 ms without allocation.
-Slow releases use precise placement. Fast releases enter a runtime-only `Tossed` state with gravity,
+The interaction session tracks maximum excursion from the press point: at most six logical points is
+a pet, even across DPI scales, while moving farther remains a drag even if the cursor returns before
+release. Slow releases use precise placement. Fast releases enter a runtime-only `Tossed` state with gravity,
 horizontal drag, swept downward support tests, at most one soft bounce, and a three-second recovery
 limit. There is no rotation, wall ricochet, creature collision, or general physics dependency.
 
@@ -99,15 +126,20 @@ creature opts out per vertex.
 - Behavior selection: action boundaries, capped at 2 Hz.
 - Ambient countdowns: inspection 2–4 minutes per creature, dangling 4–8 minutes per perched
   creature, and discovery 10–20 minutes per colony; countdowns stop while paused or hidden.
+- Experience observations: one summary per creature per 60 active visible seconds; no new loop.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 5 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
-assigns v3 colonies a deterministic shelter, and gives v4 creatures stable birth timestamps without
-replacing their existing home. Additional creatures are earned one hour, one week, and one calendar
-month after colony creation; end-of-month dates clamp in UTC, overdue reveals remain 15 seconds
-apart, and the colony remains capped at four. Interrupted ambient and toss actions reload as idle.
-Home and birth timestamps survive relaunches, and clock rollback uses the maximum-seen UTC guard.
-There is deliberately no history database or telemetry layer. Update preferences live in a separate
+Version 6 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, and upgrades
+v5 habits to the twelve strongest numeric routines. It adds stable origin, colony order, name, typed
+memory, and learned tendency records. Raw memory plus tendencies stay below 192 bytes per creature;
+their serialized incremental state stays below 2 KiB.
+
+Additional creatures are earned one hour, one week, and one calendar month after colony creation;
+end-of-month dates clamp in UTC, overdue reveals remain 15 seconds apart, and the colony remains
+capped at four. Interrupted ambient, interaction, and toss actions reload as idle. Home and birth
+timestamps survive relaunches, and clock rollback uses the maximum-seen UTC guard. There is
+deliberately no history database or telemetry layer. Update preferences live in a separate
 `updates.json` file so network policy and check timing cannot alter a colony save.

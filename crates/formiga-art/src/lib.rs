@@ -1,8 +1,10 @@
+mod bubble;
 mod canvas;
 mod palette;
 mod renderer;
 mod shelter;
 
+pub use bubble::MilestoneBubbleRenderer;
 pub use canvas::{Canvas, Rgba};
 pub type PixelCanvas = Canvas;
 pub use palette::{PALETTES, Palette};
