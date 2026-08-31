@@ -103,9 +103,11 @@ creature opts out per vertex.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 4 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
-and assigns v3 colonies a deterministic shelter without replacing creature identity. The defaulted
-transient `activity_variant` field preserves v4 compatibility; interrupted ambient and toss actions
-reload as idle. Home timestamps survive relaunches and clock rollback uses the existing maximum-seen
-UTC guard. There is deliberately no history database or telemetry layer. Update preferences live in
-a separate `updates.json` file so network policy and check timing cannot alter a colony save.
+Version 5 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+assigns v3 colonies a deterministic shelter, and gives v4 creatures stable birth timestamps without
+replacing their existing home. Additional creatures are earned one hour, one week, and one calendar
+month after colony creation; end-of-month dates clamp in UTC, overdue reveals remain 15 seconds
+apart, and the colony remains capped at four. Interrupted ambient and toss actions reload as idle.
+Home and birth timestamps survive relaunches, and clock rollback uses the maximum-seen UTC guard.
+There is deliberately no history database or telemetry layer. Update preferences live in a separate
+`updates.json` file so network policy and check timing cannot alter a colony save.

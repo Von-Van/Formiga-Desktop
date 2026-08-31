@@ -470,11 +470,17 @@ pub struct CreatureState {
 pub struct Creature {
     pub id: CreatureId,
     pub generation: u8,
+    #[serde(default = "default_born_at_utc", with = "time::serde::rfc3339")]
+    pub born_at_utc: OffsetDateTime,
     pub display_scale_percent: u8,
     pub appearance: AppearanceGenome,
     pub personality: PersonalityGenome,
     pub behavior_seed: [u8; 32],
     pub state: CreatureState,
+}
+
+fn default_born_at_utc() -> OffsetDateTime {
+    OffsetDateTime::UNIX_EPOCH
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

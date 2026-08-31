@@ -4,9 +4,20 @@ use crate::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use std::collections::BTreeMap;
-use time::OffsetDateTime;
+use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
-const ARRIVAL_DAYS: [i64; 3] = [30, 90, 180];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArrivalMilestone {
+    Hours(i64),
+    Days(i64),
+    CalendarMonths(u8),
+}
+
+const ARRIVAL_MILESTONES: [ArrivalMilestone; 3] = [
+    ArrivalMilestone::Hours(1),
+    ArrivalMilestone::Days(7),
+    ArrivalMilestone::CalendarMonths(1),
+];
 /// Width of a creature's art frame, matching `formiga_art::FRAME_SIZE`. The simulation crate
 /// cannot depend on the art crate, so shelter layout mirrors the constant the way `home_anchor`
 /// already mirrors the shelter's own half-width.
@@ -242,10 +253,30 @@ fn smoothstep(progress: f32) -> f32 {
     progress * progress * (3.0 - 2.0 * progress)
 }
 
+fn arrival_due_at(created_at_utc: OffsetDateTime, milestone: ArrivalMilestone) -> OffsetDateTime {
+    match milestone {
+        ArrivalMilestone::Hours(hours) => created_at_utc + Duration::hours(hours),
+        ArrivalMilestone::Days(days) => created_at_utc + Duration::days(days),
+        ArrivalMilestone::CalendarMonths(months) => add_calendar_months_utc(created_at_utc, months),
+    }
+}
+
+fn add_calendar_months_utc(value: OffsetDateTime, months: u8) -> OffsetDateTime {
+    let value = value.to_offset(UtcOffset::UTC);
+    let month_index = i64::from(value.year()) * 12 + i64::from(u8::from(value.month()) - 1);
+    let destination = month_index + i64::from(months);
+    let year = i32::try_from(destination.div_euclid(12)).expect("calendar year remains in range");
+    let month = Month::try_from((destination.rem_euclid(12) + 1) as u8)
+        .expect("calendar month is always in range");
+    let day = value.day().min(month.length(year));
+    let date = Date::from_calendar_date(year, month, day).expect("clamped calendar date is valid");
+    PrimitiveDateTime::new(date, value.time()).assume_utc()
+}
+
 impl World {
     pub fn new(colony_seed: [u8; 32], now: OffsetDateTime, desktop: &DesktopSnapshot) -> Self {
         let streams = SeedStream::new(colony_seed);
-        let creature = generate_creature(&streams, 0, desktop, None);
+        let creature = generate_creature(&streams, 0, now, desktop, None);
         let home_display = desktop
             .monitors
             .iter()
@@ -315,14 +346,15 @@ impl World {
         if now > self.save.maximum_seen_utc {
             self.save.maximum_seen_utc = now;
         }
-        self.process_arrivals(desktop);
+        let timeline_now = self.save.maximum_seen_utc;
+        self.process_arrivals(timeline_now, desktop);
         let home_active = self.update_home_cycle(desktop);
         if self.save.settings.paused {
             self.settle_active_tosses(desktop);
             return;
         }
         if home_active {
-            self.tick_homebound_creatures(dt);
+            self.tick_homebound_creatures(timeline_now, dt);
             self.last_windows = desktop
                 .windows
                 .iter()
@@ -360,6 +392,7 @@ impl World {
                 let previous_delay = creature.state.arrival_delay_secs;
                 creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
                 if creature.state.arrival_delay_secs == 0.0 {
+                    creature.born_at_utc = timeline_now;
                     self.events.push(WorldEvent::CreatureSpawned {
                         creature_id: creature.id,
                     });
@@ -848,12 +881,13 @@ impl World {
         }
     }
 
-    fn tick_homebound_creatures(&mut self, dt: f32) {
+    fn tick_homebound_creatures(&mut self, now: OffsetDateTime, dt: f32) {
         for creature in &mut self.save.creatures {
             if creature.state.arrival_delay_secs > 0.0 {
                 let previous_delay = creature.state.arrival_delay_secs;
                 creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
                 if creature.state.arrival_delay_secs == 0.0 {
+                    creature.born_at_utc = now;
                     self.events.push(WorldEvent::CreatureSpawned {
                         creature_id: creature.id,
                     });
@@ -1130,15 +1164,15 @@ impl World {
         *self = Self::new(colony_seed, now, desktop);
     }
 
-    fn process_arrivals(&mut self, desktop: &DesktopSnapshot) {
+    fn process_arrivals(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) {
         let streams = SeedStream::new(self.save.colony_seed);
         let mut arrivals_this_tick = 0_u8;
-        for (index, days) in ARRIVAL_DAYS.into_iter().enumerate() {
-            let due = self.save.created_at_utc + time::Duration::days(days);
+        for (index, milestone) in ARRIVAL_MILESTONES.into_iter().enumerate() {
+            let due = arrival_due_at(self.save.created_at_utc, milestone);
             if !self.save.arrival_state.arrived[index] && self.save.maximum_seen_utc >= due {
                 let primary = self.save.creatures.first().cloned();
                 let mut creature =
-                    generate_creature(&streams, index as u8 + 1, desktop, primary.as_ref());
+                    generate_creature(&streams, index as u8 + 1, now, desktop, primary.as_ref());
                 creature.state.arrival_delay_secs = f32::from(arrivals_this_tick) * 15.0;
                 self.rngs
                     .insert(creature.id, ChaCha12Rng::from_seed(creature.behavior_seed));
@@ -1165,6 +1199,7 @@ impl World {
 fn generate_creature(
     streams: &SeedStream,
     generation: u8,
+    born_at_utc: OffsetDateTime,
     desktop: &DesktopSnapshot,
     parent: Option<&Creature>,
 ) -> Creature {
@@ -1334,6 +1369,7 @@ fn generate_creature(
                 .unwrap(),
         ),
         generation,
+        born_at_utc,
         display_scale_percent: scale_percent,
         appearance,
         personality,
@@ -2422,14 +2458,46 @@ mod tests {
     fn colony_arrives_on_calendar_thresholds() {
         let created = datetime!(2026-01-01 0:00 UTC);
         let mut world = World::new([9; 32], created, &desktop());
-        world.tick(created + time::Duration::days(29), 0.05, &desktop());
+        world.tick(
+            created + time::Duration::hours(1) - time::Duration::seconds(1),
+            0.05,
+            &desktop(),
+        );
         assert_eq!(world.save.creatures.len(), 1);
-        world.tick(created + time::Duration::days(30), 0.05, &desktop());
+        world.tick(created + time::Duration::hours(1), 0.05, &desktop());
         assert_eq!(world.save.creatures.len(), 2);
-        world.tick(created + time::Duration::days(90), 0.05, &desktop());
+        assert_eq!(
+            world.save.creatures[1].born_at_utc,
+            created + time::Duration::hours(1)
+        );
+        world.tick(
+            created + time::Duration::days(7) - time::Duration::seconds(1),
+            0.05,
+            &desktop(),
+        );
+        assert_eq!(world.save.creatures.len(), 2);
+        world.tick(created + time::Duration::days(7), 0.05, &desktop());
         assert_eq!(world.save.creatures.len(), 3);
-        world.tick(created + time::Duration::days(180), 0.05, &desktop());
+        world.tick(datetime!(2026-01-31 23:59:59 UTC), 0.05, &desktop());
+        assert_eq!(world.save.creatures.len(), 3);
+        world.tick(datetime!(2026-02-01 0:00 UTC), 0.05, &desktop());
         assert_eq!(world.save.creatures.len(), 4);
+    }
+
+    #[test]
+    fn calendar_month_arrival_clamps_to_the_destination_month() {
+        assert_eq!(
+            add_calendar_months_utc(datetime!(2026-01-31 14:05:06 UTC), 1),
+            datetime!(2026-02-28 14:05:06 UTC)
+        );
+        assert_eq!(
+            add_calendar_months_utc(datetime!(2028-01-31 14:05:06 UTC), 1),
+            datetime!(2028-02-29 14:05:06 UTC)
+        );
+        assert_eq!(
+            add_calendar_months_utc(datetime!(2026-12-31 14:05:06 UTC), 1),
+            datetime!(2027-01-31 14:05:06 UTC)
+        );
     }
 
     #[test]

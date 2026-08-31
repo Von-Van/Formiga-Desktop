@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## [0.38.1] - 2026-08-31
+
+### Changed
+
+- Additional creatures now join a colony one hour, one week, and one calendar month after it is
+  created, while the default colony remains capped at four creatures.
+- Calendar-month arrivals preserve the UTC time of day and clamp end-of-month dates safely, so a
+  colony created on January 31 receives its monthly arrival on February 28 or 29.
+- Overdue arrivals retain the existing 15-second reveal spacing and maximum-seen UTC guard, so
+  relaunches and clock rollback cannot skip, duplicate, or remove a creature.
+- Save version 5 records each creature's birth timestamp and deterministically reconstructs birth
+  dates for v4 colonies without replacing their existing shelter state.
+
 ## [0.38.0] - 2026-08-28
 
 ### Added

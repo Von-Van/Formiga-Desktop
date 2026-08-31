@@ -38,7 +38,7 @@ click history, clipboard contents, screenshots, pixels from other applications, 
 content. It does not require Accessibility, Screen Recording, Input Monitoring, administrator
 privileges, or elevated process access.
 
-The versioned JSON save contains the colony seed, resolved genomes, personality values, current drives,
-positions, habits, relationships, arrival state, habitat zones, application rules, and settings. A
-one-file backup and local rotating diagnostic log support recovery and troubleshooting. Drag state is
-never persisted midway through a grab.
+The versioned JSON save contains the colony seed, resolved genomes, personality values, birth
+timestamps, current drives, positions, habits, relationships, arrival state, habitat zones,
+application rules, and settings. A one-file backup and local rotating diagnostic log support
+recovery and troubleshooting. Drag state is never persisted midway through a grab.

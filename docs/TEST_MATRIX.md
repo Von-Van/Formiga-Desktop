@@ -9,7 +9,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1/v2/v3→v4 migration | CI | CI |
+| v1/v2/v3/v4→v5 migration and birth timestamps | CI | CI |
+| One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |

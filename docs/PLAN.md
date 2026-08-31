@@ -1,5 +1,14 @@
 # Formiga roadmap
 
+## v0.38.1 calendar-arrival patch
+
+- Additional creatures arrive one hour, one week, and one calendar month after colony creation.
+- Calendar-month arithmetic uses UTC time-of-day preservation and end-of-month clamping.
+- Overdue creatures retain the existing 15-second reveal spacing and clock-rollback guard.
+- Save version 5 persists birth timestamps and migrates v1-v4 colonies deterministically.
+- The default colony remains capped at four; no learning, profile, relationship, or ecosystem work
+  is included in this standalone patch.
+
 ## v0.38 passive creature life and toss update
 
 - Four-frame family-specific climbing, dangling, screen-inspection, and discovery-presentation clips.

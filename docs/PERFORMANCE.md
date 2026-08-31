@@ -14,10 +14,10 @@ resident memory, and notes. Do not publish target values as measured results.
 
 | Build | Machine | State | CPU avg | Memory | Status |
 |---|---|---|---:|---:|---|
-| v0.38.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.38.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.38.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.38.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.38.1 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.38.1 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.38.1 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.38.1 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also

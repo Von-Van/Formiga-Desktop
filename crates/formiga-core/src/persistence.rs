@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=3 => migrate_legacy(value, version),
+            1..=4 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -112,9 +112,26 @@ fn migrate_legacy(
     if source_version == 1 && primary_only {
         save.settings.habitat.preset = crate::HabitatPreset::PrimaryDisplay;
     }
-    save.home =
-        crate::ColonyHome::from_seed(save.colony_seed, None, None, Some(save.maximum_seen_utc));
+    if source_version <= 3 {
+        save.home =
+            crate::ColonyHome::from_seed(save.colony_seed, None, None, Some(save.maximum_seen_utc));
+    }
+    for creature in &mut save.creatures {
+        if creature.born_at_utc == time::OffsetDateTime::UNIX_EPOCH {
+            creature.born_at_utc = legacy_birth_at(save.created_at_utc, creature.generation);
+        }
+    }
     Ok(save)
+}
+
+fn legacy_birth_at(created_at_utc: time::OffsetDateTime, generation: u8) -> time::OffsetDateTime {
+    const LEGACY_ARRIVAL_DAYS: [i64; 3] = [30, 90, 180];
+    generation
+        .checked_sub(1)
+        .and_then(|index| LEGACY_ARRIVAL_DAYS.get(index as usize))
+        .map_or(created_at_utc, |days| {
+            created_at_utc + time::Duration::days(*days)
+        })
 }
 
 fn migrate_appearance(appearance: &mut serde_json::Map<String, serde_json::Value>) {
@@ -428,6 +445,64 @@ mod tests {
         assert_eq!(
             first.home.last_disappeared_utc,
             Some(first.maximum_seen_utc)
+        );
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v4_birth_times_without_replacing_the_existing_home() {
+        let created = datetime!(2026-01-01 8:30 UTC);
+        let desktop = crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([4; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1280.0,
+                    height: 736.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let mut world = crate::World::new([44; 32], created, &desktop);
+        world.tick(created + time::Duration::days(181), 0.05, &desktop);
+        let expected_home = world.save.home.clone();
+        let mut value = serde_json::to_value(&world.save).unwrap();
+        value["save_version"] = serde_json::Value::from(4);
+        for creature in value["creatures"].as_array_mut().unwrap() {
+            creature.as_object_mut().unwrap().remove("born_at_utc");
+        }
+
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v4-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let migrated = SaveStore::new(&path).load().unwrap().unwrap();
+
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.home, expected_home);
+        assert_eq!(migrated.creatures[0].born_at_utc, created);
+        assert_eq!(
+            migrated.creatures[1].born_at_utc,
+            created + time::Duration::days(30)
+        );
+        assert_eq!(
+            migrated.creatures[2].born_at_utc,
+            created + time::Duration::days(90)
+        );
+        assert_eq!(
+            migrated.creatures[3].born_at_utc,
+            created + time::Duration::days(180)
         );
         let _ = fs::remove_dir_all(directory);
     }
