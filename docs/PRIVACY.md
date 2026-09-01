@@ -57,6 +57,12 @@ Quiet-day ritual eligibility uses only the already-available system idle duratio
 window rectangles remained unchanged. Hatch days and late-night sleep piles use local date/hour with
 UTC fallback. Formiga does not query weather, screen content, titles, URLs, or location.
 
+Desktop topology uses only the already-available visible window rectangles, order, monitor geometry,
+and instantaneous cursor position and velocity. Its bounded island, exposed-corner, moving-platform,
+and cursor-invitation projection exists only in memory. Formiga does not persist the topology,
+landmarks, cursor dwell, cursor path, or prior window layouts. Save version 8 is unchanged in v0.42,
+so loading an older colony adds no topology fields and cannot replace a creature.
+
 A one-file backup and local rotating diagnostic log support recovery and troubleshooting. Logs name
 event categories only; they do not record creature names, coordinates, relationship scores, or
 memory payloads. A blank milestone bubble is rasterized locally only while visible and is discarded

@@ -67,6 +67,7 @@ pub struct World {
     watched_climb: BTreeSet<(CreatureId, CreatureId)>,
     pending_home_greetings: BTreeSet<CreatureId>,
     colony_plan: Option<ColonyPlan>,
+    topology: DesktopTopology,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -505,6 +506,7 @@ impl World {
             watched_climb: BTreeSet::new(),
             pending_home_greetings: BTreeSet::new(),
             colony_plan: None,
+            topology: DesktopTopology::default(),
         }
     }
 
@@ -514,6 +516,13 @@ impl World {
         }
         let timeline_now = self.save.maximum_seen_utc;
         self.process_arrivals(timeline_now, desktop);
+        self.topology
+            .rebuild_if_changed(desktop, &self.last_windows);
+        if self.save.settings.visible && !self.save.settings.paused {
+            self.topology.update_cursor_invitation(desktop, dt);
+        } else {
+            self.topology.clear_invitation();
+        }
         if self.colony_plan.is_some()
             && (!self.save.settings.visible
                 || self.save.settings.paused
@@ -553,6 +562,7 @@ impl World {
             &mut self.save.creatures,
             desktop,
             &self.last_windows,
+            &self.topology,
             &mut self.events,
         );
         if self
@@ -765,6 +775,7 @@ impl World {
                     creature,
                     desktop,
                     &self.save.settings.habitat,
+                    &self.topology,
                 )
                 .is_some(),
                 window_changed_nearby: window_changed.contains(&creature.id),
@@ -983,6 +994,28 @@ impl World {
                     explicit_experience = Some(RelationshipExperience::StoleToy);
                 }
                 if selected_choice.is_none()
+                    && let Some(invitation) = self.topology.invitation()
+                    && cursor_invitation_eligible(creature, invitation)
+                    && rng.random_ratio(1, 2)
+                {
+                    if creature.state.surface.window_key == Some(invitation.window_key) {
+                        selected_choice = Some(ActionChoice {
+                            action: ActionKind::InspectScreen,
+                            target_creature: None,
+                            target_point: Some(invitation.point),
+                        });
+                    } else if creature.state.position.distance(invitation.point) <= 480.0 {
+                        selected_choice = Some(ActionChoice {
+                            action: ActionKind::Perch,
+                            target_creature: None,
+                            target_point: Some(invitation.point),
+                        });
+                    }
+                    if selected_choice.is_some() {
+                        scheduled_ambient = true;
+                    }
+                }
+                if selected_choice.is_none()
                     && let Some(bond) = context.bond
                     && bond.distance < 180.0
                     && bond.relationship.avoidance >= 96
@@ -1031,6 +1064,28 @@ impl World {
                     });
                     scheduled_ambient = true;
                 }
+                if selected_choice.is_none()
+                    && self.save.settings.visible
+                    && let Some(window_key) = creature.state.surface.window_key
+                    && self
+                        .ambient_timers
+                        .get(&creature.id)
+                        .is_some_and(|timers| timers.inspect_remaining <= 0.0)
+                    && let Some(corner) = self
+                        .topology
+                        .nearest_corner(window_key, creature.state.position)
+                {
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::InspectScreen,
+                        target_creature: None,
+                        target_point: Some(corner),
+                    });
+                    if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
+                        timers.inspect_remaining =
+                            self.ambient_rng.random_range(INSPECT_INTERVAL_SECS);
+                    }
+                    scheduled_ambient = true;
+                }
                 if selected_choice.is_none() {
                     creature.state.activity_variant = 0;
                     selected_choice = Some(choose_action(creature, desktop, context, rng));
@@ -1071,8 +1126,24 @@ impl World {
                 }
                 let mut next = choice.action;
                 if selected == ActionKind::Perch
-                    && let Some((target, surface)) =
-                        find_nearby_ledge(creature, desktop, &self.save.settings.habitat)
+                    && let Some((target, surface)) = choice
+                        .target_point
+                        .and_then(|target| {
+                            topology_ledge_at_target(
+                                &self.topology,
+                                target,
+                                desktop,
+                                &self.save.settings.habitat,
+                            )
+                        })
+                        .or_else(|| {
+                            find_nearby_ledge(
+                                creature,
+                                desktop,
+                                &self.save.settings.habitat,
+                                &self.topology,
+                            )
+                        })
                 {
                     let journey = build_window_journey(creature, target, surface, desktop);
                     next = journey.initial_action();
@@ -3463,6 +3534,9 @@ fn execute_action(
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.025).max(0.0);
         }
         ActionKind::InspectScreen => {
+            if let Some(target) = selected_target {
+                creature.state.facing_right = target.x >= creature.state.position.x;
+            }
             creature.state.drives.curiosity_satisfaction =
                 (creature.state.drives.curiosity_satisfaction + dt * 0.055).min(1.0);
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.035).max(0.0);
@@ -3610,6 +3684,7 @@ fn update_surface_attachments(
     creatures: &mut [Creature],
     desktop: &DesktopSnapshot,
     previous: &BTreeMap<WindowKey, DesktopRect>,
+    topology: &DesktopTopology,
     events: &mut Vec<WorldEvent>,
 ) {
     for creature in creatures {
@@ -3636,7 +3711,10 @@ fn update_surface_attachments(
                     let resized = (window.bounds.width - old.width).abs()
                         + (window.bounds.height - old.height).abs();
                     let rapid = moved_distance > 80.0 || resized > 90.0;
-                    creature.state.action = if rapid && creature.personality.window_tolerance < 0.72
+                    let calm_platform = topology.is_slow_platform(key);
+                    creature.state.action = if !calm_platform
+                        && rapid
+                        && creature.personality.window_tolerance < 0.72
                     {
                         creature.state.drives.arousal =
                             (creature.state.drives.arousal + 0.35).min(1.0);
@@ -4017,12 +4095,13 @@ fn find_nearby_ledge(
     creature: &Creature,
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
+    topology: &DesktopTopology,
 ) -> Option<(Point, SurfaceAttachment)> {
     let current_window = creature.state.surface.window_key;
-    let candidate = desktop
-        .windows
+    let candidate = topology
+        .windows()
         .iter()
-        .filter(|window| window.visible && !window.minimized && window.bounds.width >= 120.0)
+        .filter(|window| window.bounds.width >= 120.0)
         .filter(|window| Some(window.key) != current_window)
         .filter_map(|window| {
             let ledge_x = creature
@@ -4038,7 +4117,7 @@ fn find_nearby_ledge(
                     y: window.bounds.y,
                 })
             })?;
-            (dx <= 360.0
+            let reachable = dx <= 360.0
                 && (36.0..=640.0).contains(&dy)
                 && habitat_contains(
                     policy,
@@ -4047,10 +4126,20 @@ fn find_nearby_ledge(
                         x: ledge_x,
                         y: window.bounds.y,
                     },
-                ))
-            // Nearby intermediate ledges remain easiest, while the vertical-progress bonus makes
-            // a visibly different elevation preferable to another almost-level window.
-            .then_some((dx * 0.65 + dy * 0.12, window, ledge_x, monitor.id))
+                );
+            let island_bonus = if topology.island_windows().any(|key| key == window.key) {
+                42.0 + f32::from(creature.tendencies.exploration.max(0)) * 0.2
+            } else {
+                0.0
+            };
+            // Nearby intermediate ledges remain easiest. Isolated window islands become slightly
+            // more attractive to curious creatures without bypassing reachability or habitat.
+            reachable.then_some((
+                dx * 0.65 + dy * 0.12 - island_bonus,
+                window,
+                ledge_x,
+                monitor.id,
+            ))
         })
         .min_by(|a, b| a.0.total_cmp(&b.0));
     candidate.map(|(_, window, ledge_x, monitor_id)| {
@@ -4067,6 +4156,54 @@ fn find_nearby_ledge(
             },
         )
     })
+}
+
+fn topology_ledge_at_target(
+    topology: &DesktopTopology,
+    target: Point,
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+) -> Option<(Point, SurfaceAttachment)> {
+    let window = topology
+        .windows()
+        .iter()
+        .filter(|window| {
+            target.x >= window.bounds.x + 12.0
+                && target.x <= window.bounds.right() - 12.0
+                && (target.y - window.bounds.y).abs() <= 24.0
+        })
+        .min_by(|a, b| {
+            (target.y - a.bounds.y)
+                .abs()
+                .total_cmp(&(target.y - b.bounds.y).abs())
+        })?;
+    let point = Point {
+        x: target
+            .x
+            .clamp(window.bounds.x + 12.0, window.bounds.right() - 12.0),
+        y: window.bounds.y,
+    };
+    let monitor = desktop
+        .monitors
+        .iter()
+        .find(|monitor| monitor.id == window.monitor_id)?;
+    habitat_contains(policy, monitor, point).then_some((
+        point,
+        SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id: window.monitor_id,
+            window_key: Some(window.key),
+            relative_x: ((point.x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95),
+        },
+    ))
+}
+
+fn cursor_invitation_eligible(creature: &Creature, invitation: CursorInvitation) -> bool {
+    creature.state.surface.monitor_id == invitation.monitor_id
+        && creature.state.cursor_cooldown <= 0.0
+        && creature.tendencies.cursor_trust >= -20
+        && (creature.tendencies.cursor_trust >= 10
+            || creature.personality.cursor_interest + creature.personality.boldness >= 1.15)
 }
 
 fn constrain_to_surface(
@@ -4794,6 +4931,11 @@ mod tests {
             &world.save.creatures[0],
             &desktop,
             &world.save.settings.habitat,
+            &{
+                let mut topology = DesktopTopology::default();
+                topology.rebuild_if_changed(&desktop, &BTreeMap::new());
+                topology
+            },
         )
         .expect("test window should expose a reachable ledge");
         let creature_id = world.save.creatures[0].id;
@@ -5538,8 +5680,11 @@ mod tests {
             relative_x: 0.5,
         };
 
-        let (target, surface) = find_nearby_ledge(creature, &desktop, &world.save.settings.habitat)
-            .expect("the upper window should be a reachable transfer");
+        let mut topology = DesktopTopology::default();
+        topology.rebuild_if_changed(&desktop, &BTreeMap::new());
+        let (target, surface) =
+            find_nearby_ledge(creature, &desktop, &world.save.settings.habitat, &topology)
+                .expect("the upper window should be a reachable transfer");
         assert_eq!(surface.window_key, Some(202));
         assert_eq!(target.y, 330.0);
     }

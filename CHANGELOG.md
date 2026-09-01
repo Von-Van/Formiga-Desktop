@@ -2,7 +2,32 @@
 
 All notable changes are documented here.
 
-## [0.41.0] - 2026-08-31
+## [0.42.0] - 2026-09-01
+
+### Added
+
+- A runtime-only `DesktopTopology` derived from safe visible-window rectangles, bounded to 64
+  windows and 96 landmarks. It recognizes isolated window islands, exposed top corners, and slow
+  moving platforms without reading titles, pixels, URLs, or document content.
+- Privacy-safe cursor invitations: dwelling within 24 logical points of a ledge for 1.5 seconds at
+  under 25 points per second can coax a sufficiently trusting creature toward that ledge.
+- Geometry-aware corner peeks and island preferences that reuse existing inspection, gaze, perch,
+  climb, hop, and riding actions with no new atlas frames.
+
+### Changed
+
+- Desktop topology rebuilds only when the bounded visible-window geometry hash changes. Calm
+  platform motion uses the existing attachment behavior, while successful rides continue to feed
+  compact experience memory through the existing 60-active-second observation projection.
+- Save version remains 8. v1–v8 colonies load without an additional schema migration, and topology,
+  cursor dwell, window landmarks, and prior geometry are never serialized.
+
+### Fixed
+
+- Exposed-corner and island classification remains bounded and deterministic across negative
+  virtual-desktop coordinates, overlapping windows, display scaling, and rapid geometry changes.
+
+## [0.41.0] - 2026-09-01
 
 ### Added
 

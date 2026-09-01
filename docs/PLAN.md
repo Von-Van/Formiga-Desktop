@@ -1,5 +1,21 @@
 # Formiga roadmap
 
+## v0.42 desktop-topology release
+
+- A runtime-only `DesktopTopology` rebuilds only when a bounded visible-window geometry hash
+  changes and retains at most 64 windows and 96 derived landmarks.
+- Isolated islands, exposed corners, and calm moving platforms influence existing perch,
+  inspection, gaze, climb, hop, and riding behavior without new actions, art, or polling loops.
+- A cursor dwelling within 24 logical points of a ledge for 1.5 seconds at under 25 points per
+  second becomes an invitation for sufficiently trusting creatures.
+- Topology, landmarks, cursor dwell, and old window layouts are never persisted; save version 8 and
+  all prior identity-preserving migrations remain unchanged.
+
+Release-page summary:
+
+> Creatures now recognize window islands, exposed corners, calm moving platforms, and cursor-created
+> opportunities using geometry alone.
+
 ## v0.41 colony-rituals release
 
 - Save version 8 persists only the next ritual UTC timestamp, last ritual kind, ordinal, and local
@@ -121,10 +137,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.41
+## Progressive releases after v0.42
 
-- **v0.42 Desktop Topology:** derive bounded runtime-only islands, exposed corners, calm moving
-  platforms, and cursor invitations from geometry.
 - **v0.43 Window Routes:** derive bounded four-hop window constructions and short-lived narrow-gap
   squeeze routes that cancel as soon as supporting geometry changes.
 - **v0.44 Inhabited Ecosystem:** add at most eight deterministic static colony objects with semantic
@@ -135,6 +149,16 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
   checksummed, versioned, case-insensitive Base32 code with no server.
 - **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
   allocation or hidden metadata.
+- **v0.50 Reference-Guided Creatures:** accept a PNG or JPEG on demand, analyze it entirely on the
+  user's device, and search the existing valid genome space for the closest Formiga-style creature.
+  Matching uses bounded palette, silhouette, proportion, symmetry, and appendage cues; it never
+  turns the source image into a texture or introduces anatomy that the procedural generator cannot
+  normally produce. The user previews the result before an explicit colony replacement, and the
+  accepted creature receives a normal seed, fresh birth time, memories, and companion lineage.
+  Source pixels, file paths, metadata, and extracted features are discarded after the import session,
+  no image bytes enter the save, and the feature performs no network request. Candidate search runs
+  only while importing, has fixed decode/dimension/work limits, and releases all temporary buffers on
+  acceptance or cancellation.
 
-Objects, decorations, topology, seed import, and card export remain out of scope for v0.41 and
-retain their independent release gates.
+Objects, decorations, routes, seed import, card export, and reference-image matching remain out of
+scope for v0.42 and retain their independent release gates.

@@ -24,6 +24,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Deterministic 12–48-hour ritual scheduling, all nine kinds, safe eligibility, and no downtime catch-up flood | CI | CI |
 | Ritual interruption, 2–6-hour retry, reduced motion, local hatch-day deduplication, and shared-plan caps | CI | CI |
 | Multi-creature monitor-ID rebinding, presentation-buffer growth, and stalled-surface recovery path | CI | CI |
+| Topology geometry-hash rebuild suppression and 64-window/96-landmark caps | CI | CI |
+| Island/corner/slow-platform classification across overlap, negative coordinates, DPI, and rapid change | CI | CI |
+| Cursor invitation 24-point, 1.5-second, and 25-points/second boundaries plus pause/hidden clearing | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
@@ -64,6 +67,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Selected app occlusion and rule removal | pending | pending | pending | pending |
 | Window ordering/minimize/close | pending | pending | pending | pending |
 | Moving/minimized/closed supporting window during climb or dangle | pending | pending | pending | pending |
+| Window islands, exposed-corner peeks, slow platform rides, and calm cursor invitations | pending | pending | pending | pending |
 | Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |

@@ -161,6 +161,22 @@ pausing, dragging, tossing, or changing the supporting display geometry discards
 schedules a deterministic two-to-six-hour retry. No ritual history, path, animation, asset, or
 dedicated update loop is created.
 
+## Desktop topology
+
+`DesktopTopology` is a runtime-only projection of the same privacy-safe window rectangles already
+collected by the platform adapter. It sorts and truncates visible windows to 64, hashes their keys,
+bounds, and z-order, and rebuilds only when that hash changes. A rebuild derives at most 96 isolated
+island, exposed-corner, and slow-platform landmarks. Negative virtual-desktop coordinates and DPI
+scales remain logical geometry; no raster content or title enters the projection.
+
+A global bounded dwell record recognizes a cursor invitation only while the pointer remains within
+24 logical points of a ledge for 1.5 seconds below 25 points per second. Hiding or pausing clears it.
+At ordinary action boundaries, sufficiently trusting creatures can reuse `Perch` to approach the
+ledge or `InspectScreen` to peek toward the cursor or an exposed corner. Window islands receive a
+small bounded exploration preference. Existing window attachment and `RideWindow` behavior remain
+responsible for calm moving platforms, and the existing 60-second observation projection records
+successful riding time. The topology, dwell, landmarks, and previous layout never enter the save.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -175,6 +191,8 @@ dedicated update loop is created.
   no separate pair polling loop.
 - Ritual eligibility: checked only at existing action-selection boundaries after one persisted
   12–48-hour timestamp becomes due; at most one runtime plan exists.
+- Desktop topology: rebuilds only after the existing bounded window-geometry input changes; cursor
+  invitation dwell advances on ordinary visible, unpaused simulation ticks.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 

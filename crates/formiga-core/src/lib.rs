@@ -4,6 +4,7 @@ mod habitat;
 mod model;
 mod persistence;
 mod rng;
+mod topology;
 mod world;
 
 pub use behavior::{BehaviorContext, BondContext, choose_action};
@@ -15,6 +16,10 @@ pub use habitat::{
 pub use model::*;
 pub use persistence::{PersistenceError, SaveStore};
 pub use rng::{SeedStream, new_colony_seed};
+pub use topology::{
+    CursorInvitation, DesktopTopology, MAX_TOPOLOGY_LANDMARKS, MAX_TOPOLOGY_WINDOWS,
+    TopologyLandmark, TopologyLandmarkKind, TopologyWindow,
+};
 pub use world::World;
 
 pub const SAVE_VERSION: u32 = 8;
