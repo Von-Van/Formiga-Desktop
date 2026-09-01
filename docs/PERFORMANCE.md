@@ -22,6 +22,10 @@ resident memory, and notes. Do not publish target values as measured results.
 | v0.42.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
 | v0.42.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
 | v0.42.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.43.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.43.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.43.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.43.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -59,3 +63,8 @@ Desktop topology retains at most 64 compact window records, 96 compact landmarks
 dwell record. It rebuilds only when the bounded geometry hash changes, reuses the existing desktop
 scan and behavior tick, and creates no thread, OS query, texture, atlas frame, draw call, or idle GPU
 allocation. Corner peeks, islands, invitations, and moving platforms reuse existing actions.
+
+Window routes add a bounded breadth-first search across at most 64 topology windows, retain no more
+than four hops per active creature, and run only when an existing perch choice needs a destination.
+Squeezes reuse the traversal atlas and change only body/face vertex width, so the 90-frame atlas,
+texture bytes, draw-call count, physics cost, and idle allocation remain unchanged.

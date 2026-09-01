@@ -18,7 +18,8 @@ pub use persistence::{PersistenceError, SaveStore};
 pub use rng::{SeedStream, new_colony_seed};
 pub use topology::{
     CursorInvitation, DesktopTopology, MAX_TOPOLOGY_LANDMARKS, MAX_TOPOLOGY_WINDOWS,
-    TopologyLandmark, TopologyLandmarkKind, TopologyWindow,
+    MAX_WINDOW_ROUTE_HOPS, RouteHopKind, RoutePreferences, TopologyLandmark, TopologyLandmarkKind,
+    TopologyRouteHop, TopologyWindow,
 };
 pub use world::World;
 

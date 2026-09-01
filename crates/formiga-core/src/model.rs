@@ -307,6 +307,7 @@ pub struct PersonalityGenome {
 pub enum ActionKind {
     Idle,
     Traverse,
+    SqueezeWindow,
     Perch,
     Sleep,
     InvestigateCursor,
@@ -332,9 +333,10 @@ pub enum ActionKind {
 }
 
 impl ActionKind {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Idle,
         Self::Traverse,
+        Self::SqueezeWindow,
         Self::Perch,
         Self::Sleep,
         Self::InvestigateCursor,
@@ -430,6 +432,8 @@ impl ActionKind {
             Self::PresentDiscovery => 21,
             Self::Tossed => 22,
             Self::PetReaction => 23,
+            // Appended so existing fixed routine keys remain byte-for-byte stable.
+            Self::SqueezeWindow => 24,
         }
     }
 
@@ -1408,6 +1412,14 @@ mod tests {
                 .iter()
                 .all(|slot| slot.key >= 12)
         );
+    }
+
+    #[test]
+    fn squeeze_action_appends_without_renumbering_persisted_routine_codes() {
+        assert_eq!(ActionKind::Idle.routine_code(), 0);
+        assert_eq!(ActionKind::Traverse.routine_code(), 1);
+        assert_eq!(ActionKind::PetReaction.routine_code(), 23);
+        assert_eq!(ActionKind::SqueezeWindow.routine_code(), 24);
     }
 
     #[test]

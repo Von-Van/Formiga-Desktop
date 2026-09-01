@@ -30,6 +30,10 @@ recognizes isolated window islands, exposed corners, calm moving platforms, and 
 holding the cursor near a ledge. It uses rectangles and motion only—never window contents—and
 reuses the existing perch, inspection, gaze, and riding behavior.
 
+Overlapping window tiers can form short constructions of up to four hops or climbs. When two
+windows leave a 10–28-point gap with enough shared height, a creature may briefly squeeze through
+using its existing walk animation. Any supporting-window change cancels the route immediately.
+
 Between those larger reactions, creatures entertain themselves with generated toys, pause for small
 snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
@@ -40,13 +44,13 @@ of the way; a slow release keeps the existing precise placement behavior.
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.42.0-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.43.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.42.0-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.43.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.42.0`. The assisted updater matches those exact names, so do
+names with its version in place of `0.43.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
@@ -100,6 +104,8 @@ desktop interactions:
   presentation, hatch day, quiet huddle, or late-night sleep pile without a new simulation loop.
 - See trusting creatures investigate calm cursor invitations near ledges, peek toward exposed
   corners, prefer isolated window islands, and learn confidence from riding moving windows.
+- Watch creatures traverse short stacks of overlapping windows and squeeze through safe narrow
+  gaps, with routes disappearing immediately if the desktop construction changes.
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
 - Check for new GitHub releases without blocking the desktop, verify downloads with SHA-256, and
   hand the approved installer to the operating system.
@@ -175,7 +181,7 @@ cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.p
 
 ## Status
 
-Formiga v0.42 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.43 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 

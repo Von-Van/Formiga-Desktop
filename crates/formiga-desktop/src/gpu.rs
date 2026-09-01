@@ -1106,8 +1106,12 @@ impl OverlayRenderer {
         let placement = FramePlacement::for_action(creature.state.action, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * display_scale as f32;
         let frame_bottom = frame_top + sprite_size;
-        let left = (local_x - sprite_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let right = (local_x + sprite_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        // Gap traversal reuses the normal walk atlas and briefly narrows both body and layered face
+        // quads. The source texture and hit mask remain unchanged and no runtime art is generated.
+        let horizontal_scale = creature_horizontal_scale(creature.state.action);
+        let sprite_width = sprite_size * horizontal_scale;
+        let left = (local_x - sprite_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let right = (local_x + sprite_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let top = 1.0 - frame_top / self.config.height as f32 * 2.0;
         let bottom = 1.0 - frame_bottom / self.config.height as f32 * 2.0;
         let spec = AnimationSpec::for_action(creature.state.action);
@@ -1162,11 +1166,13 @@ impl OverlayRenderer {
         } else {
             FRAME_SIZE as i32 - anchor.x
         } as f32;
-        let face_center_x = local_x - sprite_size / 2.0 + anchor_x * display_scale as f32;
+        let unscaled_face_center_x = local_x - sprite_size / 2.0 + anchor_x * display_scale as f32;
+        let face_center_x = local_x + (unscaled_face_center_x - local_x) * horizontal_scale;
         let face_center_y = frame_top + anchor.y as f32 * display_scale as f32;
         let face_size = FACE_FRAME_SIZE as f32 * display_scale as f32;
-        let face_left = (face_center_x - face_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let face_right = (face_center_x + face_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let face_width = face_size * horizontal_scale;
+        let face_left = (face_center_x - face_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
+        let face_right = (face_center_x + face_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let face_top = 1.0 - (face_center_y - face_size / 2.0) / self.config.height as f32 * 2.0;
         let face_bottom = 1.0 - (face_center_y + face_size / 2.0) / self.config.height as f32 * 2.0;
         let mut source_face_state = face_state;
@@ -1555,6 +1561,14 @@ fn total_animation_frames() -> u32 {
         .sum()
 }
 
+fn creature_horizontal_scale(action: ActionKind) -> f32 {
+    if action == ActionKind::SqueezeWindow {
+        0.72
+    } else {
+        1.0
+    }
+}
+
 fn atlas_slot(action: ActionKind, frame: u8) -> u32 {
     let action = AnimationSpec::body_action(action);
     let action_offset: u32 = ActionKind::BODY_CLIPS
@@ -1798,6 +1812,12 @@ mod tests {
             atlas_slot(ActionKind::Tossed, 2),
             atlas_slot(ActionKind::Dragged, 2)
         );
+        assert_eq!(
+            atlas_slot(ActionKind::SqueezeWindow, 2),
+            atlas_slot(ActionKind::Traverse, 2)
+        );
+        assert_eq!(creature_horizontal_scale(ActionKind::SqueezeWindow), 0.72);
+        assert_eq!(creature_horizontal_scale(ActionKind::Traverse), 1.0);
         if !cfg!(debug_assertions) {
             assert!(
                 bake_time < std::time::Duration::from_millis(75),

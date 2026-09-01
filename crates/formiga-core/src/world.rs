@@ -3,7 +3,7 @@ use crate::rng::SeedStream;
 use crate::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +53,7 @@ pub struct World {
     last_windows: BTreeMap<WindowKey, DesktopRect>,
     interaction: Option<InteractionSession>,
     window_journeys: BTreeMap<CreatureId, WindowJourney>,
+    window_routes: BTreeMap<CreatureId, WindowRoutePlan>,
     ambient_rng: ChaCha12Rng,
     ambient_timers: BTreeMap<CreatureId, AmbientTimers>,
     discovery_remaining: f32,
@@ -197,9 +198,29 @@ struct ClimbJourney {
 }
 
 #[derive(Clone)]
+struct SqueezeJourney {
+    from_window: WindowKey,
+    from_bounds: DesktopRect,
+    target_window: WindowKey,
+    target_bounds: DesktopRect,
+    start: Point,
+    target: Point,
+    surface: SurfaceAttachment,
+    elapsed: f32,
+    duration: f32,
+}
+
+#[derive(Clone)]
+struct WindowRoutePlan {
+    geometry_hash: u64,
+    remaining: VecDeque<TopologyRouteHop>,
+}
+
+#[derive(Clone)]
 enum WindowJourney {
     Hop(HopJourney),
     Climb(ClimbJourney),
+    Squeeze(SqueezeJourney),
 }
 
 #[derive(Clone, Copy)]
@@ -221,6 +242,7 @@ impl WindowJourney {
             Self::Hop(_) => ActionKind::Landing,
             Self::Climb(journey) if journey.approach_duration > 0.05 => ActionKind::Traverse,
             Self::Climb(_) => ActionKind::ClimbWindow,
+            Self::Squeeze(_) => ActionKind::SqueezeWindow,
         }
     }
 
@@ -228,6 +250,7 @@ impl WindowJourney {
         match self {
             Self::Hop(journey) => &journey.surface,
             Self::Climb(journey) => &journey.surface,
+            Self::Squeeze(journey) => &journey.surface,
         }
     }
 
@@ -245,6 +268,21 @@ impl WindowJourney {
                     && !window.minimized
                     && window.bounds == journey.target_bounds
             }),
+            Self::Squeeze(journey) => {
+                let from_valid = desktop.windows.iter().any(|window| {
+                    window.key == journey.from_window
+                        && window.visible
+                        && !window.minimized
+                        && window.bounds == journey.from_bounds
+                });
+                let target_valid = desktop.windows.iter().any(|window| {
+                    window.key == journey.target_window
+                        && window.visible
+                        && !window.minimized
+                        && window.bounds == journey.target_bounds
+                });
+                from_valid && target_valid
+            }
         }
     }
 
@@ -305,6 +343,15 @@ impl WindowJourney {
                         action: ActionKind::ClimbWindow,
                         complete: journey.elapsed >= total,
                     }
+                }
+            }
+            Self::Squeeze(journey) => {
+                journey.elapsed += dt;
+                let progress = (journey.elapsed / journey.duration).clamp(0.0, 1.0);
+                JourneyStep {
+                    position: lerp_point(journey.start, journey.target, smoothstep(progress)),
+                    action: ActionKind::SqueezeWindow,
+                    complete: progress >= 1.0,
                 }
             }
         }
@@ -492,6 +539,7 @@ impl World {
             last_windows: BTreeMap::new(),
             interaction: None,
             window_journeys: BTreeMap::new(),
+            window_routes: BTreeMap::new(),
             ambient_rng,
             ambient_timers,
             discovery_remaining,
@@ -516,8 +564,24 @@ impl World {
         }
         let timeline_now = self.save.maximum_seen_utc;
         self.process_arrivals(timeline_now, desktop);
-        self.topology
+        let topology_changed = self
+            .topology
             .rebuild_if_changed(desktop, &self.last_windows);
+        if topology_changed && !self.window_routes.is_empty() {
+            let interrupted: Vec<_> = self.window_routes.keys().copied().collect();
+            self.window_routes.clear();
+            for creature_id in interrupted {
+                self.window_journeys.remove(&creature_id);
+                if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
+                    settle_interrupted_journey(
+                        creature,
+                        desktop,
+                        &self.save.settings.habitat,
+                        &mut self.events,
+                    );
+                }
+            }
+        }
         if self.save.settings.visible && !self.save.settings.paused {
             self.topology.update_cursor_invitation(desktop, dt);
         } else {
@@ -667,6 +731,7 @@ impl World {
                     .is_some_and(|journey| journey.valid(desktop));
                 if !valid {
                     self.window_journeys.remove(&creature.id);
+                    self.window_routes.remove(&creature.id);
                     settle_interrupted_journey(
                         creature,
                         desktop,
@@ -688,6 +753,7 @@ impl World {
                 });
                 if !route_point_valid {
                     self.window_journeys.remove(&creature.id);
+                    self.window_routes.remove(&creature.id);
                     settle_interrupted_journey(
                         creature,
                         desktop,
@@ -721,11 +787,7 @@ impl World {
                 if step.complete {
                     self.window_journeys.remove(&creature.id);
                     let completed_action = creature.state.action;
-                    creature.state.surface = surface;
-                    creature.state.action = ActionKind::Perch;
-                    creature.state.action_elapsed = 0.0;
-                    creature.state.action_duration = 3.5;
-                    creature.state.velocity = Point::default();
+                    creature.state.surface = surface.clone();
                     Self::emit(
                         &mut self.events,
                         WorldEvent::ActionCompleted {
@@ -740,6 +802,33 @@ impl World {
                             kind: SurfaceKind::WindowLedge,
                         },
                     );
+                    let next_hop = self
+                        .window_routes
+                        .get_mut(&creature.id)
+                        .filter(|plan| plan.geometry_hash == self.topology.geometry_hash())
+                        .and_then(|plan| plan.remaining.pop_front());
+                    if let Some(hop) = next_hop {
+                        let journey = build_route_hop_journey(creature, hop, desktop);
+                        let next = journey.initial_action();
+                        creature.state.action = next;
+                        creature.state.action_elapsed = 0.0;
+                        creature.state.action_duration = f32::MAX;
+                        creature.state.velocity = Point::default();
+                        self.window_journeys.insert(creature.id, journey);
+                        Self::emit(
+                            &mut self.events,
+                            WorldEvent::ActionStarted {
+                                creature_id: creature.id,
+                                action: next,
+                            },
+                        );
+                        continue;
+                    }
+                    self.window_routes.remove(&creature.id);
+                    creature.state.action = ActionKind::Perch;
+                    creature.state.action_elapsed = 0.0;
+                    creature.state.action_duration = 3.5;
+                    creature.state.velocity = Point::default();
                     Self::emit(
                         &mut self.events,
                         WorldEvent::ActionStarted {
@@ -1125,8 +1214,26 @@ impl World {
                     }
                 }
                 let mut next = choice.action;
-                if selected == ActionKind::Perch
-                    && let Some((target, surface)) = choice
+                if selected == ActionKind::Perch {
+                    let mut route = planned_window_route(
+                        creature,
+                        desktop,
+                        &self.save.settings.habitat,
+                        &self.topology,
+                    );
+                    if !route.is_empty() {
+                        let first = route.remove(0);
+                        let journey = build_route_hop_journey(creature, first, desktop);
+                        next = journey.initial_action();
+                        self.window_routes.insert(
+                            creature.id,
+                            WindowRoutePlan {
+                                geometry_hash: self.topology.geometry_hash(),
+                                remaining: route.into(),
+                            },
+                        );
+                        self.window_journeys.insert(creature.id, journey);
+                    } else if let Some((target, surface)) = choice
                         .target_point
                         .and_then(|target| {
                             topology_ledge_at_target(
@@ -1144,10 +1251,11 @@ impl World {
                                 &self.topology,
                             )
                         })
-                {
-                    let journey = build_window_journey(creature, target, surface, desktop);
-                    next = journey.initial_action();
-                    self.window_journeys.insert(creature.id, journey);
+                    {
+                        let journey = build_window_journey(creature, target, surface, desktop);
+                        next = journey.initial_action();
+                        self.window_journeys.insert(creature.id, journey);
+                    }
                 }
                 creature.state.action = next;
                 creature.state.action_elapsed = 0.0;
@@ -2246,6 +2354,7 @@ impl World {
         if due && self.interaction.is_none() && self.resolve_home_monitor(desktop).is_some() {
             self.save.home.active_since_utc = Some(timeline_now);
             self.window_journeys.clear();
+            self.window_routes.clear();
             self.tosses.clear();
             self.action_choices.clear();
             self.bond_plans.clear();
@@ -2413,6 +2522,7 @@ impl World {
             return false;
         };
         let interrupted_journey = self.window_journeys.remove(&creature_id).is_some();
+        self.window_routes.remove(&creature_id);
         let interrupted_toss = self.tosses.remove(&creature_id);
         self.action_choices.remove(&creature_id);
         self.bond_plans.remove(&creature_id);
@@ -2753,6 +2863,7 @@ impl World {
 
     fn gather_creatures(&mut self, desktop: &DesktopSnapshot) {
         self.window_journeys.clear();
+        self.window_routes.clear();
         self.tosses.clear();
         self.action_choices.clear();
         self.bond_plans.clear();
@@ -4008,6 +4119,81 @@ fn build_window_journey(
     })
 }
 
+fn build_route_hop_journey(
+    creature: &Creature,
+    hop: TopologyRouteHop,
+    desktop: &DesktopSnapshot,
+) -> WindowJourney {
+    let surface = SurfaceAttachment {
+        kind: SurfaceKind::WindowLedge,
+        monitor_id: hop.monitor_id,
+        window_key: Some(hop.to_window),
+        relative_x: ((hop.target.x - hop.to_bounds.x) / hop.to_bounds.width).clamp(0.05, 0.95),
+    };
+    match hop.kind {
+        RouteHopKind::WindowTier => build_window_journey(creature, hop.target, surface, desktop),
+        RouteHopKind::NarrowGap => WindowJourney::Squeeze(SqueezeJourney {
+            from_window: hop.from_window,
+            from_bounds: hop.from_bounds,
+            target_window: hop.to_window,
+            target_bounds: hop.to_bounds,
+            start: creature.state.position,
+            target: hop.target,
+            surface,
+            elapsed: 0.0,
+            duration: (creature.state.position.distance(hop.target) / 52.0).clamp(0.7, 4.0),
+        }),
+    }
+}
+
+fn planned_window_route(
+    creature: &Creature,
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+    topology: &DesktopTopology,
+) -> Vec<TopologyRouteHop> {
+    let Some(start_window) = creature.state.surface.window_key else {
+        return Vec::new();
+    };
+    let preferred = creature.memory.preferred_region.and_then(|preferred| {
+        let monitor = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.display_key == preferred.display)?;
+        let column = f32::from(preferred.cell.min(8) % 3);
+        let row = f32::from(preferred.cell.min(8) / 3);
+        Some(Point {
+            x: monitor.usable_bounds.x + monitor.usable_bounds.width * ((column + 0.5) / 3.0),
+            y: monitor.usable_bounds.y + monitor.usable_bounds.height * ((row + 0.5) / 3.0),
+        })
+    });
+    let target_hint = topology
+        .invitation()
+        .filter(|invitation| cursor_invitation_eligible(creature, *invitation))
+        .map(|invitation| invitation.point)
+        .or(preferred);
+    let route = topology.plan_route(
+        start_window,
+        RoutePreferences {
+            climbing: creature.tendencies.climbing,
+            exploration: creature.tendencies.exploration,
+            cursor_trust: creature.tendencies.cursor_trust,
+            target_hint,
+        },
+    );
+    if route.iter().all(|hop| {
+        desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.id == hop.monitor_id)
+            .is_some_and(|monitor| habitat_contains(policy, monitor, hop.target))
+    }) {
+        route
+    } else {
+        Vec::new()
+    }
+}
+
 fn settle_interrupted_journey(
     creature: &mut Creature,
     desktop: &DesktopSnapshot,
@@ -4616,6 +4802,83 @@ mod tests {
             world.save.creatures[0].state.action,
             ActionKind::ReactToWindow
         );
+    }
+
+    #[test]
+    fn narrow_gap_squeeze_is_runtime_only_and_cancels_on_geometry_change() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        desktop.windows = vec![
+            DesktopWindow {
+                key: 301,
+                bounds: DesktopRect {
+                    x: 100.0,
+                    y: 300.0,
+                    width: 240.0,
+                    height: 220.0,
+                },
+                z_order: 0,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            },
+            DesktopWindow {
+                key: 302,
+                bounds: DesktopRect {
+                    x: 360.0,
+                    y: 310.0,
+                    width: 240.0,
+                    height: 220.0,
+                },
+                z_order: 1,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            },
+        ];
+        let mut world = World::new([103; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
+        world.save.creatures[0].state.position = Point { x: 320.0, y: 300.0 };
+        world.save.creatures[0].state.surface = SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id: 1,
+            window_key: Some(301),
+            relative_x: 0.9,
+        };
+        world.tick(created, 0.05, &desktop);
+
+        let route = world.topology.plan_route(301, RoutePreferences::default());
+        assert_eq!(route.len(), 1);
+        assert_eq!(route[0].kind, RouteHopKind::NarrowGap);
+        let creature_id = world.save.creatures[0].id;
+        let journey = build_route_hop_journey(&world.save.creatures[0], route[0], &desktop);
+        world.save.creatures[0].state.action = journey.initial_action();
+        world.save.creatures[0].state.action_duration = f32::MAX;
+        world.window_journeys.insert(creature_id, journey);
+        world.window_routes.insert(
+            creature_id,
+            WindowRoutePlan {
+                geometry_hash: world.topology.geometry_hash(),
+                remaining: VecDeque::new(),
+            },
+        );
+        world.tick(created, 0.1, &desktop);
+        assert_eq!(
+            world.save.creatures[0].state.action,
+            ActionKind::SqueezeWindow
+        );
+        assert!(world.window_routes.contains_key(&creature_id));
+
+        desktop.windows[1].bounds.x += 1.0;
+        world.tick(created, 0.05, &desktop);
+        assert!(!world.window_routes.contains_key(&creature_id));
+        assert!(!world.window_journeys.contains_key(&creature_id));
+        assert!(matches!(
+            world.save.creatures[0].state.action,
+            ActionKind::ReactToWindow | ActionKind::RideWindow
+        ));
     }
 
     #[test]
@@ -6165,7 +6428,7 @@ mod tests {
     }
 
     #[test]
-    fn shelter_return_schedules_greetings_without_a_new_action_kind() {
+    fn shelter_return_reuses_greeting_actions_and_adds_no_body_clip() {
         let created = datetime!(2026-01-01 0:00 UTC);
         let desktop = desktop();
         let mut world = two_creature_world([62; 32], created);
@@ -6190,7 +6453,7 @@ mod tests {
                 ActionKind::Greet | ActionKind::Follow
             )
         }));
-        assert_eq!(ActionKind::ALL.len(), 24);
+        assert_eq!(ActionKind::ALL.len(), 25);
         assert_eq!(ActionKind::BODY_CLIPS.len(), 22);
     }
 

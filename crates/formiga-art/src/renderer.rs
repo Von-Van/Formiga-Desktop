@@ -132,7 +132,9 @@ pub struct AnimationSpec {
 impl AnimationSpec {
     pub fn for_action(action: ActionKind) -> Self {
         let (frames, fps, playback) = match action {
-            ActionKind::Traverse | ActionKind::Follow => (6, 10, PlaybackMode::Loop),
+            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
+                (6, 10, PlaybackMode::Loop)
+            }
             ActionKind::Sprint => (6, 12, PlaybackMode::Loop),
             ActionKind::Eat | ActionKind::Drink => (4, 6, PlaybackMode::Loop),
             ActionKind::Sleep => (2, 2, PlaybackMode::Loop),
@@ -157,6 +159,7 @@ impl AnimationSpec {
         match action {
             ActionKind::Tossed => ActionKind::Dragged,
             ActionKind::PetReaction => ActionKind::Greet,
+            ActionKind::SqueezeWindow => ActionKind::Traverse,
             other => other,
         }
     }
@@ -416,7 +419,7 @@ impl Pose {
         let alternate: i32 = [1, 0, -1, 0, 1, 0][phase];
         let bob_amount = genome.gait_bob.max(0.2).round() as i32;
         let mut pose = match action {
-            ActionKind::Traverse | ActionKind::Follow => Self {
+            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => Self {
                 bob: walk.abs() * bob_amount,
                 squash_x: 0,
                 squash_y: 0,
@@ -1254,7 +1257,7 @@ fn limb_targets(
     };
     match action {
         ActionKind::Idle => side_rest(),
-        ActionKind::Traverse | ActionKind::Sprint => offset_pair(
+        ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Sprint => offset_pair(
             left,
             right,
             (
@@ -1957,7 +1960,9 @@ fn inside_ellipse(x: i32, y: i32, cx: i32, cy: i32, rx: i32, ry: i32) -> bool {
 fn expression_for_action(action: ActionKind) -> ExpressionKind {
     match action {
         ActionKind::Idle => ExpressionKind::Neutral,
-        ActionKind::Traverse | ActionKind::RideWindow => ExpressionKind::Focused,
+        ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::RideWindow => {
+            ExpressionKind::Focused
+        }
         ActionKind::Sprint => ExpressionKind::Determined,
         ActionKind::Perch | ActionKind::Homebound => ExpressionKind::Content,
         ActionKind::Sleep => ExpressionKind::Sleepy,
@@ -2009,7 +2014,7 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
                 ExpressionKind::Neutral
             }
         }
-        ActionKind::Traverse => {
+        ActionKind::Traverse | ActionKind::SqueezeWindow => {
             if drives.arousal > 0.45 {
                 ExpressionKind::Focused
             } else {

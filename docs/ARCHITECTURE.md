@@ -177,6 +177,18 @@ small bounded exploration preference. Existing window attachment and `RideWindow
 responsible for calm moving platforms, and the existing 60-second observation projection records
 successful riding time. The topology, dwell, landmarks, and previous layout never enter the save.
 
+The same bounded windows form a runtime graph for v0.43. Vertically separated windows become tier
+edges when their horizontal overlap is wide enough; horizontally separated windows become narrow-gap
+edges only at 10–28 logical points with at least 64 points of shared height. Breadth-first search
+retains the best deterministic path of at most four edges. Learned climbing, exploration, cursor
+trust, a live invitation, and the compact preferred-region candidate adjust route scoring.
+
+`WindowRoutePlan` holds only the current geometry hash and remaining hops. Each tier delegates to
+the existing hop/climb journey. A gap uses `SqueezeWindow`, whose body action maps to the existing
+traversal clip while the GPU narrows its body and layered face quads to 0.72×. Every hop retains both
+supporting rectangles; any topology or support change discards the plan and resolves a safe support.
+Routes, graph edges, support rectangles, and progress are never serialized.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.

@@ -1,5 +1,5 @@
 use crate::{DesktopRect, DesktopSnapshot, MonitorId, Point, WindowKey};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 pub const MAX_TOPOLOGY_WINDOWS: usize = 64;
 pub const MAX_TOPOLOGY_LANDMARKS: usize = 96;
@@ -7,6 +7,10 @@ const ISLAND_CLEARANCE: f32 = 24.0;
 const INVITATION_DISTANCE: f32 = 24.0;
 const INVITATION_SPEED: f32 = 25.0;
 const INVITATION_DWELL_SECS: f32 = 1.5;
+pub const MAX_WINDOW_ROUTE_HOPS: usize = 4;
+const MIN_NARROW_GAP: f32 = 10.0;
+const MAX_NARROW_GAP: f32 = 28.0;
+const MIN_GAP_OVERLAP_HEIGHT: f32 = 64.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopologyLandmarkKind {
@@ -35,6 +39,31 @@ pub struct CursorInvitation {
     pub window_key: WindowKey,
     pub point: Point,
     pub monitor_id: MonitorId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RouteHopKind {
+    WindowTier,
+    NarrowGap,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TopologyRouteHop {
+    pub kind: RouteHopKind,
+    pub from_window: WindowKey,
+    pub to_window: WindowKey,
+    pub from_bounds: DesktopRect,
+    pub to_bounds: DesktopRect,
+    pub target: Point,
+    pub monitor_id: MonitorId,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RoutePreferences {
+    pub climbing: i8,
+    pub exploration: i8,
+    pub cursor_trust: i8,
+    pub target_hint: Option<Point>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -233,6 +262,66 @@ impl DesktopTopology {
         self.invitation
     }
 
+    pub fn geometry_hash(&self) -> u64 {
+        self.geometry_hash
+    }
+
+    pub fn plan_route(
+        &self,
+        start_window: WindowKey,
+        preferences: RoutePreferences,
+    ) -> Vec<TopologyRouteHop> {
+        let Some(start) = self.window(start_window) else {
+            return Vec::new();
+        };
+        let mut queue = VecDeque::from([(start_window, Vec::<TopologyRouteHop>::new())]);
+        let mut best_depth: BTreeMap<WindowKey, usize> = BTreeMap::from([(start_window, 0)]);
+        let mut candidates = Vec::new();
+        while let Some((window_key, path)) = queue.pop_front() {
+            if path.len() >= MAX_WINDOW_ROUTE_HOPS {
+                continue;
+            }
+            let Some(from) = self.window(window_key) else {
+                continue;
+            };
+            let mut neighbors: Vec<_> = self
+                .windows
+                .iter()
+                .copied()
+                .filter(|to| to.key != from.key && to.monitor_id == from.monitor_id)
+                .filter_map(|to| {
+                    route_hop(from, to).map(|hop| {
+                        let vertical = (to.bounds.y - from.bounds.y).abs();
+                        (vertical, to.key, hop)
+                    })
+                })
+                .collect();
+            neighbors.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+            for (_, to_key, hop) in neighbors {
+                let next_depth = path.len() + 1;
+                if best_depth
+                    .get(&to_key)
+                    .is_some_and(|depth| *depth <= next_depth)
+                {
+                    continue;
+                }
+                best_depth.insert(to_key, next_depth);
+                let mut next = path.clone();
+                next.push(hop);
+                candidates.push(next.clone());
+                queue.push_back((to_key, next));
+            }
+        }
+        candidates
+            .into_iter()
+            .max_by(|a, b| {
+                route_score(start, a, preferences)
+                    .total_cmp(&route_score(start, b, preferences))
+                    .then_with(|| route_destination(a).cmp(&route_destination(b)).reverse())
+            })
+            .unwrap_or_default()
+    }
+
     pub fn clear_invitation(&mut self) {
         self.invitation_dwell = None;
         self.invitation = None;
@@ -339,6 +428,83 @@ fn expanded(rect: DesktopRect, amount: f32) -> DesktopRect {
         width: rect.width + amount * 2.0,
         height: rect.height + amount * 2.0,
     }
+}
+
+fn route_hop(from: TopologyWindow, to: TopologyWindow) -> Option<TopologyRouteHop> {
+    let overlap_x = from.bounds.right().min(to.bounds.right()) - from.bounds.x.max(to.bounds.x);
+    let vertical = (from.bounds.y - to.bounds.y).abs();
+    let gap = if from.bounds.right() <= to.bounds.x {
+        to.bounds.x - from.bounds.right()
+    } else if to.bounds.right() <= from.bounds.x {
+        from.bounds.x - to.bounds.right()
+    } else {
+        0.0
+    };
+    let overlap_y = from.bounds.bottom().min(to.bounds.bottom()) - from.bounds.y.max(to.bounds.y);
+    let kind = if (MIN_NARROW_GAP..=MAX_NARROW_GAP).contains(&gap)
+        && overlap_y >= MIN_GAP_OVERLAP_HEIGHT
+        && vertical <= 80.0
+    {
+        RouteHopKind::NarrowGap
+    } else if overlap_x >= 48.0 && (36.0..=360.0).contains(&vertical) {
+        RouteHopKind::WindowTier
+    } else {
+        return None;
+    };
+    let target_x = match kind {
+        RouteHopKind::WindowTier => (from.bounds.x + from.bounds.width * 0.5)
+            .clamp(to.bounds.x + 12.0, to.bounds.right() - 12.0),
+        RouteHopKind::NarrowGap if to.bounds.x > from.bounds.x => to.bounds.x + 12.0,
+        RouteHopKind::NarrowGap => to.bounds.right() - 12.0,
+    };
+    Some(TopologyRouteHop {
+        kind,
+        from_window: from.key,
+        to_window: to.key,
+        from_bounds: from.bounds,
+        to_bounds: to.bounds,
+        target: Point {
+            x: target_x,
+            y: to.bounds.y,
+        },
+        monitor_id: to.monitor_id,
+    })
+}
+
+fn route_score(
+    start: TopologyWindow,
+    route: &[TopologyRouteHop],
+    preferences: RoutePreferences,
+) -> f32 {
+    let Some(last) = route.last() else {
+        return f32::NEG_INFINITY;
+    };
+    let climbing = f32::from(preferences.climbing) / 100.0;
+    let exploration = f32::from(preferences.exploration) / 100.0;
+    let trust = f32::from(preferences.cursor_trust) / 100.0;
+    let height_gain = start.bounds.y - last.to_bounds.y;
+    let distance = Point {
+        x: start.bounds.x + start.bounds.width * 0.5,
+        y: start.bounds.y,
+    }
+    .distance(last.target);
+    let gap_count = route
+        .iter()
+        .filter(|hop| hop.kind == RouteHopKind::NarrowGap)
+        .count() as f32;
+    let target_score = preferences.target_hint.map_or(0.0, |target| {
+        (600.0 - target.distance(last.target)).clamp(-600.0, 600.0)
+            * (0.25 + trust.max(-0.5) * 0.15)
+    });
+    height_gain * (0.35 + climbing * 0.25)
+        + distance * exploration.max(-0.5) * 0.12
+        + route.len() as f32 * (20.0 + exploration * 18.0)
+        + gap_count * (trust * 18.0 + exploration * 12.0 - 4.0)
+        + target_score
+}
+
+fn route_destination(route: &[TopologyRouteHop]) -> WindowKey {
+    route.last().map_or(0, |hop| hop.to_window)
 }
 
 trait RectOverlap {
@@ -459,5 +625,56 @@ mod tests {
         desktop.cursor.velocity.x = 26.0;
         topology.update_cursor_invitation(&desktop, 0.1);
         assert!(topology.invitation().is_none());
+    }
+
+    #[test]
+    fn window_construction_routes_are_bounded_to_four_tiers() {
+        let windows = (0..7)
+            .map(|index| window(index + 1, 100.0, 700.0 - index as f32 * 100.0, index as u32))
+            .collect();
+        let desktop = desktop(windows);
+        let mut topology = DesktopTopology::default();
+        topology.rebuild_if_changed(&desktop, &BTreeMap::new());
+        let route = topology.plan_route(
+            1,
+            RoutePreferences {
+                climbing: 100,
+                exploration: 100,
+                ..RoutePreferences::default()
+            },
+        );
+        assert!(!route.is_empty());
+        assert!(route.len() <= MAX_WINDOW_ROUTE_HOPS);
+        assert!(route.iter().all(|hop| hop.kind == RouteHopKind::WindowTier));
+        assert!(
+            route
+                .windows(2)
+                .all(|pair| pair[0].to_window == pair[1].from_window)
+        );
+    }
+
+    #[test]
+    fn only_ten_to_twenty_eight_point_gaps_with_vertical_overlap_are_squeezes() {
+        let mut topology = DesktopTopology::default();
+        topology.rebuild_if_changed(
+            &desktop(vec![window(1, 100.0, 200.0, 0), window(2, 360.0, 210.0, 1)]),
+            &BTreeMap::new(),
+        );
+        let route = topology.plan_route(1, RoutePreferences::default());
+        assert_eq!(route.len(), 1);
+        assert_eq!(route[0].kind, RouteHopKind::NarrowGap);
+
+        for x in [349.0, 369.0] {
+            let mut invalid = DesktopTopology::default();
+            invalid.rebuild_if_changed(
+                &desktop(vec![window(1, 100.0, 200.0, 0), window(2, x, 210.0, 1)]),
+                &BTreeMap::new(),
+            );
+            assert!(
+                invalid
+                    .plan_route(1, RoutePreferences::default())
+                    .is_empty()
+            );
+        }
     }
 }

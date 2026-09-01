@@ -63,6 +63,11 @@ and cursor-invitation projection exists only in memory. Formiga does not persist
 landmarks, cursor dwell, cursor path, or prior window layouts. Save version 8 is unchanged in v0.42,
 so loading an older colony adds no topology fields and cannot replace a creature.
 
+Window-route edges, narrow-gap classification, exact supporting rectangles, path choices, and route
+progress are likewise runtime-only geometry. They use no process metadata or pixels and disappear on
+completion, cancellation, pause, hide, relaunch, or supporting-window change. v0.43 appends one
+runtime action name but does not add a save field or renumber any existing persisted routine key.
+
 A one-file backup and local rotating diagnostic log support recovery and troubleshooting. Logs name
 event categories only; they do not record creature names, coordinates, relationship scores, or
 memory payloads. A blank milestone bubble is rasterized locally only while visible and is discarded

@@ -1,5 +1,22 @@
 # Formiga roadmap
 
+## v0.43 window-routes release
+
+- The bounded topology derives a graph of overlapping window tiers and plans deterministic routes
+  of at most four hops or climbs.
+- Horizontal 10–28-point gaps with at least 64 points of shared vertical space become short-lived
+  squeeze routes. `SqueezeWindow` reuses the traversal atlas and temporarily narrows the rendered
+  body and layered face without new art or physics.
+- Learned climbing, exploration, cursor trust, invitations, and preferred regions influence route
+  scoring without overriding innate personality.
+- Runtime routes retain exact supporting rectangles and cancel immediately on topology changes.
+  Save version 8 and every prior identity-preserving migration remain unchanged.
+
+Release-page summary:
+
+> Window stacks become small traversable constructions, while narrow gaps become short-lived
+> squeeze routes through the user's procedural desktop level.
+
 ## v0.42 desktop-topology release
 
 - A runtime-only `DesktopTopology` rebuilds only when a bounded visible-window geometry hash
@@ -137,10 +154,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.42
+## Progressive releases after v0.43
 
-- **v0.43 Window Routes:** derive bounded four-hop window constructions and short-lived narrow-gap
-  squeeze routes that cancel as soon as supporting geometry changes.
 - **v0.44 Inhabited Ecosystem:** add at most eight deterministic static colony objects with semantic
   utility contributions and no physics.
 - **v0.45 Growing Home:** add at most six deterministic shelter decorations while preserving one
@@ -161,4 +176,4 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
   acceptance or cancellation.
 
 Objects, decorations, routes, seed import, card export, and reference-image matching remain out of
-scope for v0.42 and retain their independent release gates.
+scope for v0.43 and retain their independent release gates.

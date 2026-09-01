@@ -2,6 +2,31 @@
 
 All notable changes are documented here.
 
+## [0.43.0] - 2026-09-01
+
+### Added
+
+- A bounded runtime graph for overlapping window tiers, with deterministic routes of at most four
+  hops or climbs through the existing window-journey system.
+- Narrow-gap recognition for horizontally separated windows with 10–28 logical points of space and
+  at least 64 points of overlapping height. Eligible creatures can traverse the gap with a new
+  runtime `SqueezeWindow` state that reuses the ordinary six-frame traversal clip.
+- A temporary 0.72× horizontal body-and-face quad scale during squeezes. No collision engine,
+  physics body, texture regeneration, or additional atlas frame is introduced.
+
+### Changed
+
+- Route scoring combines bounded learned climbing, exploration, cursor trust, cursor invitations,
+  and preferred-region hints while preserving the creature's innate utility behavior.
+- New runtime action code 24 is appended after all prior routine codes, leaving persisted routine
+  keys 0–23 byte-for-byte stable. Save version remains 8 and all v1–v8 colonies load unchanged.
+
+### Fixed
+
+- Multi-tier and squeeze routes retain the exact supporting rectangles and cancel immediately if
+  the topology hash or either supporting window changes, settling the creature onto a safe habitat
+  surface rather than following stale geometry.
+
 ## [0.42.0] - 2026-09-01
 
 ### Added

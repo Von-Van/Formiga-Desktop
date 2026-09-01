@@ -118,6 +118,7 @@ pub fn choose_action<R: Rng + ?Sized>(
                 social_score(creature, context, action, 120.0, p.playfulness * 0.55)
             }
             ActionKind::Dragged
+            | ActionKind::SqueezeWindow
             | ActionKind::Landing
             | ActionKind::Homebound
             | ActionKind::ClimbWindow
