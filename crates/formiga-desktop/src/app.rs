@@ -1,7 +1,7 @@
 use crate::gpu::{OverlayRenderer, monitor_has_fullscreen_window};
 use crate::interaction::{InteractionProxy, ProxyRuntimeState};
 use crate::platform;
-use crate::settings::{SettingsOutcome, SettingsWindow};
+use crate::settings::{ColonyView, SettingsOutcome, SettingsWindow};
 use crate::tray::{TrayAction, TrayState};
 use crate::updater::{
     DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus, check_github, download_update,
@@ -69,7 +69,6 @@ struct HabitatEditor {
 #[derive(Clone, Debug)]
 struct MilestoneNotice {
     creature_id: CreatureId,
-    text: String,
     expires_at: Instant,
 }
 
@@ -379,16 +378,16 @@ impl FormigaApp {
                 );
                 if let WorldEvent::ProfileChanged {
                     creature_id,
-                    new_descriptor: Some(descriptor),
+                    new_descriptor: Some(_),
                     show_milestone: true,
                 } = event
                     && self.milestone_notice.is_none()
                 {
-                    milestone = Some((creature_id, descriptor.label().to_owned()));
+                    milestone = Some(creature_id);
                 }
                 tracing::debug!(event = world_event_category(&event), "world event");
             }
-            if let Some((creature_id, text)) = milestone {
+            if let Some(creature_id) = milestone {
                 let can_show = world
                     .save
                     .creatures
@@ -405,7 +404,6 @@ impl FormigaApp {
                 if can_show {
                     self.milestone_notice = Some(MilestoneNotice {
                         creature_id,
-                        text,
                         expires_at: now + Duration::from_secs(5),
                     });
                 }
@@ -722,11 +720,13 @@ impl FormigaApp {
     }
 
     fn show_settings(&mut self, event_loop: &ActiveEventLoop) {
-        let Some((settings, creatures)) = self
-            .world
-            .as_ref()
-            .map(|world| (world.save.settings.clone(), world.save.creatures.clone()))
-        else {
+        let Some((settings, creatures, relationships)) = self.world.as_ref().map(|world| {
+            (
+                world.save.settings.clone(),
+                world.save.creatures.clone(),
+                world.save.relationships.clone(),
+            )
+        }) else {
             return;
         };
         if self.settings_window.is_none() {
@@ -734,6 +734,7 @@ impl FormigaApp {
                 event_loop,
                 &settings,
                 &creatures,
+                &relationships,
                 self.save_store.path(),
             )) {
                 Ok(window) => self.settings_window = Some(window),
@@ -744,7 +745,7 @@ impl FormigaApp {
             }
         }
         if let Some(window) = &mut self.settings_window {
-            window.show(&settings, &creatures);
+            window.show(&settings, &creatures, &relationships);
         }
     }
 
@@ -1240,6 +1241,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 .as_ref()
                 .map(|world| world.save.creatures.clone())
                 .unwrap_or_default();
+            let relationships = self
+                .world
+                .as_ref()
+                .map(|world| world.save.relationships.clone())
+                .unwrap_or_default();
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
@@ -1249,7 +1255,10 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             &self.cached_windows,
                             self.updates.status(),
                             self.updates.automatic_checks(),
-                            &creatures,
+                            ColonyView {
+                                creatures: &creatures,
+                                relationships: &relationships,
+                            },
                         ) {
                             Ok(value) => outcome = Some(value),
                             Err(error) => tracing::error!(%error, "settings render failed"),
@@ -1276,7 +1285,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     .milestone_notice
                     .as_ref()
                     .filter(|notice| Instant::now() < notice.expires_at)
-                    .map(|notice| (notice.creature_id, notice.text.as_str()));
+                    .map(|notice| notice.creature_id);
                 if let (Some(overlay), Some(world)) =
                     (self.overlays.get_mut(&window_id), &self.world)
                     && let Err(error) = overlay.render(
@@ -1537,7 +1546,7 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::SurfaceChanged { .. } => "surface_changed",
         WorldEvent::CursorReaction { .. } => "cursor_reaction",
         WorldEvent::WindowReaction { .. } => "window_reaction",
-        WorldEvent::SocialInteraction { .. } => "social_interaction",
+        WorldEvent::BondInteraction { .. } => "bond_interaction",
         WorldEvent::CreatureSlept { .. } => "creature_slept",
         WorldEvent::CreatureWoke { .. } => "creature_woke",
         WorldEvent::CreatureRested { .. } => "creature_rested",

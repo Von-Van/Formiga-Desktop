@@ -2,6 +2,39 @@
 
 All notable changes are documented here.
 
+## [0.40.0] - 2026-08-31
+
+### Added
+
+- Compact persistent bonds for every unordered creature pair. Affinity, familiarity, playfulness,
+  and avoidance use exactly four raw score bytes per pair, with at most six pairs in a four-creature
+  colony.
+- Calm five-minute proximity observations and completed greetings, shared rest, play, discoveries,
+  homecoming greetings, climb watching, toss concern, toy stealing, and harmless squabbles now
+  adjust bond scores through the existing ephemeral `WorldEvent` projection.
+- Target-aware sequences that reuse `Follow`, `Sleep`, `PresentDiscovery`, `SocialPlay`, `Greet`,
+  `InspectScreen`, and `ReactToWindow`. Creatures can follow a preferred companion, sleep beside it,
+  bring it a discovery, steal its temporary toy, greet it after shelter visits, watch it climb, and
+  react when it is tossed without adding relationship-specific animation frames.
+- Read-only qualitative bond and playfulness summaries in Colony profiles.
+
+### Changed
+
+- Social utility now combines innate personality with bounded pair scores. Positive contact can
+  reduce avoidance, while stressful or competitive encounters can increase it; scores saturate
+  safely and never rewrite a creature's genome.
+- Runtime bond plans refresh a moving target's position and cancel safely if that target is missing,
+  sleeping, homebound, tossed, removed, on another display, or otherwise unavailable for the
+  selected interaction.
+- Five-second milestone thought bubbles are now intentionally blank. Learned descriptors remain
+  private until the user chooses to inspect the creature's read-only Colony profile.
+- Save version 7 migrates every v1–v6 colony deterministically. Legacy per-creature relationship
+  floats become canonical shared pair records, reciprocal values are averaged, and all creature
+  identity, generated appearance, custom names, birth times, memories, tendencies, routines,
+  positions, and settings are preserved.
+- Relationship diagnostics retain only the `bond_interaction` event category; names, coordinates,
+  scores, targets, and memory payloads remain absent from logs.
+
 ## [0.39.0] - 2026-08-31
 
 ### Added

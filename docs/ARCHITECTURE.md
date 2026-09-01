@@ -64,9 +64,10 @@ discovery alone adds one temporary quad. The combined textures are exactly 1,161
 creature and are enforced below a 1.2 MB test limit.
 
 `PetReaction` maps to the existing greeting body clip, so lived experience does not grow that atlas.
-A newly earned profile descriptor may allocate one small bitmap-font speech-bubble texture for five
-seconds. Only one bubble exists globally; the GPU texture and CPU pixels are dropped at expiry, so
-there is no idle bubble resource.
+A newly earned profile descriptor may allocate one small blank thought-bubble texture for five
+seconds; descriptor text remains available only in the Colony profile. Only one bubble exists
+globally, and the GPU texture and CPU pixels are dropped at expiry, so there is no idle bubble
+resource.
 
 The colony seed also resolves a bottom-corner preference and a compact shelter genome. Leaf tents,
 mushroom huts, cushion dens, and paper houses are rasterized once to a static 64×64 texture. A
@@ -91,6 +92,26 @@ sampling stops while paused or hidden.
 Legacy string habits become twelve compact slots keyed by packed time bucket, display third, surface,
 and action. Repeated placement also records a recoverable preferred 3×3 display cell and can supply
 an ordinary `Traverse` target through `ActionChoice`; it does not add a pathfinding loop or action.
+
+## Creature-bond projection
+
+The save owns at most six canonical unordered `CreatureRelationship` records, one for each possible
+pair in a four-creature colony. Each record has two stable IDs and four `u8` scores: affinity,
+familiarity, playfulness, and avoidance. The scores themselves therefore consume exactly four raw
+bytes per pair. Pair values saturate in `0..=255`; positive and contrary contact can move them in
+both directions without changing either creature's innate genome.
+
+The existing 60-active-second observation pass also accumulates calm proximity in runtime-only
+pair timers. Each completed five-minute interval emits one compact bond experience and discards the
+exposure detail. Completed targeted actions emit the other bond experiences. No encounter list,
+target route, object ownership, or social history is serialized.
+
+At action boundaries, utility selection receives the preferred pair as a `BondContext`. A
+runtime-only `BondPlan` can approach through `Follow` and then execute an existing targeted action.
+Target points refresh from the current creature snapshot each tick; plans cancel to idle if the
+target disappears, moves to an incompatible surface or display, sleeps, becomes homebound, is
+tossed, or otherwise cannot participate. Follow, sleep, presentation, social play, greeting,
+inspection, and window reaction reuse their existing body clips, leaving the atlas unchanged.
 
 ## Desktop composition
 
@@ -127,15 +148,18 @@ creature opts out per vertex.
 - Ambient countdowns: inspection 2–4 minutes per creature, dangling 4–8 minutes per perched
   creature, and discovery 10–20 minutes per colony; countdowns stop while paused or hidden.
 - Experience observations: one summary per creature per 60 active visible seconds; no new loop.
+- Calm proximity: accumulated from those same summaries and projected once per five active minutes;
+  no separate pair polling loop.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 6 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
-assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, and upgrades
-v5 habits to the twelve strongest numeric routines. It adds stable origin, colony order, name, typed
-memory, and learned tendency records. Raw memory plus tendencies stay below 192 bytes per creature;
-their serialized incremental state stays below 2 KiB.
+Version 7 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
+v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
+canonical shared four-score records. It preserves creature IDs, resolved genomes, personality,
+custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
+tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
 
 Additional creatures are earned one hour, one week, and one calendar month after colony creation;
 end-of-month dates clamp in UTC, overdue reveals remain 15 seconds apart, and the colony remains

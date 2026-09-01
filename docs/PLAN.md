@@ -1,5 +1,27 @@
 # Formiga roadmap
 
+## v0.40 creature-bonds release
+
+- Save version 7 replaces legacy one-way relationship floats with at most six canonical unordered
+  pair records. Affinity, familiarity, playfulness, and avoidance consume four raw score bytes per
+  pair and saturate safely.
+- Deterministic v1–v6 migration preserves every creature's identity, resolved appearance,
+  personality, custom name, birth time, compact memory, learned tendencies, routines, position,
+  and settings. Reciprocal legacy floats are averaged into one shared bond.
+- Five calm minutes together and completed social experiences project through ephemeral
+  `WorldEvent`s; no proximity history, target path, or interaction log is persisted.
+- Existing actions target preferred companions for following, shared sleep, discovery gifts, toy
+  stealing, shelter-return greetings, climb watching, toss concern, and rare harmless squabbles.
+  Runtime plans refresh moved targets and cancel when a companion becomes unavailable.
+- Colony profiles show a read-only qualitative bond summary. Names remain the only editable
+  creature field, new-trait thought bubbles are intentionally wordless, and the body atlas remains
+  unchanged at 90 unique frames.
+
+Release-page summary:
+
+> Creatures now form compact, persistent bonds that influence who they follow, greet, sleep beside,
+> play with, watch, and occasionally squabble with.
+
 ## v0.39 lived-experience release
 
 - Ephemeral `WorldEvent`s project into typed counters, eight bounded learned tendencies, and a
@@ -80,11 +102,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.39
+## Progressive releases after v0.40
 
-- **v0.40 Creature Bonds:** replace legacy float maps with at most six unordered four-score pair
-  records and target existing follow, sleep, presentation, play, greeting, inspection, and reaction
-  actions at companions.
 - **v0.41 Colony Rituals:** schedule one rare deterministic picnic, group nap, race, shelter
   gathering, catch game, presentation, hatch day, quiet huddle, or late-night sleep pile without a
   new loop or missed-event replay.
@@ -101,5 +120,5 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
 - **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
   allocation or hidden metadata.
 
-Relationship values, objects, decorations, rituals, topology, seed import, and card export remain
-out of scope for v0.39 and retain their independent release gates.
+Objects, decorations, rituals, topology, seed import, and card export remain out of scope for v0.40
+and retain their independent release gates.

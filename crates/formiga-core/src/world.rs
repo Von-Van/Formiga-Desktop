@@ -3,7 +3,7 @@ use crate::rng::SeedStream;
 use crate::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +59,19 @@ pub struct World {
     projected_events: usize,
     sleep_elapsed: BTreeMap<CreatureId, f32>,
     action_choices: BTreeMap<CreatureId, ActionChoice>,
+    bond_plans: BTreeMap<CreatureId, BondPlan>,
+    calm_proximity_seconds: BTreeMap<(CreatureId, CreatureId), u16>,
+    reacted_to_toss: BTreeSet<(CreatureId, CreatureId)>,
+    watched_climb: BTreeSet<(CreatureId, CreatureId)>,
+    pending_home_greetings: BTreeSet<CreatureId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BondPlan {
+    target: CreatureId,
+    final_action: ActionKind,
+    experience: RelationshipExperience,
+    approaching: bool,
 }
 
 #[derive(Clone)]
@@ -341,11 +354,13 @@ impl World {
             home: ColonyHome::from_seed(colony_seed, home_display, Some(now), None),
             settings: Settings::default(),
             creatures: vec![creature],
+            relationships: Vec::new(),
         };
         Self::from_save(save)
     }
 
     pub fn from_save(mut save: SaveFile) -> Self {
+        normalize_relationships(&mut save);
         // Identity and durable drives survive relaunch, but interrupted locomotion and reactions do
         // not. Surface attachments are validated against the first desktop snapshot on the next
         // tick, while every creature resumes from a stable pose.
@@ -392,6 +407,11 @@ impl World {
             projected_events: 0,
             sleep_elapsed: BTreeMap::new(),
             action_choices: BTreeMap::new(),
+            bond_plans: BTreeMap::new(),
+            calm_proximity_seconds: BTreeMap::new(),
+            reacted_to_toss: BTreeSet::new(),
+            watched_climb: BTreeSet::new(),
+            pending_home_greetings: BTreeSet::new(),
         }
     }
 
@@ -435,7 +455,17 @@ impl World {
             &mut self.events,
         );
         let creature_views = self.save.creatures.clone();
-        let mut relationship_updates = Vec::new();
+        let relationship_views = self.save.relationships.clone();
+        self.reacted_to_toss.retain(|(_, target)| {
+            creature_views.iter().any(|creature| {
+                creature.id == *target && creature.state.action == ActionKind::Tossed
+            })
+        });
+        self.watched_climb.retain(|(_, target)| {
+            creature_views.iter().any(|creature| {
+                creature.id == *target && creature.state.action == ActionKind::ClimbWindow
+            })
+        });
         for creature in &mut self.save.creatures {
             if self
                 .interaction
@@ -607,6 +637,7 @@ impl World {
                 nearest_creature_distance: nearest.map(|item| item.0),
                 nearest_creature_position: nearest.map(|item| item.1),
                 nearest_creature_id: nearest.map(|item| item.2),
+                bond: preferred_bond_context(creature, &creature_views, &relationship_views),
                 on_window_ledge: creature.state.surface.kind == SurfaceKind::WindowLedge,
                 // A ledge is a destination, not a one-time upgrade from the desktop floor.
                 // Continuing to search while perched lets creatures climb between stacked
@@ -621,10 +652,72 @@ impl World {
                 hour_utc: now.hour(),
             };
 
+            if let Some(bond) = context.bond
+                && bond.target_action == ActionKind::Tossed
+                && bond.relationship.affinity >= 128
+                && bond.relationship.avoidance < 192
+                && self
+                    .reacted_to_toss
+                    .insert((creature.id, bond.target_creature))
+            {
+                let interrupted = creature.state.action;
+                if interrupted == ActionKind::Sleep {
+                    let elapsed_seconds = self
+                        .sleep_elapsed
+                        .remove(&creature.id)
+                        .unwrap_or(creature.state.action_elapsed)
+                        .max(0.0) as u32;
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::SleepInterrupted {
+                            creature_id: creature.id,
+                            elapsed_seconds,
+                        },
+                    );
+                }
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionCompleted {
+                        creature_id: creature.id,
+                        action: interrupted,
+                    },
+                );
+                creature.state.action = ActionKind::ReactToWindow;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 2.2;
+                creature.state.drives.arousal = (creature.state.drives.arousal + 0.25).min(1.0);
+                self.action_choices.insert(
+                    creature.id,
+                    ActionChoice {
+                        action: ActionKind::ReactToWindow,
+                        target_creature: Some(bond.target_creature),
+                        target_point: Some(bond.target_position),
+                    },
+                );
+                self.bond_plans.insert(
+                    creature.id,
+                    BondPlan {
+                        target: bond.target_creature,
+                        final_action: ActionKind::ReactToWindow,
+                        experience: RelationshipExperience::ConcernedAfterToss,
+                        approaching: false,
+                    },
+                );
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionStarted {
+                        creature_id: creature.id,
+                        action: ActionKind::ReactToWindow,
+                    },
+                );
+            }
+
             if context.window_changed_nearby
                 && creature.state.action != ActionKind::ReactToWindow
                 && creature.state.action_elapsed >= 0.25
             {
+                self.action_choices.remove(&creature.id);
+                self.bond_plans.remove(&creature.id);
                 creature.state.action = ActionKind::ReactToWindow;
                 creature.state.action_elapsed = 0.0;
                 creature.state.action_duration = 2.2;
@@ -647,6 +740,7 @@ impl World {
 
             if creature.state.action_elapsed >= creature.state.action_duration {
                 let old = creature.state.action;
+                let old_elapsed = creature.state.action_elapsed;
                 if old == ActionKind::InvestigateCursor {
                     creature.state.cursor_cooldown = creature.state.cursor_cooldown.max(5.0);
                 }
@@ -657,6 +751,47 @@ impl World {
                         action: old,
                     },
                 );
+                let mut selected_choice = None;
+                let mut explicit_experience = None;
+                let mut continuing_plan = false;
+                if let Some(plan) = self.bond_plans.get(&creature.id).copied() {
+                    if plan.approaching && old == ActionKind::Follow {
+                        if let Some(target_point) = bond_target_point(
+                            creature,
+                            &creature_views,
+                            plan.target,
+                            plan.final_action,
+                        ) {
+                            selected_choice = Some(ActionChoice {
+                                action: plan.final_action,
+                                target_creature: Some(plan.target),
+                                target_point: Some(target_point),
+                            });
+                            self.bond_plans.insert(
+                                creature.id,
+                                BondPlan {
+                                    approaching: false,
+                                    ..plan
+                                },
+                            );
+                            continuing_plan = true;
+                        } else {
+                            self.bond_plans.remove(&creature.id);
+                        }
+                    } else if !plan.approaching && old == plan.final_action {
+                        Self::emit(
+                            &mut self.events,
+                            WorldEvent::BondInteraction {
+                                a: creature.id,
+                                b: plan.target,
+                                experience: plan.experience,
+                            },
+                        );
+                        self.bond_plans.remove(&creature.id);
+                    } else {
+                        self.bond_plans.remove(&creature.id);
+                    }
+                }
                 let rng = self
                     .rngs
                     .get_mut(&creature.id)
@@ -673,29 +808,148 @@ impl World {
                         .ambient_timers
                         .get(&creature.id)
                         .is_some_and(|timers| timers.dangle_remaining <= 0.0);
-                let mut selected_choice = None;
-                let (selected, scheduled_ambient) = if discovery_available
+                let mut scheduled_ambient = continuing_plan;
+                if selected_choice.is_none()
+                    && self.pending_home_greetings.remove(&creature.id)
+                    && let Some(bond) = context.bond
+                    && bond.relationship.avoidance < 160
+                    && bond_target_point(
+                        creature,
+                        &creature_views,
+                        bond.target_creature,
+                        ActionKind::Greet,
+                    )
+                    .is_some()
+                {
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::Greet,
+                        target_creature: Some(bond.target_creature),
+                        target_point: Some(bond.target_position),
+                    });
+                    explicit_experience = Some(RelationshipExperience::HomecomingGreeting);
+                }
+                if selected_choice.is_none()
+                    && let Some(bond) = context.bond
+                    && bond.target_action == ActionKind::ClimbWindow
+                    && bond.relationship.familiarity >= 64
+                    && bond.relationship.avoidance < 160
+                    && rng.random_ratio(1, 3)
+                    && self
+                        .watched_climb
+                        .insert((creature.id, bond.target_creature))
+                {
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::InspectScreen,
+                        target_creature: Some(bond.target_creature),
+                        target_point: Some(bond.target_position),
+                    });
+                    explicit_experience = Some(RelationshipExperience::WatchedClimb);
+                }
+                if selected_choice.is_none()
+                    && let Some(bond) = context.bond
+                    && matches!(
+                        bond.target_action,
+                        ActionKind::SoloPlay | ActionKind::SocialPlay
+                    )
+                    && bond.relationship.playfulness >= 96
+                    && bond.relationship.avoidance < 192
+                    && rng.random_ratio(1, 4)
+                {
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::SocialPlay,
+                        target_creature: Some(bond.target_creature),
+                        target_point: Some(bond.target_position),
+                    });
+                    explicit_experience = Some(RelationshipExperience::StoleToy);
+                }
+                if selected_choice.is_none()
+                    && let Some(bond) = context.bond
+                    && bond.distance < 180.0
+                    && bond.relationship.avoidance >= 96
+                    && bond.relationship.playfulness >= 48
+                    && rng.random_ratio(1, 64)
+                {
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::SocialPlay,
+                        target_creature: Some(bond.target_creature),
+                        target_point: Some(bond.target_position),
+                    });
+                    explicit_experience = Some(RelationshipExperience::Squabble);
+                }
+                if selected_choice.is_none()
+                    && discovery_available
                     && !matches!(old, ActionKind::Sleep | ActionKind::ReactToWindow)
                 {
                     creature.state.activity_variant = self.ambient_rng.random_range(0..8);
                     self.discovery_remaining =
                         self.ambient_rng.random_range(DISCOVERY_INTERVAL_SECS);
-                    (ActionKind::PresentDiscovery, true)
-                } else if dangle_available
+                    let bond = context.bond.filter(|bond| {
+                        bond.relationship.affinity >= 96
+                            && bond.relationship.familiarity >= 48
+                            && bond.relationship.avoidance < 160
+                    });
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::PresentDiscovery,
+                        target_creature: bond.map(|bond| bond.target_creature),
+                        target_point: bond.map(|bond| bond.target_position),
+                    });
+                    explicit_experience = bond.map(|_| RelationshipExperience::BroughtDiscovery);
+                    scheduled_ambient = true;
+                }
+                if selected_choice.is_none()
+                    && dangle_available
                     && !matches!(old, ActionKind::ReactToWindow | ActionKind::RideWindow)
                 {
                     if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
                         timers.dangle_remaining =
                             self.ambient_rng.random_range(DANGLE_INTERVAL_SECS);
                     }
-                    (ActionKind::Dangle, true)
-                } else {
+                    selected_choice = Some(ActionChoice {
+                        action: ActionKind::Dangle,
+                        target_creature: None,
+                        target_point: None,
+                    });
+                    scheduled_ambient = true;
+                }
+                if selected_choice.is_none() {
                     creature.state.activity_variant = 0;
-                    let choice = choose_action(creature, desktop, context, rng);
-                    selected_choice = Some(choice);
-                    (choice.action, false)
-                };
-                let mut next = selected;
+                    selected_choice = Some(choose_action(creature, desktop, context, rng));
+                }
+                let mut choice = selected_choice.expect("an action is always selected");
+                let selected = choice.action;
+                if !continuing_plan
+                    && let Some(target) = choice.target_creature
+                    && let Some(experience) = explicit_experience
+                        .or_else(|| relationship_experience_for_action(choice.action))
+                {
+                    let target_point =
+                        bond_target_point(creature, &creature_views, target, choice.action);
+                    if let Some(target_point) = target_point {
+                        let final_action = choice.action;
+                        let approaching = bond_approach_required(
+                            creature.state.position,
+                            target_point,
+                            final_action,
+                        );
+                        self.bond_plans.insert(
+                            creature.id,
+                            BondPlan {
+                                target,
+                                final_action,
+                                experience,
+                                approaching,
+                            },
+                        );
+                        if approaching {
+                            choice.action = ActionKind::Follow;
+                            choice.target_point = Some(target_point);
+                        }
+                    } else {
+                        choice.target_creature = None;
+                        choice.target_point = None;
+                    }
+                }
+                let mut next = choice.action;
                 if selected == ActionKind::Perch
                     && let Some((target, surface)) =
                         find_nearby_ledge(creature, desktop, &self.save.settings.habitat)
@@ -707,12 +961,8 @@ impl World {
                 creature.state.action = next;
                 creature.state.action_elapsed = 0.0;
                 creature.state.action_duration = action_duration(next, rng);
-                if let Some(mut choice) = selected_choice {
-                    choice.action = next;
-                    self.action_choices.insert(creature.id, choice);
-                } else {
-                    self.action_choices.remove(&creature.id);
-                }
+                choice.action = next;
+                self.action_choices.insert(creature.id, choice);
                 if !scheduled_ambient {
                     reinforce_habit(creature, selected, now.hour());
                 }
@@ -727,7 +977,7 @@ impl World {
                     let uninterrupted_seconds = self
                         .sleep_elapsed
                         .remove(&creature.id)
-                        .unwrap_or(creature.state.action_elapsed)
+                        .unwrap_or(old_elapsed)
                         .max(0.0) as u32;
                     Self::emit(
                         &mut self.events,
@@ -771,29 +1021,61 @@ impl World {
                         },
                     );
                 }
-                if matches!(
-                    next,
-                    ActionKind::Greet | ActionKind::Follow | ActionKind::SocialPlay
-                ) && let Some((_, _, other_id)) = nearest
-                {
-                    let gain = if next == ActionKind::Follow {
-                        0.004
-                    } else {
-                        0.012
-                    };
-                    relationship_updates.push((creature.id, other_id, gain));
-                    Self::emit(
-                        &mut self.events,
-                        WorldEvent::SocialInteraction {
-                            a: creature.id,
-                            b: other_id,
-                            action: next,
-                        },
-                    );
-                }
             }
 
             let previous_position = creature.state.position;
+            let invalid_bond_target = self
+                .action_choices
+                .get(&creature.id)
+                .and_then(|choice| choice.target_creature.map(|target| (choice.action, target)))
+                .is_some_and(|(action, target)| {
+                    match bond_target_point(creature, &creature_views, target, action) {
+                        Some(point) => {
+                            if let Some(choice) = self.action_choices.get_mut(&creature.id) {
+                                choice.target_point = Some(point);
+                            }
+                            false
+                        }
+                        None => true,
+                    }
+                });
+            if invalid_bond_target {
+                self.action_choices.remove(&creature.id);
+                self.bond_plans.remove(&creature.id);
+                let interrupted = creature.state.action;
+                let interrupted_elapsed = creature.state.action_elapsed;
+                if interrupted == ActionKind::Sleep {
+                    let uninterrupted_seconds = self
+                        .sleep_elapsed
+                        .remove(&creature.id)
+                        .unwrap_or(interrupted_elapsed)
+                        .max(0.0) as u32;
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::CreatureRested {
+                            creature_id: creature.id,
+                            uninterrupted_seconds,
+                        },
+                    );
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::CreatureWoke {
+                            creature_id: creature.id,
+                        },
+                    );
+                }
+                creature.state.action = ActionKind::Idle;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 2.5;
+                creature.state.velocity = Point::default();
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionStarted {
+                        creature_id: creature.id,
+                        action: ActionKind::Idle,
+                    },
+                );
+            }
             let target_point = self
                 .action_choices
                 .get(&creature.id)
@@ -834,26 +1116,6 @@ impl World {
                         action: ActionKind::InspectScreen,
                     },
                 );
-            }
-        }
-        for (a, b, gain) in relationship_updates {
-            if let Some(creature) = self
-                .save
-                .creatures
-                .iter_mut()
-                .find(|creature| creature.id == a)
-            {
-                let affinity = creature.state.relationships.entry(b).or_insert(0.25);
-                *affinity = (*affinity + gain).min(1.0);
-            }
-            if let Some(creature) = self
-                .save
-                .creatures
-                .iter_mut()
-                .find(|creature| creature.id == b)
-            {
-                let affinity = creature.state.relationships.entry(a).or_insert(0.25);
-                *affinity = (*affinity + gain).min(1.0);
             }
         }
         let unconstrained: Vec<_> = self
@@ -974,6 +1236,38 @@ impl World {
                 },
             );
         }
+
+        let mut calm_pairs = BTreeSet::new();
+        for (index, first) in views.iter().enumerate() {
+            for second in views.iter().skip(index + 1) {
+                if first.state.arrival_delay_secs > 0.0
+                    || second.state.arrival_delay_secs > 0.0
+                    || first.state.surface.monitor_id != second.state.surface.monitor_id
+                    || first.state.position.distance(second.state.position) > 120.0
+                    || !calm_for_proximity(first.state.action)
+                    || !calm_for_proximity(second.state.action)
+                {
+                    continue;
+                }
+                let pair = canonical_creature_pair(first.id, second.id).expect("distinct pair");
+                calm_pairs.insert(pair);
+                let elapsed = self.calm_proximity_seconds.entry(pair).or_default();
+                *elapsed = elapsed.saturating_add(OBSERVATION_INTERVAL_SECS as u16);
+                if *elapsed >= 5 * 60 {
+                    *elapsed -= 5 * 60;
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::BondInteraction {
+                            a: pair.0,
+                            b: pair.1,
+                            experience: RelationshipExperience::CalmProximity,
+                        },
+                    );
+                }
+            }
+        }
+        self.calm_proximity_seconds
+            .retain(|pair, _| calm_pairs.contains(pair));
     }
 
     fn project_events(&mut self, _now: OffsetDateTime) {
@@ -1134,6 +1428,13 @@ impl World {
                         }
                     }
                 }
+                WorldEvent::BondInteraction { a, b, experience } => {
+                    if let Some(relationship) =
+                        relationship_mut_or_insert(&mut self.save.relationships, a, b)
+                    {
+                        relationship.apply(experience);
+                    }
+                }
                 WorldEvent::HomeAppeared => {
                     for creature in self
                         .save
@@ -1245,6 +1546,8 @@ impl World {
             self.save.home.active_since_utc = Some(timeline_now);
             self.window_journeys.clear();
             self.tosses.clear();
+            self.action_choices.clear();
+            self.bond_plans.clear();
             Self::emit(&mut self.events, WorldEvent::HomeAppeared);
         }
 
@@ -1363,6 +1666,9 @@ impl World {
                 creature.state.action_duration = 2.5;
                 creature.state.velocity = Point::default();
             }
+            if creature.state.arrival_delay_secs <= 0.0 {
+                self.pending_home_greetings.insert(creature.id);
+            }
         }
         Self::emit(
             &mut self.events,
@@ -1404,6 +1710,7 @@ impl World {
         let interrupted_journey = self.window_journeys.remove(&creature_id).is_some();
         let interrupted_toss = self.tosses.remove(&creature_id);
         self.action_choices.remove(&creature_id);
+        self.bond_plans.remove(&creature_id);
         let creature = &mut self.save.creatures[creature_index];
         let original_position = interrupted_toss
             .as_ref()
@@ -1740,6 +2047,8 @@ impl World {
         self.window_journeys.clear();
         self.tosses.clear();
         self.action_choices.clear();
+        self.bond_plans.clear();
+        self.pending_home_greetings.clear();
         let policy = self.save.settings.habitat.clone();
         for creature in &mut self.save.creatures {
             if let Some((monitor_id, position)) =
@@ -1805,11 +2114,217 @@ impl World {
                         },
                     );
                 }
+                add_arrival_relationships(
+                    &mut self.save.relationships,
+                    &self.save.creatures,
+                    creature.id,
+                    primary.as_ref().map(|parent| parent.id),
+                );
                 self.save.creatures.push(creature);
                 self.save.arrival_state.arrived[index] = true;
                 arrivals_this_tick += 1;
             }
         }
+    }
+}
+
+fn normalize_relationships(save: &mut SaveFile) {
+    let creature_ids: BTreeSet<_> = save.creatures.iter().map(|creature| creature.id).collect();
+    let mut canonical = BTreeMap::new();
+    for mut relationship in save.relationships.drain(..) {
+        let Some((a, b)) = canonical_creature_pair(relationship.a, relationship.b) else {
+            continue;
+        };
+        if !creature_ids.contains(&a) || !creature_ids.contains(&b) {
+            continue;
+        }
+        relationship.a = a;
+        relationship.b = b;
+        canonical
+            .entry((a, b))
+            .and_modify(|existing: &mut CreatureRelationship| {
+                existing.affinity = existing.affinity.max(relationship.affinity);
+                existing.familiarity = existing.familiarity.max(relationship.familiarity);
+                existing.playfulness = existing.playfulness.max(relationship.playfulness);
+                existing.avoidance = existing.avoidance.max(relationship.avoidance);
+            })
+            .or_insert(relationship);
+    }
+    let ids: Vec<_> = creature_ids.into_iter().collect();
+    for (index, a) in ids.iter().copied().enumerate() {
+        for b in ids.iter().copied().skip(index + 1) {
+            canonical
+                .entry((a, b))
+                .or_insert_with(|| CreatureRelationship::new(a, b).expect("distinct pair"));
+        }
+    }
+    save.relationships = canonical.into_values().take(MAX_RELATIONSHIPS).collect();
+}
+
+fn relationship_mut_or_insert(
+    relationships: &mut Vec<CreatureRelationship>,
+    a: CreatureId,
+    b: CreatureId,
+) -> Option<&mut CreatureRelationship> {
+    let pair = canonical_creature_pair(a, b)?;
+    if let Some(index) = relationships
+        .iter()
+        .position(|relationship| relationship.a == pair.0 && relationship.b == pair.1)
+    {
+        return relationships.get_mut(index);
+    }
+    if relationships.len() >= MAX_RELATIONSHIPS {
+        return None;
+    }
+    relationships.push(CreatureRelationship::new(pair.0, pair.1)?);
+    relationships.last_mut()
+}
+
+fn calm_for_proximity(action: ActionKind) -> bool {
+    !matches!(
+        action,
+        ActionKind::Dragged
+            | ActionKind::Tossed
+            | ActionKind::AvoidCursor
+            | ActionKind::ReactToWindow
+            | ActionKind::Sprint
+            | ActionKind::ClimbWindow
+            | ActionKind::Dangle
+    )
+}
+
+fn add_arrival_relationships(
+    relationships: &mut Vec<CreatureRelationship>,
+    creatures: &[Creature],
+    arriving: CreatureId,
+    parent: Option<CreatureId>,
+) {
+    for creature in creatures {
+        if relationships.len() >= MAX_RELATIONSHIPS {
+            break;
+        }
+        let Some(mut relationship) = CreatureRelationship::new(creature.id, arriving) else {
+            continue;
+        };
+        if parent == Some(creature.id) {
+            relationship.affinity = 217;
+            relationship.familiarity = 48;
+            relationship.playfulness = 64;
+        }
+        relationships.push(relationship);
+    }
+    relationships.sort_by_key(|relationship| (relationship.a, relationship.b));
+    relationships.dedup_by_key(|relationship| (relationship.a, relationship.b));
+}
+
+fn preferred_bond_context(
+    creature: &Creature,
+    creatures: &[Creature],
+    relationships: &[CreatureRelationship],
+) -> Option<BondContext> {
+    relationships
+        .iter()
+        .copied()
+        .filter_map(|relationship| {
+            let target_id = relationship.other(creature.id)?;
+            let target = creatures
+                .iter()
+                .find(|target| target.id == target_id && target.state.arrival_delay_secs <= 0.0)?;
+            let distance = creature.state.position.distance(target.state.position);
+            let same_monitor = creature.state.surface.monitor_id == target.state.surface.monitor_id;
+            let score = relationship.closeness()
+                + i16::from(relationship.playfulness) / 2
+                + if same_monitor { 32 } else { -128 };
+            Some((
+                score,
+                std::cmp::Reverse(target.id),
+                target,
+                relationship,
+                distance,
+            ))
+        })
+        .max_by_key(|(score, target_id, ..)| (*score, *target_id))
+        .map(|(_, _, target, relationship, distance)| BondContext {
+            target_creature: target.id,
+            target_position: target.state.position,
+            distance,
+            relationship,
+            target_action: target.state.action,
+            target_surface: target.state.surface.kind,
+        })
+}
+
+fn relationship_experience_for_action(action: ActionKind) -> Option<RelationshipExperience> {
+    match action {
+        ActionKind::Follow => Some(RelationshipExperience::Followed),
+        ActionKind::Greet => Some(RelationshipExperience::Greeting),
+        ActionKind::Sleep => Some(RelationshipExperience::SharedRest),
+        ActionKind::SocialPlay => Some(RelationshipExperience::PositivePlay),
+        _ => None,
+    }
+}
+
+fn bond_approach_required(actor: Point, target: Point, final_action: ActionKind) -> bool {
+    let threshold = match final_action {
+        ActionKind::Sleep => 58.0,
+        ActionKind::Greet | ActionKind::SocialPlay => 72.0,
+        ActionKind::PresentDiscovery => 96.0,
+        _ => return false,
+    };
+    actor.distance(target) > threshold
+}
+
+fn bond_target_point(
+    actor: &Creature,
+    creatures: &[Creature],
+    target_id: CreatureId,
+    action: ActionKind,
+) -> Option<Point> {
+    let target = creatures.iter().find(|target| {
+        target.id == target_id
+            && target.state.arrival_delay_secs <= 0.0
+            && target.state.surface.monitor_id == actor.state.surface.monitor_id
+            && (action == ActionKind::ReactToWindow
+                || target.state.surface.kind == actor.state.surface.kind)
+    })?;
+    let allowed = match action {
+        ActionKind::ReactToWindow => !matches!(
+            target.state.action,
+            ActionKind::Dragged | ActionKind::Homebound
+        ),
+        ActionKind::InspectScreen => matches!(
+            target.state.action,
+            ActionKind::ClimbWindow | ActionKind::Perch
+        ),
+        ActionKind::Sleep => !matches!(
+            target.state.action,
+            ActionKind::Dragged | ActionKind::Tossed | ActionKind::Homebound
+        ),
+        ActionKind::Greet | ActionKind::SocialPlay | ActionKind::PresentDiscovery => !matches!(
+            target.state.action,
+            ActionKind::Sleep | ActionKind::Dragged | ActionKind::Tossed | ActionKind::Homebound
+        ),
+        ActionKind::Follow => !matches!(
+            target.state.action,
+            ActionKind::Sleep | ActionKind::Dragged | ActionKind::Tossed | ActionKind::Homebound
+        ),
+        _ => true,
+    };
+    if !allowed {
+        return None;
+    }
+    if action == ActionKind::Sleep {
+        let side = if actor.state.position.x <= target.state.position.x {
+            -1.0
+        } else {
+            1.0
+        };
+        Some(Point {
+            x: target.state.position.x + side * 30.0,
+            y: target.state.position.y,
+        })
+    } else {
+        Some(target.state.position)
     }
 }
 
@@ -2016,9 +2531,6 @@ fn generate_creature(
                 window_key: None,
                 relative_x: 0.35,
             },
-            relationships: parent
-                .map(|parent| BTreeMap::from([(parent.id, 0.85)]))
-                .unwrap_or_default(),
             cursor_cooldown: 0.0,
             activity_variant: 0,
             arrival_delay_secs: 0.0,
@@ -2245,6 +2757,7 @@ fn execute_action(
 ) {
     let speed = 24.0 + creature.personality.activity * 34.0;
     let mut target_x = None;
+    let mut target_stop_distance = 0.0;
     match creature.state.action {
         ActionKind::Traverse if selected_target.is_some() => {
             target_x = selected_target.map(|target| target.x);
@@ -2274,9 +2787,20 @@ fn execute_action(
             creature.state.drives.arousal = (creature.state.drives.arousal + dt * 0.7).min(1.0);
         }
         ActionKind::Follow | ActionKind::Greet | ActionKind::SocialPlay => {
-            target_x = nearest.map(|item| item.1.x);
+            target_x = selected_target
+                .map(|target| target.x)
+                .or_else(|| nearest.map(|item| item.1.x));
+            target_stop_distance = if creature.state.action == ActionKind::Follow {
+                42.0
+            } else {
+                30.0
+            };
             creature.state.drives.social_need =
                 (creature.state.drives.social_need - dt * 0.08).max(0.0);
+        }
+        ActionKind::Sleep if selected_target.is_some() => {
+            target_x = selected_target.map(|target| target.x);
+            target_stop_distance = 5.0;
         }
         ActionKind::SoloPlay => {
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.09).max(0.0);
@@ -2305,13 +2829,21 @@ fn execute_action(
             creature.state.drives.curiosity_satisfaction =
                 (creature.state.drives.curiosity_satisfaction + dt * 0.035).min(1.0);
             creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.012).min(1.0);
+            if let Some(target) = selected_target {
+                creature.state.facing_right = target.x >= creature.state.position.x;
+            }
         }
         ActionKind::ReactToWindow => {
-            creature.state.velocity.x = if creature.state.facing_right {
-                speed * 1.4
+            if let Some(target) = selected_target {
+                creature.state.facing_right = target.x >= creature.state.position.x;
+                creature.state.velocity.x = 0.0;
             } else {
-                -speed * 1.4
-            };
+                creature.state.velocity.x = if creature.state.facing_right {
+                    speed * 1.4
+                } else {
+                    -speed * 1.4
+                };
+            }
             creature.state.drives.arousal = (creature.state.drives.arousal + dt * 0.5).min(1.0);
         }
         _ => creature.state.velocity.x *= (1.0 - dt * 8.0).max(0.0),
@@ -2319,7 +2851,11 @@ fn execute_action(
     if let Some(target) = target_x {
         let dx = target - creature.state.position.x;
         creature.state.facing_right = dx >= 0.0;
-        creature.state.velocity.x = dx.signum() * speed;
+        creature.state.velocity.x = if dx.abs() <= target_stop_distance {
+            0.0
+        } else {
+            dx.signum() * speed
+        };
     }
     creature.state.position.x += creature.state.velocity.x * dt;
     if !context.on_window_ledge && creature.state.action == ActionKind::Perch {
@@ -3099,6 +3635,32 @@ mod tests {
     fn let_colony_wander(world: &mut World, now: OffsetDateTime) {
         world.save.home.active_since_utc = None;
         world.save.home.last_disappeared_utc = Some(now);
+    }
+
+    fn two_creature_world(seed: [u8; 32], created: OffsetDateTime) -> World {
+        let desktop = desktop();
+        let mut world = World::new(seed, created, &desktop);
+        let now = created + Duration::hours(1);
+        world.tick(now, 0.05, &desktop);
+        let_colony_wander(&mut world, now);
+        world.pending_home_greetings.clear();
+        assert_eq!(world.save.creatures.len(), 2);
+        for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+            creature.state.position = Point {
+                x: 500.0 + index as f32 * 60.0,
+                y: 846.0,
+            };
+            creature.state.surface = SurfaceAttachment {
+                kind: SurfaceKind::ScreenFloor,
+                monitor_id: 1,
+                window_key: None,
+                relative_x: 0.5,
+            };
+            creature.state.action = ActionKind::Idle;
+            creature.state.action_elapsed = 0.0;
+            creature.state.action_duration = 100.0;
+        }
+        world
     }
 
     #[test]
@@ -4520,6 +5082,411 @@ mod tests {
     }
 
     #[test]
+    fn four_creatures_have_exactly_six_canonical_bond_records() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([54; 32], created, &desktop);
+        world.tick(created + Duration::days(31), 0.05, &desktop);
+
+        assert_eq!(world.save.creatures.len(), 4);
+        assert_eq!(world.save.relationships.len(), MAX_RELATIONSHIPS);
+        let pairs: BTreeSet<_> = world
+            .save
+            .relationships
+            .iter()
+            .map(|relationship| (relationship.a, relationship.b))
+            .collect();
+        assert_eq!(pairs.len(), MAX_RELATIONSHIPS);
+        assert!(pairs.iter().all(|(a, b)| a < b));
+        for creature in &world.save.creatures {
+            assert_eq!(
+                pairs
+                    .iter()
+                    .filter(|(a, b)| *a == creature.id || *b == creature.id)
+                    .count(),
+                3
+            );
+        }
+    }
+
+    #[test]
+    fn five_calm_minutes_project_into_one_compact_bond_update() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([55; 32], created);
+        let a = world.save.creatures[0].id;
+        let b = world.save.creatures[1].id;
+        let relationship = relationship_mut_or_insert(&mut world.save.relationships, a, b).unwrap();
+        relationship.avoidance = 3;
+        let before = *relationship;
+
+        for _ in 0..5 {
+            world.sample_observations(OBSERVATION_INTERVAL_SECS, &desktop);
+            world.project_events(created + Duration::hours(1));
+        }
+
+        let after = *relationship_between(&world.save.relationships, a, b).unwrap();
+        assert_eq!(after.familiarity, before.familiarity + 1);
+        assert_eq!(after.avoidance, before.avoidance - 1);
+        assert!(world.drain_events().any(|event| matches!(
+            event,
+            WorldEvent::BondInteraction {
+                experience: RelationshipExperience::CalmProximity,
+                ..
+            }
+        )));
+        assert_eq!(
+            world.calm_proximity_seconds.get(&(a.min(b), a.max(b))),
+            Some(&0)
+        );
+    }
+
+    #[test]
+    fn every_targeted_sequence_handles_moved_and_unavailable_companions() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let world = two_creature_world([56; 32], created);
+        let actor = world.save.creatures[0].clone();
+        let mut target = world.save.creatures[1].clone();
+        let target_id = target.id;
+        let social_actions = [
+            ActionKind::Follow,
+            ActionKind::Sleep,
+            ActionKind::PresentDiscovery,
+            ActionKind::SocialPlay,
+            ActionKind::Greet,
+            ActionKind::InspectScreen,
+            ActionKind::ReactToWindow,
+        ];
+
+        target.state.position = Point { x: 710.0, y: 846.0 };
+        let moved = vec![actor.clone(), target.clone()];
+        assert_eq!(
+            bond_target_point(&actor, &moved, target_id, ActionKind::Greet),
+            Some(target.state.position)
+        );
+
+        target.state.action = ActionKind::Sleep;
+        let sleeping = vec![actor.clone(), target.clone()];
+        assert!(bond_target_point(&actor, &sleeping, target_id, ActionKind::Sleep).is_some());
+        for action in [
+            ActionKind::Follow,
+            ActionKind::PresentDiscovery,
+            ActionKind::SocialPlay,
+            ActionKind::Greet,
+            ActionKind::InspectScreen,
+        ] {
+            assert_eq!(
+                bond_target_point(&actor, &sleeping, target_id, action),
+                None
+            );
+        }
+
+        target.state.action = ActionKind::Homebound;
+        let homebound = vec![actor.clone(), target.clone()];
+        for action in social_actions {
+            assert_eq!(
+                bond_target_point(&actor, &homebound, target_id, action),
+                None
+            );
+        }
+
+        target.state.action = ActionKind::Tossed;
+        let tossed = vec![actor.clone(), target.clone()];
+        assert!(bond_target_point(&actor, &tossed, target_id, ActionKind::ReactToWindow).is_some());
+        for action in social_actions
+            .into_iter()
+            .filter(|action| *action != ActionKind::ReactToWindow)
+        {
+            assert_eq!(bond_target_point(&actor, &tossed, target_id, action), None);
+        }
+
+        target.state.action = ActionKind::ClimbWindow;
+        let climbing = vec![actor.clone(), target.clone()];
+        assert_eq!(
+            bond_target_point(&actor, &climbing, target_id, ActionKind::InspectScreen),
+            Some(target.state.position)
+        );
+
+        let removed = vec![actor.clone()];
+        for action in social_actions {
+            assert_eq!(bond_target_point(&actor, &removed, target_id, action), None);
+            assert_eq!(bond_target_point(&actor, &removed, u64::MAX, action), None);
+        }
+    }
+
+    #[test]
+    fn a_bond_plan_tracks_motion_then_cancels_if_the_target_cannot_participate() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut moving = two_creature_world([57; 32], created);
+        let actor = moving.save.creatures[0].id;
+        let target = moving.save.creatures[1].id;
+        moving.save.creatures[1].state.position = Point { x: 820.0, y: 846.0 };
+        moving.save.creatures[0].state.action = ActionKind::Follow;
+        moving.action_choices.insert(
+            actor,
+            ActionChoice {
+                action: ActionKind::Follow,
+                target_creature: Some(target),
+                target_point: Some(Point { x: 600.0, y: 846.0 }),
+            },
+        );
+        moving.bond_plans.insert(
+            actor,
+            BondPlan {
+                target,
+                final_action: ActionKind::Greet,
+                experience: RelationshipExperience::Greeting,
+                approaching: true,
+            },
+        );
+        moving.tick(created + Duration::hours(1), 0.05, &desktop);
+        assert_eq!(
+            moving.action_choices[&actor].target_point,
+            Some(Point { x: 820.0, y: 846.0 })
+        );
+
+        moving.save.creatures[1].state.action = ActionKind::Sleep;
+        moving.tick(created + Duration::hours(1), 0.05, &desktop);
+        assert_eq!(moving.save.creatures[0].state.action, ActionKind::Idle);
+        assert!(!moving.action_choices.contains_key(&actor));
+        assert!(!moving.bond_plans.contains_key(&actor));
+
+        let mut removed = two_creature_world([58; 32], created);
+        let actor = removed.save.creatures[0].id;
+        let target = removed.save.creatures[1].id;
+        removed.save.creatures[0].state.action = ActionKind::Greet;
+        removed.action_choices.insert(
+            actor,
+            ActionChoice {
+                action: ActionKind::Greet,
+                target_creature: Some(target),
+                target_point: Some(removed.save.creatures[1].state.position),
+            },
+        );
+        removed.bond_plans.insert(
+            actor,
+            BondPlan {
+                target,
+                final_action: ActionKind::Greet,
+                experience: RelationshipExperience::Greeting,
+                approaching: false,
+            },
+        );
+        removed.save.creatures.remove(1);
+        removed.tick(created + Duration::hours(1), 0.05, &desktop);
+        assert_eq!(removed.save.creatures[0].state.action, ActionKind::Idle);
+        assert!(!removed.action_choices.contains_key(&actor));
+        assert!(!removed.bond_plans.contains_key(&actor));
+    }
+
+    #[test]
+    fn follow_then_greet_updates_the_pair_only_after_the_sequence_completes() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([59; 32], created);
+        let actor = world.save.creatures[0].id;
+        let target = world.save.creatures[1].id;
+        world.save.creatures[0].state.position = Point { x: 300.0, y: 846.0 };
+        world.save.creatures[1].state.position = Point { x: 600.0, y: 846.0 };
+        let before = *relationship_between(&world.save.relationships, actor, target).unwrap();
+        world.save.creatures[0].state.action = ActionKind::Follow;
+        world.save.creatures[0].state.action_elapsed = 1.0;
+        world.save.creatures[0].state.action_duration = 1.0;
+        world.action_choices.insert(
+            actor,
+            ActionChoice {
+                action: ActionKind::Follow,
+                target_creature: Some(target),
+                target_point: Some(world.save.creatures[1].state.position),
+            },
+        );
+        world.bond_plans.insert(
+            actor,
+            BondPlan {
+                target,
+                final_action: ActionKind::Greet,
+                experience: RelationshipExperience::Greeting,
+                approaching: true,
+            },
+        );
+
+        world.tick(created + Duration::hours(1), 0.01, &desktop);
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Greet);
+        assert!(!world.bond_plans[&actor].approaching);
+        assert_eq!(
+            relationship_between(&world.save.relationships, actor, target),
+            Some(&before)
+        );
+
+        let duration = world.save.creatures[0].state.action_duration;
+        world.save.creatures[0].state.action_elapsed = duration;
+        world.tick(created + Duration::hours(1), 0.01, &desktop);
+        let after = relationship_between(&world.save.relationships, actor, target).unwrap();
+        assert_eq!(after.affinity, before.affinity.saturating_add(2));
+        assert_eq!(after.familiarity, before.familiarity.saturating_add(1));
+        assert!(!world.bond_plans.contains_key(&actor));
+    }
+
+    #[test]
+    fn a_tossed_preferred_companion_prompts_a_concerned_reaction() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([60; 32], created);
+        let actor = world.save.creatures[0].id;
+        let target = world.save.creatures[1].id;
+        let before = *relationship_between(&world.save.relationships, actor, target).unwrap();
+        world.save.creatures[0].state.action = ActionKind::Sleep;
+        world.save.creatures[0].state.action_elapsed = 30.0;
+        world.save.creatures[0].state.action_duration = 300.0;
+        world.save.creatures[1].state.action = ActionKind::Tossed;
+        world.save.creatures[1].state.action_duration = 100.0;
+
+        world.tick(created + Duration::hours(1), 0.01, &desktop);
+        assert_eq!(
+            world.save.creatures[0].state.action,
+            ActionKind::ReactToWindow
+        );
+        assert_eq!(
+            world.bond_plans[&actor].experience,
+            RelationshipExperience::ConcernedAfterToss
+        );
+        assert!(world.drain_events().any(|event| matches!(
+            event,
+            WorldEvent::SleepInterrupted { creature_id, .. } if creature_id == actor
+        )));
+
+        world.save.creatures[1].state.action = ActionKind::Landing;
+        let duration = world.save.creatures[0].state.action_duration;
+        world.save.creatures[0].state.action_elapsed = duration;
+        world.tick(created + Duration::hours(1), 0.01, &desktop);
+        let after = relationship_between(&world.save.relationships, actor, target).unwrap();
+        assert_eq!(after.affinity, before.affinity.saturating_add(2));
+        assert_eq!(after.familiarity, before.familiarity.saturating_add(1));
+    }
+
+    #[test]
+    fn shelter_return_schedules_greetings_without_a_new_action_kind() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([62; 32], created);
+        let now = created + Duration::hours(1);
+        world.save.home.active_since_utc = Some(now);
+        for creature in &mut world.save.creatures {
+            creature.state.action = ActionKind::Homebound;
+        }
+        world.dismiss_home(now, false);
+        for creature in &mut world.save.creatures {
+            creature.state.action_elapsed = creature.state.action_duration;
+        }
+
+        world.tick(now, 0.01, &desktop);
+        assert!(world.bond_plans.values().any(|plan| {
+            plan.final_action == ActionKind::Greet
+                && plan.experience == RelationshipExperience::HomecomingGreeting
+        }));
+        assert!(world.save.creatures.iter().any(|creature| {
+            matches!(
+                creature.state.action,
+                ActionKind::Greet | ActionKind::Follow
+            )
+        }));
+        assert_eq!(ActionKind::ALL.len(), 24);
+        assert_eq!(ActionKind::BODY_CLIPS.len(), 22);
+    }
+
+    #[test]
+    fn discovery_watch_steal_and_squabble_schedule_existing_targeted_actions() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let now = created + Duration::hours(1);
+
+        let mut gift = two_creature_world([63; 32], created);
+        let gift_actor = gift.save.creatures[0].id;
+        let gift_target = gift.save.creatures[1].id;
+        let relationship =
+            relationship_mut_or_insert(&mut gift.save.relationships, gift_actor, gift_target)
+                .unwrap();
+        relationship.affinity = 200;
+        relationship.familiarity = 200;
+        relationship.avoidance = 0;
+        gift.discovery_remaining = 0.0;
+        gift.save.creatures[0].state.action_elapsed = 1.0;
+        gift.save.creatures[0].state.action_duration = 1.0;
+        gift.tick(now, 0.01, &desktop);
+        let gift_plan = gift.bond_plans[&gift_actor];
+        assert_eq!(gift_plan.target, gift_target);
+        assert_eq!(gift_plan.final_action, ActionKind::PresentDiscovery);
+        assert_eq!(
+            gift_plan.experience,
+            RelationshipExperience::BroughtDiscovery
+        );
+
+        for (seed, target_action, scores, expected, expected_action, attempts) in [
+            (
+                64,
+                ActionKind::ClimbWindow,
+                (100, 100, 0, 0),
+                RelationshipExperience::WatchedClimb,
+                ActionKind::InspectScreen,
+                64,
+            ),
+            (
+                65,
+                ActionKind::SoloPlay,
+                (100, 100, 200, 0),
+                RelationshipExperience::StoleToy,
+                ActionKind::SocialPlay,
+                64,
+            ),
+            (
+                67,
+                ActionKind::Idle,
+                (20, 100, 100, 120),
+                RelationshipExperience::Squabble,
+                ActionKind::SocialPlay,
+                1_024,
+            ),
+        ] {
+            let mut world = two_creature_world([seed; 32], created);
+            let actor = world.save.creatures[0].id;
+            let target = world.save.creatures[1].id;
+            let relationship =
+                relationship_mut_or_insert(&mut world.save.relationships, actor, target).unwrap();
+            relationship.affinity = scores.0;
+            relationship.familiarity = scores.1;
+            relationship.playfulness = scores.2;
+            relationship.avoidance = scores.3;
+            world.discovery_remaining = f32::MAX;
+
+            let mut scheduled = None;
+            for _ in 0..attempts {
+                world.action_choices.clear();
+                world.bond_plans.clear();
+                world.save.creatures[0].state.action = ActionKind::Idle;
+                world.save.creatures[0].state.action_elapsed = 1.0;
+                world.save.creatures[0].state.action_duration = 1.0;
+                world.save.creatures[1].state.action = target_action;
+                world.save.creatures[1].state.action_elapsed = 0.0;
+                world.save.creatures[1].state.action_duration = 100.0;
+                world.tick(now, 0.01, &desktop);
+                scheduled = world
+                    .bond_plans
+                    .get(&actor)
+                    .copied()
+                    .filter(|plan| plan.experience == expected);
+                if scheduled.is_some() {
+                    break;
+                }
+            }
+            let plan = scheduled.expect("seeded scheduler should eventually choose the rare bond");
+            assert_eq!(plan.target, target);
+            assert_eq!(plan.final_action, expected_action);
+            assert_eq!(world.action_choices[&actor].target_creature, Some(target));
+        }
+    }
+
+    #[test]
     fn passive_activity_actions_have_distinct_state_outcomes() {
         let desktop = desktop();
         let creature = World::new([61; 32], datetime!(2026-01-01 0:00 UTC), &desktop)
@@ -4530,6 +5497,7 @@ mod tests {
             nearest_creature_distance: None,
             nearest_creature_position: None,
             nearest_creature_id: None,
+            bond: None,
             on_window_ledge: false,
             reachable_window_ledge: false,
             window_changed_nearby: false,

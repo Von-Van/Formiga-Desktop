@@ -1,5 +1,6 @@
 use crate::{
-    ActionChoice, ActionKind, Creature, DesktopSnapshot, LearnedTendencies, Point, routine_key,
+    ActionChoice, ActionKind, Creature, CreatureId, CreatureRelationship, DesktopSnapshot,
+    LearnedTendencies, Point, SurfaceKind, routine_key,
 };
 use rand::Rng;
 
@@ -8,10 +9,21 @@ pub struct BehaviorContext {
     pub nearest_creature_distance: Option<f32>,
     pub nearest_creature_position: Option<Point>,
     pub nearest_creature_id: Option<crate::CreatureId>,
+    pub bond: Option<BondContext>,
     pub on_window_ledge: bool,
     pub reachable_window_ledge: bool,
     pub window_changed_nearby: bool,
     pub hour_utc: u8,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BondContext {
+    pub target_creature: CreatureId,
+    pub target_position: Point,
+    pub distance: f32,
+    pub relationship: CreatureRelationship,
+    pub target_action: ActionKind,
+    pub target_surface: SurfaceKind,
 }
 
 pub fn choose_action<R: Rng + ?Sized>(
@@ -46,7 +58,10 @@ pub fn choose_action<R: Rng + ?Sized>(
                 }
             }
             ActionKind::Sleep => {
-                d.sleep_pressure * 1.2 + (1.0 - d.energy) + f32::from(night) * p.sleep_timing * 0.35
+                d.sleep_pressure * 1.2
+                    + (1.0 - d.energy)
+                    + f32::from(night) * p.sleep_timing * 0.35
+                    + sleep_companion_score(context)
             }
             ActionKind::InvestigateCursor => {
                 if cursor_distance < 180.0 && creature.state.cursor_cooldown <= 0.0 {
@@ -97,9 +112,11 @@ pub fn choose_action<R: Rng + ?Sized>(
                     -2.0
                 }
             }
-            ActionKind::Greet => social_score(creature, context, 130.0, 0.45),
-            ActionKind::Follow => social_score(creature, context, 240.0, 0.35),
-            ActionKind::SocialPlay => social_score(creature, context, 100.0, p.playfulness * 0.55),
+            ActionKind::Greet => social_score(creature, context, action, 160.0, 0.45),
+            ActionKind::Follow => social_score(creature, context, action, 420.0, 0.35),
+            ActionKind::SocialPlay => {
+                social_score(creature, context, action, 120.0, p.playfulness * 0.55)
+            }
             ActionKind::Dragged
             | ActionKind::Landing
             | ActionKind::Homebound
@@ -131,10 +148,23 @@ pub fn choose_action<R: Rng + ?Sized>(
 
     let action = softmax_sample(&scored, p.decision_temperature.max(0.08), rng);
     let (target_creature, target_point) = match action {
-        ActionKind::Greet | ActionKind::Follow | ActionKind::SocialPlay => (
-            context.nearest_creature_id,
-            context.nearest_creature_position,
-        ),
+        ActionKind::Greet | ActionKind::Follow | ActionKind::SocialPlay => context
+            .bond
+            .map(|bond| (Some(bond.target_creature), Some(bond.target_position)))
+            .unwrap_or((
+                context.nearest_creature_id,
+                context.nearest_creature_position,
+            )),
+        ActionKind::Sleep => context
+            .bond
+            .filter(|bond| sleep_companion_eligible(*bond))
+            .map(|bond| {
+                (
+                    Some(bond.target_creature),
+                    Some(beside_target(creature.state.position, bond.target_position)),
+                )
+            })
+            .unwrap_or((None, None)),
         ActionKind::InvestigateCursor if desktop.cursor.available => {
             (None, Some(desktop.cursor.position))
         }
@@ -155,6 +185,33 @@ pub fn choose_action<R: Rng + ?Sized>(
         target_creature,
         target_point,
     }
+}
+
+fn beside_target(actor: Point, target: Point) -> Point {
+    let side = if actor.x <= target.x { -1.0 } else { 1.0 };
+    Point {
+        x: target.x + side * 30.0,
+        y: target.y,
+    }
+}
+
+fn sleep_companion_eligible(bond: BondContext) -> bool {
+    bond.distance <= 180.0
+        && bond.relationship.affinity >= 96
+        && bond.relationship.familiarity >= 48
+        && bond.relationship.avoidance < 128
+        && !matches!(bond.target_action, ActionKind::Dragged | ActionKind::Tossed)
+}
+
+fn sleep_companion_score(context: BehaviorContext) -> f32 {
+    context
+        .bond
+        .filter(|bond| sleep_companion_eligible(*bond))
+        .map_or(0.0, |bond| {
+            relationship_unit(bond.relationship.affinity) * 0.22
+                + relationship_unit(bond.relationship.familiarity) * 0.12
+                - relationship_unit(bond.relationship.avoidance) * 0.24
+        })
 }
 
 fn preferred_region_target(creature: &Creature, desktop: &DesktopSnapshot) -> Option<Point> {
@@ -204,22 +261,48 @@ fn ride_confidence(creature: &Creature) -> f32 {
 fn social_score(
     creature: &Creature,
     context: BehaviorContext,
+    action: ActionKind,
     max_distance: f32,
     extra: f32,
 ) -> f32 {
-    match context.nearest_creature_distance {
-        Some(distance) if distance < max_distance => {
-            let affinity = context
-                .nearest_creature_id
-                .and_then(|id| creature.state.relationships.get(&id))
-                .copied()
-                .unwrap_or(0.25);
+    match context.bond {
+        Some(bond)
+            if bond.distance < max_distance
+                && !matches!(bond.target_action, ActionKind::Dragged | ActionKind::Tossed)
+                && !(matches!(action, ActionKind::Greet | ActionKind::SocialPlay)
+                    && matches!(
+                        bond.target_action,
+                        ActionKind::Sleep | ActionKind::Homebound
+                    )) =>
+        {
+            let affinity = relationship_unit(bond.relationship.affinity);
+            let familiarity = relationship_unit(bond.relationship.familiarity);
+            let playfulness = relationship_unit(bond.relationship.playfulness);
+            let avoidance = relationship_unit(bond.relationship.avoidance);
+            let playful = if action == ActionKind::SocialPlay {
+                playfulness * 0.5
+            } else {
+                0.0
+            };
             creature.personality.sociability * creature.state.drives.social_need
-                + affinity * 0.45
+                + affinity * 0.38
+                + familiarity * 0.22
+                + playful
+                - avoidance * 0.7
                 + extra
         }
+        None => match context.nearest_creature_distance {
+            Some(distance) if distance < max_distance => {
+                creature.personality.sociability * creature.state.drives.social_need + extra * 0.5
+            }
+            _ => -2.0,
+        },
         _ => -2.0,
     }
+}
+
+fn relationship_unit(score: u8) -> f32 {
+    f32::from(score) / f32::from(u8::MAX)
 }
 
 fn softmax_sample<R: Rng + ?Sized>(
@@ -283,6 +366,7 @@ mod tests {
             nearest_creature_distance: None,
             nearest_creature_position: None,
             nearest_creature_id: None,
+            bond: None,
             on_window_ledge: false,
             reachable_window_ledge: false,
             window_changed_nearby: false,
@@ -404,5 +488,49 @@ mod tests {
         assert_eq!(before_five_minutes, 0.0);
         assert!(after_five_minutes > before_five_minutes);
         assert_eq!(ride_confidence(&creature), 0.35);
+    }
+
+    #[test]
+    fn compact_bond_scores_monotonically_influence_social_selection() {
+        let (mut creature, desktop, mut context) = fixture();
+        creature.personality.decision_temperature = 0.5;
+        creature.state.drives.social_need = 1.0;
+        let target_position = Point {
+            x: creature.state.position.x + 60.0,
+            y: creature.state.position.y,
+        };
+        let relationship = |affinity, familiarity, playfulness, avoidance| CreatureRelationship {
+            a: creature.id.min(99),
+            b: creature.id.max(99),
+            affinity,
+            familiarity,
+            playfulness,
+            avoidance,
+        };
+        context.nearest_creature_distance = Some(60.0);
+        context.nearest_creature_position = Some(target_position);
+        context.nearest_creature_id = Some(99);
+        context.bond = Some(BondContext {
+            target_creature: 99,
+            target_position,
+            distance: 60.0,
+            relationship: relationship(16, 16, 16, 220),
+            target_action: ActionKind::Idle,
+            target_surface: SurfaceKind::ScreenFloor,
+        });
+        let avoided = selection_count_large(&creature, &desktop, context, ActionKind::Greet)
+            + selection_count_large(&creature, &desktop, context, ActionKind::SocialPlay);
+        context.bond.as_mut().unwrap().relationship = relationship(220, 220, 220, 0);
+        let bonded = selection_count_large(&creature, &desktop, context, ActionKind::Greet)
+            + selection_count_large(&creature, &desktop, context, ActionKind::SocialPlay);
+        assert!(bonded > avoided, "bonded {bonded}, avoided {avoided}");
+
+        let mut rng = ChaCha12Rng::from_seed([27; 32]);
+        let sleep_choice = (0..10_000)
+            .map(|_| choose_action(&creature, &desktop, context, &mut rng))
+            .find(|choice| choice.action == ActionKind::Sleep)
+            .expect("sleep remains selectable");
+        assert_eq!(sleep_choice.target_creature, Some(99));
+        assert_ne!(sleep_choice.target_point, Some(target_position));
     }
 }

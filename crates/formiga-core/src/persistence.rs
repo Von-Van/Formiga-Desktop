@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=5 => migrate_legacy(value, version),
+            1..=6 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -109,6 +109,7 @@ fn migrate_legacy(
     if source_version <= 5 {
         migrate_lived_experience(&mut value);
     }
+    migrate_relationships(&mut value);
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -125,6 +126,76 @@ fn migrate_legacy(
         }
     }
     Ok(save)
+}
+
+fn migrate_relationships(value: &mut serde_json::Value) {
+    use serde_json::{Map, Value, json};
+
+    let Some(creatures) = value.get_mut("creatures").and_then(Value::as_array_mut) else {
+        value["relationships"] = Value::Array(Vec::new());
+        return;
+    };
+    let creature_ids: Vec<_> = creatures
+        .iter()
+        .filter_map(|creature| creature.get("id").and_then(Value::as_u64))
+        .collect();
+    let valid_ids: std::collections::BTreeSet<_> = creature_ids.iter().copied().collect();
+    let mut legacy_scores: std::collections::BTreeMap<(u64, u64), Vec<f64>> =
+        std::collections::BTreeMap::new();
+    for creature in creatures.iter_mut() {
+        let Some(source) = creature.get("id").and_then(Value::as_u64) else {
+            continue;
+        };
+        let relationships = creature
+            .pointer_mut("/state/relationships")
+            .map(Value::take)
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_else(Map::new);
+        if let Some(state) = creature.get_mut("state").and_then(Value::as_object_mut) {
+            state.remove("relationships");
+        }
+        for (target, score) in relationships {
+            let Ok(target) = target.parse::<u64>() else {
+                continue;
+            };
+            let Some(pair) = crate::canonical_creature_pair(source, target) else {
+                continue;
+            };
+            if valid_ids.contains(&target)
+                && let Some(score) = score.as_f64()
+            {
+                legacy_scores
+                    .entry(pair)
+                    .or_default()
+                    .push(score.clamp(0.0, 1.0));
+            }
+        }
+    }
+
+    let mut relationships = Vec::new();
+    for (index, a) in creature_ids.iter().copied().enumerate() {
+        for b in creature_ids.iter().copied().skip(index + 1) {
+            let Some(pair) = crate::canonical_creature_pair(a, b) else {
+                continue;
+            };
+            let scores = legacy_scores.get(&pair).map(Vec::as_slice).unwrap_or(&[]);
+            let legacy_affinity = if scores.is_empty() {
+                0.0
+            } else {
+                scores.iter().sum::<f64>() / scores.len() as f64
+            };
+            relationships.push(json!({
+                "a": pair.0,
+                "b": pair.1,
+                "affinity": (legacy_affinity * 255.0).round() as u8,
+                "familiarity": (legacy_affinity * 64.0).round() as u8,
+                "playfulness": 0,
+                "avoidance": 0,
+            }));
+        }
+    }
+    relationships.truncate(crate::MAX_RELATIONSHIPS);
+    value["relationships"] = Value::Array(relationships);
 }
 
 fn migrate_lived_experience(value: &mut serde_json::Value) {
@@ -354,6 +425,7 @@ mod tests {
             home: crate::ColonyHome::default(),
             settings: Settings::default(),
             creatures: Vec::new(),
+            relationships: Vec::new(),
         }
     }
 
@@ -498,7 +570,7 @@ mod tests {
         assert_eq!(migrated.id, creature.id);
         assert_eq!(migrated.generation, creature.generation);
         assert_eq!(migrated.personality, creature.personality);
-        assert_eq!(migrated.state.relationships, creature.state.relationships);
+        assert_eq!(first.relationships, original.relationships);
         assert_eq!(migrated.appearance.family, creature.appearance.family);
         assert_eq!(
             migrated.appearance.palette_index,
@@ -650,6 +722,79 @@ mod tests {
         assert!(creature.routines.len <= crate::MAX_ROUTINES as u8);
         assert_eq!(creature.memory, crate::CreatureMemory::default());
         assert_eq!(creature.tendencies, crate::LearnedTendencies::default());
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v6_relationships_without_changing_creature_identity_or_history() {
+        let created = datetime!(2026-02-03 4:05 UTC);
+        let desktop = crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([6; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1280.0,
+                    height: 736.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let mut original = crate::World::new([66; 32], created, &desktop);
+        original.tick(created + time::Duration::hours(1), 0.05, &desktop);
+        original.save.creatures[0].name = "Keepsake".into();
+        original.save.creatures[0].memory.times_petted = 47;
+        original.save.creatures[0].tendencies.cursor_trust = 33;
+        let preserved_creatures = original.save.creatures.clone();
+        let first_id = preserved_creatures[0].id;
+        let second_id = preserved_creatures[1].id;
+
+        let mut value = serde_json::to_value(&original.save).unwrap();
+        value["save_version"] = serde_json::Value::from(6);
+        value.as_object_mut().unwrap().remove("relationships");
+        value["creatures"][0]["state"]["relationships"] =
+            serde_json::json!({ second_id.to_string(): 0.75 });
+        value["creatures"][1]["state"]["relationships"] =
+            serde_json::json!({ first_id.to_string(): 0.25 });
+
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v6-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let first_path = directory.join("first.json");
+        let second_path = directory.join("second.json");
+        let bytes = serde_json::to_vec(&value).unwrap();
+        fs::write(&first_path, &bytes).unwrap();
+        fs::write(&second_path, &bytes).unwrap();
+        let first = SaveStore::new(&first_path).load().unwrap().unwrap();
+        let second = SaveStore::new(&second_path).load().unwrap().unwrap();
+
+        assert_eq!(first, second);
+        assert_eq!(first.save_version, crate::SAVE_VERSION);
+        assert_eq!(first.creatures, preserved_creatures);
+        assert_eq!(first.relationships.len(), 1);
+        let relationship = first.relationships[0];
+        assert_eq!(
+            (relationship.a, relationship.b),
+            (first_id.min(second_id), first_id.max(second_id))
+        );
+        assert_eq!(relationship.affinity, 128);
+        assert_eq!(relationship.familiarity, 32);
+        assert_eq!(relationship.playfulness, 0);
+        assert_eq!(relationship.avoidance, 0);
+
+        let round_trip_path = directory.join("round-trip.json");
+        let round_trip_store = SaveStore::new(&round_trip_path);
+        round_trip_store.save(&first).unwrap();
+        assert_eq!(round_trip_store.load().unwrap(), Some(first));
         let _ = fs::remove_dir_all(directory);
     }
 }

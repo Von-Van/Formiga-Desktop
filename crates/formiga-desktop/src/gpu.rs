@@ -63,7 +63,6 @@ struct BubbleGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     creature_id: CreatureId,
-    text: String,
     width: u32,
     height: u32,
 }
@@ -400,7 +399,7 @@ impl OverlayRenderer {
         cursor: CursorSnapshot,
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
-        milestone: Option<(CreatureId, &str)>,
+        milestone: Option<CreatureId>,
     ) -> Result<()> {
         self.update_occlusion_cache(save, windows);
         let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
@@ -432,14 +431,14 @@ impl OverlayRenderer {
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
-        let bubble_creature = milestone.and_then(|(creature_id, text)| {
+        let bubble_creature = milestone.and_then(|creature_id| {
             visible
                 .iter()
                 .find(|creature| creature.id == creature_id)
-                .map(|creature| (*creature, text))
+                .copied()
         });
-        if let Some((creature, text)) = bubble_creature {
-            self.ensure_bubble(creature.id, text);
+        if let Some(creature) = bubble_creature {
+            self.ensure_bubble(creature.id);
         } else {
             self.bubble = None;
         }
@@ -471,7 +470,7 @@ impl OverlayRenderer {
             creature_draws.push((creature.id, start, trinket.is_some()));
         }
         let bubble_start = vertices.len();
-        if let Some((creature, _)) = bubble_creature
+        if let Some(creature) = bubble_creature
             && let Some(bubble_vertices) =
                 self.bubble_vertices(creature, save.settings.display_scale)
         {
@@ -917,15 +916,15 @@ impl OverlayRenderer {
         });
     }
 
-    fn ensure_bubble(&mut self, creature_id: CreatureId, text: &str) {
+    fn ensure_bubble(&mut self, creature_id: CreatureId) {
         if self
             .bubble
             .as_ref()
-            .is_some_and(|bubble| bubble.creature_id == creature_id && bubble.text == text)
+            .is_some_and(|bubble| bubble.creature_id == creature_id)
         {
             return;
         }
-        let canvas = MilestoneBubbleRenderer::render(text);
+        let canvas = MilestoneBubbleRenderer::render();
         let width = canvas.width();
         let height = canvas.height();
         let pixels = canvas.rgba_bytes();
@@ -981,7 +980,6 @@ impl OverlayRenderer {
             _texture: texture,
             bind_group,
             creature_id,
-            text: text.to_owned(),
             width,
             height,
         });

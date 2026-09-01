@@ -9,7 +9,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1/v2/v3/v4/v5→v6 migration, birth timestamps, names, and top-12 routines | CI | CI |
+| v1/v2/v3/v4/v5/v6→v7 migration, identity preservation, legacy pair conversion, names, birth timestamps, and top-12 routines | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | Fixed memory/routine limits and sub-2-KiB per-creature serialized growth | CI | CI |
@@ -17,6 +17,10 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Descriptor ±35/±25 hysteresis, badge persistence, and 12-active-hour bubble throttle | CI | CI |
 | Unicode name validation, deterministic unique defaults, and user duplicate names | CI | CI |
 | 60-active-second observation projection and hidden/paused suspension | CI | CI |
+| Six-pair relationship maximum, canonical IDs, four score bytes, saturation, and deterministic round trip | CI | CI |
+| Five calm minutes, bounded bond utility, contrary avoidance reduction, and score projection | CI | CI |
+| Targeted follow, shared sleep, gift, play/steal, greet, climb-watch, toss-concern, and squabble action reuse | CI | CI |
+| Bond target refresh/cancellation for moved, missing, sleeping, homebound, tossed, cross-surface, and removed companions | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
@@ -27,7 +31,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Habitat region algebra | CI | CI |
 | Pet/drag maximum-excursion classification across scale, placement, toss, cancel, and re-grab | CI | CI |
 | Home petting without dismissal and threshold-crossing shelter dismissal | CI | CI |
-| Temporary milestone-bubble pixels, global singularity, and idle resource release | CI | CI |
+| Blank fixed-size milestone-bubble pixels, global singularity, and idle resource release | CI | CI |
 | Alpha-mask and occlusion geometry | CI | CI |
 | Update version/asset selection and 24-hour throttle | CI | CI |
 | Update digest validation and unsafe-name rejection | CI | CI |
@@ -46,7 +50,10 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Slow placement, fast toss, soft bounce, and mid-flight re-grab | pending | pending | pending | pending |
 | Pet click, drag-out-and-back, shelter pet, and visible reaction at supported scales | pending | pending | pending | pending |
 | Smooth climb/mantle, raised dangle contact, downward hop, inspection, and discovery | pending | pending | pending | pending |
-| Colony names, descriptors, unread badges, age, places, and milestone bubble | pending | pending | pending | pending |
+| Colony names, descriptors, unread badges, age, places, and wordless milestone bubble | pending | pending | pending | pending |
+| Bond profile labels and closest-companion changes remain read-only except for the name | pending | pending | pending | pending |
+| Follow, sleep-beside, gift, toy steal, shelter greet, climb watch, toss concern, and harmless squabble playback | pending | pending | pending | pending |
+| Bond sequence cancellation when a target moves, sleeps, enters shelter, is tossed, or disappears | pending | pending | pending | pending |
 | Habitat create/move/resize/toggle/delete | pending | pending | pending | pending |
 | Invalid habitat cannot replace valid policy | pending | pending | pending | pending |
 | Selected app occlusion and rule removal | pending | pending | pending | pending |
@@ -56,7 +63,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
-| Package install, relaunch, and representative v1/v2/v3/v4/v5 migration | pending | pending | pending | pending |
+| Package install, relaunch, v7 round trip, and representative v1/v2/v3/v4/v5/v6 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

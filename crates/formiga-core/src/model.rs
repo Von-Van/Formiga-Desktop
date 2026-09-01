@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::time::Duration;
 use time::OffsetDateTime;
 
@@ -497,7 +496,6 @@ pub struct CreatureState {
     pub action_duration: f32,
     pub drives: Drives,
     pub surface: SurfaceAttachment,
-    pub relationships: BTreeMap<CreatureId, f32>,
     pub cursor_cooldown: f32,
     /// Runtime presentation selection for generated activity art. It is defaulted for v4 saves
     /// and reset with interrupted actions, so it does not form a discovery collection.
@@ -507,6 +505,118 @@ pub struct CreatureState {
     /// It is persisted so quitting during the reveal sequence cannot skip or duplicate a mini.
     #[serde(default)]
     pub arrival_delay_secs: f32,
+}
+
+pub const MAX_RELATIONSHIPS: usize = 6;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreatureRelationship {
+    pub a: CreatureId,
+    pub b: CreatureId,
+    pub affinity: u8,
+    pub familiarity: u8,
+    pub playfulness: u8,
+    pub avoidance: u8,
+}
+
+impl CreatureRelationship {
+    pub fn new(a: CreatureId, b: CreatureId) -> Option<Self> {
+        let (a, b) = canonical_creature_pair(a, b)?;
+        Some(Self {
+            a,
+            b,
+            ..Self::default()
+        })
+    }
+
+    pub fn contains(self, creature_id: CreatureId) -> bool {
+        self.a == creature_id || self.b == creature_id
+    }
+
+    pub fn other(self, creature_id: CreatureId) -> Option<CreatureId> {
+        if self.a == creature_id {
+            Some(self.b)
+        } else if self.b == creature_id {
+            Some(self.a)
+        } else {
+            None
+        }
+    }
+
+    pub fn closeness(self) -> i16 {
+        i16::from(self.affinity) * 2 + i16::from(self.familiarity) - i16::from(self.avoidance) * 2
+    }
+
+    pub fn apply(&mut self, experience: RelationshipExperience) {
+        let (affinity, familiarity, playfulness, avoidance) = match experience {
+            RelationshipExperience::CalmProximity => (0, 1, 0, -1),
+            RelationshipExperience::Followed => (0, 1, 0, -1),
+            RelationshipExperience::Greeting => (2, 1, 0, -1),
+            RelationshipExperience::SharedRest => (2, 2, 0, -2),
+            RelationshipExperience::PositivePlay => (1, 1, 3, -1),
+            RelationshipExperience::BroughtDiscovery => (3, 1, 1, -1),
+            RelationshipExperience::StoleToy => (-1, 1, 3, 2),
+            RelationshipExperience::HomecomingGreeting => (3, 2, 0, -2),
+            RelationshipExperience::WatchedClimb => (1, 1, 0, -1),
+            RelationshipExperience::ConcernedAfterToss => (2, 1, 0, 0),
+            RelationshipExperience::Squabble => (-2, 1, 1, 5),
+        };
+        adjust_relationship_score(&mut self.affinity, affinity);
+        adjust_relationship_score(&mut self.familiarity, familiarity);
+        adjust_relationship_score(&mut self.playfulness, playfulness);
+        adjust_relationship_score(&mut self.avoidance, avoidance);
+    }
+}
+
+fn adjust_relationship_score(score: &mut u8, delta: i16) {
+    *score = (i16::from(*score) + delta).clamp(0, i16::from(u8::MAX)) as u8;
+}
+
+pub fn canonical_creature_pair(a: CreatureId, b: CreatureId) -> Option<(CreatureId, CreatureId)> {
+    (a != b).then_some(if a < b { (a, b) } else { (b, a) })
+}
+
+pub fn relationship_between(
+    relationships: &[CreatureRelationship],
+    a: CreatureId,
+    b: CreatureId,
+) -> Option<&CreatureRelationship> {
+    let (a, b) = canonical_creature_pair(a, b)?;
+    relationships
+        .iter()
+        .find(|relationship| relationship.a == a && relationship.b == b)
+}
+
+pub fn closest_companion(
+    relationships: &[CreatureRelationship],
+    creature_id: CreatureId,
+) -> Option<CreatureId> {
+    relationships
+        .iter()
+        .copied()
+        .filter(|relationship| relationship.contains(creature_id))
+        .max_by_key(|relationship| {
+            (
+                relationship.closeness(),
+                std::cmp::Reverse(relationship.other(creature_id)),
+            )
+        })
+        .and_then(|relationship| relationship.other(creature_id))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RelationshipExperience {
+    CalmProximity,
+    Followed,
+    Greeting,
+    SharedRest,
+    PositivePlay,
+    BroughtDiscovery,
+    StoleToy,
+    HomecomingGreeting,
+    WatchedClimb,
+    ConcernedAfterToss,
+    Squabble,
 }
 
 pub const MAX_ROUTINES: usize = 12;
@@ -1015,6 +1125,8 @@ pub struct SaveFile {
     pub home: ColonyHome,
     pub settings: Settings,
     pub creatures: Vec<Creature>,
+    #[serde(default)]
+    pub relationships: Vec<CreatureRelationship>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1042,10 +1154,10 @@ pub enum WorldEvent {
         creature_id: CreatureId,
         action: ActionKind,
     },
-    SocialInteraction {
+    BondInteraction {
         a: CreatureId,
         b: CreatureId,
-        action: ActionKind,
+        experience: RelationshipExperience,
     },
     CreatureSlept {
         creature_id: CreatureId,
@@ -1257,5 +1369,56 @@ mod tests {
         let first = default_creature_name([7; 32], 0, &[]);
         let second = default_creature_name([7; 32], 1, std::slice::from_ref(&first));
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn relationship_scores_are_exactly_four_bytes_and_saturate() {
+        assert_eq!(
+            std::mem::size_of::<u8>() * 4,
+            std::mem::size_of_val(&[
+                CreatureRelationship::default().affinity,
+                CreatureRelationship::default().familiarity,
+                CreatureRelationship::default().playfulness,
+                CreatureRelationship::default().avoidance,
+            ])
+        );
+        let mut relationship = CreatureRelationship::new(9, 3).unwrap();
+        assert_eq!((relationship.a, relationship.b), (3, 9));
+        for _ in 0..300 {
+            relationship.apply(RelationshipExperience::PositivePlay);
+        }
+        assert_eq!(relationship.affinity, u8::MAX);
+        assert_eq!(relationship.familiarity, u8::MAX);
+        assert_eq!(relationship.playfulness, u8::MAX);
+        assert_eq!(relationship.avoidance, 0);
+        for _ in 0..300 {
+            relationship.apply(RelationshipExperience::Squabble);
+        }
+        assert_eq!(relationship.affinity, 0);
+        assert_eq!(relationship.avoidance, u8::MAX);
+    }
+
+    #[test]
+    fn closest_companion_uses_canonical_shared_records() {
+        let relationships = [
+            CreatureRelationship {
+                a: 1,
+                b: 2,
+                affinity: 90,
+                familiarity: 20,
+                playfulness: 0,
+                avoidance: 0,
+            },
+            CreatureRelationship {
+                a: 1,
+                b: 3,
+                affinity: 120,
+                familiarity: 80,
+                playfulness: 0,
+                avoidance: 100,
+            },
+        ];
+        assert_eq!(closest_companion(&relationships, 1), Some(2));
+        assert_eq!(closest_companion(&relationships, 2), Some(1));
     }
 }

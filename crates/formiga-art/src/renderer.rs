@@ -2050,13 +2050,7 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
         ActionKind::SoloPlay => ExpressionKind::Joy,
         ActionKind::Eat | ActionKind::Drink => ExpressionKind::Content,
         ActionKind::Greet | ActionKind::Follow | ActionKind::SocialPlay => {
-            let affinity = creature
-                .state
-                .relationships
-                .values()
-                .copied()
-                .fold(0.0_f32, f32::max);
-            if affinity > 0.65 {
+            if creature.tendencies.sociability >= 35 || creature.state.drives.comfort > 0.75 {
                 ExpressionKind::Affectionate
             } else if creature.state.action == ActionKind::SocialPlay {
                 ExpressionKind::Joy

@@ -1,9 +1,10 @@
 use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
 use formiga_core::{
-    ApplicationOcclusionRule, Creature, CreatureId, DesktopRect, DesktopWindow, HabitatPolicy,
-    HabitatPreset, HabitatZone, HabitatZoneKind, MonitorInfo, Settings, profile_descriptors,
-    validate_creature_name, validate_habitat,
+    ApplicationOcclusionRule, Creature, CreatureId, CreatureRelationship, DesktopRect,
+    DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone, HabitatZoneKind, MonitorInfo,
+    Settings, closest_companion, profile_descriptors, relationship_between, validate_creature_name,
+    validate_habitat,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -40,6 +41,12 @@ pub struct SettingsOutcome {
     pub viewed_profile: Option<CreatureId>,
 }
 
+#[derive(Clone, Copy)]
+pub struct ColonyView<'a> {
+    pub creatures: &'a [Creature],
+    pub relationships: &'a [CreatureRelationship],
+}
+
 pub struct SettingsWindow {
     pub window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -56,6 +63,7 @@ pub struct SettingsWindow {
     error: Option<String>,
     editor_active: bool,
     creatures: Vec<Creature>,
+    relationships: Vec<CreatureRelationship>,
     creature_names: BTreeMap<CreatureId, String>,
     selected_creature: Option<CreatureId>,
 }
@@ -65,6 +73,7 @@ impl SettingsWindow {
         event_loop: &ActiveEventLoop,
         settings: &Settings,
         creatures: &[Creature],
+        relationships: &[CreatureRelationship],
         save_location: &std::path::Path,
     ) -> Result<Self> {
         let window = Arc::new(
@@ -151,6 +160,7 @@ impl SettingsWindow {
             error: None,
             editor_active: false,
             creatures: creatures.to_vec(),
+            relationships: relationships.to_vec(),
             creature_names: creatures
                 .iter()
                 .map(|creature| (creature.id, creature.name.clone()))
@@ -163,11 +173,17 @@ impl SettingsWindow {
         self.window.id()
     }
 
-    pub fn show(&mut self, settings: &Settings, creatures: &[Creature]) {
+    pub fn show(
+        &mut self,
+        settings: &Settings,
+        creatures: &[Creature],
+        relationships: &[CreatureRelationship],
+    ) {
         self.draft = settings.clone();
         self.saved = settings.clone();
         self.error = None;
         self.creatures = creatures.to_vec();
+        self.relationships = relationships.to_vec();
         self.creature_names = creatures
             .iter()
             .map(|creature| (creature.id, creature.name.clone()))
@@ -246,10 +262,11 @@ impl SettingsWindow {
         windows: &[DesktopWindow],
         update_status: &UpdateStatus,
         automatic_update_checks: bool,
-        creatures: &[Creature],
+        colony: ColonyView<'_>,
     ) -> Result<SettingsOutcome> {
-        self.creatures = creatures.to_vec();
-        for creature in creatures {
+        self.creatures = colony.creatures.to_vec();
+        self.relationships = colony.relationships.to_vec();
+        for creature in colony.creatures {
             self.creature_names
                 .entry(creature.id)
                 .or_insert_with(|| creature.name.clone());
@@ -264,6 +281,7 @@ impl SettingsWindow {
         let mut error = self.error.clone();
         let editor_active = self.editor_active;
         let creatures = self.creatures.clone();
+        let relationships = self.relationships.clone();
         let mut creature_names = self.creature_names.clone();
         let mut selected_creature = self.selected_creature;
         let full_output = context.run_ui(input, |ui| {
@@ -280,6 +298,7 @@ impl SettingsWindow {
                 update_status,
                 automatic_update_checks,
                 &creatures,
+                &relationships,
                 &mut creature_names,
                 &mut selected_creature,
                 &mut outcome,
@@ -400,6 +419,7 @@ fn draw_settings(
     update_status: &UpdateStatus,
     automatic_update_checks: bool,
     creatures: &[Creature],
+    relationships: &[CreatureRelationship],
     creature_names: &mut BTreeMap<CreatureId, String>,
     selected_creature: &mut Option<CreatureId>,
     outcome: &mut SettingsOutcome,
@@ -433,7 +453,10 @@ fn draw_settings(
             SettingsTab::General => general_tab(ui, settings),
             SettingsTab::Colony => colony_tab(
                 ui,
-                creatures,
+                ColonyView {
+                    creatures,
+                    relationships,
+                },
                 creature_names,
                 selected_creature,
                 monitors,
@@ -497,13 +520,15 @@ fn general_tab(ui: &mut egui::Ui, settings: &mut Settings) {
 
 fn colony_tab(
     ui: &mut egui::Ui,
-    creatures: &[Creature],
+    colony: ColonyView<'_>,
     creature_names: &mut BTreeMap<CreatureId, String>,
     selected_creature: &mut Option<CreatureId>,
     monitors: &[MonitorInfo],
     error: &mut Option<String>,
     outcome: &mut SettingsOutcome,
 ) {
+    let creatures = colony.creatures;
+    let relationships = colony.relationships;
     if creatures.is_empty() {
         ui.label("Your first creature is still finding its way here.");
         return;
@@ -602,16 +627,43 @@ fn colony_tab(
         ui.label("Favorite place: still deciding");
     }
 
-    let closest_friend = creature
-        .state
-        .relationships
-        .iter()
-        .max_by(|a, b| a.1.total_cmp(b.1))
-        .and_then(|(id, _)| creatures.iter().find(|other| other.id == *id));
+    let closest_friend = closest_companion(relationships, creature.id)
+        .and_then(|id| creatures.iter().find(|other| other.id == id));
     if let Some(friend) = closest_friend {
         ui.label(format!("Closest to {}", friend.name));
+        if let Some(relationship) = relationship_between(relationships, creature.id, friend.id) {
+            ui.label(format!(
+                "Bond: {} • {}",
+                bond_label(relationship.affinity, relationship.avoidance),
+                play_label(relationship.playfulness)
+            ));
+        }
     } else {
         ui.label("Closest friend: still getting acquainted");
+    }
+}
+
+fn bond_label(affinity: u8, avoidance: u8) -> &'static str {
+    if avoidance >= 160 {
+        "keeping some distance"
+    } else if affinity >= 192 {
+        "devoted"
+    } else if affinity >= 112 {
+        "close"
+    } else if affinity >= 48 {
+        "warming up"
+    } else {
+        "new friends"
+    }
+}
+
+fn play_label(playfulness: u8) -> &'static str {
+    if playfulness >= 160 {
+        "very playful"
+    } else if playfulness >= 72 {
+        "playful"
+    } else {
+        "gentle"
     }
 }
 

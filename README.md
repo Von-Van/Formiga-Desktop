@@ -15,6 +15,11 @@ play, home visits, and repeated placement gradually influence bounded behavior s
 original generated personality remains recognizable. The read-only Colony profile surfaces those
 memories and learned descriptors, with the creature's name as its only editable field.
 
+Colony members also form compact, persistent bonds. Familiarity, affinity, playfulness, and
+avoidance influence who a creature follows, greets, sleeps beside, plays with, watches, or comforts,
+while calm time together can soften avoidance. These four-score pair records guide existing actions;
+they do not add a relationship simulation loop or behavioral history.
+
 Between those larger reactions, creatures entertain themselves with generated toys, pause for small
 snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
@@ -25,13 +30,13 @@ of the way; a slow release keeps the existing precise placement behavior.
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.39.0-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.40.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.39.0-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.40.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.39.0`. The assisted updater matches those exact names, so do
+names with its version in place of `0.40.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
@@ -75,8 +80,12 @@ desktop interactions:
   lasts 15 minutes and cannot return until its 15-minute cooldown has elapsed.
 - Pet a homebound creature without dismissing the shelter, or cross the drag threshold to dismiss
   it and bring the creature back into the desktop world.
-- Review names, up to three learned descriptors, age, discoveries, favorite places, and closest
-  companions in the Colony tab; only the 1–24-character creature name is editable.
+- Notice a wordless thought bubble when a new trait emerges, then review names, up to three learned
+  descriptors, age, discoveries, favorite places, and closest
+  companions in the Colony tab; compact bond warmth and playfulness are also visible, and only the
+  1–24-character creature name is editable.
+- See bonded creatures follow, greet, sleep together, share or steal temporary discoveries and
+  toys, watch climbs, react to a companion's toss, and occasionally have a harmless squabble.
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
 - Check for new GitHub releases without blocking the desktop, verify downloads with SHA-256, and
   hand the approved installer to the operating system.
@@ -152,7 +161,7 @@ cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.p
 
 ## Status
 
-Formiga v0.39 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.40 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 
