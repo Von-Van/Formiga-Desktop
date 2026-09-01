@@ -46,8 +46,8 @@ pub fn display_key(monitor: &MonitorHandle) -> DisplayKey {
     DisplayKey(key)
 }
 
-pub fn configure_native_overlay(window: &Window) {
-    set_overlay_hittest(window, false);
+pub fn configure_native_overlay(window: &Window, hittest_enabled: bool) {
+    set_overlay_hittest(window, hittest_enabled);
 }
 
 pub fn set_overlay_hittest(window: &Window, enabled: bool) {

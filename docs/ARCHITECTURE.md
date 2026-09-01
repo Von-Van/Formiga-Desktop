@@ -138,6 +138,29 @@ renderer subtracts higher windows from each selected window's visible rectangles
 monitor-local rectangles to a fragment-shader uniform. Covered pixels are discarded; a dragged
 creature opts out per vertex.
 
+The overlay treats repeated surface timeouts or compositor-occluded acquisition as recoverable. It
+reconfigures the existing surface after three consecutive stalls, invalidates cached presentation
+state, and requests another frame. Its creature vertex buffer also grows to the next bounded power
+of two if a valid colony frame exceeds the initial four-creature allocation. Simulation positions
+are reconciled to current native monitor IDs before rendering, so display sleep or hot-plug changes
+cannot strand a living creature outside every overlay.
+
+## Colony rituals
+
+The save stores one deterministic `RitualState`: next UTC timestamp, last kind, ordinal, and the
+local year of the last acknowledged hatch day. When that time is overdue, an existing action
+boundary may create one runtime-only `ColonyPlan` if every revealed creature has a safe shared floor
+region. Missed rituals are not counted or replayed; the next timestamp is scheduled from the actual
+start time.
+
+The plan has only approach and ceremony phases, at most four participants, habitat-safe points, and
+existing action kinds. It coordinates picnics, group naps, floor races, shelter gatherings,
+two-creature catch, group presentations, hatch days, quiet huddles, and late-night sleep piles.
+Local calendar eligibility uses the system offset when available and UTC otherwise. Hiding,
+pausing, dragging, tossing, or changing the supporting display geometry discards the plan and
+schedules a deterministic two-to-six-hour retry. No ritual history, path, animation, asset, or
+dedicated update loop is created.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -150,14 +173,17 @@ creature opts out per vertex.
 - Experience observations: one summary per creature per 60 active visible seconds; no new loop.
 - Calm proximity: accumulated from those same summaries and projected once per five active minutes;
   no separate pair polling loop.
+- Ritual eligibility: checked only at existing action-selection boundaries after one persisted
+  12–48-hour timestamp becomes due; at most one runtime plan exists.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 7 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+Version 8 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
-canonical shared four-score records. It preserves creature IDs, resolved genomes, personality,
+canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
+receiving only its first deterministic ritual timestamp. Migration preserves creature IDs, resolved genomes, personality,
 custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
 tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
 

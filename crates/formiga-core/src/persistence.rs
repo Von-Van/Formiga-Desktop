@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=6 => migrate_legacy(value, version),
+            1..=7 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -109,10 +109,16 @@ fn migrate_legacy(
     if source_version <= 5 {
         migrate_lived_experience(&mut value);
     }
-    migrate_relationships(&mut value);
+    if source_version <= 6 {
+        migrate_relationships(&mut value);
+    }
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
+    if save.ritual.next_at_utc == time::OffsetDateTime::UNIX_EPOCH {
+        save.ritual.next_at_utc =
+            crate::world::scheduled_ritual_at(save.colony_seed, 0, save.maximum_seen_utc);
+    }
     if source_version == 1 && primary_only {
         save.settings.habitat.preset = crate::HabitatPreset::PrimaryDisplay;
     }
@@ -426,6 +432,10 @@ mod tests {
             settings: Settings::default(),
             creatures: Vec::new(),
             relationships: Vec::new(),
+            ritual: crate::RitualState {
+                next_at_utc: datetime!(2026-01-02 0:00 UTC),
+                ..crate::RitualState::default()
+            },
         }
     }
 
@@ -795,6 +805,56 @@ mod tests {
         let round_trip_store = SaveStore::new(&round_trip_path);
         round_trip_store.save(&first).unwrap();
         assert_eq!(round_trip_store.load().unwrap(), Some(first));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v7_ritual_state_without_changing_any_creature_or_bond() {
+        let created = datetime!(2026-02-03 4:05 UTC);
+        let desktop = crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([7; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1280.0,
+                    height: 736.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let mut original = crate::World::new([77; 32], created, &desktop);
+        original.tick(created + time::Duration::hours(1), 0.05, &desktop);
+        original.save.creatures[0].name = "Keepsake".into();
+        original.save.creatures[0].memory.times_petted = 19;
+        let creatures = original.save.creatures.clone();
+        let relationships = original.save.relationships.clone();
+        let maximum_seen = original.save.maximum_seen_utc;
+
+        let mut value = serde_json::to_value(&original.save).unwrap();
+        value["save_version"] = serde_json::Value::from(7);
+        value.as_object_mut().unwrap().remove("ritual");
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v7-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        let migrated = SaveStore::new(&path).load().unwrap().unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.creatures, creatures);
+        assert_eq!(migrated.relationships, relationships);
+        assert!(migrated.ritual.next_at_utc - maximum_seen >= time::Duration::hours(12));
+        assert!(migrated.ritual.next_at_utc - maximum_seen <= time::Duration::hours(48));
         let _ = fs::remove_dir_all(directory);
     }
 }

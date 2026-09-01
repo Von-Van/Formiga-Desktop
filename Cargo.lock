@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "formiga-core",
  "rand",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "anyhow",
  "formiga-art",
@@ -2048,6 +2048,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -3459,7 +3468,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
+ "libc",
  "num-conv",
+ "num_threads",
  "powerfmt",
  "serde_core",
  "time-core",

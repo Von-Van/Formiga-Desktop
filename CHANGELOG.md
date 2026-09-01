@@ -2,6 +2,47 @@
 
 All notable changes are documented here.
 
+## [0.41.0] - 2026-08-31
+
+### Added
+
+- Rare deterministic colony rituals scheduled 12–48 hours apart: picnics, group naps, floor races,
+  shelter gatherings, two-creature catch games, group presentations, hatch days, quiet-day huddles,
+  and late-night sleep piles.
+- A runtime-only `ColonyPlan` that gathers eligible creatures and coordinates existing actions and
+  habitat-safe target points. Rituals use the ordinary behavior-selection cadence and add no new
+  animation atlas, physics system, polling loop, or persisted event history.
+- Local-time hatch-day and late-night eligibility with UTC fallback. Reduced motion substitutes
+  calm rituals for races, while idle and unchanged geometry can permit a privacy-safe quiet huddle.
+
+### Changed
+
+- Save version 8 persists only the next ritual timestamp, last kind, ordinal, and hatch-day
+  acknowledgement. Deterministic v1–v7 migration preserves all creature identity, appearance,
+  custom names, memories, tendencies, routines, current state, and bond scores.
+- An overdue ritual waits for a safe action boundary, runs at most once, and schedules its next
+  occurrence from the current time instead of replaying anything missed during downtime.
+- Rituals cancel safely when the colony is hidden, paused, dragged, tossed, or loses valid display
+  geometry. Interrupted rituals retry after a deterministic two-to-six-hour delay.
+
+### Fixed
+
+- A long-running multi-creature overlay could remain transparent after the presentation surface
+  became repeatedly occluded or timed out. The renderer now reconfigures and redraws a stalled
+  surface automatically, grows its bounded vertex buffer if needed, and no longer requires an app
+  restart to recover.
+- Creatures whose native monitor identifier changes after sleep, hot-plugging, or a display-mode
+  transition are rebound to the monitor containing their saved position instead of remaining alive
+  but absent from every overlay.
+- v7→v8 migration preserves already-canonical relationship scores byte-for-byte rather than
+  rebuilding them as legacy relationship records.
+- Creatures could disappear from a desktop and stay missing until every window covering the screen
+  was hidden, and revealing them on one macOS Space left the others empty. Full-screen occlusion
+  hid the colony by ordering the shared overlay window out, which detached it from every Space at
+  once; it then rejoined only whichever Space was active when it was ordered back in. Full-screen
+  apps now suppress drawing instead, so the overlay stays attached to all Spaces, and its
+  all-Spaces collection behavior is re-applied on every hide/show cycle.
+
 ## [0.40.0] - 2026-08-31
 
 ### Added

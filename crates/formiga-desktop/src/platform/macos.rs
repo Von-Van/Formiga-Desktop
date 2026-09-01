@@ -44,39 +44,53 @@ unsafe extern "C" {
 
 const CG_MOUSE_BUTTON_LEFT: u32 = 0;
 
-pub fn configure_native_overlay(window: &Window) {
-    set_overlay_hittest(window, false);
+/// Applies the transparent, click-through, all-Spaces configuration to an overlay window.
+///
+/// This is re-applied every time the overlay is shown rather than only at creation: `orderOut:`
+/// detaches the window from every Space, and the following `orderFront:` re-attaches it, so the
+/// all-Spaces behavior has to be in force at that moment for the colony to come back on Spaces
+/// other than the active one.
+pub fn configure_native_overlay(window: &Window, hittest_enabled: bool) {
+    set_overlay_hittest(window, hittest_enabled);
     #[allow(deprecated)]
     window.set_has_shadow(false);
-    let Ok(handle) = window.window_handle() else {
+    let Some(ns_window) = app_kit_window(window) else {
         return;
     };
+    ns_window.setOpaque(false);
+    ns_window.setHasShadow(false);
+    ns_window.setCollectionBehavior(overlay_collection_behavior(ns_window.collectionBehavior()));
+}
+
+/// AppKit documents the Spaces, window-management, cycling, and full-screen groups as mutually
+/// exclusive: setting two members of one group leaves the result undefined. Clearing each group
+/// before selecting from it keeps the result identical no matter how often it is re-applied.
+fn overlay_collection_behavior(current: NSWindowCollectionBehavior) -> NSWindowCollectionBehavior {
+    let exclusive = NSWindowCollectionBehavior::MoveToActiveSpace
+        | NSWindowCollectionBehavior::Managed
+        | NSWindowCollectionBehavior::Transient
+        | NSWindowCollectionBehavior::ParticipatesInCycle
+        | NSWindowCollectionBehavior::FullScreenPrimary
+        | NSWindowCollectionBehavior::FullScreenNone;
+    NSWindowCollectionBehavior(current.0 & !exclusive.0)
+        | NSWindowCollectionBehavior::CanJoinAllSpaces
+        | NSWindowCollectionBehavior::Stationary
+        | NSWindowCollectionBehavior::IgnoresCycle
+        | NSWindowCollectionBehavior::FullScreenAuxiliary
+}
+
+fn app_kit_window(window: &Window) -> Option<objc2::rc::Retained<objc2_app_kit::NSWindow>> {
+    let handle = window.window_handle().ok()?;
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-        return;
+        return None;
     };
     let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-    if let Some(ns_window) = view.window() {
-        ns_window.setOpaque(false);
-        ns_window.setHasShadow(false);
-        let behavior = ns_window.collectionBehavior()
-            | NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::FullScreenAuxiliary;
-        ns_window.setCollectionBehavior(behavior);
-    }
+    view.window()
 }
 
 pub fn set_overlay_hittest(window: &Window, enabled: bool) {
     let _ = window.set_cursor_hittest(enabled);
-    let Ok(handle) = window.window_handle() else {
-        return;
-    };
-    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-        return;
-    };
-    let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-    if let Some(ns_window) = view.window() {
+    if let Some(ns_window) = app_kit_window(window) {
         ns_window.setIgnoresMouseEvents(!enabled);
     }
 }
@@ -85,24 +99,13 @@ pub fn configure_interaction_proxy(window: &Window) {
     let _ = window.set_cursor_hittest(false);
     #[allow(deprecated)]
     window.set_has_shadow(false);
-    let Ok(handle) = window.window_handle() else {
+    let Some(ns_window) = app_kit_window(window) else {
         return;
     };
-    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-        return;
-    };
-    let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-    if let Some(ns_window) = view.window() {
-        ns_window.setIgnoresMouseEvents(true);
-        ns_window.setOpaque(false);
-        ns_window.setHasShadow(false);
-        let behavior = ns_window.collectionBehavior()
-            | NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::FullScreenAuxiliary;
-        ns_window.setCollectionBehavior(behavior);
-    }
+    ns_window.setIgnoresMouseEvents(true);
+    ns_window.setOpaque(false);
+    ns_window.setHasShadow(false);
+    ns_window.setCollectionBehavior(overlay_collection_behavior(ns_window.collectionBehavior()));
 }
 
 pub fn set_interaction_hittest(window: &Window, enabled: bool) {
@@ -368,4 +371,33 @@ fn xml_escape(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_collection_behavior_is_stable_and_resolves_exclusive_groups() {
+        let wanted = NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::IgnoresCycle
+            | NSWindowCollectionBehavior::FullScreenAuxiliary;
+
+        let from_default = overlay_collection_behavior(NSWindowCollectionBehavior(0));
+        assert_eq!(from_default.0, wanted.0);
+
+        // AppKit may have already chosen the opposite member of each exclusive group. Re-applying
+        // has to replace those choices rather than leave both members set.
+        let conflicting = NSWindowCollectionBehavior::MoveToActiveSpace
+            | NSWindowCollectionBehavior::Managed
+            | NSWindowCollectionBehavior::Transient
+            | NSWindowCollectionBehavior::ParticipatesInCycle
+            | NSWindowCollectionBehavior::FullScreenPrimary
+            | NSWindowCollectionBehavior::FullScreenNone;
+        assert_eq!(overlay_collection_behavior(conflicting).0, wanted.0);
+
+        // Showing the overlay re-applies this on every hide/show cycle, so it must be idempotent.
+        assert_eq!(overlay_collection_behavior(from_default).0, wanted.0);
+    }
 }

@@ -43,6 +43,8 @@ const TOSS_MAX_DURATION: f32 = 3.0;
 const DRAG_THRESHOLD: f32 = 6.0;
 const OBSERVATION_INTERVAL_SECS: f32 = 60.0;
 const MANTLE_LIFT_POINTS: f32 = 10.0;
+const RITUAL_APPROACH_SECS: f32 = 8.0;
+const RITUAL_MIN_CREATURES: usize = 2;
 
 pub struct World {
     pub save: SaveFile,
@@ -64,6 +66,7 @@ pub struct World {
     reacted_to_toss: BTreeSet<(CreatureId, CreatureId)>,
     watched_climb: BTreeSet<(CreatureId, CreatureId)>,
     pending_home_greetings: BTreeSet<CreatureId>,
+    colony_plan: Option<ColonyPlan>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +75,49 @@ struct BondPlan {
     final_action: ActionKind,
     experience: RelationshipExperience,
     approaching: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RitualPhase {
+    Approach,
+    Ceremony,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RitualParticipant {
+    creature_id: CreatureId,
+    approach_target: Point,
+    ceremony_target: Point,
+    ceremony_action: ActionKind,
+}
+
+#[derive(Clone, Debug)]
+struct ColonyPlan {
+    kind: RitualKind,
+    monitor_id: MonitorId,
+    usable_bounds: DesktopRect,
+    participants: Vec<RitualParticipant>,
+    phase: RitualPhase,
+    remaining_secs: f32,
+}
+
+impl ColonyPlan {
+    fn geometry_is_valid(&self, desktop: &DesktopSnapshot, policy: &HabitatPolicy) -> bool {
+        let Some(monitor) = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.id == self.monitor_id)
+        else {
+            return false;
+        };
+        monitor.usable_bounds == self.usable_bounds
+            && self.participants.iter().all(|participant| {
+                monitor.bounds.contains(participant.approach_target)
+                    && monitor.bounds.contains(participant.ceremony_target)
+                    && habitat_contains(policy, monitor, participant.approach_target)
+                    && habitat_contains(policy, monitor, participant.ceremony_target)
+            })
+    }
 }
 
 #[derive(Clone)]
@@ -329,6 +375,44 @@ fn add_calendar_months_utc(value: OffsetDateTime, months: u8) -> OffsetDateTime 
     PrimitiveDateTime::new(date, value.time()).assume_utc()
 }
 
+pub(crate) fn scheduled_ritual_at(
+    colony_seed: [u8; 32],
+    ordinal: u32,
+    from: OffsetDateTime,
+) -> OffsetDateTime {
+    let streams = SeedStream::new(colony_seed);
+    let mut rng = streams.rng("ritual-schedule", u64::from(ordinal));
+    from + Duration::minutes(rng.random_range(12 * 60..=48 * 60))
+}
+
+fn interrupted_ritual_at(
+    colony_seed: [u8; 32],
+    ordinal: u32,
+    from: OffsetDateTime,
+) -> OffsetDateTime {
+    let streams = SeedStream::new(colony_seed);
+    let mut rng = streams.rng("ritual-interruption", u64::from(ordinal));
+    from + Duration::minutes(rng.random_range(2 * 60..=6 * 60))
+}
+
+fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
+    let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
+    now.to_offset(offset)
+}
+
+fn ritual_ceremony_duration(kind: RitualKind) -> f32 {
+    match kind {
+        RitualKind::GroupNap => 30.0,
+        RitualKind::LateNightSleepPile => 45.0,
+        RitualKind::QuietDayHuddle => 18.0,
+        RitualKind::Picnic | RitualKind::ShelterGathering => 14.0,
+        RitualKind::FloorRace
+        | RitualKind::Catch
+        | RitualKind::GroupPresentation
+        | RitualKind::HatchDay => 10.0,
+    }
+}
+
 impl World {
     /// Queues one ephemeral world event. Publicly observable events are projected into compact
     /// state before `tick`, `handle_command`, or `drain_events` returns.
@@ -355,12 +439,20 @@ impl World {
             settings: Settings::default(),
             creatures: vec![creature],
             relationships: Vec::new(),
+            ritual: RitualState {
+                next_at_utc: scheduled_ritual_at(colony_seed, 0, now),
+                ..RitualState::default()
+            },
         };
         Self::from_save(save)
     }
 
     pub fn from_save(mut save: SaveFile) -> Self {
         normalize_relationships(&mut save);
+        if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
+            save.ritual.next_at_utc =
+                scheduled_ritual_at(save.colony_seed, save.ritual.ordinal, save.maximum_seen_utc);
+        }
         // Identity and durable drives survive relaunch, but interrupted locomotion and reactions do
         // not. Surface attachments are validated against the first desktop snapshot on the next
         // tick, while every creature resumes from a stable pose.
@@ -412,6 +504,7 @@ impl World {
             reacted_to_toss: BTreeSet::new(),
             watched_climb: BTreeSet::new(),
             pending_home_greetings: BTreeSet::new(),
+            colony_plan: None,
         }
     }
 
@@ -421,6 +514,14 @@ impl World {
         }
         let timeline_now = self.save.maximum_seen_utc;
         self.process_arrivals(timeline_now, desktop);
+        if self.colony_plan.is_some()
+            && (!self.save.settings.visible
+                || self.save.settings.paused
+                || self.interaction.is_some()
+                || !self.tosses.is_empty())
+        {
+            self.interrupt_colony_plan(timeline_now);
+        }
         let home_active = self.update_home_cycle(desktop);
         if self.save.settings.paused {
             self.settle_active_tosses(desktop);
@@ -454,6 +555,24 @@ impl World {
             &self.last_windows,
             &mut self.events,
         );
+        if self
+            .colony_plan
+            .as_ref()
+            .is_some_and(|plan| !plan.geometry_is_valid(desktop, &self.save.settings.habitat))
+        {
+            self.interrupt_colony_plan(timeline_now);
+        }
+        self.advance_colony_plan(timeline_now, dt, desktop);
+        let at_selection_boundary = self.save.creatures.iter().any(|creature| {
+            creature.state.arrival_delay_secs <= 0.0
+                && creature.state.action_elapsed + dt >= creature.state.action_duration
+        });
+        if self.colony_plan.is_none()
+            && self.save.ritual.next_at_utc <= timeline_now
+            && at_selection_boundary
+        {
+            self.try_start_colony_plan(timeline_now, desktop);
+        }
         let creature_views = self.save.creatures.clone();
         let relationship_views = self.save.relationships.clone();
         self.reacted_to_toss.retain(|(_, target)| {
@@ -712,7 +831,8 @@ impl World {
                 );
             }
 
-            if context.window_changed_nearby
+            if self.colony_plan.is_none()
+                && context.window_changed_nearby
                 && creature.state.action != ActionKind::ReactToWindow
                 && creature.state.action_elapsed >= 0.25
             {
@@ -1082,7 +1202,8 @@ impl World {
                 .and_then(|choice| choice.target_point);
             execute_action(creature, desktop, context, dt, nearest, target_point);
             constrain_to_surface(creature, desktop, &self.save.settings.habitat);
-            let inspect_ready = self.save.settings.visible
+            let inspect_ready = self.colony_plan.is_none()
+                && self.save.settings.visible
                 && creature.state.action == ActionKind::Traverse
                 && self
                     .ambient_timers
@@ -1525,18 +1646,527 @@ impl World {
         }
     }
 
+    fn eligible_ritual_kinds(
+        &self,
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        shelter_available: bool,
+    ) -> Vec<RitualKind> {
+        let local_now = local_time_or_utc(now);
+        let local_created = self.save.created_at_utc.to_offset(local_now.offset());
+        let hatch_day_due = local_now.year() > local_created.year()
+            && local_now.month() == local_created.month()
+            && local_now.day() == local_created.day()
+            && self.save.ritual.hatch_day_acknowledged_year != Some(local_now.year());
+        if hatch_day_due {
+            return vec![RitualKind::HatchDay];
+        }
+
+        let late_night = local_now.hour() >= 22 || local_now.hour() < 5;
+        let current_windows: BTreeMap<_, _> = desktop
+            .windows
+            .iter()
+            .map(|window| (window.key, window.bounds))
+            .collect();
+        let quiet_day = desktop.idle_duration >= std::time::Duration::from_secs(10 * 60)
+            && current_windows == self.last_windows;
+        RitualKind::ALL
+            .into_iter()
+            .filter(|kind| match kind {
+                RitualKind::FloorRace => !self.save.settings.reduce_motion,
+                RitualKind::ShelterGathering => shelter_available,
+                RitualKind::HatchDay => false,
+                RitualKind::QuietDayHuddle => quiet_day,
+                RitualKind::LateNightSleepPile => late_night,
+                _ => true,
+            })
+            .collect()
+    }
+
+    fn choose_ritual_kind(
+        &self,
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        shelter_available: bool,
+    ) -> Option<RitualKind> {
+        let mut eligible = self.eligible_ritual_kinds(now, desktop, shelter_available);
+        if eligible.len() > 1
+            && let Some(previous) = self.save.ritual.last_kind
+        {
+            eligible.retain(|kind| *kind != previous);
+        }
+        if eligible.is_empty() {
+            return None;
+        }
+        let streams = SeedStream::new(self.save.colony_seed);
+        let mut rng = streams.rng("ritual-kind", u64::from(self.save.ritual.ordinal));
+        let index = rng.random_range(0..eligible.len());
+        eligible.get(index).copied()
+    }
+
+    fn try_start_colony_plan(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) -> bool {
+        if !self.save.settings.visible
+            || self.save.settings.paused
+            || self.save.home.is_active()
+            || self.interaction.is_some()
+            || !self.tosses.is_empty()
+            || !self.window_journeys.is_empty()
+        {
+            return false;
+        }
+        let revealed_count = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .count();
+        let mut available: Vec<_> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .filter(|creature| {
+                creature.state.surface.kind == SurfaceKind::ScreenFloor
+                    && !matches!(
+                        creature.state.action,
+                        ActionKind::Dragged | ActionKind::Tossed | ActionKind::Homebound
+                    )
+            })
+            .map(|creature| {
+                (
+                    creature.colony_order,
+                    creature.id,
+                    creature.state.surface.monitor_id,
+                )
+            })
+            .collect();
+        if available.len() < RITUAL_MIN_CREATURES || available.len() != revealed_count {
+            return false;
+        }
+        available.sort_unstable();
+        let monitor_id = available[0].2;
+        if available.iter().any(|(_, _, id)| *id != monitor_id) {
+            return false;
+        }
+        let Some(monitor) = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.id == monitor_id)
+            .cloned()
+        else {
+            return false;
+        };
+        let mut regions = accessible_regions(&self.save.settings.habitat, &monitor);
+        regions.sort_by(|a, b| {
+            (b.width * b.height)
+                .total_cmp(&(a.width * a.height))
+                .then_with(|| a.x.total_cmp(&b.x))
+        });
+        let Some(region) = regions.first().copied() else {
+            return false;
+        };
+        let shelter_anchor = (self.save.home.display == Some(monitor.display_key))
+            .then(|| {
+                resolved_home_anchor(
+                    &self.save.home,
+                    &monitor,
+                    self.save.settings.display_scale,
+                    &self.save.settings.habitat,
+                )
+            })
+            .flatten();
+        let kind = match self.choose_ritual_kind(now, desktop, shelter_anchor.is_some()) {
+            Some(kind) => kind,
+            None => return false,
+        };
+        if kind == RitualKind::Catch {
+            available.truncate(2);
+        }
+
+        let count = available.len();
+        let creature_width = CREATURE_ART_WIDTH * f32::from(self.save.settings.display_scale)
+            / monitor.scale_factor.max(1.0);
+        let spacing = (creature_width * 0.72).max(22.0);
+        let total_width = spacing * (count.saturating_sub(1)) as f32;
+        let region_margin = (creature_width * 0.55).max(12.0);
+        if region.width < total_width + region_margin * 2.0 {
+            return false;
+        }
+        let average_x = available
+            .iter()
+            .filter_map(|(_, creature_id, _)| {
+                self.save
+                    .creatures
+                    .iter()
+                    .find(|creature| creature.id == *creature_id)
+                    .map(|creature| creature.state.position.x)
+            })
+            .sum::<f32>()
+            / count as f32;
+        let default_center = average_x.clamp(
+            region.x + region_margin + total_width * 0.5,
+            region.right() - region_margin - total_width * 0.5,
+        );
+        let center = if kind == RitualKind::ShelterGathering {
+            shelter_anchor
+                .expect("shelter ritual has a resolved anchor")
+                .x
+                .clamp(
+                    region.x + region_margin + total_width * 0.5,
+                    region.right() - region_margin - total_width * 0.5,
+                )
+        } else {
+            default_center
+        };
+        let floor_y = region.bottom() - 4.0;
+        let start_x = center - total_width * 0.5;
+        let race_start = region.x + region_margin;
+        let race_finish = region.right() - region_margin;
+        let mut participants = Vec::with_capacity(count);
+        for (index, (_, creature_id, _)) in available.iter().enumerate() {
+            let lineup = Point {
+                x: start_x + index as f32 * spacing,
+                y: floor_y,
+            };
+            let (approach_target, ceremony_target, ceremony_action) = match kind {
+                RitualKind::Picnic => (
+                    lineup,
+                    lineup,
+                    if index % 2 == 0 {
+                        ActionKind::Eat
+                    } else {
+                        ActionKind::Drink
+                    },
+                ),
+                RitualKind::GroupNap | RitualKind::LateNightSleepPile => {
+                    (lineup, lineup, ActionKind::Sleep)
+                }
+                RitualKind::FloorRace => (
+                    Point {
+                        x: race_start + index as f32 * spacing * 0.3,
+                        y: floor_y,
+                    },
+                    Point {
+                        x: race_finish - index as f32 * spacing * 0.2,
+                        y: floor_y,
+                    },
+                    ActionKind::Sprint,
+                ),
+                RitualKind::ShelterGathering => (lineup, lineup, ActionKind::Homebound),
+                RitualKind::Catch => (lineup, lineup, ActionKind::SocialPlay),
+                RitualKind::GroupPresentation => (
+                    lineup,
+                    Point {
+                        x: center,
+                        y: floor_y,
+                    },
+                    if index == 0 {
+                        ActionKind::PresentDiscovery
+                    } else {
+                        ActionKind::InspectScreen
+                    },
+                ),
+                RitualKind::HatchDay => (lineup, lineup, ActionKind::Greet),
+                RitualKind::QuietDayHuddle => (lineup, lineup, ActionKind::Idle),
+            };
+            participants.push(RitualParticipant {
+                creature_id: *creature_id,
+                approach_target,
+                ceremony_target,
+                ceremony_action,
+            });
+        }
+
+        self.action_choices.clear();
+        self.bond_plans.clear();
+        self.pending_home_greetings.clear();
+        for participant in &participants {
+            let Some(creature) = creature_mut(&mut self.save.creatures, participant.creature_id)
+            else {
+                return false;
+            };
+            let old = creature.state.action;
+            if old == ActionKind::Sleep {
+                let elapsed = self
+                    .sleep_elapsed
+                    .remove(&creature.id)
+                    .unwrap_or(creature.state.action_elapsed)
+                    .max(0.0) as u32;
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::CreatureRested {
+                        creature_id: creature.id,
+                        uninterrupted_seconds: elapsed,
+                    },
+                );
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::CreatureWoke {
+                        creature_id: creature.id,
+                    },
+                );
+            }
+            Self::emit(
+                &mut self.events,
+                WorldEvent::ActionCompleted {
+                    creature_id: creature.id,
+                    action: old,
+                },
+            );
+            creature.state.action = ActionKind::Traverse;
+            creature.state.action_elapsed = 0.0;
+            creature.state.action_duration = f32::MAX;
+            creature.state.velocity = Point::default();
+            creature.state.surface.window_key = None;
+            creature.state.surface.kind = SurfaceKind::ScreenFloor;
+            creature.state.surface.monitor_id = monitor_id;
+            self.action_choices.insert(
+                creature.id,
+                ActionChoice {
+                    action: ActionKind::Traverse,
+                    target_creature: None,
+                    target_point: Some(participant.approach_target),
+                },
+            );
+            Self::emit(
+                &mut self.events,
+                WorldEvent::ActionStarted {
+                    creature_id: creature.id,
+                    action: ActionKind::Traverse,
+                },
+            );
+        }
+        if kind == RitualKind::ShelterGathering {
+            self.save.home.active_since_utc = Some(now);
+            Self::emit(&mut self.events, WorldEvent::HomeAppeared);
+        }
+        let local_now = local_time_or_utc(now);
+        if kind == RitualKind::HatchDay {
+            self.save.ritual.hatch_day_acknowledged_year = Some(local_now.year());
+        }
+        self.save.ritual.last_kind = Some(kind);
+        self.save.ritual.ordinal = self.save.ritual.ordinal.saturating_add(1);
+        self.save.ritual.next_at_utc =
+            scheduled_ritual_at(self.save.colony_seed, self.save.ritual.ordinal, now);
+        self.colony_plan = Some(ColonyPlan {
+            kind,
+            monitor_id,
+            usable_bounds: monitor.usable_bounds,
+            participants,
+            phase: RitualPhase::Approach,
+            remaining_secs: RITUAL_APPROACH_SECS,
+        });
+        Self::emit(&mut self.events, WorldEvent::RitualStarted { kind });
+        true
+    }
+
+    fn advance_colony_plan(&mut self, now: OffsetDateTime, dt: f32, _desktop: &DesktopSnapshot) {
+        let Some(plan) = &mut self.colony_plan else {
+            return;
+        };
+        plan.remaining_secs = (plan.remaining_secs - dt.max(0.0)).max(0.0);
+        let gathered = plan.phase == RitualPhase::Approach
+            && plan.participants.iter().all(|participant| {
+                self.save
+                    .creatures
+                    .iter()
+                    .find(|creature| creature.id == participant.creature_id)
+                    .is_some_and(|creature| {
+                        (creature.state.position.x - participant.approach_target.x).abs() <= 8.0
+                    })
+            });
+        if plan.phase == RitualPhase::Approach && (gathered || plan.remaining_secs <= 0.0) {
+            let kind = plan.kind;
+            let participants = plan.participants.clone();
+            plan.phase = RitualPhase::Ceremony;
+            plan.remaining_secs = ritual_ceremony_duration(kind);
+            for participant in participants {
+                let Some(creature) =
+                    creature_mut(&mut self.save.creatures, participant.creature_id)
+                else {
+                    self.interrupt_colony_plan(now);
+                    return;
+                };
+                let old = creature.state.action;
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionCompleted {
+                        creature_id: creature.id,
+                        action: old,
+                    },
+                );
+                creature.state.action = participant.ceremony_action;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = f32::MAX;
+                creature.state.velocity = Point::default();
+                if participant.ceremony_action == ActionKind::PresentDiscovery {
+                    creature.state.activity_variant =
+                        (self.save.ritual.ordinal as u8).wrapping_sub(1) % 8;
+                }
+                self.action_choices.insert(
+                    creature.id,
+                    ActionChoice {
+                        action: participant.ceremony_action,
+                        target_creature: None,
+                        target_point: Some(participant.ceremony_target),
+                    },
+                );
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionStarted {
+                        creature_id: creature.id,
+                        action: participant.ceremony_action,
+                    },
+                );
+                if participant.ceremony_action == ActionKind::Sleep {
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::CreatureSlept {
+                            creature_id: creature.id,
+                        },
+                    );
+                }
+            }
+            return;
+        }
+        if plan.phase != RitualPhase::Ceremony || plan.remaining_secs > 0.0 {
+            return;
+        }
+
+        let plan = self.colony_plan.take().expect("active ritual exists");
+        let ids: Vec<_> = plan
+            .participants
+            .iter()
+            .map(|participant| participant.creature_id)
+            .collect();
+        for participant in &plan.participants {
+            self.action_choices.remove(&participant.creature_id);
+            if let Some(creature) = creature_mut(&mut self.save.creatures, participant.creature_id)
+            {
+                let old = creature.state.action;
+                let old_elapsed = creature.state.action_elapsed;
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionCompleted {
+                        creature_id: creature.id,
+                        action: old,
+                    },
+                );
+                if old == ActionKind::Sleep {
+                    let uninterrupted_seconds = self
+                        .sleep_elapsed
+                        .remove(&creature.id)
+                        .unwrap_or(old_elapsed)
+                        .max(0.0) as u32;
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::CreatureRested {
+                            creature_id: creature.id,
+                            uninterrupted_seconds,
+                        },
+                    );
+                    Self::emit(
+                        &mut self.events,
+                        WorldEvent::CreatureWoke {
+                            creature_id: creature.id,
+                        },
+                    );
+                }
+                creature.state.action = ActionKind::Idle;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 2.5;
+                creature.state.velocity = Point::default();
+                creature.state.activity_variant = 0;
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionStarted {
+                        creature_id: creature.id,
+                        action: ActionKind::Idle,
+                    },
+                );
+            }
+        }
+        let experience = match plan.kind {
+            RitualKind::GroupNap | RitualKind::QuietDayHuddle | RitualKind::LateNightSleepPile => {
+                RelationshipExperience::SharedRest
+            }
+            RitualKind::FloorRace | RitualKind::Catch | RitualKind::HatchDay => {
+                RelationshipExperience::PositivePlay
+            }
+            RitualKind::Picnic | RitualKind::ShelterGathering | RitualKind::GroupPresentation => {
+                RelationshipExperience::Greeting
+            }
+        };
+        for (index, first) in ids.iter().copied().enumerate() {
+            for second in ids.iter().copied().skip(index + 1) {
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::BondInteraction {
+                        a: first,
+                        b: second,
+                        experience,
+                    },
+                );
+            }
+        }
+        if plan.kind == RitualKind::ShelterGathering {
+            self.dismiss_home(now, false);
+        }
+        Self::emit(
+            &mut self.events,
+            WorldEvent::RitualCompleted { kind: plan.kind },
+        );
+    }
+
+    fn interrupt_colony_plan(&mut self, now: OffsetDateTime) {
+        let Some(plan) = self.colony_plan.take() else {
+            return;
+        };
+        for participant in &plan.participants {
+            self.action_choices.remove(&participant.creature_id);
+            self.bond_plans.remove(&participant.creature_id);
+            if let Some(creature) = creature_mut(&mut self.save.creatures, participant.creature_id)
+                && !matches!(
+                    creature.state.action,
+                    ActionKind::Dragged | ActionKind::Tossed
+                )
+            {
+                creature.state.action = ActionKind::Idle;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 2.5;
+                creature.state.velocity = Point::default();
+                creature.state.activity_variant = 0;
+            }
+        }
+        if plan.kind == RitualKind::ShelterGathering && self.save.home.is_active() {
+            self.dismiss_home(now, true);
+        }
+        self.save.ritual.next_at_utc =
+            interrupted_ritual_at(self.save.colony_seed, self.save.ritual.ordinal, now);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::RitualInterrupted { kind: plan.kind },
+        );
+    }
+
     fn update_home_cycle(&mut self, desktop: &DesktopSnapshot) -> bool {
         let timeline_now = self.save.maximum_seen_utc;
-        if self
-            .save
-            .home
-            .active_since_utc
-            .is_some_and(|started| timeline_now - started >= HOME_DURATION)
+        let ritual_shelter = self
+            .colony_plan
+            .as_ref()
+            .is_some_and(|plan| plan.kind == RitualKind::ShelterGathering);
+        if !ritual_shelter
+            && self
+                .save
+                .home
+                .active_since_utc
+                .is_some_and(|started| timeline_now - started >= HOME_DURATION)
         {
             self.dismiss_home(timeline_now, false);
         }
 
         let due = !self.save.home.is_active()
+            && self.colony_plan.is_none()
             && self
                 .save
                 .home
@@ -1551,6 +2181,9 @@ impl World {
             Self::emit(&mut self.events, WorldEvent::HomeAppeared);
         }
 
+        if ritual_shelter {
+            return false;
+        }
         if self.save.home.is_active() {
             self.place_colony_at_home(desktop);
         }
@@ -1690,6 +2323,7 @@ impl World {
             }
             WorldCommand::CancelInteraction => self.cancel_interaction(),
             WorldCommand::GatherCreatures => {
+                self.interrupt_colony_plan(self.save.maximum_seen_utc);
                 self.gather_creatures(desktop);
                 true
             }
@@ -1761,6 +2395,9 @@ impl World {
         interaction.dragging = true;
         let creature_id = interaction.creature_id;
         let interrupted_sleep = interaction.original_action == ActionKind::Sleep;
+        if self.colony_plan.is_some() {
+            self.interrupt_colony_plan(self.save.maximum_seen_utc);
+        }
         if self.save.home.is_active() {
             self.dismiss_home(self.save.maximum_seen_utc, true);
         }
@@ -2758,9 +3395,14 @@ fn execute_action(
     let speed = 24.0 + creature.personality.activity * 34.0;
     let mut target_x = None;
     let mut target_stop_distance = 0.0;
+    let mut target_speed_multiplier = 1.0;
     match creature.state.action {
         ActionKind::Traverse if selected_target.is_some() => {
             target_x = selected_target.map(|target| target.x);
+        }
+        ActionKind::Sprint if selected_target.is_some() => {
+            target_x = selected_target.map(|target| target.x);
+            target_speed_multiplier = 2.35;
         }
         ActionKind::Traverse | ActionKind::Sprint => {
             let direction = if creature.state.facing_right {
@@ -2854,7 +3496,7 @@ fn execute_action(
         creature.state.velocity.x = if dx.abs() <= target_stop_distance {
             0.0
         } else {
-            dx.signum() * speed
+            dx.signum() * speed * target_speed_multiplier
         };
     }
     creature.state.position.x += creature.state.velocity.x * dt;
@@ -2910,8 +3552,19 @@ fn keep_creatures_in_habitat(
             .monitors
             .iter()
             .find(|monitor| monitor.id == creature.state.surface.monitor_id)
+            .or_else(|| {
+                desktop
+                    .monitors
+                    .iter()
+                    .find(|monitor| monitor.bounds.contains(creature.state.position))
+            })
             .or(primary);
         if let Some(monitor) = monitor {
+            // Native display identifiers can change after sleep, hot-plugging, or a display-mode
+            // transition. Rendering filters by the current identifier, so retaining a stale ID
+            // leaves an otherwise valid creature alive in the simulation but absent from every
+            // overlay until restart. Rebind it to the monitor that actually contains its point.
+            creature.state.surface.monitor_id = monitor.id;
             let regions = accessible_regions(policy, monitor);
             if regions.is_empty() {
                 if let Some((monitor_id, position)) =
@@ -4406,6 +5059,7 @@ mod tests {
             creature.state.action_elapsed = 4.0;
             creature.state.action_duration = 3.0;
         }
+        world.save.ritual.next_at_utc = now + Duration::hours(12);
         world.discovery_remaining = 0.0;
         world.tick(now, 0.05, &desktop);
         assert_eq!(
@@ -5527,5 +6181,210 @@ mod tests {
         let walking_speed = 24.0 + sprinting.personality.activity * 34.0;
         execute_action(&mut sprinting, &desktop, context, 0.5, None, None);
         assert!(sprinting.state.position.x - start_x > walking_speed * 0.5 * 2.0);
+    }
+
+    #[test]
+    fn ritual_schedule_is_deterministic_and_stays_between_twelve_and_forty_eight_hours() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        for ordinal in 0..64 {
+            let first = scheduled_ritual_at([91; 32], ordinal, now);
+            let second = scheduled_ritual_at([91; 32], ordinal, now);
+            assert_eq!(first, second);
+            assert!(first - now >= Duration::hours(12));
+            assert!(first - now <= Duration::hours(48));
+        }
+    }
+
+    #[test]
+    fn every_ritual_uses_a_bounded_runtime_plan_and_existing_actions() {
+        use std::collections::HashSet;
+
+        let created = datetime!(2026-01-01 12:00 UTC);
+        let mut now = created + Duration::days(2);
+        while !(local_time_or_utc(now).hour() >= 22 || local_time_or_utc(now).hour() < 5) {
+            now += Duration::hours(1);
+        }
+        let mut quiet_desktop = desktop();
+        quiet_desktop.idle_duration = std::time::Duration::from_secs(20 * 60);
+        let mut seen = HashSet::new();
+        for ordinal in 0..512 {
+            let mut world = two_creature_world([92; 32], created);
+            world.save.ritual.ordinal = ordinal;
+            assert!(world.try_start_colony_plan(now, &quiet_desktop));
+            let plan = world.colony_plan.as_ref().expect("ritual plan starts");
+            assert!(plan.participants.len() <= 4);
+            if plan.kind == RitualKind::Catch {
+                assert_eq!(plan.participants.len(), 2);
+            }
+            assert!(
+                plan.participants
+                    .iter()
+                    .all(|participant| ActionKind::ALL.contains(&participant.ceremony_action))
+            );
+            seen.insert(plan.kind);
+            if seen.len() == RitualKind::ALL.len() - 1 {
+                break;
+            }
+        }
+        for expected in RitualKind::ALL {
+            if expected != RitualKind::HatchDay {
+                assert!(seen.contains(&expected), "did not schedule {expected:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn reduced_motion_excludes_races_and_interruption_reschedules_without_replay() {
+        let created = datetime!(2026-01-01 12:00 UTC);
+        let now = created + Duration::days(2);
+        let mut desktop = desktop();
+        desktop.idle_duration = std::time::Duration::from_secs(20 * 60);
+        for ordinal in 0..128 {
+            let mut world = two_creature_world([93; 32], created);
+            world.save.settings.reduce_motion = true;
+            world.save.ritual.ordinal = ordinal;
+            assert!(world.try_start_colony_plan(now, &desktop));
+            assert_ne!(
+                world.colony_plan.as_ref().unwrap().kind,
+                RitualKind::FloorRace
+            );
+        }
+
+        let mut world = two_creature_world([94; 32], created);
+        assert!(world.try_start_colony_plan(now, &desktop));
+        let kind = world.colony_plan.as_ref().unwrap().kind;
+        let ordinal = world.save.ritual.ordinal;
+        world.interrupt_colony_plan(now);
+        assert!(world.colony_plan.is_none());
+        assert_eq!(world.save.ritual.ordinal, ordinal);
+        assert!(world.save.ritual.next_at_utc - now >= Duration::hours(2));
+        assert!(world.save.ritual.next_at_utc - now <= Duration::hours(6));
+        assert!(world.drain_events().any(|event| matches!(
+            event,
+            WorldEvent::RitualInterrupted { kind: interrupted } if interrupted == kind
+        )));
+    }
+
+    #[test]
+    fn overdue_downtime_runs_at_most_one_ritual_and_schedules_from_now() {
+        let created = datetime!(2026-01-01 12:00 UTC);
+        let now = created + Duration::days(10);
+        let desktop = desktop();
+        let mut world = two_creature_world([95; 32], created);
+        world.save.home.last_disappeared_utc = Some(now);
+        world.save.ritual.next_at_utc = created + Duration::hours(12);
+        for creature in &mut world.save.creatures {
+            creature.state.action_duration = 0.0;
+        }
+        world.tick(now, 0.05, &desktop);
+        assert_eq!(world.save.ritual.ordinal, 1);
+        assert!(world.colony_plan.is_some());
+        assert!(world.save.ritual.next_at_utc >= now + Duration::hours(12));
+        world.advance_colony_plan(now, RITUAL_APPROACH_SECS + 0.1, &desktop);
+        world.advance_colony_plan(now, 60.0, &desktop);
+        assert!(world.colony_plan.is_none());
+        world.tick(now, 0.05, &desktop);
+        assert_eq!(
+            world.save.ritual.ordinal, 1,
+            "missed rituals must not replay"
+        );
+    }
+
+    #[test]
+    fn hatch_day_is_local_deduplicated_and_reduced_motion_safe() {
+        let created = datetime!(2025-06-15 16:00 UTC);
+        let now = datetime!(2026-06-15 16:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([96; 32], created);
+        world.save.settings.reduce_motion = true;
+        assert!(world.try_start_colony_plan(now, &desktop));
+        assert_eq!(
+            world.colony_plan.as_ref().unwrap().kind,
+            RitualKind::HatchDay
+        );
+        assert_eq!(
+            world.save.ritual.hatch_day_acknowledged_year,
+            Some(local_time_or_utc(now).year())
+        );
+        world.interrupt_colony_plan(now);
+        assert!(
+            !world
+                .eligible_ritual_kinds(now, &desktop, true)
+                .contains(&RitualKind::HatchDay)
+        );
+    }
+
+    #[test]
+    fn stale_monitor_ids_rebind_all_arrived_creatures_instead_of_hiding_them() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([97; 32], created);
+        for creature in &mut world.save.creatures {
+            creature.state.surface.monitor_id = u64::MAX;
+        }
+        keep_creatures_in_habitat(
+            &mut world.save.creatures,
+            &desktop,
+            &world.save.settings.habitat,
+            &[],
+        );
+        assert_eq!(world.save.creatures.len(), 2);
+        assert!(
+            world
+                .save
+                .creatures
+                .iter()
+                .all(|creature| creature.state.surface.monitor_id == desktop.monitors[0].id)
+        );
+    }
+
+    #[test]
+    fn rituals_cancel_safely_when_hidden_paused_dragged_or_geometry_changes() {
+        let created = datetime!(2026-01-01 12:00 UTC);
+        let now = created + Duration::days(2);
+        let desktop = desktop();
+
+        for pause_instead_of_hide in [false, true] {
+            let mut world = two_creature_world([98; 32], created);
+            assert!(world.try_start_colony_plan(now, &desktop));
+            if pause_instead_of_hide {
+                world.save.settings.paused = true;
+            } else {
+                world.save.settings.visible = false;
+            }
+            world.tick(now, 0.05, &desktop);
+            assert!(world.colony_plan.is_none());
+        }
+
+        let mut changed = two_creature_world([99; 32], created);
+        assert!(changed.try_start_colony_plan(now, &desktop));
+        let mut changed_desktop = desktop.clone();
+        changed_desktop.monitors[0].usable_bounds.width -= 40.0;
+        changed.tick(now, 0.05, &changed_desktop);
+        assert!(changed.colony_plan.is_none());
+
+        let mut dragged = two_creature_world([100; 32], created);
+        assert!(dragged.try_start_colony_plan(now, &desktop));
+        let creature_id = dragged.save.creatures[0].id;
+        let cursor = dragged.save.creatures[0].state.position;
+        assert!(dragged.handle_command(
+            WorldCommand::BeginInteraction {
+                creature_id,
+                cursor,
+            },
+            &desktop,
+        ));
+        assert!(dragged.handle_command(
+            WorldCommand::UpdateInteraction {
+                cursor: Point {
+                    x: cursor.x + DRAG_THRESHOLD + 1.0,
+                    y: cursor.y,
+                },
+                velocity: Point::default(),
+            },
+            &desktop,
+        ));
+        assert!(dragged.colony_plan.is_none());
+        assert!(dragged.is_dragging());
     }
 }

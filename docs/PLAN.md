@@ -1,5 +1,24 @@
 # Formiga roadmap
 
+## v0.41 colony-rituals release
+
+- Save version 8 persists only the next ritual UTC timestamp, last ritual kind, ordinal, and local
+  hatch-day acknowledgement. The runtime plan and every event detail disappear after use.
+- Deterministic ordinary rituals occur 12–48 hours apart and reuse existing actions for picnics,
+  group naps, floor races, shelter gatherings, two-creature catch, group presentations, hatch days,
+  quiet huddles, and late-night sleep piles.
+- Overdue colonies wait for a safe behavior-selection boundary, perform at most one ritual, and
+  never replay missed events. Interrupted plans retry two to six hours later.
+- Local date/hour controls hatch-day and late-night eligibility with UTC fallback. Reduced motion
+  excludes races; hidden, paused, dragged, tossed, or invalid-geometry colonies cancel safely.
+- The multi-creature presentation patch automatically recovers stalled GPU surfaces and rebinds
+  stale native monitor IDs, while keeping all creature records intact.
+
+Release-page summary:
+
+> Colonies now share rare picnics, naps, races, games, gatherings, presentations, hatch days, and
+> late-night sleep piles using the existing low-cost behavior loop.
+
 ## v0.40 creature-bonds release
 
 - Save version 7 replaces legacy one-way relationship floats with at most six canonical unordered
@@ -102,11 +121,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.40
+## Progressive releases after v0.41
 
-- **v0.41 Colony Rituals:** schedule one rare deterministic picnic, group nap, race, shelter
-  gathering, catch game, presentation, hatch day, quiet huddle, or late-night sleep pile without a
-  new loop or missed-event replay.
 - **v0.42 Desktop Topology:** derive bounded runtime-only islands, exposed corners, calm moving
   platforms, and cursor invitations from geometry.
 - **v0.43 Window Routes:** derive bounded four-hop window constructions and short-lived narrow-gap
@@ -120,5 +136,5 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
 - **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
   allocation or hidden metadata.
 
-Objects, decorations, rituals, topology, seed import, and card export remain out of scope for v0.40
-and retain their independent release gates.
+Objects, decorations, topology, seed import, and card export remain out of scope for v0.41 and
+retain their independent release gates.

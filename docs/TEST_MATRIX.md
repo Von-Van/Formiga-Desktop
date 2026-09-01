@@ -9,7 +9,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1/v2/v3/v4/v5/v6→v7 migration, identity preservation, legacy pair conversion, names, birth timestamps, and top-12 routines | CI | CI |
+| v1/v2/v3/v4/v5/v6/v7→v8 migration, identity and bond preservation, names, birth timestamps, and top-12 routines | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | Fixed memory/routine limits and sub-2-KiB per-creature serialized growth | CI | CI |
@@ -21,6 +21,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Five calm minutes, bounded bond utility, contrary avoidance reduction, and score projection | CI | CI |
 | Targeted follow, shared sleep, gift, play/steal, greet, climb-watch, toss-concern, and squabble action reuse | CI | CI |
 | Bond target refresh/cancellation for moved, missing, sleeping, homebound, tossed, cross-surface, and removed companions | CI | CI |
+| Deterministic 12–48-hour ritual scheduling, all nine kinds, safe eligibility, and no downtime catch-up flood | CI | CI |
+| Ritual interruption, 2–6-hour retry, reduced motion, local hatch-day deduplication, and shared-plan caps | CI | CI |
+| Multi-creature monitor-ID rebinding, presentation-buffer growth, and stalled-surface recovery path | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
@@ -54,6 +57,8 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Bond profile labels and closest-companion changes remain read-only except for the name | pending | pending | pending | pending |
 | Follow, sleep-beside, gift, toy steal, shelter greet, climb watch, toss concern, and harmless squabble playback | pending | pending | pending | pending |
 | Bond sequence cancellation when a target moves, sleeps, enters shelter, is tossed, or disappears | pending | pending | pending | pending |
+| Picnic, group nap, floor race, shelter gathering, catch, presentation, hatch day, quiet huddle, and sleep pile playback | pending | pending | pending | pending |
+| Ritual interruption by hide, pause, drag, toss, geometry change, and reduced-motion substitution | pending | pending | pending | pending |
 | Habitat create/move/resize/toggle/delete | pending | pending | pending | pending |
 | Invalid habitat cannot replace valid policy | pending | pending | pending | pending |
 | Selected app occlusion and rule removal | pending | pending | pending | pending |
@@ -63,7 +68,8 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
-| Package install, relaunch, v7 round trip, and representative v1/v2/v3/v4/v5/v6 migration without creature loss | pending | pending | pending | pending |
+| Two- and four-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
+| Package install, relaunch, v8 round trip, and representative v1/v2/v3/v4/v5/v6/v7 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

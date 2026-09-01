@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use formiga_art::AnimationSpec;
 use formiga_core::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -232,7 +232,7 @@ impl FormigaApp {
                     .create_window(attributes)
                     .context("create desktop overlay")?,
             );
-            platform::configure_native_overlay(&window);
+            platform::configure_native_overlay(&window, false);
             let renderer = pollster::block_on(OverlayRenderer::new(window, info.clone()))?;
             self.overlays.insert(renderer.window.id(), renderer);
         }
@@ -251,20 +251,14 @@ impl FormigaApp {
         let Some(world) = &self.world else { return };
         let settings = &world.save.settings;
         let editor_active = self.habitat_editor.is_some();
-        let dragged_monitors: BTreeSet<_> = world
-            .save
-            .creatures
-            .iter()
-            .filter(|creature| creature.state.action == ActionKind::Dragged)
-            .map(|creature| creature.state.surface.monitor_id)
-            .collect();
         for overlay in self.overlays.values_mut() {
             overlay.set_hittest_enabled(editor_active);
-            let fullscreen = settings.fullscreen_app_occlusion
-                && monitor_has_fullscreen_window(overlay.monitor.bounds, &self.cached_windows);
+            // Full-screen occlusion is applied while rendering, not by ordering the native window
+            // out. A full-screen app owns its own Space, but one overlay window is shared by every
+            // Space, so hiding it here blanked the colony everywhere and it only came back on
+            // whichever Space happened to be active when it was ordered front again.
             let enabled = settings.visible
-                && !accessible_regions(&settings.habitat, &overlay.monitor).is_empty()
-                && (!fullscreen || dragged_monitors.contains(&overlay.monitor.id));
+                && !accessible_regions(&settings.habitat, &overlay.monitor).is_empty();
             overlay.set_visible(enabled);
         }
     }
@@ -276,8 +270,12 @@ impl FormigaApp {
         if world.is_interacting() {
             return Duration::from_millis(50);
         }
-        if !world.save.settings.visible || !self.overlays.values().any(OverlayRenderer::is_visible)
-        {
+        let drawing = self.overlays.values().any(|overlay| {
+            overlay.is_visible()
+                && !(world.save.settings.fullscreen_app_occlusion
+                    && monitor_has_fullscreen_window(overlay.monitor.bounds, &self.cached_windows))
+        });
+        if !world.save.settings.visible || !drawing {
             return Duration::from_millis(250);
         }
         world_tick_interval(world)
@@ -375,6 +373,8 @@ impl FormigaApp {
                         | WorldEvent::SurfaceChanged { .. }
                         | WorldEvent::HomeAppeared
                         | WorldEvent::HomeDisappeared { .. }
+                        | WorldEvent::RitualStarted { .. }
+                        | WorldEvent::RitualInterrupted { .. }
                 );
                 if let WorldEvent::ProfileChanged {
                     creature_id,
@@ -1560,6 +1560,9 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::TossLanded { .. } => "toss_landed",
         WorldEvent::HomeAppeared => "home_appeared",
         WorldEvent::HomeDisappeared { .. } => "home_disappeared",
+        WorldEvent::RitualStarted { .. } => "ritual_started",
+        WorldEvent::RitualCompleted { .. } => "ritual_completed",
+        WorldEvent::RitualInterrupted { .. } => "ritual_interrupted",
     }
 }
 

@@ -31,6 +31,8 @@ struct ZoneVertex {
 }
 
 const MAX_OCCLUSION_RECTS: usize = 64;
+const INITIAL_VERTEX_CAPACITY: usize = 84;
+const SURFACE_RECOVERY_STALLS: u8 = 3;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
@@ -86,6 +88,7 @@ pub struct OverlayRenderer {
     occlusion_bind_group: wgpu::BindGroup,
     sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
+    vertex_capacity: usize,
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
@@ -100,6 +103,7 @@ pub struct OverlayRenderer {
     has_visual_content: bool,
     visible: bool,
     hittest_enabled: bool,
+    consecutive_surface_stalls: u8,
 }
 
 impl OverlayRenderer {
@@ -317,7 +321,7 @@ impl OverlayRenderer {
         });
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("creature vertices"),
-            contents: bytemuck::cast_slice(&[Vertex::zeroed(); 84]),
+            contents: bytemuck::cast_slice(&[Vertex::zeroed(); INITIAL_VERTEX_CAPACITY]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let zone_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -339,6 +343,7 @@ impl OverlayRenderer {
             occlusion_bind_group,
             sampler,
             vertex_buffer,
+            vertex_capacity: INITIAL_VERTEX_CAPACITY,
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             shelter: None,
@@ -353,6 +358,7 @@ impl OverlayRenderer {
             has_visual_content: false,
             visible: false,
             hittest_enabled: false,
+            consecutive_surface_stalls: 0,
         })
     }
 
@@ -363,9 +369,10 @@ impl OverlayRenderer {
         self.window.set_visible(visible);
         self.visible = visible;
         if visible {
-            // Winit rebuilds native styles while showing a window, so restore the requested input
-            // mode after every hide/show cycle.
-            crate::platform::set_overlay_hittest(&self.window, self.hittest_enabled);
+            // Showing a window rebuilds native state on both platforms, so re-apply the whole
+            // overlay configuration — input mode, transparency, and Spaces membership — after
+            // every hide/show cycle rather than only at creation.
+            crate::platform::configure_native_overlay(&self.window, self.hittest_enabled);
             self.window.request_redraw();
         }
     }
@@ -478,6 +485,7 @@ impl OverlayRenderer {
         }
         let bubble_vertex_count = vertices.len() - bubble_start;
         if !vertices.is_empty() {
+            self.ensure_vertex_capacity(vertices.len());
             self.queue
                 .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
         }
@@ -501,13 +509,21 @@ impl OverlayRenderer {
             return Ok(());
         }
         let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(output) => output,
-            wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
+            wgpu::CurrentSurfaceTexture::Success(output)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(output) => {
+                self.consecutive_surface_stalls = 0;
+                output
+            }
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.config);
+                self.recover_surface();
                 return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                self.consecutive_surface_stalls = self.consecutive_surface_stalls.saturating_add(1);
+                if surface_stalls_require_recovery(self.consecutive_surface_stalls) {
+                    tracing::warn!("overlay surface stalled; reconfiguring presentation");
+                    self.recover_surface();
+                }
                 return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -589,6 +605,30 @@ impl OverlayRenderer {
         self.queue.present(output);
         self.has_visual_content = has_visual_content;
         Ok(())
+    }
+
+    fn ensure_vertex_capacity(&mut self, required: usize) {
+        let Some(capacity) = expanded_vertex_capacity(self.vertex_capacity, required) else {
+            return;
+        };
+        self.vertex_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("creature vertices"),
+            size: (capacity * std::mem::size_of::<Vertex>()) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.vertex_capacity = capacity;
+    }
+
+    fn recover_surface(&mut self) {
+        let size = self.window.inner_size();
+        self.config.width = size.width.max(1);
+        self.config.height = size.height.max(1);
+        self.surface.configure(&self.device, &self.config);
+        self.last_occlusion = None;
+        self.has_visual_content = false;
+        self.consecutive_surface_stalls = 0;
+        self.window.request_redraw();
     }
 
     pub fn needs_redraw(
@@ -1232,6 +1272,14 @@ impl OverlayRenderer {
     }
 }
 
+fn expanded_vertex_capacity(current: usize, required: usize) -> Option<usize> {
+    (required > current).then(|| required.next_power_of_two())
+}
+
+fn surface_stalls_require_recovery(stalls: u8) -> bool {
+    stalls >= SURFACE_RECOVERY_STALLS
+}
+
 /// Transparent composite alpha modes to try, most preferred first.
 ///
 /// Overlay draws use `BlendState::ALPHA_BLENDING`, so the surface texture always ends up holding
@@ -1549,6 +1597,18 @@ mod tests {
             application,
             application_name: None,
         }
+    }
+
+    #[test]
+    fn multi_creature_presentation_capacity_and_stall_recovery_are_bounded() {
+        assert_eq!(INITIAL_VERTEX_CAPACITY, 4 * 18 + 6 + 6);
+        assert_eq!(expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, 84), None);
+        assert_eq!(
+            expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, 85),
+            Some(128)
+        );
+        assert!(!surface_stalls_require_recovery(2));
+        assert!(surface_stalls_require_recovery(3));
     }
 
     #[test]

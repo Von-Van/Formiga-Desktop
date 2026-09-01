@@ -41,16 +41,21 @@ privileges, or elevated process access.
 The versioned JSON save contains the colony seed, resolved genomes, personality values, creature
 names and birth timestamps, current drives and positions, compact counters, bounded learned
 tendencies, twelve numeric routine slots, at most six unordered relationship records, arrival state,
-habitat zones, application rules, and settings. A relationship stores stable creature IDs plus four
+the next ritual timestamp, last ritual kind, ritual ordinal, hatch-day acknowledgement, habitat
+zones, application rules, and settings. A relationship stores stable creature IDs plus four
 one-byte scores—affinity, familiarity, playfulness, and avoidance—not an encounter history. The save
-does not contain an event log, proximity samples, target paths, cursor paths, sampled event
-coordinates, or past window layouts. Profile fields other than a creature's name are read-only views
-of this local state.
+does not contain an event log, ritual history, ritual target positions, proximity samples, target
+paths, cursor paths, sampled event coordinates, or past window layouts. Profile fields other than a
+creature's name are read-only views of this local state.
 
-Save version 7 accepts and deterministically migrates every v1–v6 colony. Migration converts legacy
-relationship floats locally and preserves creature identity, generated appearance, custom names,
-birth times, memories, learned tendencies, and routines. It performs no network request and does not
-upload either the old or migrated save.
+Save version 8 accepts and deterministically migrates every v1–v7 colony. Migration converts legacy
+relationship floats locally, preserves current v7 bond records byte-for-byte, and preserves creature
+identity, generated appearance, custom names, birth times, memories, learned tendencies, and
+routines. It performs no network request and does not upload either the old or migrated save.
+
+Quiet-day ritual eligibility uses only the already-available system idle duration and whether safe
+window rectangles remained unchanged. Hatch days and late-night sleep piles use local date/hour with
+UTC fallback. Formiga does not query weather, screen content, titles, URLs, or location.
 
 A one-file backup and local rotating diagnostic log support recovery and troubleshooting. Logs name
 event categories only; they do not record creature names, coordinates, relationship scores, or

@@ -14,10 +14,10 @@ resident memory, and notes. Do not publish target values as measured results.
 
 | Build | Machine | State | CPU avg | Memory | Status |
 |---|---|---|---:|---:|---|
-| v0.40.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.40.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.40.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.40.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.41.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.41.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.41.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.41.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -42,3 +42,11 @@ already-required creature IDs and JSON representation. Calm proximity reuses the
 experience observation pass, and targeted behavior is selected only at existing action boundaries.
 Runtime target plans and pair timers are bounded by the four-creature cap. No relationship thread,
 polling loop, atlas frame, draw call, or idle GPU resource is added.
+
+Colony rituals add four small persisted scheduling fields and at most one runtime plan with four
+participants. Eligibility is evaluated only at existing action boundaries after the 12–48-hour
+timestamp is due. Every ritual reuses current atlas clips, quads, behavior ticks, and target-point
+movement; there is no ritual timer thread, additional OS polling, or idle GPU allocation. The
+presentation-recovery patch retains at most the existing per-creature atlases, reconfigures a
+surface only after repeated acquisition stalls, and grows the vertex buffer only when a valid frame
+actually exceeds its current capacity.

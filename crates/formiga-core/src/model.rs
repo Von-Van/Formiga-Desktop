@@ -957,6 +957,53 @@ pub struct ArrivalState {
     pub arrived: [bool; 3],
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RitualKind {
+    Picnic,
+    GroupNap,
+    FloorRace,
+    ShelterGathering,
+    Catch,
+    GroupPresentation,
+    HatchDay,
+    QuietDayHuddle,
+    LateNightSleepPile,
+}
+
+impl RitualKind {
+    pub const ALL: [Self; 9] = [
+        Self::Picnic,
+        Self::GroupNap,
+        Self::FloorRace,
+        Self::ShelterGathering,
+        Self::Catch,
+        Self::GroupPresentation,
+        Self::HatchDay,
+        Self::QuietDayHuddle,
+        Self::LateNightSleepPile,
+    ];
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RitualState {
+    #[serde(with = "time::serde::rfc3339")]
+    pub next_at_utc: OffsetDateTime,
+    pub last_kind: Option<RitualKind>,
+    pub ordinal: u32,
+    pub hatch_day_acknowledged_year: Option<i32>,
+}
+
+impl Default for RitualState {
+    fn default() -> Self {
+        Self {
+            next_at_utc: OffsetDateTime::UNIX_EPOCH,
+            last_kind: None,
+            ordinal: 0,
+            hatch_day_acknowledged_year: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HomeCorner {
     #[default]
@@ -1127,6 +1174,8 @@ pub struct SaveFile {
     pub creatures: Vec<Creature>,
     #[serde(default)]
     pub relationships: Vec<CreatureRelationship>,
+    #[serde(default)]
+    pub ritual: RitualState,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1210,6 +1259,15 @@ pub enum WorldEvent {
     HomeAppeared,
     HomeDisappeared {
         interrupted: bool,
+    },
+    RitualStarted {
+        kind: RitualKind,
+    },
+    RitualCompleted {
+        kind: RitualKind,
+    },
+    RitualInterrupted {
+        kind: RitualKind,
     },
 }
 
@@ -1320,6 +1378,24 @@ mod tests {
             "payload used {} bytes",
             payload.len()
         );
+    }
+
+    #[test]
+    fn ritual_persistence_contains_only_the_bounded_schedule_projection() {
+        let value = serde_json::to_value(RitualState {
+            next_at_utc: OffsetDateTime::UNIX_EPOCH,
+            last_kind: Some(RitualKind::Picnic),
+            ordinal: 17,
+            hatch_day_acknowledged_year: Some(2026),
+        })
+        .unwrap();
+        let fields = value.as_object().unwrap();
+        assert_eq!(fields.len(), 4);
+        assert!(fields.contains_key("next_at_utc"));
+        assert!(fields.contains_key("last_kind"));
+        assert!(fields.contains_key("ordinal"));
+        assert!(fields.contains_key("hatch_day_acknowledged_year"));
+        assert_eq!(RitualKind::ALL.len(), 9);
     }
 
     #[test]
