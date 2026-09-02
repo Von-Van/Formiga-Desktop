@@ -3,8 +3,8 @@ use anyhow::{Context as _, Result};
 use formiga_core::{
     ApplicationOcclusionRule, Creature, CreatureId, CreatureRelationship, DesktopRect,
     DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone, HabitatZoneKind, MonitorInfo,
-    Settings, closest_companion, profile_descriptors, relationship_between, validate_creature_name,
-    validate_habitat,
+    Settings, SharedCreatureSeed, closest_companion, decode_creature_seed, encode_creature_seed,
+    profile_descriptors, relationship_between, validate_creature_name, validate_habitat,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -39,6 +39,7 @@ pub struct SettingsOutcome {
     pub install_update: bool,
     pub rename_creature: Option<(CreatureId, String)>,
     pub viewed_profile: Option<CreatureId>,
+    pub import_shared_creature: Option<SharedCreatureSeed>,
 }
 
 #[derive(Clone, Copy)]
@@ -66,6 +67,8 @@ pub struct SettingsWindow {
     relationships: Vec<CreatureRelationship>,
     creature_names: BTreeMap<CreatureId, String>,
     selected_creature: Option<CreatureId>,
+    seed_import_code: String,
+    seed_import_confirmed: bool,
 }
 
 impl SettingsWindow {
@@ -166,6 +169,8 @@ impl SettingsWindow {
                 .map(|creature| (creature.id, creature.name.clone()))
                 .collect(),
             selected_creature: creatures.first().map(|creature| creature.id),
+            seed_import_code: String::new(),
+            seed_import_confirmed: false,
         })
     }
 
@@ -188,6 +193,7 @@ impl SettingsWindow {
             .iter()
             .map(|creature| (creature.id, creature.name.clone()))
             .collect();
+        self.seed_import_confirmed = false;
         if self
             .selected_creature
             .is_none_or(|selected| !creatures.iter().any(|creature| creature.id == selected))
@@ -284,6 +290,8 @@ impl SettingsWindow {
         let relationships = self.relationships.clone();
         let mut creature_names = self.creature_names.clone();
         let mut selected_creature = self.selected_creature;
+        let mut seed_import_code = self.seed_import_code.clone();
+        let mut seed_import_confirmed = self.seed_import_confirmed;
         let full_output = context.run_ui(input, |ui| {
             draw_settings(
                 ui,
@@ -301,6 +309,8 @@ impl SettingsWindow {
                 &relationships,
                 &mut creature_names,
                 &mut selected_creature,
+                &mut seed_import_code,
+                &mut seed_import_confirmed,
                 &mut outcome,
             );
         });
@@ -309,6 +319,8 @@ impl SettingsWindow {
         self.error = error;
         self.creature_names = creature_names;
         self.selected_creature = selected_creature;
+        self.seed_import_code = seed_import_code;
+        self.seed_import_confirmed = seed_import_confirmed;
         if let Some(applied) = &outcome.applied {
             self.saved = applied.clone();
         }
@@ -422,6 +434,8 @@ fn draw_settings(
     relationships: &[CreatureRelationship],
     creature_names: &mut BTreeMap<CreatureId, String>,
     selected_creature: &mut Option<CreatureId>,
+    seed_import_code: &mut String,
+    seed_import_confirmed: &mut bool,
     outcome: &mut SettingsOutcome,
 ) {
     egui::CentralPanel::default().show(root, |ui| {
@@ -450,7 +464,14 @@ fn draw_settings(
         });
         ui.separator();
         egui::ScrollArea::vertical().show(ui, |ui| match tab {
-            SettingsTab::General => general_tab(ui, settings),
+            SettingsTab::General => general_tab(
+                ui,
+                settings,
+                seed_import_code,
+                seed_import_confirmed,
+                error,
+                outcome,
+            ),
             SettingsTab::Colony => colony_tab(
                 ui,
                 ColonyView {
@@ -498,7 +519,14 @@ fn draw_settings(
     });
 }
 
-fn general_tab(ui: &mut egui::Ui, settings: &mut Settings) {
+fn general_tab(
+    ui: &mut egui::Ui,
+    settings: &mut Settings,
+    seed_import_code: &mut String,
+    seed_import_confirmed: &mut bool,
+    error: &mut Option<String>,
+    outcome: &mut SettingsOutcome,
+) {
     ui.checkbox(&mut settings.visible, "Show ecosystem");
     ui.checkbox(&mut settings.paused, "Pause ambient behavior");
     ui.checkbox(
@@ -516,6 +544,59 @@ fn general_tab(ui: &mut egui::Ui, settings: &mut Settings) {
             ui.selectable_value(&mut settings.display_scale, scale, format!("{scale}×"));
         }
     });
+    ui.add_space(14.0);
+    ui.separator();
+    ui.strong("Start a colony from a shared creature");
+    ui.label(
+        "Paste a FORMIGA seed code to recreate that creature exactly. This works entirely offline.",
+    );
+    ui.add(
+        egui::TextEdit::singleline(seed_import_code)
+            .hint_text("FORMIGA-…")
+            .desired_width(f32::INFINITY),
+    );
+    let decoded = decode_creature_seed(seed_import_code);
+    if !seed_import_code.trim().is_empty() {
+        match &decoded {
+            Ok(shared) => {
+                ui.label(format!(
+                    "Valid shared creature • source generation {}",
+                    shared.source_generation
+                ));
+            }
+            Err(message) => {
+                ui.colored_label(egui::Color32::from_rgb(241, 142, 119), message.to_string());
+            }
+        }
+    }
+    ui.checkbox(
+        seed_import_confirmed,
+        "I understand this replaces the current colony and its learned history",
+    );
+    if ui
+        .add_enabled(
+            seed_import_ready(&decoded, *seed_import_confirmed),
+            egui::Button::new("Start new colony from seed"),
+        )
+        .clicked()
+    {
+        match decoded {
+            Ok(shared) => {
+                outcome.import_shared_creature = Some(shared);
+                *seed_import_code = String::new();
+                *seed_import_confirmed = false;
+                *error = None;
+            }
+            Err(message) => *error = Some(message.to_string()),
+        }
+    }
+}
+
+fn seed_import_ready(
+    decoded: &Result<SharedCreatureSeed, formiga_core::SeedCodeError>,
+    confirmed: bool,
+) -> bool {
+    decoded.is_ok() && confirmed
 }
 
 fn colony_tab(
@@ -589,6 +670,19 @@ fn colony_tab(
                     }
                     Err(message) => *error = Some(message.to_string()),
                 }
+            }
+        });
+    });
+
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        ui.strong("Share this creature");
+        ui.label("The code recreates innate appearance and personality, not its name or history.");
+        let code = encode_creature_seed(creature.origin);
+        ui.horizontal(|ui| {
+            ui.monospace(format!("{}…{}", &code[..15], &code[code.len() - 8..]));
+            if ui.button("Copy seed").clicked() {
+                ui.ctx().copy_text(code);
             }
         });
     });
@@ -982,5 +1076,22 @@ fn about_tab(
     ui.add_space(8.0);
     if ui.button("Open diagnostic logs").clicked() {
         outcome.open_logs = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seed_import_requires_both_a_valid_code_and_explicit_confirmation() {
+        let valid = Ok(SharedCreatureSeed {
+            source_colony_seed: [7; 32],
+            source_generation: 2,
+        });
+        let invalid = Err(formiga_core::SeedCodeError::Checksum);
+        assert!(!seed_import_ready(&valid, false));
+        assert!(seed_import_ready(&valid, true));
+        assert!(!seed_import_ready(&invalid, true));
     }
 }

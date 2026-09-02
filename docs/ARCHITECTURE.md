@@ -218,6 +218,21 @@ shelter cache key contains only that genome and the bounded decoration list. A s
 the single shelter texture; normal presentation still uses one shelter quad, one bind group, and one
 draw call. Decorations have no world position, action, editor, animation, physics, or render loop.
 
+## Exact offline seed sharing
+
+`CreatureOrigin` remains separate from mutable colony order. Its 256-bit source seed and original
+generation are encoded with format version 1 and a four-byte domain-separated SHA-256 checksum into
+60 Crockford Base32 characters, displayed as fifteen four-character groups after the `FORMIGA`
+prefix. Decoding is case-insensitive but requires canonical grouping, alphabet, zero padding,
+version, generation 0–3, length, and checksum before returning a typed `SharedCreatureSeed`.
+
+Import reconstructs every source generation from the original named seed streams, including the
+generation-zero parent needed for inherited traits. The resulting creature retains exact innate
+appearance, personality, scale, ID, and behavior seed, but becomes colony order zero with a fresh
+birth and compact history. A domain-separated derived colony seed drives its new shelter and future
+companions, so the source lineage cannot reproduce itself. Import allocates no service, socket,
+worker, or persistent code cache and leaves the v10 save schema unchanged.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -238,6 +253,8 @@ draw call. Decorations have no world position, action, editor, animation, physic
   tick; static vertices rebuild only after object, habitat, display, or scale changes.
 - Shelter decorations: one persisted four-to-nine-day timestamp evaluated in the same world tick;
   the existing 64×64 texture is regenerated only when the bounded decoration state changes.
+- Seed sharing: encoding, validation, and import run only on an explicit settings action; there is
+  no idle work, background task, or network operation.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 

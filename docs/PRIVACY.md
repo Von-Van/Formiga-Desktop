@@ -59,6 +59,18 @@ a v9 colony receives an empty decoration list and one deterministic future times
 colony state is otherwise unchanged. Migration performs no network request and does not upload
 either the old or migrated save.
 
+Seed sharing is fully offline. A code contains only a format nibble, original generation, immutable
+256-bit creature-origin seed, and checksum. It does not contain the creature's custom name, birth
+time, memory, tendencies, routines, relationships, current colony seed, objects, shelter, display
+keys, settings, device data, or desktop information. Copying uses the local system clipboard;
+Formiga does not transmit, register, resolve, or look up a code.
+
+Import validates the complete code before replacing anything, requires an explicit replacement
+acknowledgement, gives the creature a fresh local birth and history, and derives its companion
+lineage locally. No account, analytics event, server, DNS request, or network permission is involved.
+Save version 10 is unchanged because the immutable origin fields already exist in every migrated
+creature record.
+
 Quiet-day ritual eligibility uses only the already-available system idle duration and whether safe
 window rectangles remained unchanged. Hatch days and late-night sleep piles use local date/hour with
 UTC fallback. Formiga does not query weather, screen content, titles, URLs, or location.

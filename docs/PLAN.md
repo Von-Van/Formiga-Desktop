@@ -1,5 +1,21 @@
 # Formiga roadmap
 
+## v0.46 exact-offline-seed-sharing release
+
+- A case-insensitive grouped Crockford Base32 code carries format version 1, source generation, the
+  complete 256-bit `CreatureOrigin` seed, and a four-byte checksum.
+- All four source generations reproduce innate appearance, personality, scale, ID, and behavior
+  seed byte-for-byte. Custom names, memories, bonds, objects, and shelter state are excluded.
+- Profile export copies the code. General-tab import validates every field offline and requires an
+  explicit replacement acknowledgement before creating a fresh colony-order-zero creature.
+- Import assigns a fresh birth and compact history while deriving a distinct deterministic colony
+  seed for future companions. Save version 10 and all v1–v10 colonies remain unchanged.
+
+Release-page summary:
+
+> Any creature can now be shared and recreated exactly through a checksummed, fully offline seed
+> code—without accounts or servers.
+
 ## v0.45 growing-home release
 
 - Save version 10 stores at most six unique leaf, banner, stone, flower, lamp, and roof-ornament
@@ -186,10 +202,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.45
+## Progressive releases after v0.46
 
-- **v0.46 Offline Seed Sharing:** encode original generation and a full 256-bit origin seed in a
-  checksummed, versioned, case-insensitive Base32 code with no server.
 - **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
   allocation or hidden metadata.
 - **v0.50 Reference-Guided Creatures:** accept a PNG or JPEG on demand, analyze it entirely on the
@@ -203,5 +217,5 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
   only while importing, has fixed decode/dimension/work limits, and releases all temporary buffers on
   acceptance or cancellation.
 
-Seed import, card export, and reference-image matching remain out of scope for v0.45 and retain
-their independent release gates.
+Card export and reference-image matching remain out of scope for v0.46 and retain their independent
+release gates.

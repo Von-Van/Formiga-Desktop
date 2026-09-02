@@ -776,6 +776,30 @@ impl FormigaApp {
     }
 
     fn handle_settings_outcome(&mut self, event_loop: &ActiveEventLoop, outcome: SettingsOutcome) {
+        if let Some(shared) = outcome.import_shared_creature {
+            let desktop = self.snapshot();
+            let preserved_settings = self
+                .world
+                .as_ref()
+                .map(|world| world.save.settings.clone())
+                .unwrap_or_default();
+            let mut imported =
+                World::from_shared_creature(shared, OffsetDateTime::now_utc(), &desktop);
+            imported.save.settings = preserved_settings;
+            self.world = Some(imported);
+            if let (Some(tray), Some(world)) = (&self.tray, &self.world) {
+                tray.sync(&world.save.settings);
+            }
+            self.sync_overlay_visibility();
+            for overlay in self.overlays.values() {
+                overlay.window.request_redraw();
+            }
+            if let Some(window) = &self.settings_window {
+                window.window.request_redraw();
+            }
+            self.redraw_due = Instant::now();
+            let _ = self.save();
+        }
         let mut save_profile = false;
         if let Some((creature_id, name)) = outcome.rename_creature
             && let Some(world) = &mut self.world

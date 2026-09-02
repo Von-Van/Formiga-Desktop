@@ -34,6 +34,10 @@ resident memory, and notes. Do not publish target values as measured results.
 | v0.45.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
 | v0.45.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
 | v0.45.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.46.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.46.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.46.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.46.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -89,3 +93,8 @@ four-to-nine-day timestamp is evaluated in the normal world tick. When decoratio
 the existing 64×64 shelter canvas and 16 KiB RGBA texture are regenerated once; every ordinary frame
 continues to render the same single shelter quad and draw call. No decoration atlas, vertex, physics
 body, animation, editor resource, thread, or idle allocation is added.
+
+Seed sharing has zero idle cost. Encoding and validation handle a fixed 37-byte payload only after
+an explicit profile/settings action. Import reconstructs at most four temporary generated creatures,
+keeps only the selected source generation, and immediately releases the rest. No texture, worker,
+network client, code history, or background allocation persists afterward.

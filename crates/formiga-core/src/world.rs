@@ -2951,6 +2951,26 @@ impl World {
         *self = Self::new(colony_seed, now, desktop);
     }
 
+    pub fn from_shared_creature(
+        shared: SharedCreatureSeed,
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Self {
+        let colony_seed = derive_imported_colony_seed(shared);
+        let mut colony = Self::new(colony_seed, now, desktop);
+        let spawn_state = colony.save.creatures[0].state.clone();
+        let mut creature = generate_source_creature(shared, now, desktop);
+        creature.generation = 0;
+        creature.colony_order = 0;
+        creature.born_at_utc = now;
+        creature.memory = CreatureMemory::default();
+        creature.tendencies = LearnedTendencies::default();
+        creature.routines = RoutineTable::default();
+        creature.state = spawn_state;
+        colony.save.creatures[0] = creature;
+        Self::from_save(colony.save)
+    }
+
     fn process_arrivals(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) {
         let streams = SeedStream::new(self.save.colony_seed);
         let mut arrivals_this_tick = 0_u8;
@@ -3534,6 +3554,34 @@ fn generate_creature(
             arrival_delay_secs: 0.0,
         },
     }
+}
+
+fn generate_source_creature(
+    shared: SharedCreatureSeed,
+    born_at_utc: OffsetDateTime,
+    desktop: &DesktopSnapshot,
+) -> Creature {
+    let streams = SeedStream::new(shared.source_colony_seed);
+    let mut creatures = Vec::with_capacity(usize::from(shared.source_generation) + 1);
+    for generation in 0..=shared.source_generation.min(3) {
+        let existing_names: Vec<_> = creatures
+            .iter()
+            .map(|creature: &Creature| creature.name.clone())
+            .collect();
+        let creature = generate_creature(
+            &streams,
+            shared.source_colony_seed,
+            generation,
+            born_at_utc,
+            desktop,
+            &existing_names,
+            creatures.first(),
+        );
+        creatures.push(creature);
+    }
+    creatures
+        .pop()
+        .expect("a source generation is always built")
 }
 
 fn mutate_parent<R: Rng + ?Sized>(parent: Option<u8>, rng: &mut R, min: u8, max: u8) -> u8 {
@@ -7226,6 +7274,62 @@ mod tests {
         assert_eq!(
             preferred_shelter_decoration(&objects.save),
             Some(ShelterDecorationKind::Stone)
+        );
+    }
+
+    #[test]
+    fn shared_seed_import_reproduces_all_four_source_generations_byte_for_byte() {
+        let original_birth = datetime!(2024-01-02 3:04 UTC);
+        let imported_birth = datetime!(2026-09-02 5:06 UTC);
+        let desktop = desktop();
+        for source_generation in 0_u8..=3 {
+            let shared = SharedCreatureSeed {
+                source_colony_seed: [source_generation.wrapping_mul(41).wrapping_add(17); 32],
+                source_generation,
+            };
+            let expected = generate_source_creature(shared, original_birth, &desktop);
+            let imported = World::from_shared_creature(shared, imported_birth, &desktop);
+            let actual = &imported.save.creatures[0];
+            assert_eq!(actual.id, expected.id);
+            assert_eq!(actual.origin, CreatureOrigin::from(shared));
+            assert_eq!(actual.appearance, expected.appearance);
+            assert_eq!(actual.personality, expected.personality);
+            assert_eq!(actual.display_scale_percent, expected.display_scale_percent);
+            assert_eq!(actual.behavior_seed, expected.behavior_seed);
+            assert_eq!(actual.name, expected.name);
+            assert_eq!(actual.generation, 0);
+            assert_eq!(actual.colony_order, 0);
+            assert_eq!(actual.born_at_utc, imported_birth);
+            assert_eq!(actual.memory, CreatureMemory::default());
+            assert_eq!(actual.tendencies, LearnedTendencies::default());
+            assert_eq!(actual.routines, RoutineTable::default());
+            assert!(imported.save.relationships.is_empty());
+            assert_ne!(imported.save.colony_seed, shared.source_colony_seed);
+        }
+    }
+
+    #[test]
+    fn imported_creature_gets_a_distinct_companion_lineage() {
+        let now = datetime!(2026-09-02 5:06 UTC);
+        let desktop = desktop();
+        let shared = SharedCreatureSeed {
+            source_colony_seed: [211; 32],
+            source_generation: 1,
+        };
+        let mut imported = World::from_shared_creature(shared, now, &desktop);
+        imported.tick(now + Duration::hours(1), 0.05, &desktop);
+        assert_eq!(imported.save.creatures.len(), 2);
+        assert_eq!(
+            imported.save.creatures[0].origin,
+            CreatureOrigin::from(shared)
+        );
+        assert_eq!(
+            imported.save.creatures[1].origin.source_colony_seed,
+            imported.save.colony_seed
+        );
+        assert_ne!(
+            imported.save.creatures[1].origin.source_colony_seed,
+            shared.source_colony_seed
         );
     }
 }

@@ -4,6 +4,7 @@ mod habitat;
 mod model;
 mod persistence;
 mod rng;
+mod seed_share;
 mod topology;
 mod world;
 
@@ -16,6 +17,10 @@ pub use habitat::{
 pub use model::*;
 pub use persistence::{PersistenceError, SaveStore};
 pub use rng::{SeedStream, new_colony_seed};
+pub use seed_share::{
+    SeedCodeError, SharedCreatureSeed, decode_creature_seed, derive_imported_colony_seed,
+    encode_creature_seed,
+};
 pub use topology::{
     CursorInvitation, DesktopTopology, MAX_TOPOLOGY_LANDMARKS, MAX_TOPOLOGY_WINDOWS,
     MAX_WINDOW_ROUTE_HOPS, RouteHopKind, RoutePreferences, TopologyLandmark, TopologyLandmarkKind,

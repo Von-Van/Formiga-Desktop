@@ -2,6 +2,31 @@
 
 All notable changes are documented here.
 
+## [0.46.0] - 2026-09-01
+
+### Added
+
+- Exact offline creature sharing through a case-insensitive `FORMIGA-…` code. The grouped
+  Crockford Base32 payload contains a format version, original generation, full 256-bit origin
+  seed, and four-byte checksum.
+- “Copy seed” on each read-only Colony profile, plus a General-tab import field that validates the
+  prefix, grouping, length, alphabet, version, generation, padding, and checksum before any state is
+  changed.
+- An explicit colony-replacement acknowledgement for import. The recreated creature begins as
+  colony order zero with a fresh birth, memory, learned state, routines, relationships, objects,
+  home, and companion schedule.
+
+### Changed
+
+- Imported appearances, innate personalities, display scales, IDs, and behavior seeds reproduce all
+  four possible source generations byte-for-byte. Custom names and lived history are intentionally
+  not included.
+- Future companions use a deterministic colony seed derived from the shared origin, preventing the
+  source generation from reappearing in its own imported lineage. Existing visibility, habitat,
+  motion, and application settings are retained.
+- Save version remains 10. Seed codes use the already-persisted immutable `CreatureOrigin`, so every
+  v1–v10 colony remains compatible and no save migration or network access is introduced.
+
 ## [0.45.0] - 2026-09-01
 
 ### Added
