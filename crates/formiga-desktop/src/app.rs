@@ -375,6 +375,7 @@ impl FormigaApp {
                         | WorldEvent::HomeDisappeared { .. }
                         | WorldEvent::RitualStarted { .. }
                         | WorldEvent::RitualInterrupted { .. }
+                        | WorldEvent::ColonyObjectAdded { .. }
                 );
                 if let WorldEvent::ProfileChanged {
                     creature_id,
@@ -1565,6 +1566,7 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::RitualStarted { .. } => "ritual_started",
         WorldEvent::RitualCompleted { .. } => "ritual_completed",
         WorldEvent::RitualInterrupted { .. } => "ritual_interrupted",
+        WorldEvent::ColonyObjectAdded { .. } => "colony_object_added",
     }
 }
 

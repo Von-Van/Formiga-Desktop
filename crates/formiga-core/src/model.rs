@@ -1008,6 +1008,95 @@ impl Default for RitualState {
     }
 }
 
+pub const MAX_COLONY_OBJECTS: usize = 8;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ColonyObjectKind {
+    #[default]
+    Pillow,
+    Toy,
+    Plant,
+    Blanket,
+    Paper,
+    Pebble,
+    Lamp,
+    Cup,
+}
+
+impl ColonyObjectKind {
+    pub const ALL: [Self; 8] = [
+        Self::Pillow,
+        Self::Toy,
+        Self::Plant,
+        Self::Blanket,
+        Self::Paper,
+        Self::Pebble,
+        Self::Lamp,
+        Self::Cup,
+    ];
+
+    pub const fn index(self) -> u8 {
+        match self {
+            Self::Pillow => 0,
+            Self::Toy => 1,
+            Self::Plant => 2,
+            Self::Blanket => 3,
+            Self::Paper => 4,
+            Self::Pebble => 5,
+            Self::Lamp => 6,
+            Self::Cup => 7,
+        }
+    }
+
+    pub const fn default_role(self) -> ColonyObjectRole {
+        match self {
+            Self::Pillow | Self::Blanket => ColonyObjectRole::Sleep,
+            Self::Toy => ColonyObjectRole::Play,
+            Self::Plant | Self::Lamp => ColonyObjectRole::Comfort,
+            Self::Paper | Self::Pebble => ColonyObjectRole::Curiosity,
+            Self::Cup => ColonyObjectRole::Social,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ColonyObjectRole {
+    #[default]
+    Comfort,
+    Sleep,
+    Play,
+    Social,
+    Curiosity,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ColonyObject {
+    pub id: u64,
+    pub kind: ColonyObjectKind,
+    pub display: DisplayKey,
+    pub normalized_position: Point,
+    pub role: ColonyObjectRole,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ColonyObjectState {
+    pub objects: Vec<ColonyObject>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub next_at_utc: OffsetDateTime,
+    pub ordinal: u32,
+}
+
+impl Default for ColonyObjectState {
+    fn default() -> Self {
+        Self {
+            objects: Vec::new(),
+            next_at_utc: OffsetDateTime::UNIX_EPOCH,
+            ordinal: 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HomeCorner {
     #[default]
@@ -1180,6 +1269,8 @@ pub struct SaveFile {
     pub relationships: Vec<CreatureRelationship>,
     #[serde(default)]
     pub ritual: RitualState,
+    #[serde(default)]
+    pub objects: ColonyObjectState,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1272,6 +1363,10 @@ pub enum WorldEvent {
     },
     RitualInterrupted {
         kind: RitualKind,
+    },
+    ColonyObjectAdded {
+        object_id: u64,
+        kind: ColonyObjectKind,
     },
 }
 
@@ -1400,6 +1495,30 @@ mod tests {
         assert!(fields.contains_key("ordinal"));
         assert!(fields.contains_key("hatch_day_acknowledged_year"));
         assert_eq!(RitualKind::ALL.len(), 9);
+    }
+
+    #[test]
+    fn colony_object_projection_is_typed_and_bounded() {
+        assert_eq!(ColonyObjectKind::ALL.len(), 8);
+        assert_eq!(MAX_COLONY_OBJECTS, 8);
+        assert_eq!(
+            ColonyObjectKind::Pillow.default_role(),
+            ColonyObjectRole::Sleep
+        );
+        assert_eq!(ColonyObjectKind::Toy.default_role(), ColonyObjectRole::Play);
+        assert_eq!(
+            ColonyObjectKind::Cup.default_role(),
+            ColonyObjectRole::Social
+        );
+        let object = ColonyObject {
+            id: 7,
+            kind: ColonyObjectKind::Plant,
+            display: DisplayKey([3; 16]),
+            normalized_position: Point { x: 0.4, y: 0.8 },
+            role: ColonyObjectRole::Comfort,
+        };
+        let value = serde_json::to_value(object).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 5);
     }
 
     #[test]

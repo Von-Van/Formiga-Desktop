@@ -26,6 +26,10 @@ resident memory, and notes. Do not publish target values as measured results.
 | v0.43.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
 | v0.43.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
 | v0.43.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.44.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.44.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.44.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.44.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -68,3 +72,10 @@ Window routes add a bounded breadth-first search across at most 64 topology wind
 than four hops per active creature, and run only when an existing perch choice needs a destination.
 Squeezes reuse the traversal atlas and change only body/face vertex width, so the 90-frame atlas,
 texture bytes, draw-call count, physics cost, and idle allocation remain unchanged.
+
+Colony objects add one 128×16 RGBA atlas (8 KiB) per loaded colony and at most eight static quads.
+Their vertex cache changes only when object state, habitat, display geometry, or scale changes. The
+three-to-seven-day timestamp is evaluated in the existing world tick, and nearby role utility is
+computed only for the bounded eight-object collection at existing action boundaries. There is no
+physics body, interaction proxy, object thread, animation frame, per-object draw call, or idle
+regeneration.

@@ -13,7 +13,44 @@ pub struct BehaviorContext {
     pub on_window_ledge: bool,
     pub reachable_window_ledge: bool,
     pub window_changed_nearby: bool,
+    pub objects: ObjectUtility,
     pub hour_utc: u8,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ObjectUtility {
+    pub sleep: f32,
+    pub play: f32,
+    pub comfort: f32,
+    pub social: f32,
+    pub curiosity: f32,
+}
+
+impl ObjectUtility {
+    pub fn add(&mut self, role: crate::ColonyObjectRole, amount: f32) {
+        let score = match role {
+            crate::ColonyObjectRole::Sleep => &mut self.sleep,
+            crate::ColonyObjectRole::Play => &mut self.play,
+            crate::ColonyObjectRole::Comfort => &mut self.comfort,
+            crate::ColonyObjectRole::Social => &mut self.social,
+            crate::ColonyObjectRole::Curiosity => &mut self.curiosity,
+        };
+        *score = (*score + amount.max(0.0)).min(0.25);
+    }
+
+    fn for_action(self, action: ActionKind) -> f32 {
+        match action {
+            ActionKind::Idle | ActionKind::Eat | ActionKind::Drink => self.comfort,
+            ActionKind::Sleep => self.sleep,
+            ActionKind::SoloPlay | ActionKind::SocialPlay => self.play,
+            ActionKind::Greet | ActionKind::Follow => self.social,
+            ActionKind::Traverse
+            | ActionKind::Perch
+            | ActionKind::InvestigateCursor
+            | ActionKind::InspectScreen => self.curiosity,
+            _ => 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -128,6 +165,7 @@ pub fn choose_action<R: Rng + ?Sized>(
             | ActionKind::Tossed
             | ActionKind::PetReaction => -2.0,
         };
+        let score = score + context.objects.for_action(action);
         let routine = creature.routines.strength(routine_key(
             creature.state.surface.kind,
             creature.state.surface.relative_x,
@@ -371,6 +409,7 @@ mod tests {
             on_window_ledge: false,
             reachable_window_ledge: false,
             window_changed_nearby: false,
+            objects: ObjectUtility::default(),
             hour_utc: 12,
         };
         (creature, desktop, context)
@@ -533,5 +572,18 @@ mod tests {
             .expect("sleep remains selectable");
         assert_eq!(sleep_choice.target_creature, Some(99));
         assert_ne!(sleep_choice.target_point, Some(target_position));
+    }
+
+    #[test]
+    fn nearby_object_utility_is_role_specific_and_capped() {
+        let mut utility = ObjectUtility::default();
+        utility.add(crate::ColonyObjectRole::Play, 0.08);
+        assert_eq!(utility.for_action(ActionKind::SoloPlay), 0.08);
+        assert_eq!(utility.for_action(ActionKind::Sleep), 0.0);
+        for _ in 0..8 {
+            utility.add(crate::ColonyObjectRole::Play, 0.08);
+        }
+        assert_eq!(utility.play, 0.25);
+        assert_eq!(utility.for_action(ActionKind::SocialPlay), 0.25);
     }
 }

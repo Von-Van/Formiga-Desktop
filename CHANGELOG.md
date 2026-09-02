@@ -2,6 +2,32 @@
 
 All notable changes are documented here.
 
+## [0.44.0] - 2026-09-01
+
+### Added
+
+- Eight deterministic static colony-object families: pillows, toys, plants, blankets, paper scraps,
+  pebbles, lamps, and cups. A colony retains at most eight objects, each with a stable ID, display,
+  normalized position, and semantic role.
+- A deterministic three-to-seven-day UTC object schedule. An overdue colony receives at most one
+  object before the next timestamp is scheduled from the current time, so downtime never replays a
+  backlog.
+- One seed-derived 128×16 object atlas and at most eight cached static quads per display. Object
+  vertices rebuild only when the objects, habitat, display geometry, scale, or colony seed changes.
+
+### Changed
+
+- Nearby objects contribute role-specific sleep, play, comfort, social, or curiosity utility at
+  existing action-selection boundaries, capped at `+0.25` without adding actions or simulation.
+- Save version 9 adds only the bounded colony-object projection and its next schedule timestamp.
+  Deterministic v1–v8 migration preserves every existing creature, bond, ritual, setting, name,
+  memory, tendency, routine, birth time, home, and resolved genome.
+
+### Fixed
+
+- Objects whose saved display or normalized position is no longer valid now snap to the nearest safe
+  habitat floor or shelter area instead of disappearing or escaping the configured habitat.
+
 ## [0.43.0] - 2026-09-01
 
 ### Added

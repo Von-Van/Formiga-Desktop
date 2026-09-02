@@ -1,13 +1,14 @@
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AnimationSpec, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement,
-    MilestoneBubbleRenderer, PixelPoint, SHELTER_SIZE, ShelterRenderer,
+    AnimationSpec, COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
+    ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
+    FramePlacement, MilestoneBubbleRenderer, PixelPoint, SHELTER_SIZE, ShelterRenderer,
 };
 use formiga_core::{
-    ActionKind, ApplicationOcclusionRule, Creature, CreatureId, CursorSnapshot, DesktopRect,
-    DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile, ShelterGenome,
-    accessible_regions, resolved_home_anchor,
+    ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
+    DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile,
+    ShelterGenome, accessible_regions, resolved_colony_object_position, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -31,7 +32,7 @@ struct ZoneVertex {
 }
 
 const MAX_OCCLUSION_RECTS: usize = 64;
-const INITIAL_VERTEX_CAPACITY: usize = 84;
+const INITIAL_VERTEX_CAPACITY: usize = 132;
 const SURFACE_RECOVERY_STALLS: u8 = 3;
 
 #[repr(C)]
@@ -69,6 +70,22 @@ struct BubbleGpu {
     height: u32,
 }
 
+struct ColonyObjectsGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    colony_seed: [u8; 32],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ObjectVertexCacheKey {
+    objects: Vec<ColonyObject>,
+    habitat: HabitatPolicy,
+    monitor_bounds: DesktopRect,
+    monitor_usable_bounds: DesktopRect,
+    monitor_scale_factor: f32,
+    display_scale: u8,
+}
+
 const ATLAS_COLUMNS: u32 = 10;
 // There are exactly 27 eyelid/gaze combinations per expression. Keeping one expression per row
 // avoids padding slots and leaves enough texture budget for additional pre-baked body actions.
@@ -93,6 +110,9 @@ pub struct OverlayRenderer {
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
     bubble: Option<BubbleGpu>,
+    colony_objects: Option<ColonyObjectsGpu>,
+    object_vertex_cache_key: Option<ObjectVertexCacheKey>,
+    object_vertices: Vec<Vertex>,
     last_occlusion: Option<OcclusionUniform>,
     occlusion_windows: Vec<DesktopWindow>,
     occlusion_rules: Vec<ApplicationOcclusionRule>,
@@ -348,6 +368,9 @@ impl OverlayRenderer {
             sprites: BTreeMap::new(),
             shelter: None,
             bubble: None,
+            colony_objects: None,
+            object_vertex_cache_key: None,
+            object_vertices: Vec::new(),
             last_occlusion: None,
             occlusion_windows: Vec::new(),
             occlusion_rules: Vec::new(),
@@ -449,12 +472,21 @@ impl OverlayRenderer {
         } else {
             self.bubble = None;
         }
+        let object_vertices = if monitor_fully_occluded || save.objects.objects.is_empty() {
+            Vec::new()
+        } else {
+            self.ensure_colony_object_atlas(save.colony_seed);
+            self.cached_colony_object_vertices(save).to_vec()
+        };
         let mut vertices = Vec::with_capacity(
-            visible.len() * 18
+            object_vertices.len()
+                + visible.len() * 18
                 + usize::from(shelter_visible) * 6
                 + usize::from(bubble_creature.is_some()) * 6,
         );
         let mut creature_draws = Vec::with_capacity(visible.len());
+        vertices.extend_from_slice(&object_vertices);
+        let object_vertex_count = object_vertices.len();
         if shelter_visible && let Some(shelter_vertices) = self.shelter_vertices(save) {
             vertices.extend_from_slice(&shelter_vertices);
         }
@@ -562,15 +594,25 @@ impl OverlayRenderer {
             }
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.occlusion_bind_group, &[]);
-            if shelter_vertex_count > 0
-                && let Some(shelter) = &self.shelter
+            if object_vertex_count > 0
+                && let Some(objects) = &self.colony_objects
             {
-                pass.set_bind_group(1, &shelter.bind_group, &[]);
+                pass.set_bind_group(1, &objects.bind_group, &[]);
                 pass.set_vertex_buffer(
                     0,
                     self.vertex_buffer
-                        .slice(..(shelter_vertex_count * std::mem::size_of::<Vertex>()) as u64),
+                        .slice(..(object_vertex_count * std::mem::size_of::<Vertex>()) as u64),
                 );
+                pass.draw(0..object_vertex_count as u32, 0..1);
+            }
+            if shelter_vertex_count > 0
+                && let Some(shelter) = &self.shelter
+            {
+                let shelter_start = (object_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                let shelter_end =
+                    shelter_start + (shelter_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                pass.set_bind_group(1, &shelter.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(shelter_start..shelter_end));
                 pass.draw(0..shelter_vertex_count as u32, 0..1);
             }
             for (creature_id, start, has_trinket) in creature_draws {
@@ -662,7 +704,17 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
-        creature_visible || shelter_visible
+        let object_visible = !fully_occluded
+            && save.objects.objects.iter().any(|object| {
+                object.display == self.monitor.display_key
+                    && resolved_colony_object_position(
+                        object,
+                        std::slice::from_ref(&self.monitor),
+                        &save.settings.habitat,
+                    )
+                    .is_some()
+            });
+        creature_visible || shelter_visible || object_visible
     }
 
     fn update_occlusion_cache(&mut self, save: &SaveFile, windows: &[DesktopWindow]) {
@@ -954,6 +1006,142 @@ impl OverlayRenderer {
             bind_group,
             genome,
         });
+    }
+
+    fn ensure_colony_object_atlas(&mut self, colony_seed: [u8; 32]) {
+        if self
+            .colony_objects
+            .as_ref()
+            .is_some_and(|objects| objects.colony_seed == colony_seed)
+        {
+            return;
+        }
+        let pixels = ColonyObjectRenderer::render_atlas(colony_seed).rgba_bytes();
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("static colony object atlas"),
+            size: wgpu::Extent3d {
+                width: COLONY_OBJECT_ATLAS_WIDTH,
+                height: COLONY_OBJECT_ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(COLONY_OBJECT_ATLAS_WIDTH * 4),
+                rows_per_image: Some(COLONY_OBJECT_ATLAS_HEIGHT),
+            },
+            wgpu::Extent3d {
+                width: COLONY_OBJECT_ATLAS_WIDTH,
+                height: COLONY_OBJECT_ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("static colony object bindings"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.colony_objects = Some(ColonyObjectsGpu {
+            _texture: texture,
+            bind_group,
+            colony_seed,
+        });
+    }
+
+    fn cached_colony_object_vertices(&mut self, save: &SaveFile) -> &[Vertex] {
+        let key = ObjectVertexCacheKey {
+            objects: save.objects.objects.clone(),
+            habitat: save.settings.habitat.clone(),
+            monitor_bounds: self.monitor.bounds,
+            monitor_usable_bounds: self.monitor.usable_bounds,
+            monitor_scale_factor: self.monitor.scale_factor,
+            display_scale: save.settings.display_scale,
+        };
+        if self.object_vertex_cache_key.as_ref() == Some(&key) {
+            return &self.object_vertices;
+        }
+        self.object_vertices.clear();
+        for object in save
+            .objects
+            .objects
+            .iter()
+            .take(formiga_core::MAX_COLONY_OBJECTS)
+            .filter(|object| object.display == self.monitor.display_key)
+        {
+            let Some((monitor_id, point)) = resolved_colony_object_position(
+                object,
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+            ) else {
+                continue;
+            };
+            if monitor_id != self.monitor.id {
+                continue;
+            }
+            self.object_vertices
+                .extend_from_slice(&self.object_vertices_for(
+                    object,
+                    point,
+                    save.settings.display_scale,
+                ));
+        }
+        self.object_vertex_cache_key = Some(key);
+        &self.object_vertices
+    }
+
+    fn object_vertices_for(
+        &self,
+        object: &ColonyObject,
+        point: formiga_core::Point,
+        display_scale: u8,
+    ) -> [Vertex; 6] {
+        let size = COLONY_OBJECT_SIZE as f32 * f32::from(display_scale);
+        let local_x = (point.x - self.monitor.bounds.x) * self.monitor.scale_factor;
+        let contact_y = (point.y - self.monitor.bounds.y) * self.monitor.scale_factor;
+        let left = (local_x - size * 0.5) / self.config.width as f32 * 2.0 - 1.0;
+        let right = (local_x + size * 0.5) / self.config.width as f32 * 2.0 - 1.0;
+        let top_px = contact_y - size;
+        let top = 1.0 - top_px / self.config.height as f32 * 2.0;
+        let bottom = 1.0 - contact_y / self.config.height as f32 * 2.0;
+        let u_left = f32::from(object.kind.index()) / 8.0;
+        let u_right = f32::from(object.kind.index() + 1) / 8.0;
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        [
+            vertex([left, top], [u_left, 0.0]),
+            vertex([right, top], [u_right, 0.0]),
+            vertex([right, bottom], [u_right, 1.0]),
+            vertex([left, top], [u_left, 0.0]),
+            vertex([right, bottom], [u_right, 1.0]),
+            vertex([left, bottom], [u_left, 1.0]),
+        ]
     }
 
     fn ensure_bubble(&mut self, creature_id: CreatureId) {
@@ -1615,11 +1803,14 @@ mod tests {
 
     #[test]
     fn multi_creature_presentation_capacity_and_stall_recovery_are_bounded() {
-        assert_eq!(INITIAL_VERTEX_CAPACITY, 4 * 18 + 6 + 6);
-        assert_eq!(expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, 84), None);
+        assert_eq!(INITIAL_VERTEX_CAPACITY, 4 * 18 + 6 + 6 + 8 * 6);
         assert_eq!(
-            expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, 85),
-            Some(128)
+            expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY),
+            None
+        );
+        assert_eq!(
+            expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY + 1),
+            Some(256)
         );
         assert!(!surface_stalls_require_recovery(2));
         assert!(surface_stalls_require_recovery(3));

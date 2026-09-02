@@ -189,6 +189,21 @@ traversal clip while the GPU narrows its body and layered face quads to 0.72×. 
 supporting rectangles; any topology or support change discards the plan and resolves a safe support.
 Routes, graph edges, support rectangles, and progress are never serialized.
 
+## Colony objects
+
+Save version 9 adds one bounded `ColonyObjectState`: at most eight typed objects, the next UTC
+arrival timestamp, and a deterministic ordinal. Each object retains only a stable ID, kind, display
+key, normalized position, and semantic role. A named seed stream selects one of eight kinds every
+three to seven days; overdue processing creates at most one object and schedules the next timestamp
+from the current maximum-seen UTC value.
+
+Object positions resolve through the current habitat whenever the world ticks. A missing display or
+invalid normalized point snaps to the nearest accessible floor or shelter area and rewrites the
+compact position. The renderer builds one 128×16 seed-derived atlas, retains at most eight quads,
+and rebuilds those vertices only when object state, habitat, display geometry, or scale changes.
+Nearby semantic roles add a bounded `+0.25` to existing action utility at ordinary selection
+boundaries; objects have no physics body, interaction proxy, action state, or update loop.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -205,15 +220,18 @@ Routes, graph edges, support rectangles, and progress are never serialized.
   12–48-hour timestamp becomes due; at most one runtime plan exists.
 - Desktop topology: rebuilds only after the existing bounded window-geometry input changes; cursor
   invitation dwell advances on ordinary visible, unpaused simulation ticks.
+- Colony objects: one persisted three-to-seven-day timestamp evaluated during the existing world
+  tick; static vertices rebuild only after object, habitat, display, or scale changes.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 8 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+Version 9 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
 canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
-receiving only its first deterministic ritual timestamp. Migration preserves creature IDs, resolved genomes, personality,
+receiving only its first deterministic ritual timestamp; v8 receives only its first deterministic
+colony-object timestamp. Migration preserves creature IDs, resolved genomes, personality,
 custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
 tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
 

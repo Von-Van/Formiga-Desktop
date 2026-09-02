@@ -1,5 +1,21 @@
 # Formiga roadmap
 
+## v0.44 inhabited-ecosystem release
+
+- Save version 9 stores at most eight static objects with type, stable ID, display key, normalized
+  position, and semantic role. Deterministic v1–v8 migration does not replace or reset creatures.
+- Pillows, toys, plants, blankets, paper scraps, pebbles, lamps, and cups arrive one at a time on a
+  deterministic three-to-seven-day UTC schedule, with no catch-up replay after downtime.
+- Invalid positions snap to a safe habitat floor or shelter area. Objects cannot be dragged,
+  deleted, renamed, or simulated as physics bodies.
+- One 128×16 atlas and at most eight cached static quads render the collection. Nearby objects add
+  at most `+0.25` to relevant existing behavior utilities.
+
+Release-page summary:
+
+> Colonies now leave behind a bounded collection of pillows, toys, plants, blankets, scraps,
+> pebbles, lamps, and cups that make the desktop feel inhabited.
+
 ## v0.43 window-routes release
 
 - The bounded topology derives a graph of overlapping window tiers and plans deterministic routes
@@ -154,10 +170,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.43
+## Progressive releases after v0.44
 
-- **v0.44 Inhabited Ecosystem:** add at most eight deterministic static colony objects with semantic
-  utility contributions and no physics.
 - **v0.45 Growing Home:** add at most six deterministic shelter decorations while preserving one
   cached 64×64 shelter texture and one normal draw call.
 - **v0.46 Offline Seed Sharing:** encode original generation and a full 256-bit origin seed in a
@@ -175,5 +189,5 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
   only while importing, has fixed decode/dimension/work limits, and releases all temporary buffers on
   acceptance or cancellation.
 
-Objects, decorations, routes, seed import, card export, and reference-image matching remain out of
-scope for v0.43 and retain their independent release gates.
+Decorations, seed import, card export, and reference-image matching remain out of scope for v0.44
+and retain their independent release gates.

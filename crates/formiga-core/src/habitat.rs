@@ -1,6 +1,6 @@
 use crate::{
-    ColonyHome, DesktopRect, HabitatPolicy, HabitatPreset, HabitatZoneKind, HomeCorner,
-    MonitorInfo, Point,
+    ColonyHome, ColonyObject, DesktopRect, HabitatPolicy, HabitatPreset, HabitatZoneKind,
+    HomeCorner, MonitorInfo, Point,
 };
 
 pub const MAX_HABITAT_ZONES: usize = 32;
@@ -36,6 +36,36 @@ pub fn resolved_home_anchor(
         })
         .min_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, point)| point)
+}
+
+pub fn resolved_colony_object_position(
+    object: &ColonyObject,
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+) -> Option<(u64, Point)> {
+    let preferred = monitors
+        .iter()
+        .find(|monitor| monitor.display_key == object.display)
+        .or_else(|| monitors.iter().find(|monitor| monitor.primary))
+        .or_else(|| monitors.first())?;
+    let intended = Point {
+        x: preferred.usable_bounds.x
+            + object.normalized_position.x.clamp(0.0, 1.0) * preferred.usable_bounds.width,
+        y: preferred.usable_bounds.y
+            + object.normalized_position.y.clamp(0.0, 1.0) * preferred.usable_bounds.height,
+    };
+    accessible_regions(policy, preferred)
+        .into_iter()
+        .map(|region| {
+            let point = Point {
+                x: intended.x.clamp(region.x + 8.0, region.right() - 8.0),
+                y: region.bottom() - 4.0,
+            };
+            (preferred.id, point, intended.distance(point))
+        })
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(monitor_id, point, _)| (monitor_id, point))
+        .or_else(|| nearest_habitat_point(policy, monitors, intended))
 }
 
 pub fn accessible_regions(policy: &HabitatPolicy, monitor: &MonitorInfo) -> Vec<DesktopRect> {

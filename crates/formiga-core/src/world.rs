@@ -443,6 +443,16 @@ fn interrupted_ritual_at(
     from + Duration::minutes(rng.random_range(2 * 60..=6 * 60))
 }
 
+pub(crate) fn scheduled_colony_object_at(
+    colony_seed: [u8; 32],
+    ordinal: u32,
+    from: OffsetDateTime,
+) -> OffsetDateTime {
+    let streams = SeedStream::new(colony_seed);
+    let mut rng = streams.rng("colony-object-schedule", u64::from(ordinal));
+    from + Duration::days(rng.random_range(3..=7))
+}
+
 fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
     let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
     now.to_offset(offset)
@@ -491,6 +501,10 @@ impl World {
                 next_at_utc: scheduled_ritual_at(colony_seed, 0, now),
                 ..RitualState::default()
             },
+            objects: ColonyObjectState {
+                next_at_utc: scheduled_colony_object_at(colony_seed, 0, now),
+                ..ColonyObjectState::default()
+            },
         };
         Self::from_save(save)
     }
@@ -500,6 +514,14 @@ impl World {
         if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
             save.ritual.next_at_utc =
                 scheduled_ritual_at(save.colony_seed, save.ritual.ordinal, save.maximum_seen_utc);
+        }
+        save.objects.objects.truncate(MAX_COLONY_OBJECTS);
+        if save.objects.next_at_utc == OffsetDateTime::UNIX_EPOCH {
+            save.objects.next_at_utc = scheduled_colony_object_at(
+                save.colony_seed,
+                save.objects.ordinal,
+                save.maximum_seen_utc,
+            );
         }
         // Identity and durable drives survive relaunch, but interrupted locomotion and reactions do
         // not. Surface attachments are validated against the first desktop snapshot on the next
@@ -564,6 +586,8 @@ impl World {
         }
         let timeline_now = self.save.maximum_seen_utc;
         self.process_arrivals(timeline_now, desktop);
+        self.process_colony_objects(timeline_now, desktop);
+        self.reconcile_colony_objects(desktop);
         let topology_changed = self
             .topology
             .rebuild_if_changed(desktop, &self.last_windows);
@@ -868,6 +892,12 @@ impl World {
                 )
                 .is_some(),
                 window_changed_nearby: window_changed.contains(&creature.id),
+                objects: nearby_object_utility(
+                    creature,
+                    &self.save.objects.objects,
+                    desktop,
+                    &self.save.settings.habitat,
+                ),
                 hour_utc: now.hour(),
             };
 
@@ -2945,6 +2975,104 @@ impl World {
             }
         }
     }
+
+    fn process_colony_objects(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) {
+        if self.save.objects.objects.len() >= MAX_COLONY_OBJECTS
+            || self.save.objects.next_at_utc > now
+        {
+            return;
+        }
+        let mut monitors: Vec<_> = desktop
+            .monitors
+            .iter()
+            .filter(|monitor| !accessible_regions(&self.save.settings.habitat, monitor).is_empty())
+            .collect();
+        monitors.sort_by_key(|monitor| {
+            (
+                self.save.home.display != Some(monitor.display_key),
+                !monitor.primary,
+                monitor.id,
+            )
+        });
+        let Some(monitor) = monitors.first().copied() else {
+            return;
+        };
+        let mut regions = accessible_regions(&self.save.settings.habitat, monitor);
+        regions.sort_by(|a, b| {
+            (b.width * b.height)
+                .total_cmp(&(a.width * a.height))
+                .then_with(|| a.x.total_cmp(&b.x))
+        });
+        let Some(region) = regions.first().copied() else {
+            return;
+        };
+        let streams = SeedStream::new(self.save.colony_seed);
+        let mut rng = streams.rng("colony-object", u64::from(self.save.objects.ordinal));
+        let kind = ColonyObjectKind::ALL[rng.random_range(0..ColonyObjectKind::ALL.len())];
+        let point = Point {
+            x: rng.random_range(region.x + 12.0..=region.right() - 12.0),
+            y: region.bottom() - 4.0,
+        };
+        let mut id = rng.random::<u64>();
+        while self
+            .save
+            .objects
+            .objects
+            .iter()
+            .any(|object| object.id == id)
+        {
+            id = id.wrapping_add(1);
+        }
+        let object = ColonyObject {
+            id,
+            kind,
+            display: monitor.display_key,
+            normalized_position: Point {
+                x: ((point.x - monitor.usable_bounds.x) / monitor.usable_bounds.width)
+                    .clamp(0.0, 1.0),
+                y: ((point.y - monitor.usable_bounds.y) / monitor.usable_bounds.height)
+                    .clamp(0.0, 1.0),
+            },
+            role: kind.default_role(),
+        };
+        self.save.objects.objects.push(object);
+        self.save.objects.ordinal = self.save.objects.ordinal.saturating_add(1);
+        self.save.objects.next_at_utc =
+            scheduled_colony_object_at(self.save.colony_seed, self.save.objects.ordinal, now);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::ColonyObjectAdded {
+                object_id: id,
+                kind,
+            },
+        );
+    }
+
+    fn reconcile_colony_objects(&mut self, desktop: &DesktopSnapshot) {
+        for object in &mut self.save.objects.objects {
+            let Some((monitor_id, point)) = resolved_colony_object_position(
+                object,
+                &desktop.monitors,
+                &self.save.settings.habitat,
+            ) else {
+                continue;
+            };
+            let Some(monitor) = desktop
+                .monitors
+                .iter()
+                .find(|monitor| monitor.id == monitor_id)
+            else {
+                continue;
+            };
+            object.display = monitor.display_key;
+            object.normalized_position = Point {
+                x: ((point.x - monitor.usable_bounds.x) / monitor.usable_bounds.width)
+                    .clamp(0.0, 1.0),
+                y: ((point.y - monitor.usable_bounds.y) / monitor.usable_bounds.height)
+                    .clamp(0.0, 1.0),
+            };
+        }
+    }
 }
 
 fn normalize_relationships(save: &mut SaveFile) {
@@ -4390,6 +4518,31 @@ fn cursor_invitation_eligible(creature: &Creature, invitation: CursorInvitation)
         && creature.tendencies.cursor_trust >= -20
         && (creature.tendencies.cursor_trust >= 10
             || creature.personality.cursor_interest + creature.personality.boldness >= 1.15)
+}
+
+fn nearby_object_utility(
+    creature: &Creature,
+    objects: &[ColonyObject],
+    desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+) -> ObjectUtility {
+    let mut utility = ObjectUtility::default();
+    for object in objects.iter().take(MAX_COLONY_OBJECTS) {
+        let Some((monitor_id, point)) =
+            resolved_colony_object_position(object, &desktop.monitors, policy)
+        else {
+            continue;
+        };
+        if monitor_id != creature.state.surface.monitor_id {
+            continue;
+        }
+        let distance = creature.state.position.distance(point);
+        if distance > 160.0 {
+            continue;
+        }
+        utility.add(object.role, 0.08 * (1.0 - distance / 160.0));
+    }
+    utility
 }
 
 fn constrain_to_surface(
@@ -6563,6 +6716,7 @@ mod tests {
             on_window_ledge: false,
             reachable_window_ledge: false,
             window_changed_nearby: false,
+            objects: ObjectUtility::default(),
             hour_utc: 12,
         };
 
@@ -6794,5 +6948,69 @@ mod tests {
         ));
         assert!(dragged.colony_plan.is_none());
         assert!(dragged.is_dragging());
+    }
+
+    #[test]
+    fn colony_object_schedule_is_deterministic_and_between_three_and_seven_days() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        for ordinal in 0..64 {
+            let first = scheduled_colony_object_at([101; 32], ordinal, now);
+            let second = scheduled_colony_object_at([101; 32], ordinal, now);
+            assert_eq!(first, second);
+            assert!(first - now >= Duration::days(3));
+            assert!(first - now <= Duration::days(7));
+        }
+    }
+
+    #[test]
+    fn overdue_colony_objects_add_one_without_a_catch_up_flood() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let now = created + Duration::days(40);
+        let desktop = desktop();
+        let mut world = World::new([102; 32], created, &desktop);
+        world.save.objects.next_at_utc = created + Duration::days(3);
+        world.tick(now, 0.05, &desktop);
+        assert_eq!(world.save.objects.objects.len(), 1);
+        assert_eq!(world.save.objects.ordinal, 1);
+        assert!(world.save.objects.next_at_utc >= now + Duration::days(3));
+        assert!(world.save.objects.next_at_utc <= now + Duration::days(7));
+        world.tick(now, 0.05, &desktop);
+        assert_eq!(world.save.objects.objects.len(), 1);
+        assert_eq!(
+            world
+                .drain_events()
+                .filter(|event| matches!(event, WorldEvent::ColonyObjectAdded { .. }))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn colony_objects_cap_at_eight_and_invalid_positions_recover() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([103; 32], created, &desktop);
+        for index in 0..MAX_COLONY_OBJECTS + 3 {
+            world.save.objects.next_at_utc = created;
+            world.tick(created + Duration::days(index as i64 + 1), 0.05, &desktop);
+        }
+        assert_eq!(world.save.objects.objects.len(), MAX_COLONY_OBJECTS);
+
+        let object = &mut world.save.objects.objects[0];
+        object.display = DisplayKey([255; 16]);
+        object.normalized_position = Point { x: -50.0, y: 50.0 };
+        world.reconcile_colony_objects(&desktop);
+        let object = &world.save.objects.objects[0];
+        assert_eq!(object.display, desktop.monitors[0].display_key);
+        assert!((0.0..=1.0).contains(&object.normalized_position.x));
+        assert!((0.0..=1.0).contains(&object.normalized_position.y));
+        assert!(
+            resolved_colony_object_position(
+                object,
+                &desktop.monitors,
+                &world.save.settings.habitat
+            )
+            .is_some()
+        );
     }
 }

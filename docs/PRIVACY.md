@@ -42,16 +42,20 @@ The versioned JSON save contains the colony seed, resolved genomes, personality 
 names and birth timestamps, current drives and positions, compact counters, bounded learned
 tendencies, twelve numeric routine slots, at most six unordered relationship records, arrival state,
 the next ritual timestamp, last ritual kind, ritual ordinal, hatch-day acknowledgement, habitat
-zones, application rules, and settings. A relationship stores stable creature IDs plus four
+zones, application rules, settings, and at most eight colony objects. Each object stores only a
+stable ID, kind, privacy-safe display key, normalized position, and semantic role, plus the single
+next object timestamp and ordinal. A relationship stores stable creature IDs plus four
 one-byte scores—affinity, familiarity, playfulness, and avoidance—not an encounter history. The save
 does not contain an event log, ritual history, ritual target positions, proximity samples, target
 paths, cursor paths, sampled event coordinates, or past window layouts. Profile fields other than a
 creature's name are read-only views of this local state.
 
-Save version 8 accepts and deterministically migrates every v1–v7 colony. Migration converts legacy
+Save version 9 accepts and deterministically migrates every v1–v8 colony. Migration converts legacy
 relationship floats locally, preserves current v7 bond records byte-for-byte, and preserves creature
 identity, generated appearance, custom names, birth times, memories, learned tendencies, and
-routines. It performs no network request and does not upload either the old or migrated save.
+routines. A v8 colony receives an empty object collection and one deterministic future timestamp;
+its existing colony state is otherwise unchanged. Migration performs no network request and does
+not upload either the old or migrated save.
 
 Quiet-day ritual eligibility uses only the already-available system idle duration and whether safe
 window rectangles remained unchanged. Hatch days and late-night sleep piles use local date/hour with
@@ -67,6 +71,11 @@ Window-route edges, narrow-gap classification, exact supporting rectangles, path
 progress are likewise runtime-only geometry. They use no process metadata or pixels and disappear on
 completion, cancellation, pause, hide, relaunch, or supporting-window change. v0.43 appends one
 runtime action name but does not add a save field or renumber any existing persisted routine key.
+
+Colony objects are generated locally from the existing colony seed and safe display geometry. They
+contain no source image, window title, application identity, cursor sample, interaction history, or
+screen content. Their positions are normalized against privacy-safe display keys and repaired into
+the current habitat after geometry changes.
 
 A one-file backup and local rotating diagnostic log support recovery and troubleshooting. Logs name
 event categories only; they do not record creature names, coordinates, relationship scores, or
