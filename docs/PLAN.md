@@ -1,5 +1,26 @@
 # Formiga roadmap
 
+## v0.50 reference-guided creature and colony-management release
+
+- PNG and JPEG references are decoded locally under strict byte, dimension, pixel, and candidate
+  limits. A fixed search compares privacy-safe color and shape features with ordinary generated
+  genomes, then discards the source and all extracted features.
+- The Creature Studio previews reference-matched or random full-size creatures before an explicit
+  add or replacement. Accepted creatures use ordinary seeds and fresh compact histories.
+- A four-member colony permits at most three full-size adults. Keep toggles protect individuals
+  during bulk regeneration; explicit remove and replace actions require confirmation or an unkept
+  selection, and the final adult cannot be removed.
+- Minis retain a parent ID, are limited to two per adult, and rebalance evenly when possible. With
+  three adults and one mini, the oldest adult receives it. The one-month calendar arrival becomes a
+  full-size adult when capacity permits.
+- Save version 11 migrates every v1–v10 colony without removing or redesigning any existing
+  creature. Legacy colonies that exceed a new role preference are grandfathered intact.
+
+Release-page summary:
+
+> Create, keep, replace, or remove colony members—and privately approximate a favorite character
+> from a local image—while Formiga preserves every existing colony through a lossless migration.
+
 ## v0.47 exportable-creature-card release
 
 - Colony profiles export a deterministic 960×600 PNG only after the native save dialog returns a
@@ -220,18 +241,10 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.47
+## Original progressive roadmap status
 
-- **v0.50 Reference-Guided Creatures:** accept a PNG or JPEG on demand, analyze it entirely on the
-  user's device, and search the existing valid genome space for the closest Formiga-style creature.
-  Matching uses bounded palette, silhouette, proportion, symmetry, and appendage cues; it never
-  turns the source image into a texture or introduces anatomy that the procedural generator cannot
-  normally produce. The user previews the result before an explicit colony replacement, and the
-  accepted creature receives a normal seed, fresh birth time, memories, and companion lineage.
-  Source pixels, file paths, metadata, and extracted features are discarded after the import session,
-  no image bytes enter the save, and the feature performs no network request. Candidate search runs
-  only while importing, has fixed decode/dimension/work limits, and releases all temporary buffers on
-  acceptance or cancellation.
-
-Reference-image matching remains out of scope for v0.47 and retains its independent v0.50 release
-gate.
+The original requested sequence is implemented through v0.50: calendar arrivals, lived experience,
+compressed profiles, creature bonds, colony rituals, geometry-aware topology and routes, the
+bounded object ecosystem, shelter evolution, offline seed sharing, illustrated creature cards, and
+reference-guided colony management. Remaining release work is native interaction/performance
+measurement and signing—not an unimplemented roadmap feature.

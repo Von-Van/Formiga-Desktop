@@ -2,7 +2,10 @@ use crate::card_export::{choose_card_destination, export_to_selected_destination
 use crate::gpu::{OverlayRenderer, monitor_has_fullscreen_window};
 use crate::interaction::{InteractionProxy, ProxyRuntimeState};
 use crate::platform;
-use crate::settings::{ColonyView, SettingsOutcome, SettingsWindow};
+use crate::reference_match::match_reference_file;
+use crate::settings::{
+    ColonyView, GenerationPreview, PreviewAcceptance, SettingsOutcome, SettingsWindow,
+};
 use crate::tray::{TrayAction, TrayState};
 use crate::updater::{
     DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus, check_github, download_update,
@@ -816,6 +819,168 @@ impl FormigaApp {
             }
             self.redraw_due = Instant::now();
             let _ = self.save();
+        }
+        if let Some((creature_id, kept)) = outcome.set_creature_kept {
+            let result = self
+                .world
+                .as_mut()
+                .map(|world| world.set_creature_kept(creature_id, kept));
+            match result {
+                Some(Ok(())) => {
+                    let _ = self.save();
+                }
+                Some(Err(error)) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(error.to_string());
+                    }
+                }
+                None => {}
+            }
+        }
+        if let Some(creature_id) = outcome.remove_creature {
+            let result = self
+                .world
+                .as_mut()
+                .map(|world| world.remove_colony_creature(creature_id));
+            match result {
+                Some(Ok(())) => {
+                    let _ = self.save();
+                    self.redraw_due = Instant::now();
+                    for overlay in self.overlays.values() {
+                        overlay.window.request_redraw();
+                    }
+                }
+                Some(Err(error)) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(error.to_string());
+                    }
+                }
+                None => {}
+            }
+        }
+        if outcome.request_random_creature {
+            match new_colony_seed() {
+                Ok(source_seed) => {
+                    let desktop = self.snapshot();
+                    let creature =
+                        World::preview_adult(source_seed, OffsetDateTime::now_utc(), &desktop);
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_generation_preview(GenerationPreview {
+                            creature,
+                            source_seed,
+                            similarity: None,
+                            summary: "A new full-size creature with fresh memories".to_owned(),
+                        });
+                    }
+                }
+                Err(error) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(format!("Could not generate a secure seed: {error}"));
+                    }
+                }
+            }
+        }
+        if outcome.request_reference_creature
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("Character image", &["png", "jpg", "jpeg"])
+                .pick_file()
+        {
+            match new_colony_seed() {
+                Ok(search_seed) => {
+                    let desktop = self.snapshot();
+                    match match_reference_file(
+                        &path,
+                        search_seed,
+                        OffsetDateTime::now_utc(),
+                        &desktop,
+                    ) {
+                        Ok(reference) => {
+                            if let Some(window) = &mut self.settings_window {
+                                window.set_generation_preview(GenerationPreview {
+                                    creature: reference.creature,
+                                    source_seed: reference.source_seed,
+                                    similarity: Some(reference.similarity),
+                                    summary: reference.summary.to_owned(),
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(window) = &mut self.settings_window {
+                                window.set_error(format!(
+                                    "Could not use that reference image: {error}"
+                                ));
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(format!("Could not generate a secure seed: {error}"));
+                    }
+                }
+            }
+        }
+        if let Some(acceptance) = outcome.accept_creature_preview {
+            let desktop = self.snapshot();
+            let now = OffsetDateTime::now_utc();
+            let result = self.world.as_mut().map(|world| match acceptance {
+                PreviewAcceptance::Add { source_seed } => {
+                    world.add_generated_adult(source_seed, now, &desktop)
+                }
+                PreviewAcceptance::Replace {
+                    creature_id,
+                    source_seed,
+                } => world.replace_creature_with_adult(creature_id, source_seed, now, &desktop),
+            });
+            match result {
+                Some(Ok(_)) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.clear_generation_preview();
+                    }
+                    let _ = self.save();
+                    self.redraw_due = Instant::now();
+                    for overlay in self.overlays.values() {
+                        overlay.window.request_redraw();
+                    }
+                }
+                Some(Err(error)) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(error.to_string());
+                    }
+                }
+                None => {}
+            }
+        }
+        if outcome.regenerate_unkept {
+            let adult_targets = self.world.as_ref().map_or(0, |world| {
+                world
+                    .save
+                    .creatures
+                    .iter()
+                    .filter(|creature| !creature.kept && creature.role.is_adult())
+                    .count()
+            });
+            let seeds: Result<Vec<_>, _> = (0..adult_targets).map(|_| new_colony_seed()).collect();
+            match seeds {
+                Ok(seeds) => {
+                    let desktop = self.snapshot();
+                    let changed = self.world.as_mut().map_or(0, |world| {
+                        world.regenerate_unkept(&seeds, OffsetDateTime::now_utc(), &desktop)
+                    });
+                    if changed > 0 {
+                        let _ = self.save();
+                        self.redraw_due = Instant::now();
+                        for overlay in self.overlays.values() {
+                            overlay.window.request_redraw();
+                        }
+                    }
+                }
+                Err(error) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(format!("Could not generate secure seeds: {error}"));
+                    }
+                }
+            }
         }
         let mut save_profile = false;
         if let Some((creature_id, name)) = outcome.rename_creature

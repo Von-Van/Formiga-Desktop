@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=9 => migrate_legacy(value, version),
+            1..=10 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -111,6 +111,9 @@ fn migrate_legacy(
     }
     if source_version <= 6 {
         migrate_relationships(&mut value);
+    }
+    if source_version <= 10 {
+        migrate_colony_management(&mut value);
     }
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
@@ -156,6 +159,35 @@ fn migrate_legacy(
         }
     }
     Ok(save)
+}
+
+fn migrate_colony_management(value: &mut serde_json::Value) {
+    use serde_json::{Value, json};
+
+    let Some(creatures) = value.get_mut("creatures").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let parent_id = creatures
+        .first()
+        .and_then(|creature| creature.get("id"))
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    for (index, creature) in creatures.iter_mut().enumerate() {
+        let Some(creature) = creature.as_object_mut() else {
+            continue;
+        };
+        let role = if index == 0 {
+            json!({ "kind": "adult" })
+        } else {
+            json!({ "kind": "mini", "parent_id": parent_id })
+        };
+        creature.insert("role".into(), role);
+        creature.insert("kept".into(), Value::Bool(true));
+        creature.insert(
+            "mini_arrivals".into(),
+            json!({ "enabled": false, "arrived": [false, false] }),
+        );
+    }
 }
 
 fn migrate_relationships(value: &mut serde_json::Value) {
@@ -690,7 +722,13 @@ mod tests {
         let expected_home = world.save.home.clone();
         let mut value = serde_json::to_value(&world.save).unwrap();
         value["save_version"] = serde_json::Value::from(4);
-        for creature in value["creatures"].as_array_mut().unwrap() {
+        for (generation, creature) in value["creatures"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            creature["generation"] = serde_json::Value::from(generation as u64);
             creature.as_object_mut().unwrap().remove("born_at_utc");
         }
 
@@ -1017,6 +1055,87 @@ mod tests {
         assert!(migrated.home.decorations.decorations.is_empty());
         assert!(migrated.home.decorations.next_at_utc - maximum_seen >= time::Duration::days(4));
         assert!(migrated.home.decorations.next_at_utc - maximum_seen <= time::Duration::days(9));
+
+        let round_trip = directory.join("round-trip.json");
+        let store = SaveStore::new(&round_trip);
+        store.save(&migrated).unwrap();
+        assert_eq!(store.load().unwrap(), Some(migrated));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v10_colonies_without_losing_a_creature_or_its_history() {
+        let created = datetime!(2026-01-31 8:30 UTC);
+        let desktop = crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([10; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 826.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let mut original = crate::World::new([110; 32], created, &desktop);
+        original.tick(created + time::Duration::days(32), 0.05, &desktop);
+        assert_eq!(original.save.creatures.len(), 4);
+        for (index, creature) in original.save.creatures.iter_mut().enumerate() {
+            creature.name = format!("Legacy {index}");
+            creature.memory.times_petted = index as u32 + 10;
+            creature.tendencies.sociability = index as i8 * 7;
+        }
+        let expected: Vec<_> = original
+            .save
+            .creatures
+            .iter()
+            .map(|creature| {
+                (
+                    creature.id,
+                    creature.name.clone(),
+                    creature.memory.clone(),
+                    creature.tendencies,
+                    creature.appearance.clone(),
+                )
+            })
+            .collect();
+
+        let mut value = serde_json::to_value(&original.save).unwrap();
+        value["save_version"] = serde_json::Value::from(10);
+        for creature in value["creatures"].as_array_mut().unwrap() {
+            let object = creature.as_object_mut().unwrap();
+            object.remove("role");
+            object.remove("kept");
+            object.remove("mini_arrivals");
+        }
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v10-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        let migrated = SaveStore::new(&path).load().unwrap().unwrap();
+        assert_eq!(migrated.creatures.len(), expected.len());
+        for (index, (actual, expected)) in migrated.creatures.iter().zip(expected).enumerate() {
+            assert_eq!(actual.id, expected.0);
+            assert_eq!(actual.name, expected.1);
+            assert_eq!(actual.memory, expected.2);
+            assert_eq!(actual.tendencies, expected.3);
+            assert_eq!(actual.appearance, expected.4);
+            assert!(actual.kept);
+            assert!(!actual.mini_arrivals.enabled);
+            assert_eq!(actual.role.is_adult(), index == 0);
+        }
 
         let round_trip = directory.join("round-trip.json");
         let store = SaveStore::new(&round_trip);

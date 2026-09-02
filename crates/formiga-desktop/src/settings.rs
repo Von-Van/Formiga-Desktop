@@ -1,10 +1,12 @@
 use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
+use formiga_art::CreatureRenderer;
 use formiga_core::{
-    ApplicationOcclusionRule, Creature, CreatureId, CreatureRelationship, DesktopRect,
-    DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone, HabitatZoneKind, MonitorInfo,
-    Settings, SharedCreatureSeed, closest_companion, decode_creature_seed, encode_creature_seed,
-    profile_descriptors, relationship_between, validate_creature_name, validate_habitat,
+    ActionKind, ApplicationOcclusionRule, Creature, CreatureId, CreatureRelationship, CreatureRole,
+    DesktopRect, DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone, HabitatZoneKind,
+    MAX_ADULT_CREATURES, MAX_COLONY_CREATURES, MonitorInfo, Settings, SharedCreatureSeed,
+    closest_companion, decode_creature_seed, encode_creature_seed, profile_descriptors,
+    relationship_between, validate_creature_name, validate_habitat,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -41,6 +43,31 @@ pub struct SettingsOutcome {
     pub viewed_profile: Option<CreatureId>,
     pub import_shared_creature: Option<SharedCreatureSeed>,
     pub export_creature_card: Option<CreatureId>,
+    pub set_creature_kept: Option<(CreatureId, bool)>,
+    pub remove_creature: Option<CreatureId>,
+    pub request_random_creature: bool,
+    pub request_reference_creature: bool,
+    pub accept_creature_preview: Option<PreviewAcceptance>,
+    pub regenerate_unkept: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewAcceptance {
+    Add {
+        source_seed: [u8; 32],
+    },
+    Replace {
+        creature_id: CreatureId,
+        source_seed: [u8; 32],
+    },
+}
+
+#[derive(Clone)]
+pub struct GenerationPreview {
+    pub creature: Creature,
+    pub source_seed: [u8; 32],
+    pub similarity: Option<u8>,
+    pub summary: String,
 }
 
 #[derive(Clone, Copy)]
@@ -70,6 +97,10 @@ pub struct SettingsWindow {
     selected_creature: Option<CreatureId>,
     seed_import_code: String,
     seed_import_confirmed: bool,
+    generation_preview: Option<GenerationPreview>,
+    generation_texture: Option<egui::TextureHandle>,
+    remove_confirmation: Option<CreatureId>,
+    bulk_confirmation: bool,
 }
 
 impl SettingsWindow {
@@ -172,6 +203,10 @@ impl SettingsWindow {
             selected_creature: creatures.first().map(|creature| creature.id),
             seed_import_code: String::new(),
             seed_import_confirmed: false,
+            generation_preview: None,
+            generation_texture: None,
+            remove_confirmation: None,
+            bulk_confirmation: false,
         })
     }
 
@@ -208,6 +243,39 @@ impl SettingsWindow {
 
     pub fn hide(&self) {
         self.window.set_visible(false);
+    }
+
+    pub fn set_generation_preview(&mut self, preview: GenerationPreview) {
+        let canvas = CreatureRenderer::render_frame(
+            &preview.creature.appearance,
+            ActionKind::Greet,
+            2,
+            true,
+        );
+        let image = egui::ColorImage::from_rgba_unmultiplied(
+            [canvas.width() as usize, canvas.height() as usize],
+            &canvas.rgba_bytes(),
+        );
+        self.generation_texture = Some(self.context.load_texture(
+            "creature-generation-preview",
+            image,
+            egui::TextureOptions::NEAREST,
+        ));
+        self.generation_preview = Some(preview);
+        self.tab = SettingsTab::Colony;
+        self.error = None;
+        self.window.request_redraw();
+    }
+
+    pub fn set_error(&mut self, message: impl Into<String>) {
+        self.error = Some(message.into());
+        self.window.request_redraw();
+    }
+
+    pub fn clear_generation_preview(&mut self) {
+        self.generation_preview = None;
+        self.generation_texture = None;
+        self.window.request_redraw();
     }
 
     pub fn add_application(
@@ -293,6 +361,10 @@ impl SettingsWindow {
         let mut selected_creature = self.selected_creature;
         let mut seed_import_code = self.seed_import_code.clone();
         let mut seed_import_confirmed = self.seed_import_confirmed;
+        let mut generation_preview = self.generation_preview.clone();
+        let mut generation_texture = self.generation_texture.clone();
+        let mut remove_confirmation = self.remove_confirmation;
+        let mut bulk_confirmation = self.bulk_confirmation;
         let full_output = context.run_ui(input, |ui| {
             draw_settings(
                 ui,
@@ -312,6 +384,10 @@ impl SettingsWindow {
                 &mut selected_creature,
                 &mut seed_import_code,
                 &mut seed_import_confirmed,
+                &mut generation_preview,
+                &mut generation_texture,
+                &mut remove_confirmation,
+                &mut bulk_confirmation,
                 &mut outcome,
             );
         });
@@ -322,6 +398,10 @@ impl SettingsWindow {
         self.selected_creature = selected_creature;
         self.seed_import_code = seed_import_code;
         self.seed_import_confirmed = seed_import_confirmed;
+        self.generation_preview = generation_preview;
+        self.generation_texture = generation_texture;
+        self.remove_confirmation = remove_confirmation;
+        self.bulk_confirmation = bulk_confirmation;
         if let Some(applied) = &outcome.applied {
             self.saved = applied.clone();
         }
@@ -437,6 +517,10 @@ fn draw_settings(
     selected_creature: &mut Option<CreatureId>,
     seed_import_code: &mut String,
     seed_import_confirmed: &mut bool,
+    generation_preview: &mut Option<GenerationPreview>,
+    generation_texture: &mut Option<egui::TextureHandle>,
+    remove_confirmation: &mut Option<CreatureId>,
+    bulk_confirmation: &mut bool,
     outcome: &mut SettingsOutcome,
 ) {
     egui::CentralPanel::default().show(root, |ui| {
@@ -483,6 +567,10 @@ fn draw_settings(
                 selected_creature,
                 monitors,
                 error,
+                generation_preview,
+                generation_texture,
+                remove_confirmation,
+                bulk_confirmation,
                 outcome,
             ),
             SettingsTab::Habitat => habitat_tab(ui, settings, monitors, editor_active, outcome),
@@ -600,6 +688,7 @@ fn seed_import_ready(
     decoded.is_ok() && confirmed
 }
 
+#[allow(clippy::too_many_arguments)]
 fn colony_tab(
     ui: &mut egui::Ui,
     colony: ColonyView<'_>,
@@ -607,6 +696,10 @@ fn colony_tab(
     selected_creature: &mut Option<CreatureId>,
     monitors: &[MonitorInfo],
     error: &mut Option<String>,
+    generation_preview: &mut Option<GenerationPreview>,
+    generation_texture: &mut Option<egui::TextureHandle>,
+    remove_confirmation: &mut Option<CreatureId>,
+    bulk_confirmation: &mut bool,
     outcome: &mut SettingsOutcome,
 ) {
     let creatures = colony.creatures;
@@ -640,6 +733,18 @@ fn colony_tab(
     ui.label(
         format!("{:?}", creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"),
     );
+    match creature.role {
+        CreatureRole::Adult => {
+            ui.label("Full-size creature");
+        }
+        CreatureRole::Mini { parent_id } => {
+            let parent = creatures
+                .iter()
+                .find(|candidate| candidate.id == parent_id)
+                .map_or("a colony adult", |parent| parent.name.as_str());
+            ui.label(format!("Mini cared for by {parent}"));
+        }
+    }
     let descriptors = profile_descriptors(creature);
     if descriptors.is_empty() {
         ui.label(egui::RichText::new("Still developing preferences").italics());
@@ -656,7 +761,7 @@ fn colony_tab(
     ui.add_space(8.0);
     ui.group(|ui| {
         ui.strong("Name");
-        ui.label("This is the only part of a creature profile that can be changed.");
+        ui.label("This is the only editable profile detail; learned history remains read-only.");
         let name = creature_names
             .entry(creature.id)
             .or_insert_with(|| creature.name.clone());
@@ -673,6 +778,166 @@ fn colony_tab(
                 }
             }
         });
+    });
+
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        ui.strong("Colony care");
+        let mut kept = creature.kept;
+        if ui
+            .checkbox(&mut kept, "Keep this creature during bulk regeneration")
+            .changed()
+        {
+            outcome.set_creature_kept = Some((creature.id, kept));
+            *error = None;
+        }
+        ui.label(
+            egui::RichText::new(
+                "Individual replacement also requires Keep to be turned off first.",
+            )
+            .small(),
+        );
+
+        let adult_count = creatures
+            .iter()
+            .filter(|candidate| candidate.role.is_adult())
+            .count();
+        let can_remove = !(creature.role.is_adult() && adult_count == 1);
+        if *remove_confirmation == Some(creature.id) {
+            ui.colored_label(
+                egui::Color32::from_rgb(241, 181, 102),
+                format!("Remove {} and its local history?", creature.name),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Remove permanently").clicked() {
+                    outcome.remove_creature = Some(creature.id);
+                    *remove_confirmation = None;
+                }
+                if ui.button("Cancel").clicked() {
+                    *remove_confirmation = None;
+                }
+            });
+        } else if ui
+            .add_enabled(can_remove, egui::Button::new("Remove from colony…"))
+            .clicked()
+        {
+            *remove_confirmation = Some(creature.id);
+        }
+        if !can_remove {
+            ui.label(
+                egui::RichText::new("A colony must keep at least one full-size creature.").small(),
+            );
+        }
+    });
+
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        ui.strong("Creature studio");
+        let adult_count = creatures
+            .iter()
+            .filter(|candidate| candidate.role.is_adult())
+            .count();
+        ui.label(format!(
+            "{} of {} colony places • {} of {} full-size places",
+            creatures.len(),
+            MAX_COLONY_CREATURES,
+            adult_count,
+            MAX_ADULT_CREATURES
+        ));
+        ui.label(
+            "Create a random full-size creature, or privately match one to a local PNG or JPEG.",
+        );
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Generate random preview").clicked() {
+                outcome.request_random_creature = true;
+            }
+            if ui.button("Match PNG or JPEG…").clicked() {
+                outcome.request_reference_creature = true;
+            }
+        });
+
+        if let Some(preview) = generation_preview.clone() {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if let Some(texture) = generation_texture.as_ref() {
+                    ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(144.0, 144.0)));
+                }
+                ui.vertical(|ui| {
+                    ui.strong("Full-size candidate");
+                    ui.label(
+                        format!("{:?}", preview.creature.appearance.family)
+                            .replace("SoftQuadruped", "Soft Quadruped"),
+                    );
+                    if let Some(similarity) = preview.similarity {
+                        ui.label(format!("Reference match: {similarity}%"));
+                    }
+                    ui.label(&preview.summary);
+                });
+            });
+            let can_add =
+                creatures.len() < MAX_COLONY_CREATURES && adult_count < MAX_ADULT_CREATURES;
+            let can_replace =
+                !creature.kept && (creature.role.is_adult() || adult_count < MAX_ADULT_CREATURES);
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(can_add, egui::Button::new("Add to colony"))
+                    .clicked()
+                {
+                    outcome.accept_creature_preview = Some(PreviewAcceptance::Add {
+                        source_seed: preview.source_seed,
+                    });
+                }
+                if ui
+                    .add_enabled(
+                        can_replace,
+                        egui::Button::new(format!("Replace {}", creature.name)),
+                    )
+                    .clicked()
+                {
+                    outcome.accept_creature_preview = Some(PreviewAcceptance::Replace {
+                        creature_id: creature.id,
+                        source_seed: preview.source_seed,
+                    });
+                }
+                if ui.button("Clear preview").clicked() {
+                    *generation_preview = None;
+                    *generation_texture = None;
+                }
+            });
+            if creature.kept {
+                ui.label(
+                    egui::RichText::new("Turn off Keep to replace the selected creature.").small(),
+                );
+            }
+        }
+
+        let unkept = creatures.iter().filter(|candidate| !candidate.kept).count();
+        ui.add_space(8.0);
+        if *bulk_confirmation {
+            ui.colored_label(
+                egui::Color32::from_rgb(241, 181, 102),
+                format!(
+                    "Regenerate {unkept} unkept creature(s)? Their local history will be removed."
+                ),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Regenerate unkept").clicked() {
+                    outcome.regenerate_unkept = true;
+                    *bulk_confirmation = false;
+                }
+                if ui.button("Cancel").clicked() {
+                    *bulk_confirmation = false;
+                }
+            });
+        } else if ui
+            .add_enabled(
+                unkept > 0,
+                egui::Button::new(format!("Regenerate all unkept ({unkept})…")),
+            )
+            .clicked()
+        {
+            *bulk_confirmation = true;
+        }
     });
 
     ui.add_space(8.0);

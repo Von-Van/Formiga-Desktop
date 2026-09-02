@@ -53,6 +53,14 @@ uses the creature's actual procedural sprite and palette, frames it as a cozy pi
 and includes its family, top learned descriptors, UTC arrival month, and only an abbreviated seed
 glimpse. Export happens entirely on demand and writes no hidden profile or device metadata.
 
+The Creature Studio can preview a fresh full-size creature or approximate a character from a local
+PNG or JPEG using only Formiga's existing procedural genome. Reference matching is bounded,
+offline, and temporary: source pixels, paths, metadata, and extracted features are discarded after
+the preview. Keep toggles protect colony members during bulk regeneration, while explicit controls
+can add, replace, or remove individual creatures. A colony retains at most four members and three
+full-size adults; minis are distributed as evenly as possible among adults, with the oldest adult
+receiving the tie-break.
+
 ![An exportable Formiga creature card for Mallow](docs/assets/creature-card.png)
 
 Between those larger reactions, creatures entertain themselves with generated toys, pause for small
@@ -65,13 +73,13 @@ of the way; a slow release keeps the existing precise placement behavior.
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.47.0-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.50.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.47.0-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.50.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.47.0`. The assisted updater matches those exact names, so do
+names with its version in place of `0.50.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides

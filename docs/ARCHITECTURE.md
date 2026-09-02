@@ -248,6 +248,31 @@ abbreviation of the existing share code. The encoder adds no text chunks or appl
 It never receives memory payloads, relationships, full seed text, screen geometry, device data, or
 the save file itself. Export is therefore read-only and leaves save version 10 unchanged.
 
+## Reference-guided generation and colony roles
+
+The desktop host opens a user-selected PNG or JPEG only after an explicit Creature Studio action.
+Decoding is capped at 16 MB, 4096 pixels per dimension, and 16 million pixels. The image is reduced
+to a 64×64 analysis surface and summarized as color, aspect, occupancy, symmetry, and upper, lower,
+and side extension cues. Exactly 512 seeds from a named search stream are rendered through the
+ordinary procedural creature renderer and scored against that summary. The chosen preview contains
+only a normal generated creature, its source seed, and a display-only score; image bytes, path,
+metadata, analysis pixels, and feature vectors leave scope after matching.
+
+Save version 11 gives every creature a typed adult or mini role, a persistent Keep flag, and a
+two-bit adult mini-arrival projection. Total colony size remains four, adult count is capped at
+three, and normal generation limits each adult to two minis. Parent assignment is deterministic and
+balanced by mini count, adult birth time, and colony order. Rebalancing is role metadata only—it
+does not rewrite a mini's identity, genome, name, birth, or learned state. Legacy v1–v10 saves retain
+every creature; the first becomes an adult and later members become grandfathered minis without
+enforcing a destructive cap.
+
+Add, replacement, removal, and bulk regeneration execute on the existing `World` and immediately
+normalize the at-most-six pair records and bounded runtime maps. Replacement requires an unkept
+target and starts a fresh full-size identity while preserving the occupied location. Removal cannot
+delete the final adult; orphaned minis are reassigned to remaining adults. The one-month calendar
+milestone selects a full-size adult when an adult slot exists, while one-hour and one-week arrivals
+remain minis.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -272,23 +297,27 @@ the save file itself. Export is therefore read-only and leaves save version 10 u
   no idle work, background task, or network operation.
 - Creature cards: the save dialog, CPU canvas, font atlas, and PNG writer exist only during an
   explicit export; cancellation performs no render.
+- Reference matching: one bounded synchronous decode and 512-candidate procedural search occurs
+  only after file selection; no reference worker, cache, texture, or idle task persists.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 10 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+Version 11 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
 canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
 receiving only its first deterministic ritual timestamp; v8 receives only its first deterministic
 colony-object timestamp, and v9 receives only its first deterministic shelter-decoration timestamp.
-Migration preserves creature IDs, resolved genomes, personality,
+v1–v10 creatures receive adult/mini role metadata, Keep protection, and disabled legacy mini
+schedules without replacement. Migration preserves creature IDs, resolved genomes, personality,
 custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
 tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
 
-Additional creatures are earned one hour, one week, and one calendar month after colony creation;
-end-of-month dates clamp in UTC, overdue reveals remain 15 seconds apart, and the colony remains
-capped at four. Interrupted ambient, interaction, and toss actions reload as idle. Home and birth
-timestamps survive relaunches, and clock rollback uses the maximum-seen UTC guard. There is
+Additional minis are earned after one hour and one week; a full-size adult is earned after one
+calendar month when an adult slot exists. End-of-month dates clamp in UTC, overdue reveals remain 15
+seconds apart, and the colony remains capped at four. Interrupted ambient, interaction, and toss
+actions reload as idle. Home and birth timestamps survive relaunches, and clock rollback uses the
+maximum-seen UTC guard. There is
 deliberately no history database or telemetry layer. Update preferences live in a separate
 `updates.json` file so network policy and check timing cannot alter a colony save.

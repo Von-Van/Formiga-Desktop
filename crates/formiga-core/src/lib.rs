@@ -28,4 +28,4 @@ pub use topology::{
 };
 pub use world::World;
 
-pub const SAVE_VERSION: u32 = 10;
+pub const SAVE_VERSION: u32 = 11;

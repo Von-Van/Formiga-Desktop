@@ -711,6 +711,39 @@ pub struct CreatureOrigin {
     pub source_generation: u8,
 }
 
+pub const MAX_COLONY_CREATURES: usize = 4;
+pub const MAX_ADULT_CREATURES: usize = 3;
+pub const MAX_MINIS_PER_ADULT: usize = 2;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CreatureRole {
+    #[default]
+    Adult,
+    Mini {
+        parent_id: CreatureId,
+    },
+}
+
+impl CreatureRole {
+    pub const fn is_adult(self) -> bool {
+        matches!(self, Self::Adult)
+    }
+
+    pub const fn parent_id(self) -> Option<CreatureId> {
+        match self {
+            Self::Adult => None,
+            Self::Mini { parent_id } => Some(parent_id),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MiniArrivalState {
+    pub enabled: bool,
+    pub arrived: [bool; 2],
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearnedTendencies {
     pub cursor_trust: i8,
@@ -899,6 +932,22 @@ pub enum CreatureNameError {
     ControlCharacter,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum ColonyManagementError {
+    #[error("the colony already has four creatures")]
+    ColonyFull,
+    #[error("the colony already has three full-size creatures")]
+    AdultLimit,
+    #[error("creature not found")]
+    CreatureNotFound,
+    #[error("the last full-size creature cannot be removed")]
+    LastAdult,
+    #[error("this creature is marked to keep")]
+    CreatureKept,
+    #[error("generated creature identity conflicts with an existing colony member")]
+    DuplicateIdentity,
+}
+
 pub fn validate_creature_name(value: &str) -> Result<String, CreatureNameError> {
     if value.chars().any(char::is_control) {
         return Err(CreatureNameError::ControlCharacter);
@@ -939,6 +988,12 @@ pub struct Creature {
     pub generation: u8,
     pub origin: CreatureOrigin,
     pub colony_order: u8,
+    #[serde(default)]
+    pub role: CreatureRole,
+    #[serde(default = "default_true")]
+    pub kept: bool,
+    #[serde(default)]
+    pub mini_arrivals: MiniArrivalState,
     pub name: String,
     #[serde(default = "default_born_at_utc", with = "time::serde::rfc3339")]
     pub born_at_utc: OffsetDateTime,
@@ -950,6 +1005,10 @@ pub struct Creature {
     pub tendencies: LearnedTendencies,
     pub routines: RoutineTable,
     pub state: CreatureState,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 fn default_born_at_utc() -> OffsetDateTime {

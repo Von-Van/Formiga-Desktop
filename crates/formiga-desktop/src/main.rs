@@ -5,6 +5,7 @@ mod card_export;
 mod gpu;
 mod interaction;
 mod platform;
+mod reference_match;
 mod settings;
 mod tray;
 mod updater;

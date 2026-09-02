@@ -522,6 +522,7 @@ impl World {
     }
 
     pub fn from_save(mut save: SaveFile) -> Self {
+        normalize_colony_roles(&mut save);
         normalize_relationships(&mut save);
         if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
             save.ritual.next_at_utc =
@@ -614,6 +615,7 @@ impl World {
         }
         let timeline_now = self.save.maximum_seen_utc;
         self.process_arrivals(timeline_now, desktop);
+        self.process_adult_mini_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
         self.process_shelter_decorations(timeline_now);
         self.reconcile_colony_objects(desktop);
@@ -1547,6 +1549,264 @@ impl World {
             return true;
         }
         false
+    }
+
+    pub fn set_creature_kept(
+        &mut self,
+        creature_id: CreatureId,
+        kept: bool,
+    ) -> Result<(), ColonyManagementError> {
+        let creature = self
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == creature_id)
+            .ok_or(ColonyManagementError::CreatureNotFound)?;
+        creature.kept = kept;
+        Ok(())
+    }
+
+    pub fn preview_adult(
+        source_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Creature {
+        generated_adult(source_seed, now, desktop, 0, &[], true)
+    }
+
+    pub fn add_generated_adult(
+        &mut self,
+        source_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Result<CreatureId, ColonyManagementError> {
+        if self.save.creatures.len() >= MAX_COLONY_CREATURES {
+            return Err(ColonyManagementError::ColonyFull);
+        }
+        if adult_count(&self.save.creatures) >= MAX_ADULT_CREATURES {
+            return Err(ColonyManagementError::AdultLimit);
+        }
+        let existing_names: Vec<_> = self
+            .save
+            .creatures
+            .iter()
+            .map(|creature| creature.name.clone())
+            .collect();
+        let order = next_colony_order(&self.save.creatures);
+        let creature = generated_adult(source_seed, now, desktop, order, &existing_names, true);
+        if self
+            .save
+            .creatures
+            .iter()
+            .any(|existing| existing.id == creature.id)
+        {
+            return Err(ColonyManagementError::DuplicateIdentity);
+        }
+        let id = creature.id;
+        self.register_creature_runtime(&creature);
+        self.save.creatures.push(creature);
+        rebalance_minis(&mut self.save.creatures);
+        normalize_relationships(&mut self.save);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::CreatureSpawned { creature_id: id },
+        );
+        Ok(id)
+    }
+
+    pub fn replace_creature_with_adult(
+        &mut self,
+        creature_id: CreatureId,
+        source_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Result<CreatureId, ColonyManagementError> {
+        let index = self
+            .save
+            .creatures
+            .iter()
+            .position(|creature| creature.id == creature_id)
+            .ok_or(ColonyManagementError::CreatureNotFound)?;
+        if self.save.creatures[index].kept {
+            return Err(ColonyManagementError::CreatureKept);
+        }
+        let old = self.save.creatures[index].clone();
+        if !old.role.is_adult() && adult_count(&self.save.creatures) >= MAX_ADULT_CREATURES {
+            return Err(ColonyManagementError::AdultLimit);
+        }
+        let existing_names: Vec<_> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.id != creature_id)
+            .map(|creature| creature.name.clone())
+            .collect();
+        let mut replacement = generated_adult(
+            source_seed,
+            now,
+            desktop,
+            old.colony_order,
+            &existing_names,
+            true,
+        );
+        if self
+            .save
+            .creatures
+            .iter()
+            .any(|existing| existing.id != creature_id && existing.id == replacement.id)
+        {
+            return Err(ColonyManagementError::DuplicateIdentity);
+        }
+        replacement.state.position = old.state.position;
+        replacement.state.surface = old.state.surface.clone();
+        let new_id = replacement.id;
+        for creature in &mut self.save.creatures {
+            if creature.role.parent_id() == Some(creature_id) {
+                creature.role = CreatureRole::Mini { parent_id: new_id };
+            }
+        }
+        self.remove_creature_runtime(creature_id);
+        self.register_creature_runtime(&replacement);
+        self.save.creatures[index] = replacement;
+        rebalance_minis(&mut self.save.creatures);
+        normalize_relationships(&mut self.save);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::CreatureSpawned {
+                creature_id: new_id,
+            },
+        );
+        Ok(new_id)
+    }
+
+    pub fn remove_colony_creature(
+        &mut self,
+        creature_id: CreatureId,
+    ) -> Result<(), ColonyManagementError> {
+        let index = self
+            .save
+            .creatures
+            .iter()
+            .position(|creature| creature.id == creature_id)
+            .ok_or(ColonyManagementError::CreatureNotFound)?;
+        if self.save.creatures[index].role.is_adult() && adult_count(&self.save.creatures) == 1 {
+            return Err(ColonyManagementError::LastAdult);
+        }
+        self.save.creatures.remove(index);
+        self.remove_creature_runtime(creature_id);
+        rebalance_minis(&mut self.save.creatures);
+        normalize_relationships(&mut self.save);
+        Ok(())
+    }
+
+    pub fn regenerate_unkept(
+        &mut self,
+        source_seeds: &[[u8; 32]],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> usize {
+        let targets: Vec<_> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| !creature.kept)
+            .map(|creature| (creature.id, creature.role.is_adult()))
+            .collect();
+        let mut replaced = 0;
+        let mut seed_index = 0;
+        for (creature_id, is_adult) in targets {
+            if is_adult {
+                let Some(seed) = source_seeds.get(seed_index).copied() else {
+                    break;
+                };
+                seed_index += 1;
+                if self
+                    .replace_creature_with_adult(creature_id, seed, now, desktop)
+                    .is_ok()
+                {
+                    replaced += 1;
+                }
+            } else if self.remove_colony_creature(creature_id).is_ok() {
+                replaced += 1;
+            }
+        }
+        replaced
+    }
+
+    fn register_creature_runtime(&mut self, creature: &Creature) {
+        self.rngs
+            .insert(creature.id, ChaCha12Rng::from_seed(creature.behavior_seed));
+        self.ambient_timers.insert(
+            creature.id,
+            AmbientTimers {
+                inspect_remaining: self.ambient_rng.random_range(INSPECT_INTERVAL_SECS),
+                dangle_remaining: self.ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+            },
+        );
+    }
+
+    fn remove_creature_runtime(&mut self, creature_id: CreatureId) {
+        let mut interrupted: BTreeSet<_> = self
+            .action_choices
+            .iter()
+            .filter(|(_, choice)| choice.target_creature == Some(creature_id))
+            .map(|(actor, _)| *actor)
+            .chain(
+                self.bond_plans
+                    .iter()
+                    .filter(|(_, plan)| plan.target == creature_id)
+                    .map(|(actor, _)| *actor),
+            )
+            .collect();
+        if self.colony_plan.as_ref().is_some_and(|plan| {
+            plan.participants
+                .iter()
+                .any(|participant| participant.creature_id == creature_id)
+        }) && let Some(plan) = self.colony_plan.take()
+        {
+            interrupted.extend(
+                plan.participants
+                    .into_iter()
+                    .map(|participant| participant.creature_id),
+            );
+        }
+        for actor in interrupted {
+            if let Some(creature) = self
+                .save
+                .creatures
+                .iter_mut()
+                .find(|creature| creature.id == actor)
+            {
+                creature.state.action = ActionKind::Idle;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = 1.0;
+            }
+        }
+        self.rngs.remove(&creature_id);
+        self.ambient_timers.remove(&creature_id);
+        self.window_journeys.remove(&creature_id);
+        self.window_routes.remove(&creature_id);
+        self.tosses.remove(&creature_id);
+        self.action_choices.retain(|actor, choice| {
+            *actor != creature_id && choice.target_creature != Some(creature_id)
+        });
+        self.bond_plans
+            .retain(|actor, plan| *actor != creature_id && plan.target != creature_id);
+        self.sleep_elapsed.remove(&creature_id);
+        self.calm_proximity_seconds
+            .retain(|(a, b), _| *a != creature_id && *b != creature_id);
+        self.pending_home_greetings.remove(&creature_id);
+        self.reacted_to_toss
+            .retain(|(actor, target)| *actor != creature_id && *target != creature_id);
+        self.watched_climb
+            .retain(|(actor, target)| *actor != creature_id && *target != creature_id);
+        if self
+            .interaction
+            .as_ref()
+            .is_some_and(|interaction| interaction.creature_id == creature_id)
+        {
+            self.interaction = None;
+        }
     }
 
     fn sample_observations(&mut self, dt: f32, desktop: &DesktopSnapshot) {
@@ -2966,62 +3226,204 @@ impl World {
         creature.memory = CreatureMemory::default();
         creature.tendencies = LearnedTendencies::default();
         creature.routines = RoutineTable::default();
+        creature.role = CreatureRole::Adult;
+        creature.kept = true;
+        creature.mini_arrivals = MiniArrivalState {
+            enabled: true,
+            arrived: [false; 2],
+        };
         creature.state = spawn_state;
         colony.save.creatures[0] = creature;
+        colony.save.arrival_state.arrived[0] = true;
+        colony.save.arrival_state.arrived[1] = true;
         Self::from_save(colony.save)
     }
 
     fn process_arrivals(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) {
-        let streams = SeedStream::new(self.save.colony_seed);
         let mut arrivals_this_tick = 0_u8;
         for (index, milestone) in ARRIVAL_MILESTONES.into_iter().enumerate() {
             let due = arrival_due_at(self.save.created_at_utc, milestone);
             if !self.save.arrival_state.arrived[index] && self.save.maximum_seen_utc >= due {
-                let primary = self.save.creatures.first().cloned();
-                let existing_names: Vec<_> = self
+                if self.save.creatures.len() >= MAX_COLONY_CREATURES {
+                    continue;
+                }
+                let creature = if index < 2 {
+                    let Some(parent_id) = balanced_parent_id(&self.save.creatures) else {
+                        continue;
+                    };
+                    generate_mini_for_parent(
+                        &self.save.creatures,
+                        self.save.colony_seed,
+                        parent_id,
+                        index as u8 + 1,
+                        now,
+                        desktop,
+                    )
+                } else if adult_count(&self.save.creatures) < MAX_ADULT_CREATURES {
+                    let streams = SeedStream::new(self.save.colony_seed);
+                    let seed: [u8; 32] = streams.bytes("calendar-adult", 0);
+                    let existing_names: Vec<_> = self
+                        .save
+                        .creatures
+                        .iter()
+                        .map(|creature| creature.name.clone())
+                        .collect();
+                    Some(generated_adult(
+                        seed,
+                        now,
+                        desktop,
+                        next_colony_order(&self.save.creatures),
+                        &existing_names,
+                        true,
+                    ))
+                } else {
+                    let Some(parent_id) = balanced_parent_id(&self.save.creatures) else {
+                        continue;
+                    };
+                    let child_number =
+                        mini_count_for_parent(&self.save.creatures, parent_id) as u8 + 1;
+                    generate_mini_for_parent(
+                        &self.save.creatures,
+                        self.save.colony_seed,
+                        parent_id,
+                        child_number,
+                        now,
+                        desktop,
+                    )
+                };
+                let Some(mut creature) = creature else {
+                    continue;
+                };
+                if self
                     .save
                     .creatures
                     .iter()
-                    .map(|creature| creature.name.clone())
-                    .collect();
-                let generation = index as u8 + 1;
-                let mut creature = generate_creature(
-                    &streams,
-                    self.save.colony_seed,
-                    generation,
-                    now,
-                    desktop,
-                    &existing_names,
-                    primary.as_ref(),
-                );
+                    .any(|existing| existing.id == creature.id)
+                {
+                    self.save.arrival_state.arrived[index] = true;
+                    continue;
+                }
                 creature.state.arrival_delay_secs = f32::from(arrivals_this_tick) * 15.0;
-                self.rngs
-                    .insert(creature.id, ChaCha12Rng::from_seed(creature.behavior_seed));
-                self.ambient_timers.insert(
-                    creature.id,
-                    AmbientTimers {
-                        inspect_remaining: self.ambient_rng.random_range(INSPECT_INTERVAL_SECS),
-                        dangle_remaining: self.ambient_rng.random_range(DANGLE_INTERVAL_SECS),
-                    },
-                );
+                let id = creature.id;
+                let parent_id = creature.role.parent_id();
+                self.register_creature_runtime(&creature);
                 if creature.state.arrival_delay_secs == 0.0 {
                     Self::emit(
                         &mut self.events,
-                        WorldEvent::CreatureSpawned {
-                            creature_id: creature.id,
-                        },
+                        WorldEvent::CreatureSpawned { creature_id: id },
                     );
                 }
                 add_arrival_relationships(
                     &mut self.save.relationships,
                     &self.save.creatures,
-                    creature.id,
-                    primary.as_ref().map(|parent| parent.id),
+                    id,
+                    parent_id,
                 );
+                let is_adult = creature.role.is_adult();
                 self.save.creatures.push(creature);
+                if is_adult {
+                    rebalance_minis(&mut self.save.creatures);
+                }
                 self.save.arrival_state.arrived[index] = true;
                 arrivals_this_tick += 1;
             }
+        }
+    }
+
+    fn process_adult_mini_arrivals(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) {
+        if self.save.creatures.len() >= MAX_COLONY_CREATURES {
+            return;
+        }
+        let mut arrivals = 0_u8;
+        loop {
+            if self.save.creatures.len() >= MAX_COLONY_CREATURES {
+                break;
+            }
+            let mut candidates: Vec<_> = self
+                .save
+                .creatures
+                .iter()
+                .filter(|creature| {
+                    creature.role.is_adult()
+                        && creature.mini_arrivals.enabled
+                        && mini_count_for_parent(&self.save.creatures, creature.id)
+                            < MAX_MINIS_PER_ADULT
+                })
+                .filter_map(|creature| {
+                    creature
+                        .mini_arrivals
+                        .arrived
+                        .iter()
+                        .enumerate()
+                        .find(|(index, arrived)| {
+                            !**arrived
+                                && now
+                                    >= creature.born_at_utc
+                                        + if *index == 0 {
+                                            Duration::hours(1)
+                                        } else {
+                                            Duration::days(7)
+                                        }
+                        })
+                        .map(|(index, _)| {
+                            (
+                                mini_count_for_parent(&self.save.creatures, creature.id),
+                                creature.born_at_utc,
+                                creature.colony_order,
+                                creature.id,
+                                index,
+                            )
+                        })
+                })
+                .collect();
+            candidates.sort_by_key(|candidate| *candidate);
+            let Some((_, _, _, parent_id, arrival_index)) = candidates.first().copied() else {
+                break;
+            };
+            let child_number = mini_count_for_parent(&self.save.creatures, parent_id) as u8 + 1;
+            let Some(mut mini) = generate_mini_for_parent(
+                &self.save.creatures,
+                self.save.colony_seed,
+                parent_id,
+                child_number,
+                now,
+                desktop,
+            ) else {
+                break;
+            };
+            if let Some(parent) = self
+                .save
+                .creatures
+                .iter_mut()
+                .find(|creature| creature.id == parent_id)
+            {
+                parent.mini_arrivals.arrived[arrival_index] = true;
+            }
+            if self
+                .save
+                .creatures
+                .iter()
+                .any(|creature| creature.id == mini.id)
+            {
+                continue;
+            }
+            mini.state.arrival_delay_secs = f32::from(arrivals) * 15.0;
+            let id = mini.id;
+            self.register_creature_runtime(&mini);
+            if mini.state.arrival_delay_secs == 0.0 {
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::CreatureSpawned { creature_id: id },
+                );
+            }
+            add_arrival_relationships(
+                &mut self.save.relationships,
+                &self.save.creatures,
+                id,
+                Some(parent_id),
+            );
+            self.save.creatures.push(mini);
+            arrivals += 1;
         }
     }
 
@@ -3177,6 +3579,20 @@ fn normalize_relationships(save: &mut SaveFile) {
         }
     }
     save.relationships = canonical.into_values().take(MAX_RELATIONSHIPS).collect();
+}
+
+fn normalize_colony_roles(save: &mut SaveFile) {
+    if save.creatures.is_empty() {
+        return;
+    }
+    if !save
+        .creatures
+        .iter()
+        .any(|creature| creature.role.is_adult())
+    {
+        save.creatures[0].role = CreatureRole::Adult;
+    }
+    rebalance_minis(&mut save.creatures);
 }
 
 fn relationship_mut_or_insert(
@@ -3343,6 +3759,144 @@ fn bond_target_point(
         })
     } else {
         Some(target.state.position)
+    }
+}
+
+fn adult_count(creatures: &[Creature]) -> usize {
+    creatures
+        .iter()
+        .filter(|creature| creature.role.is_adult())
+        .count()
+}
+
+fn mini_count_for_parent(creatures: &[Creature], parent_id: CreatureId) -> usize {
+    creatures
+        .iter()
+        .filter(|creature| creature.role.parent_id() == Some(parent_id))
+        .count()
+}
+
+fn balanced_parent_id(creatures: &[Creature]) -> Option<CreatureId> {
+    creatures
+        .iter()
+        .filter(|creature| creature.role.is_adult())
+        .filter(|creature| mini_count_for_parent(creatures, creature.id) < MAX_MINIS_PER_ADULT)
+        .min_by_key(|creature| {
+            (
+                mini_count_for_parent(creatures, creature.id),
+                creature.born_at_utc,
+                creature.colony_order,
+            )
+        })
+        .map(|creature| creature.id)
+}
+
+fn next_colony_order(creatures: &[Creature]) -> u8 {
+    creatures
+        .iter()
+        .map(|creature| creature.colony_order)
+        .max()
+        .unwrap_or_default()
+        .saturating_add(1)
+}
+
+fn generated_adult(
+    source_seed: [u8; 32],
+    now: OffsetDateTime,
+    desktop: &DesktopSnapshot,
+    colony_order: u8,
+    existing_names: &[String],
+    kept: bool,
+) -> Creature {
+    let streams = SeedStream::new(source_seed);
+    let mut creature =
+        generate_creature(&streams, source_seed, 0, now, desktop, existing_names, None);
+    creature.generation = 0;
+    creature.colony_order = colony_order;
+    creature.role = CreatureRole::Adult;
+    creature.kept = kept;
+    creature.mini_arrivals = MiniArrivalState {
+        enabled: true,
+        arrived: [false; 2],
+    };
+    creature
+}
+
+fn generate_mini_for_parent(
+    creatures: &[Creature],
+    colony_seed: [u8; 32],
+    parent_id: CreatureId,
+    child_number: u8,
+    now: OffsetDateTime,
+    desktop: &DesktopSnapshot,
+) -> Option<Creature> {
+    let parent = creatures.iter().find(|creature| creature.id == parent_id)?;
+    if !parent.role.is_adult() || mini_count_for_parent(creatures, parent_id) >= MAX_MINIS_PER_ADULT
+    {
+        return None;
+    }
+    let existing_names: Vec<_> = creatures
+        .iter()
+        .map(|creature| creature.name.clone())
+        .collect();
+    let imported_root = parent.generation == 0 && parent.origin.source_generation > 0;
+    let generation = if imported_root {
+        child_number.clamp(1, 3)
+    } else {
+        parent
+            .origin
+            .source_generation
+            .saturating_add(child_number)
+            .clamp(1, 3)
+    };
+    let mut mini = if imported_root {
+        let shared = SharedCreatureSeed {
+            source_colony_seed: colony_seed,
+            source_generation: generation,
+        };
+        let mut creature = generate_source_creature(shared, now, desktop);
+        creature.name = default_creature_name(colony_seed, generation, &existing_names);
+        creature
+    } else {
+        let streams = SeedStream::new(parent.origin.source_colony_seed);
+        generate_creature(
+            &streams,
+            parent.origin.source_colony_seed,
+            generation,
+            now,
+            desktop,
+            &existing_names,
+            Some(parent),
+        )
+    };
+    mini.colony_order = next_colony_order(creatures);
+    mini.role = CreatureRole::Mini { parent_id };
+    mini.kept = true;
+    mini.mini_arrivals = MiniArrivalState::default();
+    Some(mini)
+}
+
+fn rebalance_minis(creatures: &mut [Creature]) {
+    let mut adults: Vec<_> = creatures
+        .iter()
+        .filter(|creature| creature.role.is_adult())
+        .map(|creature| (creature.born_at_utc, creature.colony_order, creature.id))
+        .collect();
+    adults.sort_by_key(|adult| *adult);
+    if adults.is_empty() {
+        return;
+    }
+    let mut minis: Vec<_> = creatures
+        .iter()
+        .filter(|creature| !creature.role.is_adult())
+        .map(|creature| (creature.born_at_utc, creature.colony_order, creature.id))
+        .collect();
+    minis.sort_by_key(|mini| *mini);
+    for (index, (_, _, mini_id)) in minis.into_iter().enumerate() {
+        let parent_id = adults[index % adults.len()].2;
+        if let Some(mini) = creatures.iter_mut().find(|creature| creature.id == mini_id) {
+            mini.role = CreatureRole::Mini { parent_id };
+        }
     }
 }
 
@@ -3526,6 +4080,9 @@ fn generate_creature(
             source_generation: generation,
         },
         colony_order: generation,
+        role: CreatureRole::Adult,
+        kept: true,
+        mini_arrivals: MiniArrivalState::default(),
         name: default_creature_name(colony_seed, generation, existing_names),
         born_at_utc,
         display_scale_percent: scale_percent,
@@ -7275,6 +7832,152 @@ mod tests {
             preferred_shelter_decoration(&objects.save),
             Some(ShelterDecorationKind::Stone)
         );
+    }
+
+    #[test]
+    fn generated_colonies_enforce_total_adult_and_mini_caps() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([120; 32], now, &desktop);
+        world.add_generated_adult([121; 32], now, &desktop).unwrap();
+        world.add_generated_adult([122; 32], now, &desktop).unwrap();
+        assert_eq!(adult_count(&world.save.creatures), MAX_ADULT_CREATURES);
+        assert_eq!(
+            world.add_generated_adult([123; 32], now, &desktop),
+            Err(ColonyManagementError::AdultLimit)
+        );
+        world.tick(now + Duration::hours(1), 0.05, &desktop);
+        assert_eq!(world.save.creatures.len(), MAX_COLONY_CREATURES);
+        assert!(
+            world.save.creatures.iter().any(|creature| {
+                !creature.role.is_adult() && creature.display_scale_percent < 100
+            })
+        );
+        assert_eq!(
+            world.add_generated_adult([124; 32], now, &desktop),
+            Err(ColonyManagementError::ColonyFull)
+        );
+        for adult in world
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.role.is_adult())
+        {
+            assert!(mini_count_for_parent(&world.save.creatures, adult.id) <= MAX_MINIS_PER_ADULT);
+        }
+    }
+
+    #[test]
+    fn minis_are_balanced_across_two_adults_and_prefer_the_oldest_of_three() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut two_adults = World::new([125; 32], now, &desktop);
+        let second = two_adults
+            .add_generated_adult([126; 32], now + Duration::seconds(1), &desktop)
+            .unwrap();
+        let first = two_adults.save.creatures[0].id;
+        two_adults.set_creature_kept(second, false).unwrap();
+        two_adults.tick(
+            now + Duration::hours(1) + Duration::seconds(1),
+            0.05,
+            &desktop,
+        );
+        assert_eq!(two_adults.save.creatures.len(), 4);
+        assert_eq!(mini_count_for_parent(&two_adults.save.creatures, first), 1);
+        assert_eq!(mini_count_for_parent(&two_adults.save.creatures, second), 1);
+
+        let mut three_adults = World::new([127; 32], now, &desktop);
+        let oldest = three_adults.save.creatures[0].id;
+        three_adults
+            .add_generated_adult([128; 32], now + Duration::seconds(1), &desktop)
+            .unwrap();
+        three_adults
+            .add_generated_adult([129; 32], now + Duration::seconds(2), &desktop)
+            .unwrap();
+        three_adults.tick(now + Duration::hours(1), 0.05, &desktop);
+        assert_eq!(three_adults.save.creatures.len(), 4);
+        assert_eq!(
+            mini_count_for_parent(&three_adults.save.creatures, oldest),
+            1
+        );
+    }
+
+    #[test]
+    fn one_calendar_month_adds_a_full_size_adult() {
+        let created = datetime!(2026-01-31 8:30 UTC);
+        let desktop = desktop();
+        let mut world = World::new([130; 32], created, &desktop);
+        world.tick(created + Duration::hours(1), 0.05, &desktop);
+        world.tick(created + Duration::days(7), 0.05, &desktop);
+        world.tick(datetime!(2026-02-28 8:30 UTC), 0.05, &desktop);
+        assert_eq!(world.save.creatures.len(), 4);
+        assert_eq!(adult_count(&world.save.creatures), 2);
+        let newest = world.save.creatures.last().unwrap();
+        assert!(newest.role.is_adult());
+        assert_eq!(newest.display_scale_percent, 100);
+    }
+
+    #[test]
+    fn keep_protects_replacement_and_bulk_regeneration_preserves_kept_creatures() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([131; 32], now, &desktop);
+        let protected = world.save.creatures[0].id;
+        assert_eq!(
+            world.replace_creature_with_adult(protected, [132; 32], now, &desktop),
+            Err(ColonyManagementError::CreatureKept)
+        );
+        let replaceable = world.add_generated_adult([133; 32], now, &desktop).unwrap();
+        world.tick(now + Duration::hours(1), 0.05, &desktop);
+        let removable_mini = world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| !creature.role.is_adult())
+            .unwrap()
+            .id;
+        world.set_creature_kept(replaceable, false).unwrap();
+        world.set_creature_kept(removable_mini, false).unwrap();
+        assert_eq!(world.regenerate_unkept(&[[134; 32]], now, &desktop), 2);
+        assert!(
+            world
+                .save
+                .creatures
+                .iter()
+                .any(|creature| creature.id == protected)
+        );
+        assert!(
+            !world
+                .save
+                .creatures
+                .iter()
+                .any(|creature| creature.id == replaceable || creature.id == removable_mini)
+        );
+        assert!(world.save.creatures.iter().all(|creature| creature.kept));
+    }
+
+    #[test]
+    fn removing_an_adult_reparents_minis_but_never_removes_the_last_adult() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([135; 32], now, &desktop);
+        let first = world.save.creatures[0].id;
+        assert_eq!(
+            world.remove_colony_creature(first),
+            Err(ColonyManagementError::LastAdult)
+        );
+        let second = world
+            .add_generated_adult([136; 32], now + Duration::seconds(1), &desktop)
+            .unwrap();
+        world.tick(
+            now + Duration::hours(1) + Duration::seconds(1),
+            0.05,
+            &desktop,
+        );
+        world.remove_colony_creature(first).unwrap();
+        assert!(world.save.creatures.iter().all(|creature| {
+            creature.role.is_adult() || creature.role.parent_id() == Some(second)
+        }));
     }
 
     #[test]

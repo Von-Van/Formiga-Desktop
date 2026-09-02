@@ -2,6 +2,40 @@
 
 All notable changes are documented here.
 
+## [0.50.0] - 2026-09-02
+
+### Added
+
+- An entirely local PNG/JPEG reference matcher in the Colony Creature Studio. It decodes at most a
+  16 MB, 4096×4096, 16-million-pixel image, compares palette, silhouette, proportion, symmetry, and
+  appendage cues against exactly 512 valid procedural candidates, and presents the closest normal
+  Formiga genome before any save change.
+- Random full-size creature previews plus explicit add, replace, and remove controls. A persistent
+  Keep toggle protects chosen creatures from both individual replacement and confirmed bulk
+  regeneration.
+- Persisted adult/mini roles and mini parentage. Colonies retain at most four creatures and three
+  full-size adults; no adult receives more than two minis, and existing minis rebalance evenly when
+  adults join, using the oldest adult as the deterministic tie-break.
+
+### Changed
+
+- The one-hour and one-week calendar arrivals are minis. The one-calendar-month arrival is a new
+  full-size adult whenever an adult slot is open. Newly accepted full-size adults can receive minis
+  on the same one-hour and one-week cadence, subject to colony and per-adult caps.
+- Accepted reference matches store only an ordinary procedural seed, fresh birth, and fresh compact
+  history. Source pixels, file paths, metadata, extracted features, and temporary preview textures
+  are discarded and never enter the save or a network request.
+- Save version 11 deterministically classifies legacy first creatures as adults and later creatures
+  as minis cared for by the first. Every prior creature, ID, resolved appearance, name, birth,
+  memory, tendency, routine, relationship, object, shelter, position, and setting is preserved;
+  legacy colonies are never truncated to satisfy the new generation caps.
+
+### Fixed
+
+- Removing an adult now deterministically reparents its minis, and the final full-size adult cannot
+  be removed. Replacement also reparents dependents and rebuilds bounded relationships without
+  leaving stale runtime state.
+
 ## [0.47.0] - 2026-09-01
 
 ### Added

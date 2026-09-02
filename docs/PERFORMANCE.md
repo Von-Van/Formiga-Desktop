@@ -42,6 +42,10 @@ resident memory, and notes. Do not publish target values as measured results.
 | v0.47.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
 | v0.47.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
 | v0.47.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.50.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.50.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.50.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.50.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -108,3 +112,9 @@ native save dialog runs before the one 960×600 canvas, ephemeral font atlas, an
 created. Cancellation allocates no card canvas. A completed export drops every card buffer before
 returning and never uploads the image to the overlay GPU or changes the save. Native CPU and memory
 measurements remain pending in the table above.
+
+Reference matching has zero idle cost. A selected image is decoded once under 16 MB, 4096×4096,
+and 16-million-pixel limits, downsampled to 64×64, and compared with exactly 512 temporary normal
+creature frames. Only the winning ordinary seed and preview survive the matching call; clearing or
+accepting the preview drops its one small settings texture. Colony role checks and mini balancing
+operate across the existing four-creature bound and introduce no new simulation loop or draw call.

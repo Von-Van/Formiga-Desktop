@@ -41,6 +41,7 @@ privileges, or elevated process access.
 The versioned JSON save contains the colony seed, resolved genomes, personality values, creature
 names and birth timestamps, current drives and positions, compact counters, bounded learned
 tendencies, twelve numeric routine slots, at most six unordered relationship records, arrival state,
+adult/mini roles, mini parent IDs, Keep preferences, and bounded per-adult mini-arrival bits,
 the next ritual timestamp, last ritual kind, ritual ordinal, hatch-day acknowledgement, habitat
 zones, application rules, settings, and at most eight colony objects. Each object stores only a
 stable ID, kind, privacy-safe display key, normalized position, and semantic role, plus the single
@@ -51,12 +52,14 @@ does not contain an event log, ritual history, ritual target positions, proximit
 paths, cursor paths, sampled event coordinates, or past window layouts. Profile fields other than a
 creature's name are read-only views of this local state.
 
-Save version 10 accepts and deterministically migrates every v1–v9 colony. Migration converts legacy
+Save version 11 accepts and deterministically migrates every v1–v10 colony. Migration converts legacy
 relationship floats locally, preserves current v7 bond records byte-for-byte, and preserves creature
 identity, generated appearance, custom names, birth times, memories, learned tendencies, and
 routines. A v8 colony receives an empty object collection and one deterministic future timestamp;
-a v9 colony receives an empty decoration list and one deterministic future timestamp. Existing
-colony state is otherwise unchanged. Migration performs no network request and does not upload
+a v9 colony receives an empty decoration list and one deterministic future timestamp. Legacy
+creatures receive only adult/mini role, Keep, and bounded mini-schedule fields; none are deleted,
+regenerated, or truncated. Existing colony state is otherwise unchanged. Migration performs no
+network request and does not upload
 either the old or migrated save.
 
 Seed sharing is fully offline. A code contains only a format nibble, original generation, immutable
@@ -77,6 +80,18 @@ number, and an abbreviated seed glimpse. It does not embed the full share code, 
 relationships, objects, shelter state, display keys, device data, screen content, source paths, or
 hidden text metadata. The save dialog opens before rendering; cancellation creates no image, and
 temporary card/font/PNG buffers are released after the export completes.
+
+Reference-guided generation is also entirely local. Formiga accepts only PNG or JPEG input under
+fixed byte, dimension, and decoded-pixel limits, reduces it to temporary color and silhouette cues,
+and searches a fixed 512 normal procedural candidates. It does not read embedded text for behavior,
+upload the image, call an AI service, retain the path, copy pixels into creature art, or write image
+bytes or extracted features to the save or logs. Cancelling or clearing the preview releases its
+temporary rendered texture; accepting stores only the selected ordinary creature seed and fresh
+local state.
+
+Colony management persists a role, parent ID for minis, Keep flag, and two bounded mini-arrival
+bits. Keep is a local replacement preference, not behavioral analytics. Removing or replacing a
+creature happens only after an explicit UI action; save migration never performs either operation.
 
 Quiet-day ritual eligibility uses only the already-available system idle duration and whether safe
 window rectangles remained unchanged. Hatch days and late-night sleep piles use local date/hour with

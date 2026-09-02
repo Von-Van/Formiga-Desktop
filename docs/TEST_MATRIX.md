@@ -9,7 +9,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1/v2/v3/v4/v5/v6/v7/v8/v9→v10 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
+| v1/v2/v3/v4/v5/v6/v7/v8/v9/v10→v11 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | Fixed memory/routine limits and sub-2-KiB per-creature serialized growth | CI | CI |
@@ -39,6 +39,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Imported fresh history, distinct companion lineage, explicit replacement gate, and unchanged v10 save compatibility | CI | CI |
 | Deterministic 960×600 opaque card pixels, Unicode names, long-name bounds, abbreviated seed, and zero-sized renderer state | CI | CI |
 | Card save cancellation before rendering, Unicode-safe filenames, and PNG extension normalization | CI | CI |
+| PNG/JPEG local decode limits, fixed 512-candidate matching, determinism, and full-size preview output | CI | CI |
+| Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
+| Keep replacement guard, bulk regeneration, final-adult protection, reparenting, and relationship normalization | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
@@ -85,12 +88,14 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Six shelter decoration kinds, history-reflective choice, overdue behavior, and unchanged single-quad rendering | pending | pending | pending | pending |
 | Copy seed, mixed-case paste, invalid/corrupted refusal, explicit replacement, relaunch, and one-hour companion arrival | pending | pending | pending | pending |
 | Creature-card save/cancel, visual legibility, Unicode name, PNG dimensions, metadata inspection, and reopen in native image viewer | pending | pending | pending | pending |
+| Random/reference preview, PNG/JPEG matching, add/replace/remove, Keep, bulk regeneration, and preview cleanup | pending | pending | pending | pending |
+| Two-adult even minis, three-adult oldest tie-break, one-month full-size arrival, relaunch, and removal reparenting | pending | pending | pending | pending |
 | Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
 | Two- and four-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
-| Package install, relaunch, v10 round trip, and representative v1/v2/v3/v4/v5/v6/v7/v8/v9 migration without creature loss | pending | pending | pending | pending |
+| Package install, relaunch, v11 round trip, and representative v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |
