@@ -1,5 +1,21 @@
 # Formiga roadmap
 
+## v0.51 cuter body families release
+
+- Soft quadrupeds gain filled triangular ears, a smaller head with a muzzle and nose, a tail carried
+  up off the rump, and four planted paws in every action that does not visibly use them.
+- Hoppers gain long upright or lop ears, a cotton-puff tail, longer forward-planted hind feet, and a
+  rounder, lower crouch that leaves headroom for the ears.
+- Ear and tail genes select the shape of those features instead of whether they exist, so style,
+  size, and length keep varying every cat and rabbit without producing an earless or tailless one.
+- The work is confined to the renderer. Save version stays 11, genome generation is untouched,
+  existing colony members keep their stored genome, and seed codes import unchanged creatures.
+
+Release-page summary:
+
+> Soft quadrupeds now read as cats and hoppers as rabbits—ears, tails, and stance—while every
+> existing creature keeps the exact genome, name, and history it already had.
+
 ## v0.50 reference-guided creature and colony-management release
 
 - PNG and JPEG references are decoded locally under strict byte, dimension, pixel, and candidate

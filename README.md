@@ -68,18 +68,26 @@ snacks and drinks, climb up window sides, dangle from ledges, inspect a few geom
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
 of the way; a slow release keeps the existing precise placement behavior.
 
+Two of the three body families now read as the animals they were always reaching for. Soft
+quadrupeds keep triangular ears, a small muzzle, a tail carried up off the rump, and all four paws
+planted whenever they are not using them, so they read as cats. Hoppers keep long upright ears—or a
+lop pair—a cotton-puff tail, long hind feet, and a rounder crouch, so they read as rabbits. Blobs
+are unchanged. Ear and tail genes still vary the shape rather than removing it, and because this is
+purely how a genome is drawn, existing colonies and imported seed codes keep exactly the creatures
+they already had.
+
 ## Download and run
 
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.50.0-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.51.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.50.0-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.51.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.50.0`. The assisted updater matches those exact names, so do
+names with its version in place of `0.51.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides

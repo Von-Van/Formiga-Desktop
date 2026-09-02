@@ -34,8 +34,12 @@ A 256-bit colony seed derives named ChaCha streams for appearance, personality, 
 flavor, runtime decisions, and each mini. Resolved genomes are stored in the save so future generator
 changes cannot silently redesign an existing creature.
 
-Blob, hopper, and soft-quadruped rigs share a stable two-eye face grammar. Every body frame records a
-face anchor and family-specific forelimb targets. Authored clips manipulate those anchors, squash,
+Blob, hopper, and soft-quadruped rigs share a stable two-eye face grammar. The renderer branches on
+body family for the ear, tail, and forelimb passes, so soft quadrupeds read as cats and hoppers as
+rabbits without a stored genome changing: ear and tail genes select a shape rather than whether the
+feature exists, and a quadruped only swaps its front legs for arm-style forelimbs in the actions
+that visibly use them. Every body frame records a face anchor and family-specific forelimb targets.
+Authored clips manipulate those anchors, squash,
 planted contacts, limb gestures, and secondary tail/head-appendage motion. Markings and temporary
 activity effects remain body-local and are rasterized at integer coordinates.
 

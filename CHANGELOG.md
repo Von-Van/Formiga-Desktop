@@ -2,6 +2,23 @@
 
 All notable changes are documented here.
 
+## [0.51.0] - 2026-09-02
+
+### Changed
+
+- Soft quadrupeds read as cats. Filled triangular ears layered from outline, coat, and inner-ear
+  colors sit on the crown, a smaller head carries a muzzle and nose, the tail is carried up off the
+  rump, and all four paws stay planted in every action that does not visibly use them.
+- Hoppers read as rabbits. Long upright ears—or a lop pair—carry an inner-ear streak, the tail is a
+  cotton puff behind the rump, the hind feet are longer and planted forward, and a rounder, lower
+  crouch replaces the upright egg while leaving headroom for the ears.
+- Ear and tail genes now shape those features instead of removing them, so no cat or rabbit rolls a
+  genome without ears or a tail. Style, size, and length still vary each one, and the rounded,
+  folded, tufted, and lop variants remain distinguishable. Blobs are unchanged.
+- Every change is in the renderer, so save version remains 11 and genome generation is untouched.
+  Existing colony members keep their exact stored genome and simply get the new rig, and a
+  `FORMIGA-…` seed code still imports the same creature it did in v0.50.0.
+
 ## [0.50.0] - 2026-09-02
 
 ### Added

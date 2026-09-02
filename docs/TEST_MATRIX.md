@@ -9,6 +9,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
+| Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
+| Raised cat tail and visible rabbit puff for every tail style | CI | CI |
+| Resting cats plant all four paws on the same contact row as walking | CI | CI |
 | v1/v2/v3/v4/v5/v6/v7/v8/v9/v10→v11 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |

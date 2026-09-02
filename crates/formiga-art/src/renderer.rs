@@ -629,13 +629,15 @@ fn draw_hopper(
     frame: u8,
 ) -> PixelPoint {
     let s = scale(genome);
-    let rx = ((genome.body_width as f32 * s * 0.38).round() as i32 + pose.squash_x).clamp(5, 11);
-    let ry = ((genome.body_height as f32 * s * 0.55).round() as i32 + pose.squash_y).clamp(8, 15);
-    let leg = ((genome.leg_length as f32 * s).round() as i32).clamp(3, 9);
+    // A rounder, lower crouch reads closer to a resting rabbit and leaves headroom for long ears.
+    let rx = ((genome.body_width as f32 * s * 0.42).round() as i32 + pose.squash_x).clamp(6, 11);
+    let ry = ((genome.body_height as f32 * s * 0.48).round() as i32 + pose.squash_y).clamp(7, 12);
+    let leg = ((genome.leg_length as f32 * s).round() as i32).clamp(3, 7);
     let cx = 24;
     let ground = 43;
     let cy = ground - leg - ry + pose.bob - pose.play_lift;
-    draw_tail(canvas, genome, palette, cx - rx + 1, cy + 2, s, pose);
+    // Rooted low on the rear edge so the puff clears the body ellipse drawn over it.
+    draw_tail(canvas, genome, palette, cx - rx, cy + ry / 2, s, pose);
     draw_head_appendages(canvas, genome, palette, cx, cy - ry + 2, s, pose);
     draw_hopper_leg(
         canvas,
@@ -700,13 +702,16 @@ fn draw_quadruped(
     let ground = 43;
     let body_y = ground - leg - body_ry + pose.bob - pose.play_lift;
     let body_x = 22;
-    let head_radius = ((body_ry as f32 * genome.head_ratio).round() as i32 + 2).clamp(5, 9);
+    // A head smaller than the body keeps the feline proportion the ears and tail build on.
+    let head_radius = ((body_ry as f32 * genome.head_ratio * 0.85).round() as i32 + 2).clamp(5, 8);
+    // Rooted inside the upper rear of the body, so the body ellipse buries the base and the tail
+    // reads as attached rather than floating behind the rump.
     draw_tail(
         canvas,
         genome,
         palette,
-        body_x - body_rx + 1,
-        body_y,
+        body_x - body_rx + 2,
+        body_y - body_ry / 2,
         s,
         pose,
     );
@@ -755,24 +760,22 @@ fn draw_quadruped(
     );
     let head_x = body_x + body_rx - 1;
     let head_y = body_y - 2;
+    // Rooted at the crown so the head circle only buries the base of each ear.
     draw_head_appendages(
         canvas,
         genome,
         palette,
         head_x,
-        head_y - head_radius + 2,
+        head_y - head_radius,
         s,
         pose,
     );
     canvas.fill_circle(head_x, head_y, head_radius + 1, palette.outline);
     canvas.fill_circle(head_x, head_y - 1, head_radius, palette.coat);
-    canvas.fill_ellipse(
-        head_x + head_radius - 2,
-        head_y + 2,
-        3,
-        2,
-        palette.highlight,
-    );
+    // A small muzzle on the lower front of the head, sitting under the composited mouth.
+    let muzzle_x = head_x + (head_radius - 3).clamp(1, 3);
+    canvas.fill_ellipse(muzzle_x, head_y + 2, 2, 1, palette.highlight);
+    canvas.set(muzzle_x, head_y, palette.accent);
     draw_quadruped_forelimbs(
         canvas,
         genome,
@@ -1078,6 +1081,19 @@ fn draw_head_appendages(
     pose: Pose,
 ) {
     let size = ((genome.head_appendages.size as f32 * s).round() as i32).clamp(2, 8);
+    match genome.family {
+        // Cats and rabbits always keep ears; the style gene varies their shape instead of
+        // removing them, so both families stay recognizable across every genome.
+        BodyFamily::SoftQuadruped => {
+            draw_cat_ears(canvas, palette, cx, root_y, size, genome, pose);
+            return;
+        }
+        BodyFamily::Hopper => {
+            draw_rabbit_ears(canvas, palette, cx, root_y, size, genome, pose);
+            return;
+        }
+        BodyFamily::Blob => {}
+    }
     match genome.head_appendages.style {
         HeadAppendageStyle::None => {}
         HeadAppendageStyle::Round => {
@@ -1155,6 +1171,116 @@ fn draw_head_appendages(
 }
 
 #[derive(Clone, Copy)]
+struct EarShape {
+    base_x: i32,
+    base_y: i32,
+    half_width: i32,
+    height: i32,
+    lean: i32,
+}
+
+/// One upright triangular ear, drawn as stacked rows so the tip stays pointed. Each `inset` step
+/// shrinks the triangle by a pixel, layering the coat and inner ear inside the outline.
+fn fill_triangle_ear(canvas: &mut Canvas, ear: EarShape, inset: i32, color: Rgba) {
+    for step in inset..=(ear.height - inset) {
+        let progress = step as f32 / ear.height.max(1) as f32;
+        let width = (ear.half_width as f32 * (1.0 - progress)).round() as i32 - inset;
+        if width < 0 {
+            continue;
+        }
+        let x = ear.base_x + (ear.lean as f32 * progress).round() as i32;
+        canvas.fill_rect(x - width, ear.base_y - step, width * 2 + 1, 1, color);
+    }
+}
+
+fn draw_cat_ears(
+    canvas: &mut Canvas,
+    palette: Palette,
+    cx: i32,
+    root_y: i32,
+    size: i32,
+    genome: &AppearanceGenome,
+    pose: Pose,
+) {
+    let base_y = root_y + 1;
+    let lift = pose.appendage_lift.clamp(-1, 1);
+    // A base at least three pixels either side of centre leaves room for the coat and inner-ear
+    // passes; anything narrower collapses into a solid outline nub.
+    let (half_width, height, lean) = match genome.head_appendages.style {
+        // Rounded and folded sets stay short and tip further outward.
+        HeadAppendageStyle::Round => ((size / 2).clamp(3, 4), (size + 1).clamp(3, 5), 2),
+        HeadAppendageStyle::Droop => ((size / 2).clamp(3, 4), size.clamp(3, 4), 3),
+        // Tufted sets stand tall and nearly straight.
+        HeadAppendageStyle::Leaf | HeadAppendageStyle::Antenna => {
+            ((size / 2).clamp(3, 4), (size + 3).clamp(5, 8), 1)
+        }
+        HeadAppendageStyle::None | HeadAppendageStyle::Pointed => {
+            ((size / 2).clamp(3, 4), (size + 2).clamp(4, 7), 2)
+        }
+    };
+    let height = (height + lift).clamp(2, (base_y - 2).max(2));
+    for direction in [-1, 1] {
+        let ear = EarShape {
+            base_x: cx + 4 * direction,
+            base_y,
+            half_width,
+            height,
+            lean: lean * direction,
+        };
+        fill_triangle_ear(canvas, ear, 0, palette.outline);
+        fill_triangle_ear(canvas, ear, 1, palette.coat);
+        fill_triangle_ear(canvas, ear, 2, palette.accent);
+    }
+}
+
+fn draw_rabbit_ears(
+    canvas: &mut Canvas,
+    palette: Palette,
+    cx: i32,
+    root_y: i32,
+    size: i32,
+    genome: &AppearanceGenome,
+    pose: Pose,
+) {
+    let lift = pose.appendage_lift.clamp(-1, 1);
+    if genome.head_appendages.style == HeadAppendageStyle::Droop {
+        // A lop set falls alongside the head instead of standing up.
+        let reach = (size + 2).clamp(4, 7);
+        let drop = (size + 3).clamp(5, 9);
+        for direction in [-1, 1] {
+            let base_x = cx + 3 * direction;
+            let tip_x = base_x + reach * direction;
+            let tip_y = root_y + drop + lift;
+            canvas.line(base_x, root_y, tip_x, tip_y, 3, palette.outline);
+            canvas.line(base_x, root_y, tip_x, tip_y - 1, 2, palette.coat);
+            canvas.line(base_x, root_y + 1, tip_x, tip_y - 1, 1, palette.accent);
+        }
+        return;
+    }
+    let height = match genome.head_appendages.style {
+        HeadAppendageStyle::Round => (size + 2).clamp(4, 7),
+        _ => (size + 6).clamp(7, 14),
+    };
+    // Thickness 3 rounds the tip two pixels past `tip_y`, so leave that much headroom.
+    let height = (height + lift).clamp(3, (root_y - 3).max(3));
+    for direction in [-1, 1] {
+        let base_x = cx + 3 * direction;
+        let tip_x = base_x + direction;
+        let tip_y = root_y - height;
+        canvas.line(base_x, root_y, tip_x, tip_y, 3, palette.outline);
+        canvas.line(base_x, root_y - 1, tip_x, tip_y + 1, 2, palette.coat);
+        canvas.line(
+            tip_x,
+            tip_y + 2,
+            base_x,
+            root_y - height / 2,
+            1,
+            palette.accent,
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
 struct LimbPose {
     left_root: PixelPoint,
     right_root: PixelPoint,
@@ -1210,9 +1336,19 @@ fn draw_quadruped_forelimbs(
     limb_pose: LimbPose,
     ground: i32,
 ) {
-    if matches!(
+    // Standing on four legs is what separates the cat silhouette from an upright body. Arm-style
+    // forelimbs are reserved for the actions where the creature is visibly using its paws.
+    if !matches!(
         limb_pose.action,
-        ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint
+        ActionKind::SoloPlay
+            | ActionKind::SocialPlay
+            | ActionKind::Greet
+            | ActionKind::PresentDiscovery
+            | ActionKind::PetReaction
+            | ActionKind::Dangle
+            | ActionKind::ClimbWindow
+            | ActionKind::InvestigateCursor
+            | ActionKind::Dragged
     ) {
         draw_quad_leg(
             canvas,
@@ -1443,6 +1579,18 @@ fn draw_tail(
     let length = ((genome.tail_length as f32 * s).round() as i32)
         .clamp(2, 10)
         .min((root_x - 4).max(2));
+    match genome.family {
+        // Both families always carry a tail; the style gene shapes it instead of removing it.
+        BodyFamily::SoftQuadruped => {
+            draw_cat_tail(canvas, genome, palette, root_x, root_y, s, pose);
+            return;
+        }
+        BodyFamily::Hopper => {
+            draw_cotton_tail(canvas, genome, palette, root_x, root_y, s);
+            return;
+        }
+        BodyFamily::Blob => {}
+    }
     match genome.tail_style {
         TailStyle::None => {}
         TailStyle::Stub => canvas.fill_circle(root_x - 1, root_y, 2, palette.outline),
@@ -1511,6 +1659,65 @@ fn draw_tail(
     }
 }
 
+fn draw_cat_tail(
+    canvas: &mut Canvas,
+    genome: &AppearanceGenome,
+    palette: Palette,
+    root_x: i32,
+    root_y: i32,
+    s: f32,
+    pose: Pose,
+) {
+    let length = ((genome.tail_length as f32 * s).round() as i32).clamp(2, 10);
+    let sway = pose.tail_sway.clamp(-2, 2);
+    // Carrying the tail up off the rump is the strongest feline cue at this size, so every
+    // style arcs upward and only the reach and tip differ. The heights clear the tallest back.
+    let (height, hook) = match genome.tail_style {
+        TailStyle::None | TailStyle::Stub => ((4 + length / 3).clamp(5, 7), 1),
+        TailStyle::Taper => ((7 + length / 2).clamp(8, 12), 2),
+        TailStyle::Tuft => ((7 + length / 2).clamp(8, 11), 2),
+        TailStyle::Curl => ((7 + length / 2).clamp(8, 11), 3),
+    };
+    let mid_x = root_x - 2;
+    let mid_y = root_y - height / 2;
+    let tip_x = mid_x + hook;
+    let tip_y = root_y - height + sway;
+    canvas.line(root_x, root_y, mid_x, mid_y, 2, palette.outline);
+    canvas.line(mid_x, mid_y, tip_x, tip_y, 2, palette.outline);
+    canvas.line(root_x, root_y, mid_x, mid_y, 1, palette.coat);
+    canvas.line(mid_x, mid_y, tip_x, tip_y, 1, palette.coat);
+    match genome.tail_style {
+        TailStyle::Tuft => {
+            canvas.fill_circle(tip_x, tip_y - 1, 2, palette.outline);
+            canvas.fill_circle(tip_x, tip_y - 1, 1, palette.accent);
+        }
+        TailStyle::Curl => {
+            canvas.line(tip_x, tip_y, tip_x + 3, tip_y + 2, 2, palette.outline);
+            canvas.line(tip_x, tip_y, tip_x + 3, tip_y + 2, 1, palette.accent);
+        }
+        _ => {}
+    }
+}
+
+fn draw_cotton_tail(
+    canvas: &mut Canvas,
+    genome: &AppearanceGenome,
+    palette: Palette,
+    root_x: i32,
+    root_y: i32,
+    s: f32,
+) {
+    let length = ((genome.tail_length as f32 * s).round() as i32).clamp(2, 10);
+    let radius = match genome.tail_style {
+        TailStyle::Tuft | TailStyle::Curl => (2 + length / 3).clamp(3, 4),
+        _ => (2 + length / 4).clamp(3, 4),
+    };
+    // The body ellipse paints over the inner half afterwards, leaving a puff behind the rump.
+    let x = (root_x - radius + 1).max(radius + 1);
+    canvas.fill_circle(x, root_y, radius, palette.outline);
+    canvas.fill_circle(x, root_y - 1, radius - 1, palette.highlight);
+}
+
 fn draw_feet(
     canvas: &mut Canvas,
     palette: Palette,
@@ -1540,8 +1747,9 @@ fn draw_hopper_leg(
 ) {
     canvas.line(x, root_y, x + step, ground - 2, 2, palette.outline);
     canvas.line(x, root_y, x + step, ground - 2, 1, palette.shadow);
-    canvas.fill_ellipse(x + step + 1, ground, 4, 2, palette.outline);
-    canvas.fill_ellipse(x + step + 2, ground, 3, 1, palette.accent);
+    // A long hind foot planted forward of the ankle.
+    canvas.fill_ellipse(x + step + 2, ground, 5, 2, palette.outline);
+    canvas.fill_ellipse(x + step + 3, ground, 4, 1, palette.accent);
 }
 
 fn draw_quad_leg(
@@ -2684,6 +2892,167 @@ mod tests {
                         .is_some_and(|(_, _, _, max_y)| FRAME_SIZE - 1 - max_y == baseline)
                 });
             assert!(seated, "{family:?} never touches its contact point");
+        }
+    }
+
+    const ALL_APPENDAGES: [HeadAppendageStyle; 6] = [
+        HeadAppendageStyle::None,
+        HeadAppendageStyle::Round,
+        HeadAppendageStyle::Pointed,
+        HeadAppendageStyle::Leaf,
+        HeadAppendageStyle::Droop,
+        HeadAppendageStyle::Antenna,
+    ];
+
+    const ALL_TAILS: [TailStyle; 5] = [
+        TailStyle::None,
+        TailStyle::Stub,
+        TailStyle::Taper,
+        TailStyle::Tuft,
+        TailStyle::Curl,
+    ];
+
+    fn rest_pose() -> Pose {
+        Pose::new(&genome(BodyFamily::Blob), ActionKind::Idle, 0, true)
+    }
+
+    /// Opaque pixels above `row`, split into those left and right of `center_x`.
+    fn pixels_above(canvas: &Canvas, row: i32, center_x: i32) -> (usize, usize) {
+        let mut left = 0;
+        let mut right = 0;
+        for y in 0..row.min(canvas.height() as i32) {
+            for x in 0..canvas.width() as i32 {
+                if canvas.get(x, y).a > 0 {
+                    if x < center_x {
+                        left += 1;
+                    } else if x > center_x {
+                        right += 1;
+                    }
+                }
+            }
+        }
+        (left, right)
+    }
+
+    #[test]
+    fn every_cat_genome_keeps_a_pair_of_ears_above_the_crown() {
+        let palette = PALETTES[2];
+        for style in ALL_APPENDAGES {
+            let mut genome = genome(BodyFamily::SoftQuadruped);
+            genome.head_appendages.style = style;
+            for size in 2..=8 {
+                let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+                draw_cat_ears(&mut canvas, palette, 24, 20, size, &genome, rest_pose());
+                let (left, right) = pixels_above(&canvas, 20, 24);
+                assert!(
+                    left > 0 && right > 0,
+                    "{style:?} size {size} draws {left}/{right} ear pixels above the crown",
+                );
+                let (min_x, min_y, max_x, max_y) = canvas.alpha_bounds().expect("ears are visible");
+                assert!(
+                    min_x >= 1 && min_y >= 1 && max_x < FRAME_SIZE - 1 && max_y < FRAME_SIZE - 1,
+                    "{style:?} size {size} ears leave the frame margin",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_rabbit_genome_keeps_long_ears_inside_the_frame() {
+        let palette = PALETTES[2];
+        for style in ALL_APPENDAGES {
+            let mut genome = genome(BodyFamily::Hopper);
+            genome.head_appendages.style = style;
+            for size in 2..=8 {
+                let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+                draw_rabbit_ears(&mut canvas, palette, 24, 20, size, &genome, rest_pose());
+                let (min_x, min_y, max_x, max_y) = canvas.alpha_bounds().expect("ears are visible");
+                assert!(
+                    min_x >= 1 && min_y >= 1 && max_x < FRAME_SIZE - 1 && max_y < FRAME_SIZE - 1,
+                    "{style:?} size {size} ears leave the frame margin",
+                );
+                if style == HeadAppendageStyle::Droop {
+                    // A lop set hangs beside the head instead of standing up.
+                    assert!(max_y as i32 > 20, "{style:?} size {size} does not lop");
+                    continue;
+                }
+                let (left, right) = pixels_above(&canvas, 20, 24);
+                assert!(
+                    left > 0 && right > 0,
+                    "{style:?} size {size} draws {left}/{right} ear pixels above the head",
+                );
+                let reach = 20 - min_y as i32;
+                assert!(
+                    reach >= 5,
+                    "{style:?} size {size} ears only reach {reach} px, too short to read as a rabbit",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_cat_tail_is_carried_above_the_rump() {
+        let palette = PALETTES[2];
+        for style in ALL_TAILS {
+            let mut genome = genome(BodyFamily::SoftQuadruped);
+            genome.tail_style = style;
+            let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_tail(&mut canvas, &genome, palette, 14, 26, 1.0, rest_pose());
+            let (_, min_y, _, _) = canvas.alpha_bounds().expect("every cat carries a tail");
+            assert!(
+                (26 - min_y as i32) >= 4,
+                "{style:?} tail rises only {} px off the rump",
+                26 - min_y as i32,
+            );
+        }
+    }
+
+    #[test]
+    fn every_rabbit_tail_puffs_behind_the_rump() {
+        let palette = PALETTES[2];
+        for style in ALL_TAILS {
+            let mut genome = genome(BodyFamily::Hopper);
+            genome.tail_style = style;
+            let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_tail(&mut canvas, &genome, palette, 14, 26, 1.0, rest_pose());
+            let (min_x, _, _, _) = canvas.alpha_bounds().expect("every rabbit has a puff");
+            assert!(min_x >= 1, "{style:?} puff leaves the frame margin");
+            // The body ellipse is painted over everything from its left outline edge inwards, so
+            // the puff only reads if it clears that edge by a few columns.
+            let clear = (0..13)
+                .filter(|x| (0..FRAME_SIZE as i32).any(|y| canvas.get(*x, y).a > 0))
+                .count();
+            assert!(
+                clear >= 3,
+                "{style:?} puff leaves only {clear} columns showing behind the rump",
+            );
+        }
+    }
+
+    #[test]
+    fn a_resting_cat_plants_all_four_paws_on_its_contact_row() {
+        let genome = genome(BodyFamily::SoftQuadruped);
+        let walking = CreatureRenderer::render_body_frame(&genome, ActionKind::Traverse, 0, true)
+            .canvas
+            .alpha_bounds()
+            .expect("a walking cat is visible")
+            .3;
+        for action in [
+            ActionKind::Idle,
+            ActionKind::Eat,
+            ActionKind::Drink,
+            ActionKind::ReactToWindow,
+            ActionKind::InspectScreen,
+        ] {
+            let resting = CreatureRenderer::render_body_frame(&genome, action, 0, true)
+                .canvas
+                .alpha_bounds()
+                .expect("a resting cat is visible")
+                .3;
+            assert_eq!(
+                resting, walking,
+                "{action:?} does not stand on its legs the way walking does",
+            );
         }
     }
 }
