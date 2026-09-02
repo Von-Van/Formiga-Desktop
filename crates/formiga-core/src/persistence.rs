@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=8 => migrate_legacy(value, version),
+            1..=9 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -133,6 +133,22 @@ fn migrate_legacy(
     if source_version <= 3 {
         save.home =
             crate::ColonyHome::from_seed(save.colony_seed, None, None, Some(save.maximum_seen_utc));
+    }
+    let mut seen_decorations = std::collections::BTreeSet::new();
+    save.home
+        .decorations
+        .decorations
+        .retain(|kind| seen_decorations.insert(*kind));
+    save.home
+        .decorations
+        .decorations
+        .truncate(crate::MAX_SHELTER_DECORATIONS);
+    if save.home.decorations.next_at_utc == time::OffsetDateTime::UNIX_EPOCH {
+        save.home.decorations.next_at_utc = crate::world::scheduled_shelter_decoration_at(
+            save.colony_seed,
+            save.home.decorations.ordinal,
+            save.maximum_seen_utc,
+        );
     }
     for creature in &mut save.creatures {
         if creature.born_at_utc == time::OffsetDateTime::UNIX_EPOCH {
@@ -430,13 +446,15 @@ mod tests {
     use time::macros::datetime;
 
     fn example_save() -> SaveFile {
+        let mut home = crate::ColonyHome::default();
+        home.decorations.next_at_utc = datetime!(2026-01-05 0:00 UTC);
         SaveFile {
             save_version: crate::SAVE_VERSION,
             colony_seed: [1; 32],
             created_at_utc: datetime!(2026-01-01 0:00 UTC),
             maximum_seen_utc: datetime!(2026-01-01 0:00 UTC),
             arrival_state: ArrivalState::default(),
-            home: crate::ColonyHome::default(),
+            home,
             settings: Settings::default(),
             creatures: Vec::new(),
             relationships: Vec::new(),
@@ -909,6 +927,7 @@ mod tests {
         let mut value = serde_json::to_value(&original.save).unwrap();
         value["save_version"] = serde_json::Value::from(8);
         value.as_object_mut().unwrap().remove("objects");
+        value["home"].as_object_mut().unwrap().remove("decorations");
         let directory =
             std::env::temp_dir().join(format!("formiga-v8-save-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
@@ -919,12 +938,85 @@ mod tests {
         assert_eq!(migrated.save_version, crate::SAVE_VERSION);
         assert_eq!(migrated.creatures, creatures);
         assert_eq!(migrated.relationships, relationships);
-        assert_eq!(migrated.home, home);
+        assert_eq!(migrated.home.display, home.display);
+        assert_eq!(migrated.home.corner, home.corner);
+        assert_eq!(migrated.home.shelter, home.shelter);
+        assert_eq!(migrated.home.active_since_utc, home.active_since_utc);
+        assert_eq!(
+            migrated.home.last_disappeared_utc,
+            home.last_disappeared_utc
+        );
         assert_eq!(migrated.settings, settings);
         assert_eq!(migrated.ritual, ritual);
         assert!(migrated.objects.objects.is_empty());
         assert!(migrated.objects.next_at_utc - maximum_seen >= time::Duration::days(3));
         assert!(migrated.objects.next_at_utc - maximum_seen <= time::Duration::days(7));
+
+        let round_trip = directory.join("round-trip.json");
+        let store = SaveStore::new(&round_trip);
+        store.save(&migrated).unwrap();
+        assert_eq!(store.load().unwrap(), Some(migrated));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_v9_decorations_without_changing_objects_or_creatures() {
+        let created = datetime!(2026-03-04 5:06 UTC);
+        let desktop = crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([9; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 826.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        };
+        let mut original = crate::World::new([99; 32], created, &desktop);
+        original.tick(created + time::Duration::hours(1), 0.05, &desktop);
+        original.save.creatures[0].name = "Memento".into();
+        original.save.creatures[0].memory.discoveries_found = 12;
+        original.save.objects.next_at_utc = created;
+        original.tick(created + time::Duration::days(1), 0.05, &desktop);
+        let creatures = original.save.creatures.clone();
+        let relationships = original.save.relationships.clone();
+        let objects = original.save.objects.clone();
+        let ritual = original.save.ritual.clone();
+        let maximum_seen = original.save.maximum_seen_utc;
+        let expected_home = original.save.home.clone();
+
+        let mut value = serde_json::to_value(&original.save).unwrap();
+        value["save_version"] = serde_json::Value::from(9);
+        value["home"].as_object_mut().unwrap().remove("decorations");
+        let directory =
+            std::env::temp_dir().join(format!("formiga-v9-save-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("colony.json");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        let migrated = SaveStore::new(&path).load().unwrap().unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.creatures, creatures);
+        assert_eq!(migrated.relationships, relationships);
+        assert_eq!(migrated.objects, objects);
+        assert_eq!(migrated.ritual, ritual);
+        assert_eq!(migrated.home.display, expected_home.display);
+        assert_eq!(migrated.home.corner, expected_home.corner);
+        assert_eq!(migrated.home.shelter, expected_home.shelter);
+        assert!(migrated.home.decorations.decorations.is_empty());
+        assert!(migrated.home.decorations.next_at_utc - maximum_seen >= time::Duration::days(4));
+        assert!(migrated.home.decorations.next_at_utc - maximum_seen <= time::Duration::days(9));
 
         let round_trip = directory.join("round-trip.json");
         let store = SaveStore::new(&round_trip);

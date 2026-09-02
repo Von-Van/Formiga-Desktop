@@ -30,6 +30,10 @@ resident memory, and notes. Do not publish target values as measured results.
 | v0.44.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
 | v0.44.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
 | v0.44.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.45.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.45.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.45.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.45.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -79,3 +83,9 @@ three-to-seven-day timestamp is evaluated in the existing world tick, and nearby
 computed only for the bounded eight-object collection at existing action boundaries. There is no
 physics body, interaction proxy, object thread, animation frame, per-object draw call, or idle
 regeneration.
+
+Shelter growth stores at most six enum values and three scheduling fields in the existing home. Its
+four-to-nine-day timestamp is evaluated in the normal world tick. When decoration state changes,
+the existing 64×64 shelter canvas and 16 KiB RGBA texture are regenerated once; every ordinary frame
+continues to render the same single shelter quad and draw call. No decoration atlas, vertex, physics
+body, animation, editor resource, thread, or idle allocation is added.

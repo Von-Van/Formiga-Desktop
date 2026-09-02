@@ -453,6 +453,16 @@ pub(crate) fn scheduled_colony_object_at(
     from + Duration::days(rng.random_range(3..=7))
 }
 
+pub(crate) fn scheduled_shelter_decoration_at(
+    colony_seed: [u8; 32],
+    ordinal: u32,
+    from: OffsetDateTime,
+) -> OffsetDateTime {
+    let streams = SeedStream::new(colony_seed);
+    let mut rng = streams.rng("shelter-decoration-schedule", u64::from(ordinal));
+    from + Duration::days(rng.random_range(4..=9))
+}
+
 fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
     let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
     now.to_offset(offset)
@@ -487,13 +497,15 @@ impl World {
             .find(|monitor| monitor.primary)
             .or_else(|| desktop.monitors.first())
             .map(|monitor| monitor.display_key);
+        let mut home = ColonyHome::from_seed(colony_seed, home_display, Some(now), None);
+        home.decorations.next_at_utc = scheduled_shelter_decoration_at(colony_seed, 0, now);
         let save = SaveFile {
             save_version: crate::SAVE_VERSION,
             colony_seed,
             created_at_utc: now,
             maximum_seen_utc: now,
             arrival_state: ArrivalState::default(),
-            home: ColonyHome::from_seed(colony_seed, home_display, Some(now), None),
+            home,
             settings: Settings::default(),
             creatures: vec![creature],
             relationships: Vec::new(),
@@ -520,6 +532,22 @@ impl World {
             save.objects.next_at_utc = scheduled_colony_object_at(
                 save.colony_seed,
                 save.objects.ordinal,
+                save.maximum_seen_utc,
+            );
+        }
+        let mut seen_decorations = BTreeSet::new();
+        save.home
+            .decorations
+            .decorations
+            .retain(|kind| seen_decorations.insert(*kind));
+        save.home
+            .decorations
+            .decorations
+            .truncate(MAX_SHELTER_DECORATIONS);
+        if save.home.decorations.next_at_utc == OffsetDateTime::UNIX_EPOCH {
+            save.home.decorations.next_at_utc = scheduled_shelter_decoration_at(
+                save.colony_seed,
+                save.home.decorations.ordinal,
                 save.maximum_seen_utc,
             );
         }
@@ -587,6 +615,7 @@ impl World {
         let timeline_now = self.save.maximum_seen_utc;
         self.process_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
+        self.process_shelter_decorations(timeline_now);
         self.reconcile_colony_objects(desktop);
         let topology_changed = self
             .topology
@@ -3048,6 +3077,28 @@ impl World {
         );
     }
 
+    fn process_shelter_decorations(&mut self, now: OffsetDateTime) {
+        if self.save.home.decorations.decorations.len() >= MAX_SHELTER_DECORATIONS
+            || self.save.home.decorations.next_at_utc > now
+        {
+            return;
+        }
+        let Some(kind) = preferred_shelter_decoration(&self.save) else {
+            return;
+        };
+        self.save.home.decorations.decorations.push(kind);
+        self.save.home.decorations.ordinal = self.save.home.decorations.ordinal.saturating_add(1);
+        self.save.home.decorations.next_at_utc = scheduled_shelter_decoration_at(
+            self.save.colony_seed,
+            self.save.home.decorations.ordinal,
+            now,
+        );
+        Self::emit(
+            &mut self.events,
+            WorldEvent::ShelterDecorationAdded { kind },
+        );
+    }
+
     fn reconcile_colony_objects(&mut self, desktop: &DesktopSnapshot) {
         for object in &mut self.save.objects.objects {
             let Some((monitor_id, point)) = resolved_colony_object_position(
@@ -4543,6 +4594,84 @@ fn nearby_object_utility(
         utility.add(object.role, 0.08 * (1.0 - distance / 160.0));
     }
     utility
+}
+
+fn preferred_shelter_decoration(save: &SaveFile) -> Option<ShelterDecorationKind> {
+    let mut scores = [0_u64; MAX_SHELTER_DECORATIONS];
+    for creature in &save.creatures {
+        let memory = &creature.memory;
+        scores[ShelterDecorationKind::Leaf.index()] = scores[ShelterDecorationKind::Leaf.index()]
+            .saturating_add(u64::from(memory.ledge_seconds / 60))
+            .saturating_add(u64::from(memory.window_climbs).saturating_mul(20));
+        scores[ShelterDecorationKind::Banner.index()] = scores
+            [ShelterDecorationKind::Banner.index()]
+        .saturating_add(u64::from(memory.times_petted).saturating_mul(3))
+        .saturating_add(u64::from(memory.play_sessions).saturating_mul(2));
+        scores[ShelterDecorationKind::Stone.index()] = scores[ShelterDecorationKind::Stone.index()]
+            .saturating_add(u64::from(memory.placements).saturating_mul(4))
+            .saturating_add(u64::from(memory.home_visits).saturating_mul(6));
+        scores[ShelterDecorationKind::Flower.index()] = scores
+            [ShelterDecorationKind::Flower.index()]
+        .saturating_add(u64::from(memory.discoveries_found).saturating_mul(4))
+        .saturating_add(u64::from(memory.times_petted));
+        scores[ShelterDecorationKind::Lamp.index()] = scores[ShelterDecorationKind::Lamp.index()]
+            .saturating_add(u64::from(memory.longest_sleep_seconds / 60))
+            .saturating_add(u64::from(memory.home_visits).saturating_mul(8));
+        scores[ShelterDecorationKind::RoofOrnament.index()] = scores
+            [ShelterDecorationKind::RoofOrnament.index()]
+        .saturating_add(u64::from(memory.window_climbs).saturating_mul(20))
+        .saturating_add(u64::from(memory.window_ride_seconds / 60))
+        .saturating_add(u64::from(memory.discoveries_found).saturating_mul(3));
+    }
+    for relationship in &save.relationships {
+        scores[ShelterDecorationKind::Banner.index()] = scores
+            [ShelterDecorationKind::Banner.index()]
+        .saturating_add(u64::from(relationship.affinity))
+        .saturating_add(u64::from(relationship.familiarity));
+        scores[ShelterDecorationKind::Flower.index()] = scores
+            [ShelterDecorationKind::Flower.index()]
+        .saturating_add(u64::from(relationship.playfulness));
+        scores[ShelterDecorationKind::Stone.index()] = scores[ShelterDecorationKind::Stone.index()]
+            .saturating_add(u64::from(relationship.avoidance));
+    }
+    if let Some(kind) = save.ritual.last_kind {
+        let decoration = match kind {
+            RitualKind::Picnic => ShelterDecorationKind::Flower,
+            RitualKind::GroupNap | RitualKind::LateNightSleepPile => ShelterDecorationKind::Lamp,
+            RitualKind::FloorRace => ShelterDecorationKind::RoofOrnament,
+            RitualKind::ShelterGathering | RitualKind::QuietDayHuddle => {
+                ShelterDecorationKind::Leaf
+            }
+            RitualKind::Catch | RitualKind::GroupPresentation | RitualKind::HatchDay => {
+                ShelterDecorationKind::Banner
+            }
+        };
+        scores[decoration.index()] = scores[decoration.index()].saturating_add(256);
+    }
+    for object in &save.objects.objects {
+        let decoration = match object.kind {
+            ColonyObjectKind::Pillow | ColonyObjectKind::Blanket | ColonyObjectKind::Lamp => {
+                ShelterDecorationKind::Lamp
+            }
+            ColonyObjectKind::Toy | ColonyObjectKind::Cup => ShelterDecorationKind::Banner,
+            ColonyObjectKind::Plant => ShelterDecorationKind::Flower,
+            ColonyObjectKind::Paper => ShelterDecorationKind::Leaf,
+            ColonyObjectKind::Pebble => ShelterDecorationKind::Stone,
+        };
+        scores[decoration.index()] = scores[decoration.index()].saturating_add(128);
+    }
+
+    let streams = SeedStream::new(save.colony_seed);
+    let mut rng = streams.rng(
+        "shelter-decoration-choice",
+        u64::from(save.home.decorations.ordinal),
+    );
+    ShelterDecorationKind::ALL
+        .into_iter()
+        .filter(|kind| !save.home.decorations.decorations.contains(kind))
+        .map(|kind| (scores[kind.index()], rng.random::<u16>(), kind))
+        .max()
+        .map(|(_, _, kind)| kind)
 }
 
 fn constrain_to_surface(
@@ -7011,6 +7140,92 @@ mod tests {
                 &world.save.settings.habitat
             )
             .is_some()
+        );
+    }
+
+    #[test]
+    fn shelter_decoration_schedule_is_deterministic_and_between_four_and_nine_days() {
+        let now = datetime!(2026-01-01 0:00 UTC);
+        for ordinal in 0..64 {
+            let first = scheduled_shelter_decoration_at([104; 32], ordinal, now);
+            let second = scheduled_shelter_decoration_at([104; 32], ordinal, now);
+            assert_eq!(first, second);
+            assert!(first - now >= Duration::days(4));
+            assert!(first - now <= Duration::days(9));
+        }
+    }
+
+    #[test]
+    fn shelter_decorations_add_one_after_downtime_and_cap_at_six_unique_kinds() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([105; 32], created, &desktop);
+        let overdue = created + Duration::days(40);
+        world.save.home.decorations.next_at_utc = created + Duration::days(4);
+        world.tick(overdue, 0.05, &desktop);
+        assert_eq!(world.save.home.decorations.decorations.len(), 1);
+        assert!(world.save.home.decorations.next_at_utc >= overdue + Duration::days(4));
+        assert!(world.save.home.decorations.next_at_utc <= overdue + Duration::days(9));
+        world.tick(overdue, 0.05, &desktop);
+        assert_eq!(world.save.home.decorations.decorations.len(), 1);
+        assert_eq!(
+            world
+                .drain_events()
+                .filter(|event| matches!(event, WorldEvent::ShelterDecorationAdded { .. }))
+                .count(),
+            1
+        );
+
+        for day in 1..=MAX_SHELTER_DECORATIONS + 3 {
+            world.save.home.decorations.next_at_utc = overdue;
+            world.tick(overdue + Duration::days(day as i64), 0.05, &desktop);
+        }
+        let decorations = &world.save.home.decorations.decorations;
+        assert_eq!(decorations.len(), MAX_SHELTER_DECORATIONS);
+        assert_eq!(
+            decorations.iter().copied().collect::<BTreeSet<_>>().len(),
+            decorations.len()
+        );
+    }
+
+    #[test]
+    fn shelter_decoration_choice_reflects_memories_bonds_rituals_and_objects() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+
+        let mut memories = World::new([106; 32], created, &desktop);
+        memories.save.creatures[0].memory.ledge_seconds = u32::MAX;
+        assert_eq!(
+            preferred_shelter_decoration(&memories.save),
+            Some(ShelterDecorationKind::Leaf)
+        );
+
+        let mut bonds = two_creature_world([107; 32], created);
+        bonds.save.relationships[0].affinity = u8::MAX;
+        bonds.save.relationships[0].familiarity = u8::MAX;
+        assert_eq!(
+            preferred_shelter_decoration(&bonds.save),
+            Some(ShelterDecorationKind::Banner)
+        );
+
+        let mut ritual = World::new([108; 32], created, &desktop);
+        ritual.save.ritual.last_kind = Some(RitualKind::Picnic);
+        assert_eq!(
+            preferred_shelter_decoration(&ritual.save),
+            Some(ShelterDecorationKind::Flower)
+        );
+
+        let mut objects = World::new([109; 32], created, &desktop);
+        objects.save.objects.objects.push(ColonyObject {
+            id: 1,
+            kind: ColonyObjectKind::Pebble,
+            display: desktop.monitors[0].display_key,
+            normalized_position: Point { x: 0.5, y: 0.9 },
+            role: ColonyObjectRole::Curiosity,
+        });
+        assert_eq!(
+            preferred_shelter_decoration(&objects.save),
+            Some(ShelterDecorationKind::Stone)
         );
     }
 }

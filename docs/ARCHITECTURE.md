@@ -204,6 +204,20 @@ and rebuilds those vertices only when object state, habitat, display geometry, o
 Nearby semantic roles add a bounded `+0.25` to existing action utility at ordinary selection
 boundaries; objects have no physics body, interaction proxy, action state, or update loop.
 
+## Growing shelter
+
+Save version 10 nests one bounded `ShelterDecorationState` inside the existing home: at most six
+unique typed decorations, one next UTC timestamp, and one ordinal. Every four to nine days, compact
+memory counters, canonical bond scores, the last ritual kind, and colony-object kinds contribute to
+six deterministic decoration scores. A named seed stream breaks ties, the highest unused kind is
+stored, and an overdue colony schedules from the current maximum-seen time after adding at most one.
+
+`ShelterRenderer::render_with_decorations` draws leaf, banner, stone, flower, lamp, and roof ornament
+pixels onto the same deterministic 64×64 CPU canvas after the shelter genome is resolved. The GPU
+shelter cache key contains only that genome and the bounded decoration list. A state change replaces
+the single shelter texture; normal presentation still uses one shelter quad, one bind group, and one
+draw call. Decorations have no world position, action, editor, animation, physics, or render loop.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -222,16 +236,19 @@ boundaries; objects have no physics body, interaction proxy, action state, or up
   invitation dwell advances on ordinary visible, unpaused simulation ticks.
 - Colony objects: one persisted three-to-seven-day timestamp evaluated during the existing world
   tick; static vertices rebuild only after object, habitat, display, or scale changes.
+- Shelter decorations: one persisted four-to-nine-day timestamp evaluated in the same world tick;
+  the existing 64×64 texture is regenerated only when the bounded decoration state changes.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 9 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+Version 10 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
 canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
 receiving only its first deterministic ritual timestamp; v8 receives only its first deterministic
-colony-object timestamp. Migration preserves creature IDs, resolved genomes, personality,
+colony-object timestamp, and v9 receives only its first deterministic shelter-decoration timestamp.
+Migration preserves creature IDs, resolved genomes, personality,
 custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
 tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
 

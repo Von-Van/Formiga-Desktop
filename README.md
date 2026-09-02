@@ -38,6 +38,11 @@ Over several days, colonies also leave a bounded collection of static pillows, t
 blankets, paper scraps, pebbles, lamps, and cups. These small deterministic objects make the desktop
 feel inhabited and gently influence existing behavior without physics, dragging, or an object loop.
 
+The colony home grows too. Every few days its single cached shelter texture can gain a leaf, banner,
+stone, flower, lamp, or roof ornament selected from the colony's compact habits, bonds, rituals, and
+objects. The decorations are deterministic, bounded to six, and never become separate runtime
+objects or editor controls.
+
 Between those larger reactions, creatures entertain themselves with generated toys, pause for small
 snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
@@ -48,13 +53,13 @@ of the way; a slow release keeps the existing precise placement behavior.
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.44.0-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.45.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.44.0-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.45.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.44.0`. The assisted updater matches those exact names, so do
+names with its version in place of `0.45.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
@@ -112,6 +117,8 @@ desktop interactions:
   gaps, with routes disappearing immediately if the desktop construction changes.
 - Let the colony accumulate at most eight deterministic pillows, toys, plants, blankets, scraps,
   pebbles, lamps, and cups that remain static and habitat-safe.
+- See the shelter gain at most six deterministic leaves, banners, stones, flowers, lamps, and roof
+  ornaments reflecting the colony's compact history without adding another draw call.
 - Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
 - Check for new GitHub releases without blocking the desktop, verify downloads with SHA-256, and
   hand the approved installer to the operating system.
@@ -187,7 +194,7 @@ cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.p
 
 ## Status
 
-Formiga v0.44 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.45 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 

@@ -9,7 +9,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Format and Clippy warnings denied | CI | CI |
 | Workspace tests | CI | CI |
 | Deterministic 1,000-genome render test | CI | CI |
-| v1/v2/v3/v4/v5/v6/v7/v8→v9 migration, identity and bond preservation, names, birth timestamps, rituals, and top-12 routines | CI | CI |
+| v1/v2/v3/v4/v5/v6/v7/v8/v9→v10 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | Fixed memory/routine limits and sub-2-KiB per-creature serialized growth | CI | CI |
@@ -32,6 +32,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Squeeze traversal-atlas reuse, 0.72× body/face scaling, and stable routine codes 0–23 | CI | CI |
 | Deterministic 3–7-day object scheduling, one-after-downtime behavior, eight-object cap, and stable IDs | CI | CI |
 | Eight-kind object-atlas determinism/alpha coverage, habitat recovery, cached static quads, and `+0.25` utility cap | CI | CI |
+| Deterministic 4–9-day decoration scheduling, one-after-downtime behavior, six-unique-kind cap, and canonicalization | CI | CI |
+| Memory/bond/ritual/object-driven decoration choice and deterministic single-texture 64×64 shelter baking | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
@@ -75,12 +77,13 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Window islands, exposed-corner peeks, slow platform rides, and calm cursor invitations | pending | pending | pending | pending |
 | Four-tier constructions, narrow-gap squeeze playback, and route cancellation during window motion | pending | pending | pending | pending |
 | Eight object kinds, multi-display placement, habitat recovery, static rendering, and no downtime flood | pending | pending | pending | pending |
+| Six shelter decoration kinds, history-reflective choice, overdue behavior, and unchanged single-quad rendering | pending | pending | pending | pending |
 | Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
 | Two- and four-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
-| Package install, relaunch, v9 round trip, and representative v1/v2/v3/v4/v5/v6/v7/v8 migration without creature loss | pending | pending | pending | pending |
+| Package install, relaunch, v10 round trip, and representative v1/v2/v3/v4/v5/v6/v7/v8/v9 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

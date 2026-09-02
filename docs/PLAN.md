@@ -1,5 +1,21 @@
 # Formiga roadmap
 
+## v0.45 growing-home release
+
+- Save version 10 stores at most six unique leaf, banner, stone, flower, lamp, and roof-ornament
+  choices plus one future timestamp and ordinal. Deterministic v1–v9 migration does not replace or
+  reset creatures, objects, bonds, rituals, names, memories, or the existing shelter.
+- One decoration arrives every four to nine UTC days, never more than one after downtime. Its
+  deterministic score reflects dominant compact memories, bonds, the last ritual, and colony
+  objects.
+- Decorations are rasterized into the existing 64×64 shelter texture only when state changes. They
+  add no editor, physics, normal draw call, or idle regeneration.
+
+Release-page summary:
+
+> Shelters now grow deterministic decorations that reflect each colony's habits and history, while
+> remaining a single cached 64×64 texture.
+
 ## v0.44 inhabited-ecosystem release
 
 - Save version 9 stores at most eight static objects with type, stable ID, display key, normalized
@@ -170,10 +186,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.44
+## Progressive releases after v0.45
 
-- **v0.45 Growing Home:** add at most six deterministic shelter decorations while preserving one
-  cached 64×64 shelter texture and one normal draw call.
 - **v0.46 Offline Seed Sharing:** encode original generation and a full 256-bit origin seed in a
   checksummed, versioned, case-insensitive Base32 code with no server.
 - **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
@@ -189,5 +203,5 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
   only while importing, has fixed decode/dimension/work limits, and releases all temporary buffers on
   acceptance or cancellation.
 
-Decorations, seed import, card export, and reference-image matching remain out of scope for v0.44
-and retain their independent release gates.
+Seed import, card export, and reference-image matching remain out of scope for v0.45 and retain
+their independent release gates.

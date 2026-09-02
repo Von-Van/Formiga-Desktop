@@ -8,7 +8,8 @@ use formiga_art::{
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
     DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile,
-    ShelterGenome, accessible_regions, resolved_colony_object_position, resolved_home_anchor,
+    ShelterDecorationKind, ShelterGenome, accessible_regions, resolved_colony_object_position,
+    resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -60,6 +61,7 @@ struct ShelterGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     genome: ShelterGenome,
+    decorations: Vec<ShelterDecorationKind>,
 }
 
 struct BubbleGpu {
@@ -457,7 +459,7 @@ impl OverlayRenderer {
             )
             .is_some();
         if shelter_visible {
-            self.ensure_shelter(save.home.shelter);
+            self.ensure_shelter(save.home.shelter, &save.home.decorations.decorations);
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
@@ -944,15 +946,20 @@ impl OverlayRenderer {
         }
     }
 
-    fn ensure_shelter(&mut self, genome: ShelterGenome) {
+    fn ensure_shelter(&mut self, genome: ShelterGenome, decorations: &[ShelterDecorationKind]) {
         if self
             .shelter
             .as_ref()
-            .is_some_and(|shelter| shelter.genome == genome)
+            .is_some_and(|shelter| shelter.genome == genome && shelter.decorations == decorations)
         {
             return;
         }
-        let pixels = ShelterRenderer::render(&genome).rgba_bytes();
+        let decorations: Vec<_> = decorations
+            .iter()
+            .copied()
+            .take(formiga_core::MAX_SHELTER_DECORATIONS)
+            .collect();
+        let pixels = ShelterRenderer::render_with_decorations(&genome, &decorations).rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("procedural colony shelter"),
             size: wgpu::Extent3d {
@@ -1005,6 +1012,7 @@ impl OverlayRenderer {
             _texture: texture,
             bind_group,
             genome,
+            decorations,
         });
     }
 

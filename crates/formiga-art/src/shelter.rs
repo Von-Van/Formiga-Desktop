@@ -1,5 +1,5 @@
 use crate::{Canvas, PALETTES, Rgba};
-use formiga_core::{ShelterGenome, ShelterStyle};
+use formiga_core::{ShelterDecorationKind, ShelterGenome, ShelterStyle};
 
 pub const SHELTER_SIZE: u32 = 64;
 
@@ -7,6 +7,13 @@ pub struct ShelterRenderer;
 
 impl ShelterRenderer {
     pub fn render(genome: &ShelterGenome) -> Canvas {
+        Self::render_with_decorations(genome, &[])
+    }
+
+    pub fn render_with_decorations(
+        genome: &ShelterGenome,
+        decorations: &[ShelterDecorationKind],
+    ) -> Canvas {
         let mut canvas = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
         let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
         let accent = PALETTES[genome.accent_index as usize % PALETTES.len()];
@@ -144,7 +151,88 @@ impl ShelterRenderer {
                 canvas.set(x, y, accent.accent);
             }
         }
+        for kind in decorations
+            .iter()
+            .copied()
+            .take(formiga_core::MAX_SHELTER_DECORATIONS)
+        {
+            draw_decoration(
+                &mut canvas,
+                kind,
+                palette.outline,
+                palette.coat,
+                accent.accent,
+                accent.highlight,
+                genome.detail_seed,
+            );
+        }
         canvas
+    }
+}
+
+fn draw_decoration(
+    canvas: &mut Canvas,
+    kind: ShelterDecorationKind,
+    outline: Rgba,
+    coat: Rgba,
+    accent: Rgba,
+    highlight: Rgba,
+    detail_seed: u64,
+) {
+    let jitter = ((detail_seed >> (kind.index() * 7)) & 0x3) as i32 - 1;
+    match kind {
+        ShelterDecorationKind::Leaf => {
+            let x = 18 + jitter;
+            canvas.line(x, 31, x + 2, 21, 1, outline);
+            canvas.fill_ellipse(x - 1, 23, 4, 2, coat);
+            canvas.fill_ellipse(x + 3, 27, 4, 2, highlight);
+            canvas.line(x, 24, x + 4, 27, 1, accent);
+        }
+        ShelterDecorationKind::Banner => {
+            canvas.line(15, 18, 49, 18, 1, outline);
+            for (index, x) in [18, 26, 34, 42].into_iter().enumerate() {
+                fill_triangle(
+                    canvas,
+                    x + 2,
+                    19,
+                    x,
+                    24,
+                    x + 5,
+                    24,
+                    if index % 2 == 0 { accent } else { highlight },
+                );
+            }
+        }
+        ShelterDecorationKind::Stone => {
+            let x = 12 + jitter;
+            canvas.fill_ellipse(x, 57, 6, 4, outline);
+            canvas.fill_ellipse(x, 56, 4, 2, coat);
+            canvas.set(x + 2, 55, highlight);
+        }
+        ShelterDecorationKind::Flower => {
+            let x = 15 + jitter;
+            canvas.line(x, 59, x, 49, 1, coat);
+            canvas.fill_ellipse(x - 2, 50, 3, 2, accent);
+            canvas.fill_ellipse(x + 2, 50, 3, 2, accent);
+            canvas.fill_ellipse(x, 47, 2, 3, highlight);
+            canvas.set(x, 50, outline);
+        }
+        ShelterDecorationKind::Lamp => {
+            let x = 50 + jitter;
+            canvas.line(x, 59, x, 44, 1, outline);
+            canvas.fill_rect(x - 4, 43, 9, 2, outline);
+            canvas.fill_ellipse(x, 40, 5, 5, outline);
+            canvas.fill_ellipse(x, 40, 3, 3, highlight);
+            canvas.set(x, 40, accent);
+        }
+        ShelterDecorationKind::RoofOrnament => {
+            let x = 32 + jitter;
+            canvas.line(x, 27, x, 12, 1, outline);
+            canvas.line(x - 4, 15, x + 4, 15, 1, accent);
+            canvas.line(x, 11, x, 19, 1, accent);
+            canvas.line(x - 3, 12, x + 3, 18, 1, highlight);
+            canvas.line(x - 3, 18, x + 3, 12, 1, highlight);
+        }
     }
 }
 
@@ -198,5 +286,28 @@ mod tests {
             assert_eq!(first.width(), SHELTER_SIZE);
             assert_eq!(first.height(), SHELTER_SIZE);
         }
+    }
+
+    #[test]
+    fn all_six_decorations_are_baked_deterministically_into_one_shelter_canvas() {
+        let genome = ShelterGenome {
+            style: ShelterStyle::PaperHouse,
+            palette_index: 3,
+            accent_index: 8,
+            width: 38,
+            height: 32,
+            detail_seed: 0x1234_5678,
+        };
+        let undecorated = ShelterRenderer::render(&genome);
+        let decorated =
+            ShelterRenderer::render_with_decorations(&genome, &ShelterDecorationKind::ALL);
+        assert_eq!(
+            decorated,
+            ShelterRenderer::render_with_decorations(&genome, &ShelterDecorationKind::ALL)
+        );
+        assert_ne!(decorated, undecorated);
+        assert_eq!(decorated.width(), SHELTER_SIZE);
+        assert_eq!(decorated.height(), SHELTER_SIZE);
+        assert!(decorated.alpha_bounds().is_some());
     }
 }

@@ -1123,6 +1123,62 @@ pub struct ShelterGenome {
     pub detail_seed: u64,
 }
 
+pub const MAX_SHELTER_DECORATIONS: usize = 6;
+
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum ShelterDecorationKind {
+    #[default]
+    Leaf,
+    Banner,
+    Stone,
+    Flower,
+    Lamp,
+    RoofOrnament,
+}
+
+impl ShelterDecorationKind {
+    pub const ALL: [Self; 6] = [
+        Self::Leaf,
+        Self::Banner,
+        Self::Stone,
+        Self::Flower,
+        Self::Lamp,
+        Self::RoofOrnament,
+    ];
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Leaf => 0,
+            Self::Banner => 1,
+            Self::Stone => 2,
+            Self::Flower => 3,
+            Self::Lamp => 4,
+            Self::RoofOrnament => 5,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ShelterDecorationState {
+    pub decorations: Vec<ShelterDecorationKind>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub next_at_utc: OffsetDateTime,
+    pub ordinal: u32,
+}
+
+impl Default for ShelterDecorationState {
+    fn default() -> Self {
+        Self {
+            decorations: Vec::new(),
+            next_at_utc: OffsetDateTime::UNIX_EPOCH,
+            ordinal: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColonyHome {
     pub display: Option<DisplayKey>,
@@ -1132,6 +1188,8 @@ pub struct ColonyHome {
     pub active_since_utc: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub last_disappeared_utc: Option<OffsetDateTime>,
+    #[serde(default)]
+    pub decorations: ShelterDecorationState,
 }
 
 impl ColonyHome {
@@ -1164,6 +1222,7 @@ impl ColonyHome {
             },
             active_since_utc,
             last_disappeared_utc,
+            decorations: ShelterDecorationState::default(),
         }
     }
 
@@ -1368,6 +1427,9 @@ pub enum WorldEvent {
         object_id: u64,
         kind: ColonyObjectKind,
     },
+    ShelterDecorationAdded {
+        kind: ShelterDecorationKind,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1519,6 +1581,28 @@ mod tests {
         };
         let value = serde_json::to_value(object).unwrap();
         assert_eq!(value.as_object().unwrap().len(), 5);
+    }
+
+    #[test]
+    fn shelter_decoration_projection_has_exactly_six_typed_choices() {
+        assert_eq!(ShelterDecorationKind::ALL.len(), MAX_SHELTER_DECORATIONS);
+        for (index, kind) in ShelterDecorationKind::ALL.into_iter().enumerate() {
+            assert_eq!(kind.index(), index);
+        }
+        let state = ShelterDecorationState {
+            decorations: ShelterDecorationKind::ALL.to_vec(),
+            next_at_utc: OffsetDateTime::UNIX_EPOCH,
+            ordinal: 6,
+        };
+        assert_eq!(state.decorations.len(), MAX_SHELTER_DECORATIONS);
+        assert_eq!(
+            serde_json::to_value(state)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .len(),
+            3
+        );
     }
 
     #[test]

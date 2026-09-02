@@ -2,6 +2,28 @@
 
 All notable changes are documented here.
 
+## [0.45.0] - 2026-09-01
+
+### Added
+
+- Six deterministic shelter decorations: leaf, banner, stone, flower, lamp, and roof ornament. A
+  colony earns one unique decoration every four to nine UTC days and retains at most six.
+- Decoration selection reflects the dominant compact colony state across creature memories, bond
+  scores, the last ritual, and accumulated colony objects, with seed-derived deterministic
+  tie-breaking.
+
+### Changed
+
+- Decorations are baked into the existing procedural 64×64 shelter canvas. The GPU regenerates and
+  uploads that one texture only when the shelter genome or bounded decoration list changes; normal
+  rendering retains the existing shelter quad and draw call.
+- Save version 10 adds only the decoration list, next timestamp, and ordinal inside the existing
+  home state. Deterministic v1–v9 migration preserves every creature, bond, ritual, object, setting,
+  custom name, memory, tendency, routine, birth time, home identity, and resolved genome.
+- Overdue colonies receive at most one decoration before scheduling the next date from the current
+  maximum-seen UTC time. Duplicate or excess saved decorations are canonicalized to six unique
+  typed values without affecting the rest of the colony.
+
 ## [0.44.0] - 2026-09-01
 
 ### Added
