@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use formiga_art::{
-    CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE, FaceRenderState, GazeDirection,
-    SHELTER_SIZE, ShelterRenderer,
+    CARD_HEIGHT, CARD_WIDTH, CreatureCardRenderer, CreatureRenderer, ExpressionKind, EyelidPose,
+    FRAME_SIZE, FaceRenderState, GazeDirection, SHELTER_SIZE, ShelterRenderer,
 };
 use formiga_core::*;
 use sha2::{Digest, Sha256};
@@ -49,6 +49,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/shelter-sheet.png",
         )),
+        Some("creature-card") => creature_card(output_argument_with_default(
+            &args,
+            "docs/assets/creature-card.png",
+        )),
         Some("simulate") => simulate(
             args.get(2)
                 .and_then(|value| value.parse().ok())
@@ -56,11 +60,28 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
     }
+}
+
+fn creature_card(path: PathBuf) -> Result<()> {
+    let mut seed = [0_u8; 32];
+    seed.copy_from_slice(&Sha256::digest(b"formiga-creature-card-preview"));
+    let mut world = World::new(seed, OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
+    let creature = &mut world.save.creatures[0];
+    creature.name = "Mallow".into();
+    creature.born_at_utc = time::macros::datetime!(2026-08-14 12:30 UTC);
+    creature.tendencies.climbing = 62;
+    creature.tendencies.exploration = 53;
+    creature.tendencies.sociability = 41;
+    formiga_core::update_descriptor_flags(&mut creature.memory, creature.tendencies);
+    let card = CreatureCardRenderer::render(creature);
+    write_png(&path, CARD_WIDTH, CARD_HEIGHT, &card.rgba_bytes())?;
+    println!("wrote {}", path.display());
+    Ok(())
 }
 
 fn output_argument(args: &[String]) -> PathBuf {

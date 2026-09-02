@@ -1,5 +1,23 @@
 # Formiga roadmap
 
+## v0.47 exportable-creature-card release
+
+- Colony profiles export a deterministic 960×600 PNG only after the native save dialog returns a
+  destination. Cancelling does not render or write anything.
+- The shareable pixel-art keepsake uses the creature's generated sprite and palette, family, up to
+  three learned descriptors, custom name, UTC birth month/year, and an abbreviated seed glimpse.
+- A stepped paper frame, moonlit desktop scene, palette-derived accents, motif stamp, and colony
+  number keep the card visually playful and recognizably Formiga without adding image assets to the
+  running application.
+- Card-only fonts, canvases, and PNG buffers are temporary. The PNG contains no full seed, compact
+  state, device data, hidden metadata, path, or screen information. Save version 10 is unchanged.
+
+Release-page summary:
+
+> Creatures can now be exported as cozy illustrated cards showing their appearance, name, family,
+> learned personality, arrival date, and an abbreviated seed—ready to share without exposing their
+> private colony state.
+
 ## v0.46 exact-offline-seed-sharing release
 
 - A case-insensitive grouped Crockford Base32 code carries format version 1, source generation, the
@@ -202,10 +220,8 @@ Implemented in this release:
 Release validation still requires completing every real-device row in `TEST_MATRIX.md`, recording
 measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when credentials exist.
 
-## Progressive releases after v0.46
+## Progressive releases after v0.47
 
-- **v0.47 Creature Cards:** export a deterministic on-demand 960×600 PNG with no persistent export
-  allocation or hidden metadata.
 - **v0.50 Reference-Guided Creatures:** accept a PNG or JPEG on demand, analyze it entirely on the
   user's device, and search the existing valid genome space for the closest Formiga-style creature.
   Matching uses bounded palette, silhouette, proportion, symmetry, and appendage cues; it never
@@ -217,5 +233,5 @@ measured energy use in `PERFORMANCE.md`, and signing/notarizing builds when cred
   only while importing, has fixed decode/dimension/work limits, and releases all temporary buffers on
   acceptance or cancellation.
 
-Card export and reference-image matching remain out of scope for v0.46 and retain their independent
-release gates.
+Reference-image matching remains out of scope for v0.47 and retains its independent v0.50 release
+gate.

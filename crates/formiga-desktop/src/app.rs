@@ -1,3 +1,4 @@
+use crate::card_export::{choose_card_destination, export_to_selected_destination};
 use crate::gpu::{OverlayRenderer, monitor_has_fullscreen_window};
 use crate::interaction::{InteractionProxy, ProxyRuntimeState};
 use crate::platform;
@@ -776,6 +777,22 @@ impl FormigaApp {
     }
 
     fn handle_settings_outcome(&mut self, event_loop: &ActiveEventLoop, outcome: SettingsOutcome) {
+        if let Some(creature_id) = outcome.export_creature_card
+            && let Some(creature) = self.world.as_ref().and_then(|world| {
+                world
+                    .save
+                    .creatures
+                    .iter()
+                    .find(|creature| creature.id == creature_id)
+            })
+        {
+            let selected = choose_card_destination(creature);
+            match export_to_selected_destination(creature, selected) {
+                Ok(Some(path)) => tracing::info!(path = %path.display(), "creature card exported"),
+                Ok(None) => {}
+                Err(error) => tracing::error!(%error, "creature card export failed"),
+            }
+        }
         if let Some(shared) = outcome.import_shared_creature {
             let desktop = self.snapshot();
             let preserved_settings = self

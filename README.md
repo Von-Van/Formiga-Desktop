@@ -48,6 +48,13 @@ innate appearance and personality entirely offline, starts it with a fresh life 
 derives a new lineage for future companions. Names, memories, relationships, and desktop data are
 never embedded in the code.
 
+Each Colony profile can also export a deterministic 960×600 illustrated creature card. The card
+uses the creature's actual procedural sprite and palette, frames it as a cozy pixel-art keepsake,
+and includes its family, top learned descriptors, UTC arrival month, and only an abbreviated seed
+glimpse. Export happens entirely on demand and writes no hidden profile or device metadata.
+
+![An exportable Formiga creature card for Mallow](docs/assets/creature-card.png)
+
 Between those larger reactions, creatures entertain themselves with generated toys, pause for small
 snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
@@ -58,13 +65,13 @@ of the way; a slow release keeps the existing precise placement behavior.
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.46.0-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download `Formiga-0.47.0-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.46.0-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download `Formiga-0.47.0-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.46.0`. The assisted updater matches those exact names, so do
+names with its version in place of `0.47.0`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
@@ -197,11 +204,12 @@ cargo run -p formiga-tools -- activity-sheet --output docs/assets/activity-sheet
 cargo run -p formiga-tools -- ambient-sheet --output docs/assets/ambient-sheet.png
 cargo run -p formiga-tools -- app-icon --output packaging/shared
 cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
+cargo run -p formiga-tools -- creature-card --output docs/assets/creature-card.png
 ```
 
 ## Status
 
-Formiga v0.46 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
+Formiga v0.47 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
 are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
 Developer ID and Authenticode credentials are available.
 

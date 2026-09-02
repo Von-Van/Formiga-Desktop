@@ -2,6 +2,29 @@
 
 All notable changes are documented here.
 
+## [0.47.0] - 2026-09-01
+
+### Added
+
+- On-demand 960×600 PNG creature cards from each Colony profile. The illustrated keepsake uses the
+  creature's generated sprite and palette, cozy pixel scenery, learned descriptor badges, family,
+  UTC birth month/year, and a deliberately abbreviated seed glimpse.
+- A native save dialog with a Unicode-safe suggested filename and explicit PNG filter. Cancelling
+  the dialog performs no render and creates no file.
+- A deterministic `formiga-tools creature-card` preview command and checked-in reference card for
+  visual review of the release artwork.
+
+### Changed
+
+- Card canvases, font atlases, and PNG buffers are created only after the user chooses a destination
+  and are released when export finishes. The normal simulation and renderer retain no card state,
+  texture, worker, or idle allocation.
+- Exported PNGs contain only the visible read-only profile fields and ordinary pixel data. They omit
+  the full seed, memory JSON, relationship values, device data, screen information, source paths,
+  and hidden text metadata.
+- Save version remains 10. Card export is read-only, so every v1–v10 colony remains compatible and
+  no creature identity, name, history, relationship, object, or shelter state is rewritten.
+
 ## [0.46.0] - 2026-09-01
 
 ### Added

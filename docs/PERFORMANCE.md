@@ -38,6 +38,10 @@ resident memory, and notes. Do not publish target values as measured results.
 | v0.46.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
 | v0.46.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
 | v0.46.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.47.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.47.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
+| v0.47.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
+| v0.47.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
 
 v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-window state, and stops
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
@@ -98,3 +102,9 @@ Seed sharing has zero idle cost. Encoding and validation handle a fixed 37-byte 
 an explicit profile/settings action. Import reconstructs at most four temporary generated creatures,
 keeps only the selected source generation, and immediately releases the rest. No texture, worker,
 network client, code history, or background allocation persists afterward.
+
+Creature cards also have zero idle cost. The card renderer is a zero-sized stateless type, and the
+native save dialog runs before the one 960×600 canvas, ephemeral font atlas, and PNG encoder are
+created. Cancellation allocates no card canvas. A completed export drops every card buffer before
+returning and never uploads the image to the overlay GPU or changes the save. Native CPU and memory
+measurements remain pending in the table above.

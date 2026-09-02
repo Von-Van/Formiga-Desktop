@@ -909,8 +909,9 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
+ "epaint",
  "formiga-core",
  "rand",
  "rand_chacha",
@@ -920,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -935,7 +936,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -951,6 +952,7 @@ dependencies = [
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
+ "png",
  "pollster",
  "rfd",
  "semver",
@@ -969,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "formiga-art",

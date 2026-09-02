@@ -71,6 +71,13 @@ lineage locally. No account, analytics event, server, DNS request, or network pe
 Save version 10 is unchanged because the immutable origin fields already exist in every migrated
 creature record.
 
+Creature-card export is local and read-only. The 960×600 PNG contains ordinary rendered pixels for
+the creature, custom name, family, up to three visible descriptors, UTC birth month/year, colony
+number, and an abbreviated seed glimpse. It does not embed the full share code, memory JSON,
+relationships, objects, shelter state, display keys, device data, screen content, source paths, or
+hidden text metadata. The save dialog opens before rendering; cancellation creates no image, and
+temporary card/font/PNG buffers are released after the export completes.
+
 Quiet-day ritual eligibility uses only the already-available system idle duration and whether safe
 window rectangles remained unchanged. Hatch days and late-night sleep piles use local date/hour with
 UTC fallback. Formiga does not query weather, screen content, titles, URLs, or location.

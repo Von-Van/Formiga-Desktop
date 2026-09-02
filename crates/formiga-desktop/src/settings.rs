@@ -40,6 +40,7 @@ pub struct SettingsOutcome {
     pub rename_creature: Option<(CreatureId, String)>,
     pub viewed_profile: Option<CreatureId>,
     pub import_shared_creature: Option<SharedCreatureSeed>,
+    pub export_creature_card: Option<CreatureId>,
 }
 
 #[derive(Clone, Copy)]
@@ -685,6 +686,11 @@ fn colony_tab(
                 ui.ctx().copy_text(code);
             }
         });
+        ui.add_space(5.0);
+        ui.label("Make a 960×600 illustrated keepsake using the visible profile details.");
+        if ui.button("Export creature card…").clicked() {
+            outcome.export_creature_card = Some(creature.id);
+        }
     });
 
     ui.add_space(8.0);

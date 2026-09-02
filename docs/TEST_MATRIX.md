@@ -37,6 +37,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | All four seed generations round-trip case-insensitively and reproduce innate identity byte-for-byte | CI | CI |
 | Seed prefix/group/version/generation/length/alphabet/padding/checksum validation and corruption rejection | CI | CI |
 | Imported fresh history, distinct companion lineage, explicit replacement gate, and unchanged v10 save compatibility | CI | CI |
+| Deterministic 960×600 opaque card pixels, Unicode names, long-name bounds, abbreviated seed, and zero-sized renderer state | CI | CI |
+| Card save cancellation before rendering, Unicode-safe filenames, and PNG extension normalization | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |
 | Generated passive-prop determinism and alpha coverage | CI | CI |
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
@@ -82,6 +84,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Eight object kinds, multi-display placement, habitat recovery, static rendering, and no downtime flood | pending | pending | pending | pending |
 | Six shelter decoration kinds, history-reflective choice, overdue behavior, and unchanged single-quad rendering | pending | pending | pending | pending |
 | Copy seed, mixed-case paste, invalid/corrupted refusal, explicit replacement, relaunch, and one-hour companion arrival | pending | pending | pending | pending |
+| Creature-card save/cancel, visual legibility, Unicode name, PNG dimensions, metadata inspection, and reopen in native image viewer | pending | pending | pending | pending |
 | Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |

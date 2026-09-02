@@ -233,6 +233,21 @@ birth and compact history. A domain-separated derived colony seed drives its new
 companions, so the source lineage cannot reproduce itself. Import allocates no service, socket,
 worker, or persistent code cache and leaves the v10 save schema unchanged.
 
+## On-demand creature cards
+
+The Colony profile emits only a creature ID when the user selects export. A native save dialog runs
+before any art allocation; cancellation ends the operation without rendering. Once a destination
+exists, a stateless CPU renderer creates one 960×600 opaque canvas, rasterizes a fresh font atlas,
+draws the creature's existing procedural greeting frame into palette-derived pixel scenery, and
+writes one RGBA PNG. Every temporary value is dropped before returning, and no card texture enters
+the overlay GPU cache.
+
+Card fields are derived directly from the selected creature at export time: custom name, family, up
+to three already-promoted profile descriptors, UTC birth month/year, colony order, and an
+abbreviation of the existing share code. The encoder adds no text chunks or application metadata.
+It never receives memory payloads, relationships, full seed text, screen geometry, device data, or
+the save file itself. Export is therefore read-only and leaves save version 10 unchanged.
+
 ## Runtime cadence
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
@@ -255,6 +270,8 @@ worker, or persistent code cache and leaves the v10 save schema unchanged.
   the existing 64×64 texture is regenerated only when the bounded decoration state changes.
 - Seed sharing: encoding, validation, and import run only on an explicit settings action; there is
   no idle work, background task, or network operation.
+- Creature cards: the save dialog, CPU canvas, font atlas, and PNG writer exist only during an
+  explicit export; cancellation performs no render.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 

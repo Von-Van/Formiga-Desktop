@@ -6,9 +6,11 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+epaint.workspace = true
 formiga-core = { path = "../formiga-core" }
 rand.workspace = true
 rand_chacha.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 sha2.workspace = true

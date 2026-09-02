@@ -1,5 +1,6 @@
 mod bubble;
 mod canvas;
+mod card;
 mod objects;
 mod palette;
 mod renderer;
@@ -7,6 +8,7 @@ mod shelter;
 
 pub use bubble::MilestoneBubbleRenderer;
 pub use canvas::{Canvas, Rgba};
+pub use card::{CARD_HEIGHT, CARD_WIDTH, CreatureCardRenderer, abbreviated_seed_code};
 pub type PixelCanvas = Canvas;
 pub use objects::{
     COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer,

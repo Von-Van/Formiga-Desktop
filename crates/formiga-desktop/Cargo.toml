@@ -15,6 +15,7 @@ egui-winit.workspace = true
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
 pollster.workspace = true
+png.workspace = true
 rfd.workspace = true
 semver.workspace = true
 serde.workspace = true
