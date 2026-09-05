@@ -11,7 +11,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Deterministic 1,000-genome render test | CI | CI |
 | Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
 | Raised cat tail and visible rabbit puff for every tail style | CI | CI |
-| Resting cats plant all four paws on the same contact row as walking | CI | CI |
+| Resting cats plant all four paws on the same contact row as walking; gesture paws cap long generated reaches | CI | CI |
 | v1/v2/v3/v4/v5/v6/v7/v8/v9/v10→v11 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
@@ -22,7 +22,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | 60-active-second observation projection and hidden/paused suspension | CI | CI |
 | Six-pair relationship maximum, canonical IDs, four score bytes, saturation, and deterministic round trip | CI | CI |
 | Five calm minutes, bounded bond utility, contrary avoidance reduction, and score projection | CI | CI |
-| Targeted follow, shared sleep, gift, play/steal, greet, climb-watch, toss-concern, and squabble action reuse | CI | CI |
+| Targeted follow, shared sleep, gift, play/steal, greet, climb-watch, toss-concern, and squabble action reuse with stable side spacing | CI | CI |
 | Bond target refresh/cancellation for moved, missing, sleeping, homebound, tossed, cross-surface, and removed companions | CI | CI |
 | Deterministic 12–48-hour ritual scheduling, all nine kinds, safe eligibility, and no downtime catch-up flood | CI | CI |
 | Ritual interruption, 2–6-hour retry, reduced motion, local hatch-day deduplication, and shared-plan caps | CI | CI |
@@ -55,6 +55,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Habitat region algebra | CI | CI |
 | Pet/drag maximum-excursion classification across scale, placement, toss, cancel, and re-grab | CI | CI |
 | Home petting without dismissal and threshold-crossing shelter dismissal | CI | CI |
+| House spawn preserves positions; walking/landing, pause/pet/relaunch, display crossing, and spaced arrivals | CI | CI |
 | Blank fixed-size milestone-bubble pixels, global singularity, and idle resource release | CI | CI |
 | Alpha-mask and occlusion geometry | CI | CI |
 | Update version/asset selection and 24-hour throttle | CI | CI |
@@ -73,10 +74,11 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Drag release/cancel/pause/reduce-motion | pending | pending | pending | pending |
 | Slow placement, fast toss, soft bounce, and mid-flight re-grab | pending | pending | pending | pending |
 | Pet click, drag-out-and-back, shelter pet, and visible reaction at supported scales | pending | pending | pending | pending |
+| House appearance: immediate walking, ledge descent, spaced resting, pause, pet, and drag dismissal during approach | pending | pending | pending | pending |
 | Smooth climb/mantle, raised dangle contact, downward hop, inspection, and discovery | pending | pending | pending | pending |
 | Colony names, descriptors, unread badges, age, places, and wordless milestone bubble | pending | pending | pending | pending |
 | Bond profile labels and closest-companion changes remain read-only except for the name | pending | pending | pending | pending |
-| Follow, sleep-beside, gift, toy steal, shelter greet, climb watch, toss concern, and harmless squabble playback | pending | pending | pending | pending |
+| Clearly separated follow, sleep-beside, gift, toy steal, shelter greet, climb watch, toss concern, and harmless squabble playback | pending | pending | pending | pending |
 | Bond sequence cancellation when a target moves, sleeps, enters shelter, is tossed, or disappears | pending | pending | pending | pending |
 | Picnic, group nap, floor race, shelter gathering, catch, presentation, hatch day, quiet huddle, and sleep pile playback | pending | pending | pending | pending |
 | Ritual interruption by hide, pause, drag, toss, geometry change, and reduced-motion substitution | pending | pending | pending | pending |

@@ -256,12 +256,16 @@ impl WindowJourney {
 
     fn valid(&self, desktop: &DesktopSnapshot) -> bool {
         match self {
-            Self::Hop(journey) => journey.surface.window_key.is_some_and(|key| {
-                desktop
+            Self::Hop(journey) => match journey.surface.window_key {
+                Some(key) => desktop
                     .windows
                     .iter()
-                    .any(|window| window.key == key && window.visible && !window.minimized)
-            }),
+                    .any(|window| window.key == key && window.visible && !window.minimized),
+                None => desktop.monitors.iter().any(|monitor| {
+                    monitor.id == journey.surface.monitor_id
+                        && monitor.usable_bounds.contains(journey.target)
+                }),
+            },
             Self::Climb(journey) => desktop.windows.iter().any(|window| {
                 window.key == journey.target_window
                     && window.visible
@@ -291,7 +295,8 @@ impl WindowJourney {
             Self::Hop(journey) => {
                 journey.elapsed += dt;
                 let progress = (journey.elapsed / journey.duration).clamp(0.0, 1.0);
-                let arc = (progress * std::f32::consts::PI).sin()
+                let arc = f32::from(journey.surface.kind == SurfaceKind::WindowLedge)
+                    * (progress * std::f32::consts::PI).sin()
                     * journey
                         .start
                         .distance(journey.target)
@@ -657,7 +662,7 @@ impl World {
             return;
         }
         if home_active {
-            self.tick_homebound_creatures(timeline_now, dt);
+            self.tick_homebound_creatures(timeline_now, dt, desktop);
             self.sample_observations(dt, desktop);
             self.last_windows = desktop
                 .windows
@@ -854,7 +859,7 @@ impl World {
                         &mut self.events,
                         WorldEvent::SurfaceChanged {
                             creature_id: creature.id,
-                            kind: SurfaceKind::WindowLedge,
+                            kind: surface.kind,
                         },
                     );
                     let next_hop = self
@@ -880,7 +885,11 @@ impl World {
                         continue;
                     }
                     self.window_routes.remove(&creature.id);
-                    creature.state.action = ActionKind::Perch;
+                    creature.state.action = if surface.kind == SurfaceKind::ScreenFloor {
+                        ActionKind::Idle
+                    } else {
+                        ActionKind::Perch
+                    };
                     creature.state.action_elapsed = 0.0;
                     creature.state.action_duration = 3.5;
                     creature.state.velocity = Point::default();
@@ -888,7 +897,7 @@ impl World {
                         &mut self.events,
                         WorldEvent::ActionStarted {
                             creature_id: creature.id,
-                            action: ActionKind::Perch,
+                            action: creature.state.action,
                         },
                     );
                 }
@@ -1114,7 +1123,7 @@ impl World {
                     && bond.target_action == ActionKind::ClimbWindow
                     && bond.relationship.familiarity >= 64
                     && bond.relationship.avoidance < 160
-                    && rng.random_ratio(1, 3)
+                    && rng.random_ratio(1, 2)
                     && self
                         .watched_climb
                         .insert((creature.id, bond.target_creature))
@@ -1134,7 +1143,7 @@ impl World {
                     )
                     && bond.relationship.playfulness >= 96
                     && bond.relationship.avoidance < 192
-                    && rng.random_ratio(1, 4)
+                    && rng.random_ratio(1, 3)
                 {
                     selected_choice = Some(ActionChoice {
                         action: ActionKind::SocialPlay,
@@ -1170,7 +1179,7 @@ impl World {
                     && bond.distance < 180.0
                     && bond.relationship.avoidance >= 96
                     && bond.relationship.playfulness >= 48
-                    && rng.random_ratio(1, 64)
+                    && rng.random_ratio(1, 48)
                 {
                     selected_choice = Some(ActionChoice {
                         action: ActionKind::SocialPlay,
@@ -2683,9 +2692,6 @@ impl World {
         if ritual_shelter {
             return false;
         }
-        if self.save.home.is_active() {
-            self.place_colony_at_home(desktop);
-        }
         self.save.home.is_active()
     }
 
@@ -2714,7 +2720,12 @@ impl World {
         Some(monitor)
     }
 
-    fn place_colony_at_home(&mut self, desktop: &DesktopSnapshot) {
+    fn tick_homebound_creatures(
+        &mut self,
+        now: OffsetDateTime,
+        dt: f32,
+        desktop: &DesktopSnapshot,
+    ) {
         let Some(monitor) = self.resolve_home_monitor(desktop) else {
             return;
         };
@@ -2737,37 +2748,16 @@ impl World {
             / monitor.scale_factor.max(1.0);
         let spacing = creature_width * HOME_SPACING_RATIO;
         for creature in &mut self.save.creatures {
-            let offset = inward * f32::from(creature.colony_order) * spacing;
-            let mut position = Point {
-                x: anchor.x + offset,
-                y: anchor.y,
-            };
-            if !habitat_contains(&self.save.settings.habitat, &monitor, position) {
-                position = anchor;
+            if self
+                .interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.creature_id == creature.id)
+            {
+                continue;
             }
-            creature.state.position = position;
-            creature.state.velocity = Point::default();
-            creature.state.facing_right = inward > 0.0;
-            creature.state.surface = SurfaceAttachment {
-                kind: SurfaceKind::ScreenFloor,
-                monitor_id: monitor.id,
-                window_key: None,
-                relative_x: ((position.x - monitor.usable_bounds.x) / monitor.usable_bounds.width)
-                    .clamp(0.0, 1.0),
-            };
-            if creature.state.action != ActionKind::Homebound {
-                creature.state.action = ActionKind::Homebound;
-                creature.state.action_elapsed = 0.0;
-                creature.state.action_duration = HOME_DURATION.whole_seconds() as f32;
-            }
-        }
-    }
-
-    fn tick_homebound_creatures(&mut self, now: OffsetDateTime, dt: f32) {
-        for creature in &mut self.save.creatures {
             if creature.state.arrival_delay_secs > 0.0 {
-                let previous_delay = creature.state.arrival_delay_secs;
-                creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
+                creature.state.arrival_delay_secs =
+                    (creature.state.arrival_delay_secs - dt).max(0.0);
                 if creature.state.arrival_delay_secs == 0.0 {
                     creature.born_at_utc = now;
                     Self::emit(
@@ -2780,6 +2770,145 @@ impl World {
                 continue;
             }
             creature.state.action_elapsed += dt;
+            if creature.state.action == ActionKind::PetReaction
+                && creature.state.action_elapsed < creature.state.action_duration
+            {
+                continue;
+            }
+            let offset = inward * f32::from(creature.colony_order) * spacing;
+            let mut target = Point {
+                x: anchor.x + offset,
+                y: anchor.y,
+            };
+            if !habitat_contains(&self.save.settings.habitat, &monitor, target) {
+                target = anchor;
+            }
+
+            // Come down from a ledge before walking home. Reuse the existing journey so a house
+            // dismissal in mid-descent still finishes the landing through the ordinary tick path.
+            if !self.window_journeys.contains_key(&creature.id)
+                && (creature.state.surface.kind == SurfaceKind::WindowLedge
+                    || creature.state.action != ActionKind::Traverse)
+                && let Some((monitor_id, floor)) = nearest_habitat_point(
+                    &self.save.settings.habitat,
+                    &desktop.monitors,
+                    creature.state.position,
+                )
+                && (floor.y - creature.state.position.y).abs() > 0.5
+            {
+                self.window_journeys.insert(
+                    creature.id,
+                    WindowJourney::Hop(HopJourney {
+                        start: creature.state.position,
+                        target: floor,
+                        surface: SurfaceAttachment {
+                            kind: SurfaceKind::ScreenFloor,
+                            monitor_id,
+                            window_key: None,
+                            relative_x: 0.5,
+                        },
+                        elapsed: 0.0,
+                        duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
+                    }),
+                );
+            }
+
+            let previous = creature.state.position;
+            let mut next_action = if let Some(journey) = self.window_journeys.get_mut(&creature.id)
+            {
+                if !journey.valid(desktop) {
+                    self.window_journeys.remove(&creature.id);
+                    settle_interrupted_journey(
+                        creature,
+                        desktop,
+                        &self.save.settings.habitat,
+                        &mut self.events,
+                    );
+                    continue;
+                }
+                let step = journey.advance(dt);
+                creature.state.position = step.position;
+                if step.complete {
+                    creature.state.surface = journey.surface().clone();
+                    self.window_journeys.remove(&creature.id);
+                }
+                ActionKind::Landing
+            } else {
+                let distance = previous.distance(target);
+                let speed = 24.0 + creature.personality.activity * 34.0;
+                if distance > 0.0 {
+                    creature.state.facing_right = target.x >= previous.x;
+                    creature.state.position =
+                        lerp_point(previous, target, (speed * dt / distance).clamp(0.0, 1.0));
+                }
+                if creature.state.position == target {
+                    creature.state.facing_right = inward > 0.0;
+                    ActionKind::Homebound
+                } else {
+                    ActionKind::Traverse
+                }
+            };
+            // A disconnected/excluded part of the habitat is not a shortcut home. Wait at its
+            // boundary; if the habitat itself changed underneath us, use normal support recovery.
+            if !desktop.monitors.iter().any(|current| {
+                habitat_contains(
+                    &self.save.settings.habitat,
+                    current,
+                    creature.state.position,
+                )
+            }) {
+                creature.state.position = previous;
+                self.window_journeys.remove(&creature.id);
+                if !desktop
+                    .monitors
+                    .iter()
+                    .any(|current| habitat_contains(&self.save.settings.habitat, current, previous))
+                {
+                    settle_interrupted_journey(
+                        creature,
+                        desktop,
+                        &self.save.settings.habitat,
+                        &mut self.events,
+                    );
+                    continue;
+                }
+                next_action = ActionKind::Idle;
+            }
+            creature.state.velocity = if dt > 0.0 && next_action != ActionKind::Homebound {
+                Point {
+                    x: (creature.state.position.x - previous.x) / dt,
+                    y: (creature.state.position.y - previous.y) / dt,
+                }
+            } else {
+                Point::default()
+            };
+            // Keep rendering on the source display until the creature actually crosses the seam.
+            if let Some(current) = desktop
+                .monitors
+                .iter()
+                .find(|current| current.bounds.contains(creature.state.position))
+            {
+                creature.state.surface = SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id: current.id,
+                    window_key: None,
+                    relative_x: ((creature.state.position.x - current.usable_bounds.x)
+                        / current.usable_bounds.width)
+                        .clamp(0.0, 1.0),
+                };
+            }
+            if creature.state.action != next_action {
+                creature.state.action = next_action;
+                creature.state.action_elapsed = 0.0;
+                creature.state.action_duration = HOME_DURATION.whole_seconds() as f32;
+                Self::emit(
+                    &mut self.events,
+                    WorldEvent::ActionStarted {
+                        creature_id: creature.id,
+                        action: next_action,
+                    },
+                );
+            }
             creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.01).min(1.0);
             creature.state.drives.arousal = (creature.state.drives.arousal - dt * 0.04).max(0.0);
         }
@@ -2792,7 +2921,10 @@ impl World {
         self.save.home.active_since_utc = None;
         self.save.home.last_disappeared_utc = Some(now);
         for creature in &mut self.save.creatures {
-            if creature.state.action == ActionKind::Homebound {
+            if matches!(
+                creature.state.action,
+                ActionKind::Homebound | ActionKind::Traverse
+            ) {
                 creature.state.action = ActionKind::Idle;
                 creature.state.action_elapsed = 0.0;
                 creature.state.action_duration = 2.5;
@@ -3747,19 +3879,29 @@ fn bond_target_point(
     if !allowed {
         return None;
     }
-    if action == ActionKind::Sleep {
-        let side = if actor.state.position.x <= target.state.position.x {
-            -1.0
-        } else {
-            1.0
-        };
-        Some(Point {
-            x: target.state.position.x + side * 30.0,
-            y: target.state.position.y,
-        })
+    let staging_offset = match action {
+        // Movement stops a short distance before these marks. Offsetting the marks keeps the two
+        // 48 px sprites visually distinct while their paws, motifs, and expressions remain close
+        // enough to read as one interaction.
+        ActionKind::Greet | ActionKind::SocialPlay => 28.0,
+        ActionKind::Follow => 26.0,
+        ActionKind::PresentDiscovery => 30.0,
+        ActionKind::Sleep => 37.0,
+        _ => 0.0,
+    };
+    let side = if actor.state.position.x < target.state.position.x {
+        -1.0
+    } else if actor.state.position.x > target.state.position.x {
+        1.0
+    } else if actor.id < target.id {
+        -1.0
     } else {
-        Some(target.state.position)
-    }
+        1.0
+    };
+    Some(Point {
+        x: target.state.position.x + side * staging_offset,
+        y: target.state.position.y,
+    })
 }
 
 fn adult_count(creatures: &[Creature]) -> usize {
@@ -5814,6 +5956,7 @@ mod tests {
         let desktop = desktop();
         let mut world = World::new([81; 32], created, &desktop);
         world.tick(created, 0.05, &desktop);
+        finish_home_approach(&mut world, created, &desktop);
         let creature_id = world.save.creatures[0].id;
         let position = world.save.creatures[0].state.position;
         assert!(world.save.home.is_active());
@@ -6917,7 +7060,7 @@ mod tests {
         let mut world = World::new([52; 32], created, &desktop);
         world.tick(created, 0.05, &desktop);
         assert!(world.save.home.is_active());
-        assert_eq!(world.save.creatures[0].state.action, ActionKind::Homebound);
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Traverse);
         assert_eq!(world.save.home.display, Some(DisplayKey([1; 16])));
 
         world.tick(
@@ -6943,6 +7086,204 @@ mod tests {
         assert!(world.save.home.is_active());
     }
 
+    fn finish_home_approach(world: &mut World, now: OffsetDateTime, desktop: &DesktopSnapshot) {
+        for _ in 0..3_000 {
+            world.tick(now, 0.05, desktop);
+            if world.save.creatures.iter().all(|creature| {
+                creature.state.arrival_delay_secs <= 0.0
+                    && creature.state.action == ActionKind::Homebound
+            }) {
+                return;
+            }
+        }
+        panic!("colony did not finish walking home");
+    }
+
+    #[test]
+    fn house_spawn_preserves_position_then_walks_and_settles_at_both_corners() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+            for reduce_motion in [false, true] {
+                let mut world = World::new([52; 32], created, &desktop);
+                world.save.home.corner = corner;
+                world.save.settings.reduce_motion = reduce_motion;
+                let start = Point { x: 720.0, y: 846.0 };
+                world.save.creatures[0].state.position = start;
+                let target = resolved_home_anchor(
+                    &world.save.home,
+                    &desktop.monitors[0],
+                    world.save.settings.display_scale,
+                    &world.save.settings.habitat,
+                )
+                .unwrap();
+
+                world.tick(created, 0.0, &desktop);
+                assert!(world.save.home.is_active());
+                assert_eq!(world.save.creatures[0].state.position, start);
+                assert_eq!(world.save.creatures[0].state.action, ActionKind::Traverse);
+                world.tick(created, 0.05, &desktop);
+                let walker = &world.save.creatures[0];
+                assert!(walker.state.position.distance(start) > 0.0);
+                assert!(walker.state.position.distance(start) <= 58.0 * 0.05 + 0.001);
+                assert!(walker.state.position.distance(target) < start.distance(target));
+                assert_eq!(walker.state.facing_right, target.x > start.x);
+
+                // Relaunching during the approach resumes from the saved position.
+                let saved_position = walker.state.position;
+                world = World::from_save(world.save.clone());
+                world.tick(created, 0.0, &desktop);
+                assert_eq!(world.save.creatures[0].state.position, saved_position);
+                finish_home_approach(&mut world, created, &desktop);
+                assert_eq!(world.save.creatures[0].state.position, target);
+                assert_eq!(world.save.creatures[0].state.velocity, Point::default());
+                world.tick(created, 0.05, &desktop);
+                assert_eq!(world.save.creatures[0].state.position, target);
+            }
+        }
+    }
+
+    #[test]
+    fn walking_home_pauses_for_settings_and_petting_then_resumes() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([52; 32], created, &desktop);
+        let start = world.save.creatures[0].state.position;
+        world.save.settings.paused = true;
+        world.tick(created, 0.05, &desktop);
+        assert!(world.save.home.is_active());
+        assert_eq!(world.save.creatures[0].state.position, start);
+        world.save.settings.paused = false;
+        world.tick(created, 0.05, &desktop);
+        let position = world.save.creatures[0].state.position;
+        let id = world.save.creatures[0].id;
+        world.handle_command(
+            WorldCommand::BeginInteraction {
+                creature_id: id,
+                cursor: position,
+            },
+            &desktop,
+        );
+        world.tick(created, 0.05, &desktop);
+        assert_eq!(world.save.creatures[0].state.position, position);
+        world.handle_command(
+            WorldCommand::EndInteraction {
+                cursor: position,
+                velocity: Point::default(),
+            },
+            &desktop,
+        );
+        world.tick(created, 0.05, &desktop);
+        assert_eq!(
+            world.save.creatures[0].state.action,
+            ActionKind::PetReaction
+        );
+        assert_eq!(world.save.creatures[0].state.position, position);
+        for _ in 0..30 {
+            world.tick(created, 0.05, &desktop);
+        }
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Traverse);
+        assert_ne!(world.save.creatures[0].state.position, position);
+        world.dismiss_home(created, true);
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Idle);
+        assert_eq!(world.save.creatures[0].state.velocity, Point::default());
+    }
+
+    #[test]
+    fn home_descent_is_continuous_and_finishes_if_house_disappears() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        for dismiss_during_descent in [false, true] {
+            let mut world = World::new([52; 32], created, &desktop);
+            let start = Point { x: 720.0, y: 400.0 };
+            world.save.creatures[0].state.position = start;
+            world.save.creatures[0].state.surface.kind = SurfaceKind::WindowLedge;
+            world.save.creatures[0].state.surface.window_key = Some(77);
+            world.tick(created, 0.05, &desktop);
+            let creature = &world.save.creatures[0];
+            assert_eq!(creature.state.action, ActionKind::Landing);
+            assert!(creature.state.position.y > start.y);
+            assert!(creature.state.position.distance(start) <= 9.01);
+            assert_eq!(creature.state.position.x, start.x);
+            if dismiss_during_descent {
+                world.dismiss_home(created, true);
+            }
+            for _ in 0..55 {
+                world.tick(created, 0.05, &desktop);
+            }
+            assert_eq!(world.save.creatures[0].state.position.y, 846.0);
+            assert_eq!(
+                world.save.creatures[0].state.surface.kind,
+                SurfaceKind::ScreenFloor
+            );
+            assert!(world.window_journeys.is_empty());
+            if !dismiss_during_descent {
+                finish_home_approach(&mut world, created, &desktop);
+            }
+        }
+    }
+
+    #[test]
+    fn home_walk_changes_displays_only_when_crossing_the_seam() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        let mut secondary = desktop.monitors[0].clone();
+        secondary.id = 2;
+        secondary.display_key = DisplayKey([2; 16]);
+        secondary.primary = false;
+        secondary.bounds.x = -1440.0;
+        secondary.usable_bounds.x = -1440.0;
+        desktop.monitors.push(secondary);
+        let mut world = World::new([52; 32], created, &desktop);
+        world.save.home.corner = HomeCorner::BottomLeft;
+        world.save.home.display = Some(DisplayKey([1; 16]));
+        world.save.creatures[0].state.position = Point {
+            x: -100.0,
+            y: 846.0,
+        };
+        world.save.creatures[0].state.surface.monitor_id = 2;
+        world.tick(created, 0.05, &desktop);
+        assert_eq!(world.save.creatures[0].state.surface.monitor_id, 2);
+        assert!(world.save.creatures[0].state.position.x < 0.0);
+        finish_home_approach(&mut world, created, &desktop);
+        assert_eq!(world.save.creatures[0].state.surface.monitor_id, 1);
+    }
+
+    #[test]
+    fn home_walk_waits_at_excluded_regions_and_resumes_when_reopened() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([52; 32], created, &desktop);
+        world.save.home.corner = HomeCorner::BottomLeft;
+        world.save.creatures[0].state.position = Point {
+            x: 1000.0,
+            y: 846.0,
+        };
+        world.save.settings.habitat.zones.push(HabitatZone {
+            id: 1,
+            display: DisplayKey([1; 16]),
+            normalized_bounds: DesktopRect {
+                x: 0.4,
+                y: 0.0,
+                width: 0.2,
+                height: 1.0,
+            },
+            kind: HabitatZoneKind::Excluded,
+            enabled: true,
+        });
+        for _ in 0..300 {
+            let previous = world.save.creatures[0].state.position;
+            world.tick(created, 0.05, &desktop);
+            let position = world.save.creatures[0].state.position;
+            assert!(position.x >= 864.0);
+            assert!(position.distance(previous) <= 2.91);
+        }
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Idle);
+        assert_eq!(world.save.creatures[0].state.velocity, Point::default());
+        world.save.settings.habitat.zones.clear();
+        finish_home_approach(&mut world, created, &desktop);
+    }
+
     #[test]
     fn homebound_colony_is_spaced_by_how_wide_a_creature_draws() {
         let created = datetime!(2026-01-01 0:00 UTC);
@@ -6963,6 +7304,7 @@ mod tests {
             }
             world.tick(created, 0.05, &desktop);
             assert!(world.save.home.is_active());
+            finish_home_approach(&mut world, created, &desktop);
 
             let creature_width =
                 CREATURE_ART_WIDTH * f32::from(display_scale) / monitor.scale_factor.max(1.0);
@@ -7111,7 +7453,25 @@ mod tests {
         let moved = vec![actor.clone(), target.clone()];
         assert_eq!(
             bond_target_point(&actor, &moved, target_id, ActionKind::Greet),
-            Some(target.state.position)
+            Some(Point { x: 682.0, y: 846.0 })
+        );
+        assert_eq!(
+            bond_target_point(&actor, &moved, target_id, ActionKind::SocialPlay),
+            Some(Point { x: 682.0, y: 846.0 })
+        );
+        assert_eq!(
+            bond_target_point(&actor, &moved, target_id, ActionKind::Follow),
+            Some(Point { x: 684.0, y: 846.0 })
+        );
+        assert_eq!(
+            bond_target_point(&actor, &moved, target_id, ActionKind::PresentDiscovery),
+            Some(Point { x: 680.0, y: 846.0 })
+        );
+        let mut actor_on_right = actor.clone();
+        actor_on_right.state.position.x = 760.0;
+        assert_eq!(
+            bond_target_point(&actor_on_right, &moved, target_id, ActionKind::Greet),
+            Some(Point { x: 738.0, y: 846.0 })
         );
 
         target.state.action = ActionKind::Sleep;
@@ -7192,7 +7552,7 @@ mod tests {
         moving.tick(created + Duration::hours(1), 0.05, &desktop);
         assert_eq!(
             moving.action_choices[&actor].target_point,
-            Some(Point { x: 820.0, y: 846.0 })
+            Some(Point { x: 794.0, y: 846.0 })
         );
 
         moving.save.creatures[1].state.action = ActionKind::Sleep;

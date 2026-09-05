@@ -758,6 +758,26 @@ fn draw_quadruped(
         body_rx - 1,
         body_ry - 1,
     );
+    draw_quadruped_forelimbs(
+        canvas,
+        genome,
+        palette,
+        LimbPose {
+            left_root: PixelPoint {
+                x: body_x + body_rx / 5,
+                y: body_y + body_ry - 1,
+            },
+            right_root: PixelPoint {
+                x: body_x + body_rx / 2,
+                y: body_y + body_ry - 1,
+            },
+            action,
+            frame,
+            pose,
+            family: BodyFamily::SoftQuadruped,
+        },
+        ground,
+    );
     let head_x = body_x + body_rx - 1;
     let head_y = body_y - 2;
     // Rooted at the crown so the head circle only buries the base of each ear.
@@ -776,26 +796,6 @@ fn draw_quadruped(
     let muzzle_x = head_x + (head_radius - 3).clamp(1, 3);
     canvas.fill_ellipse(muzzle_x, head_y + 2, 2, 1, palette.highlight);
     canvas.set(muzzle_x, head_y, palette.accent);
-    draw_quadruped_forelimbs(
-        canvas,
-        genome,
-        palette,
-        LimbPose {
-            left_root: PixelPoint {
-                x: body_x + body_rx / 4,
-                y: body_y + body_ry - 1,
-            },
-            right_root: PixelPoint {
-                x: body_x + body_rx - 2,
-                y: body_y + body_ry - 1,
-            },
-            action,
-            frame,
-            pose,
-            family: BodyFamily::SoftQuadruped,
-        },
-        ground,
-    );
     PixelPoint {
         x: head_x + 1,
         y: head_y - 1,
@@ -1296,7 +1296,13 @@ fn draw_forelimbs(
     palette: Palette,
     limb_pose: LimbPose,
 ) {
-    let length = genome.forelimbs.length as i32;
+    // Quadruped genes share the same stored range as upright families, but reading that full range
+    // as an arm puts paws across the chest and face. Keep expressive cat paws compact; ordinary
+    // actions still use the planted-leg rig below.
+    let length = match limb_pose.family {
+        BodyFamily::SoftQuadruped => i32::from(genome.forelimbs.length).min(4),
+        _ => i32::from(genome.forelimbs.length),
+    };
     let (left_target, right_target) = limb_targets(
         limb_pose.left_root,
         limb_pose.right_root,
@@ -2764,6 +2770,27 @@ mod tests {
             false,
         );
         assert_eq!(expected, left);
+    }
+
+    #[test]
+    fn cat_gesture_paws_cap_upright_arm_length() {
+        let mut compact = genome(BodyFamily::SoftQuadruped);
+        compact.forelimbs.length = 4;
+        let mut extreme = compact.clone();
+        extreme.forelimbs.length = 7;
+        for action in [
+            ActionKind::Greet,
+            ActionKind::SocialPlay,
+            ActionKind::PresentDiscovery,
+        ] {
+            for frame in 0..AnimationSpec::for_action(action).frames {
+                assert_eq!(
+                    CreatureRenderer::render_body_frame(&compact, action, frame, false).canvas,
+                    CreatureRenderer::render_body_frame(&extreme, action, frame, false).canvas,
+                    "{action:?} frame {frame}"
+                );
+            }
+        }
     }
 
     #[test]

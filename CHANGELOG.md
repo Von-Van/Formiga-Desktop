@@ -2,6 +2,33 @@
 
 All notable changes are documented here.
 
+## [0.51.6] - 2026-09-05
+
+### Fixed
+
+- When the house appears, creatures immediately walk toward their resting spots from their current
+  positions. Creatures on ledges descend first, and everyone uses the resting pose only on arrival.
+  Walking respects pause and pet reactions, resumes after relaunch, and stops when the house is
+  dismissed. The existing house timing, colony spacing, and save version 11 remain unchanged.
+
+## [0.51.5] - 2026-09-05
+
+### Changed
+
+- Creature-to-creature greetings, play, following, discoveries, and shared rest now use stable
+  side-by-side staging marks instead of converging on the same point. Companions continue tracking
+  one another when they move, but their silhouettes, faces, paw gestures, and activity motifs stay
+  readable during the interaction.
+- Playful and dynamic choices receive a modest lift: solo and social play, greetings, and sprints
+  compete more often with passive idling, while climb-watching, playful interruptions, and the rare
+  squabble occur slightly more often when their existing relationship requirements are met.
+
+### Fixed
+
+- Soft-quadruped gesture paws use a compact cat-specific reach and chest-rooted placement, keeping
+  long generated forelimbs from crossing the body or obscuring the face. Stored genomes and save
+  version 11 remain unchanged.
+
 ## [0.51.0] - 2026-09-02
 
 ### Changed

@@ -83,7 +83,7 @@ pub fn choose_action<R: Rng + ?Sized>(
     let mut scored = Vec::with_capacity(ActionKind::AUTONOMOUS.len());
     for action in ActionKind::AUTONOMOUS {
         let score = match action {
-            ActionKind::Idle => 0.45 + d.comfort * 0.5 - d.boredom * 0.25,
+            ActionKind::Idle => 0.40 + d.comfort * 0.46 - d.boredom * 0.28,
             ActionKind::Traverse => 0.25 + d.boredom * 0.8 + p.activity * 0.5,
             ActionKind::Perch => {
                 if context.reachable_window_ledge {
@@ -131,7 +131,7 @@ pub fn choose_action<R: Rng + ?Sized>(
                     -2.0
                 }
             }
-            ActionKind::SoloPlay => 0.08 + p.playfulness * d.boredom * 0.95,
+            ActionKind::SoloPlay => 0.12 + p.playfulness * d.boredom * 1.02,
             ActionKind::Eat => {
                 if d.energy < 0.78 {
                     0.12 + (1.0 - d.energy) * 1.05 + d.comfort * 0.05
@@ -144,16 +144,20 @@ pub fn choose_action<R: Rng + ?Sized>(
             }
             ActionKind::Sprint => {
                 if d.energy > 0.35 {
-                    0.18 + p.activity * (0.55 + d.boredom * 0.85) + d.arousal * 0.15
+                    0.22 + p.activity * (0.62 + d.boredom * 0.90) + d.arousal * 0.18
                 } else {
                     -2.0
                 }
             }
-            ActionKind::Greet => social_score(creature, context, action, 160.0, 0.45),
+            ActionKind::Greet => social_score(creature, context, action, 180.0, 0.52),
             ActionKind::Follow => social_score(creature, context, action, 420.0, 0.35),
-            ActionKind::SocialPlay => {
-                social_score(creature, context, action, 120.0, p.playfulness * 0.55)
-            }
+            ActionKind::SocialPlay => social_score(
+                creature,
+                context,
+                action,
+                150.0,
+                0.08 + p.playfulness * 0.64,
+            ),
             ActionKind::Dragged
             | ActionKind::SqueezeWindow
             | ActionKind::Landing
@@ -572,6 +576,46 @@ mod tests {
             .expect("sleep remains selectable");
         assert_eq!(sleep_choice.target_creature, Some(99));
         assert_ne!(sleep_choice.target_point, Some(target_position));
+    }
+
+    #[test]
+    fn playful_energetic_bonds_favor_dynamic_actions_over_idling() {
+        let (mut creature, desktop, mut context) = fixture();
+        creature.personality.activity = 0.9;
+        creature.personality.playfulness = 0.9;
+        creature.personality.sociability = 0.9;
+        creature.personality.decision_temperature = 0.5;
+        creature.state.drives.energy = 0.9;
+        creature.state.drives.boredom = 0.9;
+        creature.state.drives.social_need = 0.9;
+        let target_position = Point {
+            x: creature.state.position.x + 80.0,
+            y: creature.state.position.y,
+        };
+        context.nearest_creature_distance = Some(80.0);
+        context.nearest_creature_position = Some(target_position);
+        context.nearest_creature_id = Some(99);
+        context.bond = Some(BondContext {
+            target_creature: 99,
+            target_position,
+            distance: 80.0,
+            relationship: CreatureRelationship {
+                a: creature.id.min(99),
+                b: creature.id.max(99),
+                affinity: 220,
+                familiarity: 220,
+                playfulness: 220,
+                avoidance: 0,
+            },
+            target_action: ActionKind::Idle,
+            target_surface: SurfaceKind::ScreenFloor,
+        });
+
+        let dynamic = selection_count_large(&creature, &desktop, context, ActionKind::SocialPlay)
+            + selection_count_large(&creature, &desktop, context, ActionKind::SoloPlay)
+            + selection_count_large(&creature, &desktop, context, ActionKind::Sprint);
+        let idle = selection_count_large(&creature, &desktop, context, ActionKind::Idle);
+        assert!(dynamic > idle * 4, "dynamic {dynamic}, idle {idle}");
     }
 
     #[test]
