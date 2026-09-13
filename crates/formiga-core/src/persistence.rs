@@ -69,7 +69,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=10 => migrate_legacy(value, version),
+            1..=11 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -499,6 +499,27 @@ mod tests {
                 ..crate::ColonyObjectState::default()
             },
         }
+    }
+
+    #[test]
+    fn v11_migration_keeps_legacy_appearance_and_does_not_assign_a_design() {
+        let mut save = example_save();
+        let mut creature = crate::World::preview_adult(
+            [51; 32],
+            save.created_at_utc,
+            &crate::DesktopSnapshot::default(),
+        );
+        crate::apply_creature_design(&mut creature, None);
+        save.creatures.push(creature.clone());
+        let mut value = serde_json::to_value(&save).unwrap();
+        value["save_version"] = 11.into();
+        assert!(value["creatures"][0]["appearance"].get("design").is_none());
+        let migrated = migrate_legacy(value, 11).unwrap();
+        assert_eq!(migrated.save_version, 12);
+        assert_eq!(migrated.creatures[0], creature);
+        let resumed = crate::World::from_save(migrated);
+        assert_eq!(resumed.save.creatures[0].appearance, creature.appearance);
+        assert!(resumed.save.creatures[0].origin.design.is_none());
     }
 
     fn downgrade_appearances_to_v2(value: &mut serde_json::Value) {

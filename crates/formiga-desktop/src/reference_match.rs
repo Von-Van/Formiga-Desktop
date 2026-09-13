@@ -1,7 +1,10 @@
 use anyhow::{Context as _, Result, bail};
 use formiga_art::{Canvas, CreatureRenderer};
-use formiga_core::{ActionKind, Creature, DesktopSnapshot, SeedStream, World};
-use image::{DynamicImage, GenericImageView as _, ImageFormat, ImageReader, Limits, imageops};
+use formiga_core::{
+    ActionKind, BodyPlan, Creature, CreatureDesign, DesktopSnapshot, EarStyle, SeedStream, World,
+    apply_creature_design,
+};
+use image::{DynamicImage, GenericImageView as _, ImageFormat, ImageReader, Limits};
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
@@ -70,7 +73,36 @@ fn match_reference_image(
     let mut best: Option<(f32, [u8; 32], Creature)> = None;
     for ordinal in 0..MATCH_CANDIDATES {
         let seed = streams.bytes("reference-candidate", ordinal);
-        let creature = World::preview_adult(seed, now, desktop);
+        let mut creature = World::preview_adult(seed, now, desktop);
+        let mut design = CreatureDesign::generated(seed, 0, None);
+        design.coat = target.coat;
+        design.accent = target.accent;
+        // Reference cues guide safe parts, never trace arbitrary source geometry. Leave a
+        // quarter of candidates exploratory so unusual images still find a friendly shape.
+        if ordinal % 4 != 0 {
+            design.body = if target.aspect > 1.3 {
+                BodyPlan::Long
+            } else if target.aspect < 0.8 {
+                BodyPlan::Upright
+            } else if target.side_extensions > 0.18 {
+                BodyPlan::Winged
+            } else {
+                BodyPlan::Round
+            };
+            design.width = (target.aspect * 10.0).round().clamp(8.0, 12.0) as u8;
+            design.height = (10.0 / target.aspect.max(0.1)).round().clamp(7.0, 11.0) as u8;
+            if target.upper_extensions > 0.08 {
+                design.ears = if ordinal % 2 == 0 {
+                    EarStyle::Pointed
+                } else {
+                    EarStyle::Long
+                };
+            }
+            if target.color_variation < 0.08 {
+                design.marking = 0;
+            }
+        }
+        apply_creature_design(&mut creature, Some(design));
         let frame = CreatureRenderer::render_frame(&creature.appearance, ActionKind::Idle, 0, true);
         let candidate = features_from_canvas(&frame);
         let score = feature_distance(target, candidate);
@@ -87,13 +119,16 @@ fn match_reference_image(
         creature,
         source_seed,
         similarity,
-        summary: "Matched color, silhouette, proportions, symmetry, and appendage cues",
+        summary: "Cute reinterpretation of colors, proportions, and appendage cues—not object recognition. Try another preview for a different interpretation.",
     }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 struct ImageFeatures {
     color: [f32; 3],
+    coat: [u8; 3],
+    accent: [u8; 3],
+    color_variation: f32,
     aspect: f32,
     occupancy: f32,
     symmetry: f32,
@@ -103,14 +138,14 @@ struct ImageFeatures {
 }
 
 fn features_from_image(image: &DynamicImage) -> ImageFeatures {
-    let rgba = image.to_rgba8();
-    let resized = imageops::resize(
-        &rgba,
-        ANALYSIS_SIZE,
-        ANALYSIS_SIZE,
-        imageops::FilterType::Triangle,
-    );
-    features_from_rgba(resized.as_raw(), ANALYSIS_SIZE, ANALYSIS_SIZE, false)
+    let resized = image.thumbnail(ANALYSIS_SIZE, ANALYSIS_SIZE).to_rgba8();
+    let has_transparency = resized.pixels().any(|p| p[3] < 24);
+    features_from_rgba(
+        resized.as_raw(),
+        resized.width(),
+        resized.height(),
+        has_transparency,
+    )
 }
 
 fn features_from_canvas(canvas: &Canvas) -> ImageFeatures {
@@ -183,6 +218,9 @@ fn summarize_mask(bytes: &[u8], width: u32, height: u32, mask: &[bool]) -> Image
     let mut max_y = 0;
     let mut count = 0_u32;
     let mut color = [0_u64; 3];
+    // 512 fixed bins retain recognizable dominant/accent colors instead of averaging a
+    // multicolored subject into gray. Analysis is at most 64 by 64 pixels.
+    let mut bins = [(0_u32, [0_u64; 3]); 512];
     for y in 0..height {
         for x in 0..width {
             if !mask[(y * width + x) as usize] {
@@ -197,6 +235,13 @@ fn summarize_mask(bytes: &[u8], width: u32, height: u32, mask: &[bool]) -> Image
             color[0] += u64::from(bytes[offset]);
             color[1] += u64::from(bytes[offset + 1]);
             color[2] += u64::from(bytes[offset + 2]);
+            let bin = ((bytes[offset] as usize / 32) << 6)
+                | ((bytes[offset + 1] as usize / 32) << 3)
+                | (bytes[offset + 2] as usize / 32);
+            bins[bin].0 += 1;
+            for channel in 0..3 {
+                bins[bin].1[channel] += u64::from(bytes[offset + channel]);
+            }
         }
     }
     if count == 0 {
@@ -227,7 +272,25 @@ fn summarize_mask(bytes: &[u8], width: u32, height: u32, mask: &[bool]) -> Image
             sides += u32::from(!(0.12..=0.88).contains(&relative_x));
         }
     }
+    bins.sort_by_key(|bin| std::cmp::Reverse(bin.0));
+    let bin_color = |bin: &(u32, [u64; 3])| bin.1.map(|v| (v / u64::from(bin.0.max(1))) as u8);
+    let coat = bin_color(&bins[0]);
+    let accent_bin = bins
+        .iter()
+        .filter(|bin| bin.0 >= (count / 50).max(1))
+        .find(|bin| {
+            bin_color(bin)
+                .iter()
+                .zip(coat)
+                .map(|(a, b)| (f32::from(*a) - f32::from(b)).powi(2))
+                .sum::<f32>()
+                > 3600.0
+        });
+    let accent = accent_bin.map_or(coat.map(|v| v.saturating_add(35)), bin_color);
     ImageFeatures {
+        coat,
+        accent,
+        color_variation: 1.0 - bins[0].0 as f32 / count as f32,
         color: [
             color[0] as f32 / count as f32 / 255.0,
             color[1] as f32 / count as f32 / 255.0,
@@ -326,6 +389,65 @@ mod tests {
         assert_eq!(first.creature.display_scale_percent, 100);
         assert!(first.creature.role.is_adult());
         assert!(first.similarity <= 100);
+    }
+
+    #[test]
+    fn analysis_preserves_aspect_transparency_and_two_subject_colors() {
+        let mut image = ImageBuffer::from_pixel(160, 80, Rgba([0, 0, 0, 0]));
+        for y in 20..60 {
+            for x in 20..140 {
+                image.put_pixel(
+                    x,
+                    y,
+                    if x < 110 {
+                        Rgba([220, 70, 40, 255])
+                    } else {
+                        Rgba([30, 90, 210, 255])
+                    },
+                );
+            }
+        }
+        let features = features_from_image(&DynamicImage::ImageRgba8(image));
+        assert!((features.aspect - 3.0).abs() < 0.3);
+        assert!(features.coat[0] > 200 && features.coat[2] < 60);
+        assert!(features.accent[2] > 190 && features.accent[0] < 50);
+    }
+
+    #[test]
+    fn blank_dark_and_unusual_images_still_produce_bounded_cute_designs() {
+        for (width, height, color) in [
+            (1, 1, [0, 0, 0, 0]),
+            (320, 12, [2, 2, 2, 255]),
+            (12, 320, [255, 255, 255, 255]),
+        ] {
+            let input =
+                DynamicImage::ImageRgba8(ImageBuffer::from_pixel(width, height, Rgba(color)));
+            let matched =
+                match_reference_image(&input, [21; 32], OffsetDateTime::UNIX_EPOCH, &desktop());
+            let d = matched.creature.appearance.design.unwrap();
+            assert_eq!(d, d.bounded());
+            assert_eq!(Some(d), matched.creature.origin.design);
+            assert!(
+                CreatureRenderer::render_frame(
+                    &matched.creature.appearance,
+                    ActionKind::Idle,
+                    0,
+                    true
+                )
+                .alpha_bounds()
+                .is_some()
+            );
+            let shared = formiga_core::decode_creature_seed(&formiga_core::encode_creature_seed(
+                matched.creature.origin,
+            ))
+            .unwrap();
+            let imported =
+                World::from_shared_creature(shared, OffsetDateTime::UNIX_EPOCH, &desktop());
+            assert_eq!(
+                imported.save.creatures[0].appearance,
+                matched.creature.appearance
+            );
+        }
     }
 
     #[test]

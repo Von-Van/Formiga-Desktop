@@ -495,7 +495,7 @@ impl World {
 
     pub fn new(colony_seed: [u8; 32], now: OffsetDateTime, desktop: &DesktopSnapshot) -> Self {
         let streams = SeedStream::new(colony_seed);
-        let creature = generate_creature(&streams, colony_seed, 0, now, desktop, &[], None);
+        let creature = generate_new_creature(&streams, colony_seed, 0, now, desktop, &[], None);
         let home_display = desktop
             .monitors
             .iter()
@@ -561,6 +561,11 @@ impl World {
         // not. Surface attachments are validated against the first desktop snapshot on the next
         // tick, while every creature resumes from a stable pose.
         for creature in &mut save.creatures {
+            creature.appearance.design = creature
+                .appearance
+                .design
+                .map(crate::CreatureDesign::bounded);
+            creature.origin.design = creature.appearance.design;
             creature.state.action = ActionKind::Idle;
             creature.state.action_elapsed = 0.0;
             creature.state.action_duration = 2.5;
@@ -937,6 +942,8 @@ impl World {
                     &self.save.objects.objects,
                     desktop,
                     &self.save.settings.habitat,
+                    &self.save.home,
+                    self.save.settings.display_scale,
                 ),
                 hour_utc: now.hour(),
             };
@@ -1589,6 +1596,16 @@ impl World {
         now: OffsetDateTime,
         desktop: &DesktopSnapshot,
     ) -> Result<CreatureId, ColonyManagementError> {
+        self.add_designed_adult(source_seed, None, now, desktop)
+    }
+
+    pub fn add_designed_adult(
+        &mut self,
+        source_seed: [u8; 32],
+        design: Option<CreatureDesign>,
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Result<CreatureId, ColonyManagementError> {
         if self.save.creatures.len() >= MAX_COLONY_CREATURES {
             return Err(ColonyManagementError::ColonyFull);
         }
@@ -1602,7 +1619,10 @@ impl World {
             .map(|creature| creature.name.clone())
             .collect();
         let order = next_colony_order(&self.save.creatures);
-        let creature = generated_adult(source_seed, now, desktop, order, &existing_names, true);
+        let mut creature = generated_adult(source_seed, now, desktop, order, &existing_names, true);
+        if let Some(design) = design {
+            apply_creature_design(&mut creature, Some(design));
+        }
         if self
             .save
             .creatures
@@ -1627,6 +1647,17 @@ impl World {
         &mut self,
         creature_id: CreatureId,
         source_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Result<CreatureId, ColonyManagementError> {
+        self.replace_creature_with_design(creature_id, source_seed, None, now, desktop)
+    }
+
+    pub fn replace_creature_with_design(
+        &mut self,
+        creature_id: CreatureId,
+        source_seed: [u8; 32],
+        design: Option<CreatureDesign>,
         now: OffsetDateTime,
         desktop: &DesktopSnapshot,
     ) -> Result<CreatureId, ColonyManagementError> {
@@ -1658,6 +1689,9 @@ impl World {
             &existing_names,
             true,
         );
+        if let Some(design) = design {
+            apply_creature_design(&mut replacement, Some(design));
+        }
         if self
             .save
             .creatures
@@ -3580,22 +3614,25 @@ impl World {
         let Some(monitor) = monitors.first().copied() else {
             return;
         };
-        let mut regions = accessible_regions(&self.save.settings.habitat, monitor);
-        regions.sort_by(|a, b| {
-            (b.width * b.height)
-                .total_cmp(&(a.width * a.height))
-                .then_with(|| a.x.total_cmp(&b.x))
-        });
-        let Some(region) = regions.first().copied() else {
+        let Some(anchor) = resolved_home_anchor(
+            &self.save.home,
+            monitor,
+            self.save.settings.display_scale,
+            &self.save.settings.habitat,
+        ) else {
             return;
         };
         let streams = SeedStream::new(self.save.colony_seed);
         let mut rng = streams.rng("colony-object", u64::from(self.save.objects.ordinal));
         let kind = ColonyObjectKind::ALL[rng.random_range(0..ColonyObjectKind::ALL.len())];
-        let point = Point {
-            x: rng.random_range(region.x + 12.0..=region.right() - 12.0),
-            y: region.bottom() - 4.0,
-        };
+        let point = home_object_position(
+            &self.save.home,
+            self.save.objects.objects.len(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        )
+        .map_or(anchor, |(_, point)| point);
         let mut id = rng.random::<u64>();
         while self
             .save
@@ -3654,11 +3691,13 @@ impl World {
     }
 
     fn reconcile_colony_objects(&mut self, desktop: &DesktopSnapshot) {
-        for object in &mut self.save.objects.objects {
-            let Some((monitor_id, point)) = resolved_colony_object_position(
-                object,
+        for (slot, object) in self.save.objects.objects.iter_mut().enumerate() {
+            let Some((monitor_id, point)) = home_object_position(
+                &self.save.home,
+                slot,
                 &desktop.monitors,
                 &self.save.settings.habitat,
+                self.save.settings.display_scale,
             ) else {
                 continue;
             };
@@ -3952,7 +3991,7 @@ fn generated_adult(
 ) -> Creature {
     let streams = SeedStream::new(source_seed);
     let mut creature =
-        generate_creature(&streams, source_seed, 0, now, desktop, existing_names, None);
+        generate_new_creature(&streams, source_seed, 0, now, desktop, existing_names, None);
     creature.generation = 0;
     creature.colony_order = colony_order;
     creature.role = CreatureRole::Adult;
@@ -3995,13 +4034,18 @@ fn generate_mini_for_parent(
         let shared = SharedCreatureSeed {
             source_colony_seed: colony_seed,
             source_generation: generation,
+            design: Some(crate::CreatureDesign::generated(
+                colony_seed,
+                generation,
+                parent.appearance.design,
+            )),
         };
         let mut creature = generate_source_creature(shared, now, desktop);
         creature.name = default_creature_name(colony_seed, generation, &existing_names);
         creature
     } else {
         let streams = SeedStream::new(parent.origin.source_colony_seed);
-        generate_creature(
+        generate_new_creature(
             &streams,
             parent.origin.source_colony_seed,
             generation,
@@ -4042,6 +4086,33 @@ fn rebalance_minis(creatures: &mut [Creature]) {
     }
 }
 
+fn generate_new_creature(
+    streams: &SeedStream,
+    colony_seed: [u8; 32],
+    generation: u8,
+    born_at_utc: OffsetDateTime,
+    desktop: &DesktopSnapshot,
+    existing_names: &[String],
+    parent: Option<&Creature>,
+) -> Creature {
+    let mut creature = generate_creature(
+        streams,
+        colony_seed,
+        generation,
+        born_at_utc,
+        desktop,
+        existing_names,
+        parent,
+    );
+    let design = CreatureDesign::generated(
+        colony_seed,
+        generation,
+        parent.and_then(|p| p.appearance.design),
+    );
+    apply_creature_design(&mut creature, Some(design));
+    creature
+}
+
 fn generate_creature(
     streams: &SeedStream,
     colony_seed: [u8; 32],
@@ -4069,6 +4140,7 @@ fn generate_creature(
         .map(|value| value.appearance.palette_index)
         .unwrap_or_else(|| appearance_rng.random_range(0..12));
     let appearance = AppearanceGenome {
+        design: None,
         family,
         logical_size: ((appearance_rng.random_range(34..=40) as f32) * scale_percent as f32 / 100.0)
             .round() as u8,
@@ -4218,6 +4290,7 @@ fn generate_creature(
         ),
         generation,
         origin: CreatureOrigin {
+            design: None,
             source_colony_seed: colony_seed,
             source_generation: generation,
         },
@@ -4278,9 +4351,11 @@ fn generate_source_creature(
         );
         creatures.push(creature);
     }
-    creatures
+    let mut creature = creatures
         .pop()
-        .expect("a source generation is always built")
+        .expect("a source generation is always built");
+    apply_creature_design(&mut creature, shared.design);
+    creature
 }
 
 fn mutate_parent<R: Rng + ?Sized>(parent: Option<u8>, rng: &mut R, min: u8, max: u8) -> u8 {
@@ -5323,11 +5398,16 @@ fn nearby_object_utility(
     objects: &[ColonyObject],
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
+    home: &ColonyHome,
+    display_scale: u8,
 ) -> ObjectUtility {
     let mut utility = ObjectUtility::default();
-    for object in objects.iter().take(MAX_COLONY_OBJECTS) {
+    if !home.is_active() {
+        return utility;
+    }
+    for (slot, object) in objects.iter().take(MAX_COLONY_OBJECTS).enumerate() {
         let Some((monitor_id, point)) =
-            resolved_colony_object_position(object, &desktop.monitors, policy)
+            home_object_position(home, slot, &desktop.monitors, policy, display_scale)
         else {
             continue;
         };
@@ -8349,6 +8429,7 @@ mod tests {
             let shared = SharedCreatureSeed {
                 source_colony_seed: [source_generation.wrapping_mul(41).wrapping_add(17); 32],
                 source_generation,
+                design: None,
             };
             let expected = generate_source_creature(shared, original_birth, &desktop);
             let imported = World::from_shared_creature(shared, imported_birth, &desktop);
@@ -8372,12 +8453,117 @@ mod tests {
     }
 
     #[test]
+    fn accepted_design_survives_add_replace_save_and_sharing_with_related_minis() {
+        let now = datetime!(2026-09-12 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([6; 32], now, &desktop);
+        let design = crate::CreatureDesign::generated([88; 32], 0, None);
+        let id = world
+            .add_designed_adult([77; 32], Some(design), now, &desktop)
+            .unwrap();
+        let added = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(added.appearance.design, Some(design));
+        let code = crate::encode_creature_seed(added.origin);
+        let imported =
+            World::from_shared_creature(crate::decode_creature_seed(&code).unwrap(), now, &desktop);
+        assert_eq!(imported.save.creatures[0].appearance, added.appearance);
+        assert_eq!(imported.save.creatures[0].personality, added.personality);
+        let serialized = serde_json::to_vec(&world.save).unwrap();
+        let mut restored = World::from_save(serde_json::from_slice(&serialized).unwrap());
+        assert_eq!(
+            restored
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == id)
+                .unwrap()
+                .appearance
+                .design,
+            Some(design)
+        );
+        restored
+            .save
+            .creatures
+            .iter_mut()
+            .find(|c| c.id == id)
+            .unwrap()
+            .kept = false;
+        restored
+            .replace_creature_with_design(id, [78; 32], Some(design), now, &desktop)
+            .unwrap();
+        assert!(
+            restored
+                .save
+                .creatures
+                .iter()
+                .any(|c| c.appearance.design == Some(design))
+        );
+        world.tick(now + Duration::hours(1), 0.05, &desktop);
+        for mini in world.save.creatures.iter().filter(|c| !c.role.is_adult()) {
+            let parent = world
+                .save
+                .creatures
+                .iter()
+                .find(|c| Some(c.id) == mini.role.parent_id())
+                .unwrap();
+            assert_eq!(
+                mini.appearance.design.unwrap().body,
+                parent.appearance.design.unwrap().body
+            );
+            let imported = World::from_shared_creature(
+                crate::decode_creature_seed(&crate::encode_creature_seed(mini.origin)).unwrap(),
+                now,
+                &desktop,
+            );
+            assert_eq!(imported.save.creatures[0].appearance, mini.appearance);
+        }
+    }
+
+    #[test]
+    fn house_yard_is_compact_mirrored_scaled_and_does_not_escape_restrictions() {
+        let desktop = desktop();
+        let monitor = &desktop.monitors[0];
+        let mut home = ColonyHome::from_seed([0; 32], Some(monitor.display_key), None, None);
+        let policy = HabitatPolicy::default();
+        for scale in 1..=4 {
+            for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+                home.corner = corner;
+                let anchor = resolved_home_anchor(&home, monitor, scale, &policy).unwrap();
+                let unit = f32::from(scale) / monitor.scale_factor.max(1.0);
+                let mut seen = Vec::new();
+                for slot in 0..MAX_COLONY_OBJECTS {
+                    let (id, p) =
+                        home_object_position(&home, slot, &desktop.monitors, &policy, scale)
+                            .unwrap();
+                    assert_eq!(id, monitor.id);
+                    assert!((p.x - anchor.x).abs() <= 84.0 * unit + 0.01);
+                    assert!((p.y - anchor.y).abs() <= 16.0 * unit + 0.01);
+                    assert!(if corner == HomeCorner::BottomLeft {
+                        p.x > anchor.x
+                    } else {
+                        p.x < anchor.x
+                    });
+                    assert!(!seen.contains(&p));
+                    seen.push(p);
+                }
+            }
+        }
+        let mut narrow = desktop.clone();
+        narrow.monitors[0].usable_bounds.width = 80.0;
+        home.corner = HomeCorner::BottomLeft;
+        assert!(home_object_position(&home, 7, &narrow.monitors, &policy, 3).is_none());
+        assert!(home_object_position(&home, 8, &desktop.monitors, &policy, 1).is_none());
+        assert!(home_object_position(&home, 0, &[], &policy, 1).is_none());
+    }
+
+    #[test]
     fn imported_creature_gets_a_distinct_companion_lineage() {
         let now = datetime!(2026-09-02 5:06 UTC);
         let desktop = desktop();
         let shared = SharedCreatureSeed {
             source_colony_seed: [211; 32],
             source_generation: 1,
+            design: None,
         };
         let mut imported = World::from_shared_creature(shared, now, &desktop);
         imported.tick(now + Duration::hours(1), 0.05, &desktop);

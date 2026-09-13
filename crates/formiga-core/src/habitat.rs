@@ -68,6 +68,49 @@ pub fn resolved_colony_object_position(
         .or_else(|| nearest_habitat_point(policy, monitors, intended))
 }
 
+/// A two-row, four-column yard immediately beside the shelter. Slots which cannot fit in
+/// the house's accessible region stay stored but hidden, rather than spilling elsewhere.
+pub fn home_object_position(
+    home: &ColonyHome,
+    slot: usize,
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Option<(u64, Point)> {
+    if slot >= crate::MAX_COLONY_OBJECTS {
+        return None;
+    }
+    let monitor = monitors
+        .iter()
+        .find(|m| Some(m.display_key) == home.display)
+        .or_else(|| monitors.iter().find(|m| m.primary))
+        .or_else(|| monitors.first())?;
+    let anchor = resolved_home_anchor(home, monitor, display_scale, policy)?;
+    let scale = f32::from(display_scale) / monitor.scale_factor.max(1.0);
+    let direction = if home.corner == HomeCorner::BottomLeft {
+        1.0
+    } else {
+        -1.0
+    };
+    let point = Point {
+        x: anchor.x + direction * (36.0 + (slot % 4) as f32 * 16.0) * scale,
+        y: anchor.y - (slot / 4) as f32 * 16.0 * scale,
+    };
+    accessible_regions(policy, monitor)
+        .iter()
+        .any(|r| {
+            anchor.x >= r.x
+                && anchor.x <= r.right()
+                && anchor.y >= r.y
+                && anchor.y <= r.bottom()
+                && point.x - 8.0 * scale >= r.x
+                && point.x + 8.0 * scale <= r.right()
+                && point.y - 16.0 * scale >= r.y
+                && point.y <= r.bottom()
+        })
+        .then_some((monitor.id, point))
+}
+
 pub fn accessible_regions(policy: &HabitatPolicy, monitor: &MonitorInfo) -> Vec<DesktopRect> {
     if policy.preset == HabitatPreset::PrimaryDisplay && !monitor.primary {
         return Vec::new();

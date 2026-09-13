@@ -1,4 +1,4 @@
-use crate::CreatureOrigin;
+use crate::{CreatureDesign, CreatureOrigin};
 use sha2::{Digest, Sha256};
 
 const FORMAT_VERSION: u8 = 1;
@@ -10,6 +10,7 @@ const GROUPS: usize = 15;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SharedCreatureSeed {
+    pub design: Option<CreatureDesign>,
     pub source_colony_seed: [u8; 32],
     pub source_generation: u8,
 }
@@ -17,6 +18,7 @@ pub struct SharedCreatureSeed {
 impl From<CreatureOrigin> for SharedCreatureSeed {
     fn from(origin: CreatureOrigin) -> Self {
         Self {
+            design: origin.design,
             source_colony_seed: origin.source_colony_seed,
             source_generation: origin.source_generation,
         }
@@ -26,6 +28,7 @@ impl From<CreatureOrigin> for SharedCreatureSeed {
 impl From<SharedCreatureSeed> for CreatureOrigin {
     fn from(shared: SharedCreatureSeed) -> Self {
         Self {
+            design: shared.design,
             source_colony_seed: shared.source_colony_seed,
             source_generation: shared.source_generation,
         }
@@ -36,7 +39,7 @@ impl From<SharedCreatureSeed> for CreatureOrigin {
 pub enum SeedCodeError {
     #[error("seed code must begin with FORMIGA")]
     Prefix,
-    #[error("seed code must contain fifteen groups of four characters")]
+    #[error("seed code must contain fifteen or twenty-three groups of four characters")]
     Format,
     #[error("seed code has an unsupported format version")]
     Version,
@@ -48,17 +51,38 @@ pub enum SeedCodeError {
     Length,
     #[error("seed code checksum does not match")]
     Checksum,
+    #[error("seed code contains an invalid creature design")]
+    Design,
 }
 
 pub fn encode_creature_seed(origin: CreatureOrigin) -> String {
     debug_assert!(origin.source_generation <= 3);
-    let mut payload = [0_u8; PAYLOAD_BYTES];
-    payload[0] = (FORMAT_VERSION << 4) | origin.source_generation.min(3);
+    let version = if origin.design.is_some() {
+        2
+    } else {
+        FORMAT_VERSION
+    };
+    let mut payload = vec![
+        0_u8;
+        if origin.design.is_some() {
+            57
+        } else {
+            PAYLOAD_BYTES
+        }
+    ];
+    payload[0] = (version << 4) | origin.source_generation.min(3);
     payload[1..33].copy_from_slice(&origin.source_colony_seed);
-    let digest = checksum(&payload[..33]);
-    payload[33..].copy_from_slice(&digest);
+    if let Some(design) = origin.design {
+        payload[33..49].copy_from_slice(&design.to_bytes());
+    }
+    let checksum_start = payload.len() - 4;
+    let digest = checksum(&payload[..checksum_start]);
+    payload[checksum_start..].copy_from_slice(&digest);
     let encoded = encode_base32(&payload);
-    debug_assert_eq!(encoded.len(), ENCODED_CHARACTERS);
+    debug_assert_eq!(
+        encoded.len(),
+        if version == 1 { ENCODED_CHARACTERS } else { 92 }
+    );
     let grouped = encoded
         .as_bytes()
         .chunks(4)
@@ -69,36 +93,49 @@ pub fn encode_creature_seed(origin: CreatureOrigin) -> String {
 }
 
 pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeError> {
+    if code.len() > 256 {
+        return Err(SeedCodeError::Length);
+    }
     let canonical = code.trim().to_ascii_uppercase();
     let Some(body) = canonical.strip_prefix("FORMIGA-") else {
         return Err(SeedCodeError::Prefix);
     };
     let groups: Vec<_> = body.split('-').collect();
-    if groups.len() != GROUPS || groups.iter().any(|group| group.len() != 4) {
+    if ![GROUPS, 23].contains(&groups.len()) || groups.iter().any(|group| group.len() != 4) {
         return Err(SeedCodeError::Format);
     }
     let encoded = groups.concat();
-    if encoded.len() != ENCODED_CHARACTERS {
+    if ![ENCODED_CHARACTERS, 92].contains(&encoded.len()) {
         return Err(SeedCodeError::Length);
     }
     let payload = decode_base32(&encoded)?;
-    if payload.len() != PAYLOAD_BYTES {
-        return Err(SeedCodeError::Length);
-    }
     let version = payload[0] >> 4;
-    if version != FORMAT_VERSION {
+    if ![FORMAT_VERSION, 2].contains(&version) {
         return Err(SeedCodeError::Version);
+    }
+    if payload.len() != if version == 1 { PAYLOAD_BYTES } else { 57 } {
+        return Err(SeedCodeError::Length);
     }
     let generation = payload[0] & 0x0f;
     if generation > 3 {
         return Err(SeedCodeError::Generation);
     }
-    if checksum(&payload[..33]) != payload[33..] {
+    let checksum_start = payload.len() - 4;
+    if checksum(&payload[..checksum_start]) != payload[checksum_start..] {
         return Err(SeedCodeError::Checksum);
     }
+    let design = if version == 2 {
+        if payload[49..53] != [0; 4] {
+            return Err(SeedCodeError::Design);
+        }
+        Some(CreatureDesign::from_bytes(&payload[33..49]).ok_or(SeedCodeError::Design)?)
+    } else {
+        None
+    };
     let mut source_colony_seed = [0_u8; 32];
     source_colony_seed.copy_from_slice(&payload[1..33]);
     Ok(SharedCreatureSeed {
+        design,
         source_colony_seed,
         source_generation: generation,
     })
@@ -109,6 +146,9 @@ pub fn derive_imported_colony_seed(shared: SharedCreatureSeed) -> [u8; 32] {
     hash.update(b"formiga-imported-colony-v1");
     hash.update(shared.source_colony_seed);
     hash.update([shared.source_generation]);
+    if let Some(design) = shared.design {
+        hash.update(design.to_bytes());
+    }
     let mut derived: [u8; 32] = hash.finalize().into();
     if derived == shared.source_colony_seed {
         derived[0] ^= 0x80;
@@ -152,11 +192,12 @@ fn decode_base32(value: &str) -> Result<Vec<u8>, SeedCodeError> {
             bits.push(((index >> shift) & 1) as u8);
         }
     }
-    let data_bits = PAYLOAD_BYTES * 8;
+    let payload_bytes = if value.len() == 92 { 57 } else { PAYLOAD_BYTES };
+    let data_bits = payload_bytes * 8;
     if bits.len() < data_bits || bits[data_bits..].iter().any(|bit| *bit != 0) {
         return Err(SeedCodeError::Length);
     }
-    let mut bytes = vec![0_u8; PAYLOAD_BYTES];
+    let mut bytes = vec![0_u8; payload_bytes];
     for (index, bit) in bits.into_iter().take(data_bits).enumerate() {
         bytes[index / 8] |= bit << (7 - index % 8);
     }
@@ -168,11 +209,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn design_codes_round_trip_and_validate_recipe_and_reserved_bytes() {
+        for generation in 0..=3 {
+            let shared = SharedCreatureSeed {
+                source_colony_seed: [63; 32],
+                source_generation: generation,
+                design: Some(CreatureDesign::generated([63; 32], generation, None)),
+            };
+            let code = encode_creature_seed(shared.into());
+            assert_eq!(code.split('-').skip(1).count(), 23);
+            assert_eq!(decode_creature_seed(&code.to_lowercase()), Ok(shared));
+            let encoded = code.strip_prefix("FORMIGA-").unwrap().replace('-', "");
+            for offset in [33, 36, 49] {
+                let mut payload = decode_base32(&encoded).unwrap();
+                payload[offset] = 255;
+                let digest = checksum(&payload[..53]);
+                payload[53..].copy_from_slice(&digest);
+                assert_eq!(
+                    decode_creature_seed(&group_payload(&payload)),
+                    Err(SeedCodeError::Design)
+                );
+            }
+            let mut other = shared;
+            other.design.as_mut().unwrap().coat[0] ^= 1;
+            assert_ne!(
+                derive_imported_colony_seed(shared),
+                derive_imported_colony_seed(other)
+            );
+        }
+    }
+
+    #[test]
     fn all_four_generations_round_trip_case_insensitively() {
         for source_generation in 0_u8..=3 {
             let shared = SharedCreatureSeed {
                 source_colony_seed: [source_generation.wrapping_mul(53).wrapping_add(7); 32],
                 source_generation,
+                design: None,
             };
             let code = encode_creature_seed(shared.into());
             assert!(code.starts_with("FORMIGA-"));
@@ -188,6 +261,7 @@ mod tests {
             SharedCreatureSeed {
                 source_colony_seed: [91; 32],
                 source_generation: 2,
+                design: None,
             }
             .into(),
         );
@@ -210,6 +284,7 @@ mod tests {
         let shared = SharedCreatureSeed {
             source_colony_seed: [44; 32],
             source_generation: 3,
+            design: None,
         };
         let first = derive_imported_colony_seed(shared);
         let second = derive_imported_colony_seed(shared);
@@ -223,6 +298,7 @@ mod tests {
             SharedCreatureSeed {
                 source_colony_seed: [123; 32],
                 source_generation: 1,
+                design: None,
             }
             .into(),
         );
@@ -256,7 +332,7 @@ mod tests {
 
         let encoded = valid.strip_prefix("FORMIGA-").unwrap().replace('-', "");
         let mut payload = decode_base32(&encoded).unwrap();
-        payload[0] = 2 << 4;
+        payload[0] = 3 << 4;
         let digest = checksum(&payload[..33]);
         payload[33..].copy_from_slice(&digest);
         assert_eq!(

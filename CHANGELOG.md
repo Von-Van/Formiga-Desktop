@@ -2,6 +2,37 @@
 
 All notable changes are documented here.
 
+## [0.55.0] - 2026-09-12
+
+### Added
+
+- A bounded modular creature framework: four rounded body plans combine with six ear styles,
+  five tail choices, safe head/body/leg proportions, muzzle patches, seven marking treatments,
+  and custom coat/accent colors. Big expressive eyes and a mouth remain part of every design.
+- Image-guided construction uses temporary dominant/accent color bins and silhouette cues to
+  adapt 512 safe candidates, preserving source aspect ratio and transparent backgrounds. This is
+  a cute reinterpretation, not object recognition; no model, network request, or new dependency.
+- Version 2 shared creature codes carry the exact compact design. Version 1 codes and legacy
+  creatures retain their original appearance; save version 12 accepts every previous save version.
+- Reproducible generation and house-yard preview sheets, plus compatibility and layout checks.
+
+### Changed
+
+- House objects occupy at most eight fixed spots in a compact two-row yard beside the house,
+  following its corner, display, and scale. Unavailable spots stay hidden rather than scattering;
+  the yard appears only with the house and uses its existing object atlas and draw budget.
+- Objects sit in small stackable keepsake cubbies baked into that atlas; decorations now anchor
+  to each shelter's actual roof and walls rather than floating at fixed canvas heights.
+- Stones and flowers sit closer to the shelter, and the lamp is mounted beside the wall.
+- New minis inherit their parent's design family and colors with bounded variation. Preview
+  acceptance, saves, cards, and shared codes preserve custom designs and palettes.
+- README, privacy, architecture, and performance documentation describe the current version.
+
+### Performance
+
+- Design recipes occupy 16 bytes each in memory; no source image survives generation. Existing
+  48×48 body frames, 16×16 face frames, animation caches, and the four-creature cap are unchanged.
+
 ## [0.51.6] - 2026-09-05
 
 ### Fixed

@@ -924,13 +924,21 @@ impl FormigaApp {
             let desktop = self.snapshot();
             let now = OffsetDateTime::now_utc();
             let result = self.world.as_mut().map(|world| match acceptance {
-                PreviewAcceptance::Add { source_seed } => {
-                    world.add_generated_adult(source_seed, now, &desktop)
-                }
+                PreviewAcceptance::Add {
+                    source_seed,
+                    design,
+                } => world.add_designed_adult(source_seed, design, now, &desktop),
                 PreviewAcceptance::Replace {
                     creature_id,
                     source_seed,
-                } => world.replace_creature_with_adult(creature_id, source_seed, now, &desktop),
+                    design,
+                } => world.replace_creature_with_design(
+                    creature_id,
+                    source_seed,
+                    design,
+                    now,
+                    &desktop,
+                ),
             });
             match result {
                 Some(Ok(_)) => {

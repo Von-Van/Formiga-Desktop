@@ -52,13 +52,14 @@ does not contain an event log, ritual history, ritual target positions, proximit
 paths, cursor paths, sampled event coordinates, or past window layouts. Profile fields other than a
 creature's name are read-only views of this local state.
 
-Save version 11 accepts and deterministically migrates every v1–v10 colony. Migration converts legacy
+Save version 12 accepts and deterministically migrates every v1–v11 colony. Migration converts legacy
 relationship floats locally, preserves current v7 bond records byte-for-byte, and preserves creature
 identity, generated appearance, custom names, birth times, memories, learned tendencies, and
 routines. A v8 colony receives an empty object collection and one deterministic future timestamp;
 a v9 colony receives an empty decoration list and one deterministic future timestamp. Legacy
 creatures receive only adult/mini role, Keep, and bounded mini-schedule fields; none are deleted,
-regenerated, or truncated. Existing colony state is otherwise unchanged. Migration performs no
+regenerated, or truncated. Missing modular recipes remain absent, preserving legacy art; stored
+loose objects relocate to the compact house yard on the next world tick. Migration performs no
 network request and does not upload
 either the old or migrated save.
 
@@ -83,11 +84,12 @@ temporary card/font/PNG buffers are released after the export completes.
 
 Reference-guided generation is also entirely local. Formiga accepts only PNG or JPEG input under
 fixed byte, dimension, and decoded-pixel limits, reduces it to temporary color and silhouette cues,
-and searches a fixed 512 normal procedural candidates. It does not read embedded text for behavior,
+and constructs exactly 512 bounded modular candidates. It does not read embedded text for behavior,
 upload the image, call an AI service, retain the path, copy pixels into creature art, or write image
-bytes or extracted features to the save or logs. Cancelling or clearing the preview releases its
-temporary rendered texture; accepting stores only the selected ordinary creature seed and fresh
-local state.
+bytes or full extracted feature vectors to the save or logs. Cancelling or clearing the preview
+releases its temporary rendered texture; accepting stores the creature seed, a compact design
+recipe (parts, proportions, and derived coat/accent colors), and fresh local state. Shared codes
+for modular creatures include that recipe, not the source image, its path, or metadata.
 
 Colony management persists a role, parent ID for minis, Keep flag, and two bounded mini-arrival
 bits. Keep is a local replacement preference, not behavioral analytics. Removing or replacing a

@@ -1,4 +1,4 @@
-# Formiga
+# Formiga · v0.55.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -8,6 +8,35 @@ Formiga is a privacy-first desktop ecosystem for macOS and Windows. Seeded proce
 in transparent desktop overlays, develop simple habits, perch on ordinary windows, react to the
 cursor, and eventually grow into a four-creature colony. The colony and its behavior stay local;
 the only optional network feature is a lightweight GitHub release check.
+
+## New in 0.55.0
+
+House additions now form a compact home area: attached decorations hug the shelter, and up to eight
+loose objects occupy tiny keepsake cubbies in a two-row yard immediately beside it. The yard follows the house's
+corner, display, and scale, disappears with the house, and never spills into restricted areas.
+
+![Compact keepsake nooks beside four house styles, at both corners](docs/assets/home-yard-sheet.png)
+
+New creatures use a modular pixel-art recipe rather than only the original three body families.
+Rounded, upright, four-pawed, and winged body plans combine with independent ears, tails, safe
+proportions, markings, and colors. Every recipe keeps a rounded, connected creature, paired limbs,
+big expressive eyes, and a mouth. Existing creatures retain their original appearance.
+
+![Four body plans combined with six ear styles, with varied colors and markings](docs/assets/generation-sheet.png)
+
+In **Settings → Colony → Creature studio**, choose **Create from PNG or JPEG…** for a cute
+reinterpretation of a reference image. Dominant colors, contrasting accents, proportions, and
+appendage cues influence the result; it is not object recognition or a literal recreation. Clear
+subjects against plain or transparent backgrounds work best. Try another preview for a different
+interpretation, then add it or replace an unkept creature.
+
+This stays lightweight: no AI model, cloud service, new dependency, or background image processing.
+Only a compact design recipe survives generation; sprite dimensions, animation atlas budgets, and
+the four-creature colony limit are unchanged. Legacy seed codes still work; codes for modular
+creatures include their recipe and require v0.55.0 or newer. Saves migrate to version 12.
+
+For contributors, the [generation framework guide](docs/GENERATION.md) explains the bounded parts,
+image cues, compatibility rules, and visual checks.
 
 Creatures now remember treatment and repeated experiences as compact counters and preferences rather
 than an activity log. A click pets a creature; tosses, pets, sleep, ledges, window rides, discoveries,
@@ -35,7 +64,7 @@ windows leave a 10–28-point gap with enough shared height, a creature may brie
 using its existing walk animation. Any supporting-window change cancels the route immediately.
 
 Over several days, colonies also leave a bounded collection of static pillows, toys, plants,
-blankets, paper scraps, pebbles, lamps, and cups. These small deterministic objects make the desktop
+blankets, paper scraps, pebbles, lamps, and cups beside the house. These small deterministic objects make the home
 feel inhabited and gently influence existing behavior without physics, dragging, or an object loop.
 
 The colony home grows too. Every few days its single cached shelter texture can gain a leaf, banner,
@@ -53,8 +82,8 @@ uses the creature's actual procedural sprite and palette, frames it as a cozy pi
 and includes its family, top learned descriptors, UTC arrival month, and only an abbreviated seed
 glimpse. Export happens entirely on demand and writes no hidden profile or device metadata.
 
-The Creature Studio can preview a fresh full-size creature or approximate a character from a local
-PNG or JPEG using only Formiga's existing procedural genome. Reference matching is bounded,
+The Creature Studio can preview a fresh full-size creature or reinterpret a character from a local
+PNG or JPEG using Formiga's bounded modular recipe. Reference matching is bounded,
 offline, and temporary: source pixels, paths, metadata, and extracted features are discarded after
 the preview. Keep toggles protect colony members during bulk regeneration, while explicit controls
 can add, replace, or remove individual creatures. A colony retains at most four members and three
@@ -68,26 +97,21 @@ snacks and drinks, climb up window sides, dangle from ledges, inspect a few geom
 landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
 of the way; a slow release keeps the existing precise placement behavior.
 
-Two of the three body families now read as the animals they were always reaching for. Soft
-quadrupeds keep triangular ears, a small muzzle, a tail carried up off the rump, and all four paws
-planted whenever they are not using them, so they read as cats. Hoppers keep long upright ears—or a
-lop pair—a cotton-puff tail, long hind feet, and a rounder crouch, so they read as rabbits. Blobs
-are unchanged. Ear and tail genes still vary the shape rather than removing it, and because this is
-purely how a genome is drawn, existing colonies and imported seed codes keep exactly the creatures
-they already had.
+Legacy blobs, rabbit-like hoppers, and cat-like soft quadrupeds remain supported without being
+regenerated. New companions and image-inspired previews use the modular construction system.
 
 ## Download and run
 
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
 for your computer—no terminal or development tools are required:
 
-- **macOS 14+:** download `Formiga-0.51.6-macOS-universal.dmg`, open it, and drag Formiga to
+- **macOS 14+:** download the release's `Formiga-VERSION-macOS-universal.dmg`, open it, and drag Formiga to
   Applications.
-- **Windows 10/11:** download `Formiga-0.51.6-windows-x64.msi` and follow the installer. It adds
+- **Windows 10/11:** download the release's `Formiga-VERSION-windows-x64.msi` and follow the installer. It adds
   normal Desktop and Start-menu shortcuts.
 
 Every release names its downloads after its own version, so a later release publishes the same two
-names with its version in place of `0.51.6`. The assisted updater matches those exact names, so do
+names with its version (for example, `0.55.0`) in place of `VERSION`. The assisted updater matches those exact names, so do
 not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
 
 Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides

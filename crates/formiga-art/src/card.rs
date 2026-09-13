@@ -1,4 +1,4 @@
-use crate::{Canvas, CreatureRenderer, PALETTES, Rgba};
+use crate::{Canvas, CreatureRenderer, Rgba};
 use epaint::{Color32, FontFamily, FontId, Fonts, TextOptions, text::FontDefinitions};
 use formiga_core::{
     ActionKind, BodyFamily, Creature, EffectMotif, encode_creature_seed, profile_descriptors,
@@ -22,7 +22,7 @@ pub struct CreatureCardRenderer;
 impl CreatureCardRenderer {
     pub fn render(creature: &Creature) -> Canvas {
         let mut canvas = Canvas::new(CARD_WIDTH, CARD_HEIGHT);
-        let palette = PALETTES[usize::from(creature.appearance.palette_index) % PALETTES.len()];
+        let palette = crate::palette_for(&creature.appearance);
         let mut rng = CardRng::new(creature.appearance.marking_seed);
 
         draw_background(&mut canvas, &mut rng, palette.accent);
@@ -46,7 +46,10 @@ impl CreatureCardRenderer {
         let name_size = text.fit_size(&creature.name, 415.0, 54.0, 18.0);
         text.draw(&mut canvas, 486, 119, &creature.name, name_size, INK);
 
-        let family = family_label(creature.appearance.family);
+        let family = creature.appearance.design.map_or_else(
+            || family_label(creature.appearance.family),
+            |d| d.body.label(),
+        );
         text.draw(&mut canvas, 488, 184, family, 20.0, MUTED_INK);
         canvas.fill_rect(488, 216, 398, 2, PAPER_SHADOW);
 
@@ -152,7 +155,7 @@ fn draw_background(canvas: &mut Canvas, rng: &mut CardRng, accent: Rgba) {
 }
 
 fn draw_portrait_panel(canvas: &mut Canvas, creature: &Creature, rng: &mut CardRng) {
-    let palette = PALETTES[usize::from(creature.appearance.palette_index) % PALETTES.len()];
+    let palette = crate::palette_for(&creature.appearance);
     stepped_panel(canvas, 57, 57, 382, 486, palette.outline);
     stepped_panel(canvas, 64, 64, 368, 472, NIGHT_LIGHT);
     canvas.fill_rect(72, 72, 352, 328, Rgba::new(35, 75, 69, 255));

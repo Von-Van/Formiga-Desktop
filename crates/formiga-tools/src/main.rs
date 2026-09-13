@@ -14,6 +14,14 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("contact-sheet") => contact_sheet(output_argument(&args)),
+        Some("generation-sheet") => generation_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/generation-sheet.png",
+        )),
+        Some("home-yard-sheet") => home_yard_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/home-yard-sheet.png",
+        )),
         Some("animation-preview") => animation_preview(
             output_argument_with_default(&args, "animation-preview.png"),
             seed_argument(&args),
@@ -80,6 +88,129 @@ fn creature_card(path: PathBuf) -> Result<()> {
     formiga_core::update_descriptor_flags(&mut creature.memory, creature.tendencies);
     let card = CreatureCardRenderer::render(creature);
     write_png(&path, CARD_WIDTH, CARD_HEIGHT, &card.rgba_bytes())?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn generation_sheet(path: PathBuf) -> Result<()> {
+    let scale = 4;
+    let cell = FRAME_SIZE * scale;
+    let (width, height) = (cell * 6, cell * 4);
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [237, 234, 224, 255],
+        [209, 226, 219, 255],
+    );
+    for (row, body) in BodyPlan::ALL.into_iter().enumerate() {
+        for (column, ears) in EarStyle::ALL.into_iter().enumerate() {
+            let seed =
+                SeedStream::new([55; 32]).bytes("generation-sheet", (row * 6 + column) as u64);
+            let mut creature =
+                World::preview_adult(seed, OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
+            let mut design = creature.appearance.design.unwrap();
+            design.body = body;
+            design.ears = ears;
+            apply_creature_design(&mut creature, Some(design));
+            let canvas =
+                CreatureRenderer::render_frame(&creature.appearance, ActionKind::Idle, 0, true);
+            blit_scaled_square_alpha(
+                &mut pixels,
+                width,
+                column as u32 * cell,
+                row as u32 * cell,
+                &canvas.rgba_bytes(),
+                FRAME_SIZE,
+                scale,
+            );
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn home_yard_sheet(path: PathBuf) -> Result<()> {
+    let (width, height) = (864, 960);
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [237, 234, 224, 255],
+        [209, 226, 219, 255],
+    );
+    for style in 0..4 {
+        for (column, corner) in [HomeCorner::BottomLeft, HomeCorner::BottomRight]
+            .into_iter()
+            .enumerate()
+        {
+            let mut seed = [55; 32];
+            seed[1] = style as u8;
+            let mut monitor = fixture_desktop().monitors.remove(0);
+            monitor.bounds = DesktopRect {
+                x: 0.0,
+                y: 0.0,
+                width: 144.0,
+                height: 80.0,
+            };
+            monitor.usable_bounds = monitor.bounds;
+            monitor.scale_factor = 1.0;
+            let mut home = ColonyHome::from_seed(
+                seed,
+                Some(monitor.display_key),
+                Some(OffsetDateTime::UNIX_EPOCH),
+                None,
+            );
+            home.corner = corner;
+            let anchor =
+                resolved_home_anchor(&home, &monitor, 1, &HabitatPolicy::default()).unwrap();
+            let shelter = ShelterRenderer::render_with_decorations(
+                &home.shelter,
+                &ShelterDecorationKind::ALL,
+            );
+            let base_x = column as u32 * 432;
+            let base_y = style * 240;
+            blit_scaled_square_alpha(
+                &mut pixels,
+                width,
+                base_x + (anchor.x as u32 - 32) * 3,
+                base_y + (anchor.y as u32 - 64) * 3,
+                &shelter.rgba_bytes(),
+                SHELTER_SIZE,
+                3,
+            );
+            let atlas = formiga_art::ColonyObjectRenderer::render_atlas(seed);
+            for slot in 0..MAX_COLONY_OBJECTS {
+                if let Some((_, p)) = home_object_position(
+                    &home,
+                    slot,
+                    std::slice::from_ref(&monitor),
+                    &HabitatPolicy::default(),
+                    1,
+                ) {
+                    let mut tile = formiga_art::Canvas::new(16, 16);
+                    for y in 0..16 {
+                        for x in 0..16 {
+                            tile.set(x, y, atlas.get(slot as i32 * 16 + x, y));
+                        }
+                    }
+                    blit_scaled_square_alpha(
+                        &mut pixels,
+                        width,
+                        base_x + (p.x as u32 - 8) * 3,
+                        base_y + (p.y as u32 - 16) * 3,
+                        &tile.rgba_bytes(),
+                        16,
+                        3,
+                    );
+                }
+            }
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
 }

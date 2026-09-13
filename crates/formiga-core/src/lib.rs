@@ -1,5 +1,6 @@
 mod behavior;
 mod clock;
+mod design;
 mod habitat;
 mod model;
 mod persistence;
@@ -10,9 +11,10 @@ mod world;
 
 pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use clock::{Clock, FixedClock, SystemClock};
+pub use design::{BodyPlan, CreatureDesign, EarStyle, apply_creature_design};
 pub use habitat::{
-    MAX_HABITAT_ZONES, accessible_regions, habitat_contains, home_anchor, nearest_habitat_point,
-    resolved_colony_object_position, resolved_home_anchor, validate_habitat,
+    MAX_HABITAT_ZONES, accessible_regions, habitat_contains, home_anchor, home_object_position,
+    nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, validate_habitat,
 };
 pub use model::*;
 pub use persistence::{PersistenceError, SaveStore};
@@ -28,4 +30,4 @@ pub use topology::{
 };
 pub use world::World;
 
-pub const SAVE_VERSION: u32 = 11;
+pub const SAVE_VERSION: u32 = 12;

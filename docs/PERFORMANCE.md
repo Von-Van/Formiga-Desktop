@@ -118,7 +118,16 @@ returning and never uploads the image to the overlay GPU or changes the save. Na
 measurements remain pending in the table above.
 
 Reference matching has zero idle cost. A selected image is decoded once under 16 MB, 4096×4096,
-and 16-million-pixel limits, downsampled to 64×64, and compared with exactly 512 temporary normal
-creature frames. Only the winning ordinary seed and preview survive the matching call; clearing or
+and 16-million-pixel limits, downsampled within 64×64, and compared with exactly 512 temporary modular
+creature frames. A fixed 512-bin color histogram and bounded geometry cues adapt candidate recipes.
+Only the winning seed, 16-byte design recipe, and preview survive the matching call; clearing or
 accepting the preview drops its one small settings texture. Colony role checks and mini balancing
 operate across the existing four-creature bound and introduce no new simulation loop or draw call.
+
+The v0.55.0 generator adds no dependency, model weights, external service, source-image texture,
+or idle worker. Each optional recipe is 16 bytes plus its option discriminant, stored in appearance
+and immutable origin. Existing body/face frame dimensions, animation counts, and GPU atlas budgets
+are unchanged. The compact yard still uses at most eight quads and the existing 128×16 object
+atlas; it is not rendered while the house is inactive. Runtime CPU/GPU measurements on native
+Windows and a full multi-display macOS session remain manual release checks, not inferred from
+unit tests.

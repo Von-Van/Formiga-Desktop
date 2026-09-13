@@ -8,8 +8,7 @@ use formiga_art::{
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
     DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile,
-    ShelterDecorationKind, ShelterGenome, accessible_regions, resolved_colony_object_position,
-    resolved_home_anchor,
+    ShelterDecorationKind, ShelterGenome, accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -81,6 +80,7 @@ struct ColonyObjectsGpu {
 #[derive(Clone, Debug, PartialEq)]
 struct ObjectVertexCacheKey {
     objects: Vec<ColonyObject>,
+    home: formiga_core::ColonyHome,
     habitat: HabitatPolicy,
     monitor_bounds: DesktopRect,
     monitor_usable_bounds: DesktopRect,
@@ -474,7 +474,7 @@ impl OverlayRenderer {
         } else {
             self.bubble = None;
         }
-        let object_vertices = if monitor_fully_occluded || save.objects.objects.is_empty() {
+        let object_vertices = if !shelter_visible || save.objects.objects.is_empty() {
             Vec::new()
         } else {
             self.ensure_colony_object_atlas(save.colony_seed);
@@ -706,15 +706,16 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
-        let object_visible = !fully_occluded
-            && save.objects.objects.iter().any(|object| {
-                object.display == self.monitor.display_key
-                    && resolved_colony_object_position(
-                        object,
-                        std::slice::from_ref(&self.monitor),
-                        &save.settings.habitat,
-                    )
-                    .is_some()
+        let object_visible = shelter_visible
+            && save.objects.objects.iter().enumerate().any(|(slot, _)| {
+                formiga_core::home_object_position(
+                    &save.home,
+                    slot,
+                    std::slice::from_ref(&self.monitor),
+                    &save.settings.habitat,
+                    save.settings.display_scale,
+                )
+                .is_some()
             });
         creature_visible || shelter_visible || object_visible
     }
@@ -1083,6 +1084,7 @@ impl OverlayRenderer {
     fn cached_colony_object_vertices(&mut self, save: &SaveFile) -> &[Vertex] {
         let key = ObjectVertexCacheKey {
             objects: save.objects.objects.clone(),
+            home: save.home.clone(),
             habitat: save.settings.habitat.clone(),
             monitor_bounds: self.monitor.bounds,
             monitor_usable_bounds: self.monitor.usable_bounds,
@@ -1093,17 +1095,19 @@ impl OverlayRenderer {
             return &self.object_vertices;
         }
         self.object_vertices.clear();
-        for object in save
+        for (slot, object) in save
             .objects
             .objects
             .iter()
             .take(formiga_core::MAX_COLONY_OBJECTS)
-            .filter(|object| object.display == self.monitor.display_key)
+            .enumerate()
         {
-            let Some((monitor_id, point)) = resolved_colony_object_position(
-                object,
+            let Some((monitor_id, point)) = formiga_core::home_object_position(
+                &save.home,
+                slot,
                 std::slice::from_ref(&self.monitor),
                 &save.settings.habitat,
+                save.settings.display_scale,
             ) else {
                 continue;
             };

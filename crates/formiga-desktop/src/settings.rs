@@ -54,9 +54,11 @@ pub struct SettingsOutcome {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PreviewAcceptance {
     Add {
+        design: Option<formiga_core::CreatureDesign>,
         source_seed: [u8; 32],
     },
     Replace {
+        design: Option<formiga_core::CreatureDesign>,
         creature_id: CreatureId,
         source_seed: [u8; 32],
     },
@@ -730,9 +732,10 @@ fn colony_tab(
     outcome.viewed_profile = Some(creature.id);
 
     ui.heading(&creature.name);
-    ui.label(
-        format!("{:?}", creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"),
-    );
+    ui.label(creature.appearance.design.map_or_else(
+        || format!("{:?}", creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"),
+        |d| d.body.label().to_owned(),
+    ));
     match creature.role {
         CreatureRole::Adult => {
             ui.label("Full-size creature");
@@ -845,13 +848,13 @@ fn colony_tab(
             MAX_ADULT_CREATURES
         ));
         ui.label(
-            "Create a random full-size creature, or privately match one to a local PNG or JPEG.",
+            "Create a random companion, or turn image colors and features into a cute pixel creature. Images stay on your computer; no AI model or download is needed.",
         );
         ui.horizontal_wrapped(|ui| {
             if ui.button("Generate random preview").clicked() {
                 outcome.request_random_creature = true;
             }
-            if ui.button("Match PNG or JPEG…").clicked() {
+            if ui.button("Create from PNG or JPEG…").clicked() {
                 outcome.request_reference_creature = true;
             }
         });
@@ -865,11 +868,10 @@ fn colony_tab(
                 ui.vertical(|ui| {
                     ui.strong("Full-size candidate");
                     ui.label(
-                        format!("{:?}", preview.creature.appearance.family)
-                            .replace("SoftQuadruped", "Soft Quadruped"),
+                        preview.creature.appearance.design.map_or_else(|| format!("{:?}", preview.creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"), |d| d.body.label().to_owned()),
                     );
                     if let Some(similarity) = preview.similarity {
-                        ui.label(format!("Reference match: {similarity}%"));
+                        ui.label(format!("Color & shape affinity: {similarity}%"));
                     }
                     ui.label(&preview.summary);
                 });
@@ -884,6 +886,7 @@ fn colony_tab(
                     .clicked()
                 {
                     outcome.accept_creature_preview = Some(PreviewAcceptance::Add {
+                        design: preview.creature.appearance.design,
                         source_seed: preview.source_seed,
                     });
                 }
@@ -895,6 +898,7 @@ fn colony_tab(
                     .clicked()
                 {
                     outcome.accept_creature_preview = Some(PreviewAcceptance::Replace {
+                        design: preview.creature.appearance.design,
                         creature_id: creature.id,
                         source_seed: preview.source_seed,
                     });
@@ -1359,6 +1363,7 @@ mod tests {
         let valid = Ok(SharedCreatureSeed {
             source_colony_seed: [7; 32],
             source_generation: 2,
+            design: None,
         });
         let invalid = Err(formiga_core::SeedCodeError::Checksum);
         assert!(!seed_import_ready(&valid, false));

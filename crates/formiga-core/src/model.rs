@@ -267,6 +267,8 @@ pub enum TailStyle {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceGenome {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design: Option<crate::CreatureDesign>,
     pub family: BodyFamily,
     pub logical_size: u8,
     pub body_width: u8,
@@ -707,6 +709,8 @@ pub fn routine_key(surface: SurfaceKind, relative_x: f32, action: ActionKind, ho
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreatureOrigin {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design: Option<crate::CreatureDesign>,
     pub source_colony_seed: [u8; 32],
     pub source_generation: u8,
 }

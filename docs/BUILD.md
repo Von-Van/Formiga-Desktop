@@ -9,6 +9,8 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo run -p formiga-tools -- simulate 181
+cargo run -p formiga-tools -- generation-sheet
+cargo run -p formiga-tools -- home-yard-sheet
 cargo run -p formiga-desktop
 ```
 

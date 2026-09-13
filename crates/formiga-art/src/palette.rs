@@ -10,6 +10,24 @@ pub struct Palette {
     pub eye: Rgba,
 }
 
+/// Image colors are softened once at atlas construction, with fixed dark facial contrast.
+pub fn palette_for(genome: &formiga_core::AppearanceGenome) -> Palette {
+    let Some(design) = genome.design else {
+        return PALETTES[genome.palette_index as usize % PALETTES.len()];
+    };
+    let soften = |rgb: [u8; 3]| rgb.map(|c| ((u16::from(c) * 3 + 220) / 4) as u8);
+    let rgb = soften(design.coat);
+    let rgba = |v: [u8; 3]| Rgba::new(v[0], v[1], v[2], 255);
+    Palette {
+        outline: c(0x302b3b),
+        shadow: rgba(rgb.map(|c| (u16::from(c) * 3 / 4) as u8)),
+        coat: rgba(rgb),
+        highlight: rgba(rgb.map(|c| ((u16::from(c) + 255) / 2) as u8)),
+        accent: rgba(soften(design.accent)),
+        eye: c(0x201b29),
+    }
+}
+
 const fn c(hex: u32) -> Rgba {
     Rgba::new((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 255)
 }

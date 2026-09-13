@@ -13,6 +13,14 @@ impl ColonyObjectRenderer {
         let palette = PALETTES[colony_seed[16] as usize % PALETTES.len()];
         let secondary = PALETTES[colony_seed[17] as usize % PALETTES.len()];
         for kind in ColonyObjectKind::ALL {
+            // Tiny stackable keepsake cubbies visually ground both rows beside the home.
+            // Baked into the same tiles: no extra quad, texture, or runtime decoration.
+            let x = i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32;
+            let wood = Rgba::new(121, 104, 91, 255);
+            let rim = Rgba::new(187, 164, 131, 255);
+            canvas.fill_rect(x, 0, 16, 16, wood);
+            canvas.fill_rect(x + 1, 1, 14, 13, Rgba::new(218, 205, 181, 255));
+            canvas.fill_rect(x + 1, 14, 14, 1, rim);
             draw_object(
                 &mut canvas,
                 i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32,

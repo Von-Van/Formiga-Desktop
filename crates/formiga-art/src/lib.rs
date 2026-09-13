@@ -13,7 +13,7 @@ pub type PixelCanvas = Canvas;
 pub use objects::{
     COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer,
 };
-pub use palette::{PALETTES, Palette};
+pub use palette::{PALETTES, Palette, palette_for};
 pub use renderer::{
     AlphaMask, AnimationAtlas, AnimationSpec, CreatureRenderer, ExpressionKind, EyelidPose,
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, PixelPoint,

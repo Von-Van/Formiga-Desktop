@@ -201,10 +201,12 @@ key, normalized position, and semantic role. A named seed stream selects one of 
 three to seven days; overdue processing creates at most one object and schedules the next timestamp
 from the current maximum-seen UTC value.
 
-Object positions resolve through the current habitat whenever the world ticks. A missing display or
-invalid normalized point snaps to the nearest accessible floor or shelter area and rewrites the
-compact position. The renderer builds one 128×16 seed-derived atlas, retains at most eight quads,
-and rebuilds those vertices only when object state, habitat, display geometry, or scale changes.
+Object positions resolve to eight fixed home-relative slots (four columns, two rows) whenever the
+world ticks. The same pure layout function drives rendering and nearby utility, using the home's
+corner, display, scale, and accessible region. Slots without room remain stored but hidden; all
+objects hide while the house is inactive. Legacy normalized positions are rewritten to the yard.
+The renderer builds one 128×16 seed-derived atlas, retains at most eight quads, and rebuilds those
+vertices only when object state, home state, habitat, display geometry, or scale changes.
 Nearby semantic roles add a bounded `+0.25` to existing action utility at ordinary selection
 boundaries; objects have no physics body, interaction proxy, action state, or update loop.
 
@@ -235,7 +237,11 @@ generation-zero parent needed for inherited traits. The resulting creature retai
 appearance, personality, scale, ID, and behavior seed, but becomes colony order zero with a fresh
 birth and compact history. A domain-separated derived colony seed drives its new shelter and future
 companions, so the source lineage cannot reproduce itself. Import allocates no service, socket,
-worker, or persistent code cache and leaves the v10 save schema unchanged.
+worker, or persistent code cache. Modular creatures use format version 2: the same seed and
+generation followed by a 16-byte bounded design, four reserved zero bytes, and a four-byte checksum.
+Its 57-byte payload is 92 Base32 characters in 23 groups. Legacy format 1 is unchanged; a recipe
+is applied after legacy named-stream reconstruction so inherited traits and personalities replay
+exactly. Design bytes also participate in the imported colony's lineage hash.
 
 ## On-demand creature cards
 
@@ -256,11 +262,23 @@ the save file itself. Export is therefore read-only and leaves save version 10 u
 
 The desktop host opens a user-selected PNG or JPEG only after an explicit Creature Studio action.
 Decoding is capped at 16 MB, 4096 pixels per dimension, and 16 million pixels. The image is reduced
-to a 64×64 analysis surface and summarized as color, aspect, occupancy, symmetry, and upper, lower,
-and side extension cues. Exactly 512 seeds from a named search stream are rendered through the
-ordinary procedural creature renderer and scored against that summary. The chosen preview contains
-only a normal generated creature, its source seed, and a display-only score; image bytes, path,
-metadata, analysis pixels, and feature vectors leave scope after matching.
+to a maximum 64×64 analysis surface without distorting aspect ratio. Alpha-aware foreground cues
+summarize aspect, occupancy, symmetry, and upper/lower/side extensions. A fixed 512-bin color
+histogram chooses dominant coat and contrasting accent colors. Exactly 512 named-stream candidate
+recipes are adapted to these cues, rendered, and scored. The chosen preview contains its generated
+creature, seed, 16-byte recipe, and display-only affinity score; image bytes, path, metadata,
+analysis pixels, and feature vectors leave scope after matching. This is not semantic recognition.
+
+Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
+generation uses an independent `modular-design-v1` stream, leaving legacy gene streams intact.
+Four body plans and six ear styles compose independently with bounded tails, proportions, muzzle
+patches, markings, and two RGB colors. The renderer reserves a large face with round eyes and a
+mouth, draws connected rounded bodies and paired limbs, and keeps appendages in the existing
+48×48 frame. Mini bodies scale down while retaining readable large faces. Colors are softened
+once during atlas construction, with a fixed dark outline and eye color. Recipes without image
+guidance use the same grammar; minis inherit body plans and gently varied parental colors.
+Absent recipes preserve legacy rendering and version 1 seed codes. Preview acceptance carries
+the exact recipe into add/replace; cards and overlays share the same palette resolver.
 
 Save version 11 gives every creature a typed adult or mini role, a persistent Keep flag, and a
 two-bit adult mini-arrival projection. Total colony size remains four, adult count is capped at
@@ -307,7 +325,7 @@ remain minis.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 11 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+Version 12 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
 canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
@@ -315,6 +333,8 @@ receiving only its first deterministic ritual timestamp; v8 receives only its fi
 colony-object timestamp, and v9 receives only its first deterministic shelter-decoration timestamp.
 v1–v10 creatures receive adult/mini role metadata, Keep protection, and disabled legacy mini
 schedules without replacement. Migration preserves creature IDs, resolved genomes, personality,
+and absent modular recipes; v11 colonies retain their legacy appearances. Loose object positions
+are reconciled to the house yard on the next tick. Migration also preserves
 custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
 tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
 

@@ -1,4 +1,6 @@
-use crate::{Canvas, PALETTES, Palette, Rgba};
+#[cfg(test)]
+use crate::PALETTES;
+use crate::{Canvas, Palette, Rgba};
 use formiga_core::{
     ActionKind, AppearanceGenome, BodyFamily, BrowStyle, CheekStyle, Creature, CursorSnapshot,
     EffectMotif, EyeShape, ForelimbStyle, HeadAppendageStyle, HighlightStyle, LimbTipStyle,
@@ -6,6 +8,7 @@ use formiga_core::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
+mod modular;
 
 pub const FRAME_SIZE: u32 = 48;
 pub const FACE_FRAME_SIZE: u32 = 16;
@@ -247,16 +250,30 @@ impl CreatureRenderer {
     ) -> RenderedBodyFrame {
         let frame = if reduce_motion { 0 } else { frame };
         let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
+        let palette = crate::palette_for(genome);
         let body_action = AnimationSpec::body_action(action);
         let pose = Pose::new(genome, body_action, frame, reduce_motion);
-        let mut face_anchor = match genome.family {
-            BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, body_action, frame),
-            BodyFamily::Hopper => {
-                draw_hopper(&mut canvas, genome, palette, pose, body_action, frame)
-            }
-            BodyFamily::SoftQuadruped => {
-                draw_quadruped(&mut canvas, genome, palette, pose, body_action, frame)
+        let mut face_anchor = if let Some(design) = genome.design {
+            modular::draw(
+                &mut canvas,
+                design,
+                palette,
+                pose,
+                scale(genome),
+                body_action,
+                frame,
+            )
+        } else {
+            match genome.family {
+                BodyFamily::Blob => {
+                    draw_blob(&mut canvas, genome, palette, pose, body_action, frame)
+                }
+                BodyFamily::Hopper => {
+                    draw_hopper(&mut canvas, genome, palette, pose, body_action, frame)
+                }
+                BodyFamily::SoftQuadruped => {
+                    draw_quadruped(&mut canvas, genome, palette, pose, body_action, frame)
+                }
             }
         };
         draw_activity_prop(
@@ -290,14 +307,14 @@ impl CreatureRenderer {
 
     pub fn render_face_frame(genome: &AppearanceGenome, state: FaceRenderState) -> Canvas {
         let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
-        let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
+        let palette = crate::palette_for(genome);
         draw_face(&mut canvas, genome, palette, 8, 7, state);
         canvas
     }
 
     pub fn render_trinket(genome: &AppearanceGenome, variant: u8) -> Canvas {
         let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
-        let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
+        let palette = crate::palette_for(genome);
         draw_generated_trinket(&mut canvas, palette, variant % 8, genome.marking_seed);
         canvas
     }
@@ -810,7 +827,13 @@ fn draw_face(
     center_y: i32,
     state: FaceRenderState,
 ) {
-    let face = genome.face;
+    let mut face = genome.face;
+    if genome.design.is_some() {
+        face.eye_size = 2;
+        face.eye_spacing = 6;
+        face.vertical_offset = -1;
+        face.eye_shape = EyeShape::Round;
+    }
     let spacing = (face.eye_spacing as i32 / 2).clamp(2, 3);
     let y = center_y + face.vertical_offset as i32;
     let eye_radius = face.eye_size as i32;
@@ -2396,6 +2419,7 @@ mod tests {
 
     fn genome(family: BodyFamily) -> AppearanceGenome {
         AppearanceGenome {
+            design: None,
             family,
             logical_size: 38,
             body_width: 22,
@@ -2596,7 +2620,7 @@ mod tests {
             BodyFamily::SoftQuadruped,
         ] {
             let genome = genome(family);
-            let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
+            let palette = crate::palette_for(&genome);
             let mut hashes = BTreeSet::new();
             for expression in ExpressionKind::ALL {
                 let face = CreatureRenderer::render_face_frame(
@@ -2844,7 +2868,7 @@ mod tests {
                     "seed {index}, {action:?}: {bounds:?}"
                 );
             }
-            let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
+            let palette = crate::palette_for(genome);
             for expression in ExpressionKind::ALL {
                 let face = CreatureRenderer::render_face_frame(
                     genome,

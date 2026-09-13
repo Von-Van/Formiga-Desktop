@@ -163,7 +163,7 @@ impl ShelterRenderer {
                 palette.coat,
                 accent.accent,
                 accent.highlight,
-                genome.detail_seed,
+                genome,
             );
         }
         canvas
@@ -177,40 +177,46 @@ fn draw_decoration(
     coat: Rgba,
     accent: Rgba,
     highlight: Rgba,
-    detail_seed: u64,
+    genome: &ShelterGenome,
 ) {
-    let jitter = ((detail_seed >> (kind.index() * 7)) & 0x3) as i32 - 1;
+    let jitter = ((genome.detail_seed >> (kind.index() * 7)) & 0x3) as i32 - 1;
+    let width = i32::from(genome.width).clamp(34, 42);
+    let height = i32::from(genome.height).clamp(27, 36);
+    let left = 32 - width / 2;
+    let top = 61 - height;
     match kind {
         ShelterDecorationKind::Leaf => {
-            let x = 18 + jitter;
-            canvas.line(x, 31, x + 2, 21, 1, outline);
-            canvas.fill_ellipse(x - 1, 23, 4, 2, coat);
-            canvas.fill_ellipse(x + 3, 27, 4, 2, highlight);
-            canvas.line(x, 24, x + 4, 27, 1, accent);
+            let x = left + 9 + jitter;
+            let y = top + height / 2;
+            canvas.line(x, y + 9, x + 2, y, 1, outline);
+            canvas.fill_ellipse(x - 1, y + 2, 3, 2, coat);
+            canvas.fill_ellipse(x + 3, y + 6, 3, 2, highlight);
+            canvas.line(x, y + 3, x + 4, y + 6, 1, accent);
         }
         ShelterDecorationKind::Banner => {
-            canvas.line(15, 18, 49, 18, 1, outline);
-            for (index, x) in [18, 26, 34, 42].into_iter().enumerate() {
+            let y = top + height / 2;
+            canvas.line(23, y, 41, y, 1, outline);
+            for (index, x) in [24, 30, 36].into_iter().enumerate() {
                 fill_triangle(
                     canvas,
                     x + 2,
-                    19,
+                    y + 1,
                     x,
-                    24,
+                    y + 4,
                     x + 5,
-                    24,
+                    y + 4,
                     if index % 2 == 0 { accent } else { highlight },
                 );
             }
         }
         ShelterDecorationKind::Stone => {
-            let x = 12 + jitter;
-            canvas.fill_ellipse(x, 57, 6, 4, outline);
-            canvas.fill_ellipse(x, 56, 4, 2, coat);
+            let x = left + 5 + jitter;
+            canvas.fill_ellipse(x, 57, 4, 3, outline);
+            canvas.fill_ellipse(x, 56, 3, 2, coat);
             canvas.set(x + 2, 55, highlight);
         }
         ShelterDecorationKind::Flower => {
-            let x = 15 + jitter;
+            let x = left + width - 9 + jitter;
             canvas.line(x, 59, x, 49, 1, coat);
             canvas.fill_ellipse(x - 2, 50, 3, 2, accent);
             canvas.fill_ellipse(x + 2, 50, 3, 2, accent);
@@ -218,20 +224,22 @@ fn draw_decoration(
             canvas.set(x, 50, outline);
         }
         ShelterDecorationKind::Lamp => {
-            let x = 50 + jitter;
-            canvas.line(x, 59, x, 44, 1, outline);
-            canvas.fill_rect(x - 4, 43, 9, 2, outline);
-            canvas.fill_ellipse(x, 40, 5, 5, outline);
-            canvas.fill_ellipse(x, 40, 3, 3, highlight);
-            canvas.set(x, 40, accent);
+            let x = left + width - 3;
+            let y = top + height / 2 + 3;
+            canvas.line(x - 6, y + 5, x, y + 5, 1, outline);
+            canvas.line(x, y + 5, x, y + 3, 1, outline);
+            canvas.fill_ellipse(x, y, 3, 4, outline);
+            canvas.fill_ellipse(x, y, 2, 3, highlight);
+            canvas.set(x, y, accent);
         }
         ShelterDecorationKind::RoofOrnament => {
             let x = 32 + jitter;
-            canvas.line(x, 27, x, 12, 1, outline);
-            canvas.line(x - 4, 15, x + 4, 15, 1, accent);
-            canvas.line(x, 11, x, 19, 1, accent);
-            canvas.line(x - 3, 12, x + 3, 18, 1, highlight);
-            canvas.line(x - 3, 18, x + 3, 12, 1, highlight);
+            let y = top - 5;
+            canvas.line(x, top + 2, x, y, 1, outline);
+            canvas.line(x - 3, y, x + 3, y, 1, accent);
+            canvas.line(x, y - 3, x, y + 3, 1, accent);
+            canvas.line(x - 2, y - 2, x + 2, y + 2, 1, highlight);
+            canvas.line(x - 2, y + 2, x + 2, y - 2, 1, highlight);
         }
     }
 }
