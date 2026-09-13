@@ -51,6 +51,6 @@ a safe habitat point. CI denies Clippy warnings and exercises both platform buil
 
 ## Result
 
-The portfolio project demonstrates procedural pixel art, deterministic simulation, native macOS and
+The project demonstrates procedural pixel art, deterministic simulation, native macOS and
 Win32 interop, GPU composition, unusual input routing, privacy-oriented product decisions, save
 migration, testing tools, and distributable desktop packaging in one compact Rust workspace.

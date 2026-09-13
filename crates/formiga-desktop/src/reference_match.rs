@@ -86,6 +86,9 @@ fn match_reference_image(
                 BodyPlan::Upright
             } else if target.side_extensions > 0.18 {
                 BodyPlan::Winged
+            } else if target.upper_extensions < 0.05 && target.side_extensions < 0.08 {
+                // Smooth, compact subjects with no read appendages become blobs.
+                BodyPlan::Blob
             } else {
                 BodyPlan::Round
             };

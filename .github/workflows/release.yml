@@ -1,4 +1,4 @@
-name: portfolio-preview-release
+name: release
 
 on:
   push:
@@ -65,6 +65,6 @@ jobs:
           prerelease: true
           generate_release_notes: true
           body: |
-            Unsigned portfolio preview. Review README.md and docs/BUILD.md for Gatekeeper and
+            Unsigned preview build. Review README.md and docs/BUILD.md for Gatekeeper and
             SmartScreen guidance. SHA-256 checksum files are included for every download.
           files: release/*

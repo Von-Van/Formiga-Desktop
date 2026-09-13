@@ -1,6 +1,6 @@
 # Contributing and making your own version
 
-Formiga is a personal portfolio project rather than an openly contributed community project. I am
+Formiga is a personal project rather than an openly contributed community project. I am
 not currently accepting pull requests, feature submissions, or requests to maintain changes in this
 repository. Unsolicited contributions may be closed without review.
 

@@ -13,7 +13,8 @@ pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use design::{BodyPlan, CreatureDesign, EarStyle, apply_creature_design};
 pub use habitat::{
-    MAX_HABITAT_ZONES, accessible_regions, habitat_contains, home_anchor, home_object_position,
+    DWELLING_CELL, DwellingKind, MAX_HABITAT_ZONES, VillageLot, accessible_regions,
+    colony_cottages, habitat_contains, home_anchor, home_dwelling_position, home_object_position,
     nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, validate_habitat,
 };
 pub use model::*;

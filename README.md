@@ -1,224 +1,140 @@
-# Formiga · v0.55.0
+# Formiga · v0.55.5
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
 ![A small Formiga colony living among desktop windows](docs/assets/hero.png)
 
-Formiga is a privacy-first desktop ecosystem for macOS and Windows. Seeded procedural creatures live
-in transparent desktop overlays, develop simple habits, perch on ordinary windows, react to the
-cursor, and eventually grow into a four-creature colony. The colony and its behavior stay local;
-the only optional network feature is a lightweight GitHub release check.
+Formiga is a privacy-first desktop companion for macOS and Windows. Seeded procedural creatures
+live in transparent overlays on your desktop, develop small habits, perch on ordinary windows,
+react to your cursor, and eventually grow into a four-creature colony with a home of its own.
 
-## New in 0.55.0
-
-House additions now form a compact home area: attached decorations hug the shelter, and up to eight
-loose objects occupy tiny keepsake cubbies in a two-row yard immediately beside it. The yard follows the house's
-corner, display, and scale, disappears with the house, and never spills into restricted areas.
-
-![Compact keepsake nooks beside four house styles, at both corners](docs/assets/home-yard-sheet.png)
-
-New creatures use a modular pixel-art recipe rather than only the original three body families.
-Rounded, upright, four-pawed, and winged body plans combine with independent ears, tails, safe
-proportions, markings, and colors. Every recipe keeps a rounded, connected creature, paired limbs,
-big expressive eyes, and a mouth. Existing creatures retain their original appearance.
-
-![Four body plans combined with six ear styles, with varied colors and markings](docs/assets/generation-sheet.png)
-
-In **Settings → Colony → Creature studio**, choose **Create from PNG or JPEG…** for a cute
-reinterpretation of a reference image. Dominant colors, contrasting accents, proportions, and
-appendage cues influence the result; it is not object recognition or a literal recreation. Clear
-subjects against plain or transparent backgrounds work best. Try another preview for a different
-interpretation, then add it or replace an unkept creature.
-
-This stays lightweight: no AI model, cloud service, new dependency, or background image processing.
-Only a compact design recipe survives generation; sprite dimensions, animation atlas budgets, and
-the four-creature colony limit are unchanged. Legacy seed codes still work; codes for modular
-creatures include their recipe and require v0.55.0 or newer. Saves migrate to version 12.
-
-For contributors, the [generation framework guide](docs/GENERATION.md) explains the bounded parts,
-image cues, compatibility rules, and visual checks.
-
-Creatures now remember treatment and repeated experiences as compact counters and preferences rather
-than an activity log. A click pets a creature; tosses, pets, sleep, ledges, window rides, discoveries,
-play, home visits, and repeated placement gradually influence bounded behavior scores while the
-original generated personality remains recognizable. The read-only Colony profile surfaces those
-memories and learned descriptors, with the creature's name as its only editable field.
-
-Colony members also form compact, persistent bonds. Familiarity, affinity, playfulness, and
-avoidance influence who a creature follows, greets, sleeps beside, plays with, watches, or comforts,
-while calm time together can soften avoidance. These four-score pair records guide existing actions;
-they do not add a relationship simulation loop or behavioral history.
-
-Every 12–48 hours, a colony may also share a rare deterministic ritual: a picnic, group nap, floor
-race, shelter gathering, catch game, presentation, hatch day, quiet huddle, or late-night sleep
-pile. Rituals coordinate existing actions during ordinary behavior-selection passes and never
-replay a backlog after downtime.
-
-Creatures also interpret the desktop as a small geometry-only landscape. A bounded runtime model
-recognizes isolated window islands, exposed corners, calm moving platforms, and invitations made by
-holding the cursor near a ledge. It uses rectangles and motion only—never window contents—and
-reuses the existing perch, inspection, gaze, and riding behavior.
-
-Overlapping window tiers can form short constructions of up to four hops or climbs. When two
-windows leave a 10–28-point gap with enough shared height, a creature may briefly squeeze through
-using its existing walk animation. Any supporting-window change cancels the route immediately.
-
-Over several days, colonies also leave a bounded collection of static pillows, toys, plants,
-blankets, paper scraps, pebbles, lamps, and cups beside the house. These small deterministic objects make the home
-feel inhabited and gently influence existing behavior without physics, dragging, or an object loop.
-
-The colony home grows too. Every few days its single cached shelter texture can gain a leaf, banner,
-stone, flower, lamp, or roof ornament selected from the colony's compact habits, bonds, rituals, and
-objects. The decorations are deterministic, bounded to six, and never become separate runtime
-objects or editor controls.
-
-Any creature can also be copied as a checksummed `FORMIGA-…` seed code. Importing one recreates its
-innate appearance and personality entirely offline, starts it with a fresh life and history, and
-derives a new lineage for future companions. Names, memories, relationships, and desktop data are
-never embedded in the code.
-
-Each Colony profile can also export a deterministic 960×600 illustrated creature card. The card
-uses the creature's actual procedural sprite and palette, frames it as a cozy pixel-art keepsake,
-and includes its family, top learned descriptors, UTC arrival month, and only an abbreviated seed
-glimpse. Export happens entirely on demand and writes no hidden profile or device metadata.
-
-The Creature Studio can preview a fresh full-size creature or reinterpret a character from a local
-PNG or JPEG using Formiga's bounded modular recipe. Reference matching is bounded,
-offline, and temporary: source pixels, paths, metadata, and extracted features are discarded after
-the preview. Keep toggles protect colony members during bulk regeneration, while explicit controls
-can add, replace, or remove individual creatures. A colony retains at most four members and three
-full-size adults; minis are distributed as evenly as possible among adults, with the oldest adult
-receiving the tie-break.
-
-![An exportable Formiga creature card for Mallow](docs/assets/creature-card.png)
-
-Between those larger reactions, creatures entertain themselves with generated toys, pause for small
-snacks and drinks, climb up window sides, dangle from ledges, inspect a few geometry-only screen
-landmarks, and occasionally hold up a generated trinket. A quick drag can also toss a creature out
-of the way; a slow release keeps the existing precise placement behavior.
-
-Legacy blobs, rabbit-like hoppers, and cat-like soft quadrupeds remain supported without being
-regenerated. New companions and image-inspired previews use the modular construction system.
+Everything happens locally. The only optional network feature is a daily check for new releases,
+and it can be turned off.
 
 ## Download and run
 
-Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and choose the file
-for your computer—no terminal or development tools are required:
+Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and pick the file for
+your computer. No terminal or development tools are required.
 
-- **macOS 14+:** download the release's `Formiga-VERSION-macOS-universal.dmg`, open it, and drag Formiga to
-  Applications.
-- **Windows 10/11:** download the release's `Formiga-VERSION-windows-x64.msi` and follow the installer. It adds
-  normal Desktop and Start-menu shortcuts.
+- **macOS 14+** — download the `.dmg`, open it, and drag Formiga to Applications.
+- **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
+  shortcuts.
 
-Every release names its downloads after its own version, so a later release publishes the same two
-names with its version (for example, `0.55.0`) in place of `VERSION`. The assisted updater matches those exact names, so do
-not rename a downloaded installer if you intend to verify it against its `.sha256` companion.
+Downloads are named after their release, for example `Formiga-0.55.5-macOS-universal.dmg`. Each one
+ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
-Settings opens automatically on first launch. After that, the Formiga menu-bar/tray icon provides
-Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit. Formiga can check the
-public GitHub Releases page once per day, and the option can be disabled under **Settings → About**.
-It never silently installs an update: Windows opens a verified MSI, while macOS opens a verified DMG
-so the user can replace the app. The current portfolio downloads are unsigned, so macOS may require
-Control-click → **Open**, while Windows may require **More info → Run anyway**. Those warnings
-disappear once release signing credentials are added; Formiga never asks users to disable
-operating-system security.
+These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
+Control-click the app and choose **Open**; on Windows, choose **More info → Run anyway**. Formiga
+will never ask you to turn off any operating-system security feature.
+
+Settings open automatically the first time you launch. After that, the menu-bar or tray icon offers
+Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
 
-The v0.31 background-efficiency release keeps the expressive emotional and physical performance while
-reducing idle desktop work. Full-screen applications cover Formiga by default, active movement is
-presented only as quickly as the simulation can produce distinct positions, and resting or hidden
-monitor overlays stop redrawing when nothing has changed.
+## New in 0.55.5
 
-The expressive-art system adds a readable emotional and physical performance to the existing
-desktop interactions:
+The blob returns as a body plan of its own. Alongside the round, upright, four-pawed, and winged
+plans, a blob is a single soft mass that carries its face directly, with stubby feet and no separate
+head. It mixes with the same ears, tails, markings, and colors as every other plan.
 
-- Read state and activity through eleven expressions, two-dimensional gaze, eyelids, and irregular blinks.
-- See family-specific pseudopods, mitten hands, or front paws gesture in every activity.
-- Notice tiny pre-baked sleep, investigation, play, greeting, and startle effects without a particle loop.
-- Watch generated balls, yarn, leaves, snacks, cups, and bowls coordinate with each family's hands
-  or front paws during passive activities.
-- Catch low-frequency inspections, ledge dangling, and eight seed-and-palette-derived discovery
-  trinkets without screen capture, inventory, or runtime art generation.
-- See energetic personalities break into short, higher-cost sprints without adding another runtime loop.
-- Drag a creature by its opaque pixels without blocking unrelated desktop clicks.
-- Click without crossing the six-point drag threshold to pet a creature and see its greeting
-  response; maximum excursion prevents a drag-out-and-back gesture from being mistaken for a pet.
-- Release a fast drag to toss a creature with a single soft bounce, or release slowly for precise
-  placement; reduced-motion and paused modes always use the precise path.
-- Limit the colony to presets or up to 32 allowed/excluded rectangles across displays.
-- Let selected applications visually cover creatures without inspecting window content.
-- Watch creatures approach and climb up to higher ledges, hop down to lower ones, patrol window
-  tops, and startle when nearby windows move.
-- Watch creatures transfer between stacked windows instead of remaining on the desktop floor.
-- Discover a deterministic corner home with one of four generated shelter families; a home visit
-  lasts 15 minutes and cannot return until its 15-minute cooldown has elapsed.
-- Pet a homebound creature without dismissing the shelter, or cross the drag threshold to dismiss
-  it and bring the creature back into the desktop world.
-- Notice a wordless thought bubble when a new trait emerges, then review names, up to three learned
-  descriptors, age, discoveries, favorite places, and closest
-  companions in the Colony tab; compact bond warmth and playfulness are also visible, and only the
-  1–24-character creature name is editable.
-- See bonded creatures follow, greet, sleep together, share or steal temporary discoveries and
-  toys, watch climbs, react to a companion's toss, and occasionally have a harmless squabble.
-- Occasionally see the colony coordinate a picnic, nap, race, catch game, shelter gathering,
-  presentation, hatch day, quiet huddle, or late-night sleep pile without a new simulation loop.
-- See trusting creatures investigate calm cursor invitations near ledges, peek toward exposed
-  corners, prefer isolated window islands, and learn confidence from riding moving windows.
-- Watch creatures traverse short stacks of overlapping windows and squeeze through safe narrow
-  gaps, with routes disappearing immediately if the desktop construction changes.
-- Let the colony accumulate at most eight deterministic pillows, toys, plants, blankets, scraps,
-  pebbles, lamps, and cups that remain static and habitat-safe.
-- See the shelter gain at most six deterministic leaves, banners, stones, flowers, lamps, and roof
-  ornaments reflecting the colony's compact history without adding another draw call.
-- Copy a creature's checksummed offline seed from its profile or start a fresh colony from a shared
-  code after explicit confirmation.
-- Configure visibility, motion, ledges, cursor behavior, habitat, and applications in a native UI.
-- Check for new GitHub releases without blocking the desktop, verify downloads with SHA-256, and
-  hand the approved installer to the operating system.
-- Load v0.1 colonies through an identity-preserving save migration.
+![Five body plans combined with six ear styles, with varied colors and markings](docs/assets/generation-sheet.png)
 
-## What's cool about it?
+The colony corner is now a small village. The colony house keeps its own spot, and every companion
+after the first gets a house of its own beside it — a full-size cottage for an adult, a matching
+half-size one for a mini, all in the house's own style and palette. Loose objects have left their
+cubbies and rest directly on the same ground line, tucked between the houses.
 
-Formiga does not choose from premade pets. A 256-bit seed resolves a constrained genome, family rig,
-palette, markings, face grammar, forelimbs, personality, and independent RNG streams. Normalized
-authored poses are evaluated against generated anatomy and rasterized to deterministic 48×48 body
-atlases. A compact layered face atlas supplies expressions, nine gaze directions, and three eyelid
-states without duplicating the full body texture.
+![A colony house with companion cottages and objects, in four styles at both corners](docs/assets/home-yard-sheet.png)
 
-The desktop host uses one click-through GPU overlay per monitor. Tiny native proxy windows expose
-only a creature's current alpha mask for dragging. Application hiding is a local GPU occlusion mask
-computed from safe window rectangles and stable application identities—not screen capture or true
-per-app OS z-order manipulation.
+Decorations the home earns over time now attach to the shelter they belong to: banners hang from the
+actual roofline, lamps mount on the wall, ornaments sit on the real peak, and stones and flowers rest
+on the ground. Only the ground pieces still drift, and only by a pixel.
 
-Passive-activity props are derived from the creature's stored markings and face signature. Toys and
-snacks are rasterized into the body atlas; eight temporary discovery trinkets occupy one appended row
-in the layered texture. Everything is baked when the creature loads, so ordinary desktop use does not
-load external assets, run particles, or generate art.
+![Four shelter styles, plain and carrying every decoration](docs/assets/shelter-sheet.png)
 
-The assisted updater is independent of the simulation and renderer. It makes no more than one
-automatic metadata request per 24 hours, does all network and hashing work on a background thread,
-accepts only the exact platform package name, and refuses to offer an installer until its SHA-256
-digest matches the release metadata or companion checksum file.
+Toys, snacks, cups, and found trinkets are colored against the creature holding them instead of from
+its coat, so a belonging reads as a separate thing rather than another marking.
+
+## What creatures do
+
+Formiga does not choose from premade pets. A 256-bit seed resolves a body plan, ears, tail,
+proportions, markings, palette, face grammar, personality, and independent random streams, all
+rasterized into deterministic 48×48 sprite atlases when the creature loads.
 
 ![One hundred uncurated deterministic creature seeds](docs/assets/contact-sheet.png)
 
-![Expression grammar across blob, hopper, and soft-quadruped families](docs/assets/expression-sheet.png)
+- Read a creature's state through eleven expressions, two-dimensional gaze, eyelids, and irregular
+  blinks.
+- Watch creatures approach and climb to higher ledges, hop down to lower ones, patrol window tops,
+  ride moving windows, and startle when something shifts nearby.
+- See them traverse short stacks of overlapping windows and squeeze through safe narrow gaps, with
+  routes disappearing the moment the desktop changes.
+- Catch quiet moments: snacks, drinks, generated toys, ledge dangling, inspections, and eight
+  discovery trinkets held up for a look.
+- Click a creature to pet it. Drag it to move it — a quick release tosses it with a soft bounce, a
+  slow one places it precisely.
+- Let bonded creatures follow, greet, sleep together, share or steal a toy, watch each other climb,
+  react to a toss, and occasionally squabble.
+- Every so often the colony coordinates a picnic, nap, race, catch game, shelter gathering,
+  presentation, hatch day, quiet huddle, or late-night sleep pile.
 
 ![Activity-coordinated gestures across every action](docs/assets/gesture-sheet.png)
 
-![Generated toys, snacks, drinkware, and sprint poses](docs/assets/activity-sheet.png)
+Creatures remember how they are treated. Pets, tosses, sleep, ledges, window rides, discoveries,
+play, home visits, and repeated placement gradually shape bounded behavior scores while the
+personality they were generated with stays recognizable. The Colony tab shows those memories, up to
+three learned descriptors, age, favorite places, and closest companions; the name is the only thing
+you can edit.
 
 ![Climbing, dangling, inspection, presentation poses, and all eight discovery trinkets](docs/assets/ambient-sheet.png)
 
-![Deterministic leaf-tent, mushroom, cushion, and paper-house shelters](docs/assets/shelter-sheet.png)
+## Making creatures your own
+
+In **Settings → Colony → Creature studio** you can preview a fresh creature, or choose
+**Create from PNG or JPEG…** for a cute reinterpretation of a picture you have. Dominant colors,
+contrasting accents, proportions, and appendage cues steer the result. It is an interpretation, not
+object recognition — clear subjects on plain or transparent backgrounds work best. Try another
+preview for a different take, then add it or replace a creature you have not kept.
+
+There is no AI model, cloud service, or background image processing behind this. The picture is read
+once, in memory, to pick parts from Formiga's own bounded set; the pixels, path, and everything
+measured from them are discarded as soon as the preview is drawn.
+
+Any creature can be copied as a checksummed `FORMIGA-…` seed code. Importing one recreates its
+appearance and personality entirely offline and starts it with a fresh life and history. Names,
+memories, relationships, and anything about your desktop are never part of the code.
+
+Each Colony profile can also export a 960×600 illustrated creature card using the creature's real
+sprite and palette, with its family, learned descriptors, arrival month, and only a short glimpse of
+its seed.
+
+![An exportable Formiga creature card for Mallow](docs/assets/creature-card.png)
+
+## Settings you may want
+
+- Limit where creatures go with presets, or up to 32 allowed and excluded rectangles across displays.
+- Let chosen applications visually cover creatures, without Formiga ever inspecting window contents.
+- Reduce motion, pause the colony, or hide it entirely.
+- Turn the daily release check off under **Settings → About**.
+
+Formiga never installs an update on its own. When one is available it verifies the download's
+SHA-256 and hands the installer to your operating system to run.
+
+## Privacy
+
+The colony, its behavior, and its history stay on your computer. Formiga uses window rectangles and
+motion only — never window contents, never screen capture. The optional release check makes at most
+one request per day and sends nothing about you or your colony.
+
+See the [privacy model](docs/PRIVACY.md) for specifics.
 
 ## Workspace
 
 - `formiga-core` — deterministic simulation, behavior, habitats, colony timing, save migration.
 - `formiga-art` — genomes, procedural rasterization, rigs, poses, and animation atlases.
 - `formiga-desktop` — overlays, interaction proxies, settings, tray, GPU rendering, OS adapters.
-- `formiga-tools` — contact sheets, ambient-art review, animation diagnostics, demo assets, accelerated-time simulation.
+- `formiga-tools` — review sheets, animation diagnostics, demo assets, accelerated-time simulation.
 
 ## Development
 
@@ -231,28 +147,27 @@ cargo test --workspace
 cargo run -p formiga-desktop
 ```
 
-Regenerate the portfolio assets with:
+Regenerate the documentation images with:
 
 ```sh
-cargo run -p formiga-tools -- portfolio-hero
-cargo run -p formiga-tools -- portfolio-demo
+cargo run -p formiga-tools -- hero-image
+cargo run -p formiga-tools -- demo-animation
 cargo run -p formiga-tools -- contact-sheet --output docs/assets/contact-sheet.png
+cargo run -p formiga-tools -- generation-sheet --output docs/assets/generation-sheet.png
 cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/animation-preview.png
 cargo run -p formiga-tools -- expression-sheet --output docs/assets/expression-sheet.png
 cargo run -p formiga-tools -- gesture-sheet --output docs/assets/gesture-sheet.png
 cargo run -p formiga-tools -- activity-sheet --output docs/assets/activity-sheet.png
 cargo run -p formiga-tools -- ambient-sheet --output docs/assets/ambient-sheet.png
-cargo run -p formiga-tools -- app-icon --output packaging/shared
 cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
+cargo run -p formiga-tools -- home-yard-sheet --output docs/assets/home-yard-sheet.png
 cargo run -p formiga-tools -- creature-card --output docs/assets/creature-card.png
+cargo run -p formiga-tools -- app-icon --output packaging/shared
 ```
 
-## Status
+macOS 14+ and Windows 10/11 x64 are the supported targets, and CI builds both. Releases are
+unsigned previews until Developer ID and Authenticode credentials are in place.
 
-Formiga v0.47 is a portfolio preview, not a signed consumer release. macOS 14+ and Windows 10/11 x64
-are the supported targets. CI builds both; downloadable previews are intentionally unsigned until
-Developer ID and Authenticode credentials are available.
-
-See the [case study](docs/CASE_STUDY.md), [architecture](docs/ARCHITECTURE.md),
-[build guide](docs/BUILD.md), [privacy model](docs/PRIVACY.md), and
-[test matrix](docs/TEST_MATRIX.md).
+Further reading: [creature generation](docs/GENERATION.md), [case study](docs/CASE_STUDY.md),
+[architecture](docs/ARCHITECTURE.md), [build guide](docs/BUILD.md),
+[privacy model](docs/PRIVACY.md), and [test matrix](docs/TEST_MATRIX.md).

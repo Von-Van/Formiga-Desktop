@@ -1,6 +1,6 @@
 use crate::{
-    ColonyHome, ColonyObject, DesktopRect, HabitatPolicy, HabitatPreset, HabitatZoneKind,
-    HomeCorner, MonitorInfo, Point,
+    ColonyHome, ColonyObject, Creature, CreatureRole, DesktopRect, HabitatPolicy, HabitatPreset,
+    HabitatZoneKind, HomeCorner, MonitorInfo, Point,
 };
 
 pub const MAX_HABITAT_ZONES: usize = 32;
@@ -68,18 +68,94 @@ pub fn resolved_colony_object_position(
         .or_else(|| nearest_habitat_point(policy, monitors, intended))
 }
 
-/// A two-row, four-column yard immediately beside the shelter. Slots which cannot fit in
-/// the house's accessible region stay stored but hidden, rather than spilling elsewhere.
-pub fn home_object_position(
+/// What stands on a lot in the village strip beside the colony house.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DwellingKind {
+    /// The shared colony house, always the first lot.
+    Main,
+    /// A full-size companion house for another adult.
+    Cottage,
+    /// A matching half-size house for a mini.
+    MiniCottage,
+}
+
+impl DwellingKind {
+    /// Ground footprint in shelter pixels: the drawn house plus its shadow and any decoration
+    /// that reaches past the wall. Smaller than the 64px atlas cell it is sampled from, so
+    /// neighbours sit close without their artwork touching.
+    pub const fn width(self) -> f32 {
+        match self {
+            Self::Main => 60.0,
+            Self::Cottage => 34.0,
+            Self::MiniCottage => 22.0,
+        }
+    }
+}
+
+/// Every dwelling is drawn from one 64px atlas cell, whatever its footprint.
+pub const DWELLING_CELL: f32 = 64.0;
+
+/// A lot on the strip: either a dwelling, or one of the colony's loose objects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VillageLot {
+    Dwelling(usize),
+    Object(usize),
+}
+
+const VILLAGE_GAP: f32 = 5.0;
+const OBJECT_WIDTH: f32 = 16.0;
+
+/// One ground-line walk outward from the colony house. Houses and belongings are laid out
+/// together, so a keepsake can never land on a cottage and the corner reads as one small
+/// village rather than a grid of shelves. Lots which cannot fit the house's accessible
+/// region stay stored but hidden, rather than spilling elsewhere.
+fn village_walk(cottages: &[DwellingKind], objects: usize) -> Vec<(VillageLot, f32, f32)> {
+    // Belongings and cottages alternate near the house, then the remaining belongings
+    // trail off along the strip.
+    let mut order = Vec::with_capacity(1 + cottages.len() + objects);
+    let mut next_object = 0;
+    for index in 0..cottages.len() {
+        if next_object < objects {
+            order.push(VillageLot::Object(next_object));
+            next_object += 1;
+        }
+        order.push(VillageLot::Dwelling(index + 1));
+    }
+    while next_object < objects {
+        order.push(VillageLot::Object(next_object));
+        next_object += 1;
+    }
+
+    let mut lots = Vec::with_capacity(order.len() + 1);
+    lots.push((VillageLot::Dwelling(0), 0.0, 0.0));
+    let mut edge = DwellingKind::Main.width() / 2.0;
+    for lot in order {
+        let width = match lot {
+            VillageLot::Dwelling(index) => cottages[index - 1].width(),
+            VillageLot::Object(_) => OBJECT_WIDTH,
+        };
+        edge += VILLAGE_GAP;
+        lots.push((lot, edge + width / 2.0, 0.0));
+        edge += width;
+    }
+    lots
+}
+
+/// Deterministic per-colony drift, so two colonies do not lay their belongings out identically.
+fn object_drift(detail_seed: u64, slot: usize) -> (f32, f32) {
+    let bits = (detail_seed >> ((slot % 12) * 5)) & 0x1f;
+    ((bits & 0x3) as f32 - 1.5, ((bits >> 2) & 0x1) as f32)
+}
+
+fn village_position(
     home: &ColonyHome,
-    slot: usize,
+    lot: VillageLot,
+    cottages: &[DwellingKind],
+    objects: usize,
     monitors: &[MonitorInfo],
     policy: &HabitatPolicy,
     display_scale: u8,
 ) -> Option<(u64, Point)> {
-    if slot >= crate::MAX_COLONY_OBJECTS {
-        return None;
-    }
     let monitor = monitors
         .iter()
         .find(|m| Some(m.display_key) == home.display)
@@ -92,9 +168,24 @@ pub fn home_object_position(
     } else {
         -1.0
     };
+    let (_, center, _) = village_walk(cottages, objects)
+        .into_iter()
+        .find(|(candidate, _, _)| *candidate == lot)?;
+    let (half, drift_x, lift) = match lot {
+        VillageLot::Dwelling(0) => (DwellingKind::Main.width() / 2.0, 0.0, 0.0),
+        VillageLot::Dwelling(index) => (cottages[index - 1].width() / 2.0, 0.0, 0.0),
+        VillageLot::Object(slot) => {
+            let (drift_x, lift) = object_drift(home.shelter.detail_seed, slot);
+            (OBJECT_WIDTH / 2.0, drift_x, lift)
+        }
+    };
     let point = Point {
-        x: anchor.x + direction * (36.0 + (slot % 4) as f32 * 16.0) * scale,
-        y: anchor.y - (slot / 4) as f32 * 16.0 * scale,
+        x: anchor.x + direction * (center + drift_x) * scale,
+        y: anchor.y - lift * scale,
+    };
+    let height = match lot {
+        VillageLot::Object(_) => OBJECT_WIDTH,
+        _ => DWELLING_CELL,
     };
     accessible_regions(policy, monitor)
         .iter()
@@ -103,12 +194,76 @@ pub fn home_object_position(
                 && anchor.x <= r.right()
                 && anchor.y >= r.y
                 && anchor.y <= r.bottom()
-                && point.x - 8.0 * scale >= r.x
-                && point.x + 8.0 * scale <= r.right()
-                && point.y - 16.0 * scale >= r.y
+                && point.x - half * scale >= r.x
+                && point.x + half * scale <= r.right()
+                && point.y - height * scale >= r.y
                 && point.y <= r.bottom()
         })
         .then_some((monitor.id, point))
+}
+
+/// Companion houses for the colony, in stable colony order. The first member shares the
+/// colony house; every later arrival gets one of its own, and a mini gets a matching half-size
+/// one, so the corner grows into a small village as the colony does.
+pub fn colony_cottages(creatures: &[Creature]) -> Vec<DwellingKind> {
+    let mut members: Vec<_> = creatures.iter().collect();
+    members.sort_by_key(|creature| (creature.colony_order, creature.id));
+    members
+        .into_iter()
+        .skip(1)
+        .take(crate::MAX_COLONY_CREATURES - 1)
+        .map(|creature| match creature.role {
+            CreatureRole::Mini { .. } => DwellingKind::MiniCottage,
+            CreatureRole::Adult => DwellingKind::Cottage,
+        })
+        .collect()
+}
+
+/// Position of one companion house in the village. Slot 0 is the colony house itself.
+pub fn home_dwelling_position(
+    home: &ColonyHome,
+    slot: usize,
+    cottages: &[DwellingKind],
+    objects: usize,
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Option<(u64, Point)> {
+    if slot > cottages.len() {
+        return None;
+    }
+    village_position(
+        home,
+        VillageLot::Dwelling(slot),
+        cottages,
+        objects,
+        monitors,
+        policy,
+        display_scale,
+    )
+}
+
+/// Position of one loose colony object on the village ground line.
+pub fn home_object_position(
+    home: &ColonyHome,
+    slot: usize,
+    cottages: &[DwellingKind],
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Option<(u64, Point)> {
+    if slot >= crate::MAX_COLONY_OBJECTS {
+        return None;
+    }
+    village_position(
+        home,
+        VillageLot::Object(slot),
+        cottages,
+        crate::MAX_COLONY_OBJECTS,
+        monitors,
+        policy,
+        display_scale,
+    )
 }
 
 pub fn accessible_regions(policy: &HabitatPolicy, monitor: &MonitorInfo) -> Vec<DesktopRect> {

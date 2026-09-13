@@ -4,6 +4,7 @@ use formiga_art::{
     AnimationSpec, COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
     ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
     FramePlacement, MilestoneBubbleRenderer, PixelPoint, SHELTER_SIZE, ShelterRenderer,
+    VILLAGE_ATLAS_SIZE,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
@@ -32,7 +33,8 @@ struct ZoneVertex {
 }
 
 const MAX_OCCLUSION_RECTS: usize = 64;
-const INITIAL_VERTEX_CAPACITY: usize = 132;
+// Four creatures, a full village of four dwellings, one bubble, and eight objects.
+const INITIAL_VERTEX_CAPACITY: usize = 150;
 const SURFACE_RECOVERY_STALLS: u8 = 3;
 
 #[repr(C)]
@@ -80,6 +82,7 @@ struct ColonyObjectsGpu {
 #[derive(Clone, Debug, PartialEq)]
 struct ObjectVertexCacheKey {
     objects: Vec<ColonyObject>,
+    cottages: Vec<formiga_core::DwellingKind>,
     home: formiga_core::ColonyHome,
     habitat: HabitatPolicy,
     monitor_bounds: DesktopRect,
@@ -480,19 +483,22 @@ impl OverlayRenderer {
             self.ensure_colony_object_atlas(save.colony_seed);
             self.cached_colony_object_vertices(save).to_vec()
         };
+        let village_vertices = if shelter_visible {
+            self.village_vertices(save)
+        } else {
+            Vec::new()
+        };
         let mut vertices = Vec::with_capacity(
             object_vertices.len()
                 + visible.len() * 18
-                + usize::from(shelter_visible) * 6
+                + village_vertices.len()
                 + usize::from(bubble_creature.is_some()) * 6,
         );
         let mut creature_draws = Vec::with_capacity(visible.len());
         vertices.extend_from_slice(&object_vertices);
         let object_vertex_count = object_vertices.len();
-        if shelter_visible && let Some(shelter_vertices) = self.shelter_vertices(save) {
-            vertices.extend_from_slice(&shelter_vertices);
-        }
-        let shelter_vertex_count = if shelter_visible { 6 } else { 0 };
+        vertices.extend_from_slice(&village_vertices);
+        let shelter_vertex_count = village_vertices.len();
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state(
@@ -706,11 +712,13 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
+        let cottages = formiga_core::colony_cottages(&save.creatures);
         let object_visible = shelter_visible
             && save.objects.objects.iter().enumerate().any(|(slot, _)| {
                 formiga_core::home_object_position(
                     &save.home,
                     slot,
+                    &cottages,
                     std::slice::from_ref(&self.monitor),
                     &save.settings.habitat,
                     save.settings.display_scale,
@@ -960,12 +968,12 @@ impl OverlayRenderer {
             .copied()
             .take(formiga_core::MAX_SHELTER_DECORATIONS)
             .collect();
-        let pixels = ShelterRenderer::render_with_decorations(&genome, &decorations).rgba_bytes();
+        let pixels = ShelterRenderer::render_village(&genome, &decorations).rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("procedural colony shelter"),
+            label: Some("procedural colony village"),
             size: wgpu::Extent3d {
-                width: SHELTER_SIZE,
-                height: SHELTER_SIZE,
+                width: VILLAGE_ATLAS_SIZE,
+                height: VILLAGE_ATLAS_SIZE,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -985,18 +993,18 @@ impl OverlayRenderer {
             &pixels,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(SHELTER_SIZE * 4),
-                rows_per_image: Some(SHELTER_SIZE),
+                bytes_per_row: Some(VILLAGE_ATLAS_SIZE * 4),
+                rows_per_image: Some(VILLAGE_ATLAS_SIZE),
             },
             wgpu::Extent3d {
-                width: SHELTER_SIZE,
-                height: SHELTER_SIZE,
+                width: VILLAGE_ATLAS_SIZE,
+                height: VILLAGE_ATLAS_SIZE,
                 depth_or_array_layers: 1,
             },
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("procedural shelter bind group"),
+            label: Some("procedural village bind group"),
             layout: &self.bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -1082,8 +1090,10 @@ impl OverlayRenderer {
     }
 
     fn cached_colony_object_vertices(&mut self, save: &SaveFile) -> &[Vertex] {
+        let cottages = formiga_core::colony_cottages(&save.creatures);
         let key = ObjectVertexCacheKey {
             objects: save.objects.objects.clone(),
+            cottages: cottages.clone(),
             home: save.home.clone(),
             habitat: save.settings.habitat.clone(),
             monitor_bounds: self.monitor.bounds,
@@ -1105,6 +1115,7 @@ impl OverlayRenderer {
             let Some((monitor_id, point)) = formiga_core::home_object_position(
                 &save.home,
                 slot,
+                &cottages,
                 std::slice::from_ref(&self.monitor),
                 &save.settings.habitat,
                 save.settings.display_scale,
@@ -1225,33 +1236,76 @@ impl OverlayRenderer {
         });
     }
 
-    fn shelter_vertices(&self, save: &SaveFile) -> Option<[Vertex; 6]> {
-        let anchor = resolved_home_anchor(
-            &save.home,
-            &self.monitor,
-            save.settings.display_scale,
-            &save.settings.habitat,
-        )?;
-        let size = SHELTER_SIZE as f32 * f32::from(save.settings.display_scale);
+    /// Every dwelling in the village, sampled from its own cell of the shared atlas. The
+    /// colony house is always first; companion cottages follow along the same ground line.
+    fn village_vertices(&self, save: &SaveFile) -> Vec<Vertex> {
+        let cottages = formiga_core::colony_cottages(&save.creatures);
+        let objects = save
+            .objects
+            .objects
+            .len()
+            .min(formiga_core::MAX_COLONY_OBJECTS);
+        let mut vertices = Vec::with_capacity((cottages.len() + 1) * 6);
+        for slot in 0..=cottages.len() {
+            let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
+                &save.home,
+                slot,
+                &cottages,
+                objects,
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                save.settings.display_scale,
+            ) else {
+                continue;
+            };
+            if monitor_id != self.monitor.id {
+                continue;
+            }
+            let kind = if slot == 0 {
+                formiga_core::DwellingKind::Main
+            } else {
+                cottages[slot - 1]
+            };
+            vertices.extend_from_slice(&self.dwelling_vertices(
+                point,
+                kind,
+                save.settings.display_scale,
+            ));
+        }
+        vertices
+    }
+
+    fn dwelling_vertices(
+        &self,
+        anchor: formiga_core::Point,
+        kind: formiga_core::DwellingKind,
+        display_scale: u8,
+    ) -> [Vertex; 6] {
+        let size = SHELTER_SIZE as f32 * f32::from(display_scale);
         let local_x = (anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor;
         let local_y = (anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor;
         let left = (local_x - size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let right = (local_x + size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
         let top = 1.0 - (local_y - size) / self.config.height as f32 * 2.0;
         let bottom = 1.0 - local_y / self.config.height as f32 * 2.0;
+        let (u, v) = match kind {
+            formiga_core::DwellingKind::Main => (0.0, 0.0),
+            formiga_core::DwellingKind::Cottage => (0.5, 0.0),
+            formiga_core::DwellingKind::MiniCottage => (0.0, 0.5),
+        };
         let vertex = |position, uv| Vertex {
             position,
             uv,
             occlusion_enabled: 1.0,
         };
-        Some([
-            vertex([left, top], [0.0, 0.0]),
-            vertex([right, top], [1.0, 0.0]),
-            vertex([right, bottom], [1.0, 1.0]),
-            vertex([left, top], [0.0, 0.0]),
-            vertex([right, bottom], [1.0, 1.0]),
-            vertex([left, bottom], [0.0, 1.0]),
-        ])
+        [
+            vertex([left, top], [u, v]),
+            vertex([right, top], [u + 0.5, v]),
+            vertex([right, bottom], [u + 0.5, v + 0.5]),
+            vertex([left, top], [u, v]),
+            vertex([right, bottom], [u + 0.5, v + 0.5]),
+            vertex([left, bottom], [u, v + 0.5]),
+        ]
     }
 
     fn bubble_vertices(&self, creature: &Creature, display_scale: u8) -> Option<[Vertex; 6]> {
@@ -1815,7 +1869,7 @@ mod tests {
 
     #[test]
     fn multi_creature_presentation_capacity_and_stall_recovery_are_bounded() {
-        assert_eq!(INITIAL_VERTEX_CAPACITY, 4 * 18 + 6 + 6 + 8 * 6);
+        assert_eq!(INITIAL_VERTEX_CAPACITY, 4 * 18 + 4 * 6 + 6 + 8 * 6);
         assert_eq!(
             expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY),
             None

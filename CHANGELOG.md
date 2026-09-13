@@ -2,6 +2,47 @@
 
 All notable changes are documented here.
 
+## [0.55.5] - 2026-09-12
+
+### Added
+
+- The blob returns as a body plan of its own, alongside round, upright, four-pawed, and winged. It
+  is one soft mass that carries its face directly, with no separate head, a rounder minimum
+  footprint, and stubby feet, and it composes with the same ears, tails, markings, and colors as
+  every other plan. Compact, blobby reference images can reach it too.
+- Every colony member after the first gets a house of its own beside the colony house: a full-size
+  cottage for an adult and a matching half-size one for a mini, in the house's own style and
+  palette. The corner grows into a small village as the colony does.
+
+### Changed
+
+- Loose objects have left their keepsake cubbies. Houses and belongings are laid out by one walk
+  along a shared ground line, so a belonging rests on the ground between the houses and can never
+  land on one.
+- Shelter decorations attach to the silhouette they belong to. Banners hang from the actual
+  roofline, lamps mount on the wall, ornaments sit on the real peak, and stones and flowers rest on
+  the ground. Only the two ground pieces still drift, and only by a pixel.
+- Toys, snacks, drinkware, and found trinkets are coloured against the creature carrying them
+  rather than from its coat, so a belonging reads as a separate object instead of another marking.
+- The README covers what someone actually needs to know to use Formiga, and the project no longer
+  describes itself as a portfolio preview. The `portfolio-hero` and `portfolio-demo` tools are now
+  `hero-image` and `demo-animation`, and the release workflow is named `release`.
+- The shelter sheet shows each style plain and fully decorated; the home-yard sheet shows a full
+  village at both corners.
+
+### Compatibility
+
+- Existing creatures keep their stored design and appearance. The blob occupies the last body index,
+  so earlier recipes and version 2 codes decode exactly as before; a code carrying a blob needs
+  v0.55.5 or newer. Save version 12 is unchanged.
+
+### Performance
+
+- Dwellings share one 128×128 shelter atlas in place of the previous 64×64 texture, so a full
+  village is at most four quads against a single texture, sampler, and bind group. Belonging colors
+  are derived once per atlas build. Frame budgets, sprite dimensions, and the four-creature cap are
+  unchanged.
+
 ## [0.55.0] - 2026-09-12
 
 ### Added

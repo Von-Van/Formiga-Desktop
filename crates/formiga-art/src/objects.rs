@@ -13,14 +13,10 @@ impl ColonyObjectRenderer {
         let palette = PALETTES[colony_seed[16] as usize % PALETTES.len()];
         let secondary = PALETTES[colony_seed[17] as usize % PALETTES.len()];
         for kind in ColonyObjectKind::ALL {
-            // Tiny stackable keepsake cubbies visually ground both rows beside the home.
-            // Baked into the same tiles: no extra quad, texture, or runtime decoration.
+            // Objects rest directly on the village ground line. A soft contact shadow is the
+            // only thing under them, so a keepsake reads as set down rather than shelved.
             let x = i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32;
-            let wood = Rgba::new(121, 104, 91, 255);
-            let rim = Rgba::new(187, 164, 131, 255);
-            canvas.fill_rect(x, 0, 16, 16, wood);
-            canvas.fill_rect(x + 1, 1, 14, 13, Rgba::new(218, 205, 181, 255));
-            canvas.fill_rect(x + 1, 14, 14, 1, rim);
+            canvas.fill_ellipse(x + 8, 14, 6, 2, Rgba::new(20, 24, 26, 70));
             draw_object(
                 &mut canvas,
                 i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32,

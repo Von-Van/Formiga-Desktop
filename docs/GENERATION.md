@@ -1,4 +1,4 @@
-# Modular creature generation · v0.55.0
+# Modular creature generation · v0.55.5
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -7,10 +7,16 @@ backgrounds provide stronger cues. No semantic classifier or model weights are i
 
 ## Small construction recipes
 
-`formiga-core::CreatureDesign` stores 16 bytes of choices and colors. Four body plans (round,
-upright, long/four-pawed, winged) combine independently with six ear styles, five tail choices,
-bounded body/head/leg dimensions, three muzzle-patch choices, seven marking treatments, and two
-RGB colors. All entry points clamp recipe dimensions; shared-code decoding rejects invalid parts.
+`formiga-core::CreatureDesign` stores 16 bytes of choices and colors. Five body plans (round,
+upright, long/four-pawed, winged, blob) combine independently with six ear styles, five tail
+choices, bounded body/head/leg dimensions, three muzzle-patch choices, seven marking treatments,
+and two RGB colors. All entry points clamp recipe dimensions; shared-code decoding rejects invalid
+parts.
+
+The blob plan is a single soft mass: it draws no separate head, carries the face high on the body,
+keeps a rounder minimum footprint, and stands on stubby feet. It occupies index 4 so recipes and
+version 2 codes written before it decode exactly as they did. A code carrying a blob needs v0.55.5
+or newer to import.
 
 Random creatures use a named stream separate from legacy appearance/personality generation.
 Minis inherit the parent's body plan and accent color, usually retain its ear style, and receive
@@ -48,7 +54,15 @@ does not depend on a reference file or a temporary preview.
   Automated coverage includes all body/ear/tail combinations at extreme sizes, connected silhouettes,
   reserved faces, 1,000 generated creatures across every action, legacy migration, and exact sharing.
 
-The house yard is independent of creature generation. It uses one shared core layout function for
-eight fixed slots beside the house, with stackable cubbies baked into the existing object atlas.
-Slots outside the house's accessible region stay hidden, and inactive houses hide the whole yard.
-`home-yard-sheet` shows all four shelters and both corners using that same layout function.
+The village is independent of creature generation. `formiga-core::habitat` walks one ground line
+outward from the colony house, laying out companion cottages and loose objects together, so a
+belonging can never land on a house. The first colony member shares the colony house; each later
+one gets a cottage of its own, half-size for a mini. Lots outside the house's accessible region
+stay hidden, and an inactive house hides the whole village.
+
+`ShelterRenderer::render_village` bakes the house and both cottage sizes into one 128×128 atlas of
+64px cells, each drawn into its own cell-sized tile first so nothing bleeds into a neighbour. Every
+dwelling is one quad sampling that single texture, so the village adds no texture, sampler, or bind
+group. Style details scale in thirds, which leaves the colony house byte-identical to the standalone
+shelter render. `home-yard-sheet` shows all four styles and both corners through the same layout
+function the renderer uses.

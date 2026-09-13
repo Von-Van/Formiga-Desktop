@@ -1807,7 +1807,10 @@ fn draw_activity_prop(
     reduce_motion: bool,
 ) {
     let phase = if reduce_motion { 0 } else { frame % 4 };
-    let variant = ((genome.marking_seed ^ u64::from(genome.face_signature)) % 4) as u8;
+    let signature = genome.marking_seed ^ u64::from(genome.face_signature);
+    let variant = (signature % 4) as u8;
+    // Belongings are coloured against the creature, not from it, so a held toy stays readable.
+    let palette = crate::prop_palette(palette, signature);
     match action {
         ActionKind::SoloPlay => {
             let (x, y) = match phase {
@@ -1920,6 +1923,7 @@ fn draw_generated_drinkware(canvas: &mut Canvas, palette: Palette, variant: u8, 
 }
 
 fn draw_generated_trinket(canvas: &mut Canvas, palette: Palette, variant: u8, detail_seed: u64) {
+    let palette = crate::prop_palette(palette, detail_seed ^ u64::from(variant));
     let accent = if detail_seed & 1 == 0 {
         palette.accent
     } else {

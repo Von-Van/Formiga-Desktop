@@ -124,10 +124,12 @@ Only the winning seed, 16-byte design recipe, and preview survive the matching c
 accepting the preview drops its one small settings texture. Colony role checks and mini balancing
 operate across the existing four-creature bound and introduce no new simulation loop or draw call.
 
-The v0.55.0 generator adds no dependency, model weights, external service, source-image texture,
+The v0.55.5 generator adds no dependency, model weights, external service, source-image texture,
 or idle worker. Each optional recipe is 16 bytes plus its option discriminant, stored in appearance
 and immutable origin. Existing body/face frame dimensions, animation counts, and GPU atlas budgets
-are unchanged. The compact yard still uses at most eight quads and the existing 128×16 object
-atlas; it is not rendered while the house is inactive. Runtime CPU/GPU measurements on native
+are unchanged. The village still uses at most eight object quads against the existing 128×16 object
+atlas, plus at most four dwelling quads against one 128×128 shelter atlas that replaces the previous
+64×64 one; none of it is rendered while the house is inactive. Belonging colors are derived once per
+atlas build, adding no per-frame work. Runtime CPU/GPU measurements on native
 Windows and a full multi-display macOS session remain manual release checks, not inferred from
 unit tests.

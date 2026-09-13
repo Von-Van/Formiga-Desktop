@@ -18,12 +18,21 @@ pub(super) fn draw(
 ) -> PixelPoint {
     let d = design.bounded();
     let long = d.body == BodyPlan::Long;
+    // A blob is one soft mass carrying its own face, so it keeps a rounder minimum and
+    // never grows the separate head oval every other plan draws.
+    let blob = d.body == BodyPlan::Blob;
     let size = size.clamp(0.55, 1.05);
-    let rx = ((f32::from(d.width) * size).round() as i32 + pose.squash_x).clamp(6, 13);
-    let ry = ((f32::from(d.height) * size).round() as i32 + pose.squash_y).clamp(5, 11);
+    let mut rx = ((f32::from(d.width) * size).round() as i32 + pose.squash_x).clamp(6, 13);
+    let mut ry = ((f32::from(d.height) * size).round() as i32 + pose.squash_y).clamp(5, 11);
+    if blob {
+        rx = (rx + 2).clamp(8, 13);
+        ry = (ry + 2).clamp(7, 11);
+    }
     let x = if long { 22 } else { 24 };
     let floor = 40 + pose.bob.clamp(-2, 2) - pose.play_lift.clamp(0, 3);
-    let y = floor - (f32::from(d.legs) * size).round() as i32 - ry;
+    // Blobs settle onto stubby feet rather than standing on visible legs.
+    let stance = f32::from(d.legs) * size * if blob { 0.4 } else { 1.0 };
+    let y = floor - stance.round() as i32 - ry;
     let hx = if long {
         x + (8.0 * size).round() as i32
     } else {
@@ -33,9 +42,16 @@ pub(super) fn draw(
         BodyPlan::Round => y - 2,
         BodyPlan::Long => y - 4,
         BodyPlan::Upright | BodyPlan::Winged => y - 6,
+        BodyPlan::Blob => y - ry / 3,
     }
     .max(18);
     let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
+    // Ears ride the top of a blob's mass; every other plan hangs them off the head.
+    let (ear_cx, ear_span, ear_top) = if blob {
+        (x, rx - 4, y - ry + 2)
+    } else {
+        (hx, head - 3, hy - head + 2)
+    };
 
     // Tail and ears go behind the body and never through the reserved face area.
     let tx = x - rx + 1;
@@ -54,13 +70,21 @@ pub(super) fn draw(
     }
     let ear = (f32::from(d.ear_size) * size).round().max(3.0) as i32;
     for side in [-1, 1] {
-        let ex = hx + side * (head - 3);
-        let ey = hy - head + 2;
+        let ex = ear_cx + side * ear_span;
+        let ey = ear_top;
         match d.ears {
             EarStyle::None => {}
             EarStyle::Round => oval(c, p, ex, ey - 1, 3, 3, p.accent),
             EarStyle::Long => oval(c, p, ex, ey - ear / 2, 2, ear.min(6), p.coat),
-            EarStyle::Floppy => oval(c, p, hx + side * head, ey + 4, 2, ear, p.accent),
+            EarStyle::Floppy => oval(
+                c,
+                p,
+                ear_cx + side * (ear_span + 3),
+                ey + 4,
+                2,
+                ear,
+                p.accent,
+            ),
             EarStyle::Pointed | EarStyle::Tuft => {
                 let top = ey - ear;
                 for row in 0..=ear {
@@ -177,7 +201,9 @@ pub(super) fn draw(
             );
         }
     }
-    oval(c, p, hx, hy, head, head - 1, p.coat);
+    if !blob {
+        oval(c, p, hx, hy, head, head - 1, p.coat);
+    }
     if d.muzzle > 0 {
         c.fill_ellipse(
             hx,
@@ -187,7 +213,13 @@ pub(super) fn draw(
             p.highlight,
         );
     }
-    c.fill_ellipse(hx - 2, hy - head + 3, 3, 1, p.highlight);
+    c.fill_ellipse(
+        hx - 2,
+        if blob { y - ry + 3 } else { hy - head + 3 },
+        3,
+        1,
+        p.highlight,
+    );
     PixelPoint { x: hx, y: hy }
 }
 

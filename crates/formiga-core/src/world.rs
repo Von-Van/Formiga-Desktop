@@ -724,6 +724,7 @@ impl World {
                 creature.id == *target && creature.state.action == ActionKind::ClimbWindow
             })
         });
+        let cottages = colony_cottages(&self.save.creatures);
         for creature in &mut self.save.creatures {
             if self
                 .interaction
@@ -940,6 +941,7 @@ impl World {
                 objects: nearby_object_utility(
                     creature,
                     &self.save.objects.objects,
+                    &cottages,
                     desktop,
                     &self.save.settings.habitat,
                     &self.save.home,
@@ -3625,9 +3627,11 @@ impl World {
         let streams = SeedStream::new(self.save.colony_seed);
         let mut rng = streams.rng("colony-object", u64::from(self.save.objects.ordinal));
         let kind = ColonyObjectKind::ALL[rng.random_range(0..ColonyObjectKind::ALL.len())];
+        let cottages = colony_cottages(&self.save.creatures);
         let point = home_object_position(
             &self.save.home,
             self.save.objects.objects.len(),
+            &cottages,
             &desktop.monitors,
             &self.save.settings.habitat,
             self.save.settings.display_scale,
@@ -3691,10 +3695,12 @@ impl World {
     }
 
     fn reconcile_colony_objects(&mut self, desktop: &DesktopSnapshot) {
+        let cottages = colony_cottages(&self.save.creatures);
         for (slot, object) in self.save.objects.objects.iter_mut().enumerate() {
             let Some((monitor_id, point)) = home_object_position(
                 &self.save.home,
                 slot,
+                &cottages,
                 &desktop.monitors,
                 &self.save.settings.habitat,
                 self.save.settings.display_scale,
@@ -5396,6 +5402,7 @@ fn cursor_invitation_eligible(creature: &Creature, invitation: CursorInvitation)
 fn nearby_object_utility(
     creature: &Creature,
     objects: &[ColonyObject],
+    cottages: &[DwellingKind],
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     home: &ColonyHome,
@@ -5406,9 +5413,14 @@ fn nearby_object_utility(
         return utility;
     }
     for (slot, object) in objects.iter().take(MAX_COLONY_OBJECTS).enumerate() {
-        let Some((monitor_id, point)) =
-            home_object_position(home, slot, &desktop.monitors, policy, display_scale)
-        else {
+        let Some((monitor_id, point)) = home_object_position(
+            home,
+            slot,
+            cottages,
+            &desktop.monitors,
+            policy,
+            display_scale,
+        ) else {
             continue;
         };
         if monitor_id != creature.state.surface.monitor_id {
@@ -8520,40 +8532,124 @@ mod tests {
     }
 
     #[test]
-    fn house_yard_is_compact_mirrored_scaled_and_does_not_escape_restrictions() {
+    fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
         let desktop = desktop();
         let monitor = &desktop.monitors[0];
         let mut home = ColonyHome::from_seed([0; 32], Some(monitor.display_key), None, None);
         let policy = HabitatPolicy::default();
-        for scale in 1..=4 {
-            for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
-                home.corner = corner;
-                let anchor = resolved_home_anchor(&home, monitor, scale, &policy).unwrap();
-                let unit = f32::from(scale) / monitor.scale_factor.max(1.0);
-                let mut seen = Vec::new();
-                for slot in 0..MAX_COLONY_OBJECTS {
-                    let (id, p) =
-                        home_object_position(&home, slot, &desktop.monitors, &policy, scale)
-                            .unwrap();
-                    assert_eq!(id, monitor.id);
-                    assert!((p.x - anchor.x).abs() <= 84.0 * unit + 0.01);
-                    assert!((p.y - anchor.y).abs() <= 16.0 * unit + 0.01);
-                    assert!(if corner == HomeCorner::BottomLeft {
-                        p.x > anchor.x
-                    } else {
-                        p.x < anchor.x
-                    });
-                    assert!(!seen.contains(&p));
-                    seen.push(p);
+        let villages = [
+            Vec::new(),
+            vec![DwellingKind::Cottage],
+            vec![
+                DwellingKind::Cottage,
+                DwellingKind::MiniCottage,
+                DwellingKind::MiniCottage,
+            ],
+        ];
+        for cottages in &villages {
+            for scale in 1..=4 {
+                for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+                    home.corner = corner;
+                    let anchor = resolved_home_anchor(&home, monitor, scale, &policy).unwrap();
+                    let unit = f32::from(scale) / monitor.scale_factor.max(1.0);
+                    // Houses and belongings share one walk, so no two footprints may overlap.
+                    let mut spans: Vec<(f32, f32)> = Vec::new();
+                    let push = |centre: f32, width: f32, spans: &mut Vec<(f32, f32)>| {
+                        let half = width * unit / 2.0;
+                        for (start, end) in spans.iter() {
+                            assert!(
+                                centre + half <= *start + 0.01 || centre - half >= *end - 0.01,
+                                "overlapping lot at {centre}"
+                            );
+                        }
+                        spans.push((centre - half, centre + half));
+                    };
+                    for slot in 0..=cottages.len() {
+                        let (id, p) = home_dwelling_position(
+                            &home,
+                            slot,
+                            cottages,
+                            MAX_COLONY_OBJECTS,
+                            &desktop.monitors,
+                            &policy,
+                            scale,
+                        )
+                        .unwrap();
+                        assert_eq!(id, monitor.id);
+                        // Every dwelling stands on the shared ground line.
+                        assert!((p.y - anchor.y).abs() < 0.01);
+                        let kind = if slot == 0 {
+                            DwellingKind::Main
+                        } else {
+                            cottages[slot - 1]
+                        };
+                        push(p.x, kind.width(), &mut spans);
+                    }
+                    for slot in 0..MAX_COLONY_OBJECTS {
+                        let (id, p) = home_object_position(
+                            &home,
+                            slot,
+                            cottages,
+                            &desktop.monitors,
+                            &policy,
+                            scale,
+                        )
+                        .unwrap();
+                        assert_eq!(id, monitor.id);
+                        // Belongings rest on the ground rather than stacking upward.
+                        assert!((p.y - anchor.y).abs() <= 1.0 * unit + 0.01);
+                        assert!(if corner == HomeCorner::BottomLeft {
+                            p.x > anchor.x
+                        } else {
+                            p.x < anchor.x
+                        });
+                        push(p.x, 16.0, &mut spans);
+                    }
                 }
             }
         }
         let mut narrow = desktop.clone();
         narrow.monitors[0].usable_bounds.width = 80.0;
         home.corner = HomeCorner::BottomLeft;
-        assert!(home_object_position(&home, 7, &narrow.monitors, &policy, 3).is_none());
-        assert!(home_object_position(&home, 8, &desktop.monitors, &policy, 1).is_none());
-        assert!(home_object_position(&home, 0, &[], &policy, 1).is_none());
+        assert!(home_object_position(&home, 7, &[], &narrow.monitors, &policy, 3).is_none());
+        assert!(home_object_position(&home, 8, &[], &desktop.monitors, &policy, 1).is_none());
+        assert!(home_object_position(&home, 0, &[], &[], &policy, 1).is_none());
+        assert!(
+            home_dwelling_position(&home, 2, &[], 0, &desktop.monitors, &policy, 1).is_none(),
+            "a colony without that companion has no lot for it"
+        );
+    }
+
+    #[test]
+    fn every_colony_member_after_the_first_gets_a_matching_house() {
+        let now = datetime!(2026-09-12 9:30 UTC);
+        let desktop = desktop();
+        let mut world = World::new([31; 32], now, &desktop);
+        assert!(
+            colony_cottages(&world.save.creatures).is_empty(),
+            "the founder shares the colony house"
+        );
+        let parent = world.save.creatures[0].id;
+        for index in 0..3 {
+            let mut extra = world.save.creatures[0].clone();
+            extra.id = 900 + index as CreatureId;
+            extra.colony_order = (index + 1) as u8;
+            extra.role = if index == 0 {
+                CreatureRole::Adult
+            } else {
+                CreatureRole::Mini { parent_id: parent }
+            };
+            world.save.creatures.push(extra);
+        }
+        assert_eq!(
+            colony_cottages(&world.save.creatures),
+            vec![
+                DwellingKind::Cottage,
+                DwellingKind::MiniCottage,
+                DwellingKind::MiniCottage
+            ],
+            "adults get a full cottage and minis a matching smaller one"
+        );
     }
 
     #[test]

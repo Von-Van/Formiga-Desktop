@@ -9,16 +9,27 @@ pub enum BodyPlan {
     Upright,
     Long,
     Winged,
+    /// The original one-piece silhouette: no separate head, a face carried high on a soft
+    /// rounded mass, and stubby feet. Kept as a first-class plan because the shape reads as
+    /// the friendliest of the set. Its index stays last so earlier recipes decode unchanged.
+    Blob,
 }
 
 impl BodyPlan {
-    pub const ALL: [Self; 4] = [Self::Round, Self::Upright, Self::Long, Self::Winged];
+    pub const ALL: [Self; 5] = [
+        Self::Round,
+        Self::Upright,
+        Self::Long,
+        Self::Winged,
+        Self::Blob,
+    ];
     pub const fn label(self) -> &'static str {
         match self {
             Self::Round => "Round companion",
             Self::Upright => "Upright companion",
             Self::Long => "Four-pawed companion",
             Self::Winged => "Winged companion",
+            Self::Blob => "Blob companion",
         }
     }
 }
@@ -78,7 +89,7 @@ impl CreatureDesign {
     pub fn generated(seed: [u8; 32], generation: u8, parent: Option<Self>) -> Self {
         let mut rng = SeedStream::new(seed).rng("modular-design-v1", u64::from(generation));
         let mut design = Self {
-            body: BodyPlan::ALL[rng.random_range(0..4)],
+            body: BodyPlan::ALL[rng.random_range(0..BodyPlan::ALL.len())],
             ears: EarStyle::ALL[rng.random_range(0..6)],
             tail: rng.random_range(0..5),
             width: rng.random_range(8..=12),
@@ -189,6 +200,32 @@ mod tests {
         assert_eq!(mini.accent, parent.accent);
         assert_ne!(mini, parent);
     }
+    #[test]
+    fn the_blob_plan_is_last_so_earlier_recipes_keep_their_appearance() {
+        for (index, body) in BodyPlan::ALL.into_iter().enumerate() {
+            assert_eq!(
+                body as usize, index,
+                "body indices are part of the share code"
+            );
+        }
+        assert_eq!(BodyPlan::ALL[4], BodyPlan::Blob);
+        let mut design = CreatureDesign::generated([7; 32], 0, None);
+        design.body = BodyPlan::Blob;
+        let bytes = design.to_bytes();
+        assert_eq!(bytes[0], 4);
+        assert_eq!(CreatureDesign::from_bytes(&bytes), Some(design));
+        // Blobs stay reachable from ordinary generation.
+        assert!(
+            (0..256_u64)
+                .map(|index| CreatureDesign::generated(
+                    SeedStream::new([11; 32]).bytes("blob-reach", index),
+                    0,
+                    None
+                ))
+                .any(|design| design.body == BodyPlan::Blob)
+        );
+    }
+
     #[test]
     fn invalid_parts_are_rejected_by_the_share_decoder() {
         let valid = CreatureDesign::generated([4; 32], 0, None).to_bytes();

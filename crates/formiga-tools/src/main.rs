@@ -42,10 +42,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/ambient-sheet.png",
         )),
-        Some("portfolio-hero") => {
-            portfolio_hero(output_argument_with_default(&args, "docs/assets/hero.png"))
+        Some("hero-image") => {
+            hero_image(output_argument_with_default(&args, "docs/assets/hero.png"))
         }
-        Some("portfolio-demo") => portfolio_demo(output_argument_with_default(
+        Some("demo-animation") => demo_animation(output_argument_with_default(
             &args,
             "docs/assets/formiga-demo.gif",
         )),
@@ -68,7 +68,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools portfolio-hero [--output PATH]\n  formiga-tools portfolio-demo [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools simulate [DAYS]"
             );
             Ok(())
         }
@@ -95,7 +95,10 @@ fn creature_card(path: PathBuf) -> Result<()> {
 fn generation_sheet(path: PathBuf) -> Result<()> {
     let scale = 4;
     let cell = FRAME_SIZE * scale;
-    let (width, height) = (cell * 6, cell * 4);
+    let (width, height) = (
+        cell * EarStyle::ALL.len() as u32,
+        cell * BodyPlan::ALL.len() as u32,
+    );
     let mut pixels = vec![0; (width * height * 4) as usize];
     fill_gradient(
         &mut pixels,
@@ -133,7 +136,7 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
 }
 
 fn home_yard_sheet(path: PathBuf) -> Result<()> {
-    let (width, height) = (864, 960);
+    let (width, height) = (1200, 960);
     let mut pixels = vec![0; (width * height * 4) as usize];
     fill_gradient(
         &mut pixels,
@@ -142,6 +145,13 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
         [237, 234, 224, 255],
         [209, 226, 219, 255],
     );
+    // One village per shelter style, mirrored at both corners: the colony house, a companion
+    // cottage, two minis' cottages, and the loose objects sharing the same ground line.
+    let cottages = [
+        DwellingKind::Cottage,
+        DwellingKind::MiniCottage,
+        DwellingKind::MiniCottage,
+    ];
     for style in 0..4 {
         for (column, corner) in [HomeCorner::BottomLeft, HomeCorner::BottomRight]
             .into_iter()
@@ -153,7 +163,7 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
             monitor.bounds = DesktopRect {
                 x: 0.0,
                 y: 0.0,
-                width: 144.0,
+                width: 200.0,
                 height: 80.0,
             };
             monitor.usable_bounds = monitor.bounds;
@@ -165,30 +175,57 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
                 None,
             );
             home.corner = corner;
-            let anchor =
-                resolved_home_anchor(&home, &monitor, 1, &HabitatPolicy::default()).unwrap();
-            let shelter = ShelterRenderer::render_with_decorations(
-                &home.shelter,
-                &ShelterDecorationKind::ALL,
-            );
-            let base_x = column as u32 * 432;
+            let policy = HabitatPolicy::default();
+            let village =
+                ShelterRenderer::render_village(&home.shelter, &ShelterDecorationKind::ALL);
+            let base_x = column as u32 * 600;
             let base_y = style * 240;
-            blit_scaled_square_alpha(
-                &mut pixels,
-                width,
-                base_x + (anchor.x as u32 - 32) * 3,
-                base_y + (anchor.y as u32 - 64) * 3,
-                &shelter.rgba_bytes(),
-                SHELTER_SIZE,
-                3,
-            );
+            for slot in 0..=cottages.len() {
+                let Some((_, p)) = home_dwelling_position(
+                    &home,
+                    slot,
+                    &cottages,
+                    MAX_COLONY_OBJECTS,
+                    std::slice::from_ref(&monitor),
+                    &policy,
+                    1,
+                ) else {
+                    continue;
+                };
+                let kind = if slot == 0 {
+                    DwellingKind::Main
+                } else {
+                    cottages[slot - 1]
+                };
+                let (cell_x, cell_y) = match kind {
+                    DwellingKind::Main => (0, 0),
+                    DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
+                    DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
+                };
+                let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                for y in 0..SHELTER_SIZE as i32 {
+                    for x in 0..SHELTER_SIZE as i32 {
+                        cell.set(x, y, village.get(cell_x + x, cell_y + y));
+                    }
+                }
+                blit_scaled_square_alpha(
+                    &mut pixels,
+                    width,
+                    base_x + (p.x as u32 - 32) * 3,
+                    base_y + (p.y as u32 - 64) * 3,
+                    &cell.rgba_bytes(),
+                    SHELTER_SIZE,
+                    3,
+                );
+            }
             let atlas = formiga_art::ColonyObjectRenderer::render_atlas(seed);
             for slot in 0..MAX_COLONY_OBJECTS {
                 if let Some((_, p)) = home_object_position(
                     &home,
                     slot,
+                    &cottages,
                     std::slice::from_ref(&monitor),
-                    &HabitatPolicy::default(),
+                    &policy,
                     1,
                 ) {
                     let mut tile = formiga_art::Canvas::new(16, 16);
@@ -530,7 +567,7 @@ fn reference_creatures() -> Vec<Creature> {
     .collect()
 }
 
-fn portfolio_hero(path: PathBuf) -> Result<()> {
+fn hero_image(path: PathBuf) -> Result<()> {
     const WIDTH: u32 = 1200;
     const HEIGHT: u32 = 630;
     let mut pixels = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
@@ -544,7 +581,7 @@ fn portfolio_hero(path: PathBuf) -> Result<()> {
     draw_window(&mut pixels, WIDTH, 75, 90, 640, 390, [45, 65, 72, 255]);
     draw_window(&mut pixels, WIDTH, 650, 190, 450, 325, [53, 57, 78, 255]);
     draw_rect_alpha(&mut pixels, WIDTH, 740, 380, 330, 180, [61, 185, 125, 48]);
-    let creatures = portfolio_colony();
+    let creatures = demo_colony();
     for (index, (x, y, action, scale)) in [
         (360, 480, ActionKind::Idle, 4),
         (795, 190, ActionKind::Perch, 3),
@@ -578,7 +615,7 @@ fn portfolio_hero(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn portfolio_demo(path: PathBuf) -> Result<()> {
+fn demo_animation(path: PathBuf) -> Result<()> {
     const WIDTH: u32 = 480;
     const HEIGHT: u32 = 270;
     const FPS: u32 = 10;
@@ -586,7 +623,7 @@ fn portfolio_demo(path: PathBuf) -> Result<()> {
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
     let mut encoder = gif::Encoder::new(BufWriter::new(file), WIDTH as u16, HEIGHT as u16, &[])?;
     encoder.set_repeat(gif::Repeat::Infinite)?;
-    let creatures = portfolio_colony();
+    let creatures = demo_colony();
     for frame_index in 0..FRAMES {
         let mut pixels = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
         fill_gradient(
@@ -709,7 +746,7 @@ fn portfolio_demo(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn portfolio_colony() -> Vec<Creature> {
+fn demo_colony() -> Vec<Creature> {
     let desktop = fixture_desktop();
     let created = OffsetDateTime::UNIX_EPOCH;
     let mut world = World::new([42; 32], created, &desktop);
@@ -836,7 +873,7 @@ fn resize_rgba_square(source: &[u8], source_size: u32, target_size: u32) -> Vec<
 
 fn shelter_sheet(path: PathBuf) -> Result<()> {
     const COLS: u32 = 4;
-    const ROWS: u32 = 3;
+    const ROWS: u32 = 2;
     const SCALE: u32 = 3;
     const PADDING: u32 = 24;
     let cell = SHELTER_SIZE * SCALE + PADDING;
@@ -850,12 +887,21 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
         [18, 29, 34, 255],
         [35, 55, 54, 255],
     );
+    // Top row plain, bottom row carrying every decoration, so attachment points stay reviewable.
     for index in 0..COLS * ROWS {
+        let style = index % COLS;
         let mut seed = [0_u8; 32];
-        seed.copy_from_slice(&Sha256::digest(format!("formiga-shelter-{index}")));
-        seed[1] = index as u8 % 4;
+        seed.copy_from_slice(&Sha256::digest(format!("formiga-shelter-{style}")));
+        seed[1] = style as u8;
         let home = ColonyHome::from_seed(seed, None, None, None);
-        let shelter = ShelterRenderer::render(&home.shelter);
+        let shelter = if index < COLS {
+            ShelterRenderer::render(&home.shelter)
+        } else {
+            ShelterRenderer::render_with_decorations(
+                &home.shelter,
+                &formiga_core::ShelterDecorationKind::ALL,
+            )
+        };
         let x = index % COLS * cell + PADDING / 2;
         let y = index / COLS * cell + PADDING / 2;
         blit_scaled_square_alpha(
@@ -961,11 +1007,20 @@ fn simulate(days: i64) -> Result<()> {
         world.save.creatures.len()
     );
     for creature in &world.save.creatures {
+        // Report the modular body plan when there is one; legacy creatures report their family.
+        let shape = creature.appearance.design.map_or_else(
+            || format!("{:?}", creature.appearance.family),
+            |design| format!("{:?}", design.body),
+        );
         println!(
-            "- {}: {:?}, generation {}, {:?}",
-            creature.id, creature.appearance.family, creature.generation, creature.state.action
+            "- {}: {shape}, {:?}, generation {}, {:?}",
+            creature.id, creature.role, creature.generation, creature.state.action
         );
     }
+    println!(
+        "village: colony house plus {:?}",
+        colony_cottages(&world.save.creatures)
+    );
     Ok(())
 }
 

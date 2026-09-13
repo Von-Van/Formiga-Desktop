@@ -201,12 +201,22 @@ key, normalized position, and semantic role. A named seed stream selects one of 
 three to seven days; overdue processing creates at most one object and schedules the next timestamp
 from the current maximum-seen UTC value.
 
-Object positions resolve to eight fixed home-relative slots (four columns, two rows) whenever the
-world ticks. The same pure layout function drives rendering and nearby utility, using the home's
-corner, display, scale, and accessible region. Slots without room remain stored but hidden; all
-objects hide while the house is inactive. Legacy normalized positions are rewritten to the yard.
-The renderer builds one 128×16 seed-derived atlas, retains at most eight quads, and rebuilds those
-vertices only when object state, home state, habitat, display geometry, or scale changes.
+Object positions resolve on the village ground line whenever the world ticks. One pure layout
+function walks outward from the house, interleaving companion cottages and loose objects so the two
+can never occupy the same lot, and the same walk drives rendering and nearby utility using the
+home's corner, display, scale, and accessible region. Lots without room remain stored but hidden;
+all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
+village. The renderer builds one 128×16 seed-derived atlas, retains at most eight quads, and
+rebuilds those vertices only when object state, cottages, home state, habitat, display geometry, or
+scale changes.
+
+Dwellings come from one 128×128 village atlas of four 64px cells: the decorated colony house, a
+companion cottage, and a mini's cottage, each drawn into its own cell-sized tile so art that would
+overrun a cell is clipped exactly as it is for a lone shelter. The first colony member shares the
+colony house and each later one adds a single quad sampling its cell, so a full village is four
+quads against one texture and bind group. Shelter decorations resolve their attachment points from
+the style's own silhouette — peak, eaves, wall, and ground line — so a banner hangs from the real
+roof rather than a shared canvas height.
 Nearby semantic roles add a bounded `+0.25` to existing action utility at ordinary selection
 boundaries; objects have no physics body, interaction proxy, action state, or update loop.
 
@@ -271,8 +281,9 @@ analysis pixels, and feature vectors leave scope after matching. This is not sem
 
 Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
 generation uses an independent `modular-design-v1` stream, leaving legacy gene streams intact.
-Four body plans and six ear styles compose independently with bounded tails, proportions, muzzle
-patches, markings, and two RGB colors. The renderer reserves a large face with round eyes and a
+Five body plans and six ear styles compose independently with bounded tails, proportions, muzzle
+patches, markings, and two RGB colors. The blob plan draws no separate head and carries the face on
+its body; it occupies the last index so earlier recipes and codes decode unchanged. The renderer reserves a large face with round eyes and a
 mouth, draws connected rounded bodies and paired limbs, and keeps appendages in the existing
 48×48 frame. Mini bodies scale down while retaining readable large faces. Colors are softened
 once during atlas construction, with a fixed dark outline and eye color. Recipes without image

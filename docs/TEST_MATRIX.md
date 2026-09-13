@@ -47,7 +47,10 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Connected modular silhouettes and reserved faces at minimum/maximum proportions | CI | CI |
 | Image aspect/alpha handling, dominant/accent colors, blank and extreme references | CI | CI |
 | v11 save preservation, v1/v2 code validation, exact design add/replace/save/share | CI | CI |
-| Compact mirrored house yard, scale changes, missing/narrow displays and slot cap | CI | CI |
+| Mirrored village layout: separated lots, shared ground line, scale changes, missing/narrow displays and lot cap | CI | CI |
+| Village atlas cells match their own dwelling and never bleed into a neighbour | CI | CI |
+| Companion houses per colony member, with matching half-size cottages for minis | CI | CI |
+| Belonging colors stay distinct from every creature palette they are carried against | CI | CI |
 | Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
 | Keep replacement guard, bulk regeneration, final-adult protection, reparenting, and relationship normalization | CI | CI |
 | 1,000 genomes × all actions and layered face checks | CI | CI |

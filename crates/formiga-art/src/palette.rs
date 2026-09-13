@@ -28,6 +28,75 @@ pub fn palette_for(genome: &formiga_core::AppearanceGenome) -> Palette {
     }
 }
 
+/// Toys, snacks, drinkware, and found trinkets read as separate belongings rather than
+/// another patch of coat. The item hue is rotated away from the creature's own, saturation is
+/// lifted, and lightness is pushed to whichever side has more room, so a prop stays legible
+/// against the body carrying it. The dark outline is shared so the pixel art still matches.
+pub fn prop_palette(palette: Palette, seed: u64) -> Palette {
+    let (hue, _, lightness) = to_hsl(palette.coat);
+    // A near-complementary rotation, nudged per creature so props are not all one hue.
+    let spin = 150.0 + (seed % 61) as f32;
+    let hue = (hue + spin) % 360.0;
+    let saturation = 0.62 + ((seed >> 8) % 3) as f32 * 0.06;
+    // Separate the item from the coat it is held against, in the roomier direction.
+    let target = if lightness > 0.5 {
+        (lightness - 0.30).max(0.34)
+    } else {
+        (lightness + 0.30).min(0.78)
+    };
+    let rgba = |value: [u8; 3]| Rgba::new(value[0], value[1], value[2], 255);
+    Palette {
+        outline: palette.outline,
+        shadow: rgba(from_hsl(hue, saturation, (target - 0.16).max(0.12))),
+        coat: rgba(from_hsl(hue, saturation, target)),
+        highlight: rgba(from_hsl(hue, saturation * 0.7, (target + 0.22).min(0.92))),
+        accent: rgba(from_hsl(hue, saturation, target)),
+        eye: palette.eye,
+    }
+}
+
+fn to_hsl(color: Rgba) -> (f32, f32, f32) {
+    let (r, g, b) = (
+        f32::from(color.r) / 255.0,
+        f32::from(color.g) / 255.0,
+        f32::from(color.b) / 255.0,
+    );
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let lightness = (max + min) / 2.0;
+    let delta = max - min;
+    if delta <= f32::EPSILON {
+        return (0.0, 0.0, lightness);
+    }
+    let saturation = delta / (1.0 - (2.0 * lightness - 1.0).abs()).max(f32::EPSILON);
+    let hue = if max == r {
+        60.0 * (((g - b) / delta) % 6.0)
+    } else if max == g {
+        60.0 * ((b - r) / delta + 2.0)
+    } else {
+        60.0 * ((r - g) / delta + 4.0)
+    };
+    ((hue + 360.0) % 360.0, saturation.clamp(0.0, 1.0), lightness)
+}
+
+fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> [u8; 3] {
+    let saturation = saturation.clamp(0.0, 1.0);
+    let lightness = lightness.clamp(0.0, 1.0);
+    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+    let section = (hue % 360.0) / 60.0;
+    let second = chroma * (1.0 - (section % 2.0 - 1.0).abs());
+    let (r, g, b) = match section as u32 {
+        0 => (chroma, second, 0.0),
+        1 => (second, chroma, 0.0),
+        2 => (0.0, chroma, second),
+        3 => (0.0, second, chroma),
+        4 => (second, 0.0, chroma),
+        _ => (chroma, 0.0, second),
+    };
+    let base = lightness - chroma / 2.0;
+    [r, g, b].map(|channel| ((channel + base).clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
 const fn c(hex: u32) -> Rgba {
     Rgba::new((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 255)
 }
@@ -130,3 +199,36 @@ pub const PALETTES: [Palette; 12] = [
         eye: c(0x16221d),
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn belongings_stay_distinct_from_the_creature_carrying_them() {
+        let distance = |a: Rgba, b: Rgba| {
+            let channel = |x: u8, y: u8| (f32::from(x) - f32::from(y)).powi(2);
+            (channel(a.r, b.r) + channel(a.g, b.g) + channel(a.b, b.b)).sqrt()
+        };
+        for palette in PALETTES {
+            for seed in 0..64_u64 {
+                let prop = prop_palette(palette, seed);
+                assert_eq!(
+                    prop.accent,
+                    prop_palette(palette, seed).accent,
+                    "props are deterministic"
+                );
+                assert!(
+                    distance(prop.accent, palette.coat) > 90.0,
+                    "a prop should not read as another patch of coat"
+                );
+                assert!(
+                    distance(prop.accent, palette.highlight) > 60.0,
+                    "a prop should not read as a highlight"
+                );
+                // The shared dark outline keeps props matching the pixel-art style.
+                assert_eq!(prop.outline, palette.outline);
+            }
+        }
+    }
+}

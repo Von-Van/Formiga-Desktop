@@ -13,10 +13,10 @@ pub type PixelCanvas = Canvas;
 pub use objects::{
     COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer,
 };
-pub use palette::{PALETTES, Palette, palette_for};
+pub use palette::{PALETTES, Palette, palette_for, prop_palette};
 pub use renderer::{
     AlphaMask, AnimationAtlas, AnimationSpec, CreatureRenderer, ExpressionKind, EyelidPose,
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, PixelPoint,
     PlaybackMode, RenderedBodyFrame,
 };
-pub use shelter::{SHELTER_SIZE, ShelterRenderer};
+pub use shelter::{SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE};

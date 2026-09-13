@@ -43,7 +43,7 @@ Set `FORMIGA_CODESIGN_IDENTITY` to a Developer ID Application identity for distr
 Notarization requires release-owner Apple credentials and is intentionally not embedded in the
 repository.
 
-Unsigned/ad-hoc portfolio preview: after downloading, Control-click the app and choose **Open**. Do
+Unsigned/ad-hoc preview build: after downloading, Control-click the app and choose **Open**. Do
 not advise users to disable Gatekeeper globally.
 
 ## Windows preview
@@ -52,9 +52,9 @@ Run `./scripts/package-windows.ps1` in PowerShell. With WiX 4 installed it creat
 with Desktop and Start-menu shortcuts, a portable ZIP, and SHA-256 checksum files. Use
 `-SkipInstaller` for the ZIP only.
 
-Unsigned portfolio preview: Windows SmartScreen may show **More info → Run anyway**. Authenticode
+Unsigned preview build: Windows SmartScreen may show **More info → Run anyway**. Authenticode
 signing requires the release owner's certificate and remains a release-secret hook.
 
 GitHub Actions checks both operating systems and packages unsigned preview artifacts. Tags matching
-`v*` feed the release workflow. The current workflow marks portfolio builds as prereleases; the app
+`v*` feed the release workflow. The current workflow marks preview builds as prereleases; the app
 intentionally checks those releases as well as stable releases.

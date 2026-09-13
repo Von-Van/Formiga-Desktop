@@ -59,7 +59,7 @@ routines. A v8 colony receives an empty object collection and one deterministic 
 a v9 colony receives an empty decoration list and one deterministic future timestamp. Legacy
 creatures receive only adult/mini role, Keep, and bounded mini-schedule fields; none are deleted,
 regenerated, or truncated. Missing modular recipes remain absent, preserving legacy art; stored
-loose objects relocate to the compact house yard on the next world tick. Migration performs no
+loose objects relocate to the village ground line on the next world tick. Migration performs no
 network request and does not upload
 either the old or migrated save.
 
