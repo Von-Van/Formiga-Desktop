@@ -1,4 +1,4 @@
-# Formiga · v0.55.5
+# Formiga · v0.55.6
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -20,7 +20,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.55.5-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.55.6-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -31,6 +31,14 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.55.6
+
+Winged creatures grow real wings instead of large accent nubs. Every wing has a lit leading edge, a
+shaded underside, and a tip carried up past the shoulder, and each creature grows one of three
+structures over that: feathered quills, ribs reaching a drawn-down tip, or a pale panel behind a
+darker rim. Which one a creature has comes from its own recipe, so it never changes and travels
+with a shared seed code.
 
 ## New in 0.55.5
 

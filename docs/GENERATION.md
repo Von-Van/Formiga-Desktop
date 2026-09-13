@@ -1,4 +1,4 @@
-# Modular creature generation · v0.55.5
+# Modular creature generation · v0.55.6
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -17,6 +17,13 @@ The blob plan is a single soft mass: it draws no separate head, carries the face
 keeps a rounder minimum footprint, and stands on stubby feet. It occupies index 4 so recipes and
 version 2 codes written before it decode exactly as they did. A code carrying a blob needs v0.55.5
 or newer to import.
+
+The winged plan draws a membrane with a lit leading edge, a shaded underside, and a tip carried past
+the shoulder, plus one of three structures: feathered quills, ribs to a drawn-down tip, or a pale
+panel behind a darker rim. The structure is a pure function of accent, marking, and tail bytes the
+recipe already holds, so wings vary between creatures, never change for a given creature, and travel
+inside a version 2 code without another byte. Every mark stays inside the membrane's own outline, so
+the silhouette, its connection to the body, and the reserved face are unchanged.
 
 Random creatures use a named stream separate from legacy appearance/personality generation.
 Minis inherit the parent's body plan and accent color, usually retain its ear style, and receive

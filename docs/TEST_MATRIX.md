@@ -45,6 +45,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | PNG/JPEG local decode limits, fixed 512-candidate matching, determinism, and full-size preview output | CI | CI |
 | Modular recipes: bounded parts, 16-byte layout, all body/ear combinations, related minis | CI | CI |
 | Connected modular silhouettes and reserved faces at minimum/maximum proportions | CI | CI |
+| Wing styles: all three reachable, stable per recipe, and visibly textured | CI | CI |
 | Image aspect/alpha handling, dominant/accent colors, blank and extreme references | CI | CI |
 | v11 save preservation, v1/v2 code validation, exact design add/replace/save/share | CI | CI |
 | Mirrored village layout: separated lots, shared ground line, scale changes, missing/narrow displays and lot cap | CI | CI |

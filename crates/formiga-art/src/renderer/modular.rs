@@ -189,16 +189,13 @@ pub(super) fn draw(
         );
         oval(c, p, fx, floor - 1 - step.abs().min(2), 3, 2, p.coat);
         if !long {
-            let wing = d.body == BodyPlan::Winged;
-            oval(
-                c,
-                p,
-                x + side * (rx - 1),
-                y + 3 - pose.appendage_lift.clamp(-2, 3),
-                if wing { 4 } else { 2 },
-                if wing { 5 } else { 3 },
-                if wing { p.accent } else { p.coat },
-            );
+            let ax = x + side * (rx - 1);
+            let ay = y + 3 - pose.appendage_lift.clamp(-2, 3);
+            if d.body == BodyPlan::Winged {
+                draw_wing(c, p, wing_style(d), ax, ay, side);
+            } else {
+                oval(c, p, ax, ay, 2, 3, p.coat);
+            }
         }
     }
     if !blob {
@@ -223,9 +220,112 @@ pub(super) fn draw(
     PixelPoint { x: hx, y: hy }
 }
 
+/// Which wing a creature grew. Derived from bytes already in the recipe, so wings vary between
+/// creatures, stay identical every time one is drawn, and travel intact inside a shared code
+/// without spending another recipe byte.
+fn wing_style(d: CreatureDesign) -> u8 {
+    ((u16::from(d.accent[0]) + u16::from(d.marking) * 5 + u16::from(d.tail) * 3) % 3) as u8
+}
+
+/// A wing rather than a large nub. The membrane keeps its existing silhouette, so the body
+/// connection and the reserved face are untouched; the shape is carried by value instead. The
+/// underside is shaded and the leading edge lit, which sweeps the bright part up and outward the
+/// way a folded wing reads, and the style adds its own structure over that.
+fn draw_wing(c: &mut Canvas, p: Palette, style: u8, x: i32, y: i32, side: i32) {
+    oval(c, p, x, y, 4, 5, p.accent);
+    // A tip carried up past the shoulder, so a wing is never read as another arm.
+    oval(c, p, x + side, y - 4, 2, 3, p.accent);
+    oval(c, p, x + side * 3, y - 6, 1, 2, p.accent);
+    // Shade the trailing underside, nearest the body and lowest on the wing.
+    c.fill_ellipse(x - side, y + 3, 3, 2, p.shadow);
+    match style {
+        // Feathered: parallel quills sweeping out to the tip, over a lit leading edge.
+        0 => {
+            c.line(x - side * 2, y - 4, x + side * 3, y - 2, 1, p.highlight);
+            for offset in 0..3 {
+                let row = y - 2 + offset * 2;
+                c.line(x - side, row, x + side * 3, row + 1, 1, p.shadow);
+            }
+        }
+        // Membrane: two clean ribs running from the shoulder to a drawn-down tip.
+        1 => {
+            c.fill_ellipse(x + side, y - 2, 3, 3, p.highlight);
+            for dy in [0, 3] {
+                c.line(x - side * 2, y - 4, x + side * 3, y + dy, 1, p.shadow);
+            }
+            c.line(x + side * 3, y + 1, x + side * 3, y + 4, 1, p.accent);
+        }
+        // Panelled: a pale inner panel behind a darker outer rim, with a single vein.
+        _ => {
+            c.fill_ellipse(x - side, y - 1, 2, 4, p.highlight);
+            c.line(x + side * 3, y - 3, x + side * 3, y + 3, 1, p.shadow);
+            c.line(x - side, y - 3, x + side * 2, y + 1, 1, p.shadow);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_wing_style_is_reachable_deterministic_and_visibly_textured() {
+        let creature = formiga_core::World::preview_adult(
+            [55; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &formiga_core::DesktopSnapshot::default(),
+        );
+        let p = crate::palette_for(&creature.appearance);
+        let base = creature.appearance.design.unwrap();
+        let mut rendered = Vec::new();
+        for style in 0..3_u8 {
+            let mut d = base;
+            d.body = BodyPlan::Winged;
+            d.marking = 0;
+            d.tail = 0;
+            // Only the style-selecting byte moves, so any difference is the wing itself.
+            d.accent[0] = 150 + style;
+            assert_eq!(wing_style(d), (150 + style) % 3);
+            assert_eq!(
+                wing_style(d),
+                wing_style(d),
+                "a recipe always grows one wing"
+            );
+            let mut c = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            let pose = Pose::new(&creature.appearance, ActionKind::Idle, 0, false);
+            draw(&mut c, d, p, pose, 1.0, ActionKind::Idle, 0);
+            rendered.push(c);
+        }
+        for (index, canvas) in rendered.iter().enumerate() {
+            for other in rendered.iter().skip(index + 1) {
+                assert_ne!(
+                    canvas.pixels(),
+                    other.pixels(),
+                    "wing styles should not render alike"
+                );
+            }
+            // A wing carries structure rather than one flat block of accent.
+            let colors: std::collections::HashSet<_> = canvas
+                .pixels()
+                .iter()
+                .filter(|pixel| pixel.a > 0)
+                .map(|pixel| (pixel.r, pixel.g, pixel.b))
+                .collect();
+            assert!(colors.len() >= 4, "style {index} should be textured");
+        }
+        // Ordinary generation reaches all three.
+        let styles: std::collections::HashSet<_> = (0..512_u64)
+            .map(|index| {
+                formiga_core::CreatureDesign::generated(
+                    formiga_core::SeedStream::new([13; 32]).bytes("wing-reach", index),
+                    0,
+                    None,
+                )
+            })
+            .map(wing_style)
+            .collect();
+        assert_eq!(styles.len(), 3);
+    }
 
     #[test]
     fn all_part_combinations_keep_connected_bodies_and_a_reserved_face_at_extreme_sizes() {

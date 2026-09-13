@@ -2,6 +2,18 @@
 
 All notable changes are documented here.
 
+## [0.55.6] - 2026-09-12
+
+### Changed
+
+- Winged creatures grow actual wings rather than large accent nubs. Each membrane keeps a lit
+  leading edge and a shaded underside, and carries a tip up and out past the shoulder so a wing
+  is never read as another arm. One of three structures is drawn over that: feathered quills,
+  ribs reaching a drawn-down tip, or a pale panel behind a darker outer rim.
+- The wing a creature grows comes from bytes already in its recipe, so wings vary between
+  creatures, stay the same every time one is drawn, and travel intact inside a shared code. The
+  recipe is still 16 bytes and existing creatures keep their exact appearance.
+
 ## [0.55.5] - 2026-09-12
 
 ### Added
