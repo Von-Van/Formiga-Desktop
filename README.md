@@ -11,6 +11,8 @@ react to your cursor, and eventually grow into a four-creature colony with a hom
 Everything happens locally. The only optional network feature is a daily check for new releases,
 and it can be turned off.
 
+I'd also like to note that various AI models have been used in the development of this project, including both GTP-6 Astra and Claude Opus 5. 
+
 ## Download and run
 
 Open the [Releases page](https://github.com/Von-Van/Formiga-Desktop/releases) and pick the file for
@@ -27,32 +29,10 @@ These builds are not code-signed yet, so the first launch needs one extra step: 
 Control-click the app and choose **Open**; on Windows, choose **More info → Run anyway**. Formiga
 will never ask you to turn off any operating-system security feature.
 
-Your colony and its introduction open automatically the first time you launch. After that, the menu-bar or tray icon offers
+Settings open automatically the first time you launch. After that, the menu-bar or tray icon offers
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
-
-## In the next build
-
-The colony window now borrows the cream, forest-green, and mint palette of creature cards. **Your
-colony** leads with portraits, current activities, learned preferences, life history, and friendships.
-A short optional introduction teaches naming, petting, placement, and tray controls.
-
-- **Creature studio** compares four candidates. Keep a selected candidate's colors or body when
-  discovering another set, or enable its small movement/expression preview. Paste a shared code to
-  adopt into the current colony; replacement targets one explicitly confirmed, unkept companion.
-- **Home & keepsakes** chooses a corner/display, toggles earned decorations, and moves keepsakes
-  between the existing village slots. Their usual behavioral influences follow their placement.
-- **Journal** keeps the latest 64 arrivals, discoveries, preferences, close friendships, rituals,
-  keepsakes, and decorations on this computer.
-- **Preferences** offers quiet moments with automatic expiry and saved Work/Relax routines. The
-  native tray also offers a 30-minute quiet moment and early cancellation.
-- **Habitat** shows a monitor map; exact coordinates remain available under Advanced.
-- **About & backups** exports or restores a full colony, including its private history. Restoration
-  preserves previous files. If loading fails, recovery choices appear before any new colony is saved.
-
-All additions use the existing native interface and simulation. Preview animation is opt-in and
-cached; closing the colony window releases its artwork. Existing saves migrate to version 13.
 
 ## New in 0.55.6
 
@@ -121,7 +101,7 @@ you can edit.
 
 ## Making creatures your own
 
-In **Your colony → Creature studio** you can preview a fresh creature, or choose
+In **Settings → Colony → Creature studio** you can preview a fresh creature, or choose
 **Create from PNG or JPEG…** for a cute reinterpretation of a picture you have. Dominant colors,
 contrasting accents, proportions, and appendage cues steer the result. It is an interpretation, not
 object recognition — clear subjects on plain or transparent backgrounds work best. Try another
@@ -201,3 +181,6 @@ unsigned previews until Developer ID and Authenticode credentials are in place.
 Further reading: [creature generation](docs/GENERATION.md), [case study](docs/CASE_STUDY.md),
 [architecture](docs/ARCHITECTURE.md), [build guide](docs/BUILD.md),
 [privacy model](docs/PRIVACY.md), and [test matrix](docs/TEST_MATRIX.md).
+
+
+
