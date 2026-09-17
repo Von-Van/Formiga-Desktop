@@ -194,6 +194,15 @@ struct Refusal {
 /// A declined invitation is respected for this long before the same pair is considered again.
 const DECLINED_SECONDS: f32 = 75.0;
 
+/// The moves a copy chain can pass along. One is picked per scene, from the scene's own seed.
+const COPIED_FLOURISHES: [Gesture; 5] = [
+    Gesture::Cheer,
+    Gesture::Bop,
+    Gesture::Reach,
+    Gesture::Crouch,
+    Gesture::Balance,
+];
+
 /// How long a creature can hold a look: temperament and wakefulness, not a coin flip.
 pub(super) fn composure(c: &Creature) -> f32 {
     (c.personality.boldness * 0.4
@@ -722,6 +731,7 @@ impl World {
                 gesture: ActionKind::InspectScreen,
                 bounds,
                 hopping: false,
+                pose: None,
             },
             target,
             emotion: AttentionEmotion::Curious,
@@ -866,6 +876,15 @@ impl World {
         if let Some(prop) = &mut s.prop {
             prop.remaining -= dt;
         }
+        // A game restates each pose it wants every tick, so none outlives the moment it was for,
+        // including a member the game has nothing more to say to as it winds down.
+        for id in s.members.iter().flatten() {
+            if let Some(plan) = self.attention.plans.get_mut(id)
+                && let Role::Play { pose, .. } = &mut plan.role
+            {
+                *pose = None;
+            }
+        }
         let continuing = match s.kind {
             Kind::Chase => self.advance_chase(&mut s, desktop),
             Kind::Leapfrog => self.advance_leapfrog(&mut s, desktop),
@@ -957,7 +976,13 @@ impl World {
                         }
                     });
             let p = self.attention.plans.get_mut(&id).unwrap();
-            let Role::Play { stage, gesture, .. } = &mut p.role else {
+            let Role::Play {
+                stage,
+                gesture,
+                pose,
+                ..
+            } = &mut p.role
+            else {
                 continue;
             };
             *stage = if recovery {
@@ -986,6 +1011,23 @@ impl World {
                 }
                 _ => *gesture,
             };
+            // Nothing steers a contest of looks or a copy chain, so their poses are struck here:
+            // whoever blinks hides its eyes while the others cheer, and every imitation of the
+            // move is the same unmistakable flourish, passed along the chain.
+            match s.kind {
+                Kind::Stare if recovery => {
+                    *pose = Some(if index == s.loser {
+                        Gesture::Cover
+                    } else {
+                        Gesture::Cheer
+                    });
+                }
+                Kind::Copycat(action) if *gesture == action => {
+                    *pose =
+                        Some(COPIED_FLOURISHES[(s.seed % COPIED_FLOURISHES.len() as u64) as usize]);
+                }
+                _ => {}
+            }
             if recovery {
                 p.walk = None;
             }
@@ -1432,5 +1474,43 @@ pub(super) mod tests {
             }
             assert!(w.attention.play.session.is_none());
         }
+    }
+
+    /// Nothing steers a contest of looks or a copy chain, so their poses come with the scene
+    /// itself: whoever blinks first hides its eyes while the rest cheer, and every creature that
+    /// takes up the copied move strikes the same unmistakable flourish, which is what makes a
+    /// chain of imitations read as one.
+    #[test]
+    fn a_contest_of_looks_and_a_copy_chain_strike_their_own_poses() {
+        let (mut w, mut d, now) = scene(false);
+        let mut poses = super::super::tests::Poses::default();
+        let mut loser = None;
+        for step in 1..220 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            if let Some(s) = w.attention.play.session.filter(|s| s.kind == Kind::Stare) {
+                loser = loser.or(s.members[s.loser]);
+            }
+        }
+        let loser = loser.expect("a contest of looks needs someone to blink");
+        assert_eq!(poses.by(loser), [Gesture::Cover], "{poses:?}");
+        assert!(
+            poses
+                .struck
+                .iter()
+                .any(|(id, struck)| *id != loser && struck.contains(&Gesture::Cheer)),
+            "nobody enjoyed winning: {poses:?}"
+        );
+
+        let (mut w, mut d, now) = scene(true);
+        let mut poses = super::super::tests::Poses::default();
+        for step in 1..220 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+        }
+        let copied: Vec<_> = poses.struck.values().flatten().copied().collect();
+        assert!(copied.len() >= 2, "the move was never passed on: {poses:?}");
+        assert!(
+            COPIED_FLOURISHES.contains(&copied[0]) && copied.iter().all(|pose| *pose == copied[0]),
+            "a copy chain is one move, not several: {poses:?}"
+        );
     }
 }

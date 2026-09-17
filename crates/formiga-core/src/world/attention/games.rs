@@ -42,6 +42,7 @@ impl World {
     }
 
     /// Point a member at a destination and give it the gesture it plays with while it travels.
+    /// Steering is a fresh instruction, so it clears any pose struck over the previous one.
     pub(super) fn steer_play(
         &mut self,
         id: CreatureId,
@@ -52,12 +53,26 @@ impl World {
             return;
         };
         if let Role::Play {
-            gesture: current, ..
+            gesture: current,
+            pose,
+            ..
         } = &mut plan.role
         {
             *current = gesture;
+            *pose = None;
         }
         plan.walk = destination.map(ShortWalk::playing);
+    }
+
+    /// Strike a body pose over the gesture a member was just steered into. The pose lasts until
+    /// the member is steered again or the next tick, and shows only while the member stands
+    /// still in a pose the body can give over; travel and a toy being shown off keep the body.
+    pub(super) fn pose_play(&mut self, id: CreatureId, gesture: Gesture) {
+        if let Some(plan) = self.attention.plans.get_mut(&id)
+            && let Role::Play { pose, .. } = &mut plan.role
+        {
+            *pose = Some(gesture);
+        }
     }
 
     /// A goal on the member's own surface, closer than an audience would stand.
@@ -179,9 +194,11 @@ impl World {
             s.roles[lead_index] = PlayRole::Follow;
             s.roles[catcher_index] = PlayRole::Lead;
             s.turn_started = s.elapsed;
-            // A moment of delight at the hand-over, then the roles reverse.
+            // A moment of delight at the hand-over, then the roles reverse. The one caught
+            // gasps as the hand lands.
             self.steer_play(lead_id, None, ActionKind::Greet);
             self.steer_play(catcher_id, None, ActionKind::Greet);
+            self.pose_play(lead_id, Gesture::Gasp);
             self.look_at(lead_id, self.play_position(catcher_id).unwrap_or(lead));
             self.look_at(catcher_id, lead);
             return true;
@@ -240,11 +257,17 @@ impl World {
             .into_iter()
             .find_map(|direction| self.travel_goal(lead_id, lead, direction, unit, desktop))
         else {
+            // Out of room: the front of the procession ends it with a flourish where it stands.
+            self.pose_play(lead_id, Gesture::Cheer);
             return false;
         };
         let heading = (goal.x - lead.x).signum();
         self.steer_play(lead_id, Some(goal), ActionKind::Traverse);
         self.look_at(lead_id, goal);
+        if s.elapsed >= s.ends_at - 1.4 {
+            // The procession is winding down and stops where it is: the front of it cheers.
+            self.pose_play(lead_id, Gesture::Cheer);
+        }
         let followers: Vec<_> = s.with_role(PlayRole::Follow).collect();
         let mut ahead = lead;
         for (index, id) in followers {
@@ -306,14 +329,18 @@ impl World {
                 .flatten();
             // Staggered responses: each dancer joins in on its own beat.
             let beat = s.elapsed - 0.6 - order as f32 * 0.45;
+            let on_beat = beat > 0.0 && (beat % 1.2) < 0.7;
             let gesture = if goal.is_some() {
                 ActionKind::Traverse
-            } else if beat > 0.0 && (beat % 1.2) < 0.7 {
+            } else if on_beat {
                 ActionKind::Greet
             } else {
                 ActionKind::SoloPlay
             };
             self.steer_play(*id, goal, gesture);
+            if goal.is_none() && on_beat {
+                self.pose_play(*id, Gesture::Bop);
+            }
             self.look_at(*id, lead);
         }
         if s.elapsed >= 1.5 {
@@ -410,6 +437,7 @@ impl World {
         let heading = if front.x >= back.x { 1.0 } else { -1.0 };
         // The one in front crouches; everyone else waits their turn where they stand.
         self.steer_play(front_id, None, ActionKind::Perch);
+        self.pose_play(front_id, Gesture::Crouch);
         self.look_at(front_id, back);
         for (_, id) in jumpers.iter().filter(|(_, id)| *id != back_id) {
             self.steer_play(*id, None, ActionKind::InspectScreen);
@@ -482,6 +510,13 @@ impl World {
             return false;
         };
         if prop.remaining <= 0.0 || prop.handoffs >= 3 {
+            // The tussle is over, but whoever ended up without the toy still reaches after it
+            // while the scene winds down around them.
+            for id in s.members.iter().flatten().copied() {
+                if id != prop.holder {
+                    self.pose_play(id, Gesture::Reach);
+                }
+            }
             return false;
         }
         let Some(holder) = self.play_position(prop.holder) else {
@@ -536,6 +571,9 @@ impl World {
                 .play_goal_for(id, holder.x, desktop)
                 .or_else(|| self.play_goal_for(id, holder.x - away * CONTACT * unit, desktop));
             self.steer_play(id, goal, ActionKind::Sprint);
+            // Grabbing for the toy. A sprint keeps the body, so this shows once the scene winds
+            // down and the chasers stop where they are, still reaching for whoever has it.
+            self.pose_play(id, Gesture::Reach);
             self.look_at(id, holder);
         }
         true
@@ -584,14 +622,21 @@ impl World {
         let gap = (a.x - b.x).abs();
         if gap > CONTACT * 1.4 * unit {
             let midpoint = (a.x + b.x) * 0.5;
+            let mut closing = false;
             for (id, position) in [(first, a), (second, b)] {
                 let side = if position.x >= midpoint { 1.0 } else { -1.0 };
                 let goal = self.play_goal_for(id, midpoint + side * CONTACT * 0.6 * unit, desktop);
+                closing |= goal.is_some();
                 self.steer_play(id, goal, ActionKind::Traverse);
             }
             self.look_at(first, b);
             self.look_at(second, a);
-            return true;
+            // The walk stops a hand's width short, because what is left is shorter than a stride
+            // either of them will take. That is as close as they get, and the tussle starts from
+            // where they stand rather than waiting for a step neither can make.
+            if closing {
+                return true;
+            }
         }
         // Alternate pulls: each turn the toy and both creatures shift a little.
         let turn = ((s.elapsed - s.turn_started) / 0.9) as u32;
@@ -602,12 +647,11 @@ impl World {
         };
         let holder = prop.holder;
         let pulling = if puller == first { -1.0 } else { 1.0 };
+        // Whoever is not digging in gets hauled a step. It has to be a step the walk will
+        // actually take, or the pair would strain against each other without ever moving.
+        let haul = (6.0 * unit).max(motion::MIN_STRIDE + 1.0);
         for (id, position) in [(first, a), (second, b)] {
-            let shift = if id == puller {
-                0.0
-            } else {
-                pulling * 6.0 * unit
-            };
+            let shift = if id == puller { 0.0 } else { pulling * haul };
             let goal = (shift != 0.0)
                 .then(|| self.play_goal_for(id, position.x + shift, desktop))
                 .flatten();
@@ -620,6 +664,9 @@ impl World {
                     ActionKind::SocialPlay
                 },
             );
+            // Both haul on the toy. Whoever holds it keeps showing it off, and whoever is being
+            // dragged a step is travelling, so the pull shows on the one digging in this turn.
+            self.pose_play(id, Gesture::Heave);
         }
         self.look_at(first, b);
         self.look_at(second, a);
@@ -671,6 +718,7 @@ impl World {
             s.turn_started = s.elapsed;
             self.steer_play(it_id, None, ActionKind::Greet);
             self.steer_play(caught_id, None, ActionKind::ReactToWindow);
+            self.pose_play(caught_id, Gesture::Gasp);
             self.look_at(caught_id, it);
             return true;
         }
@@ -863,6 +911,10 @@ impl World {
                     ActionKind::Perch
                 },
             );
+            if goal.is_none() {
+                // Frozen mid-creep, low and holding its breath.
+                self.pose_play(id, Gesture::Crouch);
+            }
             self.look_at(id, point);
         }
         if s.elapsed >= 2.0 {
@@ -893,6 +945,7 @@ impl World {
         if !asleep {
             // Already awake: a moment of delight, then the scene is over.
             self.steer_play(prankster, None, ActionKind::Greet);
+            self.pose_play(prankster, Gesture::Bop);
             return false;
         }
         let (Some(point), Some(position)) =
@@ -927,19 +980,26 @@ impl World {
             // A creature that still needs the rest simply sleeps through it.
             if sleepy < 0.4 && self.ambient_rng.random_ratio(1, 2) {
                 self.wake_sleeper(sleeper, dt);
+                // It worked: a little victory dance over the companion it woke.
                 self.steer_play(prankster, None, ActionKind::Greet);
+                self.pose_play(prankster, Gesture::Bop);
                 return true;
             }
         }
+        let poking = (s.elapsed % 1.4) < 0.7;
         self.steer_play(
             prankster,
             None,
-            if (s.elapsed % 1.4) < 0.7 {
+            if poking {
                 ActionKind::SocialPlay
             } else {
                 ActionKind::InspectScreen
             },
         );
+        if !poking {
+            // Between pokes it keeps low and still, watching whether the sleeper stirs.
+            self.pose_play(prankster, Gesture::Crouch);
+        }
         self.look_at(prankster, point);
         true
     }
@@ -1006,6 +1066,8 @@ impl World {
             .into_iter()
             .find_map(|direction| self.travel_goal(lead_id, lead, direction, unit, desktop))
         else {
+            // Nowhere left to lead: a flourish from the front, and the game is over.
+            self.pose_play(lead_id, Gesture::Cheer);
             return false;
         };
         self.steer_play(lead_id, Some(goal), ActionKind::Traverse);
@@ -1038,7 +1100,13 @@ impl World {
             }
         }
         let _ = dt;
-        following || s.elapsed < 3.0
+        let continuing = following || s.elapsed < 3.0;
+        if !continuing || s.elapsed >= s.ends_at - 1.4 {
+            // The route is over and the line stops where it is: the leader finishes with a
+            // flourish.
+            self.pose_play(lead_id, Gesture::Cheer);
+        }
+        continuing
     }
 
     /// A friendly contest for the middle of a ledge, settled by stepping aside rather than shoving.
@@ -1070,6 +1138,14 @@ impl World {
         });
         if let Some(&(claim_index, claim_id)) = claimant {
             if s.swaps >= 2 {
+                // The spot has changed hands as often as it is going to: whoever is standing on
+                // it keeps it and says so, and the rest are left straining at it from below.
+                if (king.x - spot.x).abs() <= 12.0 * unit {
+                    self.pose_play(king_id, Gesture::Cheer);
+                }
+                for (_, id) in &challengers {
+                    self.pose_play(*id, Gesture::Heave);
+                }
                 return false;
             }
             s.swaps += 1;
@@ -1080,12 +1156,15 @@ impl World {
             let goal = self.play_goal_for(king_id, king.x + aside * CONTACT * 1.6 * unit, desktop);
             self.steer_play(king_id, goal, ActionKind::Traverse);
             self.steer_play(claim_id, None, ActionKind::Greet);
+            // The new holder of the spot celebrates taking it.
+            self.pose_play(claim_id, Gesture::Cheer);
             self.look_at(king_id, spot);
             self.look_at(claim_id, spot);
             return true;
         }
         // Holding the spot, or heading for it.
-        let goal = ((king.x - spot.x).abs() > 12.0 * unit)
+        let on_top = (king.x - spot.x).abs() <= 12.0 * unit;
+        let goal = (!on_top)
             .then(|| self.play_goal_for(king_id, spot.x, desktop))
             .flatten();
         self.steer_play(
@@ -1097,6 +1176,9 @@ impl World {
                 ActionKind::Perch
             },
         );
+        if on_top {
+            self.pose_play(king_id, Gesture::Cheer);
+        }
         self.look_at(king_id, spot);
         for (_, id) in challengers {
             let Some(position) = self.play_position(id) else {
@@ -1108,6 +1190,9 @@ impl World {
                 .play_goal_for(id, spot.x + side * CONTACT * unit, desktop)
                 .or_else(|| self.play_goal_for(id, spot.x + side * CONTACT * 1.6 * unit, desktop));
             self.steer_play(id, goal, ActionKind::Traverse);
+            // Straining to get up there. Walking keeps the body, so this shows once a challenger
+            // is left standing below the spot as the contest winds down.
+            self.pose_play(id, Gesture::Heave);
             self.look_at(id, spot);
         }
         true
@@ -1164,7 +1249,7 @@ impl World {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in super::super) mod tests {
     use super::super::play::Kind;
     use super::super::play::tests::{Audience, everyone_settled, scene, tick};
     use super::*;
@@ -1196,6 +1281,68 @@ mod tests {
 
     fn session_kind(w: &World) -> Option<Kind> {
         w.attention.play.session.map(|s| s.kind)
+    }
+
+    /// A solo flourish beside companions with an appetite for joining in.
+    pub(in super::super) fn dance_scene() -> (World, DesktopSnapshot, OffsetDateTime) {
+        let (mut w, d, now) = scene(false);
+        for (index, c) in w.save.creatures.iter_mut().enumerate() {
+            c.state.action = if index == 0 {
+                ActionKind::SoloPlay
+            } else {
+                ActionKind::Perch
+            };
+            c.state.action_duration = 100.0;
+        }
+        (w, d, now)
+    }
+
+    /// One creature playing with a toy, beside a companion that would like it.
+    pub(in super::super) fn keep_away_scene() -> (World, DesktopSnapshot, OffsetDateTime) {
+        let (mut w, d, now) = scene(false);
+        for (index, c) in w.save.creatures.iter_mut().enumerate() {
+            c.state.action = if index == 0 {
+                ActionKind::SocialPlay
+            } else {
+                ActionKind::Perch
+            };
+            c.state.action_duration = 100.0;
+            c.personality.playfulness = 0.9;
+            c.personality.curiosity = 0.2;
+        }
+        (w, d, now)
+    }
+
+    /// Two companions lined up along a ledge, one behind the other, with the appetite to vault.
+    pub(in super::super) fn leapfrog_scene() -> (World, DesktopSnapshot, OffsetDateTime) {
+        let (mut w, d, now) = scene(false);
+        for (index, c) in w.save.creatures.iter_mut().enumerate() {
+            c.state.action = ActionKind::Perch;
+            c.state.action_duration = 100.0;
+            c.state.action_elapsed = 0.0;
+            c.personality.playfulness = if index == 3 { 0.2 } else { 0.9 };
+            c.personality.curiosity = 0.2;
+            c.state.facing_right = true;
+        }
+        (w, d, now)
+    }
+
+    /// Two playful companions and one toy between them.
+    fn tug_scene() -> (World, DesktopSnapshot, OffsetDateTime) {
+        let (mut w, d, now) = scene(false);
+        for (index, c) in w.save.creatures.iter_mut().enumerate() {
+            c.state.action = if index == 0 {
+                ActionKind::SoloPlay
+            } else {
+                ActionKind::Perch
+            };
+            c.state.action_duration = 100.0;
+            // Exactly one playful companion, so this is a tussle and not a dance.
+            c.personality.playfulness = if index < 2 { 0.9 } else { 0.1 };
+            c.personality.curiosity = 0.2;
+            c.state.facing_right = index == 0;
+        }
+        (w, d, now)
     }
 
     fn window_bounds(d: &DesktopSnapshot) -> (f32, f32) {
@@ -2083,6 +2230,109 @@ mod tests {
                 travelled |= session_kind(&w).is_some_and(Kind::travels);
             }
             assert_eq!(travelled, !reduced);
+        }
+    }
+
+    /// A tug of war is a contest of shoulders. Once the pair has the toy between them — which is
+    /// where their settling-in walk leaves them, whether or not the last hand's width is a stride
+    /// either will take — whoever is digging in this turn hauls on it, while the one being pulled
+    /// about is travelling and keeps its own body, as does whoever is holding the toy up.
+    #[test]
+    fn a_tug_of_war_heaves_on_the_toy_it_is_holding_between_them() {
+        let (mut w, mut d, now) = tug_scene();
+        let mut poses = super::super::tests::Poses::default();
+        let mut heaved_holding = 0;
+        for step in 1..300 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            let Some(s) = w.attention.play.session.filter(|s| s.kind == Kind::Tug) else {
+                continue;
+            };
+            let holder = s.prop.expect("a tug always has its toy").holder;
+            for c in w.save.creatures.iter().take(2) {
+                if c.state.attention.and_then(|pose| pose.gesture) == Some(Gesture::Heave) {
+                    assert_eq!(c.state.action, ActionKind::SocialPlay);
+                    heaved_holding += usize::from(c.id != holder);
+                    assert_ne!(c.id, holder, "the toy itself keeps the holder's body");
+                }
+            }
+        }
+        assert!(
+            heaved_holding >= 3,
+            "the pair closed in but never hauled on the toy: {:?}",
+            poses.struck
+        );
+    }
+
+    /// Keep-away is about who does not have the toy: they chase it while there is room to run,
+    /// and when the tussle winds down they are left standing there reaching after it.
+    #[test]
+    fn keep_away_leaves_the_empty_handed_reaching_after_the_toy() {
+        let (mut w, mut d, now) = keep_away_scene();
+        let mut poses = super::super::tests::Poses::default();
+        let mut reached = 0;
+        for step in 1..300 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            let Some(s) = w
+                .attention
+                .play
+                .session
+                .filter(|s| s.kind == Kind::KeepAway)
+            else {
+                continue;
+            };
+            let holder = s.prop.expect("keep-away always has its toy").holder;
+            for c in &w.save.creatures {
+                if c.state.attention.and_then(|pose| pose.gesture) == Some(Gesture::Reach) {
+                    assert_ne!(c.id, holder, "whoever has the toy is busy showing it off");
+                    assert!(s.members.contains(&Some(c.id)));
+                    reached += 1;
+                }
+            }
+        }
+        assert!(
+            reached >= 5,
+            "nobody reached for the toy: {:?}",
+            poses.struck
+        );
+    }
+
+    /// A dance circle keeps its own beat: each dancer bops on the beat it joined in on, and walks
+    /// into place without one. The beat carries on through the wind-down, where the circle stays
+    /// where it is standing rather than travelling.
+    #[test]
+    fn a_dance_circle_bops_on_its_own_beat() {
+        let (mut w, mut d, now) = dance_scene();
+        let mut poses = super::super::tests::Poses::default();
+        let mut danced_on_the_beat = 0;
+        for step in 1..260 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            for c in &w.save.creatures {
+                if c.state.attention.and_then(|pose| pose.gesture) == Some(Gesture::Bop) {
+                    assert!(
+                        matches!(c.state.action, ActionKind::Greet | ActionKind::Perch),
+                        "bopping over {:?}",
+                        c.state.action
+                    );
+                    danced_on_the_beat += usize::from(c.state.action == ActionKind::Greet);
+                }
+            }
+        }
+        assert!(
+            danced_on_the_beat >= 10,
+            "the circle never danced: {poses:?}"
+        );
+        let dancers: Vec<_> = poses
+            .struck
+            .iter()
+            .filter(|(_, struck)| struck.contains(&Gesture::Bop))
+            .collect();
+        assert!(dancers.len() >= 2, "the circle never danced: {poses:?}");
+        for (id, struck) in dancers {
+            assert!(
+                struck.iter().all(|pose| *pose == Gesture::Bop),
+                "a dancer did something else: {id} {struck:?}"
+            );
+            assert!(poses.ticks(*id, Gesture::Bop) >= 10, "{poses:?}");
         }
     }
 }

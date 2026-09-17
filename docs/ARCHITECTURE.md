@@ -62,10 +62,25 @@ active. There is no inventory, history, runtime generation, or persistent collec
 
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture contains eleven expressions, nine gaze directions, three eyelid states, and one
-eight-slot trinket row. The body atlas remains exactly 90 unique frames because `Tossed` reuses the
-dragged body clip. Runtime work normally selects two slots and draws two nearest-filtered quads;
-discovery alone adds one temporary quad. The combined textures are exactly 1,161,216 bytes per
-creature and are enforced below a 1.2 MB test limit.
+eight-slot trinket row. The body atlas holds exactly 118 unique frames: 90 for actions, because
+`Tossed` reuses the dragged body clip, and 28 for nine gesture poses. Runtime work normally selects
+two slots and draws two nearest-filtered quads; discovery alone adds one temporary quad. The
+combined textures are exactly 1,437,696 bytes per creature and are enforced below a 1.5 MB test
+limit.
+
+Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, and bop — are a runtime-only
+`gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
+shows its baked clip in place of the action's; the action still owns movement, placement, facing,
+and frame timing, and the GPU quad, the interaction mask, and the review sheets resolve the same
+clip. One place decides whether a body is free to show a pose — `body_free` in `world/attention.rs`,
+applied to every role after it has proposed one. A pose survives only over a planted presentation
+action, never under reduced motion, while walking, hopping, hanging by the hands, or when the
+creature's own journey or a toss still moves it this tick; what actually moves the creature decides
+that, rather than its velocity, because an approach that has handed over to a journey leaves the
+last stride on the books. Both renderers draw one limb per side: a gesture carries the resting paw, nub, or wing out
+to where it points, rather than drawing another limb beside the one already there. A wing opens in
+its own colors and texture; a long body lifts its near front paw off the ground. Covering the face
+also closes the eyes, which the layered face still draws over the paws.
 
 `PetReaction` maps to the existing greeting body clip, so lived experience does not grow that atlas.
 A newly earned profile descriptor may allocate one small sprout thought-bubble texture for five
@@ -440,9 +455,27 @@ creatures standing on it. Cached simulation snapshots do not count as fresh evid
 Unreliable scans, observation gaps, monitor changes, and wholesale window-set changes reset the
 baseline; a disappeared window requires another fresh scan before it can invite a search.
 
+Every behavior added in this area is held to one contract. A sequence has eligibility rules,
+deadlines for each stage, cooldowns, an interruption path, and a valid place to rest or land when
+it is cut short; habitat, occlusion, reduced motion, quiet mode, and the existing preferences apply
+to all of them, and decorative drama never delays recovery from invalid geometry. Physical comedy
+is a library of short, authored, interruptible sequences composed from shared stages, routes,
+poses, and outcome cues — not a physics simulation. A failed attempt is brief, harmless, and
+recoverable; there are no collision bodies for windows, no coupled ragdoll for a shared tumble, and
+no universal collision solver, only reserved standing and landing spots and creature-scale contact.
+A spectator is always an existing colony member, and multiplayer means the colony playing together,
+offline. Creatures observe only window rectangles and stacking order, monitor geometry, and cursor
+motion, and they are not omniscient: a companion notices another creature's visible reaction
+without detecting the desktop event that caused it, a startle propagates at most one hop, and an
+observer's reaction never becomes a new spectacle for others. When a window stops being observed,
+it is treated as a lost surface, without claiming to know whether it closed, minimized, was covered,
+or moved to another workspace. Busy-desktop exploration follows usable geometry — exposed, reachable
+tiers — rather than the raw number of windows, and a creature racing the cursor never touches input
+or leaves its habitat.
+
 `world/attention.rs` coordinates one scene of up to four actors/observers. Notice, optional short
-approach, reaction, and recovery reuse existing actions and transient `AttentionPose` face/gaze
-hints. Individual and colony cooldowns prevent continuous window drags from restarting scenes.
+approach, reaction, and recovery reuse existing actions and transient `AttentionPose` face, gaze,
+and gesture hints. Individual and colony cooldowns prevent continuous window drags from restarting scenes.
 An eight-second, four-creature support memory lets a confirmed loss prompt one search even after
 a recent ride. Safety interruption releases the audience immediately; normal completion permits
 a brief recovery. Grabbing, sleep, journeys, social plans, home, quiet mode, and hidden/paused state

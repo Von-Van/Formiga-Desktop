@@ -12,7 +12,7 @@ use crate::updater::{
 };
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
-use formiga_art::AnimationSpec;
+use formiga_art::{AnimationSpec, BodyClip};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -1996,7 +1996,7 @@ fn world_redraw_interval(world: &World) -> Duration {
         .creatures
         .iter()
         .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
-        .map(|creature| AnimationSpec::for_action(creature.state.action).fps)
+        .map(|creature| AnimationSpec::for_clip(BodyClip::for_creature(creature)).fps)
         .max()
         .unwrap_or(2)
         .max(1);
@@ -2015,7 +2015,7 @@ fn world_tick_interval(world: &World) -> Duration {
     }
     let has_expressive_action = world.save.creatures.iter().any(|creature| {
         creature.state.arrival_delay_secs <= 0.0
-            && AnimationSpec::for_action(creature.state.action).fps >= 8
+            && AnimationSpec::for_clip(BodyClip::for_creature(creature)).fps >= 8
     });
     let needs_responsive_gaze =
         world.save.settings.cursor_reactions
@@ -2071,7 +2071,36 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_press_target;
+    use super::{resolve_press_target, world_redraw_interval};
+    use formiga_core::*;
+    use std::time::Duration;
+
+    #[test]
+    fn a_gesture_is_presented_at_its_own_frame_rate_rather_than_the_action_beneath_it() {
+        let mut world = World::new(
+            [5; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        for creature in &mut world.save.creatures {
+            creature.state.action = ActionKind::InspectScreen;
+            creature.state.arrival_delay_secs = 0.0;
+            creature.state.velocity = Point::default();
+            creature.state.attention = None;
+        }
+        // Inspecting animates at four frames a second; a cheer over it animates at eight.
+        assert_eq!(world_redraw_interval(&world), Duration::from_secs_f32(0.25));
+        world.save.creatures[0].state.attention = Some(AttentionPose {
+            target: Point::default(),
+            emotion: AttentionEmotion::Enjoying,
+            hanging: 0.0,
+            gesture: Some(Gesture::Cheer),
+        });
+        assert_eq!(
+            world_redraw_interval(&world),
+            Duration::from_secs_f32(0.125)
+        );
+    }
 
     #[test]
     fn press_stays_on_the_window_whose_own_mask_covers_the_cursor() {

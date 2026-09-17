@@ -113,8 +113,8 @@ pub struct ScheduledTransition {
     pub preset: u8,
 }
 
-/// Opt-in weekday transitions between the two saved presets. Nothing here polls: the next
-/// transition becomes a deadline the existing event loop already waits on.
+/// Opt-in weekday transitions between the two saved presets. Nothing here polls: the schedule is
+/// evaluated inside the existing world tick, and adds no timer, thread, or wakeup of its own.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RoutineSchedule {

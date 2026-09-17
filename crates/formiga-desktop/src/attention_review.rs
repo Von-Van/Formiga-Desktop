@@ -1,6 +1,6 @@
 //! Test-only visual review of actual world attention and the production composited sprite path.
 use formiga_art::{
-    AnimationSpec, Canvas, CreatureRenderer, ExpressionKind, FACE_FRAME_SIZE, FRAME_SIZE,
+    AnimationSpec, BodyClip, Canvas, CreatureRenderer, ExpressionKind, FACE_FRAME_SIZE, FRAME_SIZE,
     FramePlacement, GazeDirection, MotionSignature, PixelPoint, PropAnchor, Rgba,
 };
 use formiga_core::*;
@@ -145,8 +145,9 @@ fn riders_and_spectators_render_notice_reaction_and_relief() {
             }
             let frame = CreatureRenderer::render_composited_frame(
                 &c.appearance,
-                c.state.action,
-                MotionSignature::for_creature(c).frame(c.state.action, c.state.action_elapsed),
+                BodyClip::for_creature(c),
+                MotionSignature::for_creature(c)
+                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
                 c.state.facing_right,
                 false,
                 face,
@@ -255,8 +256,9 @@ fn new_window_inspection_renders_notice_approach_and_a_spaced_audience() {
             let face = CreatureRenderer::resolve_face_state(c, desktop.cursor, false);
             let frame = CreatureRenderer::render_composited_frame(
                 &c.appearance,
-                c.state.action,
-                MotionSignature::for_creature(c).frame(c.state.action, c.state.action_elapsed),
+                BodyClip::for_creature(c),
+                MotionSignature::for_creature(c)
+                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
                 c.state.facing_right,
                 false,
                 face,
@@ -368,8 +370,9 @@ fn cursor_and_monitor_attention_render_distinct_notice_and_movement() {
             }
             let frame = CreatureRenderer::render_composited_frame(
                 &c.appearance,
-                c.state.action,
-                MotionSignature::for_creature(c).frame(c.state.action, c.state.action_elapsed),
+                BodyClip::for_creature(c),
+                MotionSignature::for_creature(c)
+                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
                 c.state.facing_right,
                 false,
                 face,
@@ -472,8 +475,9 @@ fn ledge_peeking_refusal_and_jump_outcomes_render_with_their_audience() {
                 let face = CreatureRenderer::resolve_face_state(c, desktop.cursor, false);
                 let frame = CreatureRenderer::render_composited_frame(
                     &c.appearance,
-                    c.state.action,
-                    MotionSignature::for_creature(c).frame(c.state.action, c.state.action_elapsed),
+                    BodyClip::for_creature(c),
+                    MotionSignature::for_creature(c)
+                        .frame(BodyClip::for_creature(c), c.state.action_elapsed),
                     c.state.facing_right,
                     false,
                     face,
@@ -528,8 +532,9 @@ fn paint_scene(
         let face = CreatureRenderer::resolve_face_state(c, desktop.cursor, false);
         let frame = CreatureRenderer::render_composited_frame(
             &c.appearance,
-            c.state.action,
-            MotionSignature::for_creature(c).frame(c.state.action, c.state.action_elapsed),
+            BodyClip::for_creature(c),
+            MotionSignature::for_creature(c)
+                .frame(BodyClip::for_creature(c), c.state.action_elapsed),
             c.state.facing_right,
             false,
             face,
@@ -818,8 +823,9 @@ fn spectator_reactions_read_without_labels() {
             let face = CreatureRenderer::resolve_face_state(c, d.cursor, false);
             let frame = CreatureRenderer::render_composited_frame(
                 &c.appearance,
-                c.state.action,
-                MotionSignature::for_creature(c).frame(c.state.action, c.state.action_elapsed),
+                BodyClip::for_creature(c),
+                MotionSignature::for_creature(c)
+                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
                 c.state.facing_right,
                 false,
                 face,

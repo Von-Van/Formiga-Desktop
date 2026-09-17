@@ -60,7 +60,13 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Continuous upward traverse/climb/mantle, downward hops, and route interruption | CI | CI |
 | Raised dangling GPU/proxy handhold placement contract | CI | CI |
 | Eight deterministic opaque trinkets and hold playback | CI | CI |
-| Exactly 90 unique body frames; layered atlas at or below 1.2 MB | CI | CI |
+| Exactly 118 unique body frames (90 action, 28 gesture), one slot each; layered atlas at or below 1.5 MB | CI | CI |
+| One limb per side: a raised paw or wing leaves no resting nub or folded wing behind, and winged bodies reach with their wings | CI | CI |
+| Every action and gesture keeps one connected body and the reserved face on every body plan at extreme sizes | CI | CI |
+| Nine gestures are distinct, moving, in-frame poses on every body; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
+| A gesture is presented at its own frame rate, not that of the action beneath it | CI | CI |
+| Every body pose has a scene that strikes it; poses never appear over travel, hops, hangs, reduced motion, or an action whose own clip is the point | CI | CI |
+| A tug of war reaches its pull and hauls, from the position its settling-in walk actually reaches | CI | CI |
 | Habitat region algebra | CI | CI |
 | Pet/drag maximum-excursion classification across scale, placement, toss, cancel, and re-grab | CI | CI |
 | Home petting without dismissal and threshold-crossing shelter dismissal | CI | CI |
@@ -97,8 +103,34 @@ the atlas the same size. Page PNGs can be generated without a live colony using:
 FORMIGA_UI_REVIEW_DIR=/tmp/formiga-ui-review cargo test -p formiga-desktop all_pages_render
 ```
 
+```sh
+FORMIGA_ATTENTION_REVIEW_DIR="$PWD/target/attention-review" cargo test -p formiga-desktop attention_review
+```
+
 Setting `FORMIGA_ATTENTION_REVIEW_DIR` to an absolute path writes the sheets each of those tests
-draws, and they were reviewed for this release. `attention-stages.png` and
+draws. They show production sprite composition over synthetic geometry, not the native compositor,
+and they are dense: crop a row and enlarge it with nearest-neighbour scaling before judging a face.
+How to read them:
+
+- `attention-stages.png` — columns are a timid rider, a bold rider, and two observers; rows are
+  notice, reaction, and recovery.
+- `inspection-approach.png` — notice, a short approach, and inspection, with a spaced audience.
+- `cursor-and-display.png` — columns are a bold cursor investigation, a wary withdrawal, a display
+  discovery, and a reorientation after a display is lost; rows are notice and movement.
+- `ledge-and-gap.png` — a ledge peek, a refused gap, and a successful crossing, each with its
+  audience.
+- `catches-and-grips.png` — a marginal jump read left to right as airborne, hanging by the hands,
+  mantling, and celebrating, alongside timid riders gripping a window that moved.
+- `copycat-and-stare.png` — imitators raising a copied gesture in turn, and a staring contest whose
+  loser closes its eyes.
+- `spectator-reactions.png` — one marginal attempt at notice, preparation, the catch, the moment
+  after, and the outcome, with three watchers drawn at 4×.
+- `body-plans-and-scales.png`, `anchors-by-body-plan.png`, `prop-handoff.png`,
+  `outline-on-busy-wallpaper.png`, and `narrow-gaps-and-short-ledges.png` — every body plan at Small,
+  Medium, and Large, adult and mini; feet and grips against a drawn contact line; a carried prop in
+  both facings; the optional outline over a busy checker; and squeezes and short ledges.
+
+The sheets were reviewed for this release. `attention-stages.png` and
 `spectator-reactions.png` show the watcher expressions as genuinely distinct: eye openness,
 highlight, and mouth all change between curious, startled, concerned, averting, relieved, and
 enjoying, and the closed-eye poses read unmistakably at the sizes the desktop draws.
@@ -220,6 +252,17 @@ and for its remembered position to change only while the hider is genuinely in v
 scenario asserts that no two playing creatures ever claim the same spot and that no hop is aimed at
 a spot another creature has taken or reserved — the honest-space contract, without a collision
 solver. Reduced motion starts none of the three.
+
+Body poses are covered as a layer over the action, never as a replacement for one. A recorder runs
+inside every scene test and fails on a pose struck over travel, a hop, a hanging creature, reduced
+motion, or an action whose own clip is the point; a sweep of a slipped rescue, a leapfrog, and a
+race asserts that those scenes genuinely did travel, hang, hop, and fall while striking none. Every
+pose in the vocabulary is asserted to have a scene that strikes it, and the moments have focused
+tests of their own: a ledge peek fretting over the drop, a brink teetering, a dare crouching or
+fretting according to nerve, a helper hauling and then cheering, a seeker counting with its eyes
+covered, a race field cheering the winner in, a dance on the beat, an empty-handed player reaching
+after the toy, a cursor close enough to reach for, a tug that hauls on the toy between them, and a
+support that vanishes underfoot, gasping once and then only looking around.
 
 Every game asserts its own audience, through a shared recorder that tracks each watcher's gaze
 targets, feelings, assigned participant, and whether it cheered, and fails on four faults: a gaze

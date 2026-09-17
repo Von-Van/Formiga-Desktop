@@ -1,6 +1,6 @@
 use crate::platform;
 use anyhow::{Context, Result};
-use formiga_art::{CreatureRenderer, FRAME_SIZE, FramePlacement, MotionSignature};
+use formiga_art::{BodyClip, CreatureRenderer, FRAME_SIZE, FramePlacement, MotionSignature};
 use formiga_core::{Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use winit::window::{Cursor, CursorIcon, Window, WindowId, WindowLevel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct MaskSignature {
-    action: formiga_core::ActionKind,
+    clip: BodyClip,
     frame: u8,
     facing_right: bool,
     reduce_motion: bool,
@@ -19,7 +19,7 @@ struct MaskSignature {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct MaskArtworkSignature {
-    action: formiga_core::ActionKind,
+    clip: BodyClip,
     frame: u8,
     facing_right: bool,
     reduce_motion: bool,
@@ -170,13 +170,14 @@ impl InteractionProxy {
             self.physical_position = Some(position);
         }
 
-        // The hit proxy must show the same frame the overlay draws.
-        let frame = MotionSignature::for_creature(creature)
-            .frame(creature.state.action, creature.state.action_elapsed);
+        // The hit proxy must show the same frame the overlay draws, gesture included.
+        let clip = BodyClip::for_creature(creature);
+        let frame =
+            MotionSignature::for_creature(creature).frame(clip, creature.state.action_elapsed);
         let face_state =
             CreatureRenderer::resolve_face_state(creature, cursor, settings.cursor_reactions);
         let signature = MaskSignature {
-            action: creature.state.action,
+            clip,
             frame,
             facing_right: creature.state.facing_right,
             reduce_motion: settings.reduce_motion,
@@ -184,7 +185,7 @@ impl InteractionProxy {
         };
         if self.signature != Some(signature) {
             let artwork = MaskArtworkSignature {
-                action: creature.state.action,
+                clip,
                 frame,
                 facing_right: creature.state.facing_right,
                 reduce_motion: settings.reduce_motion,
@@ -195,7 +196,7 @@ impl InteractionProxy {
                 .or_insert_with(|| {
                     let canvas = CreatureRenderer::render_composited_frame(
                         &creature.appearance,
-                        creature.state.action,
+                        clip,
                         frame,
                         creature.state.facing_right,
                         settings.reduce_motion,

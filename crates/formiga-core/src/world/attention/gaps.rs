@@ -119,6 +119,7 @@ impl World {
                 rewarding,
                 escape: false,
                 since: 0.0,
+                caught: false,
             },
             target,
             emotion: AttentionEmotion::Curious,
@@ -200,6 +201,7 @@ impl World {
                     rewarding: !journey.bridge,
                     escape: false,
                     since: 0.0,
+                    caught: false,
                 }
             } else {
                 Role::Ledge {
@@ -494,6 +496,7 @@ impl World {
                 hanging,
                 rewarding,
                 since,
+                caught,
                 ..
             } = &mut plan.role
             else {
@@ -513,6 +516,7 @@ impl World {
                 } else {
                     Stage::Act
                 };
+                *caught |= *stage == Stage::Catch;
             } else if let Some(journey) = self.window_journeys.get(&id) {
                 // A completed staircase step can hand the gaze to the next actual destination.
                 // Repairs of a moved target still fail the captured-bounds check below.

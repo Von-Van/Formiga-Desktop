@@ -1,4 +1,4 @@
-# Formiga · v0.57.0
+# Formiga · v0.57.1
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.57.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.57.1-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,15 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.57.1
+
+Your creatures now hold themselves the way the moment calls for. A watcher covers its eyes when the
+jump looks bad, gasps at a near miss, and throws its arms up when it goes well. A jumper squares up
+at the edge and wobbles when it just makes it. Tug of war is a real contest of shoulders, the
+hide-and-seek seeker covers its eyes while counting, and the loser of a staring match hides its
+face while the winners celebrate. Wings and paws also behave: whichever limb a creature has is the
+one that reaches, instead of a second arm appearing beside it.
 
 ## New in 0.57.0
 
@@ -119,7 +128,7 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
 - Every so often the colony coordinates a picnic, nap, race, catch game, shelter gathering,
   presentation, hatch day, quiet huddle, or late-night sleep pile.
 
-![Activity-coordinated gestures across every action](docs/assets/gesture-sheet.png)
+![Every action and gesture pose on three reference creatures](docs/assets/gesture-sheet.png)
 
 Creatures remember how they are treated. Pets, tosses, sleep, ledges, window rides, discoveries,
 play, home visits, and repeated placement gradually shape bounded behavior scores while the

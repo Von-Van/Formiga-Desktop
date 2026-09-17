@@ -206,6 +206,7 @@ impl World {
                 rewarding: true,
                 escape: false,
                 since: 0.0,
+                caught: false,
             },
             target: gap.hop.target,
             emotion: AttentionEmotion::Concerned,
@@ -435,5 +436,49 @@ mod tests {
         // Sleepiness lowers confidence too.
         world.save.creatures[0].state.drives.sleep_pressure = 0.8;
         assert_ne!(decide(&world), Some(gaps::GapDecision::Commit));
+    }
+
+    /// Changing its mind about a gap is something a creature does with its whole body: fretting
+    /// while it looks the drop over and while it waits at the run-up, teetering on the very edge
+    /// each time it leans out over it, and showing nothing at all while it is walking.
+    #[test]
+    fn reconsidering_a_gap_frets_at_the_drop_and_teeters_on_the_edge() {
+        let (mut world, mut desktop, now) = hesitant_scene(true, false);
+        let id = world.save.creatures[0].id;
+        let mut poses = super::super::tests::Poses::default();
+        let mut leaned_out = 0;
+        for step in 3..400 {
+            poses.tick(&mut world, |w| tick(w, &mut desktop, now, step));
+            let Some(gesture) = world.save.creatures[0]
+                .state
+                .attention
+                .and_then(|pose| pose.gesture)
+            else {
+                continue;
+            };
+            let Some((phase, _)) = phases(&world, id) else {
+                continue;
+            };
+            match gesture {
+                Gesture::Balance => {
+                    assert_eq!(phase, HesitatePhase::Reconsider);
+                    leaned_out += 1;
+                }
+                Gesture::Worry => assert!(
+                    matches!(
+                        phase,
+                        HesitatePhase::Look | HesitatePhase::BackUp | HesitatePhase::Approach
+                    ),
+                    "fretting in {phase:?}"
+                ),
+                other => panic!("a hesitation struck {other:?} in {phase:?}"),
+            }
+        }
+        assert!(
+            poses.by(id).contains(&Gesture::Worry) && leaned_out >= 10,
+            "{poses:?}"
+        );
+        // Backing off for good is a relief, and relief is not a pose.
+        assert_eq!(poses.by(id).last(), Some(&Gesture::Balance), "{poses:?}");
     }
 }

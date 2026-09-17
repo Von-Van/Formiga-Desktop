@@ -22,6 +22,47 @@ pub enum AttentionEmotion {
     Averting,
 }
 
+/// A body pose shown over an attention action: the visible half of a feeling or a game move.
+///
+/// The action still decides where the creature is and how it travels; a gesture only changes
+/// what its limbs and body do while it stays put. Runtime only, like the rest of the pose, so a
+/// save never records one and an older build never meets one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Gesture {
+    /// Both limbs thrown up in a bounce: a stunt landed, a race won, a friend found.
+    Cheer,
+    /// Limbs flung wide and the body drawn up tall: the first instant of a fright.
+    Gasp,
+    /// Limbs raised to the face with the eyes shut: looking away, or counting for a seeker.
+    Cover,
+    /// Limbs held together at the chest, fidgeting: waiting on something risky.
+    Worry,
+    /// Low and wound up with the limbs tucked: about to leap, sneaking, or hiding.
+    Crouch,
+    /// Leaning in with both limbs pulling: a tug of war, or hauling a companion up.
+    Heave,
+    /// Limbs out wide and wobbling: teetering at an edge, or keeping off the lava.
+    Balance,
+    /// One limb stretched toward what the creature is watching: pointing, or grabbing for a toy.
+    Reach,
+    /// A side-to-side dance with the limbs swinging in turn.
+    Bop,
+}
+
+impl Gesture {
+    pub const ALL: [Self; 9] = [
+        Self::Cheer,
+        Self::Gasp,
+        Self::Cover,
+        Self::Worry,
+        Self::Crouch,
+        Self::Heave,
+        Self::Balance,
+        Self::Reach,
+        Self::Bop,
+    ];
+}
+
 /// A presentation hint shared with the art renderer. This is explicitly excluded from saves.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AttentionPose {
@@ -29,6 +70,8 @@ pub struct AttentionPose {
     pub emotion: AttentionEmotion,
     /// 0 is planted foot contact, 1 is a hand-supported pose. Runtime only.
     pub hanging: f32,
+    /// A body pose to show in place of the action's own clip. Runtime only.
+    pub gesture: Option<Gesture>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

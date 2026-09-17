@@ -10,6 +10,8 @@ use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
+mod tick_bench;
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -61,6 +63,7 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/creature-card.png",
         )),
+        Some("tick-bench") => tick_bench::run(&args[2..]),
         Some("simulate") => simulate(
             args.get(2)
                 .and_then(|value| value.parse().ok())
@@ -68,7 +71,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools simulate [DAYS]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -382,24 +385,56 @@ fn expression_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Every action, then every gesture pose, for each reference creature.
 fn gesture_sheet(path: PathBuf) -> Result<()> {
     const COLS: u32 = 7;
     const SCALE: u32 = 3;
     let creatures = reference_creatures();
     let cell = FRAME_SIZE * SCALE;
-    let rows_per_family = (ActionKind::ALL.len() as u32).div_ceil(COLS);
+    let cells = (ActionKind::ALL.len() + Gesture::ALL.len()) as u32;
+    let rows_per_family = cells.div_ceil(COLS);
     let width = COLS * cell;
     let height = creatures.len() as u32 * rows_per_family * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for (family_index, creature) in creatures.iter().enumerate() {
-        for (action_index, action) in ActionKind::ALL.into_iter().enumerate() {
-            let spec = formiga_art::AnimationSpec::for_action(action);
-            let frame = (action_index as u8 + 1) % spec.frames;
-            let rendered =
-                CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
-            let column = action_index as u32 % COLS;
-            let local_row = action_index as u32 / COLS;
-            let row = family_index as u32 * rows_per_family + local_row;
+        let actions = ActionKind::ALL
+            .into_iter()
+            .enumerate()
+            .map(|(index, action)| {
+                let spec = formiga_art::AnimationSpec::for_action(action);
+                CreatureRenderer::render_frame(
+                    &creature.appearance,
+                    action,
+                    (index as u8 + 1) % spec.frames,
+                    true,
+                )
+            });
+        let gestures = Gesture::ALL.into_iter().map(|gesture| {
+            let spec = formiga_art::AnimationSpec::for_clip(gesture);
+            let (expression, eyelids) = match gesture {
+                Gesture::Cheer | Gesture::Bop => (ExpressionKind::Joy, EyelidPose::Open),
+                Gesture::Gasp => (ExpressionKind::Startled, EyelidPose::Open),
+                Gesture::Cover => (ExpressionKind::Worried, EyelidPose::Closed),
+                Gesture::Worry | Gesture::Balance => (ExpressionKind::Worried, EyelidPose::Open),
+                Gesture::Crouch | Gesture::Heave => (ExpressionKind::Determined, EyelidPose::Open),
+                Gesture::Reach => (ExpressionKind::Curious, EyelidPose::Open),
+            };
+            CreatureRenderer::render_composited_frame(
+                &creature.appearance,
+                gesture,
+                1 % spec.frames,
+                true,
+                false,
+                FaceRenderState {
+                    expression,
+                    eyelids,
+                    gaze: GazeDirection::default(),
+                },
+            )
+        });
+        for (index, rendered) in actions.chain(gestures).enumerate() {
+            let column = index as u32 % COLS;
+            let row = family_index as u32 * rows_per_family + index as u32 / COLS;
             blit_scaled(
                 &mut pixels,
                 width,

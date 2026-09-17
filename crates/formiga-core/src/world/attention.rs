@@ -72,6 +72,8 @@ enum Role {
         escape: bool,
         /// Plan time at which `stage` began.
         since: f32,
+        /// The attempt ended hanging from the far edge and had to pull itself up.
+        caught: bool,
     },
     /// A borderline gap: look, back up, come forward, reconsider; then commit or chicken out.
     Hesitate {
@@ -104,6 +106,9 @@ enum Role {
         bounds: Option<DesktopRect>,
         /// A leap in progress: the journey owns contact and action until it lands.
         hopping: bool,
+        /// A body pose the game wants struck over `gesture` this tick. Games restate it every
+        /// tick, and presentation still decides whether the body is free to show it.
+        pose: Option<Gesture>,
     },
     /// Invited to try the gap a companion just cleared: walk to the edge, then answer.
     Dare {
@@ -525,6 +530,16 @@ impl World {
                     plan.emotion = actor_emotion(creature, signal);
                 }
             }
+            // A creature on its own journey, or in a toss, is moved again after presentation. A
+            // pose may only show when this tick's step leaves it standing exactly as presented.
+            let held = !self.tosses.contains_key(&id)
+                && self.window_journeys.get(&id).is_none_or(|journey| {
+                    self.save
+                        .creatures
+                        .iter()
+                        .find(|c| c.id == id)
+                        .is_some_and(|c| journey_holds_still(journey, c, dt))
+                });
             if let Some(creature) = creature_mut(&mut self.save.creatures, id) {
                 if self.save.settings.reduce_motion {
                     plan.walk = None;
@@ -574,7 +589,7 @@ impl World {
                         plan.walk = None;
                     }
                 }
-                present(creature, plan, self.save.settings.reduce_motion);
+                present(creature, plan, self.save.settings.reduce_motion, held);
             }
         }
         // A success still on screen can be offered to a watcher before the scene closes.
@@ -1038,10 +1053,17 @@ impl World {
 
     fn begin_attention(&mut self, id: CreatureId, mut reaction: Reaction) {
         self.action_choices.remove(&id);
+        // A journey or a toss begun alongside this plan moves the creature later in the tick.
+        let held = !self.window_journeys.contains_key(&id) && !self.tosses.contains_key(&id);
         let creature = creature_mut(&mut self.save.creatures, id).unwrap();
         // Interruption intentionally emits no ActionCompleted or learned achievement.
         let original = creature.state.action;
-        present(creature, &mut reaction, self.save.settings.reduce_motion);
+        present(
+            creature,
+            &mut reaction,
+            self.save.settings.reduce_motion,
+            held,
+        );
         if original != creature.state.action {
             Self::emit(
                 &mut self.events,
@@ -1062,9 +1084,86 @@ impl World {
     }
 }
 
-fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
+/// How long a creature that caught the far edge teeters there once it has pulled itself up.
+const CATCH_WOBBLE_SECONDS: f32 = 0.5;
+/// How close a stationary investigator must be to the cursor to reach out for it.
+const CURSOR_REACH: f32 = 120.0;
+
+/// Present one plan for this tick: the action, where the creature looks and how it feels, and any
+/// body pose struck over that action. `held` is false when something after presentation still
+/// moves the creature this tick — its own journey stepping on, or a toss — so a pose chosen now
+/// could not be trusted to match what is drawn.
+fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool, held: bool) {
+    present_role(creature, plan, reduced_motion);
+    // Every role proposes its own pose. This is the one place that decides whether the body is
+    // actually free to show it, so no role can put a pose over travel by mistake.
+    if !body_free(creature, plan, reduced_motion, held)
+        && let Some(pose) = &mut creature.state.attention
+    {
+        pose.gesture = None;
+    }
+}
+
+/// Whether a gesture may stand in for the action's own clip. Only a planted presentation gives
+/// its body over to a pose: never with reduced motion, never while walking, hopping, carried by a
+/// journey or a toss, or hanging by the hands, and never over an action whose clip is itself the
+/// point, such as a sprint, a squeeze, a meal, a ride, a nap, or a toy being shown off.
+///
+/// What is actually moving the creature decides this, rather than its velocity: an approach that
+/// has just handed over to a journey leaves the last stride on the books for a while, and a
+/// creature standing perfectly still at the edge of a gap is not travelling anywhere.
+fn body_free(creature: &Creature, plan: &Reaction, reduced_motion: bool, held: bool) -> bool {
+    let planted = matches!(
+        creature.state.action,
+        ActionKind::Idle
+            | ActionKind::Perch
+            | ActionKind::InspectScreen
+            | ActionKind::Greet
+            | ActionKind::SocialPlay
+            | ActionKind::SoloPlay
+            | ActionKind::ReactToWindow
+            | ActionKind::InvestigateCursor
+    );
+    planted
+        && held
+        && !reduced_motion
+        && plan.walk.is_none()
+        && plan.display_walk.is_none()
+        && !matches!(plan.role, Role::Play { hopping: true, .. })
+        && creature
+            .state
+            .attention
+            .is_some_and(|pose| pose.hanging <= 0.0)
+}
+
+/// Whether this tick's step of a creature's own journey leaves it exactly where, and as, it was
+/// just presented. The journey moves the creature after presentation, so a pose chosen during a
+/// pause must not survive into the step that sets it going again.
+fn journey_holds_still(journey: &WindowJourney, creature: &Creature, dt: f32) -> bool {
+    let step = journey.clone().advance(dt);
+    !step.complete
+        && step.action == creature.state.action
+        && step.position == creature.state.position
+}
+
+/// A helper hauls on its companion while it hangs, and cheers only once the companion is up.
+fn helper_pose(plan: &Reaction) -> Option<Gesture> {
+    let rescued = plan
+        .cue
+        .is_some_and(|actor| actor.stage == Stage::Recover(Outcome::Completed));
+    match spectacle::cue(plan)?.stage {
+        Stage::Catch | Stage::Recover(_) if rescued => Some(Gesture::Cheer),
+        Stage::Catch => Some(Gesture::Heave),
+        _ => None,
+    }
+}
+
+fn present_role(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
     if let Role::Play {
-        gesture, hopping, ..
+        gesture,
+        hopping,
+        pose,
+        ..
     } = plan.role
     {
         if hopping {
@@ -1074,6 +1173,7 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
                 target: plan.target,
                 emotion: plan.emotion,
                 hanging: 0.0,
+                gesture: None,
             });
             return;
         }
@@ -1097,6 +1197,7 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             target: plan.target,
             emotion: plan.emotion,
             hanging: 0.0,
+            gesture: pose,
         });
         plan.action = action;
         return;
@@ -1112,14 +1213,18 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             creature.state.action_duration = f32::MAX;
         }
         plan.action = creature.state.action;
+        let recovering = matches!(stage, Stage::Recover(_));
         creature.state.attention = Some(AttentionPose {
             target: plan.target,
-            emotion: if matches!(stage, Stage::Recover(_)) {
+            emotion: if recovering {
                 AttentionEmotion::Relieved
             } else {
                 AttentionEmotion::Startled
             },
             hanging: 0.0,
+            // A tumble is tossed or landing until it recovers, and both keep the body, so the
+            // fall itself has no pose to strike.
+            gesture: None,
         });
         return;
     }
@@ -1144,6 +1249,13 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             target: landing,
             emotion: plan.emotion,
             hanging: 0.0,
+            // Facing the gap it was dared to try: a bold creature squares up to it, and a timid
+            // one frets.
+            gesture: Some(if creature.personality.boldness >= 0.5 {
+                Gesture::Crouch
+            } else {
+                Gesture::Worry
+            }),
         });
         return;
     }
@@ -1161,24 +1273,30 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             x: edge.x + if landing.x >= edge.x { 20.0 } else { -20.0 },
             y: edge.y + drop.clamp(12.0, 180.0),
         };
-        let (action, target, emotion) = match phase {
+        let (action, target, emotion, gesture) = match phase {
             HesitatePhase::Look if phase_elapsed < 0.45 => (
                 ActionKind::InspectScreen,
                 landing,
                 AttentionEmotion::Curious,
+                None,
             ),
             HesitatePhase::Look => (
                 ActionKind::InspectScreen,
                 below,
                 AttentionEmotion::Concerned,
+                Some(Gesture::Worry),
             ),
-            HesitatePhase::BackUp | HesitatePhase::Approach if walking => {
-                (ActionKind::Traverse, landing, AttentionEmotion::Concerned)
-            }
+            HesitatePhase::BackUp | HesitatePhase::Approach if walking => (
+                ActionKind::Traverse,
+                landing,
+                AttentionEmotion::Concerned,
+                None,
+            ),
             HesitatePhase::BackUp | HesitatePhase::Approach => (
                 ActionKind::InspectScreen,
                 landing,
                 AttentionEmotion::Concerned,
+                Some(Gesture::Worry),
             ),
             // Leaning over the edge: alternate between the landing and the drop below it.
             HesitatePhase::Reconsider => (
@@ -1189,11 +1307,17 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
                     landing
                 },
                 AttentionEmotion::Concerned,
+                Some(Gesture::Balance),
             ),
-            HesitatePhase::Retreat if walking => {
-                (ActionKind::Traverse, landing, AttentionEmotion::Relieved)
+            HesitatePhase::Retreat if walking => (
+                ActionKind::Traverse,
+                landing,
+                AttentionEmotion::Relieved,
+                None,
+            ),
+            HesitatePhase::Retreat => {
+                (ActionKind::Perch, landing, AttentionEmotion::Relieved, None)
             }
-            HesitatePhase::Retreat => (ActionKind::Perch, landing, AttentionEmotion::Relieved),
         };
         if creature.state.action != action {
             creature.state.action = action;
@@ -1211,6 +1335,7 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             target,
             emotion,
             hanging: 0.0,
+            gesture,
         });
         return;
     }
@@ -1219,6 +1344,8 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
         hanging,
         rewarding,
         escape,
+        since,
+        caught,
         ..
     } = plan.role
     {
@@ -1233,6 +1360,21 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             creature.state.velocity = Point::default();
         }
         plan.action = creature.state.action;
+        let in_stage = plan.elapsed - since;
+        let gesture = match stage {
+            // Pulled back up after catching the far edge: a wobble at the brink, then delight.
+            Stage::Recover(Outcome::Completed) if caught && in_stage < CATCH_WOBBLE_SECONDS => {
+                Some(Gesture::Balance)
+            }
+            Stage::Recover(Outcome::Completed) if rewarding => Some(Gesture::Cheer),
+            Stage::Recover(_) => None,
+            // Squaring up to a real leap. A gap's run-up is travel, so the still moment at the
+            // edge before it sets off is the leap's only wind-up a pose can show over.
+            Stage::Notice if rewarding && in_stage >= 0.15 => Some(Gesture::Crouch),
+            // The pause before a climb, or before slipping through a squeeze.
+            Stage::Prepare => Some(Gesture::Crouch),
+            _ => None,
+        };
         creature.state.attention = Some(AttentionPose {
             target: plan.target,
             emotion: match stage {
@@ -1244,6 +1386,7 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
                 _ => AttentionEmotion::Curious,
             },
             hanging,
+            gesture,
         });
         return;
     }
@@ -1309,6 +1452,7 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             y: creature.state.position.y + 40.0,
         };
     }
+    let mut watched = None;
     if let Some(cue) = plan.cue
         && elapsed >= 0.0
     {
@@ -1322,6 +1466,7 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
                 action: &mut action,
                 emotion: &mut emotion,
                 target: &mut target,
+                gesture: &mut watched,
             },
         );
     }
@@ -1366,10 +1511,34 @@ fn present(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bool) {
             48.0
         };
     }
+    let gesture = match plan.role {
+        Role::Observer { .. } => watched,
+        Role::Helper { .. } => helper_pose(plan),
+        // The support is simply gone: a gasp, then a look around for where it went.
+        Role::Actor { vanished: true, .. } => (elapsed < 0.45).then_some(Gesture::Gasp),
+        // A window lurching at a creature standing beside it. A rider's pose belongs to the ride.
+        Role::Actor { .. } => {
+            (!rider && emotion == Some(AttentionEmotion::Startled)).then_some(Gesture::Gasp)
+        }
+        // Close enough to the cursor to reach for it, once it has had a look.
+        Role::Cursor {
+            investigate: true, ..
+        } => (plan.emotion == AttentionEmotion::Curious
+            && elapsed >= 0.45
+            && (plan.target.x - creature.state.position.x).abs() > 8.0
+            && plan.target.distance(creature.state.position) <= CURSOR_REACH)
+            .then_some(Gesture::Reach),
+        // Looking over a long way down. A commute's hang and climb keep the body.
+        Role::Ledge { commute: false, .. } => {
+            (emotion == Some(AttentionEmotion::Concerned)).then_some(Gesture::Worry)
+        }
+        _ => None,
+    };
     creature.state.attention = emotion.map(|emotion| AttentionPose {
         target,
         emotion,
         hanging,
+        gesture,
     });
     if !walking && elapsed >= 0.0 && (plan.target.x - creature.state.position.x).abs() > 8.0 {
         creature.state.facing_right = plan.target.x > creature.state.position.x;
@@ -1570,6 +1739,345 @@ mod tests {
         desktop.window_sample.as_mut().unwrap().monotonic_millis = 250;
         desktop.windows[0].bounds.x += 120.0;
         world.tick(now + Duration::milliseconds(250), 0.05, desktop);
+    }
+
+    /// Actions whose own clip is the whole point of them. A pose never stands in for one.
+    const BODY_OWNING: [ActionKind; 16] = [
+        ActionKind::Traverse,
+        ActionKind::Sprint,
+        ActionKind::Follow,
+        ActionKind::SqueezeWindow,
+        ActionKind::Landing,
+        ActionKind::Dragged,
+        ActionKind::Tossed,
+        ActionKind::Dangle,
+        ActionKind::ClimbWindow,
+        ActionKind::Sleep,
+        ActionKind::RideWindow,
+        ActionKind::Eat,
+        ActionKind::Drink,
+        ActionKind::Homebound,
+        ActionKind::AvoidCursor,
+        ActionKind::PresentDiscovery,
+    ];
+
+    /// Every body pose a run of ticks left on screen, checked tick by tick against the rules for
+    /// when one may replace the action's own clip: never with reduced motion, never while
+    /// walking, hopping, hanging, tossed, or carried by a journey, only over a planted
+    /// presentation, and a reach always toward what the creature is looking at. Scenes read their
+    /// poses through this, so "the colony struck a pose" means the same thing in every test.
+    #[derive(Default, Debug)]
+    pub(super) struct Poses {
+        /// Each creature's poses in the order it struck them, with unbroken repeats collapsed.
+        pub(super) struck: BTreeMap<CreatureId, Vec<Gesture>>,
+        /// How many ticks each creature spent showing each pose.
+        pub(super) held: BTreeMap<CreatureId, Vec<(Gesture, usize)>>,
+        last: BTreeMap<CreatureId, Gesture>,
+    }
+
+    impl Poses {
+        /// Run one tick, then check and write down every pose it left on screen.
+        pub(super) fn tick(&mut self, world: &mut World, tick: impl FnOnce(&mut World)) {
+            let before: Vec<(CreatureId, Point)> = world
+                .save
+                .creatures
+                .iter()
+                .map(|c| (c.id, c.state.position))
+                .collect();
+            tick(world);
+            self.note(world, &before);
+        }
+
+        fn note(&mut self, world: &World, before: &[(CreatureId, Point)]) {
+            for c in &world.save.creatures {
+                let shown = c.state.attention.and_then(|pose| pose.gesture);
+                let Some(gesture) = shown else {
+                    self.last.remove(&c.id);
+                    continue;
+                };
+                let pose = c.state.attention.unwrap();
+                let label = format!(
+                    "{gesture:?} over {:?} by creature {} at {:?}",
+                    c.state.action, c.id, c.state.position
+                );
+                assert!(
+                    !world.save.settings.reduce_motion,
+                    "reduced motion: {label}"
+                );
+                assert!(!BODY_OWNING.contains(&c.state.action), "{label}");
+                assert!(
+                    matches!(
+                        c.state.action,
+                        ActionKind::Idle
+                            | ActionKind::Perch
+                            | ActionKind::InspectScreen
+                            | ActionKind::Greet
+                            | ActionKind::SocialPlay
+                            | ActionKind::SoloPlay
+                            | ActionKind::ReactToWindow
+                            | ActionKind::InvestigateCursor
+                    ),
+                    "not a planted presentation: {label}"
+                );
+                assert_eq!(pose.hanging, 0.0, "hanging: {label}");
+                assert!(!world.tosses.contains_key(&c.id), "tossed: {label}");
+                let plan = world
+                    .attention
+                    .plans
+                    .get(&c.id)
+                    .unwrap_or_else(|| panic!("a pose outlived its scene: {label}"));
+                assert!(
+                    plan.walk.is_none() && plan.display_walk.is_none(),
+                    "walking: {label}"
+                );
+                assert!(
+                    !matches!(plan.role, Role::Play { hopping: true, .. }),
+                    "hopping: {label}"
+                );
+                if world.window_journeys.contains_key(&c.id) {
+                    let was = before.iter().find(|(id, _)| *id == c.id).map(|(_, at)| *at);
+                    assert_eq!(was, Some(c.state.position), "carried: {label}");
+                }
+                if gesture == Gesture::Reach && (pose.target.x - c.state.position.x).abs() > 1.0 {
+                    assert_eq!(
+                        c.state.facing_right,
+                        pose.target.x > c.state.position.x,
+                        "reaching away from {:?}: {label}",
+                        pose.target
+                    );
+                }
+                if self.last.insert(c.id, gesture) != Some(gesture) {
+                    self.struck.entry(c.id).or_default().push(gesture);
+                }
+                let held = self.held.entry(c.id).or_default();
+                match held.iter_mut().find(|(g, _)| *g == gesture) {
+                    Some((_, ticks)) => *ticks += 1,
+                    None => held.push((gesture, 1)),
+                }
+            }
+        }
+
+        /// Whether anyone struck this pose.
+        pub(super) fn showed(&self, gesture: Gesture) -> bool {
+            self.struck.values().any(|poses| poses.contains(&gesture))
+        }
+
+        /// The poses one creature struck, in order.
+        pub(super) fn by(&self, id: CreatureId) -> &[Gesture] {
+            self.struck.get(&id).map_or(&[], Vec::as_slice)
+        }
+
+        /// How many ticks one creature held one pose, all told.
+        pub(super) fn ticks(&self, id: CreatureId, gesture: Gesture) -> usize {
+            self.held
+                .get(&id)
+                .and_then(|held| held.iter().find(|(g, _)| *g == gesture))
+                .map_or(0, |(_, ticks)| *ticks)
+        }
+
+        /// Every pose anyone struck.
+        pub(super) fn all(&self) -> Vec<Gesture> {
+            let mut all = Vec::new();
+            for gesture in self.struck.values().flatten() {
+                if !all.contains(gesture) {
+                    all.push(*gesture);
+                }
+            }
+            all
+        }
+    }
+
+    /// What a run of scenes asked of the creatures' bodies, so a sweep for poses that never
+    /// appear where the body is busy can show that the body really was busy.
+    #[derive(Default, Debug)]
+    struct Busy {
+        actions: Vec<ActionKind>,
+        hung: bool,
+        hopped: bool,
+        tossed: bool,
+    }
+
+    /// Play a scene out, recording its poses and what its bodies were doing meanwhile.
+    fn watch(
+        world: &mut World,
+        desktop: &mut DesktopSnapshot,
+        now: OffsetDateTime,
+        steps: std::ops::Range<u64>,
+        poses: &mut Poses,
+        busy: &mut Busy,
+    ) {
+        for step in steps {
+            play_out(world, desktop, now, step..step + 1, poses);
+            for creature in &world.save.creatures {
+                if BODY_OWNING.contains(&creature.state.action)
+                    && !busy.actions.contains(&creature.state.action)
+                {
+                    busy.actions.push(creature.state.action);
+                }
+                busy.hung |= creature
+                    .state
+                    .attention
+                    .is_some_and(|pose| pose.hanging > 0.0);
+            }
+            busy.hopped |= world.attention.plans.values().any(|plan| {
+                matches!(
+                    plan.role,
+                    Role::Play { hopping: true, .. } | Role::Journey { .. }
+                )
+            });
+            busy.tossed |= !world.tosses.is_empty();
+        }
+    }
+
+    /// Play a scene out tick by tick, writing down every pose it shows.
+    fn play_out(
+        world: &mut World,
+        desktop: &mut DesktopSnapshot,
+        now: OffsetDateTime,
+        steps: std::ops::Range<u64>,
+        poses: &mut Poses,
+    ) {
+        for step in steps {
+            poses.tick(world, |world| {
+                desktop.window_sample.as_mut().unwrap().monotonic_millis = step * 50;
+                world.tick(
+                    now + Duration::milliseconds(step as i64 * 50),
+                    0.05,
+                    desktop,
+                );
+            });
+        }
+    }
+
+    /// Nine poses, and for each of them a scene the colony plays out by itself to strike it. This
+    /// is what keeps the vocabulary honest: a pose nothing ever reaches is a pose nobody will see.
+    /// Every tick of every scene here is also checked against the rules for showing one at all.
+    #[test]
+    fn every_pose_in_the_vocabulary_has_a_scene_that_strikes_it() {
+        let mut poses = Poses::default();
+        // A bold leap over a gap, in front of the colony: the jumper squares up and celebrates,
+        // a timid watcher hides its eyes, a bolder one frets through it.
+        let (mut world, mut desktop, now) = super::ledges::tests::edge_scene(true, true);
+        play_out(&mut world, &mut desktop, now, 3..240, &mut poses);
+        // A leap that only just makes it: the colony gasps, a companion hauls it up, and the
+        // jumper wobbles on the edge before it is pleased with itself.
+        let (mut world, mut desktop, now) = super::ledges::tests::marginal_scene(true);
+        play_out(&mut world, &mut desktop, now, 3..240, &mut poses);
+        // A circle of dancers, each on its own beat.
+        let (mut world, mut desktop, now) = super::games::tests::dance_scene();
+        play_out(&mut world, &mut desktop, now, 1..260, &mut poses);
+        // A toy nobody else can have.
+        let (mut world, mut desktop, now) = super::games::tests::keep_away_scene();
+        play_out(&mut world, &mut desktop, now, 1..300, &mut poses);
+        for gesture in Gesture::ALL {
+            assert!(
+                poses.showed(gesture),
+                "no scene ever struck {gesture:?}; between them these showed {:?}",
+                poses.all()
+            );
+        }
+    }
+
+    /// Reduced motion is a promise that nothing will move about on its own, and a body pose is
+    /// movement. The same scenes that are full of poses show none of them with the setting on.
+    #[test]
+    fn reduced_motion_strikes_no_pose_at_all() {
+        for reduced in [false, true] {
+            let mut poses = Poses::default();
+            // A leap, a catch, and a companion going to help.
+            let (mut world, mut desktop, now) = super::ledges::tests::marginal_scene(true);
+            world.save.settings.reduce_motion = reduced;
+            play_out(&mut world, &mut desktop, now, 3..200, &mut poses);
+            // A copy chain, which is one of the two scenes reduced motion still allows.
+            let (mut world, mut desktop, now) = super::play::tests::scene(true);
+            world.save.settings.reduce_motion = reduced;
+            play_out(&mut world, &mut desktop, now, 1..200, &mut poses);
+            // A peek over a long drop.
+            let (mut world, mut desktop, now) = super::ledges::tests::edge_scene(false, false);
+            world.save.settings.reduce_motion = reduced;
+            play_out(&mut world, &mut desktop, now, 3..80, &mut poses);
+            assert_eq!(
+                poses.all().is_empty(),
+                reduced,
+                "reduced motion {reduced} showed {:?}",
+                poses.all()
+            );
+        }
+    }
+
+    /// A pose only ever stands in for a body with nothing else to do. These scenes spend most of
+    /// their time travelling, leaping, hanging by the hands and falling; the recorder checks every
+    /// tick of every one of them, and the tally afterwards proves they really did put the body to
+    /// work rather than standing about being easy to satisfy.
+    #[test]
+    fn a_pose_never_stands_in_for_a_body_its_action_is_already_using() {
+        let mut poses = Poses::default();
+        let mut busy = Busy::default();
+        // A marginal leap with a helper, where the attempt slips and both of them come off the
+        // ledge: run-ups, flight, hanging by the hands, a rescue, and a fall.
+        let (mut world, mut desktop, now) = super::ledges::tests::marginal_scene(true);
+        let actor = world.save.creatures[0].id;
+        for step in 3..230 {
+            if let Some(WindowJourney::Gap(gap)) = world.window_journeys.get_mut(&actor) {
+                gap.assistance_slip = true;
+            }
+            watch(
+                &mut world,
+                &mut desktop,
+                now,
+                step..step + 1,
+                &mut poses,
+                &mut busy,
+            );
+        }
+        // Companions vaulting over one another the length of a ledge.
+        let (mut world, mut desktop, now) = super::games::tests::leapfrog_scene();
+        watch(&mut world, &mut desktop, now, 1..300, &mut poses, &mut busy);
+        // A race across the desktop, which travels and leaps the whole way.
+        let (mut world, mut desktop, now) = super::geometry_games::tests::race_scene(2);
+        watch(
+            &mut world,
+            &mut desktop,
+            now,
+            80..700,
+            &mut poses,
+            &mut busy,
+        );
+        assert!(
+            busy.actions.len() >= 5 && busy.hung && busy.hopped && busy.tossed,
+            "the scenes were never busy enough to mean anything: {busy:?}"
+        );
+        assert!(!poses.all().is_empty(), "and nothing was ever posed at all");
+    }
+
+    /// A support that is simply not there any more is a fright first and a puzzle second: the
+    /// creature gasps where it stood, and then gets on with looking for where the window went
+    /// rather than wearing the gasp for the whole search.
+    #[test]
+    fn a_vanished_support_gasps_once_and_then_only_looks_around() {
+        let (mut world, mut desktop, now) = scene();
+        start(&mut world, &mut desktop, now);
+        desktop.windows.clear();
+        let mut poses = Poses::default();
+        play_out(&mut world, &mut desktop, now, 11..40, &mut poses);
+        let searcher = world.save.creatures[0].id;
+        assert_eq!(poses.by(searcher), [Gesture::Gasp], "{poses:?}");
+        assert!(
+            poses.ticks(searcher, Gesture::Gasp) <= 12,
+            "a gasp is a moment, not a mood: {poses:?}"
+        );
+        assert!(matches!(
+            world.attention.plans[&searcher].role,
+            Role::Actor { vanished: true, .. }
+        ));
+        assert_eq!(
+            world.save.creatures[0]
+                .state
+                .attention
+                .expect("still searching")
+                .gesture,
+            None
+        );
     }
 
     /// Several windows shoved about at once is one piece of news, not one piece per window. The

@@ -106,6 +106,10 @@ pub(super) fn landing_point(journey: &WindowJourney) -> Point {
     }
 }
 
+/// The shortest walk worth setting off on. A creature asked to travel less than this stays where
+/// it is, so anything that steers by small steps has to ask for at least this much to move at all.
+pub(super) const MIN_STRIDE: f32 = 8.0;
+
 pub(super) fn safe_goal(
     world: &World,
     creature: &Creature,
@@ -137,7 +141,7 @@ fn goal_with_spacing(
         y: creature.state.position.y,
     };
     let distance = (x - creature.state.position.x).abs();
-    if distance < 8.0
+    if distance < MIN_STRIDE
         || distance > (speed(creature) * MAX_APPROACH_SECONDS).min(120.0)
         || !corridor_allows(creature, destination, desktop, &world.save.settings)
     {

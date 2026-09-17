@@ -1,4 +1,4 @@
-# Modular creature generation · v0.57.0
+# Modular creature generation · v0.57.1
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -40,7 +40,8 @@ discarded; only the accepted parts/proportions/colors become durable state.
 
 The modular renderer lives beside the legacy renderer in `formiga-art`. It uses the same 48×48
 body frames, 16×16 face frames, poses, expressions, and animation atlases. Tail/ear geometry sits
-behind the body; gestures stay outside the face; outlines connect paws to bodies. The palette
+behind the body; gestures keep the reserved face area covered and never draw over the layered face;
+outlines connect paws to bodies, and each side has exactly one limb that a gesture carries out. The palette
 resolver softens colors once during atlas construction and guarantees dark facial contrast.
 
 An absent recipe selects the legacy rendering path. Old saves never acquire a replacement design
@@ -53,7 +54,8 @@ does not depend on a reference file or a temporary preview.
 ## Extending safely
 
 - Add a bounded part or body plan with an explicit face-safe area and connected limb roots.
-- Keep reduced-motion behavior, mirrored rendering, miniature proportions, and gesture poses.
+- Keep reduced-motion behavior, mirrored rendering, miniature proportions, and gesture poses. A new
+  pose moves the limb a side already has; it never draws a second one beside it.
 - Update code versioning before changing the byte layout or meaning of a serialized choice.
 - Preserve atlas dimensions, clip counts, and the four-creature limit unless a separate resource
   budget change is intended. Generation must not introduce an idle worker or retain source pixels.

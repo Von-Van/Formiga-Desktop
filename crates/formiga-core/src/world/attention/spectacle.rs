@@ -176,6 +176,8 @@ pub(super) struct Watching<'a> {
     pub action: &'a mut ActionKind,
     pub emotion: &'a mut Option<AttentionEmotion>,
     pub target: &'a mut Point,
+    /// The body pose the response calls for. Presentation still decides whether it can show.
+    pub gesture: &'a mut Option<Gesture>,
 }
 
 pub(super) fn present_observer(creature: &Creature, cue: Cue, watching: &mut Watching) {
@@ -186,37 +188,45 @@ pub(super) fn present_observer(creature: &Creature, cue: Cue, watching: &mut Wat
         action,
         emotion,
         target,
+        gesture,
     } = watching;
     let (reduced, walking, watching_for) = (*reduced, *walking, *watching_for);
+    **gesture = None;
     if watching_for < NOTICE_SECONDS {
         **emotion = Some(AttentionEmotion::Curious);
         return;
     }
     let gasp = !reduced && cue.since < GASP_SECONDS;
-    **emotion = Some(match cue.stage {
-        Stage::Notice | Stage::Prepare => AttentionEmotion::Curious,
-        Stage::Catch if gasp => AttentionEmotion::Startled,
+    // Fretting belongs to a companion taking a real risk, not to a window that merely jumped.
+    let fret = cue.risky.then_some(Gesture::Worry);
+    let (feeling, pose) = match cue.stage {
+        Stage::Notice | Stage::Prepare => (AttentionEmotion::Curious, None),
+        Stage::Catch if gasp => (AttentionEmotion::Startled, Some(Gesture::Gasp)),
         // A sudden event draws a brief gasp, which settles into concern for the companion.
-        Stage::Act if cue.sudden && gasp => AttentionEmotion::Startled,
-        Stage::Act if cue.sudden => AttentionEmotion::Concerned,
+        Stage::Act if cue.sudden && gasp => (AttentionEmotion::Startled, Some(Gesture::Gasp)),
+        Stage::Act if cue.sudden => (AttentionEmotion::Concerned, fret),
         Stage::Act | Stage::Catch
             if cue.risky && creature.personality.boldness < 0.3 && !reduced =>
         {
-            // A timid watcher covers their eyes while retaining a planted inspection pose.
+            // A timid watcher covers its eyes and turns its gaze away, still planted where it is.
             target.x = creature.state.position.x - (target.x - creature.state.position.x);
-            AttentionEmotion::Averting
+            (AttentionEmotion::Averting, Some(Gesture::Cover))
         }
-        Stage::Act if cue.risky => AttentionEmotion::Concerned,
-        Stage::Catch => AttentionEmotion::Concerned,
-        Stage::Act => AttentionEmotion::Curious,
+        Stage::Act if cue.risky => (AttentionEmotion::Concerned, fret),
+        Stage::Catch => (AttentionEmotion::Concerned, fret),
+        Stage::Act => (AttentionEmotion::Curious, None),
         Stage::Recover(Outcome::Completed) if creature.personality.playfulness > 0.65 => {
             if !reduced && !walking {
                 **action = ActionKind::Greet;
+                (AttentionEmotion::Enjoying, Some(Gesture::Cheer))
+            } else {
+                (AttentionEmotion::Enjoying, None)
             }
-            AttentionEmotion::Enjoying
         }
-        Stage::Recover(_) => AttentionEmotion::Relieved,
-    });
+        Stage::Recover(_) => (AttentionEmotion::Relieved, None),
+    };
+    **emotion = Some(feeling);
+    **gesture = pose;
 }
 
 #[cfg(test)]
@@ -291,6 +301,7 @@ mod tests {
                     rewarding: true,
                     escape: false,
                     since: 0.0,
+                    caught: false,
                 },
             ),
             (
@@ -327,6 +338,7 @@ mod tests {
                     gesture: ActionKind::Greet,
                     bounds: Some(bounds()),
                     hopping: false,
+                    pose: None,
                 },
             ),
             (
@@ -458,8 +470,12 @@ mod tests {
         {
             creature.personality.boldness = boldness;
             creature.personality.playfulness = playfulness;
-            let (mut action, mut emotion, mut target) =
-                (ActionKind::InspectScreen, None, Point { x: 40.0, y: 0.0 });
+            let (mut action, mut emotion, mut target, mut gesture) = (
+                ActionKind::InspectScreen,
+                None,
+                Point { x: 40.0, y: 0.0 },
+                None,
+            );
             present_observer(
                 &creature,
                 cue,
@@ -470,6 +486,7 @@ mod tests {
                     action: &mut action,
                     emotion: &mut emotion,
                     target: &mut target,
+                    gesture: &mut gesture,
                 },
             );
             responses.push((emotion.unwrap(), target.x));

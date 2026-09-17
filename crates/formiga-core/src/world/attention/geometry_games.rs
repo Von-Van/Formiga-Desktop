@@ -18,6 +18,8 @@ const LAVA_DROP: f32 = 90.0;
 const REACH: f32 = 110.0;
 /// How far along its own ledge one creature can keep track of another.
 const SIGHT: f32 = 150.0;
+/// How long the moment of being found lasts before seeker and hider are simply glad of it.
+const FOUND_SECONDS: f32 = 0.5;
 
 impl World {
     /// Give a member the feeling its own game calls for. Expressive games keep it; the shared
@@ -228,12 +230,13 @@ impl World {
         // Over the line: a moment of delight, and the rest of the field cheers it in.
         let focus = self.play_position(champion).unwrap_or(line);
         for id in ids {
-            let gesture = if id == champion {
-                ActionKind::Greet
+            let (gesture, pose) = if id == champion {
+                (ActionKind::Greet, Gesture::Bop)
             } else {
-                ActionKind::InspectScreen
+                (ActionKind::InspectScreen, Gesture::Cheer)
             };
             self.steer_play(id, None, gesture);
+            self.pose_play(id, pose);
             self.look_at(id, focus);
         }
         false
@@ -322,6 +325,10 @@ impl World {
                         ActionKind::Perch
                     },
                 );
+                if goal.is_none() {
+                    // Stuck at the brink with nowhere to back away to: teetering over the lava.
+                    self.pose_play(id, Gesture::Balance);
+                }
                 self.look_at(
                     id,
                     Point {
@@ -350,6 +357,10 @@ impl World {
                     ActionKind::Perch
                 },
             );
+            if goal.is_none() {
+                // Standing its ground on the safe part of the ledge, arms out, keeping off the lava.
+                self.pose_play(id, Gesture::Balance);
+            }
             self.look_at(
                 id,
                 Point {
@@ -467,12 +478,34 @@ impl World {
                 .filter_map(|id| self.play_position(*id))
                 .any(|point| point.distance(hidden) <= FOUND * unit)
         {
+            // Finding someone ends the round, which winds down from that tick on; until then the
+            // wind-down is the usual moment before the round's own end.
+            let found_for = (s.elapsed - (s.ends_at - 1.4)).max(0.0);
+            let caught_out = found_for < FOUND_SECONDS;
             for id in seekers.iter().copied() {
                 self.steer_play(id, None, ActionKind::Greet);
+                // "There you are": pointing straight at the hider, then glad of it.
+                self.pose_play(
+                    id,
+                    if caught_out {
+                        Gesture::Reach
+                    } else {
+                        Gesture::Cheer
+                    },
+                );
                 self.feel(id, AttentionEmotion::Enjoying);
                 self.look_at(id, hidden);
             }
             self.steer_play(hider, None, ActionKind::Greet);
+            // Caught out with a start, and then glad of the game.
+            self.pose_play(
+                hider,
+                if caught_out {
+                    Gesture::Gasp
+                } else {
+                    Gesture::Cheer
+                },
+            );
             self.feel(hider, AttentionEmotion::Enjoying);
             self.look_at(hider, looking);
             return false;
@@ -501,6 +534,10 @@ impl World {
                 ActionKind::Perch
             },
         );
+        if arrived {
+            // Tucked down small in its hiding place.
+            self.pose_play(hider, Gesture::Crouch);
+        }
         self.look_at(hider, if arrived { looking } else { spot });
         self.feel(
             hider,
@@ -515,8 +552,10 @@ impl World {
                 continue;
             };
             if counting {
-                // Turned away and counting. Nothing about the hider is consulted here at all.
+                // Turned away and counting with its eyes covered. Nothing about the hider is
+                // consulted here at all.
                 self.steer_play(id, None, ActionKind::InspectScreen);
+                self.pose_play(id, Gesture::Cover);
                 self.look_at(
                     id,
                     Point {
@@ -564,7 +603,7 @@ impl World {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in super::super) mod tests {
     use super::super::play::Kind;
     use super::super::play::tests::{Audience, everyone_settled, scene, tick};
     use super::*;
@@ -617,7 +656,9 @@ mod tests {
 
     /// A chain of three ledges, twenty points apart, with the pair back on the first one once the
     /// new windows have stopped being news.
-    fn race_scene(watching: usize) -> (World, DesktopSnapshot, OffsetDateTime) {
+    pub(in super::super) fn race_scene(
+        watching: usize,
+    ) -> (World, DesktopSnapshot, OffsetDateTime) {
         let (mut w, mut d, now) = scene(false);
         quiet_pair(&mut w, watching);
         add_window(
@@ -1119,5 +1160,174 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The floor is lava on a ledge fenced in by the habitat: with nowhere left to step, a player
+    /// stands its ground with its arms out rather than pretending to stroll about.
+    #[test]
+    fn the_floor_is_lava_balances_where_there_is_nowhere_left_to_step() {
+        let (mut w, mut d, now) = scene(false);
+        quiet_pair(&mut w, 0);
+        // Everything but a short stretch of this ledge is out of bounds, so a player in the
+        // middle of it has no stride left in either direction.
+        let display = d.monitors[0].display_key;
+        for (id, bounds) in [
+            (
+                991,
+                DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 690.0 / 1_440.0,
+                    height: 1.0,
+                },
+            ),
+            (
+                992,
+                DesktopRect {
+                    x: 775.0 / 1_440.0,
+                    y: 0.0,
+                    width: 1.0 - 775.0 / 1_440.0,
+                    height: 1.0,
+                },
+            ),
+        ] {
+            w.save.settings.habitat.zones.push(HabitatZone {
+                id,
+                display,
+                kind: HabitatZoneKind::Excluded,
+                enabled: true,
+                normalized_bounds: bounds,
+            });
+        }
+        for (index, c) in w.save.creatures.iter_mut().enumerate() {
+            c.state.position.x = if index == 0 { 768.0 } else { 720.0 };
+            c.state.surface.relative_x = (c.state.position.x - 200.0) / 600.0;
+            c.state.facing_right = index == 0;
+        }
+        let mut poses = super::super::tests::Poses::default();
+        let mut played = false;
+        let mut balanced_on_the_ledge = 0;
+        for step in 1..400 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            played |= w
+                .attention
+                .play
+                .session
+                .is_some_and(|s| s.kind == Kind::Lava);
+            for c in &w.save.creatures {
+                if c.state.attention.and_then(|pose| pose.gesture) == Some(Gesture::Balance) {
+                    assert_eq!(c.state.surface.window_key, Some(701), "off the ledge");
+                    assert!(matches!(
+                        c.state.action,
+                        ActionKind::Perch | ActionKind::Idle
+                    ));
+                    balanced_on_the_ledge += 1;
+                }
+            }
+        }
+        assert!(played, "the round never started");
+        assert!(
+            balanced_on_the_ledge >= 10,
+            "nobody kept their balance over the lava: {poses:?}"
+        );
+    }
+
+    /// Hide and seek from the counting to the finding: the seeker hides its own eyes while it
+    /// counts, the hider tucks itself into the corner it chose, and the moment it is found the
+    /// seeker points it out and the hider starts — after which both are simply pleased.
+    #[test]
+    fn a_seeker_counts_with_its_eyes_covered_and_points_out_the_hider_it_finds() {
+        let (mut w, mut d, now) = hiding_scene(2);
+        // Far enough along the ledge that the hider's own corner is away from the seeker rather
+        // than past it, so it reaches the hiding place before it is spotted.
+        for (index, x) in [(0, 600.0), (1, 440.0)] {
+            let c = &mut w.save.creatures[index];
+            c.state.position.x = x;
+            c.state.surface.relative_x = (x - 200.0) / 600.0;
+        }
+        let (hider, seeker) = (w.save.creatures[0].id, w.save.creatures[1].id);
+        let mut poses = super::super::tests::Poses::default();
+        let mut counting_covered = 0;
+        for step in 1..700 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            let Some(s) = w
+                .attention
+                .play
+                .session
+                .filter(|s| s.kind == Kind::HideAndSeek)
+            else {
+                continue;
+            };
+            let covered = w
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == seeker)
+                .and_then(|c| c.state.attention)
+                .and_then(|pose| pose.gesture)
+                == Some(Gesture::Cover);
+            if covered {
+                assert!(
+                    s.elapsed < COUNT_SECONDS,
+                    "counting is over at {}",
+                    s.elapsed
+                );
+                counting_covered += 1;
+            }
+        }
+        assert!(counting_covered >= 10, "the seeker peeked: {poses:?}");
+        assert_eq!(
+            poses.by(seeker),
+            [Gesture::Cover, Gesture::Reach, Gesture::Cheer],
+            "{poses:?}"
+        );
+        assert_eq!(
+            poses.by(hider),
+            [Gesture::Crouch, Gesture::Gasp, Gesture::Cheer],
+            "{poses:?}"
+        );
+    }
+
+    /// A race is run in front of an audience and ends in front of one: whoever is still out on
+    /// the course cheers the winner in from wherever they have got to.
+    #[test]
+    fn the_rest_of_the_field_cheers_the_race_champion_in() {
+        let (mut w, mut d, now) = race_scene(2);
+        // A little further back, so the leader is clear of the trailing racer's landing.
+        w.save.creatures[0].state.position.x = 580.0;
+        w.save.creatures[0].state.surface.relative_x = (580.0 - 200.0) / 600.0;
+        let (trailing, leading) = (w.save.creatures[0].id, w.save.creatures[1].id);
+        let mut poses = super::super::tests::Poses::default();
+        let mut cheered_in = false;
+        for step in 80..900 {
+            poses.tick(&mut w, |w| tick(w, &mut d, now, step));
+            let Some(s) = w.attention.play.session.filter(|s| s.kind == Kind::Race) else {
+                continue;
+            };
+            let over_the_line = w
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == leading)
+                .is_some_and(|c| c.state.surface.window_key == s.goal);
+            if poses.by(trailing).contains(&Gesture::Cheer) {
+                assert!(over_the_line, "cheering nobody in at {:.2}", s.elapsed);
+                assert!(s.members.contains(&Some(trailing)));
+                cheered_in = true;
+            }
+        }
+        assert!(
+            cheered_in,
+            "the field never cheered the winner in: {poses:?}"
+        );
+        assert_eq!(
+            w.save
+                .creatures
+                .iter()
+                .find(|c| c.id == leading)
+                .map(|c| c.state.surface.window_key),
+            Some(Some(703)),
+            "the winner is the one that got there"
+        );
     }
 }

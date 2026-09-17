@@ -3,8 +3,8 @@ use crate::PALETTES;
 use crate::{Canvas, Palette, Rgba};
 use formiga_core::{
     ActionKind, AppearanceGenome, BodyFamily, BrowStyle, CheekStyle, Creature, CursorSnapshot,
-    EffectMotif, EyeShape, ForelimbStyle, HeadAppendageStyle, HighlightStyle, LimbTipStyle,
-    MouthStyle, PatternKind, PupilStyle, RestPose, TailStyle,
+    EffectMotif, EyeShape, ForelimbStyle, Gesture, HeadAppendageStyle, HighlightStyle,
+    LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose, TailStyle,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -125,6 +125,54 @@ pub enum PlaybackMode {
     Hold,
 }
 
+/// One animated body clip baked into a creature atlas: an action's own motion, or a gesture pose
+/// shown over whatever the creature is doing while its attention asks for one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BodyClip {
+    Action(ActionKind),
+    Gesture(Gesture),
+}
+
+impl From<ActionKind> for BodyClip {
+    fn from(action: ActionKind) -> Self {
+        Self::Action(action)
+    }
+}
+
+impl From<Gesture> for BodyClip {
+    fn from(gesture: Gesture) -> Self {
+        Self::Gesture(gesture)
+    }
+}
+
+impl BodyClip {
+    /// What the creature's body shows right now. A gesture stands in for the action's clip only
+    /// while the runtime attention pose carries one; the action still moves and places it.
+    pub fn for_creature(creature: &Creature) -> Self {
+        creature
+            .state
+            .attention
+            .and_then(|pose| pose.gesture)
+            .map_or(Self::Action(creature.state.action), Self::Gesture)
+    }
+
+    /// Every clip with frames of its own, in atlas order: the body actions, then the gestures.
+    pub fn baked() -> impl Iterator<Item = Self> {
+        ActionKind::BODY_CLIPS
+            .into_iter()
+            .map(Self::Action)
+            .chain(Gesture::ALL.into_iter().map(Self::Gesture))
+    }
+
+    /// The clip whose frames are actually drawn, after actions that share a body are folded.
+    pub const fn body(self) -> Self {
+        match self {
+            Self::Action(action) => Self::Action(AnimationSpec::body_action(action)),
+            gesture => gesture,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct AnimationSpec {
     pub frames: u8,
@@ -158,6 +206,31 @@ impl AnimationSpec {
         }
     }
 
+    /// Frames and timing for any baked clip. Gestures loop: they are held for as long as the
+    /// moment lasts, and the attention system decides when that is.
+    pub fn for_clip(clip: impl Into<BodyClip>) -> Self {
+        let gesture = match clip.into() {
+            BodyClip::Action(action) => return Self::for_action(action),
+            BodyClip::Gesture(gesture) => gesture,
+        };
+        let (frames, fps) = match gesture {
+            Gesture::Cheer => (4, 8),
+            Gesture::Gasp => (2, 6),
+            Gesture::Cover => (2, 3),
+            Gesture::Worry => (4, 4),
+            Gesture::Crouch => (2, 3),
+            Gesture::Heave => (4, 5),
+            Gesture::Balance => (4, 5),
+            Gesture::Reach => (2, 4),
+            Gesture::Bop => (4, 6),
+        };
+        Self {
+            frames,
+            fps,
+            playback: PlaybackMode::Loop,
+        }
+    }
+
     pub const fn body_action(action: ActionKind) -> ActionKind {
         match action {
             ActionKind::Tossed => ActionKind::Dragged,
@@ -185,8 +258,13 @@ pub struct MotionSignature {
     phase: [u8; 4],
 }
 
-/// Walking, resting, greeting, and recovery share one small vocabulary of timings.
-fn motion_group(action: ActionKind) -> usize {
+/// Walking, resting, greeting, and recovery share one small vocabulary of timings. Gestures are
+/// expressive, so they keep the creature's greeting tempo.
+fn motion_group(clip: BodyClip) -> usize {
+    let action = match clip {
+        BodyClip::Action(action) => action,
+        BodyClip::Gesture(_) => return 2,
+    };
     match action {
         ActionKind::Traverse
         | ActionKind::Follow
@@ -226,12 +304,13 @@ impl MotionSignature {
     }
 
     /// The body frame this creature shows, in place of the shared `AnimationSpec::frame_at`.
-    pub fn frame(self, action: ActionKind, elapsed: f32) -> u8 {
-        let spec = AnimationSpec::for_action(action);
+    pub fn frame(self, clip: impl Into<BodyClip>, elapsed: f32) -> u8 {
+        let clip = clip.into();
+        let spec = AnimationSpec::for_clip(clip);
         if spec.playback == PlaybackMode::Hold {
             return spec.frame_at(elapsed);
         }
-        let group = motion_group(action);
+        let group = motion_group(clip);
         let advanced = elapsed.max(0.0) * self.tempo[group] * f32::from(spec.fps);
         ((advanced as u32).wrapping_add(u32::from(self.phase[group])) % u32::from(spec.frames))
             as u8
@@ -356,15 +435,15 @@ impl CreatureRenderer {
 
     pub fn render_body_frame(
         genome: &AppearanceGenome,
-        action: ActionKind,
+        clip: impl Into<BodyClip>,
         frame: u8,
         reduce_motion: bool,
     ) -> RenderedBodyFrame {
         let frame = if reduce_motion { 0 } else { frame };
         let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
         let palette = crate::palette_for(genome);
-        let body_action = AnimationSpec::body_action(action);
-        let pose = Pose::new(genome, body_action, frame, reduce_motion);
+        let clip = clip.into().body();
+        let pose = Pose::new(genome, clip, frame, reduce_motion);
         let mut face_anchor = if let Some(design) = genome.design {
             modular::draw(
                 &mut canvas,
@@ -372,40 +451,49 @@ impl CreatureRenderer {
                 palette,
                 pose,
                 scale(genome),
-                body_action,
+                clip,
                 frame,
             )
         } else {
             match genome.family {
-                BodyFamily::Blob => {
-                    draw_blob(&mut canvas, genome, palette, pose, body_action, frame)
-                }
-                BodyFamily::Hopper => {
-                    draw_hopper(&mut canvas, genome, palette, pose, body_action, frame)
-                }
+                BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
+                BodyFamily::Hopper => draw_hopper(&mut canvas, genome, palette, pose, clip, frame),
                 BodyFamily::SoftQuadruped => {
-                    draw_quadruped(&mut canvas, genome, palette, pose, body_action, frame)
+                    draw_quadruped(&mut canvas, genome, palette, pose, clip, frame)
                 }
             }
         };
-        draw_activity_prop(
-            &mut canvas,
-            genome,
-            palette,
-            face_anchor,
-            body_action,
-            frame,
-            reduce_motion,
-        );
-        draw_effects(
-            &mut canvas,
-            genome,
-            palette,
-            face_anchor,
-            body_action,
-            frame,
-            reduce_motion,
-        );
+        match clip {
+            BodyClip::Action(action) => {
+                draw_activity_prop(
+                    &mut canvas,
+                    genome,
+                    palette,
+                    face_anchor,
+                    action,
+                    frame,
+                    reduce_motion,
+                );
+                draw_effects(
+                    &mut canvas,
+                    genome,
+                    palette,
+                    face_anchor,
+                    action,
+                    frame,
+                    reduce_motion,
+                );
+            }
+            BodyClip::Gesture(gesture) => draw_gesture_effects(
+                &mut canvas,
+                genome,
+                palette,
+                face_anchor,
+                gesture,
+                frame,
+                reduce_motion,
+            ),
+        }
         let (dx, dy) = keep_atlas_margin(&mut canvas);
         face_anchor.x += dx;
         face_anchor.y += dy;
@@ -464,13 +552,13 @@ impl CreatureRenderer {
 
     pub fn render_composited_frame(
         genome: &AppearanceGenome,
-        action: ActionKind,
+        clip: impl Into<BodyClip>,
         frame: u8,
         facing_right: bool,
         reduce_motion: bool,
         face_state: FaceRenderState,
     ) -> Canvas {
-        let mut body = Self::render_body_frame(genome, action, frame, reduce_motion);
+        let mut body = Self::render_body_frame(genome, clip, frame, reduce_motion);
         if !facing_right {
             body.canvas.mirror_horizontal();
             // A 16-pixel face is centered between logical pixel columns; mirroring its full
@@ -560,7 +648,7 @@ fn keep_atlas_margin(canvas: &mut Canvas) -> (i32, i32) {
     (dx, dy)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Pose {
     bob: i32,
     squash_x: i32,
@@ -570,10 +658,24 @@ struct Pose {
     play_lift: i32,
     appendage_lift: i32,
     tail_sway: i32,
+    /// Head carried forward (positive) or back over the body, in art pixels.
+    lean: i32,
+    /// Legs folded under the body: it sinks while the feet stay planted.
+    crouch: i32,
 }
 
 impl Pose {
-    fn new(genome: &AppearanceGenome, action: ActionKind, frame: u8, reduce_motion: bool) -> Self {
+    fn new(genome: &AppearanceGenome, clip: BodyClip, frame: u8, reduce_motion: bool) -> Self {
+        let action = match clip {
+            BodyClip::Action(action) => action,
+            BodyClip::Gesture(gesture) => {
+                let mut pose = Self::for_gesture(gesture, frame);
+                if reduce_motion {
+                    pose.calm();
+                }
+                return pose;
+            }
+        };
         let phase = frame as usize % 6;
         let walk: i32 = [0, 1, 0, -1, 0, 1][phase];
         let alternate: i32 = [1, 0, -1, 0, 1, 0][phase];
@@ -588,6 +690,7 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: walk,
                 tail_sway: alternate,
+                ..Self::default()
             },
             ActionKind::Sprint => Self {
                 bob: -walk.abs() * bob_amount.max(1),
@@ -598,6 +701,7 @@ impl Pose {
                 play_lift: walk.abs(),
                 appendage_lift: walk * 2,
                 tail_sway: alternate * 2,
+                ..Self::default()
             },
             ActionKind::Sleep => Self {
                 bob: frame as i32 % 2,
@@ -608,6 +712,7 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: -1,
                 tail_sway: 0,
+                ..Self::default()
             },
             ActionKind::Perch | ActionKind::Homebound => Self {
                 bob: 2,
@@ -618,6 +723,7 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: 0,
                 tail_sway: 0,
+                ..Self::default()
             },
             ActionKind::SoloPlay | ActionKind::SocialPlay => Self {
                 bob: -walk.abs(),
@@ -628,6 +734,7 @@ impl Pose {
                 play_lift: walk.abs(),
                 appendage_lift: 2 + walk.abs(),
                 tail_sway: walk * 2,
+                ..Self::default()
             },
             ActionKind::Eat | ActionKind::Drink => Self {
                 bob: i32::from(frame % 2),
@@ -638,6 +745,7 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: 1,
                 tail_sway: if frame.is_multiple_of(3) { 1 } else { 0 },
+                ..Self::default()
             },
             ActionKind::AvoidCursor | ActionKind::ReactToWindow => Self {
                 bob: -walk.abs(),
@@ -648,6 +756,7 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: 2,
                 tail_sway: -2,
+                ..Self::default()
             },
             ActionKind::Landing => Self {
                 bob: -2 - walk.abs(),
@@ -658,6 +767,7 @@ impl Pose {
                 play_lift: 1,
                 appendage_lift: 1,
                 tail_sway: walk,
+                ..Self::default()
             },
             ActionKind::ClimbWindow => Self {
                 bob: -walk.abs(),
@@ -668,6 +778,7 @@ impl Pose {
                 play_lift: 1,
                 appendage_lift: 2 + walk.abs(),
                 tail_sway: alternate,
+                ..Self::default()
             },
             ActionKind::Dangle => Self {
                 bob: 0,
@@ -678,6 +789,7 @@ impl Pose {
                 play_lift: 1,
                 appendage_lift: 2,
                 tail_sway: alternate * 2,
+                ..Self::default()
             },
             ActionKind::InspectScreen => Self {
                 bob: i32::from(frame % 2),
@@ -688,6 +800,7 @@ impl Pose {
                 play_lift: 1,
                 appendage_lift: 1 + walk.abs(),
                 tail_sway: alternate,
+                ..Self::default()
             },
             ActionKind::PresentDiscovery => Self {
                 bob: -i32::from(frame >= 1),
@@ -698,6 +811,7 @@ impl Pose {
                 play_lift: i32::from(frame >= 1),
                 appendage_lift: 2 + i32::from(frame >= 2),
                 tail_sway: i32::from(frame >= 2),
+                ..Self::default()
             },
             _ => Self {
                 bob: frame as i32 % 2,
@@ -708,19 +822,129 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: 0,
                 tail_sway: alternate,
+                ..Self::default()
             },
         };
         if reduce_motion {
-            pose.bob = 0;
-            pose.squash_x = 0;
-            pose.squash_y = 0;
-            pose.play_lift = 0;
-            pose.appendage_lift = pose.appendage_lift.clamp(-1, 1);
-            pose.tail_sway = pose.tail_sway.clamp(-1, 1);
-            pose.step_a /= 2;
-            pose.step_b /= 2;
+            pose.calm();
         }
         pose
+    }
+
+    /// The body half of each gesture: squash, lift, lean and footing. The limbs are placed by
+    /// each renderer, since where a paw can reach depends on the body it belongs to.
+    fn for_gesture(gesture: Gesture, frame: u8) -> Self {
+        let tick = i32::from(frame % 2);
+        let beat = [0, 1, 0, -1][usize::from(frame % 4)];
+        match gesture {
+            // A hop on every other beat, landing squashed and springing up stretched.
+            Gesture::Cheer => {
+                let hop = [0, 2, 3, 1][usize::from(frame % 4)];
+                Self {
+                    squash_x: i32::from(hop == 0),
+                    squash_y: i32::from(hop == 3) - i32::from(hop == 0),
+                    play_lift: hop,
+                    appendage_lift: 2,
+                    tail_sway: beat * 2,
+                    ..Self::default()
+                }
+            }
+            // Drawn up tall and rocked back, with a shiver between the two frames.
+            Gesture::Gasp => Self {
+                squash_x: -1,
+                squash_y: 1,
+                play_lift: 1 - tick,
+                appendage_lift: 3,
+                tail_sway: -2,
+                lean: -1,
+                ..Self::default()
+            },
+            // Hunched small, peeking on the second frame.
+            Gesture::Cover => Self {
+                bob: 1,
+                squash_x: 1,
+                squash_y: -1,
+                appendage_lift: 1,
+                tail_sway: -1,
+                crouch: 1,
+                ..Self::default()
+            },
+            // A fidgeting shift from foot to foot.
+            Gesture::Worry => Self {
+                bob: tick,
+                step_a: beat,
+                step_b: -beat,
+                appendage_lift: 1,
+                tail_sway: beat,
+                ..Self::default()
+            },
+            // Low and wound tight, breathing.
+            Gesture::Crouch => Self {
+                squash_x: 2,
+                squash_y: -1 - tick,
+                step_a: -1,
+                step_b: 1,
+                appendage_lift: -1,
+                tail_sway: 1 - tick,
+                crouch: 3,
+                ..Self::default()
+            },
+            // Braced and leaning back, the pull coming in waves.
+            Gesture::Heave => Self {
+                squash_x: 1,
+                squash_y: -1,
+                step_a: -2,
+                step_b: 1,
+                appendage_lift: 1,
+                tail_sway: -1,
+                lean: -1 - beat.abs(),
+                crouch: 1,
+                ..Self::default()
+            },
+            // Teetering from side to side, a foot lifting with each tip.
+            Gesture::Balance => Self {
+                step_a: beat,
+                step_b: -beat,
+                appendage_lift: 2,
+                tail_sway: -beat * 2,
+                lean: beat,
+                ..Self::default()
+            },
+            // Up on tiptoe and stretched toward the thing.
+            Gesture::Reach => Self {
+                squash_x: -1,
+                squash_y: 1,
+                play_lift: 1,
+                appendage_lift: 1,
+                tail_sway: 1,
+                lean: 1 + tick,
+                ..Self::default()
+            },
+            // Swaying on the beat, stepping in time.
+            Gesture::Bop => Self {
+                bob: tick,
+                step_a: beat,
+                step_b: -beat,
+                appendage_lift: 1,
+                tail_sway: beat * 2,
+                lean: beat,
+                ..Self::default()
+            },
+        }
+    }
+
+    /// Reduced motion keeps each pose's shape but drops its travel.
+    fn calm(&mut self) {
+        self.bob = 0;
+        self.squash_x = 0;
+        self.squash_y = 0;
+        self.play_lift = 0;
+        self.appendage_lift = self.appendage_lift.clamp(-1, 1);
+        self.tail_sway = self.tail_sway.clamp(-1, 1);
+        self.step_a /= 2;
+        self.step_b /= 2;
+        self.lean = self.lean.clamp(-1, 1);
+        self.crouch = self.crouch.min(1);
     }
 }
 
@@ -733,7 +957,7 @@ fn draw_blob(
     genome: &AppearanceGenome,
     palette: Palette,
     pose: Pose,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
 ) -> PixelPoint {
     let s = scale(genome);
@@ -768,7 +992,7 @@ fn draw_blob(
                 x: cx + rx - 2,
                 y: cy,
             },
-            action,
+            clip,
             frame,
             pose,
             family: BodyFamily::Blob,
@@ -785,7 +1009,7 @@ fn draw_hopper(
     genome: &AppearanceGenome,
     palette: Palette,
     pose: Pose,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
 ) -> PixelPoint {
     let s = scale(genome);
@@ -795,7 +1019,8 @@ fn draw_hopper(
     let leg = ((genome.leg_length as f32 * s).round() as i32).clamp(3, 7);
     let cx = 24;
     let ground = 43;
-    let cy = ground - leg - ry + pose.bob - pose.play_lift;
+    // A crouch folds the legs: the body sinks and the feet stay on the ground.
+    let cy = ground - leg - ry + pose.bob - pose.play_lift + pose.crouch.clamp(0, leg - 2);
     // Rooted low on the rear edge so the puff clears the body ellipse drawn over it.
     draw_tail(canvas, genome, palette, cx - rx, cy + ry / 2, s, pose);
     draw_head_appendages(canvas, genome, palette, cx, cy - ry + 2, s, pose);
@@ -833,7 +1058,7 @@ fn draw_hopper(
                 x: cx + rx - 2,
                 y: cy,
             },
-            action,
+            clip,
             frame,
             pose,
             family: BodyFamily::Hopper,
@@ -850,7 +1075,7 @@ fn draw_quadruped(
     genome: &AppearanceGenome,
     palette: Palette,
     pose: Pose,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
 ) -> PixelPoint {
     let s = scale(genome);
@@ -860,7 +1085,7 @@ fn draw_quadruped(
         ((genome.body_height as f32 * s * 0.34).round() as i32 + pose.squash_y).clamp(4, 8);
     let leg = ((genome.leg_length as f32 * s).round() as i32).clamp(3, 8);
     let ground = 43;
-    let body_y = ground - leg - body_ry + pose.bob - pose.play_lift;
+    let body_y = ground - leg - body_ry + pose.bob - pose.play_lift + pose.crouch.clamp(0, leg - 2);
     let body_x = 22;
     // A head smaller than the body keeps the feline proportion the ears and tail build on.
     let head_radius = ((body_ry as f32 * genome.head_ratio * 0.85).round() as i32 + 2).clamp(5, 8);
@@ -931,7 +1156,7 @@ fn draw_quadruped(
                 x: body_x + body_rx / 2,
                 y: body_y + body_ry - 1,
             },
-            action,
+            clip,
             frame,
             pose,
             family: BodyFamily::SoftQuadruped,
@@ -1450,7 +1675,7 @@ fn draw_rabbit_ears(
 struct LimbPose {
     left_root: PixelPoint,
     right_root: PixelPoint,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
     pose: Pose,
     family: BodyFamily,
@@ -1472,7 +1697,7 @@ fn draw_forelimbs(
     let (left_target, right_target) = limb_targets(
         limb_pose.left_root,
         limb_pose.right_root,
-        limb_pose.action,
+        limb_pose.clip,
         limb_pose.frame,
         length,
         genome.forelimbs.rest_pose,
@@ -1510,17 +1735,29 @@ fn draw_quadruped_forelimbs(
 ) {
     // Standing on four legs is what separates the cat silhouette from an upright body. Arm-style
     // forelimbs are reserved for the actions where the creature is visibly using its paws.
+    // A crouch keeps all four paws down; every other gesture is made with the paws.
     if !matches!(
-        limb_pose.action,
-        ActionKind::SoloPlay
-            | ActionKind::SocialPlay
-            | ActionKind::Greet
-            | ActionKind::PresentDiscovery
-            | ActionKind::PetReaction
-            | ActionKind::Dangle
-            | ActionKind::ClimbWindow
-            | ActionKind::InvestigateCursor
-            | ActionKind::Dragged
+        limb_pose.clip,
+        BodyClip::Action(
+            ActionKind::SoloPlay
+                | ActionKind::SocialPlay
+                | ActionKind::Greet
+                | ActionKind::PresentDiscovery
+                | ActionKind::PetReaction
+                | ActionKind::Dangle
+                | ActionKind::ClimbWindow
+                | ActionKind::InvestigateCursor
+                | ActionKind::Dragged
+        ) | BodyClip::Gesture(
+            Gesture::Cheer
+                | Gesture::Gasp
+                | Gesture::Cover
+                | Gesture::Worry
+                | Gesture::Heave
+                | Gesture::Balance
+                | Gesture::Reach
+                | Gesture::Bop
+        )
     ) {
         draw_quad_leg(
             canvas,
@@ -1548,12 +1785,18 @@ fn draw_quadruped_forelimbs(
 fn limb_targets(
     left: PixelPoint,
     right: PixelPoint,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
     length: i32,
     rest: RestPose,
     pose: Pose,
 ) -> (PixelPoint, PixelPoint) {
+    let action = match clip {
+        BodyClip::Action(action) => action,
+        BodyClip::Gesture(gesture) => {
+            return gesture_limb_targets(left, right, gesture, frame, length, rest);
+        }
+    };
     let pulse = [0, 1, 0, -1, 0, 1][frame as usize % 6];
     let side_rest = || {
         let targets = match rest {
@@ -1639,6 +1882,79 @@ fn limb_targets(
             right,
             ((-1 + pulse, length + 2), (1 - pulse, length + 2)),
         ),
+    }
+}
+
+/// The same gestures on the original families. Each paw moves from where it rests, so a gesture
+/// is the creature's own pair of paws carried somewhere, never another pair.
+fn gesture_limb_targets(
+    left: PixelPoint,
+    right: PixelPoint,
+    gesture: Gesture,
+    frame: u8,
+    length: i32,
+    rest: RestPose,
+) -> (PixelPoint, PixelPoint) {
+    let tick = i32::from(frame % 2);
+    let beat = [0, 1, 0, -1][usize::from(frame % 4)];
+    // The face sits over the middle of the body, a little forward.
+    let middle = (left.x + right.x) / 2 + 1;
+    let at = |x: i32, y: i32| PixelPoint { x, y };
+    let resting = || {
+        let targets = match rest {
+            RestPose::AtSides => ((-2, length - 1), (2, length - 1)),
+            RestPose::Folded => ((2, 2), (-2, 2)),
+            RestPose::Together => ((4, 3), (-4, 3)),
+        };
+        offset_pair(left, right, targets)
+    };
+    match gesture {
+        Gesture::Cheer => offset_pair(
+            left,
+            right,
+            ((-2, -length - 6 - tick), (2, -length - 6 - tick)),
+        ),
+        Gesture::Gasp => offset_pair(
+            left,
+            right,
+            ((-length - 2, -length + tick), (length + 2, -length - tick)),
+        ),
+        Gesture::Cover => (
+            at(middle - 3, left.y - 2),
+            at(middle + 3, right.y - 2 + tick * 2),
+        ),
+        Gesture::Worry => (
+            at(middle - 1, left.y + 2 + beat),
+            at(middle + 1, right.y + 2 - beat),
+        ),
+        Gesture::Crouch => offset_pair(left, right, ((-2, length + 1), (2, length + 1))),
+        Gesture::Heave => {
+            let pull = [0, 1, 2, 1][usize::from(frame % 4)];
+            (
+                at(right.x + 2 - pull, right.y + 1),
+                at(right.x + length + 3 - pull, right.y),
+            )
+        }
+        Gesture::Balance => offset_pair(
+            left,
+            right,
+            ((-length - 3, beat * 2), (length + 3, -beat * 2)),
+        ),
+        Gesture::Reach => {
+            let (resting_left, _) = resting();
+            (
+                resting_left,
+                at(right.x + length + 4, right.y - length - 2 - tick),
+            )
+        }
+        Gesture::Bop => {
+            let (resting_left, resting_right) = resting();
+            match frame % 4 {
+                0 => (resting_left, at(right.x + length, right.y - length - 2)),
+                2 => (at(left.x - length, left.y - length - 2), resting_right),
+                _ => offset_pair(left, right, ((-length, 0), (length, 0))),
+            }
+        }
     }
 }
 
@@ -2239,6 +2555,76 @@ fn draw_effects(
     }
 }
 
+/// Small marks that finish a gesture, kept clear of the face and the raised limbs: a burst over
+/// a cheer, startle lines for a gasp, a bead of worry, a note for a dance, puffs of effort.
+fn draw_gesture_effects(
+    canvas: &mut Canvas,
+    genome: &AppearanceGenome,
+    palette: Palette,
+    face: PixelPoint,
+    gesture: Gesture,
+    frame: u8,
+    reduce_motion: bool,
+) {
+    let pulse = if reduce_motion {
+        0
+    } else {
+        i32::from(frame % 2)
+    };
+    match gesture {
+        Gesture::Cheer => draw_motif(
+            canvas,
+            if genome.effect_motif == EffectMotif::None {
+                EffectMotif::Spark
+            } else {
+                genome.effect_motif
+            },
+            face.x,
+            (face.y - 15 - pulse).max(3),
+            palette.highlight,
+        ),
+        Gesture::Gasp => {
+            let y = (face.y - 13).max(4);
+            canvas.line(face.x - 4, y, face.x - 5, y - 2, 1, palette.accent);
+            canvas.line(face.x, y - 1, face.x, y - 3, 1, palette.accent);
+            canvas.line(face.x + 4, y, face.x + 5, y - 2, 1, palette.accent);
+        }
+        Gesture::Worry => {
+            let x = (face.x + 8).min(44);
+            let y = (face.y - 6 + pulse).clamp(3, 41);
+            canvas.set(x, y, palette.highlight);
+            canvas.fill_rect(x - 1, y + 1, 3, 2, palette.highlight);
+        }
+        Gesture::Heave => {
+            if frame % 4 >= 2 {
+                canvas.fill_circle(
+                    (face.x - 12).max(3),
+                    (face.y + 8).min(43),
+                    1,
+                    palette.highlight,
+                );
+                canvas.set(
+                    (face.x - 15).max(2),
+                    (face.y + 6).min(43),
+                    palette.highlight,
+                );
+            }
+        }
+        Gesture::Bop => {
+            let x = if frame % 4 < 2 {
+                (face.x - 11).max(4)
+            } else {
+                (face.x + 11).min(42)
+            };
+            let y = (face.y - 9 - pulse).clamp(5, 40);
+            canvas.line(x + 1, y - 3, x + 1, y, 1, palette.accent);
+            canvas.set(x + 2, y - 3, palette.accent);
+            canvas.fill_circle(x, y + 1, 1, palette.accent);
+        }
+        Gesture::Cover | Gesture::Crouch | Gesture::Balance | Gesture::Reach => {}
+    }
+}
+
 fn draw_motif(canvas: &mut Canvas, motif: EffectMotif, x: i32, y: i32, color: Rgba) {
     match motif {
         EffectMotif::None => {}
@@ -2482,11 +2868,10 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
 }
 
 fn resolve_eyelids(creature: &Creature) -> EyelidPose {
-    if creature
-        .state
-        .attention
-        .is_some_and(|pose| pose.emotion == formiga_core::AttentionEmotion::Averting)
-    {
+    if creature.state.attention.is_some_and(|pose| {
+        pose.emotion == formiga_core::AttentionEmotion::Averting
+            || pose.gesture == Some(Gesture::Cover)
+    }) {
         return EyelidPose::Closed;
     }
     if creature.state.action == ActionKind::Sleep {
@@ -2823,8 +3208,12 @@ mod tests {
             BodyFamily::SoftQuadruped,
         ] {
             let genome = genome(family);
-            for action in ActionKind::ALL {
-                let spec = AnimationSpec::for_action(action);
+            let clips = ActionKind::ALL
+                .into_iter()
+                .map(BodyClip::Action)
+                .chain(Gesture::ALL.into_iter().map(BodyClip::Gesture));
+            for action in clips {
+                let spec = AnimationSpec::for_clip(action);
                 for frame in 0..spec.frames {
                     let rendered =
                         CreatureRenderer::render_body_frame(&genome, action, frame, false);
@@ -2906,8 +3295,12 @@ mod tests {
         assert_ne!(MotionSignature::for_creature(&neighbor), signature);
 
         // Every frame stays inside its clip, and a loop still visits all of its frames.
-        for action in ActionKind::ALL {
-            let spec = AnimationSpec::for_action(action);
+        let clips = ActionKind::ALL
+            .into_iter()
+            .map(BodyClip::Action)
+            .chain(Gesture::ALL.into_iter().map(BodyClip::Gesture));
+        for action in clips {
+            let spec = AnimationSpec::for_clip(action);
             let mut seen = std::collections::BTreeSet::new();
             for step in 0..400 {
                 let frame = signature.frame(action, step as f32 / 20.0);
@@ -3207,7 +3600,12 @@ mod tests {
     ];
 
     fn rest_pose() -> Pose {
-        Pose::new(&genome(BodyFamily::Blob), ActionKind::Idle, 0, true)
+        Pose::new(
+            &genome(BodyFamily::Blob),
+            BodyClip::Action(ActionKind::Idle),
+            0,
+            true,
+        )
     }
 
     /// Opaque pixels above `row`, split into those left and right of `center_x`.
@@ -3391,5 +3789,122 @@ mod tests {
         creature.state.facing_right = false;
         let taker = PropAnchor::for_creature(&creature);
         assert!(giver.dx > taker.dx);
+    }
+    #[test]
+    fn every_gesture_is_a_distinct_looping_pose_on_every_body() {
+        let preview = World::preview_adult(
+            [29; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        let mut bodies: Vec<(String, AppearanceGenome)> = [
+            BodyFamily::Blob,
+            BodyFamily::Hopper,
+            BodyFamily::SoftQuadruped,
+        ]
+        .into_iter()
+        .map(|family| (format!("{family:?}"), genome(family)))
+        .collect();
+        for plan in formiga_core::BodyPlan::ALL {
+            let mut appearance = preview.appearance.clone();
+            let mut design = appearance.design.expect("preview adults are modular");
+            design.body = plan;
+            appearance.design = Some(design);
+            bodies.push((format!("{plan:?}"), appearance));
+        }
+        for (body, genome) in &bodies {
+            // The pose a gesture most often stands in for is the plain inspecting one.
+            let inspecting =
+                CreatureRenderer::render_body_frame(genome, ActionKind::InspectScreen, 0, false);
+            let mut poses: Vec<(Gesture, Canvas)> = Vec::new();
+            for gesture in Gesture::ALL {
+                let spec = AnimationSpec::for_clip(gesture);
+                assert_eq!(spec.playback, PlaybackMode::Loop, "{gesture:?}");
+                assert!(spec.frames >= 2, "{gesture:?} is a pose that moves");
+                let frames: Vec<_> = (0..spec.frames)
+                    .map(|frame| CreatureRenderer::render_body_frame(genome, gesture, frame, false))
+                    .collect();
+                for rendered in &frames {
+                    let (min_x, min_y, max_x, max_y) = rendered
+                        .canvas
+                        .alpha_bounds()
+                        .expect("a gesture is visible");
+                    assert!(
+                        min_x > 0 && min_y > 0 && max_x < FRAME_SIZE - 1 && max_y < FRAME_SIZE - 1,
+                        "{body} {gesture:?} leaves the frame"
+                    );
+                }
+                assert!(
+                    frames
+                        .windows(2)
+                        .any(|pair| pair[0].canvas != pair[1].canvas),
+                    "{body} {gesture:?} never moves"
+                );
+                assert_ne!(
+                    frames[0].canvas, inspecting.canvas,
+                    "{body} {gesture:?} looks like plain inspecting"
+                );
+                for (other, canvas) in &poses {
+                    assert_ne!(
+                        &frames[0].canvas, canvas,
+                        "{body}: {gesture:?} and {other:?} share a pose"
+                    );
+                }
+                poses.push((gesture, frames[0].canvas.clone()));
+            }
+        }
+    }
+
+    #[test]
+    fn a_body_shows_a_gesture_only_while_its_attention_carries_one() {
+        let mut creature = World::preview_adult(
+            [31; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        creature.state.action = ActionKind::InspectScreen;
+        creature.state.attention = None;
+        assert_eq!(
+            BodyClip::for_creature(&creature),
+            BodyClip::Action(ActionKind::InspectScreen)
+        );
+        let mut pose = formiga_core::AttentionPose {
+            target: creature.state.position,
+            emotion: formiga_core::AttentionEmotion::Curious,
+            hanging: 0.0,
+            gesture: None,
+        };
+        creature.state.attention = Some(pose);
+        assert_eq!(
+            BodyClip::for_creature(&creature),
+            BodyClip::Action(ActionKind::InspectScreen)
+        );
+        let open =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        for gesture in Gesture::ALL {
+            pose.gesture = Some(gesture);
+            creature.state.attention = Some(pose);
+            assert_eq!(
+                BodyClip::for_creature(&creature),
+                BodyClip::Gesture(gesture)
+            );
+            let face =
+                CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+            // Covering the face shuts the eyes behind the paws; nothing else changes the face.
+            if gesture == Gesture::Cover {
+                assert_eq!(face.eyelids, EyelidPose::Closed);
+            } else {
+                assert_eq!(face, open, "{gesture:?}");
+            }
+        }
+        // Actions keep their own clips: no action is folded into a gesture or the other way.
+        let baked: Vec<_> = BodyClip::baked().collect();
+        assert_eq!(
+            baked.len(),
+            ActionKind::BODY_CLIPS.len() + Gesture::ALL.len()
+        );
+        for clip in &baked {
+            assert_eq!(clip.body(), *clip, "{clip:?} is baked under its own name");
+        }
     }
 }

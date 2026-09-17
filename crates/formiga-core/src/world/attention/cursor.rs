@@ -504,4 +504,48 @@ mod tests {
             );
         }
     }
+
+    /// Having crept up on the cursor, a bold creature reaches out for it, facing what it is
+    /// reaching at. A wary one, which has backed away from the same cursor, keeps its distance
+    /// and its hands to itself.
+    #[test]
+    fn a_bold_creature_reaches_for_the_cursor_it_crept_up_on() {
+        for bold in [0.9f32, 0.1] {
+            let (mut world, mut desktop, now) = scene(bold);
+            let mut poses = super::super::tests::Poses::default();
+            for step in 0..=20u64 {
+                let angle = step as f32 * std::f32::consts::FRAC_PI_4;
+                poses.tick(&mut world, |world| {
+                    point(
+                        world,
+                        &mut desktop,
+                        now,
+                        step * 50,
+                        560.0 + angle.cos() * 24.0,
+                        800.0 + angle.sin() * 24.0,
+                    );
+                });
+            }
+            let mut reached = 0;
+            for step in 21..=80u64 {
+                poses.tick(&mut world, |world| {
+                    point(world, &mut desktop, now, step * 50, 560.0, 800.0);
+                });
+                let creature = &world.save.creatures[0];
+                if creature.state.attention.and_then(|pose| pose.gesture) == Some(Gesture::Reach) {
+                    assert!(creature.state.facing_right, "reaching away from the cursor");
+                    assert!(
+                        (creature.state.position.x - 560.0).abs() <= CURSOR_REACH,
+                        "reaching for a cursor it never got near"
+                    );
+                    reached += 1;
+                }
+            }
+            assert_eq!(
+                reached > 0,
+                bold > 0.5,
+                "bold {bold} reached {reached} times: {poses:?}"
+            );
+        }
+    }
 }

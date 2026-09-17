@@ -13,7 +13,7 @@ pub(super) fn draw(
     p: Palette,
     pose: Pose,
     size: f32,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
 ) -> PixelPoint {
     let d = design.bounded();
@@ -21,31 +21,18 @@ pub(super) fn draw(
     // A blob is one soft mass carrying its own face, so it keeps a rounder minimum and
     // never grows the separate head oval every other plan draws.
     let blob = d.body == BodyPlan::Blob;
+    let body = measure(d, pose, size);
+    let Body {
+        x,
+        y,
+        rx,
+        ry,
+        hx,
+        hy,
+        head,
+        floor,
+    } = body;
     let size = size.clamp(0.55, 1.05);
-    let mut rx = ((f32::from(d.width) * size).round() as i32 + pose.squash_x).clamp(6, 13);
-    let mut ry = ((f32::from(d.height) * size).round() as i32 + pose.squash_y).clamp(5, 11);
-    if blob {
-        rx = (rx + 2).clamp(8, 13);
-        ry = (ry + 2).clamp(7, 11);
-    }
-    let x = if long { 22 } else { 24 };
-    let floor = 40 + pose.bob.clamp(-2, 2) - pose.play_lift.clamp(0, 3);
-    // Blobs settle onto stubby feet rather than standing on visible legs.
-    let stance = f32::from(d.legs) * size * if blob { 0.4 } else { 1.0 };
-    let y = floor - stance.round() as i32 - ry;
-    let hx = if long {
-        x + (8.0 * size).round() as i32
-    } else {
-        x
-    };
-    let hy = match d.body {
-        BodyPlan::Round => y - 2,
-        BodyPlan::Long => y - 4,
-        BodyPlan::Upright | BodyPlan::Winged => y - 6,
-        BodyPlan::Blob => y - ry / 3,
-    }
-    .max(18);
-    let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
     // Ears ride the top of a blob's mass; every other plan hangs them off the head.
     let (ear_cx, ear_span, ear_top) = if blob {
         (x, rx - 4, y - ry + 2)
@@ -116,37 +103,7 @@ pub(super) fn draw(
             );
         }
     }
-    // Gestures remain outside the face. Dangle hands share the existing y=7 ledge anchor.
-    if matches!(
-        action,
-        ActionKind::Dangle
-            | ActionKind::ClimbWindow
-            | ActionKind::Greet
-            | ActionKind::SocialPlay
-            | ActionKind::PresentDiscovery
-            | ActionKind::InvestigateCursor
-    ) {
-        for side in [-1, 1] {
-            let ax = (hx + side * (head + 3)).clamp(4, 43);
-            let ay = match action {
-                ActionKind::Dangle => 7,
-                ActionKind::ClimbWindow => {
-                    hy - 7
-                        + if side < 0 {
-                            i32::from(frame % 2) * 3
-                        } else {
-                            3 - i32::from(frame % 2) * 3
-                        }
-                }
-                ActionKind::PresentDiscovery => hy - 5,
-                _ if side > 0 => hy - 2 - i32::from(frame % 2) * 2,
-                _ => y + 4,
-            };
-            c.line(x + side * (rx - 1), y + 2, ax, ay, 2, p.outline);
-            c.line(x + side * (rx - 1), y + 2, ax, ay, 1, p.coat);
-            oval(c, p, ax, ay, 2, 2, p.coat);
-        }
-    }
+    let limbs = limbs(clip, frame, body, d.body);
     oval(c, p, x, y, rx, ry, p.coat);
     c.fill_ellipse(x, y + ry / 2, rx - 3, (ry / 2).max(3), p.shadow);
     match d.marking {
@@ -169,32 +126,35 @@ pub(super) fn draw(
         }
         _ => {}
     }
-    for (side, step) in [(-1, pose.step_a), (1, pose.step_b)] {
-        let fx = x + side * (rx - 4) + step.clamp(-2, 2);
-        c.line(
-            x + side * (rx - 4),
-            y + ry - 2,
-            fx,
-            floor - 2 - step.abs().min(2),
-            2,
-            p.outline,
-        );
-        c.line(
-            x + side * (rx - 4),
-            y + ry - 2,
-            fx,
-            floor - 2 - step.abs().min(2),
-            1,
-            p.coat,
-        );
-        oval(c, p, fx, floor - 1 - step.abs().min(2), 3, 2, p.coat);
-        if !long {
-            let ax = x + side * (rx - 1);
-            let ay = y + 3 - pose.appendage_lift.clamp(-2, 3);
+    let shoulder = |side: i32| shoulder(body, pose, side);
+    for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
+        // A four-pawed plan lifts the front paw it gestures with off the ground.
+        if !(long && limb != Limb::Rest) {
+            let fx = x + side * (rx - 4) + step.clamp(-2, 2);
+            c.line(
+                x + side * (rx - 4),
+                y + ry - 2,
+                fx,
+                floor - 2 - step.abs().min(2),
+                2,
+                p.outline,
+            );
+            c.line(
+                x + side * (rx - 4),
+                y + ry - 2,
+                fx,
+                floor - 2 - step.abs().min(2),
+                1,
+                p.coat,
+            );
+            oval(c, p, fx, floor - 1 - step.abs().min(2), 3, 2, p.coat);
+        }
+        if !long && limb == Limb::Rest {
+            let at = shoulder(side);
             if d.body == BodyPlan::Winged {
-                draw_wing(c, p, wing_style(d), ax, ay, side);
+                draw_wing(c, p, wing_style(d), at.x, at.y, side);
             } else {
-                oval(c, p, ax, ay, 2, 3, p.coat);
+                oval(c, p, at.x, at.y, 2, 3, p.coat);
             }
         }
     }
@@ -217,7 +177,266 @@ pub(super) fn draw(
         1,
         p.highlight,
     );
+    // A limb in use is the same limb carried out from where it rests, drawn last so a paw raised
+    // to the face or across the chest stays in front of what it covers.
+    for (side, limb) in [-1, 1].into_iter().zip(limbs) {
+        let Limb::Reach(hand) = limb else {
+            continue;
+        };
+        if long {
+            // The front paw comes up from the flank, where its leg was planted.
+            let root = PixelPoint {
+                x: x + side * (rx - 3),
+                y: y + 2,
+            };
+            draw_arm(c, p, root, hand);
+        } else if d.body == BodyPlan::Winged {
+            draw_open_wing(c, p, wing_style(d), shoulder(side), hand, side);
+        } else {
+            draw_arm(c, p, shoulder(side), hand);
+        }
+    }
     PixelPoint { x: hx, y: hy }
+}
+
+/// One side's paw or wing in a frame: folded where it rests, or carried out to a point.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Limb {
+    Rest,
+    Reach(PixelPoint),
+}
+
+/// The measurements every part of a modular body is placed from, in frame pixels.
+#[derive(Clone, Copy, Debug)]
+struct Body {
+    /// Centre and radii of the body mass.
+    x: i32,
+    y: i32,
+    rx: i32,
+    ry: i32,
+    /// Centre and radius of the head, which is also the face anchor.
+    hx: i32,
+    hy: i32,
+    head: i32,
+    /// The row the feet stand on.
+    floor: i32,
+}
+
+fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
+    let long = d.body == BodyPlan::Long;
+    let blob = d.body == BodyPlan::Blob;
+    let size = size.clamp(0.55, 1.05);
+    let mut rx = ((f32::from(d.width) * size).round() as i32 + pose.squash_x).clamp(6, 13);
+    let mut ry = ((f32::from(d.height) * size).round() as i32 + pose.squash_y).clamp(5, 11);
+    if blob {
+        rx = (rx + 2).clamp(8, 13);
+        ry = (ry + 2).clamp(7, 11);
+    }
+    let x = if long { 22 } else { 24 };
+    let floor = 40 + pose.bob.clamp(-2, 2) - pose.play_lift.clamp(0, 3);
+    // Blobs settle onto stubby feet rather than standing on visible legs.
+    let stance = f32::from(d.legs) * size * if blob { 0.4 } else { 1.0 };
+    // A crouch folds the legs rather than sinking the feet, so contact with the surface holds.
+    let stance = (stance.round() as i32 - pose.crouch.clamp(0, 4)).max(0);
+    let y = floor - stance - ry;
+    let hx = if long {
+        x + (8.0 * size).round() as i32
+    } else {
+        x
+    } + pose.lean.clamp(-2, 2);
+    let hy = match d.body {
+        BodyPlan::Round => y - 2,
+        BodyPlan::Long => y - 4,
+        BodyPlan::Upright | BodyPlan::Winged => y - 6,
+        BodyPlan::Blob => y - ry / 3,
+    }
+    .max(18);
+    let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
+    Body {
+        x,
+        y,
+        rx,
+        ry,
+        hx,
+        hy,
+        head,
+        floor,
+    }
+}
+
+/// Where a side's paw or wing sits folded against the body, and where it is carried out from.
+fn shoulder(body: Body, pose: Pose, side: i32) -> PixelPoint {
+    PixelPoint {
+        x: body.x + side * (body.rx - 1),
+        y: body.y + 3 - pose.appendage_lift.clamp(-2, 3),
+    }
+}
+
+/// Where each side's limb is this frame, back side first. There is exactly one limb per side:
+/// the paw or wing a creature rests against its body is the one it raises, so no gesture ever
+/// adds an appendage beside the one that was already there.
+fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
+    let Body {
+        x,
+        y,
+        rx,
+        hx,
+        hy,
+        head,
+        floor,
+        ..
+    } = body;
+    let tick = i32::from(frame % 2);
+    let beat = [0, 1, 0, -1][usize::from(frame % 4)];
+    let to = |x: i32, y: i32| {
+        Limb::Reach(PixelPoint {
+            x: x.clamp(4, 43),
+            y: y.clamp(3, 44),
+        })
+    };
+    let beside_head = |side: i32| hx + side * (head + 3);
+    let both = |aim: &dyn Fn(i32) -> Limb| [aim(-1), aim(1)];
+    let front = |limb: Limb| [Limb::Rest, limb];
+    let aimed = match clip {
+        // Dangling hands share the existing y=7 ledge anchor.
+        BodyClip::Action(ActionKind::Dangle) => both(&|side| to(beside_head(side), 7)),
+        BodyClip::Action(ActionKind::ClimbWindow) => both(&|side| {
+            let hold = if side < 0 { tick * 3 } else { 3 - tick * 3 };
+            to(beside_head(side), hy - 7 + hold)
+        }),
+        BodyClip::Action(ActionKind::PresentDiscovery) => {
+            both(&|side| to(beside_head(side), hy - 5))
+        }
+        BodyClip::Action(
+            ActionKind::Greet | ActionKind::SocialPlay | ActionKind::InvestigateCursor,
+        ) => front(to(beside_head(1), hy - 2 - tick * 2)),
+        BodyClip::Action(_) => [Limb::Rest; 2],
+        BodyClip::Gesture(Gesture::Cheer) => {
+            both(&|side| to(beside_head(side), hy - head - 2 - tick))
+        }
+        BodyClip::Gesture(Gesture::Gasp) => both(&|side| to(x + side * (rx + 5), y - 5 - tick)),
+        BodyClip::Gesture(Gesture::Cover) => {
+            both(&|side| to(hx + side * 3, hy - 1 + if side > 0 { tick * 2 } else { 0 }))
+        }
+        // Paws wrung together below the chin, clear of the mouth.
+        BodyClip::Gesture(Gesture::Worry) => [to(hx - 2, y + 6 + beat), to(hx + 2, y + 5 - beat)],
+        // Wings fold and long bodies keep all four paws down; everyone else plants their paws.
+        BodyClip::Gesture(Gesture::Crouch) if matches!(plan, BodyPlan::Long | BodyPlan::Winged) => {
+            [Limb::Rest; 2]
+        }
+        BodyClip::Gesture(Gesture::Crouch) => both(&|side| to(x + side * (rx + 1), floor - 2)),
+        BodyClip::Gesture(Gesture::Heave) => {
+            let pull = [0, 1, 2, 1][usize::from(frame % 4)];
+            [to(x + rx + 3 - pull, y + 3), to(x + rx + 6 - pull, y + 1)]
+        }
+        BodyClip::Gesture(Gesture::Balance) => {
+            both(&|side| to(x + side * (rx + 6), y - 1 - side * beat * 2))
+        }
+        BodyClip::Gesture(Gesture::Reach) => front(to(x + rx + 7, hy - 3 - tick)),
+        BodyClip::Gesture(Gesture::Bop) => match frame % 4 {
+            0 => front(to(beside_head(1), hy - 4)),
+            2 => [to(beside_head(-1), hy - 4), Limb::Rest],
+            _ => [Limb::Rest; 2],
+        },
+    };
+    // A long body's far paw would have to cross the whole body to reach its face or its chest,
+    // so it stays planted and the near paw makes the gesture alone.
+    if plan == BodyPlan::Long
+        && matches!(
+            clip,
+            BodyClip::Gesture(Gesture::Cover | Gesture::Worry | Gesture::Heave)
+        )
+    {
+        return [Limb::Rest, aimed[1]];
+    }
+    aimed
+}
+
+/// A paw carried out from its shoulder. Outline first and fill second, so the arm reads as one
+/// piece, and the root is filled back into the body so it grows from the side instead of
+/// sitting on top of it.
+fn draw_arm(c: &mut Canvas, p: Palette, root: PixelPoint, hand: PixelPoint) {
+    c.line(root.x, root.y, hand.x, hand.y, 3, p.outline);
+    c.fill_ellipse(hand.x, hand.y, 3, 3, p.outline);
+    c.line(root.x, root.y, hand.x, hand.y, 2, p.coat);
+    c.fill_ellipse(hand.x, hand.y, 2, 2, p.coat);
+    c.fill_circle(root.x, root.y, 2, p.coat);
+}
+
+/// A wing opened toward a point: the folded wing's own membrane swept out from the shoulder and
+/// tapering to its tip, textured in the same style it shows when folded.
+fn draw_open_wing(
+    c: &mut Canvas,
+    p: Palette,
+    style: u8,
+    root: PixelPoint,
+    tip: PixelPoint,
+    side: i32,
+) {
+    let (dx, dy) = ((tip.x - root.x) as f32, (tip.y - root.y) as f32);
+    let length = (dx * dx + dy * dy).sqrt().max(1.0);
+    let steps = (length / 2.0).ceil() as i32;
+    let along = |t: f32| PixelPoint {
+        x: root.x + (dx * t).round() as i32,
+        y: root.y + (dy * t).round() as i32,
+    };
+    let radius = |t: f32| (2.6 - t * 1.8).round() as i32;
+    for pass in [true, false] {
+        for step in 0..=steps {
+            let t = step as f32 / steps as f32;
+            let at = along(t);
+            let r = radius(t);
+            if pass {
+                c.fill_ellipse(at.x, at.y, r + 1, r + 1, p.outline);
+            } else {
+                c.fill_ellipse(at.x, at.y, r, r, p.accent);
+            }
+        }
+    }
+    c.fill_circle(root.x, root.y, 2, p.accent);
+    // The leading edge faces up and the trailing edge down, whichever way the wing is carried.
+    let (mut nx, mut ny) = (-dy / length, dx / length);
+    if ny > 0.0 || (ny == 0.0 && nx * side as f32 > 0.0) {
+        nx = -nx;
+        ny = -ny;
+    }
+    let offset = |at: PixelPoint, by: f32| PixelPoint {
+        x: at.x + (nx * by).round() as i32,
+        y: at.y + (ny * by).round() as i32,
+    };
+    let (base, mid, end) = (along(0.15), along(0.55), along(0.85));
+    let (lead_base, lead_end) = (offset(base, 2.0), offset(end, 1.0));
+    c.line(
+        lead_base.x,
+        lead_base.y,
+        lead_end.x,
+        lead_end.y,
+        1,
+        p.highlight,
+    );
+    match style {
+        // Feathered: quills fanning back from the leading edge.
+        0 => {
+            for t in [0.3, 0.55, 0.8] {
+                let from = offset(along(t), 1.0);
+                let to = offset(along(t - 0.12), -2.0);
+                c.line(from.x, from.y, to.x, to.y, 1, p.shadow);
+            }
+        }
+        // Membrane: ribs from the shoulder out to the trailing edge.
+        1 => {
+            for t in [0.6, 1.0] {
+                let to = offset(along(t), -1.0);
+                c.line(base.x, base.y, to.x, to.y, 1, p.shadow);
+            }
+        }
+        // Panelled: a pale inner panel with a single vein.
+        _ => {
+            let from = offset(base, -1.0);
+            let to = offset(mid, -1.0);
+            c.line(from.x, from.y, to.x, to.y, 1, p.shadow);
+        }
+    }
 }
 
 /// Which wing a creature grew. Derived from bytes already in the recipe, so wings vary between
@@ -268,14 +487,67 @@ fn draw_wing(c: &mut Canvas, p: Palette, style: u8, x: i32, y: i32, side: i32) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn every_wing_style_is_reachable_deterministic_and_visibly_textured() {
-        let creature = formiga_core::World::preview_adult(
+    fn preview() -> formiga_core::Creature {
+        formiga_core::World::preview_adult(
             [55; 32],
             time::OffsetDateTime::UNIX_EPOCH,
             &formiga_core::DesktopSnapshot::default(),
-        );
+        )
+    }
+
+    /// Draws one modular frame exactly as the body renderer does, before props and effects.
+    fn render(
+        creature: &formiga_core::Creature,
+        d: CreatureDesign,
+        clip: BodyClip,
+        frame: u8,
+        size: f32,
+    ) -> (Canvas, PixelPoint, Pose) {
         let p = crate::palette_for(&creature.appearance);
+        let pose = Pose::new(&creature.appearance, clip, frame, false);
+        let mut c = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        let anchor = draw(&mut c, d, p, pose, size, clip, frame);
+        (c, anchor, pose)
+    }
+
+    /// The face area stays covered and every drawn pixel belongs to one connected creature.
+    fn assert_whole(c: &Canvas, anchor: PixelPoint, label: &str) {
+        for dx in -5..=5 {
+            for dy in -3..=3 {
+                assert!(
+                    c.get(anchor.x + dx, anchor.y + dy).a > 0,
+                    "reserved face {label}"
+                );
+            }
+        }
+        let count = c.pixels().iter().filter(|p| p.a > 0).count();
+        let mut seen = vec![false; (FRAME_SIZE * FRAME_SIZE) as usize];
+        let mut pending = vec![(anchor.x, anchor.y)];
+        while let Some((x, y)) = pending.pop() {
+            if c.get(x, y).a == 0 {
+                continue;
+            }
+            let index = (y * FRAME_SIZE as i32 + x) as usize;
+            if seen[index] {
+                continue;
+            }
+            seen[index] = true;
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    pending.push((x + dx, y + dy));
+                }
+            }
+        }
+        assert_eq!(
+            seen.iter().filter(|v| **v).count(),
+            count,
+            "disconnected part {label}"
+        );
+    }
+
+    #[test]
+    fn every_wing_style_is_reachable_deterministic_and_visibly_textured() {
+        let creature = preview();
         let base = creature.appearance.design.unwrap();
         let mut rendered = Vec::new();
         for style in 0..3_u8 {
@@ -291,10 +563,8 @@ mod tests {
                 wing_style(d),
                 "a recipe always grows one wing"
             );
-            let mut c = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-            let pose = Pose::new(&creature.appearance, ActionKind::Idle, 0, false);
-            draw(&mut c, d, p, pose, 1.0, ActionKind::Idle, 0);
-            rendered.push(c);
+            let idle = BodyClip::Action(ActionKind::Idle);
+            rendered.push(render(&creature, d, idle, 0, 1.0).0);
         }
         for (index, canvas) in rendered.iter().enumerate() {
             for other in rendered.iter().skip(index + 1) {
@@ -329,12 +599,7 @@ mod tests {
 
     #[test]
     fn all_part_combinations_keep_connected_bodies_and_a_reserved_face_at_extreme_sizes() {
-        let creature = formiga_core::World::preview_adult(
-            [55; 32],
-            time::OffsetDateTime::UNIX_EPOCH,
-            &formiga_core::DesktopSnapshot::default(),
-        );
-        let p = crate::palette_for(&creature.appearance);
+        let creature = preview();
         for body in BodyPlan::ALL {
             for ears in EarStyle::ALL {
                 for tail in 0..5 {
@@ -348,51 +613,129 @@ mod tests {
                         d.head = if small { 7 } else { 9 };
                         d.legs = if small { 3 } else { 6 };
                         d.ear_size = 7;
-                        let mut c = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-                        let pose = Pose::new(&creature.appearance, ActionKind::Idle, 0, false);
-                        let anchor = draw(
-                            &mut c,
+                        let (c, anchor, _) = render(
+                            &creature,
                             d,
-                            p,
-                            pose,
-                            if small { 0.55 } else { 1.05 },
-                            ActionKind::Idle,
+                            BodyClip::Action(ActionKind::Idle),
                             0,
+                            if small { 0.55 } else { 1.05 },
                         );
-                        for dx in -5..=5 {
-                            for dy in -3..=3 {
-                                assert!(
-                                    c.get(anchor.x + dx, anchor.y + dy).a > 0,
-                                    "reserved face {d:?}"
-                                );
-                            }
-                        }
-                        let count = c.pixels().iter().filter(|p| p.a > 0).count();
-                        let mut seen = vec![false; (FRAME_SIZE * FRAME_SIZE) as usize];
-                        let mut pending = vec![(anchor.x, anchor.y)];
-                        while let Some((x, y)) = pending.pop() {
-                            if c.get(x, y).a == 0 {
-                                continue;
-                            }
-                            let index = (y * FRAME_SIZE as i32 + x) as usize;
-                            if seen[index] {
-                                continue;
-                            }
-                            seen[index] = true;
-                            for dx in -1..=1 {
-                                for dy in -1..=1 {
-                                    pending.push((x + dx, y + dy));
-                                }
-                            }
-                        }
+                        assert_whole(&c, anchor, &format!("{d:?}, small={small}"));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_action_and_gesture_keeps_one_connected_body_and_a_reserved_face() {
+        let creature = preview();
+        for body in BodyPlan::ALL {
+            for small in [false, true] {
+                let mut d = creature.appearance.design.unwrap();
+                d.body = body;
+                d.width = if small { 8 } else { 12 };
+                d.height = if small { 7 } else { 11 };
+                d.head = if small { 7 } else { 9 };
+                d.legs = if small { 3 } else { 6 };
+                for clip in BodyClip::baked() {
+                    for frame in 0..AnimationSpec::for_clip(clip).frames {
+                        let size = if small { 0.55 } else { 1.05 };
+                        let (c, anchor, _) = render(&creature, d, clip, frame, size);
+                        assert_whole(&c, anchor, &format!("{body:?} {clip:?} {frame} {small}"));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_gesture_carries_out_the_limb_already_there_instead_of_growing_another() {
+        let creature = preview();
+        let d = creature.appearance.design.unwrap();
+        for plan in BodyPlan::ALL {
+            let mut d = d;
+            d.body = plan;
+            d.ears = EarStyle::None;
+            for clip in BodyClip::baked() {
+                for frame in 0..AnimationSpec::for_clip(clip).frames {
+                    let (canvas, _, pose) = render(&creature, d, clip, frame, 1.0);
+                    let body = measure(d, pose, 1.0);
+                    let limbs = limbs(clip, frame, body, plan);
+                    // Actions that never used their paws still keep both folded.
+                    if let BodyClip::Action(action) = clip {
+                        let reaching = match action {
+                            ActionKind::Dangle
+                            | ActionKind::ClimbWindow
+                            | ActionKind::PresentDiscovery => [true, true],
+                            ActionKind::Greet
+                            | ActionKind::SocialPlay
+                            | ActionKind::InvestigateCursor => [false, true],
+                            _ => [false, false],
+                        };
                         assert_eq!(
-                            seen.iter().filter(|v| **v).count(),
-                            count,
-                            "disconnected part {d:?}, small={small}"
+                            limbs.map(|limb| limb != Limb::Rest),
+                            reaching,
+                            "{plan:?} {clip:?}"
+                        );
+                    }
+                    if plan == BodyPlan::Long {
+                        continue;
+                    }
+                    for (side, limb) in [-1, 1].into_iter().zip(limbs) {
+                        let at = shoulder(body, pose, side);
+                        let raised = matches!(limb, Limb::Reach(hand) if hand.y <= at.y - 3);
+                        if limb != Limb::Rest && !raised {
+                            continue;
+                        }
+                        // Just outside the body, below the shoulder, is covered by the folded
+                        // paw or wing and by nothing else. Raising that limb has to clear it.
+                        let below = if plan == BodyPlan::Winged { 4 } else { 2 };
+                        let probe = canvas.get(body.x + side * (body.rx + 1), at.y + below);
+                        assert_eq!(
+                            probe.a > 0,
+                            limb == Limb::Rest,
+                            "{plan:?} {clip:?} frame {frame} side {side}: a raised limb must not \
+                             leave its resting shape behind"
                         );
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_winged_creature_reaches_with_its_wings_rather_than_a_separate_arm() {
+        let creature = preview();
+        let p = crate::palette_for(&creature.appearance);
+        let clip = BodyClip::Action(ActionKind::Dangle);
+        let colours_above_the_crown = |plan: BodyPlan| {
+            let mut d = creature.appearance.design.unwrap();
+            d.body = plan;
+            d.ears = EarStyle::None;
+            let (canvas, _, _) = render(&creature, d, clip, 0, 1.0);
+            let mut seen = Vec::new();
+            for y in 0..=7 {
+                for x in 0..FRAME_SIZE as i32 {
+                    let pixel = canvas.get(x, y);
+                    if pixel.a > 0 {
+                        seen.push(pixel);
+                    }
+                }
+            }
+            seen
+        };
+        // Hands on a ledge are the only thing drawn this high.
+        let winged = colours_above_the_crown(BodyPlan::Winged);
+        assert!(winged.contains(&p.accent), "raised wings reach the ledge");
+        assert!(
+            !winged.contains(&p.coat),
+            "a winged creature grew a coat-coloured arm beside its wings"
+        );
+        let pawed = colours_above_the_crown(BodyPlan::Round);
+        assert!(
+            pawed.contains(&p.coat),
+            "a round body reaches with its paws"
+        );
     }
 }

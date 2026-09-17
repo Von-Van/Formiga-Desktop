@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AnimationSpec, COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
-    ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, MilestoneBubbleRenderer, MotionSignature, PixelPoint, PropAnchor, SHELTER_SIZE,
-    ShelterRenderer, VILLAGE_ATLAS_SIZE,
+    AnimationSpec, BodyClip, COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH,
+    COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE,
+    FaceRenderState, FramePlacement, MilestoneBubbleRenderer, MotionSignature, PixelPoint,
+    PropAnchor, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
@@ -1430,10 +1430,12 @@ impl OverlayRenderer {
         let right = (local_x + sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let top = 1.0 - frame_top / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - frame_bottom / self.layout.height as f32 * 2.0;
-        // Each creature keeps its own cadence and phase; the atlas and slots are unchanged.
-        let frame = MotionSignature::for_creature(creature)
-            .frame(creature.state.action, creature.state.action_elapsed);
-        let slot = atlas_slot(creature.state.action, frame);
+        // Each creature keeps its own cadence and phase; the atlas and slots are unchanged. A
+        // gesture shows its own baked clip in place of the action's.
+        let clip = BodyClip::for_creature(creature);
+        let frame =
+            MotionSignature::for_creature(creature).frame(clip, creature.state.action_elapsed);
+        let slot = atlas_slot(clip, frame);
         let column = slot % ATLAS_COLUMNS;
         let row = slot / ATLAS_COLUMNS;
         let mut u_left = column as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
@@ -1785,12 +1787,12 @@ fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -
     let body_height = body_rows * FRAME_SIZE;
     let mut body_pixels = vec![0_u8; (body_width * body_height * 4) as usize];
     let mut face_anchors = vec![PixelPoint::default(); body_slots as usize];
-    for action in ActionKind::BODY_CLIPS {
-        let spec = AnimationSpec::for_action(action);
+    for clip in BodyClip::baked() {
+        let spec = AnimationSpec::for_clip(clip);
         for frame in 0..spec.frames {
             let mut rendered = CreatureRenderer::render_body_frame(
                 &creature.appearance,
-                action,
+                clip,
                 frame,
                 reduce_motion,
             );
@@ -1798,7 +1800,7 @@ fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -
             if outline {
                 CreatureRenderer::outline_frame(&mut rendered.canvas);
             }
-            let slot = atlas_slot(action, frame);
+            let slot = atlas_slot(clip, frame);
             face_anchors[slot as usize] = rendered.face_anchor;
             blit_atlas_frame(
                 &mut body_pixels,
@@ -1879,9 +1881,8 @@ fn blit_atlas_frame(
 }
 
 fn total_animation_frames() -> u32 {
-    ActionKind::BODY_CLIPS
-        .into_iter()
-        .map(|action| u32::from(AnimationSpec::for_action(action).frames))
+    BodyClip::baked()
+        .map(|clip| u32::from(AnimationSpec::for_clip(clip).frames))
         .sum()
 }
 
@@ -1893,14 +1894,13 @@ fn creature_horizontal_scale(action: ActionKind) -> f32 {
     }
 }
 
-fn atlas_slot(action: ActionKind, frame: u8) -> u32 {
-    let action = AnimationSpec::body_action(action);
-    let action_offset: u32 = ActionKind::BODY_CLIPS
-        .into_iter()
-        .take_while(|candidate| *candidate != action)
-        .map(|candidate| u32::from(AnimationSpec::for_action(candidate).frames))
+fn atlas_slot(clip: impl Into<BodyClip>, frame: u8) -> u32 {
+    let clip = clip.into().body();
+    let clip_offset: u32 = BodyClip::baked()
+        .take_while(|candidate| *candidate != clip)
+        .map(|candidate| u32::from(AnimationSpec::for_clip(candidate).frames))
         .sum();
-    action_offset + u32::from(frame)
+    clip_offset + u32::from(frame)
 }
 
 fn face_slot_count() -> u32 {
@@ -2174,7 +2174,7 @@ mod tests {
             .collect();
         for (choice, atlas) in choices.iter().zip(&first) {
             let bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
-            assert_eq!(bytes, 1_161_216, "{choice:?} costs {bytes} bytes");
+            assert_eq!(bytes, 1_437_696, "{choice:?} costs {bytes} bytes");
             assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
         }
         // Thrown away and baked again, twice over: the same atlas, byte for byte, every time.
@@ -2227,10 +2227,12 @@ mod tests {
         let bake_time = started.elapsed();
         let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
         eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-        assert_eq!(total_animation_frames(), 90);
-        assert_eq!(total_bytes, 1_161_216);
-        assert!(total_bytes <= 1_200_000, "atlas uses {total_bytes} bytes");
-        assert!(total_bytes * 4 < 4_718_592, "four atlases exceed 4.5 MiB");
+        // 90 action frames and 28 gesture frames: ten columns by twelve rows of 48px bodies,
+        // plus the unchanged face atlas. Raised deliberately from 1,161,216 bytes in 0.57.0.
+        assert_eq!(total_animation_frames(), 118);
+        assert_eq!(total_bytes, 1_437_696);
+        assert!(total_bytes <= 1_500_000, "atlas uses {total_bytes} bytes");
+        assert!(total_bytes * 4 < 6_291_456, "four atlases exceed 6 MiB");
         assert!(total_bytes < atlas.body_pixels.len() * 3);
         // The optional outline is baked into the same atlas: no extra texture, no extra frame,
         // and the same bytes. It touches only pixels the creature itself does not occupy.
@@ -2266,6 +2268,17 @@ mod tests {
             atlas_slot(ActionKind::SqueezeWindow, 2),
             atlas_slot(ActionKind::Traverse, 2)
         );
+        // Gestures follow the action clips, and every baked frame owns exactly one slot.
+        assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 90);
+        let mut slots = BTreeSet::new();
+        for clip in BodyClip::baked() {
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let slot = atlas_slot(clip, frame);
+                assert!(slot < total_animation_frames(), "{clip:?} {frame}");
+                assert!(slots.insert(slot), "{clip:?} {frame} shares slot {slot}");
+            }
+        }
+        assert_eq!(slots.len(), total_animation_frames() as usize);
         assert_eq!(creature_horizontal_scale(ActionKind::SqueezeWindow), 0.72);
         assert_eq!(creature_horizontal_scale(ActionKind::Traverse), 1.0);
         if !cfg!(debug_assertions) {

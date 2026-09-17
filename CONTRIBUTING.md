@@ -30,6 +30,32 @@ Platform integration changes should be checked against the relevant cases in
 1,000-genome render test. Persistence changes should include an explicit migration and round-trip
 test.
 
+### Writing behavior scenarios
+
+The behavior tests drive `World::tick` over synthetic desktops in 50 ms steps. A few things about
+the simulation make a scenario quietly test the wrong thing:
+
+- A play encounter only forms between two creatures on the same surface, within four points of the
+  same height, and 46–180 points apart, scaled by creature size. Creatures placed closer never pair.
+- The encounter rules in `play.rs` are a priority list, so a fixture meant for one game can be
+  claimed by an earlier one. Check which kind actually started before asserting anything about it.
+- Nothing new begins while an attention scene, a colony cooldown, pending geometry signals, or a
+  cursor cue is live. Adding a window to a fixture desktop starts a scene of its own: tick for a few
+  seconds, then call `clear_attention()` and reset positions before the part being tested.
+- Topology routes exist only across a 10–28 point gap, or between windows overlapping by at least
+  48 points with a 36–360 point change in height. A 60-point gap can be jumped but has no route.
+- Short walks refuse a destination more than one stride away, one that is not exposed, or one
+  another creature has taken or reserved. Use `step_toward` for anything further.
+- A creature in the air still holds an attention plan, a journey. Test that its plan is not a
+  `Role::Play`, not that it has no plan.
+- Window `z_order` is a `u32`, and only a lower value is in front of a creature's support.
+- Watchers look up after a staggered delay and a short notice, so assert across a span of ticks
+  rather than on one.
+- No expected value may depend on the local timezone: the schedule reads the local offset, which is
+  not UTC on most developer machines. Use a routine in force at every hour, or pass explicit offsets.
+- Only the review sheets show whether a pose reads. They are dense; see `docs/TEST_MATRIX.md` for how
+  to generate and read them.
+
 Formiga intentionally avoids telemetry, global input hooks, Accessibility, Screen Recording, Input
 Monitoring, administrator requirements, and application-content inspection. Forks are encouraged
 to preserve those privacy-friendly defaults and to explain clearly if they choose a different model.

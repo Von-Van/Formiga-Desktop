@@ -2,6 +2,45 @@
 
 All notable changes are documented here.
 
+## [0.57.1] - 2026-09-17
+
+### Added
+
+- Creatures now have bodies to match the things they do. Watchers cover their eyes at a risky
+  moment, gasp at a catch, wring their paws while it is going on, and throw their arms up when it
+  goes well. A jumper squares up at the edge, wobbles once it has been hauled over, and celebrates
+  a hard landing. Someone reaching down for a hanging companion visibly hauls, then cheers when
+  they are up. Along a ledge, a creature teeters at the brink and frets while it sizes up a gap.
+- The games got their own shapes too: a tug of war heaves, keep-away leaves the empty-handed
+  reaching, hide and seek has the seeker cover its eyes while it counts and the hider crouch out of
+  sight until it is found, the floor-is-lava balances, leapfrog crouches under the vault, creeping
+  around a sleeper stays low and the prank pays off with a dance, the field cheers a race winner
+  in, whoever holds the middle of a ledge celebrates while the others shove, a staring contest's
+  loser hides its face while the winners cheer, a copied flourish passes down the chain, and being
+  tagged is a genuine surprise. A creature near the cursor reaches for it, and one whose window
+  vanishes out from under it gasps before looking around.
+- These poses are never saved, never appear with reduced motion, and never replace an action that
+  is already using the body, such as walking, hanging, sleeping, eating, or showing off a find.
+
+### Changed
+
+- Each creature's artwork grows from 90 to 118 frames for the new poses: 1,437,696 bytes per
+  creature under a 1.5 MB limit, about 5.48 MiB for a full colony of four. A pose is drawn at its
+  own frame rate rather than that of the action underneath it.
+
+### Fixed
+
+- Waving, reaching, dangling, climbing, and presenting no longer grow a second arm beside the paw
+  or wing a creature already has. The limb you can see is the one that extends: a nub stretches
+  out, a winged creature raises its own wings, and a long-bodied one lifts a front paw off the
+  ground.
+- A tug of war never actually pulled. The settling-in walk stopped a hand's width short of a shared
+  grip, because what was left was shorter than a stride either creature would take, and the tussle
+  waited there for a step neither could make. It now starts from where they stand and hauls in
+  steps the walk will take.
+- A creature invited to try a gap no longer keeps its pose when the edge it was invited from
+  disappears.
+
 ## [0.57.0] - 2026-09-17
 
 ### Added

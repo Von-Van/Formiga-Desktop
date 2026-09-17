@@ -22,7 +22,12 @@ and must not be used. `powermetrics` needs root and is deliberately not part of 
 
 Record measurements per release machine using a five-minute warm-up and a ten-minute sample, at
 the default 3× scale — a colony at another scale is not comparable. Set the scale before the
-warm-up, not during it.
+warm-up, not during it. On macOS, `scripts/measure-macos.sh` performs the warm-up and the sample for
+one state and prints the table row; set each state up by hand and leave it alone until it finishes.
+Two checks it cannot make are visual: that no state presents faster than twenty frames a second,
+and that CPU settles close to zero once the colony is paused. Measurements come from process
+statistics and synthetic desktops only; never record, capture, or describe the real desktop being
+used to take them.
 
 Rows recorded before 0.57.0 use the older six-column shape and were never filled in; they are kept
 as a record of when a build was due to be measured, not of any measurement.
@@ -70,7 +75,7 @@ as a record of when a build was due to be measured, not of any measurement.
 
 | Build | Machine | State | Colony | CPU avg | CPU peak | RSS | Energy | Status | Notes |
 |---|---|---|---:|---:|---:|---:|---:|---|---|
-| v0.55.6 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display | uncontrolled, long-running session | 3 | 5.91% | 8.17% | 30.8 MB | 5.12 | reference only | 4× scale, not 3×; menu and occlusion state unknown; footprint 208 MB. Not a gate result. |
+| v0.55.6 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display | uncontrolled, long-running session | 3 | 5.91% | 8.17% | 30.8 MB | 5.12 | reference only | 4× scale, not 3×; menu and occlusion state unknown; footprint 208 MB; 1.38% of one core averaged over its whole 2 d 12 h run. Not a gate result. |
 | v0.57.0 preview | local macOS test machine | one creature, resting | 1 | — | — | — | — | pending | |
 | v0.57.0 preview | local macOS test machine | one creature, moving | 1 | — | — | — | — | pending | |
 | v0.57.0 preview | local macOS test machine | four resting | 4 | — | — | — | — | pending | |
@@ -89,8 +94,9 @@ tells us where to start looking rather than whether the budget is met.
 
 ### What the simulation itself costs
 
-Measured on the release profile, 40,000 ticks after a 4,000-tick warm-up, comparing this tree
-against the v0.55.6 commit. Microseconds of wall time per `World::tick`:
+Measured with `cargo run --release -p formiga-tools -- tick-bench`, 40,000 ticks after a
+4,000-tick warm-up, comparing this tree against the v0.55.6 commit. Microseconds of wall time per
+`World::tick`:
 
 | Scenario | v0.55.6 | 0.57.0 preview |
 |---|---:|---:|
@@ -156,6 +162,10 @@ compositor rather than in the application: 40.5% with Formiga running, 39.3% wit
 37.8% running again. The difference is inside the run-to-run noise, so after these changes the
 overlay adds no compositor load that can be told apart from everything else on the desktop.
 
+The optimized macOS executable grew from 13,880,976 bytes before this release's behavior work
+began to 13,947,712 bytes after its first three slices, and a host-architecture release build of
+0.57.0 was 14,213,552 bytes. These are binary sizes, not memory measurements.
+
 About 75 MB of the remaining footprint is graphics memory owned by the process in roughly 2 MB
 IOAccelerator blocks. It is the same at full and half resolution, on a fresh start and after
 several minutes, so it is neither the drawables nor a leak; attributing it needs Instruments'
@@ -165,9 +175,13 @@ v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-wi
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
 hides the native overlay itself, avoiding transparent full-display compositor work while covered.
 
-The procedural atlas budget is independently enforced in tests. The 90-frame body texture plus the
-layered face/trinket texture total exactly 1,161,216 bytes per creature, below the 1.2 MB limit; four
-creatures use 4,644,864 bytes (about 4.43 MiB) for creature textures. Atlas generation occurs only
+The procedural atlas budget is independently enforced in tests. The 118-frame body texture plus the
+layered face/trinket texture total exactly 1,437,696 bytes per creature, below the 1.5 MB limit; four
+creatures use 5,750,784 bytes (about 5.48 MiB) for creature textures. This is a deliberate raise
+from 0.57.0's 90 frames and 1,161,216 bytes: 28 frames for nine gesture poses add two body-atlas
+rows, 276,480 bytes per creature and 1,105,920 bytes for a full colony, and the face texture is
+unchanged. A release bake of the larger atlas measured 1.4 ms. Selecting a gesture's slot is the
+same fixed-size lookup as an action's, so it adds no draw call, texture, or per-frame allocation. Atlas generation occurs only
 when a creature loads or reduced-motion changes. Ambient timers reuse simulation ticks, trinkets are
 pre-baked, and toss integration runs only at the existing movement cadence while airborne.
 

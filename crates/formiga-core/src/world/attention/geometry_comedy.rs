@@ -160,6 +160,7 @@ impl World {
                     rewarding: false,
                     escape: true,
                     since: 0.0,
+                    caught: false,
                 };
                 // Look where it will land; arrival there begins the relieved recovery.
                 reaction.target = landing;

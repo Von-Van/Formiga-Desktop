@@ -14,7 +14,7 @@ mod topology;
 mod world;
 
 pub use ambience::DesktopAmbience;
-pub use attention::{AttentionEmotion, AttentionPose, WindowSample};
+pub use attention::{AttentionEmotion, AttentionPose, Gesture, WindowSample};
 pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use companion::*;

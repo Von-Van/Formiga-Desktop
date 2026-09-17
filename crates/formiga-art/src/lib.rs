@@ -15,8 +15,8 @@ pub use objects::{
 };
 pub use palette::{PALETTES, Palette, palette_for, prop_palette};
 pub use renderer::{
-    AlphaMask, AnimationAtlas, AnimationSpec, CreatureRenderer, ExpressionKind, EyelidPose,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, MotionSignature,
-    PixelPoint, PlaybackMode, PropAnchor, RenderedBodyFrame,
+    AlphaMask, AnimationAtlas, AnimationSpec, BodyClip, CreatureRenderer, ExpressionKind,
+    EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection,
+    MotionSignature, PixelPoint, PlaybackMode, PropAnchor, RenderedBodyFrame,
 };
 pub use shelter::{SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE};

@@ -468,7 +468,9 @@ pub(super) mod tests {
         }
     }
 
-    fn marginal_scene(helper: bool) -> (World, DesktopSnapshot, OffsetDateTime) {
+    pub(in super::super) fn marginal_scene(
+        helper: bool,
+    ) -> (World, DesktopSnapshot, OffsetDateTime) {
         let (mut world, desktop, now) = edge_scene(true, true);
         world.clear_attention();
         world.window_journeys.clear();
@@ -693,5 +695,98 @@ pub(super) mod tests {
             }
         }
         assert!(paused_mid_fall);
+    }
+
+    /// A leap reads as a leap. The jumper squares up at the edge while it is still standing
+    /// there, hands its body over to the run-up and the flight, and celebrates the landing. The
+    /// colony answers in its own way: a timid companion hides its eyes, a bolder one frets.
+    #[test]
+    fn a_gap_attempt_crouches_at_the_edge_and_celebrates_the_landing() {
+        let (mut world, mut desktop, now) = edge_scene(true, true);
+        let (jumper, bold, timid) = (
+            world.save.creatures[0].id,
+            world.save.creatures[1].id,
+            world.save.creatures[2].id,
+        );
+        let mut poses = super::super::tests::Poses::default();
+        let mut crouched_at_the_edge = 0;
+        for step in 3..240 {
+            poses.tick(&mut world, |w| tick(w, &mut desktop, now, step));
+            let creature = &world.save.creatures[0];
+            match creature.state.attention.and_then(|pose| pose.gesture) {
+                Some(Gesture::Crouch) => {
+                    assert_eq!(creature.state.action, ActionKind::InspectScreen);
+                    assert_eq!(creature.state.position, Point { x: 770.0, y: 600.0 });
+                    assert_eq!(creature.state.surface.window_key, Some(701));
+                    crouched_at_the_edge += 1;
+                }
+                Some(Gesture::Cheer) => {
+                    assert_eq!(creature.state.action, ActionKind::Greet);
+                    assert_eq!(creature.state.surface.window_key, Some(702));
+                }
+                other => assert_eq!(other, None, "the jumper struck {other:?}"),
+            }
+        }
+        assert_eq!(
+            poses.by(jumper),
+            [Gesture::Crouch, Gesture::Cheer],
+            "{poses:?}"
+        );
+        assert!(
+            (5..=14).contains(&crouched_at_the_edge),
+            "a wind-up is a moment at the edge, not the whole attempt: {crouched_at_the_edge}"
+        );
+        assert_eq!(poses.by(timid), [Gesture::Cover], "{poses:?}");
+        assert!(poses.by(bold).contains(&Gesture::Worry), "{poses:?}");
+        assert!(poses.by(bold).contains(&Gesture::Cheer), "{poses:?}");
+    }
+
+    /// A leap that only just makes it is the colony's scene as much as the jumper's: it gasps as
+    /// the jumper catches the far edge, a companion goes over and hauls on it while it hangs, and
+    /// the jumper wobbles on the brink once it is up before it is pleased with itself.
+    #[test]
+    fn a_catch_gasps_the_colony_and_a_helper_heaves_until_the_hanging_companion_is_up() {
+        let (mut world, mut desktop, now) = marginal_scene(true);
+        let (actor, helper, watcher) = (
+            world.save.creatures[0].id,
+            world.save.creatures[1].id,
+            world.save.creatures[2].id,
+        );
+        let mut poses = super::super::tests::Poses::default();
+        let mut heaved_while_hanging = 0;
+        for step in 3..240 {
+            poses.tick(&mut world, |w| tick(w, &mut desktop, now, step));
+            let hanging = world.save.creatures[0]
+                .state
+                .attention
+                .is_some_and(|pose| pose.hanging > 0.0);
+            let helping = world.save.creatures[1]
+                .state
+                .attention
+                .and_then(|pose| pose.gesture);
+            if helping == Some(Gesture::Heave) {
+                assert_eq!(world.save.creatures[1].state.action, ActionKind::SocialPlay);
+                heaved_while_hanging += usize::from(hanging);
+            }
+        }
+        assert_eq!(
+            poses.by(actor),
+            [Gesture::Crouch, Gesture::Balance, Gesture::Cheer],
+            "{poses:?}"
+        );
+        assert_eq!(
+            poses.by(helper),
+            [Gesture::Worry, Gesture::Heave, Gesture::Cheer],
+            "{poses:?}"
+        );
+        assert_eq!(
+            poses.by(watcher),
+            [Gesture::Cover, Gesture::Gasp, Gesture::Cover],
+            "a timid watcher looks away, and gasps when the catch comes: {poses:?}"
+        );
+        assert!(
+            heaved_while_hanging >= 3,
+            "the helper hauled at nothing: {poses:?}"
+        );
     }
 }

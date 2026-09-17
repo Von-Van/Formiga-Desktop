@@ -173,7 +173,14 @@ impl World {
                         .iter()
                         .find(|w| w.key == source)
                         .map(|w| w.bounds);
-                    let Some(bounds) = bounds else { continue };
+                    let Some(bounds) = bounds else {
+                        // The edge itself is gone: let the creature go rather than leave it
+                        // posed at a gap that no longer exists.
+                        if let Some(creature) = creature_mut(&mut self.save.creatures, id) {
+                            release(creature, plan);
+                        }
+                        continue;
+                    };
                     let declined = Reaction {
                         role: Role::Ledge {
                             window: source,
@@ -290,5 +297,32 @@ mod tests {
         }
         assert!(invited && declined, "{invited} {declined}");
         assert_eq!(world.save.creatures[1].state.surface.window_key, Some(701));
+    }
+
+    /// Being dared shows on the creature that was asked before it answers: a bold one squares up
+    /// to the gap where it stands, a timid one frets at it.
+    #[test]
+    fn a_dared_companion_squares_up_or_frets_before_it_answers() {
+        for (nerve, expected) in [(1.0f32, Gesture::Crouch), (0.0, Gesture::Worry)] {
+            let (mut world, mut desktop, now) = dare_scene(nerve);
+            let dared = world.save.creatures[1].id;
+            let mut poses = super::super::tests::Poses::default();
+            let mut answered_with = None;
+            for step in 3..320 {
+                poses.tick(&mut world, |w| tick(w, &mut desktop, now, step));
+                if matches!(
+                    world.attention.plans.get(&dared).map(|p| p.role),
+                    Some(Role::Dare { .. })
+                ) {
+                    answered_with = answered_with.or_else(|| {
+                        world.save.creatures[1]
+                            .state
+                            .attention
+                            .and_then(|pose| pose.gesture)
+                    });
+                }
+            }
+            assert_eq!(answered_with, Some(expected), "nerve {nerve}: {poses:?}");
+        }
     }
 }
