@@ -88,6 +88,8 @@ pub struct FormigaApp {
     redraw_due: Instant,
     cached_windows: Vec<DesktopWindow>,
     last_window_scan: Instant,
+    observation_epoch: Instant,
+    window_sample: Option<WindowSample>,
     window_scan_initialized: bool,
     last_display_scan: Instant,
     log_dir: PathBuf,
@@ -98,6 +100,7 @@ pub struct FormigaApp {
     event_proxy: EventLoopProxy<UserEvent>,
     updates: UpdateController,
     milestone_notice: Option<MilestoneNotice>,
+    recovery_pending: bool,
 }
 
 impl FormigaApp {
@@ -117,6 +120,8 @@ impl FormigaApp {
             redraw_due: Instant::now(),
             cached_windows: Vec::new(),
             last_window_scan: Instant::now() - Duration::from_secs(2),
+            observation_epoch: Instant::now(),
+            window_sample: None,
             window_scan_initialized: false,
             last_display_scan: Instant::now() - Duration::from_secs(2),
             log_dir,
@@ -127,6 +132,7 @@ impl FormigaApp {
             event_proxy,
             updates,
             milestone_notice: None,
+            recovery_pending: false,
         })
     }
 
@@ -138,11 +144,14 @@ impl FormigaApp {
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
         let now = OffsetDateTime::now_utc();
+        let mut recovery_reason = None;
         let (world, first_launch) = match self.save_store.load() {
             Ok(Some(save)) => (World::from_save(save), false),
             Ok(None) => (World::new(new_colony_seed()?, now, &desktop), true),
             Err(error) => {
-                tracing::error!(%error, "save could not be loaded; starting a new colony");
+                tracing::error!(%error, "save could not be loaded; preserving files for recovery");
+                self.recovery_pending = true;
+                recovery_reason = Some(error.to_string());
                 (World::new(new_colony_seed()?, now, &desktop), true)
             }
         };
@@ -152,6 +161,9 @@ impl FormigaApp {
         self.save()?;
         if first_launch {
             self.show_settings(event_loop);
+            if let Some(window) = &mut self.settings_window {
+                window.clubhouse.recovery = recovery_reason;
+            }
         }
         if self
             .updates
@@ -287,22 +299,29 @@ impl FormigaApp {
 
     fn snapshot(&mut self) -> DesktopSnapshot {
         let (mut cursor, idle_duration) = platform::cursor_and_idle(self.previous_cursor);
+        let cursor_sample_millis = self.observation_epoch.elapsed().as_millis() as u64;
         self.previous_cursor = cursor
             .available
             .then_some((cursor.position, Instant::now()));
         platform::normalize_cursor(&mut cursor, &self.monitors);
-        let frequent_window_scan = self
-            .world
-            .as_ref()
-            .is_some_and(world_needs_frequent_window_scan);
+        let frequent_window_scan = self.world.as_ref().is_some_and(|world| {
+            world_needs_frequent_window_scan(world, platform::left_button_down())
+        });
         let scan_interval = if frequent_window_scan {
             Duration::from_millis(250)
         } else {
             Duration::from_secs(1)
         };
         if !self.window_scan_initialized || self.last_window_scan.elapsed() >= scan_interval {
-            self.cached_windows = platform::visible_windows();
-            platform::normalize_windows(&mut self.cached_windows, &self.monitors);
+            let windows = platform::visible_windows();
+            self.window_sample = Some(WindowSample {
+                monotonic_millis: self.observation_epoch.elapsed().as_millis() as u64,
+                reliable: windows.is_some(),
+            });
+            if let Some(mut windows) = windows {
+                platform::normalize_windows(&mut windows, &self.monitors);
+                self.cached_windows = windows;
+            }
             self.last_window_scan = Instant::now();
             self.window_scan_initialized = true;
         }
@@ -311,6 +330,8 @@ impl FormigaApp {
             windows: self.cached_windows.clone(),
             cursor,
             idle_duration,
+            window_sample: self.window_sample,
+            cursor_sample_millis: Some(cursor_sample_millis),
         }
     }
 
@@ -532,6 +553,15 @@ impl FormigaApp {
                 event_loop.exit();
             }
             TrayAction::ResetColony => {
+                if self.recovery_pending {
+                    self.show_settings(event_loop);
+                    return;
+                }
+                if let Err(error) = self.save_store.preserve_recovery_files() {
+                    self.show_settings(event_loop);
+                    self.settings_error(format!("Could not preserve the previous colony: {error}"));
+                    return;
+                }
                 let desktop = self.snapshot();
                 match new_colony_seed() {
                     Ok(seed) => {
@@ -544,7 +574,10 @@ impl FormigaApp {
                 let _ = self.save();
             }
             TrayAction::SettingsChanged => {
-                self.finish_settings_change(previous_launch);
+                if let Err(error) = self.finish_settings_change(previous_launch) {
+                    self.show_settings(event_loop);
+                    self.settings_error(error.to_string());
+                }
             }
             TrayAction::OpenLogs => {
                 if let Err(error) = platform::open_directory(&self.log_dir) {
@@ -552,6 +585,17 @@ impl FormigaApp {
                 }
             }
             TrayAction::OpenSettings => self.show_settings(event_loop),
+            TrayAction::QuietMoment => {
+                if let Some(world) = &mut self.world {
+                    let minutes = if world.save.companion.quiet_until.is_some() {
+                        0
+                    } else {
+                        30
+                    };
+                    world.set_quiet_mode(minutes, OffsetDateTime::now_utc());
+                }
+                let _ = self.save();
+            }
             TrayAction::GatherCreatures => {
                 let desktop = self.snapshot();
                 if let Some(world) = &mut self.world {
@@ -755,15 +799,19 @@ impl FormigaApp {
         }
     }
 
-    fn finish_settings_change(&mut self, previous_launch: bool) {
+    fn finish_settings_change(&mut self, previous_launch: bool) -> Result<()> {
+        let mut failure = None;
         {
-            let Some(world) = &mut self.world else { return };
+            let Some(world) = &mut self.world else {
+                return Ok(());
+            };
             if world.save.settings.launch_at_login != previous_launch
                 && let Err(error) =
                     platform::set_launch_at_login(world.save.settings.launch_at_login)
             {
                 tracing::error!(%error, "could not update launch-at-login");
                 world.save.settings.launch_at_login = previous_launch;
+                failure = Some(error);
             }
             if let Some(tray) = &self.tray {
                 tray.sync(&world.save.settings);
@@ -776,10 +824,102 @@ impl FormigaApp {
             }
         }
         self.redraw_due = Instant::now();
-        let _ = self.save();
+        self.save()?;
+        if let Some(error) = failure {
+            return Err(error.context("Could not update launch at login"));
+        }
+        Ok(())
     }
 
     fn handle_settings_outcome(&mut self, event_loop: &ActiveEventLoop, outcome: SettingsOutcome) {
+        if outcome.export_colony {
+            self.export_colony();
+        }
+        if outcome.restore_colony {
+            self.restore_colony();
+        }
+        if outcome.start_fresh_recovery && self.recovery_pending {
+            match self.save_store.preserve_recovery_files() {
+                Ok(_) => {
+                    self.recovery_pending = false;
+                    if let Some(window) = &mut self.settings_window {
+                        window.clubhouse.recovery = None;
+                    }
+                    self.save_with_feedback(
+                        "New colony saved · original files preserved as recovery copies",
+                    );
+                }
+                Err(error) => {
+                    self.settings_error(format!("Could not preserve recovery files: {error}"))
+                }
+            }
+        }
+        let mut companion_changed = false;
+        if let Some(world) = &mut self.world {
+            if let Some(minutes) = outcome.quiet_minutes {
+                world.set_quiet_mode(minutes, OffsetDateTime::now_utc());
+                companion_changed = true;
+            }
+            if outcome.complete_onboarding {
+                world.save.companion.onboarding_complete = true;
+                companion_changed = true;
+            }
+            if let Some(corner) = outcome.home_corner {
+                world.save.home.corner = corner;
+                companion_changed = true;
+            }
+            if let Some(display) = outcome.home_display {
+                world.save.home.display = Some(display);
+                companion_changed = true;
+            }
+            if let Some(hidden) = outcome.hidden_decorations {
+                world.save.home.hidden_decorations = hidden & 0x3f;
+                companion_changed = true;
+            }
+            if let Some((a, b)) = outcome.move_object
+                && a < world.save.objects.objects.len()
+                && b < world.save.objects.objects.len()
+            {
+                world.save.objects.objects.swap(a, b);
+                companion_changed = true;
+            }
+            if let Some((index, preset)) = outcome.save_mode
+                && index < 2
+            {
+                world.save.companion.modes[index] = Some(preset);
+                companion_changed = true;
+            }
+            if let Some(appearance) = outcome.appearance {
+                world.save.companion.appearance = appearance;
+                world.save.companion.appearance.normalize();
+                companion_changed = true;
+            }
+            if let Some(schedule) = outcome.schedule.clone() {
+                world.save.companion.schedule = schedule;
+                world.save.companion.normalize();
+                // Editing the routine by hand is the reader speaking last.
+                world.override_routine();
+                companion_changed = true;
+            }
+            if outcome.resume_routine {
+                world.resume_routine(OffsetDateTime::now_utc());
+                companion_changed = true;
+            }
+            if let Some(entry) = &outcome.pin_moment {
+                companion_changed |= world.save.companion.pin(entry);
+            }
+            if let Some(entry) = &outcome.unpin_moment {
+                world.save.companion.unpin(entry);
+                companion_changed = true;
+            }
+        }
+        if companion_changed {
+            self.save_with_feedback("Colony changes saved");
+            self.redraw_due = Instant::now();
+            for overlay in self.overlays.values() {
+                overlay.window.request_redraw();
+            }
+        }
         if let Some(creature_id) = outcome.export_creature_card
             && let Some(creature) = self.world.as_ref().and_then(|world| {
                 world
@@ -791,34 +931,12 @@ impl FormigaApp {
         {
             let selected = choose_card_destination(creature);
             match export_to_selected_destination(creature, selected) {
-                Ok(Some(path)) => tracing::info!(path = %path.display(), "creature card exported"),
+                Ok(Some(_)) => self.settings_notice("Creature card exported"),
                 Ok(None) => {}
-                Err(error) => tracing::error!(%error, "creature card export failed"),
+                Err(error) => {
+                    self.settings_error(format!("Could not export the creature card: {error}"))
+                }
             }
-        }
-        if let Some(shared) = outcome.import_shared_creature {
-            let desktop = self.snapshot();
-            let preserved_settings = self
-                .world
-                .as_ref()
-                .map(|world| world.save.settings.clone())
-                .unwrap_or_default();
-            let mut imported =
-                World::from_shared_creature(shared, OffsetDateTime::now_utc(), &desktop);
-            imported.save.settings = preserved_settings;
-            self.world = Some(imported);
-            if let (Some(tray), Some(world)) = (&self.tray, &self.world) {
-                tray.sync(&world.save.settings);
-            }
-            self.sync_overlay_visibility();
-            for overlay in self.overlays.values() {
-                overlay.window.request_redraw();
-            }
-            if let Some(window) = &self.settings_window {
-                window.window.request_redraw();
-            }
-            self.redraw_due = Instant::now();
-            let _ = self.save();
         }
         if let Some((creature_id, kept)) = outcome.set_creature_kept {
             let result = self
@@ -858,25 +976,63 @@ impl FormigaApp {
                 None => {}
             }
         }
+        if let Some(shared) = outcome.preview_shared {
+            let desktop = self.snapshot();
+            let creature = World::from_shared_creature(shared, OffsetDateTime::now_utc(), &desktop)
+                .save
+                .creatures
+                .remove(0);
+            if let Some(window) = &mut self.settings_window {
+                window.clear_generation_preview();
+                window.set_generation_preview(GenerationPreview { shared: Some(shared), source_seed: shared.source_colony_seed, creature, similarity: None,
+                    summary: "An exact shared appearance and personality, with a fresh life in your colony.".into() });
+            }
+        }
         if outcome.request_random_creature {
-            match new_colony_seed() {
-                Ok(source_seed) => {
-                    let desktop = self.snapshot();
-                    let creature =
-                        World::preview_adult(source_seed, OffsetDateTime::now_utc(), &desktop);
+            let (locked, lock_colors, lock_body) = self
+                .settings_window
+                .as_ref()
+                .map(|w| w.clubhouse.locks())
+                .unwrap_or((None, false, false));
+            let desktop = self.snapshot();
+            let seeds: Result<Vec<_>, _> = (0..4).map(|_| new_colony_seed()).collect();
+            match seeds {
+                Ok(seeds) => {
                     if let Some(window) = &mut self.settings_window {
-                        window.set_generation_preview(GenerationPreview {
-                            creature,
-                            source_seed,
-                            similarity: None,
-                            summary: "A new full-size creature with fresh memories".to_owned(),
-                        });
+                        window.clear_generation_preview();
+                    }
+                    for source_seed in seeds {
+                        let mut creature =
+                            World::preview_adult(source_seed, OffsetDateTime::now_utc(), &desktop);
+                        if let (Some(previous), Some(mut design)) =
+                            (locked, creature.appearance.design)
+                        {
+                            if lock_colors {
+                                design.coat = previous.coat;
+                                design.accent = previous.accent;
+                            }
+                            if lock_body {
+                                design.body = previous.body;
+                                design.width = previous.width;
+                                design.height = previous.height;
+                                design.head = previous.head;
+                                design.legs = previous.legs;
+                            }
+                            apply_creature_design(&mut creature, Some(design));
+                        }
+                        if let Some(window) = &mut self.settings_window {
+                            window.set_generation_preview(GenerationPreview {
+                                shared: None,
+                                creature,
+                                source_seed,
+                                similarity: None,
+                                summary: "A new companion with fresh memories.".into(),
+                            });
+                        }
                     }
                 }
                 Err(error) => {
-                    if let Some(window) = &mut self.settings_window {
-                        window.set_error(format!("Could not generate a secure seed: {error}"));
-                    }
+                    self.settings_error(format!("Could not generate companions: {error}"))
                 }
             }
         }
@@ -896,7 +1052,9 @@ impl FormigaApp {
                     ) {
                         Ok(reference) => {
                             if let Some(window) = &mut self.settings_window {
+                                window.clear_generation_preview();
                                 window.set_generation_preview(GenerationPreview {
+                                    shared: None,
                                     creature: reference.creature,
                                     source_seed: reference.source_seed,
                                     similarity: Some(reference.similarity),
@@ -924,6 +1082,9 @@ impl FormigaApp {
             let desktop = self.snapshot();
             let now = OffsetDateTime::now_utc();
             let result = self.world.as_mut().map(|world| match acceptance {
+                PreviewAcceptance::Shared { shared, replace } => {
+                    world.adopt_shared_creature(shared, replace, now, &desktop)
+                }
                 PreviewAcceptance::Add {
                     source_seed,
                     design,
@@ -945,7 +1106,7 @@ impl FormigaApp {
                     if let Some(window) = &mut self.settings_window {
                         window.clear_generation_preview();
                     }
-                    let _ = self.save();
+                    self.save_with_feedback("Companion welcomed into the colony");
                     self.redraw_due = Instant::now();
                     for overlay in self.overlays.values() {
                         overlay.window.request_redraw();
@@ -990,6 +1151,7 @@ impl FormigaApp {
                 }
             }
         }
+        let renamed = outcome.rename_creature.is_some();
         let mut save_profile = false;
         if let Some((creature_id, name)) = outcome.rename_creature
             && let Some(world) = &mut self.world
@@ -1005,7 +1167,11 @@ impl FormigaApp {
             save_profile |= world.mark_profile_viewed(creature_id);
         }
         if save_profile {
-            let _ = self.save();
+            if renamed {
+                self.save_with_feedback("Name saved");
+            } else {
+                let _ = self.save();
+            }
         }
         if let Some(settings) = outcome.applied {
             let previous_launch = self
@@ -1016,7 +1182,19 @@ impl FormigaApp {
             if let Some(world) = &mut self.world {
                 world.save.settings = settings;
             }
-            self.finish_settings_change(previous_launch);
+            match self.finish_settings_change(previous_launch) {
+                Ok(()) => {
+                    if let (Some(window), Some(world)) = (&mut self.settings_window, &self.world) {
+                        window.acknowledge_preferences(&world.save.settings);
+                    }
+                    self.settings_notice(if self.recovery_pending {
+                        "Temporary preferences · finish recovery to save"
+                    } else {
+                        "Changes applied"
+                    });
+                }
+                Err(error) => self.settings_error(error.to_string()),
+            }
         }
         if outcome.gather {
             let desktop = self.snapshot();
@@ -1380,8 +1558,105 @@ impl FormigaApp {
         }
     }
 
+    fn settings_notice(&mut self, message: impl Into<String>) {
+        if let Some(window) = &mut self.settings_window {
+            window.notify(message);
+        }
+    }
+    fn settings_error(&mut self, message: impl Into<String>) {
+        if let Some(window) = &mut self.settings_window {
+            window.set_error(message);
+        }
+    }
+    fn save_with_feedback(&mut self, message: &str) {
+        match self.save() {
+            Ok(()) if !self.recovery_pending => self.settings_notice(message),
+            Ok(()) => self
+                .settings_notice("Temporary changes · restore a backup or finish recovery to save"),
+            Err(error) => self.settings_error(format!("Could not save changes: {error}")),
+        }
+    }
+    fn export_colony(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Formiga colony", &["json"])
+            .set_file_name("Formiga-colony.json")
+            .save_file()
+        else {
+            return;
+        };
+        if path == self.save_store.path() {
+            self.settings_error("Choose a backup location outside the active colony file.");
+            return;
+        }
+        let Some(world) = &self.world else {
+            return;
+        };
+        match SaveStore::new(&path).save(&world.save) {
+            Ok(()) => self.settings_notice("Full colony backup exported"),
+            Err(error) => self.settings_error(format!("Could not export the colony: {error}")),
+        }
+    }
+    fn restore_colony(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Formiga colony", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+        let mut save = match SaveStore::read_snapshot(&path) {
+            Ok(save) => save,
+            Err(error) => {
+                self.settings_error(format!("That backup could not be opened: {error}"));
+                return;
+            }
+        };
+        let confirmed = rfd::MessageDialog::new().set_title("Restore your colony?")
+            .set_description(format!("Restore {} companions from this backup? Your current colony files will be kept as recovery copies first.", save.creatures.len()))
+            .set_buttons(rfd::MessageButtons::OkCancel).show() == rfd::MessageDialogResult::Ok;
+        if !confirmed {
+            return;
+        }
+        if validate_habitat(&save.settings.habitat, &self.monitors).is_err() {
+            save.settings.habitat = HabitatPolicy::default();
+        }
+        let imported = World::from_save(save);
+        let result = self
+            .save_store
+            .preserve_recovery_files()
+            .and_then(|_| self.save_store.save(&imported.save));
+        if let Err(error) = result {
+            self.settings_error(format!("Restore stopped; could not safely save: {error}"));
+            return;
+        }
+        let previous_launch = self
+            .world
+            .as_ref()
+            .is_some_and(|w| w.save.settings.launch_at_login);
+        self.world = Some(imported);
+        self.recovery_pending = false;
+        self.milestone_notice = None;
+        if let (Some(window), Some(world)) = (&mut self.settings_window, &self.world) {
+            window.clubhouse.recovery = None;
+            window.clubhouse.restore_confirmed = false;
+            window.clear_generation_preview();
+            window.show(
+                &world.save.settings,
+                &world.save.creatures,
+                &world.save.relationships,
+            );
+        }
+        if let Err(error) = self.finish_settings_change(previous_launch) {
+            self.settings_error(format!(
+                "Colony restored, but a preference could not be applied: {error}"
+            ));
+            return;
+        }
+        self.redraw_due = Instant::now();
+        self.settings_notice("Colony restored · previous files kept as recovery copies");
+    }
+
     fn save(&mut self) -> Result<()> {
-        if self.habitat_editor.is_some() {
+        if self.recovery_pending || self.habitat_editor.is_some() {
             return Ok(());
         }
         if let Some(world) = &self.world {
@@ -1446,25 +1721,18 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         {
             if matches!(event, WindowEvent::CloseRequested) {
                 self.finish_habitat_editor(false);
-                if let Some(window) = &self.settings_window {
+                if let Some(window) = &mut self.settings_window {
                     window.hide();
                 }
                 return;
             }
             let mut outcome = None;
-            let creatures = self
-                .world
-                .as_ref()
-                .map(|world| world.save.creatures.clone())
-                .unwrap_or_default();
-            let relationships = self
-                .world
-                .as_ref()
-                .map(|world| world.save.relationships.clone())
-                .unwrap_or_default();
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
+                        let Some(world) = &self.world else {
+                            return;
+                        };
                         match window.render(
                             event_loop,
                             &self.monitors,
@@ -1472,8 +1740,9 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             self.updates.status(),
                             self.updates.automatic_checks(),
                             ColonyView {
-                                creatures: &creatures,
-                                relationships: &relationships,
+                                save: &world.save,
+                                creatures: &world.save.creatures,
+                                relationships: &world.save.relationships,
                             },
                         ) {
                             Ok(value) => outcome = Some(value),
@@ -1541,11 +1810,24 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             tracing::error!(%error, "could not refresh displays");
         }
         let ticked = self.tick();
+        if let (Some(tray), Some(world)) = (&mut self.tray, &self.world) {
+            tray.sync_quiet(world.save.companion.quiet_until.is_some());
+        }
         if ticked {
             self.sync_interaction_proxies(event_loop);
         }
         let tick_interval = self.tick_interval();
-        let deadline = self.last_tick + tick_interval;
+        let mut deadline = self.last_tick + tick_interval;
+        if let Some(window) = &mut self.settings_window
+            && let Some(due) = window.repaint_due
+        {
+            if Instant::now() >= due {
+                window.repaint_due = None;
+                window.window.request_redraw();
+            } else {
+                deadline = deadline.min(due);
+            }
+        }
         event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
     }
 
@@ -1647,23 +1929,24 @@ fn resolve_press_target<I: Copy + PartialEq>(
         .copied()
 }
 
-fn world_needs_frequent_window_scan(world: &World) -> bool {
+fn world_needs_frequent_window_scan(world: &World, button_down: bool) -> bool {
     if world.save.settings.paused {
         return false;
     }
+    // A fresh window list every quarter second matters only while a window could actually be
+    // moving under a creature. A creature already riding, climbing, landing, squeezing, or being
+    // carried needs it throughout. One simply standing on a ledge needs it only while the mouse
+    // button is held, because that is the only way a window gets dragged out from under it; the
+    // ordinary once-a-second scan notices everything else. A creature on the floor is carried by
+    // no window at all. Scanning four times a second whenever anyone stood on a ledge meant
+    // scanning four times a second nearly always, and the window list is the most expensive thing
+    // this app asks the system for.
     world.save.creatures.iter().any(|creature| {
-        creature.state.velocity.x.abs() > 0.1
-            || creature.state.velocity.y.abs() > 0.1
+        (button_down && creature.state.surface.window_key.is_some())
             || matches!(
                 creature.state.action,
-                ActionKind::Traverse
-                    | ActionKind::SqueezeWindow
-                    | ActionKind::Sprint
-                    | ActionKind::InvestigateCursor
-                    | ActionKind::AvoidCursor
-                    | ActionKind::ReactToWindow
+                ActionKind::SqueezeWindow
                     | ActionKind::RideWindow
-                    | ActionKind::Follow
                     | ActionKind::Dragged
                     | ActionKind::Landing
                     | ActionKind::ClimbWindow

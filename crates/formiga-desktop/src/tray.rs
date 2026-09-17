@@ -2,7 +2,7 @@ use crate::updater::UpdateStatus;
 use anyhow::Result;
 use formiga_core::Settings;
 use std::time::Instant;
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 pub struct TrayState {
@@ -11,6 +11,8 @@ pub struct TrayState {
     pub paused: CheckMenuItem,
     pub settings: MenuItem,
     pub gather: MenuItem,
+    quiet: MenuItem,
+    quiet_active: bool,
     pub window_ledges: CheckMenuItem,
     pub cursor_reactions: CheckMenuItem,
     pub launch_at_login: CheckMenuItem,
@@ -33,15 +35,17 @@ pub enum TrayAction {
     OpenLogs,
     OpenSettings,
     GatherCreatures,
+    QuietMoment,
     CheckForUpdates,
     None,
 }
 
 impl TrayState {
     pub fn new(settings: &Settings) -> Result<Self> {
-        let visible = CheckMenuItem::new("Show ecosystem", true, settings.visible, None);
-        let paused = CheckMenuItem::new("Pause ecosystem", true, settings.paused, None);
-        let settings_item = MenuItem::new("Settings…", true, None);
+        let visible = CheckMenuItem::new("Show colony", true, settings.visible, None);
+        let paused = CheckMenuItem::new("Pause colony", true, settings.paused, None);
+        let settings_item = MenuItem::new("Your colony…", true, None);
+        let quiet = MenuItem::new("Settle at home for 30 minutes", true, None);
         let gather = MenuItem::new("Gather creatures", true, None);
         let window_ledges =
             CheckMenuItem::new("Use window ledges", true, settings.window_ledges, None);
@@ -60,24 +64,34 @@ impl TrayState {
         let separator_a = PredefinedMenuItem::separator();
         let separator_b = PredefinedMenuItem::separator();
         let separator_c = PredefinedMenuItem::separator();
+        let preferences = Submenu::with_items(
+            "Preferences",
+            true,
+            &[
+                &window_ledges,
+                &cursor_reactions,
+                &reduce_motion,
+                &launch_at_login,
+                &separator_b,
+                &scale_2,
+                &scale_3,
+                &scale_4,
+            ],
+        )?;
+        let more = Submenu::with_items(
+            "More",
+            true,
+            &[&check_updates, &open_logs, &separator_c, &reset],
+        )?;
         let menu = Menu::with_items(&[
+            &settings_item,
             &visible,
             &paused,
-            &settings_item,
             &gather,
+            &quiet,
             &separator_a,
-            &window_ledges,
-            &cursor_reactions,
-            &reduce_motion,
-            &launch_at_login,
-            &separator_b,
-            &scale_2,
-            &scale_3,
-            &scale_4,
-            &separator_c,
-            &reset,
-            &open_logs,
-            &check_updates,
+            &preferences,
+            &more,
             &quit,
         ])?;
         let tray = TrayIconBuilder::new()
@@ -91,6 +105,8 @@ impl TrayState {
             paused,
             settings: settings_item,
             gather,
+            quiet,
+            quiet_active: false,
             window_ledges,
             cursor_reactions,
             launch_at_login,
@@ -118,6 +134,9 @@ impl TrayState {
         }
         if event.id() == self.settings.id() {
             return TrayAction::OpenSettings;
+        }
+        if event.id() == self.quiet.id() {
+            return TrayAction::QuietMoment;
         }
         if event.id() == self.gather.id() {
             return TrayAction::GatherCreatures;
@@ -182,6 +201,17 @@ impl TrayState {
         self.scale_2.set_checked(settings.display_scale == 2);
         self.scale_3.set_checked(settings.display_scale == 3);
         self.scale_4.set_checked(settings.display_scale == 4);
+    }
+
+    pub fn sync_quiet(&mut self, active: bool) {
+        if active != self.quiet_active {
+            self.quiet_active = active;
+            self.quiet.set_text(if active {
+                "End quiet moment"
+            } else {
+                "Settle at home for 30 minutes"
+            });
+        }
     }
 
     pub fn sync_update(&self, status: &UpdateStatus) {

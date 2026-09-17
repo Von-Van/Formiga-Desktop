@@ -11,6 +11,9 @@ pub const MAX_WINDOW_ROUTE_HOPS: usize = 4;
 const MIN_NARROW_GAP: f32 = 10.0;
 const MAX_NARROW_GAP: f32 = 28.0;
 const MIN_GAP_OVERLAP_HEIGHT: f32 = 64.0;
+/// Vertical change a window tier may present, before individual ability narrows it further.
+const MIN_TIER_CHANGE: f32 = 36.0;
+const MAX_TIER_CHANGE: f32 = 360.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopologyLandmarkKind {
@@ -58,12 +61,28 @@ pub struct TopologyRouteHop {
     pub monitor_id: MonitorId,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct RoutePreferences {
     pub climbing: i8,
     pub exploration: i8,
     pub cursor_trust: i8,
     pub target_hint: Option<Point>,
+    /// Individual traversal ability: the vertical change this creature will take in one hop.
+    pub max_rise: f32,
+    pub max_drop: f32,
+}
+
+impl Default for RoutePreferences {
+    fn default() -> Self {
+        Self {
+            climbing: 0,
+            exploration: 0,
+            cursor_trust: 0,
+            target_hint: None,
+            max_rise: MAX_TIER_CHANGE,
+            max_drop: MAX_TIER_CHANGE,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -290,7 +309,13 @@ impl DesktopTopology {
                 .copied()
                 .filter(|to| to.key != from.key && to.monitor_id == from.monitor_id)
                 .filter_map(|to| {
-                    route_hop(from, to).map(|hop| {
+                    let rise = from.bounds.y - to.bounds.y;
+                    let within_ability = if rise >= 0.0 {
+                        rise <= preferences.max_rise
+                    } else {
+                        -rise <= preferences.max_drop
+                    };
+                    route_hop(from, to).filter(|_| within_ability).map(|hop| {
                         let vertical = (to.bounds.y - from.bounds.y).abs();
                         (vertical, to.key, hop)
                     })
@@ -446,7 +471,7 @@ fn route_hop(from: TopologyWindow, to: TopologyWindow) -> Option<TopologyRouteHo
         && vertical <= 80.0
     {
         RouteHopKind::NarrowGap
-    } else if overlap_x >= 48.0 && (36.0..=360.0).contains(&vertical) {
+    } else if overlap_x >= 48.0 && (MIN_TIER_CHANGE..=MAX_TIER_CHANGE).contains(&vertical) {
         RouteHopKind::WindowTier
     } else {
         return None;
@@ -492,6 +517,15 @@ fn route_score(
         .iter()
         .filter(|hop| hop.kind == RouteHopKind::NarrowGap)
         .count() as f32;
+    // A readable staircase keeps going the same way; reversals read as wandering.
+    let reversals = route
+        .windows(2)
+        .filter(|pair| {
+            let first = pair[0].from_bounds.y - pair[0].to_bounds.y;
+            let second = pair[1].from_bounds.y - pair[1].to_bounds.y;
+            first * second < 0.0
+        })
+        .count() as f32;
     let target_score = preferences.target_hint.map_or(0.0, |target| {
         (600.0 - target.distance(last.target)).clamp(-600.0, 600.0)
             * (0.25 + trust.max(-0.5) * 0.15)
@@ -499,6 +533,7 @@ fn route_score(
     height_gain * (0.35 + climbing * 0.25)
         + distance * exploration.max(-0.5) * 0.12
         + route.len() as f32 * (20.0 + exploration * 18.0)
+        - reversals * 60.0
         + gap_count * (trust * 18.0 + exploration * 12.0 - 4.0)
         + target_score
 }
@@ -650,6 +685,127 @@ mod tests {
             route
                 .windows(2)
                 .all(|pair| pair[0].to_window == pair[1].from_window)
+        );
+    }
+
+    #[test]
+    fn traversal_ability_limits_one_staircase_step_in_each_direction() {
+        let desktop = desktop(vec![window(1, 100.0, 700.0, 0), window(2, 100.0, 400.0, 1)]);
+        let mut topology = DesktopTopology::default();
+        topology.rebuild_if_changed(&desktop, &BTreeMap::new());
+        let able = RoutePreferences {
+            max_rise: 320.0,
+            max_drop: 200.0,
+            ..RoutePreferences::default()
+        };
+        let timid = RoutePreferences {
+            max_rise: 200.0,
+            max_drop: 200.0,
+            ..RoutePreferences::default()
+        };
+        assert_eq!(topology.plan_route(1, able).len(), 1);
+        assert!(topology.plan_route(1, timid).is_empty());
+        // The same 300-point step downward needs willingness to descend it, not to climb it.
+        assert!(topology.plan_route(2, able).is_empty());
+        assert_eq!(
+            topology
+                .plan_route(
+                    2,
+                    RoutePreferences {
+                        max_rise: 200.0,
+                        max_drop: 320.0,
+                        ..RoutePreferences::default()
+                    }
+                )
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_staircase_that_reverses_direction_scores_below_a_monotonic_one() {
+        let start = TopologyWindow {
+            key: 1,
+            bounds: window(1, 100.0, 700.0, 0).bounds,
+            monitor_id: 8,
+        };
+        let step = |from: (u64, f32), to: (u64, f32)| TopologyRouteHop {
+            kind: RouteHopKind::WindowTier,
+            from_window: from.0,
+            to_window: to.0,
+            from_bounds: window(from.0, 100.0, from.1, 0).bounds,
+            to_bounds: window(to.0, 100.0, to.1, 0).bounds,
+            target: Point { x: 220.0, y: to.1 },
+            monitor_id: 8,
+        };
+        // Both routes end at the same height after two hops; one keeps climbing, one doubles back.
+        let climbing = [step((1, 700.0), (2, 500.0)), step((2, 500.0), (3, 300.0))];
+        let reversing = [step((1, 700.0), (4, 200.0)), step((4, 200.0), (5, 300.0))];
+        let preferences = RoutePreferences::default();
+        assert!(
+            route_score(start, &climbing, preferences)
+                > route_score(start, &reversing, preferences)
+        );
+    }
+
+    /// Two displays meeting at x = 1600, the second one at a different scale factor. A twenty
+    /// point gap is a squeeze when both ledges are on the same display and nothing at all when
+    /// the gap is really the seam between two of them, however small it looks in points.
+    #[test]
+    fn a_seam_a_missing_display_and_a_different_scale_never_produce_a_cross_display_route() {
+        let seam_desktop = |scale: f32| {
+            let mut desktop = desktop(vec![
+                window(1, 1_400.0, 200.0, 0),
+                window(2, 1_660.0, 200.0, 1),
+                window(3, 1_140.0, 200.0, 2),
+                // Far enough right that its top centre lands on no display at all.
+                window(4, 4_000.0, 200.0, 3),
+            ]);
+            let mut second = desktop.monitors[0].clone();
+            second.id = 9;
+            second.display_key = DisplayKey([9; 16]);
+            second.primary = false;
+            second.bounds = DesktopRect {
+                x: 1_600.0,
+                y: -200.0,
+                width: 1_600.0,
+                height: 1_400.0,
+            };
+            second.usable_bounds = second.bounds;
+            second.scale_factor = scale;
+            desktop.monitors.push(second);
+            desktop
+        };
+        let mut topology = DesktopTopology::default();
+        topology.rebuild_if_changed(&seam_desktop(1.0), &BTreeMap::new());
+        assert_eq!(topology.window(1).map(|w| w.monitor_id), Some(8));
+        assert_eq!(topology.window(2).map(|w| w.monitor_id), Some(9));
+        assert!(
+            topology.window(4).is_none(),
+            "a window over no display is not somewhere a creature can be sent"
+        );
+        assert!(
+            topology
+                .plan_route(4, RoutePreferences::default())
+                .is_empty()
+        );
+
+        let route = topology.plan_route(1, RoutePreferences::default());
+        assert_eq!(route.len(), 1);
+        assert_eq!(route[0].kind, RouteHopKind::NarrowGap);
+        assert_eq!(
+            route[0].to_window, 3,
+            "the reachable twenty point gap is the one on this display"
+        );
+
+        // Scaling is a matter for drawing, not for where the geometry is: the same points give
+        // the same routes on a display of any scale factor.
+        let mut scaled = DesktopTopology::default();
+        scaled.rebuild_if_changed(&seam_desktop(3.0), &BTreeMap::new());
+        assert_eq!(scaled.plan_route(1, RoutePreferences::default()), route);
+        assert_eq!(
+            scaled.plan_route(2, RoutePreferences::default()),
+            Vec::new()
         );
     }
 

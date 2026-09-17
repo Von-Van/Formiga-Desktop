@@ -46,6 +46,12 @@ pub fn display_key(monitor: &MonitorHandle) -> DisplayKey {
     DisplayKey(key)
 }
 
+/// A swapchain smaller than its window is stretched by the compositor with smoothing on Windows,
+/// which would blur pixel art, so the overlay always draws at full resolution here.
+pub const OVERLAY_HALF_RESOLUTION: bool = false;
+
+pub fn use_nearest_overlay_filter(_window: &Window) {}
+
 pub fn configure_native_overlay(window: &Window, hittest_enabled: bool) {
     set_overlay_hittest(window, hittest_enabled);
 }
@@ -304,16 +310,18 @@ pub fn cursor_and_idle(previous: Option<(Point, Instant)>) -> (CursorSnapshot, D
     )
 }
 
-pub fn visible_windows() -> Vec<DesktopWindow> {
+pub fn visible_windows() -> Option<Vec<DesktopWindow>> {
     ENUMERATED.lock().expect("window list poisoned").clear();
     ENUMERATED_OWNERS
         .lock()
         .expect("window owner cache poisoned")
         .clear();
     unsafe {
-        let _ = EnumWindows(Some(enum_window), LPARAM(0));
+        EnumWindows(Some(enum_window), LPARAM(0)).ok()?;
     }
-    std::mem::take(&mut *ENUMERATED.lock().expect("window list poisoned"))
+    Some(std::mem::take(
+        &mut *ENUMERATED.lock().expect("window list poisoned"),
+    ))
 }
 
 unsafe extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {

@@ -1,6 +1,6 @@
 use crate::platform;
 use anyhow::{Context, Result};
-use formiga_art::{AnimationSpec, CreatureRenderer, FRAME_SIZE, FramePlacement};
+use formiga_art::{CreatureRenderer, FRAME_SIZE, FramePlacement, MotionSignature};
 use formiga_core::{Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,6 +33,9 @@ pub struct InteractionProxy {
     mask: Arc<[bool]>,
     mask_cache: HashMap<MaskArtworkSignature, Arc<[bool]>>,
     signature: Option<MaskSignature>,
+    /// The mask the native window was last given. The in-process mask stays current every tick
+    /// for hit-testing; pushing it to the window only matters while the cursor is close.
+    applied_signature: Option<MaskSignature>,
     hit_enabled: bool,
     physical_position: Option<PhysicalPosition<i32>>,
     physical_size: Option<u32>,
@@ -74,6 +77,7 @@ impl InteractionProxy {
             mask: vec![false; (FRAME_SIZE * FRAME_SIZE) as usize].into(),
             mask_cache: HashMap::new(),
             signature: None,
+            applied_signature: None,
             hit_enabled: false,
             physical_position: None,
             physical_size: None,
@@ -114,7 +118,7 @@ impl InteractionProxy {
                 value
             }
         };
-        let placement = FramePlacement::for_action(creature.state.action, baseline);
+        let placement = FramePlacement::for_creature(creature, baseline);
         let origin_y = placement.origin_y as f32 * f32::from(scale);
         self.logical_bounds = DesktopRect {
             x: creature.state.position.x - logical_size * 0.5,
@@ -129,6 +133,23 @@ impl InteractionProxy {
             overlay_origin.x + (local_anchor_x - physical_size as f32 * 0.5).round() as i32,
             overlay_origin.y + local_anchor_y.round() as i32,
         );
+        // Moving a native window is one of the most expensive things this app does: every move is
+        // a window-server transaction, and AppKit answers each one by re-reading the display
+        // configuration. A walking creature would pay that twenty times a second. But the proxy
+        // only accepts a click while the cursor is actually over the creature — hit-testing is
+        // decided here, in-process, from the bounds and mask above — so where the native window
+        // sits is irrelevant while the cursor is elsewhere. It follows the creature only while
+        // the cursor is within a creature's width of it, or a drag is under way, and it is always
+        // put in place before hit-testing is switched on, never after.
+        let margin = logical_size.max(64.0);
+        let near = runtime.dragging
+            || self.hit_enabled
+            || (cursor.available
+                && cursor.position.x >= self.logical_bounds.x - margin
+                && cursor.position.x <= self.logical_bounds.x + self.logical_bounds.width + margin
+                && cursor.position.y >= self.logical_bounds.y - margin
+                && cursor.position.y
+                    <= self.logical_bounds.y + self.logical_bounds.height + margin);
         // Size before position, and re-apply the position whenever the size changes. winit's macOS
         // `set_outer_position` flips the Y origin using the window's *current* frame height, and
         // `request_inner_size` resizes from the bottom-left corner. Positioning first therefore
@@ -144,13 +165,14 @@ impl InteractionProxy {
             self.physical_size = Some(physical_size);
             self.physical_position = None;
         }
-        if self.physical_position != Some(position) {
+        if near && self.physical_position != Some(position) {
             self.window.set_outer_position(position);
             self.physical_position = Some(position);
         }
 
-        let spec = AnimationSpec::for_action(creature.state.action);
-        let frame = spec.frame_at(creature.state.action_elapsed);
+        // The hit proxy must show the same frame the overlay draws.
+        let frame = MotionSignature::for_creature(creature)
+            .frame(creature.state.action, creature.state.action_elapsed);
         let face_state =
             CreatureRenderer::resolve_face_state(creature, cursor, settings.cursor_reactions);
         let signature = MaskSignature {
@@ -187,8 +209,11 @@ impl InteractionProxy {
                         .into()
                 })
                 .clone();
-            platform::set_interaction_shape(&self.window, &self.mask, scale);
             self.signature = Some(signature);
+        }
+        if near && self.applied_signature != self.signature {
+            platform::set_interaction_shape(&self.window, &self.mask, scale);
+            self.applied_signature = self.signature;
         }
 
         self.interactive = !runtime.occluded;
@@ -209,6 +234,7 @@ impl InteractionProxy {
             // survive being shown, so re-apply it on the next sync rather than trusting the cache.
             if visible {
                 self.physical_position = None;
+                self.applied_signature = None;
             }
         }
     }

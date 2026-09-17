@@ -3,8 +3,8 @@ use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AnimationSpec, COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
     ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, MilestoneBubbleRenderer, PixelPoint, SHELTER_SIZE, ShelterRenderer,
-    VILLAGE_ATLAS_SIZE,
+    FramePlacement, MilestoneBubbleRenderer, MotionSignature, PixelPoint, PropAnchor, SHELTER_SIZE,
+    ShelterRenderer, VILLAGE_ATLAS_SIZE,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
@@ -50,6 +50,7 @@ struct SpriteGpu {
     _face_texture: wgpu::Texture,
     face_bind_group: wgpu::BindGroup,
     reduce_motion: bool,
+    outline: bool,
     body_atlas_width: u32,
     body_atlas_height: u32,
     face_atlas_width: u32,
@@ -103,6 +104,11 @@ pub struct OverlayRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    /// The window's own size in physical pixels. Every position is laid out against this, so the
+    /// picture lands in the same place whatever size the drawable underneath it is.
+    layout: PhysicalSize<u32>,
+    /// 1 draws at full backing resolution; 2 draws at half and lets Core Animation magnify it.
+    render_divisor: u32,
     pipeline: wgpu::RenderPipeline,
     zone_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -185,11 +191,16 @@ impl OverlayRenderer {
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
-            desired_maximum_frame_latency: 2,
+            // Every drawable in the pool is a full-screen image. The overlay presents at twenty
+            // frames a second at most, far below any display's refresh, so a second queued frame
+            // never helps — it only holds another screen's worth of memory.
+            desired_maximum_frame_latency: 1,
             alpha_mode,
             view_formats: Vec::new(),
         };
         surface.configure(&device, &config);
+        crate::platform::use_nearest_overlay_filter(&window);
+        let layout = size;
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("creature texture layout"),
             entries: &[
@@ -361,6 +372,8 @@ impl OverlayRenderer {
             device,
             queue,
             config,
+            layout,
+            render_divisor: 1,
             pipeline,
             zone_pipeline,
             bind_group_layout,
@@ -401,6 +414,7 @@ impl OverlayRenderer {
             // overlay configuration — input mode, transparency, and Spaces membership — after
             // every hide/show cycle rather than only at creation.
             crate::platform::configure_native_overlay(&self.window, self.hittest_enabled);
+            crate::platform::use_nearest_overlay_filter(&self.window);
             self.window.request_redraw();
         }
     }
@@ -423,9 +437,41 @@ impl OverlayRenderer {
         if size.width == 0 || size.height == 0 {
             return;
         }
-        self.config.width = size.width;
-        self.config.height = size.height;
+        self.layout = size;
+        (self.config.width, self.config.height) = drawable_size(size, self.render_divisor);
         self.surface.configure(&self.device, &self.config);
+    }
+
+    /// Draw at half the backing resolution whenever that loses nothing. A creature at an even
+    /// size on a Retina display has art pixels that are a whole number of points, so a half-size
+    /// image magnified without smoothing is the same picture, pixel for pixel — at a quarter of
+    /// the memory for every full-screen drawable in the pool and a quarter of the pixels to fill.
+    /// At an odd size, or on a display that is not Retina, the overlay keeps full resolution.
+    fn apply_render_divisor(&mut self, display_scale: u8) {
+        let divisor = if crate::platform::OVERLAY_HALF_RESOLUTION
+            && self.monitor.scale_factor >= 2.0
+            && display_scale.is_multiple_of(2)
+        {
+            2
+        } else {
+            1
+        };
+        if divisor == self.render_divisor {
+            return;
+        }
+        self.render_divisor = divisor;
+        (self.config.width, self.config.height) = drawable_size(self.layout, divisor);
+        self.surface.configure(&self.device, &self.config);
+        // Occlusion is measured in drawable pixels, and cached belongings are snapped to the grid.
+        self.last_occlusion = None;
+        self.object_vertex_cache_key = None;
+    }
+
+    /// Round a physical-pixel position onto the drawable's own pixel grid, so every sprite edge
+    /// falls exactly between two drawable pixels and nearest sampling stays even.
+    fn snap(&self, physical: f32) -> f32 {
+        let divisor = self.render_divisor as f32;
+        (physical / divisor).round() * divisor
     }
 
     pub fn render(
@@ -436,6 +482,7 @@ impl OverlayRenderer {
         windows: &[DesktopWindow],
         milestone: Option<CreatureId>,
     ) -> Result<()> {
+        self.apply_render_divisor(save.settings.display_scale);
         self.update_occlusion_cache(save, windows);
         let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
         let occlusion = self.occlusion_uniform(&self.occlusion_rects);
@@ -449,7 +496,11 @@ impl OverlayRenderer {
             })
             .collect();
         for creature in &visible {
-            self.ensure_sprite(creature, save.settings.reduce_motion);
+            self.ensure_sprite(
+                creature,
+                save.settings.reduce_motion,
+                save.companion.appearance.sprite_outline,
+            );
         }
         let shelter_visible = !monitor_fully_occluded
             && save.home.is_active()
@@ -462,7 +513,15 @@ impl OverlayRenderer {
             )
             .is_some();
         if shelter_visible {
-            self.ensure_shelter(save.home.shelter, &save.home.decorations.decorations);
+            let mut visible_decorations = [ShelterDecorationKind::Leaf; 6];
+            let mut count = 0;
+            for kind in &save.home.decorations.decorations {
+                if save.home.hidden_decorations & (1 << kind.index()) == 0 {
+                    visible_decorations[count] = *kind;
+                    count += 1;
+                }
+            }
+            self.ensure_shelter(save.home.shelter, &visible_decorations[..count]);
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
@@ -671,9 +730,8 @@ impl OverlayRenderer {
     }
 
     fn recover_surface(&mut self) {
-        let size = self.window.inner_size();
-        self.config.width = size.width.max(1);
-        self.config.height = size.height.max(1);
+        self.layout = self.window.inner_size();
+        (self.config.width, self.config.height) = drawable_size(self.layout, self.render_divisor);
         self.surface.configure(&self.device, &self.config);
         self.last_occlusion = None;
         self.has_visual_content = false;
@@ -777,12 +835,14 @@ impl OverlayRenderer {
 
     fn occlusion_uniform(&self, rects: &[DesktopRect]) -> OcclusionUniform {
         let mut uniform = OcclusionUniform::zeroed();
+        // The shader compares these with the fragment's own position, which is in drawable pixels.
+        let to_drawable = self.monitor.scale_factor / self.render_divisor as f32;
         for (target, rect) in uniform.rects.iter_mut().zip(rects.iter()) {
             *target = [
-                (rect.x - self.monitor.bounds.x) * self.monitor.scale_factor,
-                (rect.y - self.monitor.bounds.y) * self.monitor.scale_factor,
-                (rect.right() - self.monitor.bounds.x) * self.monitor.scale_factor,
-                (rect.bottom() - self.monitor.bounds.y) * self.monitor.scale_factor,
+                (rect.x - self.monitor.bounds.x) * to_drawable,
+                (rect.y - self.monitor.bounds.y) * to_drawable,
+                (rect.right() - self.monitor.bounds.x) * to_drawable,
+                (rect.bottom() - self.monitor.bounds.y) * to_drawable,
             ];
         }
         uniform.metadata[0] = rects.len().min(MAX_OCCLUSION_RECTS) as u32;
@@ -794,14 +854,16 @@ impl OverlayRenderer {
         rect: formiga_core::DesktopRect,
         color: [f32; 4],
     ) -> [ZoneVertex; 6] {
-        let left_px = (rect.x - self.monitor.bounds.x) * self.monitor.scale_factor;
-        let right_px = (rect.right() - self.monitor.bounds.x) * self.monitor.scale_factor;
-        let top_px = (rect.y - self.monitor.bounds.y) * self.monitor.scale_factor;
-        let bottom_px = (rect.bottom() - self.monitor.bounds.y) * self.monitor.scale_factor;
-        let left = left_px / self.config.width as f32 * 2.0 - 1.0;
-        let right = right_px / self.config.width as f32 * 2.0 - 1.0;
-        let top = 1.0 - top_px / self.config.height as f32 * 2.0;
-        let bottom = 1.0 - bottom_px / self.config.height as f32 * 2.0;
+        let left_px = self.snap((rect.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let right_px =
+            self.snap((rect.right() - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let top_px = self.snap((rect.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let bottom_px =
+            self.snap((rect.bottom() - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let left = left_px / self.layout.width as f32 * 2.0 - 1.0;
+        let right = right_px / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - top_px / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - bottom_px / self.layout.height as f32 * 2.0;
         [
             ZoneVertex {
                 position: [left, top],
@@ -830,13 +892,12 @@ impl OverlayRenderer {
         ]
     }
 
-    fn ensure_sprite(&mut self, creature: &Creature, reduce_motion: bool) {
-        let requires_bake = self
-            .sprites
-            .get(&creature.id)
-            .is_none_or(|sprite| sprite.reduce_motion != reduce_motion);
+    fn ensure_sprite(&mut self, creature: &Creature, reduce_motion: bool, outline: bool) {
+        let requires_bake = self.sprites.get(&creature.id).is_none_or(|sprite| {
+            sprite.reduce_motion != reduce_motion || sprite.outline != outline
+        });
         if requires_bake {
-            let atlas = build_atlas_pixels(creature, reduce_motion);
+            let atlas = build_atlas_pixels(creature, reduce_motion, outline);
             let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("procedural creature body atlas"),
                 size: wgpu::Extent3d {
@@ -941,6 +1002,7 @@ impl OverlayRenderer {
                     _face_texture: face_texture,
                     face_bind_group,
                     reduce_motion,
+                    outline,
                     body_atlas_width: atlas.body_width,
                     body_atlas_height: atlas.body_height,
                     face_atlas_width: atlas.face_width,
@@ -1143,13 +1205,13 @@ impl OverlayRenderer {
         display_scale: u8,
     ) -> [Vertex; 6] {
         let size = COLONY_OBJECT_SIZE as f32 * f32::from(display_scale);
-        let local_x = (point.x - self.monitor.bounds.x) * self.monitor.scale_factor;
-        let contact_y = (point.y - self.monitor.bounds.y) * self.monitor.scale_factor;
-        let left = (local_x - size * 0.5) / self.config.width as f32 * 2.0 - 1.0;
-        let right = (local_x + size * 0.5) / self.config.width as f32 * 2.0 - 1.0;
+        let local_x = self.snap((point.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let contact_y = self.snap((point.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let left = (local_x - size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (local_x + size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
         let top_px = contact_y - size;
-        let top = 1.0 - top_px / self.config.height as f32 * 2.0;
-        let bottom = 1.0 - contact_y / self.config.height as f32 * 2.0;
+        let top = 1.0 - top_px / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - contact_y / self.layout.height as f32 * 2.0;
         let u_left = f32::from(object.kind.index()) / 8.0;
         let u_right = f32::from(object.kind.index() + 1) / 8.0;
         let vertex = |position, uv| Vertex {
@@ -1282,12 +1344,12 @@ impl OverlayRenderer {
         display_scale: u8,
     ) -> [Vertex; 6] {
         let size = SHELTER_SIZE as f32 * f32::from(display_scale);
-        let local_x = (anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor;
-        let local_y = (anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor;
-        let left = (local_x - size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let right = (local_x + size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let top = 1.0 - (local_y - size) / self.config.height as f32 * 2.0;
-        let bottom = 1.0 - local_y / self.config.height as f32 * 2.0;
+        let local_x = self.snap((anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let local_y = self.snap((anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let left = (local_x - size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (local_x + size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - (local_y - size) / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - local_y / self.layout.height as f32 * 2.0;
         let (u, v) = match kind {
             formiga_core::DwellingKind::Main => (0.0, 0.0),
             formiga_core::DwellingKind::Cottage => (0.5, 0.0),
@@ -1316,18 +1378,18 @@ impl OverlayRenderer {
         let scale = 2.0;
         let width = bubble.width as f32 * scale;
         let height = bubble.height as f32 * scale;
-        let local_x =
-            (creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor;
-        let contact_y =
-            (creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor;
+        let local_x = self
+            .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let contact_y = self
+            .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
         let creature_height = FRAME_SIZE as f32 * f32::from(display_scale);
-        let center_x = local_x.clamp(width / 2.0, self.config.width as f32 - width / 2.0);
+        let center_x = local_x.clamp(width / 2.0, self.layout.width as f32 - width / 2.0);
         let bottom_px = (contact_y - creature_height - 6.0).max(height);
         let top_px = bottom_px - height;
-        let left = (center_x - width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let right = (center_x + width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let top = 1.0 - top_px / self.config.height as f32 * 2.0;
-        let bottom = 1.0 - bottom_px / self.config.height as f32 * 2.0;
+        let left = (center_x - width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (center_x + width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - top_px / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - bottom_px / self.layout.height as f32 * 2.0;
         let vertex = |position, uv| Vertex {
             position,
             uv,
@@ -1353,23 +1415,24 @@ impl OverlayRenderer {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
         let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
-        let local_x =
-            (creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor;
-        let contact_y =
-            (creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor;
-        let placement = FramePlacement::for_action(creature.state.action, sprite.resting_baseline);
+        let local_x = self
+            .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let contact_y = self
+            .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * display_scale as f32;
         let frame_bottom = frame_top + sprite_size;
         // Gap traversal reuses the normal walk atlas and briefly narrows both body and layered face
         // quads. The source texture and hit mask remain unchanged and no runtime art is generated.
         let horizontal_scale = creature_horizontal_scale(creature.state.action);
         let sprite_width = sprite_size * horizontal_scale;
-        let left = (local_x - sprite_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let right = (local_x + sprite_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let top = 1.0 - frame_top / self.config.height as f32 * 2.0;
-        let bottom = 1.0 - frame_bottom / self.config.height as f32 * 2.0;
-        let spec = AnimationSpec::for_action(creature.state.action);
-        let frame = spec.frame_at(creature.state.action_elapsed);
+        let left = (local_x - sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (local_x + sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - frame_top / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - frame_bottom / self.layout.height as f32 * 2.0;
+        // Each creature keeps its own cadence and phase; the atlas and slots are unchanged.
+        let frame = MotionSignature::for_creature(creature)
+            .frame(creature.state.action, creature.state.action_elapsed);
         let slot = atlas_slot(creature.state.action, frame);
         let column = slot % ATLAS_COLUMNS;
         let row = slot / ATLAS_COLUMNS;
@@ -1425,10 +1488,10 @@ impl OverlayRenderer {
         let face_center_y = frame_top + anchor.y as f32 * display_scale as f32;
         let face_size = FACE_FRAME_SIZE as f32 * display_scale as f32;
         let face_width = face_size * horizontal_scale;
-        let face_left = (face_center_x - face_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let face_right = (face_center_x + face_width / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-        let face_top = 1.0 - (face_center_y - face_size / 2.0) / self.config.height as f32 * 2.0;
-        let face_bottom = 1.0 - (face_center_y + face_size / 2.0) / self.config.height as f32 * 2.0;
+        let face_left = (face_center_x - face_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let face_right = (face_center_x + face_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let face_top = 1.0 - (face_center_y - face_size / 2.0) / self.layout.height as f32 * 2.0;
+        let face_bottom = 1.0 - (face_center_y + face_size / 2.0) / self.layout.height as f32 * 2.0;
         let mut source_face_state = face_state;
         if !creature.state.facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
@@ -1490,11 +1553,14 @@ impl OverlayRenderer {
                 trinket_row as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
             let v_bottom =
                 (trinket_row + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
-            let center_y = face_center_y - 14.0 * display_scale as f32;
-            let left = (face_center_x - face_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-            let right = (face_center_x + face_size / 2.0) / self.config.width as f32 * 2.0 - 1.0;
-            let top = 1.0 - (center_y - face_size / 2.0) / self.config.height as f32 * 2.0;
-            let bottom = 1.0 - (center_y + face_size / 2.0) / self.config.height as f32 * 2.0;
+            // One explicit anchor, shared with the review sheets, rather than a number here.
+            let anchor = PropAnchor::for_creature(creature);
+            let center_x = face_center_x + anchor.dx * display_scale as f32;
+            let center_y = face_center_y + anchor.dy * display_scale as f32;
+            let left = (center_x - face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+            let right = (center_x + face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+            let top = 1.0 - (center_y - face_size / 2.0) / self.layout.height as f32 * 2.0;
+            let bottom = 1.0 - (center_y + face_size / 2.0) / self.layout.height as f32 * 2.0;
             [
                 Vertex {
                     position: [left, top],
@@ -1712,7 +1778,7 @@ struct AtlasPixels {
     face_anchors: Vec<PixelPoint>,
 }
 
-fn build_atlas_pixels(creature: &Creature, reduce_motion: bool) -> AtlasPixels {
+fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -> AtlasPixels {
     let body_slots = total_animation_frames();
     let body_rows = body_slots.div_ceil(ATLAS_COLUMNS);
     let body_width = ATLAS_COLUMNS * FRAME_SIZE;
@@ -1722,12 +1788,16 @@ fn build_atlas_pixels(creature: &Creature, reduce_motion: bool) -> AtlasPixels {
     for action in ActionKind::BODY_CLIPS {
         let spec = AnimationSpec::for_action(action);
         for frame in 0..spec.frames {
-            let rendered = CreatureRenderer::render_body_frame(
+            let mut rendered = CreatureRenderer::render_body_frame(
                 &creature.appearance,
                 action,
                 frame,
                 reduce_motion,
             );
+            // Baked once into the atlas, so the edge costs nothing per frame and no draw call.
+            if outline {
+                CreatureRenderer::outline_frame(&mut rendered.canvas);
+            }
             let slot = atlas_slot(action, frame);
             face_anchors[slot as usize] = rendered.face_anchor;
             blit_atlas_frame(
@@ -1843,6 +1913,14 @@ fn face_atlas_slot(state: FaceRenderState) -> u32 {
 
 fn trinket_atlas_slot(variant: u8) -> u32 {
     face_slot_count() + u32::from(variant % 8)
+}
+
+/// The drawable for a window of `layout` physical pixels drawn at `1 / divisor` resolution.
+fn drawable_size(layout: PhysicalSize<u32>, divisor: u32) -> (u32, u32) {
+    (
+        layout.width.div_ceil(divisor).max(1),
+        layout.height.div_ceil(divisor).max(1),
+    )
 }
 
 #[cfg(test)]
@@ -2031,6 +2109,96 @@ mod tests {
     }
 
     #[test]
+    fn a_desktop_full_of_chosen_windows_still_hands_the_shader_a_list_it_can_hold() {
+        let monitor = DesktopRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let chosen = ApplicationKey::MacBundleId("example.chosen".into());
+        // Forty tall windows from the chosen application, with one band lying across all of them,
+        // so each contributes two visible pieces and the list would run to eighty.
+        let mut windows: Vec<_> = (0..40)
+            .map(|index| {
+                window(
+                    index as u64 + 2,
+                    10 + index,
+                    DesktopRect {
+                        x: index as f32 * 40.0,
+                        y: 0.0,
+                        width: 30.0,
+                        height: 1080.0,
+                    },
+                    Some(chosen.clone()),
+                )
+            })
+            .collect();
+        windows.push(window(
+            1,
+            0,
+            DesktopRect {
+                x: 0.0,
+                y: 500.0,
+                width: 1920.0,
+                height: 80.0,
+            },
+            None,
+        ));
+        let rule = ApplicationOcclusionRule {
+            application: chosen,
+            display_name: "Chosen".into(),
+            enabled: true,
+        };
+        let rects = visible_occlusion_rects(monitor, &windows, &[rule], false);
+        assert_eq!(rects.len(), MAX_OCCLUSION_RECTS);
+        // The shader reads a fixed array, and the list is cut to exactly what fits in it.
+        assert_eq!(OcclusionUniform::zeroed().rects.len(), MAX_OCCLUSION_RECTS);
+        // A crowd of narrow windows is still a crowd of narrow windows: it never adds up to
+        // covering the display, which is what would stop the colony being drawn at all.
+        assert!(!rects_cover(monitor, &rects));
+    }
+
+    #[test]
+    fn every_motion_and_readability_choice_bakes_the_same_atlas_at_the_same_cost() {
+        let world = World::new(
+            [19; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &formiga_core::DesktopSnapshot::default(),
+        );
+        let creature = &world.save.creatures[0];
+        let choices = [(false, false), (true, false), (false, true), (true, true)];
+        let first: Vec<_> = choices
+            .iter()
+            .map(|&(reduce_motion, outline)| build_atlas_pixels(creature, reduce_motion, outline))
+            .collect();
+        for (choice, atlas) in choices.iter().zip(&first) {
+            let bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
+            assert_eq!(bytes, 1_161_216, "{choice:?} costs {bytes} bytes");
+            assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+        }
+        // Thrown away and baked again, twice over: the same atlas, byte for byte, every time.
+        for round in 1..3 {
+            for (choice, previous) in choices.iter().zip(&first) {
+                let atlas = build_atlas_pixels(creature, choice.0, choice.1);
+                assert_eq!(
+                    atlas.body_pixels, previous.body_pixels,
+                    "{choice:?} {round}"
+                );
+                assert_eq!(
+                    atlas.face_pixels, previous.face_pixels,
+                    "{choice:?} {round}"
+                );
+            }
+        }
+        // The eight scrapbook trinkets ride in the face atlas the creature already has, so
+        // collecting them all costs no texture and no draw call.
+        assert_eq!(trinket_atlas_slot(0), face_slot_count());
+        assert_eq!(trinket_atlas_slot(7) + 1, face_slot_count() + 8);
+        assert_eq!(trinket_atlas_slot(8), trinket_atlas_slot(0));
+    }
+
+    #[test]
     fn layered_atlas_matches_the_baked_budget_per_creature() {
         let desktop = formiga_core::DesktopSnapshot {
             monitors: vec![MonitorInfo {
@@ -2055,7 +2223,7 @@ mod tests {
         };
         let world = World::new([7; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
         let started = std::time::Instant::now();
-        let atlas = build_atlas_pixels(&world.save.creatures[0], false);
+        let atlas = build_atlas_pixels(&world.save.creatures[0], false, false);
         let bake_time = started.elapsed();
         let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
         eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
@@ -2064,6 +2232,31 @@ mod tests {
         assert!(total_bytes <= 1_200_000, "atlas uses {total_bytes} bytes");
         assert!(total_bytes * 4 < 4_718_592, "four atlases exceed 4.5 MiB");
         assert!(total_bytes < atlas.body_pixels.len() * 3);
+        // The optional outline is baked into the same atlas: no extra texture, no extra frame,
+        // and the same bytes. It touches only pixels the creature itself does not occupy.
+        let outlined = build_atlas_pixels(&world.save.creatures[0], false, true);
+        assert_eq!(
+            outlined.body_pixels.len() + outlined.face_pixels.len(),
+            total_bytes
+        );
+        assert_eq!(outlined.face_anchors, atlas.face_anchors);
+        let (mut added, mut changed) = (0, 0);
+        for (plain, edged) in atlas
+            .body_pixels
+            .chunks_exact(4)
+            .zip(outlined.body_pixels.chunks_exact(4))
+        {
+            match (plain[3] > 16, plain == edged) {
+                (true, same) => changed += usize::from(!same),
+                (false, false) => added += 1,
+                _ => {}
+            }
+        }
+        assert_eq!(
+            changed, 0,
+            "an outline never touches the creature's own pixels"
+        );
+        assert!(added > 0, "an outline does appear around the creature");
         assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
         assert_eq!(
             atlas_slot(ActionKind::Tossed, 2),

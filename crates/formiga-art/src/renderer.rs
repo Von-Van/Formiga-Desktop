@@ -176,6 +176,106 @@ impl AnimationSpec {
     }
 }
 
+/// Stable per-creature timing. The same creature always walks, rests, greets, and recovers with
+/// its own cadence and phase, from data that already exists: its identity and personality. Nothing
+/// here is stored, no frame is added, and one-shot clips keep their exact timing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MotionSignature {
+    tempo: [f32; 4],
+    phase: [u8; 4],
+}
+
+/// Walking, resting, greeting, and recovery share one small vocabulary of timings.
+fn motion_group(action: ActionKind) -> usize {
+    match action {
+        ActionKind::Traverse
+        | ActionKind::Follow
+        | ActionKind::Sprint
+        | ActionKind::SqueezeWindow
+        | ActionKind::Homebound => 0,
+        ActionKind::Idle | ActionKind::Perch | ActionKind::RideWindow | ActionKind::Sleep => 1,
+        ActionKind::Greet
+        | ActionKind::SocialPlay
+        | ActionKind::SoloPlay
+        | ActionKind::PetReaction => 2,
+        _ => 3,
+    }
+}
+
+impl MotionSignature {
+    pub fn for_creature(creature: &Creature) -> Self {
+        // One stable stream per identity, mixed with traits the creature already has.
+        let mut state = creature.id ^ 0x9e37_79b9_7f4a_7c15;
+        let mut next = move || {
+            state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            z ^ (z >> 31)
+        };
+        let unit = |value: u64| (value & 0xff) as f32 / 255.0;
+        let personality = &creature.personality;
+        let tempo = [
+            0.85 + personality.activity * 0.3 + unit(next()) * 0.1,
+            0.8 + unit(next()) * 0.25 + personality.activity * 0.1,
+            0.9 + personality.playfulness * 0.3 + unit(next()) * 0.1,
+            0.9 + unit(next()) * 0.2,
+        ];
+        let phase = std::array::from_fn(|_| (next() & 0x7) as u8);
+        Self { tempo, phase }
+    }
+
+    /// The body frame this creature shows, in place of the shared `AnimationSpec::frame_at`.
+    pub fn frame(self, action: ActionKind, elapsed: f32) -> u8 {
+        let spec = AnimationSpec::for_action(action);
+        if spec.playback == PlaybackMode::Hold {
+            return spec.frame_at(elapsed);
+        }
+        let group = motion_group(action);
+        let advanced = elapsed.max(0.0) * self.tempo[group] * f32::from(spec.fps);
+        ((advanced as u32).wrapping_add(u32::from(self.phase[group])) % u32::from(spec.frames))
+            as u8
+    }
+}
+
+/// Where a carried thing rides, relative to the creature's own face anchor, in art pixels.
+///
+/// A held object belongs in front of the creature at chest height, on the side it is facing, so
+/// that a prop changing hands reads as one creature passing something to another rather than two
+/// objects swapping places in mid-air. The anchor mirrors with facing for exactly that reason,
+/// and stays inside the frame so a prop is clipped and occluded with its holder.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PropAnchor {
+    pub dx: f32,
+    pub dy: f32,
+}
+
+impl PropAnchor {
+    /// Forward of the face and the same distance below it, where a companion's forelimbs meet in
+    /// front of its chest — the same place an eaten snack or a played-with toy is drawn inside
+    /// the frame. The prop quad is the only one drawn over the layered face, so it has to clear
+    /// the eyes rather than merely miss the frame edge: lifting it instead of dropping it hangs
+    /// the thing in the air above the crown and pushes its quad out through the top of the frame
+    /// on the taller body plans.
+    const FORWARD: f32 = 8.0;
+    const DROP: f32 = 8.0;
+
+    pub fn for_creature(creature: &Creature) -> Self {
+        Self::facing(creature.state.facing_right)
+    }
+
+    pub fn facing(facing_right: bool) -> Self {
+        Self {
+            dx: if facing_right {
+                Self::FORWARD
+            } else {
+                -Self::FORWARD
+            },
+            dy: Self::DROP,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FramePlacement {
     /// Top of the 48x48 body frame relative to the simulation contact point, in art pixels.
@@ -183,6 +283,18 @@ pub struct FramePlacement {
 }
 
 impl FramePlacement {
+    pub fn for_creature(creature: &Creature, resting_baseline: u32) -> Self {
+        if let Some(pose) = creature.state.attention {
+            let standing = resting_baseline as f32 - FRAME_SIZE as f32;
+            Self {
+                origin_y: (standing + (-7.0 - standing) * pose.hanging.clamp(0.0, 1.0)).round()
+                    as i32,
+            }
+        } else {
+            Self::for_action(creature.state.action, resting_baseline)
+        }
+    }
+
     pub fn for_action(action: ActionKind, resting_baseline: u32) -> Self {
         Self {
             origin_y: if action == ActionKind::Dangle {
@@ -317,6 +429,37 @@ impl CreatureRenderer {
         let palette = crate::palette_for(genome);
         draw_generated_trinket(&mut canvas, palette, variant % 8, genome.marking_seed);
         canvas
+    }
+
+    /// Draw a soft edge in the transparent pixels immediately around a creature, so it stays
+    /// readable on bright or busy wallpaper. This reads only the frame's own alpha — never the
+    /// desktop behind it — and writes only inside the existing frame, so the silhouette used for
+    /// clicking and dragging is unchanged. Edges stay one pixel and hard, never blurred.
+    pub fn outline_frame(canvas: &mut Canvas) {
+        let (width, height) = (canvas.width() as i32, canvas.height() as i32);
+        let solid = |canvas: &Canvas, x: i32, y: i32| canvas.get(x, y).a > 16;
+        let mut edges = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                if solid(canvas, x, y) {
+                    continue;
+                }
+                // A cardinal neighbour makes a full edge pixel; a diagonal one only softens the
+                // corner, which is what keeps a pixel silhouette from growing a halo.
+                let cardinal = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(dx, dy)| solid(canvas, x + dx, y + dy));
+                let diagonal = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+                    .into_iter()
+                    .any(|(dx, dy)| solid(canvas, x + dx, y + dy));
+                if cardinal || diagonal {
+                    edges.push((x, y, if cardinal { 150 } else { 70 }));
+                }
+            }
+        }
+        for (x, y, alpha) in edges {
+            canvas.set(x, y, Rgba::new(18, 26, 22, alpha));
+        }
     }
 
     pub fn render_composited_frame(
@@ -2240,6 +2383,16 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
     if creature.state.action == ActionKind::Sleep {
         return ExpressionKind::Sleepy;
     }
+    if let Some(pose) = creature.state.attention {
+        return match pose.emotion {
+            formiga_core::AttentionEmotion::Curious => ExpressionKind::Curious,
+            formiga_core::AttentionEmotion::Startled => ExpressionKind::Startled,
+            formiga_core::AttentionEmotion::Enjoying => ExpressionKind::Joy,
+            formiga_core::AttentionEmotion::Concerned => ExpressionKind::Worried,
+            formiga_core::AttentionEmotion::Averting => ExpressionKind::Worried,
+            formiga_core::AttentionEmotion::Relieved => ExpressionKind::Content,
+        };
+    }
     if drives.arousal > 0.86 {
         return ExpressionKind::Startled;
     }
@@ -2329,6 +2482,13 @@ fn resolve_expression(creature: &Creature) -> ExpressionKind {
 }
 
 fn resolve_eyelids(creature: &Creature) -> EyelidPose {
+    if creature
+        .state
+        .attention
+        .is_some_and(|pose| pose.emotion == formiga_core::AttentionEmotion::Averting)
+    {
+        return EyelidPose::Closed;
+    }
     if creature.state.action == ActionKind::Sleep {
         return EyelidPose::Closed;
     }
@@ -2364,6 +2524,12 @@ fn resolve_gaze(
     cursor: CursorSnapshot,
     cursor_reactions: bool,
 ) -> GazeDirection {
+    if let Some(pose) = creature.state.attention {
+        return GazeDirection::new(
+            axis_direction(pose.target.x - creature.state.position.x, 10.0),
+            axis_direction(pose.target.y - (creature.state.position.y - 28.0), 10.0),
+        );
+    }
     match creature.state.action {
         ActionKind::InspectScreen => {
             return GazeDirection::new(
@@ -2705,6 +2871,79 @@ mod tests {
             }
         }
         assert_eq!(hashes.len(), 9);
+    }
+
+    #[test]
+    fn movement_signatures_are_stable_individual_and_stay_inside_their_clips() {
+        let desktop = DesktopSnapshot {
+            monitors: vec![MonitorInfo {
+                id: 1,
+                display_key: formiga_core::DisplayKey([3; 16]),
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 800.0,
+                    height: 536.0,
+                },
+                scale_factor: 1.0,
+                primary: true,
+            }],
+            ..DesktopSnapshot::default()
+        };
+        let world = World::new([77; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
+        let base = world.save.creatures[0].clone();
+        let signature = MotionSignature::for_creature(&base);
+        assert_eq!(signature, MotionSignature::for_creature(&base));
+
+        let mut neighbor = base.clone();
+        neighbor.id = base.id ^ 0x5151;
+        assert_ne!(MotionSignature::for_creature(&neighbor), signature);
+
+        // Every frame stays inside its clip, and a loop still visits all of its frames.
+        for action in ActionKind::ALL {
+            let spec = AnimationSpec::for_action(action);
+            let mut seen = std::collections::BTreeSet::new();
+            for step in 0..400 {
+                let frame = signature.frame(action, step as f32 / 20.0);
+                assert!(frame < spec.frames, "{action:?} frame {frame}");
+                seen.insert(frame);
+                if spec.playback == PlaybackMode::Hold {
+                    assert_eq!(frame, spec.frame_at(step as f32 / 20.0));
+                }
+            }
+            if spec.playback == PlaybackMode::Loop {
+                assert_eq!(seen.len(), usize::from(spec.frames), "{action:?}");
+            }
+        }
+
+        // Liveliness and playfulness change cadence without touching stored appearance.
+        let appearance = base.appearance.clone();
+        let mut lively = base.clone();
+        lively.personality.activity = 1.0;
+        lively.personality.playfulness = 1.0;
+        let mut still = base.clone();
+        still.personality.activity = 0.0;
+        still.personality.playfulness = 0.0;
+        for action in [ActionKind::Traverse, ActionKind::Greet] {
+            let (quick, slow) = (
+                MotionSignature::for_creature(&lively),
+                MotionSignature::for_creature(&still),
+            );
+            assert!(
+                (0..160).any(|step| {
+                    let elapsed = step as f32 / 20.0;
+                    quick.frame(action, elapsed) != slow.frame(action, elapsed)
+                }),
+                "{action:?} should differ with temperament"
+            );
+        }
+        assert_eq!(lively.appearance, appearance);
     }
 
     #[test]
@@ -3109,5 +3348,48 @@ mod tests {
                 "{action:?} does not stand on its legs the way walking does",
             );
         }
+    }
+    /// A carried thing rides in front of whoever is holding it. The anchor is one explicit
+    /// contract shared by the overlay and the review sheets, so a prop changing hands reads as a
+    /// hand-off rather than two objects swapping places in the air.
+    #[test]
+    fn a_carried_prop_rides_on_the_side_its_holder_is_facing_and_stays_inside_the_frame() {
+        let facing = PropAnchor::facing(true);
+        let away = PropAnchor::facing(false);
+        assert_eq!(facing.dx, -away.dx, "the anchor mirrors with facing");
+        assert_eq!(
+            facing.dy, away.dy,
+            "and rides at the same height either way"
+        );
+        assert!(facing.dx > 0.0, "a held thing is in front, not behind");
+        assert!(
+            facing.dy > 0.0,
+            "and carried at the chest, not floated above the head"
+        );
+        // The prop is drawn from the face anchor, in a face-sized quad. Both offsets have to keep
+        // that quad inside the body frame, or a prop would be clipped differently from its holder.
+        let margin = (FRAME_SIZE - FACE_FRAME_SIZE) as f32 / 2.0;
+        for anchor in [facing, away] {
+            assert!(
+                anchor.dx.abs() <= margin,
+                "{anchor:?} leaves the frame sideways"
+            );
+            assert!(
+                anchor.dy.abs() <= margin,
+                "{anchor:?} leaves the frame vertically"
+            );
+        }
+        // Two creatures facing each other reach toward one another, which is what makes a
+        // hand-off read: the gap between their anchors is smaller than the gap between them.
+        let mut creature = World::preview_adult(
+            [23; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        creature.state.facing_right = true;
+        let giver = PropAnchor::for_creature(&creature);
+        creature.state.facing_right = false;
+        let taker = PropAnchor::for_creature(&creature);
+        assert!(giver.dx > taker.dx);
     }
 }

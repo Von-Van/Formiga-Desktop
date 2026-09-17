@@ -1,5 +1,9 @@
+mod ambience;
+mod attention;
 mod behavior;
 mod clock;
+mod companion;
+mod cursor;
 mod design;
 mod habitat;
 mod model;
@@ -9,8 +13,11 @@ mod seed_share;
 mod topology;
 mod world;
 
+pub use ambience::DesktopAmbience;
+pub use attention::{AttentionEmotion, AttentionPose, WindowSample};
 pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use clock::{Clock, FixedClock, SystemClock};
+pub use companion::*;
 pub use design::{BodyPlan, CreatureDesign, EarStyle, apply_creature_design};
 pub use habitat::{
     DWELLING_CELL, DwellingKind, MAX_HABITAT_ZONES, VillageLot, accessible_regions,
@@ -31,4 +38,4 @@ pub use topology::{
 };
 pub use world::World;
 
-pub const SAVE_VERSION: u32 = 12;
+pub const SAVE_VERSION: u32 = 14;

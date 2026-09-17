@@ -1,4 +1,4 @@
-# Formiga · v0.55.6
+# Formiga · v0.57.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.55.6-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.57.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,21 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.57.0
+
+Your creatures notice the desktop, and each other. When a window moves, a companion riding it grips
+on or enjoys the ride, and whoever is nearby turns to watch: a gasp at a close call, covered eyes
+from a timid onlooker, delight when a landing goes well. A long jump brings a look down, a step
+back, and sometimes a change of heart. Ordinary moments grow into small games — a chase, leapfrog,
+tag, a race across your windows, the floor is lava, hide and seek, and more — and any creature can
+decline to play.
+
+The journal groups moments by day, filters to one companion, and keeps up to eight you want to hold
+on to. A scrapbook remembers the first time each kind of trinket was found, and the home page shows
+your actual village. Settings add a charcoal theme, larger text, an optional outline for busy
+wallpaper, and a weekly routine that switches between your Work and Relax presets. Formiga also uses
+a small fraction of the CPU it used to, and less memory.
 
 ## New in 0.55.6
 
@@ -86,6 +101,21 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
   slow one places it precisely.
 - Let bonded creatures follow, greet, sleep together, share or steal a toy, watch each other climb,
   react to a toss, and occasionally squabble.
+- Watch a creature think twice about a long jump: a look down, a step back, up to two changes of
+  mind, and then either the leap or a quiet retreat. A jump that falls short can catch the edge and
+  struggle up, and a companion may come over and pull it in.
+- Notice that the watchers are watching in their own time. One gasps at a near miss, a timid one
+  covers its eyes until it is over, a playful one celebrates a landing, and a creature facing the
+  other way is slower to look up.
+- Ordinary meetings turn into small games: a chase, a procession, a dance, a pile beside someone
+  resting, leapfrog, keep-away, tug-of-war, tag, turns at a gap, a route to copy, a contest for the
+  best spot on a ledge, a staring match, or creeping around a companion who is asleep.
+- Three of the games are about your desktop itself. Two creatures race across the windows to a ledge
+  they can both reach, or play the-floor-is-lava along the ledge tops, or one hides around the far
+  end of a surface while the other counts and then goes looking. Any invitation can be turned down.
+- Spot two riders on the same moving window watching each other and showing off once the ride
+  settles, or a playful creature dashing alongside a fast cursor for a moment without leaving its
+  own display.
 - Every so often the colony coordinates a picnic, nap, race, catch game, shelter gathering,
   presentation, hatch day, quiet huddle, or late-night sleep pile.
 
@@ -96,6 +126,16 @@ play, home visits, and repeated placement gradually shape bounded behavior score
 personality they were generated with stays recognizable. The Colony tab shows those memories, up to
 three learned descriptors, age, favorite places, and closest companions; the name is the only thing
 you can edit.
+
+A journal keeps small moments — arrivals, discoveries, a preference a creature has settled into, a
+new close friendship, a completed ritual, a keepsake that turned up, a decoration the home earned —
+grouped by Today, Yesterday, and the date, in your own local time. You can filter it to one
+companion, and keep up to eight moments pinned above the rest. A pin points at a moment the journal
+already holds, so it can never say something that did not happen. Alongside it, a
+scrapbook records the first time each of the eight kinds of trinket was found, with a drawing of it,
+the date, and who found it — still named even if that companion has since left. The Home page shows
+the corner as it really is: the colony house with the decorations it has earned, a cottage for each
+companion, and the belongings along the same ground line. Looking at it never calls anyone home.
 
 ![Climbing, dangling, inspection, presentation poses, and all eight discovery trinkets](docs/assets/ambient-sheet.png)
 
@@ -126,6 +166,15 @@ its seed.
 - Limit where creatures go with presets, or up to 32 allowed and excluded rectangles across displays.
 - Let chosen applications visually cover creatures, without Formiga ever inspecting window contents.
 - Reduce motion, pause the colony, or hide it entirely.
+- Choose a light or dark window, or follow your system, and raise the text size up to 150%. This
+  changes the settings window only; creatures look the same either way.
+- Turn on a soft outline behind creatures if your wallpaper is bright or busy. It is drawn from the
+  creature's own shape, reads nothing from your screen, and does not change where you can click.
+- Save a Work and a Relax preset, then let a weekly routine move between them at times you pick, up
+  to fourteen changes a week. It shows which one is in force and what is next, steps aside if you
+  choose one by hand until the next change comes round, and only ever applies the routine meant for
+  right now — a machine that slept through a week of changes wakes into today's, not through all of
+  them. Showing the colony, pausing it, and a quiet moment stay yours.
 - Turn the daily release check off under **Settings → About**.
 
 Formiga never installs an update on its own. When one is available it verifies the download's

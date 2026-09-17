@@ -1,5 +1,48 @@
 # Formiga roadmap
 
+## v0.57.0 social desktop release
+
+Implemented: creatures notice a changing desktop and react to it as a group, not individually.
+Visible intentions and outcomes travel through one shared vocabulary — notice, prepare, act, the
+catch a marginal landing turns into, and recover — so a watcher reads a risky jump, a rescue, a
+game, and a glance at the desktop the same way, in its own time and according to its own
+temperament. Gap attempts gain visible hesitation, recent-failure memory, catches, helpers, and
+rare shared tumbles. Eighteen kinds of small game grow out of ordinary encounters, three of them
+about the desktop's own shape: a race across the windows, a round of the-floor-is-lava along the
+ledges, and hide and seek using only where a seeker last actually saw someone. Three further
+play scenes live inside the machinery that already owns their creatures rather than as sessions of
+their own — a dare offered to whoever watched a gap being cleared, a dash alongside a fast cursor,
+and two riders showing off on a steady window — which makes twenty-one in all. Every invitation can
+be declined.
+
+Also implemented: a journal grouped by local day, filtered by companion, with up to eight kept
+moments; a scrapbook of first finds; a home page that previews the real village; a charcoal-and-sage
+theme with modest text scaling; an optional sprite outline for busy wallpaper; and an opt-in weekly
+routine between the two saved presets. Save v14 preserves existing colonies and starts every new
+keepsake empty.
+
+Resource constraints: no new dependency, thread, worker, polling loop, atlas frame, or overlay draw
+call; bounded signals, plans, routes, and props; cached on-demand interface artwork within 416 KiB
+excluding existing fonts and window resources. Native release-machine verification remains tracked
+in TEST_MATRIX.md and PERFORMANCE.md.
+
+## Companion interface (v0.57.0, save v13)
+
+This shipped alongside the social desktop in v0.57.0. The release before it, v0.55.6, was still on
+save version 12, so the native interface and the keepsakes above went out together.
+
+Implemented: creature-card palette and native sidebar, portrait profiles and life history,
+optional interactive introduction, status feedback, habitat monitor map, exact shared adoption,
+bounded local journal, customizable home/keepsake order, candidate comparison with design locks and
+opt-in previews, temporary quiet mode, saved behavior routines, and full backup/recovery. Direct
+creature actions were intentionally outside that change. Save v13 preserved existing colonies, and
+v14 preserves them again.
+
+Resource constraints: no new dependency or simulation loop, a 64-moment journal, cached on-demand
+artwork — 350 KiB at this step, since raised to 416 KiB by the village preview and the scrapbook —
+excluding existing fonts/window resources, and no hidden preview redraws.
+
+
 ## v0.51 cuter body families release
 
 - Soft quadrupeds gain filled triangular ears, a smaller head with a muzzle and nose, a tail carried

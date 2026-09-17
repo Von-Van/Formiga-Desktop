@@ -6,6 +6,8 @@ use rand::Rng;
 
 #[derive(Clone, Copy, Debug)]
 pub struct BehaviorContext {
+    pub cursor_safe: bool,
+    pub ambience: crate::DesktopAmbience,
     pub nearest_creature_distance: Option<f32>,
     pub nearest_creature_position: Option<Point>,
     pub nearest_creature_id: Option<crate::CreatureId>,
@@ -71,7 +73,7 @@ pub fn choose_action<R: Rng + ?Sized>(
 ) -> ActionChoice {
     let p = &creature.personality;
     let d = &creature.state.drives;
-    let cursor_distance = if desktop.cursor.available {
+    let cursor_distance = if desktop.cursor.available && context.cursor_safe {
         creature.state.position.distance(desktop.cursor.position)
     } else {
         f32::INFINITY
@@ -82,12 +84,29 @@ pub fn choose_action<R: Rng + ?Sized>(
 
     let mut scored = Vec::with_capacity(ActionKind::AUTONOMOUS.len());
     for action in ActionKind::AUTONOMOUS {
+        if matches!(
+            action,
+            ActionKind::InvestigateCursor | ActionKind::AvoidCursor
+        ) && (!desktop.cursor.available
+            || !context.cursor_safe
+            || creature.state.cursor_cooldown > 0.0)
+        {
+            continue;
+        }
         let score = match action {
             ActionKind::Idle => 0.40 + d.comfort * 0.46 - d.boredom * 0.28,
-            ActionKind::Traverse => 0.25 + d.boredom * 0.8 + p.activity * 0.5,
+            ActionKind::Traverse => {
+                0.25 + d.boredom * 0.8
+                    + p.activity * 0.5
+                    // Open-space roaming must not crowd out discovery of a reachable ledge.
+                    + f32::from(!context.reachable_window_ledge && !context.on_window_ledge)
+                        * context.ambience.roaming.clamp(0.0, 1.0) * (0.15 + p.activity * 0.2)
+            }
             ActionKind::Perch => {
                 if context.reachable_window_ledge {
-                    0.82 + p.curiosity * 0.8 + d.boredom * 0.5
+                    0.82 + p.curiosity * 0.8
+                        + d.boredom * 0.5
+                        + context.ambience.climbing.clamp(0.0, 1.0) * (0.15 + p.curiosity * 0.2)
                 } else if context.on_window_ledge {
                     0.45 + d.comfort * 0.7
                 } else {
@@ -406,6 +425,8 @@ mod tests {
             .creatures
             .remove(0);
         let context = BehaviorContext {
+            cursor_safe: true,
+            ambience: crate::DesktopAmbience::default(),
             nearest_creature_distance: None,
             nearest_creature_position: None,
             nearest_creature_id: None,
@@ -629,5 +650,45 @@ mod tests {
         }
         assert_eq!(utility.play, 0.25);
         assert_eq!(utility.for_action(ActionKind::SocialPlay), 0.25);
+    }
+    #[test]
+    fn desktop_ambience_favors_available_exploration_without_forcing_unreachable_perches() {
+        let (mut creature, desktop, mut context) = fixture();
+        creature.personality.decision_temperature = 0.5;
+        let neutral_roam =
+            selection_count_large(&creature, &desktop, context, ActionKind::Traverse);
+        context.ambience.roaming = 1.0;
+        let open_roam = selection_count_large(&creature, &desktop, context, ActionKind::Traverse);
+        assert!(open_roam > neutral_roam + 50);
+        context.ambience = crate::DesktopAmbience::default();
+        context.reachable_window_ledge = true;
+        let neutral_climb = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        context.ambience.climbing = 1.0;
+        let busy_climb = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        assert!(busy_climb > neutral_climb + 50);
+        context.reachable_window_ledge = false;
+        let unavailable = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
+        context.ambience.climbing = 0.0;
+        assert_eq!(
+            unavailable,
+            selection_count_large(&creature, &desktop, context, ActionKind::Perch)
+        );
+    }
+    #[test]
+    fn unsafe_cursor_input_and_cooldowns_exclude_cursor_actions_entirely() {
+        let (mut creature, mut desktop, mut context) = fixture();
+        desktop.cursor.available = true;
+        desktop.cursor.position = creature.state.position;
+        desktop.cursor.velocity = Point { x: 1_000.0, y: 0.0 };
+        for cooling_down in [false, true] {
+            context.cursor_safe = cooling_down;
+            creature.state.cursor_cooldown = if cooling_down { 5.0 } else { 0.0 };
+            for action in [ActionKind::InvestigateCursor, ActionKind::AvoidCursor] {
+                assert_eq!(
+                    selection_count_large(&creature, &desktop, context, action),
+                    0
+                );
+            }
+        }
     }
 }

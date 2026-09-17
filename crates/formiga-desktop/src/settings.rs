@@ -1,12 +1,12 @@
+use crate::clubhouse::{self, Clubhouse, forest, gold, ink, mint, paper, rail, rail_ink};
 use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
-use formiga_art::CreatureRenderer;
 use formiga_core::{
-    ActionKind, ApplicationOcclusionRule, Creature, CreatureId, CreatureRelationship, CreatureRole,
-    DesktopRect, DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone, HabitatZoneKind,
-    MAX_ADULT_CREATURES, MAX_COLONY_CREATURES, MonitorInfo, Settings, SharedCreatureSeed,
-    closest_companion, decode_creature_seed, encode_creature_seed, profile_descriptors,
-    relationship_between, validate_creature_name, validate_habitat,
+    ActionKind, AppearancePreferences, ApplicationOcclusionRule, Creature, CreatureId,
+    CreatureRelationship, DesktopRect, DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone,
+    HabitatZoneKind, MonitorInfo, Settings, SharedCreatureSeed, ThemeChoice, closest_companion,
+    encode_creature_seed, profile_descriptors, relationship_between, validate_creature_name,
+    validate_habitat,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -17,9 +17,12 @@ use winit::window::{Window, WindowId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum SettingsTab {
-    #[default]
     General,
+    #[default]
     Colony,
+    Studio,
+    Home,
+    Journal,
     Habitat,
     Applications,
     About,
@@ -27,6 +30,17 @@ enum SettingsTab {
 
 #[derive(Default)]
 pub struct SettingsOutcome {
+    pub preview_shared: Option<SharedCreatureSeed>,
+    pub quiet_minutes: Option<u16>,
+    pub complete_onboarding: bool,
+    pub home_corner: Option<formiga_core::HomeCorner>,
+    pub home_display: Option<formiga_core::DisplayKey>,
+    pub hidden_decorations: Option<u8>,
+    pub move_object: Option<(usize, usize)>,
+    pub save_mode: Option<(usize, formiga_core::BehaviorPreset)>,
+    pub export_colony: bool,
+    pub restore_colony: bool,
+    pub start_fresh_recovery: bool,
     pub applied: Option<Settings>,
     pub gather: bool,
     pub edit_habitat: Option<HabitatPolicy>,
@@ -41,7 +55,6 @@ pub struct SettingsOutcome {
     pub install_update: bool,
     pub rename_creature: Option<(CreatureId, String)>,
     pub viewed_profile: Option<CreatureId>,
-    pub import_shared_creature: Option<SharedCreatureSeed>,
     pub export_creature_card: Option<CreatureId>,
     pub set_creature_kept: Option<(CreatureId, bool)>,
     pub remove_creature: Option<CreatureId>,
@@ -49,10 +62,19 @@ pub struct SettingsOutcome {
     pub request_reference_creature: bool,
     pub accept_creature_preview: Option<PreviewAcceptance>,
     pub regenerate_unkept: bool,
+    pub appearance: Option<AppearancePreferences>,
+    pub schedule: Option<formiga_core::RoutineSchedule>,
+    pub resume_routine: bool,
+    pub pin_moment: Option<formiga_core::JournalEntry>,
+    pub unpin_moment: Option<formiga_core::JournalEntry>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PreviewAcceptance {
+    Shared {
+        shared: SharedCreatureSeed,
+        replace: Option<CreatureId>,
+    },
     Add {
         design: Option<formiga_core::CreatureDesign>,
         source_seed: [u8; 32],
@@ -66,6 +88,7 @@ pub enum PreviewAcceptance {
 
 #[derive(Clone)]
 pub struct GenerationPreview {
+    pub shared: Option<SharedCreatureSeed>,
     pub creature: Creature,
     pub source_seed: [u8; 32],
     pub similarity: Option<u8>,
@@ -74,6 +97,7 @@ pub struct GenerationPreview {
 
 #[derive(Clone, Copy)]
 pub struct ColonyView<'a> {
+    pub save: &'a formiga_core::SaveFile,
     pub creatures: &'a [Creature],
     pub relationships: &'a [CreatureRelationship],
 }
@@ -87,6 +111,8 @@ pub struct SettingsWindow {
     context: egui::Context,
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
+    applied_appearance: Option<AppearancePreferences>,
+    applied_system_theme: Option<egui::Theme>,
     draft: Settings,
     saved: Settings,
     save_location: String,
@@ -97,10 +123,10 @@ pub struct SettingsWindow {
     relationships: Vec<CreatureRelationship>,
     creature_names: BTreeMap<CreatureId, String>,
     selected_creature: Option<CreatureId>,
-    seed_import_code: String,
-    seed_import_confirmed: bool,
-    generation_preview: Option<GenerationPreview>,
-    generation_texture: Option<egui::TextureHandle>,
+    pub clubhouse: Clubhouse,
+    pub repaint_due: Option<std::time::Instant>,
+    ui_visible: bool,
+    occluded: bool,
     remove_confirmation: Option<CreatureId>,
     bulk_confirmation: bool,
 }
@@ -117,9 +143,9 @@ impl SettingsWindow {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("Formiga Settings")
-                        .with_inner_size(LogicalSize::new(680.0, 600.0))
-                        .with_min_inner_size(LogicalSize::new(560.0, 480.0))
+                        .with_title("Formiga · Your colony")
+                        .with_inner_size(LogicalSize::new(940.0, 720.0))
+                        .with_min_inner_size(LogicalSize::new(760.0, 560.0))
                         .with_visible(false),
                 )
                 .context("create settings window")?,
@@ -170,7 +196,7 @@ impl SettingsWindow {
         };
         surface.configure(&device, &config);
         let context = egui::Context::default();
-        configure_style(&context);
+        configure_style(&context, AppearancePreferences::default());
         let state = egui_winit::State::new(
             context.clone(),
             egui::ViewportId::ROOT,
@@ -190,6 +216,8 @@ impl SettingsWindow {
             context,
             state,
             renderer,
+            applied_appearance: None,
+            applied_system_theme: None,
             draft: settings.clone(),
             saved: settings.clone(),
             save_location: save_location.display().to_string(),
@@ -203,10 +231,10 @@ impl SettingsWindow {
                 .map(|creature| (creature.id, creature.name.clone()))
                 .collect(),
             selected_creature: creatures.first().map(|creature| creature.id),
-            seed_import_code: String::new(),
-            seed_import_confirmed: false,
-            generation_preview: None,
-            generation_texture: None,
+            clubhouse: Clubhouse::default(),
+            repaint_due: None,
+            ui_visible: false,
+            occluded: false,
             remove_confirmation: None,
             bulk_confirmation: false,
         })
@@ -231,7 +259,8 @@ impl SettingsWindow {
             .iter()
             .map(|creature| (creature.id, creature.name.clone()))
             .collect();
-        self.seed_import_confirmed = false;
+        self.ui_visible = true;
+        self.occluded = false;
         if self
             .selected_creature
             .is_none_or(|selected| !creatures.iter().any(|creature| creature.id == selected))
@@ -243,29 +272,46 @@ impl SettingsWindow {
         self.window.request_redraw();
     }
 
-    pub fn hide(&self) {
+    pub fn hide(&mut self) {
         self.window.set_visible(false);
+        self.ui_visible = false;
+        self.repaint_due = None;
+        for id in self.clubhouse.texture_ids() {
+            self.renderer.free_texture(&id);
+        }
+        self.clubhouse.release_images();
+        // A close can arrive before the first preview repaint. Drop pending artwork uploads,
+        // while preserving any font update needed when the same window opens again.
+        let mut pending = self.context.tex_manager().write().take_delta();
+        for (id, deltas) in &pending.set {
+            if !pending.free.contains(id) {
+                for delta in deltas {
+                    self.renderer
+                        .update_texture(&self.device, &self.queue, *id, delta);
+                }
+            }
+        }
+        for id in &pending.free {
+            self.renderer.free_texture(id);
+        }
+        pending.clear();
     }
 
     pub fn set_generation_preview(&mut self, preview: GenerationPreview) {
-        let canvas = CreatureRenderer::render_frame(
-            &preview.creature.appearance,
-            ActionKind::Greet,
-            2,
-            true,
-        );
-        let image = egui::ColorImage::from_rgba_unmultiplied(
-            [canvas.width() as usize, canvas.height() as usize],
-            &canvas.rgba_bytes(),
-        );
-        self.generation_texture = Some(self.context.load_texture(
-            "creature-generation-preview",
-            image,
-            egui::TextureOptions::NEAREST,
-        ));
-        self.generation_preview = Some(preview);
-        self.tab = SettingsTab::Colony;
+        self.clubhouse.push_preview(&self.context, preview);
+        self.tab = SettingsTab::Studio;
         self.error = None;
+        self.window.request_redraw();
+    }
+
+    pub fn acknowledge_preferences(&mut self, settings: &Settings) {
+        self.saved = settings.clone();
+        self.draft = settings.clone();
+        self.window.request_redraw();
+    }
+
+    pub fn notify(&mut self, message: impl Into<String>) {
+        self.clubhouse.notify(message);
         self.window.request_redraw();
     }
 
@@ -275,8 +321,7 @@ impl SettingsWindow {
     }
 
     pub fn clear_generation_preview(&mut self) {
-        self.generation_preview = None;
-        self.generation_texture = None;
+        self.clubhouse.clear_previews();
         self.window.request_redraw();
     }
 
@@ -319,6 +364,14 @@ impl SettingsWindow {
     }
 
     pub fn on_event(&mut self, event: &WindowEvent) -> bool {
+        if let WindowEvent::Occluded(occluded) = event {
+            self.occluded = *occluded;
+            if *occluded {
+                self.repaint_due = None;
+            } else if self.ui_visible {
+                self.window.request_redraw();
+            }
+        }
         self.state.on_window_event(&self.window, event).repaint
     }
 
@@ -341,8 +394,24 @@ impl SettingsWindow {
         automatic_update_checks: bool,
         colony: ColonyView<'_>,
     ) -> Result<SettingsOutcome> {
+        if !self.ui_visible || self.occluded {
+            return Ok(SettingsOutcome::default());
+        }
+        // The window follows the saved preference, and re-reads the system's appearance with it,
+        // so "match system" keeps up without anything polling for it.
+        let appearance = colony.save.companion.appearance;
+        if self.applied_appearance != Some(appearance)
+            || (appearance.theme == ThemeChoice::System
+                && self.applied_system_theme != self.context.system_theme())
+        {
+            configure_style(&self.context, appearance);
+            self.applied_appearance = Some(appearance);
+            self.applied_system_theme = self.context.system_theme();
+        }
         self.creatures = colony.creatures.to_vec();
         self.relationships = colony.relationships.to_vec();
+        self.creature_names
+            .retain(|id, _| colony.creatures.iter().any(|c| c.id == *id));
         for creature in colony.creatures {
             self.creature_names
                 .entry(creature.id)
@@ -361,13 +430,10 @@ impl SettingsWindow {
         let relationships = self.relationships.clone();
         let mut creature_names = self.creature_names.clone();
         let mut selected_creature = self.selected_creature;
-        let mut seed_import_code = self.seed_import_code.clone();
-        let mut seed_import_confirmed = self.seed_import_confirmed;
-        let mut generation_preview = self.generation_preview.clone();
-        let mut generation_texture = self.generation_texture.clone();
+        self.clubhouse.retain_portraits(&creatures);
         let mut remove_confirmation = self.remove_confirmation;
         let mut bulk_confirmation = self.bulk_confirmation;
-        let full_output = context.run_ui(input, |ui| {
+        let mut full_output = context.run_ui(input, |ui| {
             draw_settings(
                 ui,
                 &mut draft,
@@ -384,10 +450,8 @@ impl SettingsWindow {
                 &relationships,
                 &mut creature_names,
                 &mut selected_creature,
-                &mut seed_import_code,
-                &mut seed_import_confirmed,
-                &mut generation_preview,
-                &mut generation_texture,
+                &mut self.clubhouse,
+                colony.save,
                 &mut remove_confirmation,
                 &mut bulk_confirmation,
                 &mut outcome,
@@ -398,15 +462,20 @@ impl SettingsWindow {
         self.error = error;
         self.creature_names = creature_names;
         self.selected_creature = selected_creature;
-        self.seed_import_code = seed_import_code;
-        self.seed_import_confirmed = seed_import_confirmed;
-        self.generation_preview = generation_preview;
-        self.generation_texture = generation_texture;
+        self.repaint_due = if self.ui_visible {
+            full_output
+                .viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .and_then(|v| {
+                    std::time::Instant::now()
+                        .checked_add(v.repaint_delay.max(std::time::Duration::from_millis(50)))
+                })
+        } else {
+            None
+        };
         self.remove_confirmation = remove_confirmation;
         self.bulk_confirmation = bulk_confirmation;
-        if let Some(applied) = &outcome.applied {
-            self.saved = applied.clone();
-        }
+
         self.state.handle_platform_output_with_event_loop(
             &self.window,
             event_loop,
@@ -419,6 +488,8 @@ impl SettingsWindow {
                     .update_texture(&self.device, &self.queue, *id, delta);
             }
         }
+        let texture_frees: Vec<_> = full_output.textures_delta.free.drain().collect();
+        full_output.textures_delta.clear();
         let paint_jobs = self
             .context
             .tessellate(full_output.shapes, full_output.pixels_per_point);
@@ -431,12 +502,25 @@ impl SettingsWindow {
             | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                 self.surface.configure(&self.device, &self.config);
+                for id in &texture_frees {
+                    self.renderer.free_texture(id);
+                }
+                self.repaint_due =
+                    std::time::Instant::now().checked_add(std::time::Duration::from_millis(250));
                 return Ok(outcome);
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                for id in &texture_frees {
+                    self.renderer.free_texture(id);
+                }
+                self.repaint_due =
+                    std::time::Instant::now().checked_add(std::time::Duration::from_millis(250));
                 return Ok(outcome);
             }
             wgpu::CurrentSurfaceTexture::Validation => {
+                for id in &texture_frees {
+                    self.renderer.free_texture(id);
+                }
                 anyhow::bail!("settings surface validation failed")
             }
         };
@@ -483,21 +567,94 @@ impl SettingsWindow {
         self.queue
             .submit(callback_buffers.into_iter().chain(Some(encoder.finish())));
         self.queue.present(output);
-        for id in &full_output.textures_delta.free {
+        for id in &texture_frees {
             self.renderer.free_texture(id);
         }
         Ok(outcome)
     }
 }
 
-fn configure_style(context: &egui::Context) {
-    let mut visuals = egui::Visuals::dark();
-    visuals.panel_fill = egui::Color32::from_rgb(16, 23, 21);
-    visuals.window_fill = egui::Color32::from_rgb(20, 29, 26);
-    visuals.selection.bg_fill = egui::Color32::from_rgb(75, 151, 116);
-    visuals.widgets.active.bg_fill = egui::Color32::from_rgb(75, 151, 116);
-    visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(49, 91, 72);
+/// Apply the reader's chosen appearance. Called whenever the preference or the system's own
+/// appearance changes, which is the only thing that moves the interface between themes.
+fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
+    let dark = match appearance.theme {
+        ThemeChoice::Dark => true,
+        ThemeChoice::Light => false,
+        ThemeChoice::System => context.system_theme() == Some(egui::Theme::Dark),
+    };
+    clubhouse::set_dark_interface(dark);
+    let theme = if dark {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    };
+    context.set_theme(theme);
+    let mut visuals = if dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
+    visuals.panel_fill = paper();
+    visuals.window_fill = paper();
+    visuals.override_text_color = Some(ink());
+    visuals.extreme_bg_color = if dark {
+        egui::Color32::from_rgb(23, 28, 26)
+    } else {
+        egui::Color32::from_rgb(255, 250, 234)
+    };
+    visuals.faint_bg_color = if dark {
+        egui::Color32::from_rgb(34, 42, 38)
+    } else {
+        egui::Color32::from_rgb(239, 225, 188)
+    };
+    visuals.selection.bg_fill = mint();
+    visuals.selection.stroke = egui::Stroke::new(1.0, forest());
+    let inactive = if dark {
+        egui::Color32::from_rgb(45, 54, 49)
+    } else {
+        egui::Color32::from_rgb(242, 230, 196)
+    };
+    visuals.widgets.inactive.bg_fill = inactive;
+    visuals.widgets.inactive.weak_bg_fill = inactive;
+    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, gold());
+    visuals.widgets.hovered.bg_fill = mint();
+    visuals.widgets.hovered.weak_bg_fill = mint();
+    visuals.widgets.active.bg_fill = mint();
+    visuals.widgets.active.weak_bg_fill = mint();
+    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, gold());
+    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, ink());
+    // Keyboard focus has to be obvious in either theme, so it is drawn in the accent rather
+    // than in the platform's own faint default.
+    visuals.widgets.active.bg_stroke = egui::Stroke::new(2.0, forest());
+    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, forest());
+    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, ink());
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, ink());
+    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, ink());
+    // A disabled control stays legible: dimmed, never invisible.
+    visuals.widgets.noninteractive.weak_bg_fill = inactive;
     context.set_visuals(visuals);
+    // Modest text scaling, applied to every style the window uses so nothing is left behind.
+    let scale = f32::from(appearance.text_scale.clamp(100, 150)) / 100.0;
+    context.style_mut_of(theme, |style| {
+        style.spacing.item_spacing = egui::vec2(10.0, 10.0);
+        style.spacing.button_padding = egui::vec2(12.0, 8.0);
+        style.spacing.interact_size.y = 32.0 * scale;
+        style.spacing.interact_size.x *= scale;
+        style.spacing.icon_width *= scale;
+        style.spacing.icon_width_inner *= scale;
+        style.animation_time = 0.0;
+        for (text_style, size) in [
+            (egui::TextStyle::Body, 14.0),
+            (egui::TextStyle::Button, 14.0),
+            (egui::TextStyle::Heading, 25.0),
+            (egui::TextStyle::Small, 10.5),
+            (egui::TextStyle::Monospace, 13.0),
+        ] {
+            style
+                .text_styles
+                .insert(text_style, egui::FontId::proportional(size * scale));
+        }
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -517,94 +674,172 @@ fn draw_settings(
     relationships: &[CreatureRelationship],
     creature_names: &mut BTreeMap<CreatureId, String>,
     selected_creature: &mut Option<CreatureId>,
-    seed_import_code: &mut String,
-    seed_import_confirmed: &mut bool,
-    generation_preview: &mut Option<GenerationPreview>,
-    generation_texture: &mut Option<egui::TextureHandle>,
+    clubhouse: &mut Clubhouse,
+    save: &formiga_core::SaveFile,
     remove_confirmation: &mut Option<CreatureId>,
     bulk_confirmation: &mut bool,
     outcome: &mut SettingsOutcome,
 ) {
-    egui::CentralPanel::default().show(root, |ui| {
-        ui.heading("Formiga");
-        ui.label(egui::RichText::new("A quiet little ecosystem for your desktop").italics());
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            for (candidate, label) in [
-                (SettingsTab::General, "General"),
-                (
-                    SettingsTab::Colony,
-                    if creatures.iter().any(|creature| {
-                        creature.memory.profile_revision > creature.memory.viewed_profile_revision
-                    }) {
-                        "Colony •"
-                    } else {
-                        "Colony"
-                    },
-                ),
-                (SettingsTab::Habitat, "Habitat"),
-                (SettingsTab::Applications, "Applications"),
-                (SettingsTab::About, "About"),
-            ] {
-                ui.selectable_value(tab, candidate, label);
-            }
-        });
-        ui.separator();
-        egui::ScrollArea::vertical().show(ui, |ui| match tab {
-            SettingsTab::General => general_tab(
-                ui,
-                settings,
-                seed_import_code,
-                seed_import_confirmed,
-                error,
-                outcome,
-            ),
-            SettingsTab::Colony => colony_tab(
-                ui,
-                ColonyView {
-                    creatures,
-                    relationships,
-                },
-                creature_names,
-                selected_creature,
-                monitors,
-                error,
-                generation_preview,
-                generation_texture,
-                remove_confirmation,
-                bulk_confirmation,
-                outcome,
-            ),
-            SettingsTab::Habitat => habitat_tab(ui, settings, monitors, editor_active, outcome),
-            SettingsTab::Applications => applications_tab(ui, settings, windows, outcome),
-            SettingsTab::About => about_tab(
-                ui,
-                outcome,
-                save_location,
-                update_status,
-                automatic_update_checks,
-            ),
-        });
-        ui.separator();
-        if let Some(message) = error.as_deref() {
-            ui.colored_label(egui::Color32::from_rgb(241, 142, 119), message);
-        }
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(!editor_active, egui::Button::new("Apply changes"))
-                .clicked()
-            {
-                match validate_habitat(&settings.habitat, monitors) {
-                    Ok(()) => {
-                        outcome.applied = Some(settings.clone());
-                        *error = None;
+    // The rail grows with the text and scrolls if it still does not fit, so every page stays
+    // reachable at the smallest window the app allows and the largest text it offers.
+    let text_scale = root.text_style_height(&egui::TextStyle::Body) / 14.0;
+    egui::Panel::left("colony-navigation")
+        .exact_size(176.0 * text_scale.clamp(1.0, 1.5))
+        .resizable(false)
+        .frame(egui::Frame::new().fill(rail()).inner_margin(18))
+        .show(root, |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("FORMIGA").size(25.0).color(rail_ink()));
+                    ui.label(
+                        egui::RichText::new("A little life here.")
+                            .size(12.0)
+                            .color(rail_ink()),
+                    );
+                    ui.add_space(28.0);
+                    for (candidate, label) in [
+                        (SettingsTab::Colony, "Your colony"),
+                        (SettingsTab::Studio, "Creature studio"),
+                        (SettingsTab::Home, "Home & keepsakes"),
+                        (SettingsTab::Journal, "Journal"),
+                        (SettingsTab::Habitat, "Habitat"),
+                        (SettingsTab::Applications, "Applications"),
+                        (SettingsTab::General, "Preferences"),
+                        (SettingsTab::About, "About & backups"),
+                    ] {
+                        let active = *tab == candidate;
+                        let label = if candidate == SettingsTab::Colony
+                            && creatures.iter().any(|c| {
+                                c.memory.profile_revision > c.memory.viewed_profile_revision
+                            }) {
+                            format!("{label} •")
+                        } else {
+                            label.to_owned()
+                        };
+                        let button =
+                            egui::Button::new(egui::RichText::new(label).color(if active {
+                                ink()
+                            } else {
+                                rail_ink()
+                            }))
+                            .fill(if active { mint() } else { rail() })
+                            .stroke(egui::Stroke::NONE);
+                        if ui
+                            .add_sized([140.0 * text_scale, 38.0 * text_scale], button)
+                            .clicked()
+                        {
+                            *tab = candidate;
+                            *error = None;
+                        }
                     }
-                    Err(message) => *error = Some(message.to_owned()),
+                    ui.add_space(24.0);
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} companions\nEntirely on your computer",
+                            creatures.len()
+                        ))
+                        .small()
+                        .color(rail_ink()),
+                    );
+                });
+        });
+    egui::Panel::bottom("settings-footer")
+        .frame(egui::Frame::new().fill(paper()).inner_margin(14))
+        .show(root, |ui| {
+            if let Some(message) = error.as_deref() {
+                ui.colored_label(egui::Color32::from_rgb(145, 58, 44), message);
+            }
+            if let Some((message, started)) = &clubhouse.feedback {
+                if started.elapsed() < std::time::Duration::from_secs(4) {
+                    ui.colored_label(forest(), message);
+                    ui.ctx().request_repaint_after(
+                        std::time::Duration::from_secs(4).saturating_sub(started.elapsed()),
+                    );
+                } else {
+                    clubhouse.feedback = None;
                 }
             }
-            if ui.button("Revert").clicked() {
-                *settings = saved.clone();
-                *error = None;
+            let adoption_footer =
+                *tab == SettingsTab::Studio && clubhouse.adoption_footer(ui, save, outcome);
+            if !adoption_footer || settings != saved {
+                ui.horizontal(|ui| {
+                    let dirty = settings != saved;
+                    ui.label(if dirty {
+                        "Unapplied preferences"
+                    } else {
+                        "Preferences are saved"
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add_enabled(
+                                dirty && !editor_active,
+                                egui::Button::new("Apply changes").fill(mint()),
+                            )
+                            .clicked()
+                        {
+                            match validate_habitat(&settings.habitat, monitors) {
+                                Ok(()) => {
+                                    outcome.applied = Some(settings.clone());
+                                    *error = None;
+                                }
+                                Err(message) => *error = Some(message.to_owned()),
+                            }
+                        }
+                        if ui.add_enabled(dirty, egui::Button::new("Revert")).clicked() {
+                            *settings = saved.clone();
+                            *error = None;
+                            clubhouse.notify("Preferences reverted");
+                        }
+                    });
+                });
+            }
+        });
+    egui::CentralPanel::default().frame(egui::Frame::new().fill(paper()).inner_margin(24)).show(root, |ui| {
+        egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
+            if let Some(reason) = clubhouse.recovery.clone() {
+                clubhouse::card(ui, |ui| {
+                    ui.heading("Your saved colony needs attention");
+                    ui.label(reason);
+                    ui.label("Your original files are untouched. This temporary colony will not overwrite them. Restore a backup below, or preserve the files and start fresh.");
+                    if ui.button("Restore a colony backup…").clicked() { outcome.restore_colony = true; }
+                    ui.checkbox(&mut clubhouse.fresh_confirmed, "Keep recovery copies and start a new colony");
+                    if ui.add_enabled(clubhouse.fresh_confirmed, egui::Button::new("Start fresh with recovery copies")).clicked() { outcome.start_fresh_recovery = true; }
+                });
+                ui.add_space(16.0);
+            }
+            match tab {
+                SettingsTab::Colony => {
+                    clubhouse::title(ui, "Your colony", "Familiar faces. Small adventures. A home that grows.");
+                    clubhouse.intro(ui, save, outcome);
+                    colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, clubhouse, outcome);
+                }
+                SettingsTab::Studio => clubhouse.studio(ui, save, selected_creature, outcome),
+                SettingsTab::Home => clubhouse.home(ui, save, monitors, outcome),
+                SettingsTab::Journal => clubhouse::journal(ui, save, clubhouse, outcome),
+                SettingsTab::General => general_tab(ui, settings, save, clubhouse, outcome),
+                SettingsTab::Habitat => {
+                    clubhouse::title(ui, "Room to roam", "Choose where your companions feel at home.");
+                    clubhouse::habitat_map(ui, &settings.habitat, monitors);
+                    habitat_tab(ui, settings, monitors, editor_active, outcome);
+                }
+                SettingsTab::Applications => {
+                    clubhouse::title(ui, "Space for your work", "Choose which windows can cover your companions.");
+                    applications_tab(ui, settings, windows, outcome);
+                }
+                SettingsTab::About => {
+                    clubhouse::title(ui, "Made for a quiet desktop", "Your colony belongs to you.");
+                    clubhouse::card(ui, |ui| {
+                        ui.strong("Colony backups");
+                        ui.label("A full backup includes names, memories, relationships, the journal, and preferences. Keep it private or move it to another computer.");
+                        if ui.button("Export full colony…").clicked() { outcome.export_colony = true; }
+                        ui.checkbox(&mut clubhouse.restore_confirmed, "Restore a backup in place of this colony; keep recovery copies first");
+                        if ui.add_enabled(clubhouse.restore_confirmed, egui::Button::new("Choose backup to restore…")).clicked() { outcome.restore_colony = true; }
+                    });
+                    ui.add_space(18.0);
+                    about_tab(ui, outcome, save_location, update_status, automatic_update_checks);
+                }
             }
         });
     });
@@ -613,81 +848,73 @@ fn draw_settings(
 fn general_tab(
     ui: &mut egui::Ui,
     settings: &mut Settings,
-    seed_import_code: &mut String,
-    seed_import_confirmed: &mut bool,
-    error: &mut Option<String>,
+    save: &formiga_core::SaveFile,
+    clubhouse: &mut Clubhouse,
     outcome: &mut SettingsOutcome,
 ) {
-    ui.checkbox(&mut settings.visible, "Show ecosystem");
+    clubhouse::title(
+        ui,
+        "At your own pace",
+        "A few gentle adjustments for your desktop.",
+    );
+    clubhouse::quiet_controls(ui, save, outcome);
+    ui.add_space(16.0);
+    clubhouse::card(ui, |ui| {
+        ui.strong("Saved routines");
+        ui.small("Keep a Work and Relax setup for habitat, movement, and cursor reactions. Loading a routine previews its preferences before Apply.");
+        for (index, name) in ["Work", "Relax"].into_iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.strong(name);
+                if ui.button("Save current preferences").clicked() {
+                    outcome.save_mode =
+                        Some((index, formiga_core::BehaviorPreset::capture(settings)));
+                }
+                if ui
+                    .add_enabled(
+                        save.companion.modes[index].is_some(),
+                        egui::Button::new("Load"),
+                    )
+                    .clicked()
+                    && let Some(mode) = &save.companion.modes[index]
+                {
+                    mode.apply(settings);
+                    clubhouse.notify(format!("{name} routine loaded · Apply to use it"));
+                }
+            });
+        }
+    });
+    ui.add_space(16.0);
+    clubhouse::schedule_controls(ui, save, outcome);
+    ui.add_space(16.0);
+    clubhouse::appearance_controls(ui, save, outcome);
+    ui.add_space(18.0);
+    ui.strong("On your desktop");
+    ui.checkbox(&mut settings.visible, "Show colony");
     ui.checkbox(&mut settings.paused, "Pause ambient behavior");
     ui.checkbox(
         &mut settings.direct_manipulation,
-        "Allow creatures to be petted and dragged",
+        "Allow petting and dragging",
     );
     ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement");
-    ui.checkbox(&mut settings.window_ledges, "Use application-window ledges");
+    ui.checkbox(
+        &mut settings.window_ledges,
+        "Explore application-window ledges",
+    );
     ui.checkbox(&mut settings.reduce_motion, "Reduce motion");
     ui.checkbox(&mut settings.launch_at_login, "Launch at login");
-    ui.add_space(8.0);
-    ui.label("Creature display scale");
+    ui.add_space(10.0);
+    ui.strong("Creature size");
     ui.horizontal(|ui| {
-        for scale in 2..=4 {
-            ui.selectable_value(&mut settings.display_scale, scale, format!("{scale}×"));
+        for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
+            ui.selectable_value(&mut settings.display_scale, scale, name);
         }
     });
-    ui.add_space(14.0);
-    ui.separator();
-    ui.strong("Start a colony from a shared creature");
-    ui.label(
-        "Paste a FORMIGA seed code to recreate that creature exactly. This works entirely offline.",
-    );
-    ui.add(
-        egui::TextEdit::singleline(seed_import_code)
-            .hint_text("FORMIGA-…")
-            .desired_width(f32::INFINITY),
-    );
-    let decoded = decode_creature_seed(seed_import_code);
-    if !seed_import_code.trim().is_empty() {
-        match &decoded {
-            Ok(shared) => {
-                ui.label(format!(
-                    "Valid shared creature • source generation {}",
-                    shared.source_generation
-                ));
-            }
-            Err(message) => {
-                ui.colored_label(egui::Color32::from_rgb(241, 142, 119), message.to_string());
-            }
-        }
+    ui.add_space(18.0);
+    if ui.button("Show introduction again").clicked() {
+        clubhouse.show_intro = true;
+        clubhouse.onboarding_step = 0;
+        clubhouse.notify("Introduction ready in Your colony");
     }
-    ui.checkbox(
-        seed_import_confirmed,
-        "I understand this replaces the current colony and its learned history",
-    );
-    if ui
-        .add_enabled(
-            seed_import_ready(&decoded, *seed_import_confirmed),
-            egui::Button::new("Start new colony from seed"),
-        )
-        .clicked()
-    {
-        match decoded {
-            Ok(shared) => {
-                outcome.import_shared_creature = Some(shared);
-                *seed_import_code = String::new();
-                *seed_import_confirmed = false;
-                *error = None;
-            }
-            Err(message) => *error = Some(message.to_string()),
-        }
-    }
-}
-
-fn seed_import_ready(
-    decoded: &Result<SharedCreatureSeed, formiga_core::SeedCodeError>,
-    confirmed: bool,
-) -> bool {
-    decoded.is_ok() && confirmed
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -698,73 +925,120 @@ fn colony_tab(
     selected_creature: &mut Option<CreatureId>,
     monitors: &[MonitorInfo],
     error: &mut Option<String>,
-    generation_preview: &mut Option<GenerationPreview>,
-    generation_texture: &mut Option<egui::TextureHandle>,
     remove_confirmation: &mut Option<CreatureId>,
     bulk_confirmation: &mut bool,
+    clubhouse: &mut Clubhouse,
     outcome: &mut SettingsOutcome,
 ) {
     let creatures = colony.creatures;
     let relationships = colony.relationships;
-    if creatures.is_empty() {
-        ui.label("Your first creature is still finding its way here.");
-        return;
-    }
     ui.horizontal_wrapped(|ui| {
         for creature in creatures {
-            let unread = creature.memory.profile_revision > creature.memory.viewed_profile_revision;
-            let label = if unread {
-                format!("{} •", creature.name)
-            } else {
-                creature.name.clone()
-            };
-            ui.selectable_value(selected_creature, Some(creature.id), label);
+            ui.selectable_value(selected_creature, Some(creature.id), &creature.name);
         }
     });
-    ui.add_space(8.0);
     let Some(creature) = selected_creature
-        .and_then(|selected| creatures.iter().find(|creature| creature.id == selected))
+        .and_then(|id| creatures.iter().find(|c| c.id == id))
         .or_else(|| creatures.first())
     else {
         return;
     };
     *selected_creature = Some(creature.id);
     outcome.viewed_profile = Some(creature.id);
-
-    ui.heading(&creature.name);
-    ui.label(creature.appearance.design.map_or_else(
-        || format!("{:?}", creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"),
-        |d| d.body.label().to_owned(),
-    ));
-    match creature.role {
-        CreatureRole::Adult => {
-            ui.label("Full-size creature");
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        clubhouse.portrait(ui, creature, 144.0);
+        ui.vertical(|ui| {
+            ui.heading(&creature.name);
+            ui.label(creature.appearance.design.map_or_else(
+                || clubhouse::words(&format!("{:?}", creature.appearance.family)),
+                |d| d.body.label().to_owned(),
+            ));
+            ui.label(format!(
+                "Currently {}",
+                activity_label(creature.state.action)
+            ));
+            if let Some(parent_id) = creature.role.parent_id() {
+                ui.small(format!(
+                    "Mini cared for by {}",
+                    creatures
+                        .iter()
+                        .find(|c| c.id == parent_id)
+                        .map_or("a colony adult", |c| c.name.as_str())
+                ));
+            }
+            let descriptors = profile_descriptors(creature);
+            if descriptors.is_empty() {
+                ui.small("Still developing preferences");
+            }
+            ui.horizontal_wrapped(|ui| {
+                for descriptor in descriptors {
+                    egui::Frame::new()
+                        .fill(mint())
+                        .inner_margin(5)
+                        .show(ui, |ui| {
+                            ui.label(descriptor.label());
+                        });
+                }
+            });
+        });
+    });
+    ui.add_space(18.0);
+    ui.strong("Life here");
+    let days_alive = (time::OffsetDateTime::now_utc() - creature.born_at_utc)
+        .whole_days()
+        .max(0);
+    ui.horizontal_wrapped(|ui| {
+        for (number, label) in [
+            (days_alive.to_string(), "days together"),
+            (creature.memory.times_petted.to_string(), "pets received"),
+            (
+                creature.memory.discoveries_found.to_string(),
+                "treasures found",
+            ),
+            (creature.memory.window_climbs.to_string(), "windows climbed"),
+        ] {
+            clubhouse::card(ui, |ui| {
+                ui.set_min_width(86.0);
+                ui.label(egui::RichText::new(number).size(24.0).color(forest()));
+                ui.small(label);
+            });
         }
-        CreatureRole::Mini { parent_id } => {
-            let parent = creatures
-                .iter()
-                .find(|candidate| candidate.id == parent_id)
-                .map_or("a colony adult", |parent| parent.name.as_str());
-            ui.label(format!("Mini cared for by {parent}"));
-        }
-    }
-    let descriptors = profile_descriptors(creature);
-    if descriptors.is_empty() {
-        ui.label(egui::RichText::new("Still developing preferences").italics());
-    } else {
-        ui.label(
-            descriptors
-                .iter()
-                .map(|descriptor| descriptor.label())
-                .collect::<Vec<_>>()
-                .join(" • "),
-        );
-    }
-
+    });
     ui.add_space(8.0);
+    if let Some(preferred) = creature.memory.preferred_region {
+        ui.label(format!(
+            "Favorite region: {} on {}",
+            region_label(preferred.cell),
+            display_label(preferred.display, monitors)
+        ));
+    } else if let Some(favorite) = creature.memory.favorite_display {
+        ui.label(format!(
+            "Favorite display: {}",
+            display_label(favorite.display, monitors)
+        ));
+    } else {
+        ui.label("Favorite place: still deciding");
+    }
+
+    let closest_friend = closest_companion(relationships, creature.id)
+        .and_then(|id| creatures.iter().find(|other| other.id == id));
+    if let Some(friend) = closest_friend {
+        ui.label(format!("Closest to {}", friend.name));
+        if let Some(relationship) = relationship_between(relationships, creature.id, friend.id) {
+            ui.label(format!(
+                "Bond: {} • {}",
+                bond_label(relationship.affinity, relationship.avoidance),
+                play_label(relationship.playfulness)
+            ));
+        }
+    } else {
+        ui.label("Closest friend: still getting acquainted");
+    }
+    ui.add_space(18.0);
     ui.group(|ui| {
         ui.strong("Name");
-        ui.label("This is the only editable profile detail; learned history remains read-only.");
+        ui.small("A name for your companion. Their preferences grow through experience.");
         let name = creature_names
             .entry(creature.id)
             .or_insert_with(|| creature.name.clone());
@@ -835,117 +1109,6 @@ fn colony_tab(
 
     ui.add_space(8.0);
     ui.group(|ui| {
-        ui.strong("Creature studio");
-        let adult_count = creatures
-            .iter()
-            .filter(|candidate| candidate.role.is_adult())
-            .count();
-        ui.label(format!(
-            "{} of {} colony places • {} of {} full-size places",
-            creatures.len(),
-            MAX_COLONY_CREATURES,
-            adult_count,
-            MAX_ADULT_CREATURES
-        ));
-        ui.label(
-            "Create a random companion, or turn image colors and features into a cute pixel creature. Images stay on your computer; no AI model or download is needed.",
-        );
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("Generate random preview").clicked() {
-                outcome.request_random_creature = true;
-            }
-            if ui.button("Create from PNG or JPEG…").clicked() {
-                outcome.request_reference_creature = true;
-            }
-        });
-
-        if let Some(preview) = generation_preview.clone() {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                if let Some(texture) = generation_texture.as_ref() {
-                    ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(144.0, 144.0)));
-                }
-                ui.vertical(|ui| {
-                    ui.strong("Full-size candidate");
-                    ui.label(
-                        preview.creature.appearance.design.map_or_else(|| format!("{:?}", preview.creature.appearance.family).replace("SoftQuadruped", "Soft Quadruped"), |d| d.body.label().to_owned()),
-                    );
-                    if let Some(similarity) = preview.similarity {
-                        ui.label(format!("Color & shape affinity: {similarity}%"));
-                    }
-                    ui.label(&preview.summary);
-                });
-            });
-            let can_add =
-                creatures.len() < MAX_COLONY_CREATURES && adult_count < MAX_ADULT_CREATURES;
-            let can_replace =
-                !creature.kept && (creature.role.is_adult() || adult_count < MAX_ADULT_CREATURES);
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add_enabled(can_add, egui::Button::new("Add to colony"))
-                    .clicked()
-                {
-                    outcome.accept_creature_preview = Some(PreviewAcceptance::Add {
-                        design: preview.creature.appearance.design,
-                        source_seed: preview.source_seed,
-                    });
-                }
-                if ui
-                    .add_enabled(
-                        can_replace,
-                        egui::Button::new(format!("Replace {}", creature.name)),
-                    )
-                    .clicked()
-                {
-                    outcome.accept_creature_preview = Some(PreviewAcceptance::Replace {
-                        design: preview.creature.appearance.design,
-                        creature_id: creature.id,
-                        source_seed: preview.source_seed,
-                    });
-                }
-                if ui.button("Clear preview").clicked() {
-                    *generation_preview = None;
-                    *generation_texture = None;
-                }
-            });
-            if creature.kept {
-                ui.label(
-                    egui::RichText::new("Turn off Keep to replace the selected creature.").small(),
-                );
-            }
-        }
-
-        let unkept = creatures.iter().filter(|candidate| !candidate.kept).count();
-        ui.add_space(8.0);
-        if *bulk_confirmation {
-            ui.colored_label(
-                egui::Color32::from_rgb(241, 181, 102),
-                format!(
-                    "Regenerate {unkept} unkept creature(s)? Their local history will be removed."
-                ),
-            );
-            ui.horizontal(|ui| {
-                if ui.button("Regenerate unkept").clicked() {
-                    outcome.regenerate_unkept = true;
-                    *bulk_confirmation = false;
-                }
-                if ui.button("Cancel").clicked() {
-                    *bulk_confirmation = false;
-                }
-            });
-        } else if ui
-            .add_enabled(
-                unkept > 0,
-                egui::Button::new(format!("Regenerate all unkept ({unkept})…")),
-            )
-            .clicked()
-        {
-            *bulk_confirmation = true;
-        }
-    });
-
-    ui.add_space(8.0);
-    ui.group(|ui| {
         ui.strong("Share this creature");
         ui.label("The code recreates innate appearance and personality, not its name or history.");
         let code = encode_creature_seed(creature.origin);
@@ -953,6 +1116,7 @@ fn colony_tab(
             ui.monospace(format!("{}…{}", &code[..15], &code[code.len() - 8..]));
             if ui.button("Copy seed").clicked() {
                 ui.ctx().copy_text(code);
+                clubhouse.notify("Creature code copied");
             }
         });
         ui.add_space(5.0);
@@ -963,52 +1127,35 @@ fn colony_tab(
     });
 
     ui.add_space(8.0);
-    ui.strong("Life here");
-    let days_alive = (time::OffsetDateTime::now_utc() - creature.born_at_utc)
-        .whole_days()
-        .max(0);
-    ui.label(format!("Has lived here for {days_alive} days"));
-    ui.label(format!(
-        "Has found {} trinkets",
-        creature.memory.discoveries_found
-    ));
-    ui.label(format!(
-        "Has climbed {} windows",
-        creature.memory.window_climbs
-    ));
-    ui.label(format!(
-        "Has been petted {} times",
-        creature.memory.times_petted
-    ));
 
-    if let Some(preferred) = creature.memory.preferred_region {
-        ui.label(format!(
-            "Favorite region: {} on {}",
-            region_label(preferred.cell),
-            display_label(preferred.display, monitors)
-        ));
-    } else if let Some(favorite) = creature.memory.favorite_display {
-        ui.label(format!(
-            "Favorite display: {}",
-            display_label(favorite.display, monitors)
-        ));
-    } else {
-        ui.label("Favorite place: still deciding");
-    }
-
-    let closest_friend = closest_companion(relationships, creature.id)
-        .and_then(|id| creatures.iter().find(|other| other.id == id));
-    if let Some(friend) = closest_friend {
-        ui.label(format!("Closest to {}", friend.name));
-        if let Some(relationship) = relationship_between(relationships, creature.id, friend.id) {
-            ui.label(format!(
-                "Bond: {} • {}",
-                bond_label(relationship.affinity, relationship.avoidance),
-                play_label(relationship.playfulness)
-            ));
+    ui.collapsing("Start over with unkept companions…", |ui| {
+        let count = creatures.iter().filter(|c| !c.kept).count();
+        ui.checkbox(
+            bulk_confirmation,
+            format!("Replace {count} unkept companions and their histories"),
+        );
+        if ui
+            .add_enabled(
+                *bulk_confirmation && count > 0,
+                egui::Button::new("Regenerate unkept companions"),
+            )
+            .clicked()
+        {
+            outcome.regenerate_unkept = true;
+            *bulk_confirmation = false;
         }
-    } else {
-        ui.label("Closest friend: still getting acquainted");
+    });
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_secs(1));
+}
+
+fn activity_label(action: ActionKind) -> String {
+    match action {
+        ActionKind::Idle => "taking a quiet moment".into(),
+        ActionKind::Traverse => "exploring".into(),
+        ActionKind::Homebound => "settling at home".into(),
+        ActionKind::PetReaction => "enjoying your company".into(),
+        _ => clubhouse::words(&format!("{action:?}")).to_lowercase(),
     }
 }
 
@@ -1063,6 +1210,17 @@ fn region_label(cell: u8) -> &'static str {
     .unwrap_or("center")
 }
 
+fn habitat_preset_label(preset: HabitatPreset) -> &'static str {
+    match preset {
+        HabitatPreset::EntireDesktop => "Entire desktop",
+        HabitatPreset::PrimaryDisplay => "Primary display",
+        HabitatPreset::BottomEdge => "Bottom edge",
+        HabitatPreset::BottomCorners => "Bottom corners",
+        HabitatPreset::LowerHalf => "Lower half",
+        HabitatPreset::Custom => "Custom regions",
+    }
+}
+
 fn habitat_tab(
     ui: &mut egui::Ui,
     settings: &mut Settings,
@@ -1072,7 +1230,7 @@ fn habitat_tab(
 ) {
     let previous_preset = settings.habitat.preset;
     egui::ComboBox::from_label("Preset")
-        .selected_text(format!("{:?}", settings.habitat.preset))
+        .selected_text(habitat_preset_label(settings.habitat.preset))
         .show_ui(ui, |ui| {
             for preset in [
                 HabitatPreset::EntireDesktop,
@@ -1082,7 +1240,11 @@ fn habitat_tab(
                 HabitatPreset::LowerHalf,
                 HabitatPreset::Custom,
             ] {
-                ui.selectable_value(&mut settings.habitat.preset, preset, format!("{preset:?}"));
+                ui.selectable_value(
+                    &mut settings.habitat.preset,
+                    preset,
+                    habitat_preset_label(preset),
+                );
             }
         });
     if settings.habitat.preset != previous_preset
@@ -1114,50 +1276,56 @@ fn habitat_tab(
         );
     }
     ui.add_space(8.0);
-    ui.label("Custom rectangles use normalized display coordinates (0–1).");
-    let mut remove = None;
-    let mut changed_zone = false;
-    for (index, zone) in settings.habitat.zones.iter_mut().enumerate() {
-        let before = zone.clone();
-        ui.group(|ui| {
+    ui.collapsing("Advanced · exact region coordinates", |ui| {
+        ui.small("Coordinates are fractions of the selected display (0–1).");
+        let mut remove = None;
+        let mut changed_zone = false;
+        for (index, zone) in settings.habitat.zones.iter_mut().enumerate() {
+            let before = zone.clone();
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut zone.enabled, "Enabled");
+                    ui.selectable_value(&mut zone.kind, HabitatZoneKind::Allowed, "Allowed");
+                    ui.selectable_value(&mut zone.kind, HabitatZoneKind::Excluded, "Excluded");
+                    if ui.small_button("Remove").clicked() {
+                        remove = Some(index);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("x");
+                    ui.add(egui::DragValue::new(&mut zone.normalized_bounds.x).range(0.0..=1.0));
+                    ui.label("y");
+                    ui.add(egui::DragValue::new(&mut zone.normalized_bounds.y).range(0.0..=1.0));
+                    ui.label("w");
+                    ui.add(
+                        egui::DragValue::new(&mut zone.normalized_bounds.width).range(0.05..=1.0),
+                    );
+                    ui.label("h");
+                    ui.add(
+                        egui::DragValue::new(&mut zone.normalized_bounds.height).range(0.05..=1.0),
+                    );
+                });
+            });
+            changed_zone |= *zone != before;
+        }
+        if let Some(index) = remove {
+            settings.habitat.zones.remove(index);
+            settings.habitat.preset = HabitatPreset::Custom;
+        }
+        if changed_zone {
+            settings.habitat.preset = HabitatPreset::Custom;
+        }
+        if settings.habitat.zones.len() < 32 {
             ui.horizontal(|ui| {
-                ui.checkbox(&mut zone.enabled, "Enabled");
-                ui.selectable_value(&mut zone.kind, HabitatZoneKind::Allowed, "Allowed");
-                ui.selectable_value(&mut zone.kind, HabitatZoneKind::Excluded, "Excluded");
-                if ui.small_button("Remove").clicked() {
-                    remove = Some(index);
+                if ui.button("Add allowed zone").clicked() {
+                    add_zone(settings, monitors, HabitatZoneKind::Allowed);
+                }
+                if ui.button("Add exclusion zone").clicked() {
+                    add_zone(settings, monitors, HabitatZoneKind::Excluded);
                 }
             });
-            ui.horizontal(|ui| {
-                ui.label("x");
-                ui.add(egui::DragValue::new(&mut zone.normalized_bounds.x).range(0.0..=1.0));
-                ui.label("y");
-                ui.add(egui::DragValue::new(&mut zone.normalized_bounds.y).range(0.0..=1.0));
-                ui.label("w");
-                ui.add(egui::DragValue::new(&mut zone.normalized_bounds.width).range(0.05..=1.0));
-                ui.label("h");
-                ui.add(egui::DragValue::new(&mut zone.normalized_bounds.height).range(0.05..=1.0));
-            });
-        });
-        changed_zone |= *zone != before;
-    }
-    if let Some(index) = remove {
-        settings.habitat.zones.remove(index);
-        settings.habitat.preset = HabitatPreset::Custom;
-    }
-    if changed_zone {
-        settings.habitat.preset = HabitatPreset::Custom;
-    }
-    if settings.habitat.zones.len() < 32 {
-        ui.horizontal(|ui| {
-            if ui.button("Add allowed zone").clicked() {
-                add_zone(settings, monitors, HabitatZoneKind::Allowed);
-            }
-            if ui.button("Add exclusion zone").clicked() {
-                add_zone(settings, monitors, HabitatZoneKind::Excluded);
-            }
-        });
-    }
+        }
+    });
 }
 
 fn add_zone(settings: &mut Settings, monitors: &[MonitorInfo], kind: HabitatZoneKind) {
@@ -1355,19 +1523,5 @@ fn about_tab(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn seed_import_requires_both_a_valid_code_and_explicit_confirmation() {
-        let valid = Ok(SharedCreatureSeed {
-            source_colony_seed: [7; 32],
-            source_generation: 2,
-            design: None,
-        });
-        let invalid = Err(formiga_core::SeedCodeError::Checksum);
-        assert!(!seed_import_ready(&valid, false));
-        assert!(seed_import_ready(&valid, true));
-        assert!(!seed_import_ready(&invalid, true));
-    }
-}
+#[path = "settings_review.rs"]
+mod review;

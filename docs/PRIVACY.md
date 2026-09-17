@@ -4,6 +4,12 @@ Formiga has no account system, analytics endpoint, advertising SDK, behavioral d
 colony service. Creature generation, simulation, artwork, settings, and save data remain entirely on
 the user's computer.
 
+Temporary hangouts, ride intensity, handholds, hesitation decisions, recent setbacks, spectator
+roles, game roles and turns, a leader's few recent positions, and a temporary plaything exist only
+in memory. A creature's movement cadence is derived from data it already has and is never stored. They do not add saved window histories, cursor trails, game scores, or event logs.
+Established hangouts may reinforce the existing coarse preferred desktop region, without retaining
+the window identity or exact remembered spot in the save.
+
 The sole network feature is an assisted update checker. Automatic checks are enabled by default,
 can be disabled in **Settings → About**, and run no more than once per 24 hours when Formiga starts.
 A manual check is also available from the tray and About screen. A check requests only public release
@@ -48,11 +54,27 @@ stable ID, kind, privacy-safe display key, normalized position, and semantic rol
 next object timestamp and ordinal. The home also retains at most six typed decoration names plus
 one next decoration timestamp and ordinal. A relationship stores stable creature IDs plus four
 one-byte scores—affinity, familiarity, playfulness, and avoidance—not an encounter history. The save
-does not contain an event log, ritual history, ritual target positions, proximity samples, target
-paths, cursor paths, sampled event coordinates, or past window layouts. Profile fields other than a
+now contains a journal of at most 64 typed colony moments and timestamps: arrivals, discoveries,
+learned preferences, close friendships, completed rituals, objects, and decorations. It does not
+contain desktop observations, ritual target positions, proximity samples, target paths, cursor
+paths, sampled event coordinates, or past window layouts. Profile fields other than a
 creature's name are read-only views of this local state.
 
-Save version 12 accepts and deterministically migrates every v1–v11 colony. Migration converts legacy
+The save also holds four bounded keepsakes added in version 14. At most eight **pinned moments**,
+each naming a journal entry that already exists by its timestamp, creature, and typed moment — a
+pin cannot record anything the journal does not. At most eight **scrapbook records**, one per
+trinket variant, each holding the variant number, the first-find timestamp, the finder's stable ID,
+and the finder's name as it was then, so the record still reads after that companion leaves without
+keeping a copy of the creature. **Appearance preferences** are a theme choice, a text-scale
+percentage, and one outline flag. A **routine schedule** is an enabled flag, at most fourteen rows
+of weekday bitmask plus local minute plus preset index, one override flag, and which preset was
+last applied. None of these records a desktop observation, a window, a cursor position, or a time
+the application was running: a schedule stores the times you chose, never the times you were there.
+
+Save version 14 accepts and deterministically migrates every v1–v13 colony. A v13 colony receives
+empty pins, an empty scrapbook, default appearance preferences, and a disabled schedule; the
+scrapbook is never populated from an existing aggregate discovery count, because that count cannot
+say which trinket was found, when, or by whom. Migration converts legacy
 relationship floats locally, preserves current v7 bond records byte-for-byte, and preserves creature
 identity, generated appearance, custom names, birth times, memories, learned tendencies, and
 routines. A v8 colony receives an empty object collection and one deterministic future timestamp;
@@ -64,16 +86,17 @@ network request and does not upload
 either the old or migrated save.
 
 Seed sharing is fully offline. A code contains only a format nibble, original generation, immutable
-256-bit creature-origin seed, and checksum. It does not contain the creature's custom name, birth
+256-bit creature-origin seed, the sixteen-byte design recipe when the creature has one, and a
+checksum. It does not contain the creature's custom name, birth
 time, memory, tendencies, routines, relationships, current colony seed, objects, shelter, display
 keys, settings, device data, or desktop information. Copying uses the local system clipboard;
 Formiga does not transmit, register, resolve, or look up a code.
 
-Import validates the complete code before replacing anything, requires an explicit replacement
-acknowledgement, gives the creature a fresh local birth and history, and derives its companion
-lineage locally. No account, analytics event, server, DNS request, or network permission is involved.
-Save version 10 is unchanged because the immutable origin fields already exist in every migrated
-creature record.
+Import validates the complete code before showing a preview. Adoption adds to an existing colony
+within its capacity; replacement requires an unkept target and explicit acknowledgement. Both give
+the incoming creature a fresh local birth and history while preserving its exact origin. Unrelated
+colony members keep their histories. No account, analytics event, server, DNS request, or network permission is involved.
+The shared code contains no journal, home preferences, or saved behavior routines.
 
 Creature-card export is local and read-only. The 960×600 PNG contains ordinary rendered pixels for
 the creature, custom name, family, up to three visible descriptors, UTC birth month/year, colony
@@ -122,6 +145,45 @@ temporary shelter canvas and contain no source image or external content.
 
 A one-file backup and local rotating diagnostic log support recovery and troubleshooting. Logs name
 event categories only; they do not record creature names, coordinates, relationship scores, or
-memory payloads. A blank milestone bubble is rasterized locally only while visible and is discarded
+memory payloads. A small sprout milestone bubble is rasterized locally only while visible and is discarded
 after five seconds; descriptor text is shown only when the user opens the local Colony profile. Drag
 state and in-progress interactions are never persisted.
+
+
+Full-colony backup is deliberately different from a share code: it contains the complete private
+save, including names, learned history, journal, habitat, and settings. Export writes only to a
+user-selected local path. Restore reads at most 2 MiB, validates the snapshot, confirms replacement,
+and preserves existing colony files first. No backup is uploaded. Recovery copies have unique local
+filenames and are never automatically deleted; unreadable saves remain untouched until a user
+chooses recovery or a valid backup safely repairs the primary.
+
+The introduction completion flag, at most two saved behavior presets, a quiet-mode expiry timestamp,
+and six decoration-visibility bits are also local. Studio comparisons retain at most four temporary
+candidates; closing the window releases their artwork. Color/body locks use only generated design
+recipes, never a retained source image.
+
+
+Environmental curiosity uses the same rectangles, stacking order, and actual scan times. Its
+previous/current shapes, short-lived event origins, viewing spots, recent supporting-window keys,
+and per-display space estimates exist only in memory. They are bounded, reset on unavailable
+observations, and excluded from saves, journals, exports, and creature codes. Failed native window
+enumeration retains the previous rendering snapshot and marks observations unreliable; it is not
+interpreted as an empty desktop. No window content, screenshot, or additional permission is used.
+
+
+The optional sprite outline is drawn from the creature's own alpha silhouette into the frame it
+already occupies. It reads no wallpaper, no screenshot, and no application pixel, requires no
+additional permission, and leaves the clickable silhouette exactly as it was.
+
+Hide and seek keeps the one position a seeker last actually had the hider in view, for the length
+of one scene, in memory only. It is a creature position, never a cursor position, a window, or
+anything about the desktop, and it is excluded from saves, journals, exports, and creature codes.
+Being hidden means being out of a companion's line of sight along a surface; a creature is never
+placed where the person at the desk cannot see it, so no window's contents are ever consulted or
+inferred. The window race reads the same rectangles and stacking order every other behavior does.
+
+Cursor curiosity retains one previous cursor point/time and a bounded local aggregate (center,
+travel distance, turns, and elapsed time), with no trail or historical log. Native sample times,
+monitor-change cues, crossing routes, and reorientation state are also excluded from saves and
+exports. Turning off cursor reactions clears attention and prevents cursor-driven utility choices
+and dwell invitations. These behaviors add no OS permissions or observation source.

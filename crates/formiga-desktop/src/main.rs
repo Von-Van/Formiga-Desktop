@@ -1,7 +1,10 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod app;
+#[cfg(test)]
+mod attention_review;
 mod card_export;
+mod clubhouse;
 mod gpu;
 mod interaction;
 mod platform;

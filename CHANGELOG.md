@@ -2,6 +2,161 @@
 
 All notable changes are documented here.
 
+## [0.57.0] - 2026-09-17
+
+### Added
+
+- Creatures peek over ledges, judge height and gap difficulty, take a running start, and celebrate
+  difficult landings. A borderline gap brings visible hesitation: a look down, a step back, and up
+  to two reconsiderations before a jump from the edge or a retreat. Recent slips and retreats make
+  a creature briefly more cautious and stop it retrying the same gap at once. Marginal jumps can
+  catch an edge, struggle up, attract a helper, or end in a rare shared tumble. Spectators
+  anticipate, gasp at a catch or fall, avert their eyes, and react to the actual outcome.
+- Window rides now include balance loss, panic grips, vertical glances, adventurous riders,
+  nearby dismounts, boundary retreats, and brief dizziness. Close ledges permit crossings.
+  Windows closing in prompt a retreat along the ledge, or a hop down to exposed support when both
+  sides close; abrupt movement can briefly launch a bold rider.
+  Existing staircase routes can repair one changed step, with clearer squeeze entry/exit poses.
+- Frequently occupied surfaces become temporary hangouts. Bold creatures can make short dangling
+  commutes, with continuous hand contact and a pull-up at the end.
+- Ordinary encounters can become small games. Following turns into a chase, a procession, or a
+  route to copy; a solo flourish gathers a dance circle or a tug over a plaything; sustained mutual
+  gazes become staring contests; playful company vaults over one another, plays keep-away, passes
+  "it" along, takes turns at a gap, or contests the middle of a ledge. Resting company piles up
+  beside a companion. A creature can be invited to try a gap another just cleared, and answer with
+  an attempt, a nervous approach, or a refusal. Every invitation can be declined, and a refusal is
+  respected for a while.
+- Company creeps around a sleeping companion, and a playful one may pester a rested friend awake in
+  capped attempts. A creature that still needs its rest sleeps through it.
+- Three games about the desktop's own shape. Two companions race across the windows to a ledge
+  they can both reach, each by the route its own nerve allows, and the race replans or is called
+  off if the finish line closes. Standing at the end of a high ledge can start a round of
+  the-floor-is-lava, with visible reluctance near the edge, crossings that read as saves, and a
+  round that ends the moment somebody touches the floor — safety always permits the landing. And
+  one companion hides around the far end of a surface while the other counts and then searches,
+  using only where it last actually saw them.
+- The journal groups moments by Today, Yesterday, and date in your own local time, filters to one
+  companion, and keeps up to eight moments pinned above the rolling sixty-four. A pin names an
+  existing moment, so it can never say something the journal did not.
+- A scrapbook records the first time each of the eight kinds of trinket was found, with a drawing,
+  a short description, the date, and who found it — still named even if that companion has since
+  left. Colonies from before this release simply start theirs empty.
+- The home page now previews the corner as it really is: the colony house with the decorations it
+  has earned, a cottage for each companion, and the belongings along the same ground line, placed
+  by the same functions the desktop places them with. Looking at it never calls the colony home.
+- A charcoal-and-sage dark appearance alongside the cream one, an option to follow the system, and
+  modest text scaling up to 150%. Keyboard focus is drawn in the accent colour in either theme.
+- An optional soft outline behind creatures, for bright or busy wallpaper. It is baked into the
+  existing artwork, reads nothing from the desktop, and never changes where you can click.
+- An opt-in weekly routine can move between your saved Work and Relax presets at times you choose,
+  up to fourteen changes a week. It shows what is in force and what is next, yields to a manual
+  choice until the next change, and applies only the routine intended right now — a machine that
+  slept through a week of changes wakes into today's, not through every one it missed. Showing the
+  colony, pausing, and a quiet moment stay yours.
+- Two riders on one moving window watch each other and show off when the ride is steady, and a
+  playful creature with an eye for the cursor races a fast pass in short dashes, never leaving its
+  display or touching input.
+- Games carry at most one temporary plaything, held in someone's hands and gone when the game ends.
+  Every game has explicit joining, leaving, timeouts, bounded turns, and a cooldown before the next
+  one, and none of them are written to the journal.
+- Curious creatures can explore a newly connected display through a short, continuous habitat
+  route. Display loss recovers displaced creatures immediately, with space between them, followed
+  by reorientation. Stable display keys distinguish removal from identifier or DPI changes.
+- Fast cursor passes draw brief glances; repeated local movement can invite investigation or
+  cautious withdrawal. Personality and learned trust modify the response. Cursor warps, disabled
+  reactions, missing input, and interrupted observations clear the invitation.
+- Nearby creatures notice new windows, approach safe edges, react to sudden growth according to
+  temperament, and briefly search after a recently used surface disappears. Several local window
+  moves can attract curiosity; exposed overlapping tiers encourage climbing, while empty desktop
+  space encourages roaming when no ledge is reachable.
+- Watchers now react in their own time rather than together: each one notices, gasps briefly at a
+  catch or a fall, shows concern, and settles. Timid companions cover their eyes through the
+  frightening part, playful ones celebrate a real success, and a companion facing the other way is
+  slower to look up. Window, cursor, and display reactions all read through the same stages.
+- Creatures keep their own walking, resting, greeting, and recovery cadence, so the same creature
+  always moves like itself without any change to how it looks.
+- Staircases are chosen to suit the creature climbing them: how far it will rise or drop depends on
+  temperament, liveliness, learned climbing, and tiredness, and a route that doubles back is passed
+  over for one that keeps going. Each step is looked at before it is taken.
+- Companions watch an investigator or startled rider with staggered gaze, concern, and recovery.
+  Short approaches reserve space around companions and existing landings, stop when blocked, and
+  respect habitat restrictions and reduced motion. Window observations and reactions remain transient.
+- A native cream-and-forest colony interface inspired by the creature cards: portrait profiles,
+  life-history tiles, a short optional introduction, journal, home editor, and dedicated studio.
+- Four-candidate comparisons with optional six-fps movement/expression previews and color/body
+  locks for the next random set. Reference images and shared codes have explicit previews.
+- Shared-creature adoption into existing colonies or a confirmed, unkept replacement. Original
+  appearance and personality survive exactly; unrelated creatures and their histories remain intact.
+- A local journal capped at 64 typed moments: arrivals, discoveries, learned preferences, new close
+  friendships, completed rituals, keepsakes, and decorations. Repeated moments are throttled.
+- Home corner/display selection, earned-decoration visibility, and ordered keepsake slots using
+  existing village placement and behavior influences.
+- Temporary 15/30/60-minute quiet moments, early cancellation, and two saved Work/Relax behavior
+  routines. Quiet expiry uses the normal world tick and survives relaunch.
+- Full-colony JSON export/restore, bounded input validation, and preserved recovery copies.
+
+### Changed
+
+- An audience now watches what a game is actually about, and keeps up when it changes hands: the
+  companion holding the toy, the one who is "it", the one standing on the contested spot. Watchers
+  stay for as long as the game lasts rather than being released partway through a long one, and a
+  companion leaping a gap during a game reads as the risk it is, so a timid watcher may look away.
+  In hide and seek the audience follows the seeker, never the hider.
+- Turning off "Explore application-window ledges" now keeps creatures on the floor. The preference
+  was already respected everywhere else and not in the ordinary decision to go and perch.
+- A kept journal moment stays kept. Once the rolling sixty-four moved past it, a pinned moment
+  became invisible while still occupying one of the eight slots, with no way to unpin it.
+- A desktop with more than sixty-four windows no longer switches every behavior off. The frontmost
+  sixty-four are watched, chosen the same way the route planner chooses them, and windows past the
+  end are never mistaken for windows that closed.
+- A window dragged straight upward no longer sends its rider on a sideways scramble that could not
+  have helped, or stretch the ride past its own ending.
+- The settings window: "About & backups" could not be reached at the smallest window size with the
+  largest text, checkboxes stayed small beside scaled-up labels, and the dark theme's navigation
+  rail was brighter than the page it sat on, with inactive tabs standing out more than the
+  selected one.
+- Formiga uses about a twelfth of the CPU it did and about 40% less memory. Creatures' click
+  targets no longer chase them across the screen while the cursor is elsewhere, the desktop is
+  scanned quickly only while a window could be moving under a creature, which application owns
+  each window is remembered rather than asked again every scan, and on a Retina display at an even
+  creature size the overlay draws at half resolution without losing a single pixel of detail.
+- Save version 14 migrates v1–v13 without replacing creature identities, bonds, recipes, learned
+  history, or preferences. Pins, the scrapbook, appearance preferences, and weekly routines all
+  start empty on an older colony; none of them is invented from an existing discovery count.
+  Existing colonies skip onboarding; new colonies receive the introduction.
+- The settings artwork budget is 416 KiB. The home preview now draws the whole village from the
+  same 128px village atlas the desktop samples, and the scrapbook adds one 16px drawing per
+  trinket variant; neither grows with the size of the colony.
+- Anything a creature is carrying now rides at one fixed point in front of its face, mirrored with
+  the way it is facing and kept inside its own frame, so a toy is clipped and covered along with
+  whoever holds it and a hand-off reads as one creature passing something to another rather than
+  two objects swapping places in mid-air.
+- The tray groups secondary preferences and diagnostics, with quick access to a 30-minute quiet
+  moment. Habitat presets use readable labels and show a monitor map; exact coordinates are advanced.
+- Copy/save/apply/export actions provide feedback. Preferences show unapplied changes and are
+  acknowledged after successful saving. Milestone bubbles carry a small growth sprout.
+
+### Fixed
+
+- Failed colony loading no longer overwrites either original file with a new colony. A temporary
+  session offers restore or an explicit fresh start after preserving recovery copies. A valid backup
+  is retained when repairing a corrupt primary, and a missing primary can recover from its backup.
+- Settings texture deltas are explicitly consumed, including recoverable GPU-surface failures.
+- A staring contest is decided by who is steadier rather than by chance, ends early if something
+  nearby distracts one of them, and watchers look between both contestants before settling on
+  whoever broke first.
+- Dragging one edge of a window is treated as a resize rather than a move, so it no longer startles
+  riders as though the whole window lurched. A window whose native identifier changes while its
+  frame stays put keeps the creatures standing on it instead of dropping them.
+
+### Resource budget
+
+- No new dependency, runtime, background worker, polling loop, desktop atlas, or overlay draw call.
+- UI artwork is cached on demand, bounded by a 416 KiB texture budget (excluding the existing egui
+  font/window resources), and released on close. Studio playback is opt-in and respects reduced
+  motion; hidden/occluded settings windows do not schedule preview redraws.
+- The journal stores only bounded typed colony moments, never desktop observations or window history.
+
 ## [0.55.6] - 2026-09-12
 
 ### Changed

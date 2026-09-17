@@ -29,7 +29,15 @@ impl SaveStore {
     pub fn load(&self) -> Result<Option<SaveFile>, PersistenceError> {
         match self.load_path(&self.path) {
             Ok(save) => Ok(Some(save)),
-            Err(PersistenceError::Io(error)) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(PersistenceError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
+                match self.load_path(&self.backup_path()) {
+                    Ok(save) => Ok(Some(save)),
+                    Err(PersistenceError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
+                        Ok(None)
+                    }
+                    Err(error) => Err(error),
+                }
+            }
             Err(primary_error) => {
                 let backup = self.backup_path();
                 match self.load_path(&backup) {
@@ -53,14 +61,76 @@ impl SaveStore {
             file.sync_all()?;
         }
         if self.path.exists() {
-            let _ = fs::copy(&self.path, &backup);
+            if self.load_path(&self.path).is_ok() {
+                fs::copy(&self.path, &backup)?;
+            } else {
+                self.preserve_recovery_files()?;
+            }
         }
         atomic_replace(&temporary, &self.path)?;
         Ok(())
     }
 
+    /// A user-selected full-colony snapshot, bounded before parsing and never changed on import.
+    pub fn read_snapshot(path: &Path) -> Result<SaveFile, PersistenceError> {
+        let save = Self::new(path).load_path(path)?;
+        let mut ids = std::collections::BTreeSet::new();
+        if save.creatures.is_empty()
+            || save.creatures.len() > crate::MAX_COLONY_CREATURES
+            || save
+                .creatures
+                .iter()
+                .any(|c| !ids.insert(c.id) || crate::validate_creature_name(&c.name).is_err())
+            || !save.creatures.iter().any(|c| c.role.is_adult())
+            || save.settings.habitat.zones.len() > crate::MAX_HABITAT_ZONES
+        {
+            return Err(
+                io::Error::new(io::ErrorKind::InvalidData, "Invalid colony snapshot").into(),
+            );
+        }
+        Ok(save)
+    }
+
+    /// Preserve both files with unique names before an explicit reset/restore or damaged-save write.
+    pub fn preserve_recovery_files(&self) -> Result<Vec<PathBuf>, PersistenceError> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let mut paths = Vec::new();
+        for (index, source) in [self.path.clone(), self.backup_path()].iter().enumerate() {
+            match File::open(source) {
+                Ok(mut input) => {
+                    let target = self
+                        .path
+                        .with_extension(format!("recovery-{stamp}-{index}.json"));
+                    let mut output = fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&target)?;
+                    io::copy(&mut input, &mut output)?;
+                    output.sync_all()?;
+                    paths.push(target);
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(paths)
+    }
+
     fn load_path(&self, path: &Path) -> Result<SaveFile, PersistenceError> {
-        let bytes = fs::read(path)?;
+        use std::io::Read;
+        const MAX_SAVE_BYTES: u64 = 2 * 1024 * 1024;
+        let mut bytes = Vec::new();
+        File::open(path)?
+            .take(MAX_SAVE_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_SAVE_BYTES {
+            return Err(
+                io::Error::new(io::ErrorKind::InvalidData, "Colony file exceeds 2 MiB").into(),
+            );
+        }
         let value: serde_json::Value = serde_json::from_slice(&bytes)?;
         let version = value
             .get("save_version")
@@ -69,7 +139,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=11 => migrate_legacy(value, version),
+            1..=13 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -114,6 +184,19 @@ fn migrate_legacy(
     }
     if source_version <= 10 {
         migrate_colony_management(&mut value);
+    }
+    // v14 adds pins, the scrapbook, appearance preferences, and routine schedules. Every one of
+    // them starts empty: an older colony keeps its journal, bonds, recipes, and settings exactly
+    // as they were, and nothing is invented from an aggregate discovery count.
+    if source_version <= 13
+        && let Some(companion) = value
+            .get_mut("companion")
+            .and_then(serde_json::Value::as_object_mut)
+    {
+        companion.remove("pins");
+        companion.remove("scrapbook");
+        companion.remove("schedule");
+        companion.remove("appearance");
     }
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
@@ -477,10 +560,854 @@ mod tests {
     use crate::{ArrivalState, Settings};
     use time::macros::datetime;
 
+    /// Every field name a version-14 colony file is allowed to use, gathered from a colony that
+    /// has one of everything. The list is long on purpose: an observation that reached the save
+    /// would have to bring a name with it, and this is what notices.
+    const SAVED_FIELDS: [&str; 208] = [
+        "Decoration",
+        "Friendship",
+        "MacBundleId",
+        "Object",
+        "Preference",
+        "Ritual",
+        "a",
+        "accent",
+        "accent_index",
+        "action",
+        "action_duration",
+        "action_elapsed",
+        "active_since_utc",
+        "activity",
+        "activity_variant",
+        "affinity",
+        "appearance",
+        "application",
+        "application_occlusion_rules",
+        "applied",
+        "arousal",
+        "arrival_delay_secs",
+        "arrival_state",
+        "arrived",
+        "at",
+        "avoidance",
+        "b",
+        "behavior_seed",
+        "body",
+        "body_height",
+        "body_width",
+        "boldness",
+        "boredom",
+        "born_at_utc",
+        "brow_style",
+        "cheek_style",
+        "climbing",
+        "coat",
+        "colony_order",
+        "colony_seed",
+        "comfort",
+        "companion",
+        "corner",
+        "created_at_utc",
+        "creature",
+        "creatures",
+        "curiosity",
+        "curiosity_satisfaction",
+        "cursor_cooldown",
+        "cursor_interest",
+        "cursor_reactions",
+        "cursor_trust",
+        "days",
+        "decision_temperature",
+        "decorations",
+        "descriptor_flags",
+        "design",
+        "detail_seed",
+        "direct_manipulation",
+        "discoveries_found",
+        "display",
+        "display_name",
+        "display_scale",
+        "display_scale_percent",
+        "drives",
+        "ear_size",
+        "ears",
+        "effect_motif",
+        "enabled",
+        "energy",
+        "exploration",
+        "eye_shape",
+        "eye_size",
+        "eye_spacing",
+        "face",
+        "face_signature",
+        "facing_right",
+        "familiarity",
+        "family",
+        "favorite_display",
+        "finder",
+        "finder_name",
+        "first_at",
+        "foot_size",
+        "forelimbs",
+        "fullscreen_app_occlusion",
+        "gait_bob",
+        "generation",
+        "habitat",
+        "hatch_day_acknowledged_year",
+        "head",
+        "head_appendages",
+        "head_ratio",
+        "height",
+        "hidden_decorations",
+        "highlight_style",
+        "home",
+        "home_affinity",
+        "home_visits",
+        "id",
+        "journal",
+        "kept",
+        "key",
+        "kind",
+        "last_disappeared_utc",
+        "last_kind",
+        "launch_at_login",
+        "ledge_seconds",
+        "leg_length",
+        "legs",
+        "len",
+        "length",
+        "logical_size",
+        "longest_sleep_seconds",
+        "marking",
+        "marking_seed",
+        "maximum_seen_utc",
+        "memory",
+        "milestone_bubble_shown",
+        "milestone_cooldown_active_seconds",
+        "mini_arrivals",
+        "minute",
+        "modes",
+        "moment",
+        "monitor_id",
+        "mouth_style",
+        "muzzle",
+        "name",
+        "next_at_utc",
+        "normalized_bounds",
+        "normalized_position",
+        "objects",
+        "onboarding_complete",
+        "ordinal",
+        "origin",
+        "overridden",
+        "palette_index",
+        "parent_id",
+        "pattern",
+        "pattern_density",
+        "paused",
+        "personality",
+        "pins",
+        "placements",
+        "play",
+        "play_sessions",
+        "playfulness",
+        "position",
+        "preferred_region",
+        "preset",
+        "profile_revision",
+        "pupil_style",
+        "quiet_until",
+        "reduce_motion",
+        "relationships",
+        "relative_x",
+        "rest_pose",
+        "ritual",
+        "role",
+        "roundness",
+        "routine",
+        "routine_affinity",
+        "routines",
+        "save_version",
+        "schedule",
+        "scrapbook",
+        "settings",
+        "shelter",
+        "size",
+        "sleep_interruptions",
+        "sleep_pressure",
+        "sleep_security",
+        "sleep_timing",
+        "slots",
+        "sociability",
+        "social_need",
+        "source_colony_seed",
+        "source_generation",
+        "sprite_outline",
+        "state",
+        "strength",
+        "style",
+        "surface",
+        "tail",
+        "tail_length",
+        "tail_style",
+        "tendencies",
+        "text_scale",
+        "theme",
+        "thickness",
+        "times_petted",
+        "times_tossed",
+        "tip_style",
+        "transitions",
+        "variant",
+        "velocity",
+        "vertical_offset",
+        "viewed_profile_revision",
+        "visible",
+        "width",
+        "window_climbs",
+        "window_key",
+        "window_ledges",
+        "window_ride_seconds",
+        "window_tolerance",
+        "x",
+        "y",
+        "zones",
+    ];
+
+    /// The vocabulary of watching a desktop and of a scene under way. None of it belongs in a file.
+    const RUNTIME_ONLY_FIELDS: [&str; 34] = [
+        "attention",
+        "bounds",
+        "cooldowns",
+        "cursor",
+        "emotion",
+        "hanging",
+        "holder",
+        "hop",
+        "hops",
+        "idle_duration",
+        "journey",
+        "journeys",
+        "landing",
+        "landmark",
+        "landmarks",
+        "last_seen",
+        "minimized",
+        "monotonic_millis",
+        "observer",
+        "path",
+        "plan",
+        "plans",
+        "plaything",
+        "pose",
+        "refusals",
+        "reservation",
+        "route",
+        "routes",
+        "scene",
+        "session",
+        "setbacks",
+        "signals",
+        "trail",
+        "z_order",
+    ];
+
+    #[test]
+    fn a_file_written_mid_scene_holds_no_window_cursor_or_play_in_progress() {
+        let (world, captured) = colony_in_the_middle_of_everything();
+        let directory =
+            std::env::temp_dir().join(format!("formiga-privacy-{}", std::process::id()));
+        let store = SaveStore::new(directory.join("colony.json"));
+        store.save(&world.save).unwrap();
+        let text = fs::read_to_string(store.path()).unwrap();
+        eprintln!(
+            "a four-companion colony mid-scene writes {} bytes",
+            text.len()
+        );
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+
+        // Whatever the file turns out to hold, it was written while all of this was happening.
+        let mut names = std::collections::BTreeSet::new();
+        collect_field_names(&value, &mut names);
+        for name in &names {
+            assert!(
+                SAVED_FIELDS.contains(&name.as_str()),
+                "the file names {name:?}, which no colony file is meant to hold"
+            );
+        }
+        for absent in RUNTIME_ONLY_FIELDS {
+            assert!(!names.contains(absent), "the file names {absent:?}");
+        }
+
+        // The only rectangle a colony keeps is a habitat zone the user drew, in fractions of a
+        // display. A window's frame cannot arrive dressed as one of those.
+        let zones = collect_fields(&value, "normalized_bounds");
+        assert!(!zones.is_empty(), "the colony has a zone to check");
+        for zone in zones {
+            for edge in ["x", "y", "width", "height"] {
+                let value = zone[edge].as_f64().unwrap();
+                assert!((0.0..=1.0).contains(&value), "{edge} of a zone is {value}");
+            }
+        }
+
+        // There are exactly as many positions in the file as there are companions, and each one is
+        // that companion's own. Nobody's last-seen spot, viewing place, or route hop is written.
+        let positions = collect_fields(&value, "position");
+        assert_eq!(positions.len(), world.save.creatures.len());
+        for creature in &world.save.creatures {
+            assert!(positions.iter().any(|written| {
+                written["x"].as_f64().map(|x| x as f32) == Some(creature.state.position.x)
+                    && written["y"].as_f64().map(|y| y as f32) == Some(creature.state.position.y)
+            }));
+        }
+
+        // Set a companion's own position and speed aside, and no number left in the file came off
+        // the desktop: not an edge of either window, and not where the cursor was.
+        let mut without_creature_motion = value.clone();
+        for creature in without_creature_motion["creatures"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+        {
+            let state = creature["state"].as_object_mut().unwrap();
+            state.remove("position");
+            state.remove("velocity");
+        }
+        let mut numbers = Vec::new();
+        collect_numbers(&without_creature_motion, &mut numbers);
+        assert!(
+            numbers.contains(&(crate::SAVE_VERSION as f32)),
+            "the sweep is reading the file"
+        );
+        let mut observed = Vec::new();
+        for step in 0..=captured {
+            let desktop = observed_desktop(step);
+            observed.extend([
+                desktop.cursor.position.x,
+                desktop.cursor.position.y,
+                desktop.cursor.velocity.x,
+                desktop.cursor.velocity.y,
+            ]);
+            for window in desktop.windows {
+                observed.extend([
+                    window.bounds.x,
+                    window.bounds.y,
+                    window.bounds.width,
+                    window.bounds.height,
+                    window.bounds.right(),
+                    window.bounds.bottom(),
+                ]);
+            }
+        }
+        for value in observed {
+            assert!(
+                !numbers.contains(&value),
+                "the file holds {value}, which it could only have read off the desktop"
+            );
+        }
+
+        // Reopening the colony finds nobody mid-scene: no gaze, no plan, no leftover motion.
+        let reopened = crate::World::from_save(store.load().unwrap().unwrap());
+        assert!(reopened.save.creatures.iter().all(|creature| {
+            creature.state.attention.is_none()
+                && creature.state.action == crate::ActionKind::Idle
+                && creature.state.velocity == crate::Point::default()
+        }));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn an_oversized_file_loads_with_every_collection_back_inside_its_cap() {
+        let now = datetime!(2026-02-01 9:00 UTC);
+        let mut save = example_save();
+        save.creatures.push(crate::World::preview_adult(
+            [23; 32],
+            now,
+            &crate::DesktopSnapshot::default(),
+        ));
+        for index in 0..200u16 {
+            save.companion.journal.push(crate::JournalEntry {
+                at: now + time::Duration::minutes(i64::from(index)),
+                creature: None,
+                moment: crate::JournalMoment::Arrival,
+            });
+        }
+        // Kept from the recent end of the journal, which is the part a trim leaves behind.
+        save.companion.pins = save.companion.journal[160..]
+            .iter()
+            .map(crate::PinnedMoment::of)
+            .collect();
+        save.companion.scrapbook = (0..40u8)
+            .map(|variant| crate::ScrapbookRecord {
+                variant: variant % 12,
+                first_at: now,
+                finder: None,
+                finder_name: format!("Finder {variant}"),
+            })
+            .collect();
+        save.companion.schedule.transitions = (0..60u16)
+            .map(|index| crate::ScheduledTransition {
+                days: 0b111_1111,
+                minute: index * 40,
+                preset: (index % 3) as u8,
+            })
+            .collect();
+        save.companion.appearance.text_scale = 240;
+        save.companion.modes[0] = Some(crate::BehaviorPreset {
+            habitat: over_full_habitat(),
+            window_ledges: true,
+            cursor_reactions: true,
+            reduce_motion: false,
+        });
+        save.objects.objects = (0..40)
+            .map(|index| crate::ColonyObject {
+                id: index,
+                kind: crate::ColonyObjectKind::ALL[index as usize % 8],
+                role: crate::ColonyObjectKind::ALL[index as usize % 8].default_role(),
+                ..Default::default()
+            })
+            .collect();
+        save.home.decorations.decorations = crate::ShelterDecorationKind::ALL
+            .iter()
+            .copied()
+            .cycle()
+            .take(30)
+            .collect();
+
+        // The same oversized collections, arriving as a current file and as a version-13 one.
+        for version in [crate::SAVE_VERSION, 13] {
+            let directory =
+                std::env::temp_dir().join(format!("formiga-caps-{version}-{}", std::process::id()));
+            fs::create_dir_all(&directory).unwrap();
+            let path = directory.join("colony.json");
+            let mut value = serde_json::to_value(&save).unwrap();
+            value["save_version"] = version.into();
+            fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            let loaded = crate::World::from_save(SaveStore::new(&path).load().unwrap().unwrap());
+            let companion = &loaded.save.companion;
+            assert_eq!(companion.journal.len(), crate::MAX_JOURNAL_ENTRIES);
+            // A version-13 colony has no keepsakes to cap: it is given empty ones.
+            let keepsakes = version == crate::SAVE_VERSION;
+            assert_eq!(
+                companion.pins.len(),
+                if keepsakes {
+                    crate::MAX_PINNED_ENTRIES
+                } else {
+                    0
+                }
+            );
+            assert!(
+                companion
+                    .pins
+                    .iter()
+                    .all(|pin| companion.journal.iter().any(|entry| pin.names(entry))),
+                "every pin still names a moment the journal holds"
+            );
+            assert_eq!(
+                companion.scrapbook.len(),
+                if keepsakes {
+                    usize::from(crate::TRINKET_VARIANTS)
+                } else {
+                    0
+                }
+            );
+            assert!(
+                companion
+                    .scrapbook
+                    .windows(2)
+                    .all(|pair| pair[0].variant < pair[1].variant),
+                "one record per variant, in order"
+            );
+            assert_eq!(
+                companion.schedule.transitions.len(),
+                if keepsakes {
+                    crate::MAX_SCHEDULED_TRANSITIONS
+                } else {
+                    0
+                }
+            );
+            assert!(
+                companion
+                    .schedule
+                    .transitions
+                    .iter()
+                    .all(|row| row.minute < 1440 && row.preset < 2 && row.days != 0)
+            );
+            assert_eq!(
+                companion.appearance.text_scale,
+                if keepsakes { 150 } else { 100 }
+            );
+            for mode in companion.modes.iter().flatten() {
+                assert!(mode.habitat.zones.len() <= crate::MAX_HABITAT_ZONES);
+            }
+            assert!(loaded.save.objects.objects.len() <= crate::MAX_COLONY_OBJECTS);
+            assert!(
+                loaded.save.home.decorations.decorations.len() <= crate::MAX_SHELTER_DECORATIONS
+            );
+            assert!(loaded.save.relationships.len() <= crate::MAX_RELATIONSHIPS);
+            for creature in &loaded.save.creatures {
+                assert!(creature.routines.len as usize <= crate::MAX_ROUTINES);
+            }
+
+            // What came back fits, and writing it out and reading it again changes nothing more.
+            let round_trip = SaveStore::new(directory.join("round-trip.json"));
+            round_trip.save(&loaded.save).unwrap();
+            assert_eq!(round_trip.load().unwrap(), Some(loaded.save.clone()));
+            // The backup the second write leaves behind is a colony too, not a broken file.
+            round_trip.save(&loaded.save).unwrap();
+            assert_eq!(
+                round_trip
+                    .load_path(&round_trip.path().with_extension("json.bak"))
+                    .unwrap(),
+                loaded.save
+            );
+            let _ = fs::remove_dir_all(directory);
+        }
+    }
+
+    fn over_full_habitat() -> crate::HabitatPolicy {
+        crate::HabitatPolicy {
+            preset: crate::HabitatPreset::Custom,
+            zones: (0..80)
+                .map(|id| crate::HabitatZone {
+                    id,
+                    display: crate::DisplayKey([1; 16]),
+                    normalized_bounds: crate::DesktopRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1.0,
+                        height: 1.0,
+                    },
+                    kind: crate::HabitatZoneKind::Allowed,
+                    enabled: true,
+                })
+                .collect(),
+        }
+    }
+
+    fn collect_field_names(
+        value: &serde_json::Value,
+        names: &mut std::collections::BTreeSet<String>,
+    ) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                for (name, child) in fields {
+                    names.insert(name.clone());
+                    collect_field_names(child, names);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                items
+                    .iter()
+                    .for_each(|item| collect_field_names(item, names));
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_fields<'a>(value: &'a serde_json::Value, name: &str) -> Vec<&'a serde_json::Value> {
+        let mut found = Vec::new();
+        match value {
+            serde_json::Value::Object(fields) => {
+                for (field, child) in fields {
+                    if field == name {
+                        found.push(child);
+                    }
+                    found.extend(collect_fields(child, name));
+                }
+            }
+            serde_json::Value::Array(items) => {
+                items
+                    .iter()
+                    .for_each(|item| found.extend(collect_fields(item, name)));
+            }
+            _ => {}
+        }
+        found
+    }
+
+    fn collect_numbers(value: &serde_json::Value, numbers: &mut Vec<f32>) {
+        match value {
+            serde_json::Value::Number(number) => {
+                numbers.extend(number.as_f64().map(|number| number as f32));
+            }
+            serde_json::Value::Object(fields) => {
+                fields
+                    .values()
+                    .for_each(|child| collect_numbers(child, numbers));
+            }
+            serde_json::Value::Array(items) => {
+                items.iter().for_each(|item| collect_numbers(item, numbers));
+            }
+            _ => {}
+        }
+    }
+
+    /// How long the busy colony is given to have everything happening at once. The scene is
+    /// deterministic, so it always reaches that moment at the same tick.
+    const BUSY_STEPS: u64 = 4_000;
+    const LEDGE_WINDOW: crate::WindowKey = 0x00C0_FFEE;
+    const DRIFTING_WINDOW: crate::WindowKey = 0x00BA_DBED;
+
+    /// A colony forty days old with a shared ledge, a companion crossing the floor, a window
+    /// sliding about, and a cursor sweeping past. It is driven until all of that is true at once,
+    /// and returns the tick it stopped on so the desktop it saw can be reconstructed.
+    fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let now = created + time::Duration::days(40);
+        let mut desktop = observed_desktop(0);
+        let mut world = crate::World::new([92; 32], created, &desktop);
+        world.tick(now, 0.05, &desktop);
+        // Out of the house, so the colony is living on the desktop rather than walking home.
+        world.save.home.active_since_utc = None;
+        world.save.home.last_disappeared_utc = Some(now);
+        world.save.ritual.next_at_utc = now + time::Duration::days(1);
+        world.save.settings.habitat = crate::HabitatPolicy {
+            preset: crate::HabitatPreset::Custom,
+            zones: vec![crate::HabitatZone {
+                id: 1,
+                display: crate::DisplayKey([1; 16]),
+                normalized_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.05,
+                    width: 1.0,
+                    height: 0.95,
+                },
+                kind: crate::HabitatZoneKind::Allowed,
+                enabled: true,
+            }],
+        };
+        for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+            creature.state.arrival_delay_secs = 0.0;
+            creature.state.action = crate::ActionKind::Idle;
+            creature.state.action_elapsed = 0.0;
+            creature.state.action_duration = 100.0;
+            creature.state.drives = crate::Drives::default();
+            creature.state.facing_right = index % 2 == 0;
+            creature.personality.curiosity = 1.0;
+            creature.personality.sociability = 1.0;
+            creature.personality.playfulness = 1.0;
+            creature.personality.cursor_interest = 1.0;
+            creature.personality.boldness = if index == 1 { 1.0 } else { 0.4 };
+            creature.personality.window_tolerance = creature.personality.boldness;
+            if index < 2 {
+                creature.state.surface = crate::SurfaceAttachment {
+                    kind: crate::SurfaceKind::WindowLedge,
+                    monitor_id: 1,
+                    window_key: Some(LEDGE_WINDOW),
+                    relative_x: (150.0 + index as f32 * 80.0) / 517.3125,
+                };
+                creature.state.position = crate::Point {
+                    x: 300.3125 + 150.0 + index as f32 * 80.0,
+                    y: 600.3125,
+                };
+            } else {
+                creature.state.surface = crate::SurfaceAttachment {
+                    kind: crate::SurfaceKind::ScreenFloor,
+                    monitor_id: 1,
+                    window_key: None,
+                    relative_x: 0.5,
+                };
+                creature.state.position = crate::Point {
+                    x: 980.0 + (index - 2) as f32 * 90.0,
+                    y: 846.0,
+                };
+            }
+        }
+        world.tick(now, 0.05, &desktop);
+        world.drain_events().for_each(drop);
+        // Two observers fed the same scans, so the test can say what the colony is looking at
+        // without reaching into it.
+        let mut geometry = crate::attention::GeometryObserver::default();
+        let mut cursor = crate::cursor::CursorObserver::default();
+        geometry.update(&desktop, 0.05, true);
+        cursor.update(&desktop, 0.05, true);
+        for step in 1..=BUSY_STEPS {
+            desktop = observed_desktop(step);
+            world.tick(
+                now + time::Duration::milliseconds(step as i64 * 50),
+                0.05,
+                &desktop,
+            );
+            world.drain_events().for_each(drop);
+            geometry.update(&desktop, 0.05, true);
+            cursor.update(&desktop, 0.05, true);
+            let together = world.save.creatures.iter().any(|creature| {
+                matches!(
+                    creature.state.action,
+                    crate::ActionKind::Greet
+                        | crate::ActionKind::Follow
+                        | crate::ActionKind::SocialPlay
+                        | crate::ActionKind::SoloPlay
+                        | crate::ActionKind::Sprint
+                )
+            });
+            let travelling = world.save.creatures.iter().any(|creature| {
+                matches!(
+                    creature.state.action,
+                    crate::ActionKind::Traverse
+                        | crate::ActionKind::ClimbWindow
+                        | crate::ActionKind::RideWindow
+                        | crate::ActionKind::Dangle
+                )
+            });
+            let watching = world
+                .save
+                .creatures
+                .iter()
+                .any(|creature| creature.state.attention.is_some());
+            if together
+                && travelling
+                && watching
+                && geometry.signals().next().is_some()
+                && cursor.cue().is_some()
+            {
+                return (world, step);
+            }
+        }
+        panic!("the colony never had a scene, a journey, a cursor, and a cue all at once");
+    }
+
+    fn observed_desktop(step: u64) -> crate::DesktopSnapshot {
+        // Odd fractions, so nothing that reached the file could have come from anywhere else.
+        let drift = (step % 8) as f32 * 30.0;
+        crate::DesktopSnapshot {
+            monitors: vec![crate::MonitorInfo {
+                id: 1,
+                display_key: crate::DisplayKey([1; 16]),
+                bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: crate::DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 826.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            windows: vec![
+                crate::DesktopWindow {
+                    key: LEDGE_WINDOW,
+                    bounds: crate::DesktopRect {
+                        x: 300.3125,
+                        y: 600.3125,
+                        width: 517.3125,
+                        height: 233.3125,
+                    },
+                    z_order: 0,
+                    visible: true,
+                    minimized: false,
+                    application: None,
+                    application_name: None,
+                },
+                crate::DesktopWindow {
+                    key: DRIFTING_WINDOW,
+                    bounds: crate::DesktopRect {
+                        x: 902.3125 - drift,
+                        y: 380.3125,
+                        width: 421.3125,
+                        height: 186.3125,
+                    },
+                    z_order: 1,
+                    visible: true,
+                    minimized: false,
+                    application: None,
+                    application_name: None,
+                },
+            ],
+            cursor: crate::CursorSnapshot {
+                position: crate::Point {
+                    x: 1301.3125 - drift,
+                    y: 96.8125,
+                },
+                velocity: crate::Point {
+                    x: -321.8125,
+                    y: 123.8125,
+                },
+                available: true,
+            },
+            window_sample: Some(crate::WindowSample {
+                monotonic_millis: step * 50,
+                reliable: true,
+            }),
+            cursor_sample_millis: Some(step * 50),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn v12_migration_preserves_identity_history_and_defaults_new_features() {
+        let desktop = crate::DesktopSnapshot::default();
+        let original = crate::World::new([55; 32], datetime!(2026-09-14 12:00 UTC), &desktop).save;
+        let mut json = serde_json::to_value(&original).unwrap();
+        json["save_version"] = 12.into();
+        json.as_object_mut().unwrap().remove("companion");
+        json["home"]
+            .as_object_mut()
+            .unwrap()
+            .remove("hidden_decorations");
+        let migrated = migrate_legacy(json, 12).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.creatures, original.creatures);
+        assert_eq!(migrated.home, original.home);
+        assert_eq!(migrated.settings, original.settings);
+        assert!(migrated.companion.onboarding_complete);
+        assert!(migrated.companion.journal.is_empty());
+    }
+    #[test]
+    fn recovery_preserves_corrupt_files_and_does_not_rotate_over_good_backup() {
+        let directory =
+            std::env::temp_dir().join(format!("formiga-recovery-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let store = SaveStore::new(directory.join("colony.json"));
+        let save = example_save();
+        store.save(&save).unwrap();
+        store.save(&save).unwrap();
+        fs::write(store.path(), b"unreadable original").unwrap();
+        let restored = store.load().unwrap().unwrap();
+        store.save(&restored).unwrap();
+        assert_eq!(store.load_path(&store.backup_path()).unwrap(), save);
+        let copies: Vec<_> = fs::read_dir(&directory)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains("recovery-"))
+            .collect();
+        assert!(
+            copies
+                .iter()
+                .any(|e| fs::read(e.path()).unwrap() == b"unreadable original")
+        );
+        fs::remove_file(store.path()).unwrap();
+        assert_eq!(store.load().unwrap().unwrap(), save);
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn full_snapshot_round_trip_retains_keepsakes_journal_modes_and_quiet_time() {
+        let path =
+            std::env::temp_dir().join(format!("formiga-snapshot-{}.json", std::process::id()));
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let mut world = crate::World::new([63; 32], now, &crate::DesktopSnapshot::default());
+        world.set_quiet_mode(30, now);
+        world.save.home.hidden_decorations = 5;
+        world.save.companion.modes[0] = Some(crate::BehaviorPreset::capture(&world.save.settings));
+        SaveStore::new(&path).save(&world.save).unwrap();
+        assert_eq!(SaveStore::read_snapshot(&path).unwrap(), world.save);
+        let before = fs::read(&path).unwrap();
+        let _ = SaveStore::read_snapshot(&path).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_file(&path).unwrap();
+    }
+
     fn example_save() -> SaveFile {
         let mut home = crate::ColonyHome::default();
         home.decorations.next_at_utc = datetime!(2026-01-05 0:00 UTC);
         SaveFile {
+            companion: crate::CompanionState::default(),
             save_version: crate::SAVE_VERSION,
             colony_seed: [1; 32],
             created_at_utc: datetime!(2026-01-01 0:00 UTC),
@@ -502,6 +1429,138 @@ mod tests {
     }
 
     #[test]
+    fn v13_migration_adds_empty_keepsakes_and_keeps_everything_that_was_already_there() {
+        let mut save = example_save();
+        save.companion.journal.push(crate::JournalEntry {
+            at: save.created_at_utc,
+            creature: None,
+            moment: crate::JournalMoment::Ritual(crate::RitualKind::Picnic),
+        });
+        save.companion.modes[0] = Some(crate::BehaviorPreset::capture(&save.settings));
+        save.companion.quiet_until = Some(save.created_at_utc);
+        save.companion.onboarding_complete = false;
+        save.creatures.push(crate::World::preview_adult(
+            [77; 32],
+            save.created_at_utc,
+            &crate::DesktopSnapshot::default(),
+        ));
+        save.creatures[0].memory.discoveries_found = 40;
+        let mut value = serde_json::to_value(&save).unwrap();
+        value["save_version"] = 13.into();
+        // A v13 file has none of the new keepsakes at all.
+        let companion = value["companion"].as_object_mut().unwrap();
+        for field in ["pins", "scrapbook", "appearance", "schedule"] {
+            companion.remove(field);
+        }
+        let migrated = migrate_legacy(value, 13).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.companion.journal, save.companion.journal);
+        assert_eq!(migrated.companion.modes, save.companion.modes);
+        assert_eq!(migrated.companion.quiet_until, save.companion.quiet_until);
+        assert!(!migrated.companion.onboarding_complete);
+        assert_eq!(migrated.creatures, save.creatures);
+        assert_eq!(migrated.settings, save.settings);
+        assert_eq!(migrated.relationships, save.relationships);
+        // Nothing is invented from a legacy discovery count, and the defaults are the quiet ones.
+        assert!(migrated.companion.pins.is_empty());
+        assert!(migrated.companion.scrapbook.is_empty());
+        assert!(!migrated.companion.schedule.enabled);
+        assert!(migrated.companion.schedule.transitions.is_empty());
+        assert_eq!(
+            migrated.companion.appearance,
+            crate::AppearancePreferences::default()
+        );
+        assert_eq!(migrated.companion.appearance.text_scale, 100);
+        assert_eq!(
+            migrated.companion.appearance.theme,
+            crate::ThemeChoice::System
+        );
+    }
+
+    #[test]
+    fn keepsakes_stay_bounded_and_a_pin_only_ever_names_a_real_moment() {
+        let now = datetime!(2026-02-01 9:00 UTC);
+        let mut state = crate::CompanionState::default();
+        let entry = crate::JournalEntry {
+            at: now,
+            creature: None,
+            moment: crate::JournalMoment::Arrival,
+        };
+        for index in 0..20u8 {
+            let moment = crate::JournalEntry {
+                at: now + time::Duration::minutes(i64::from(index)),
+                ..entry.clone()
+            };
+            state.journal.push(moment.clone());
+            state.pin(&moment);
+        }
+        assert_eq!(state.pins.len(), crate::MAX_PINNED_ENTRIES);
+        assert!(
+            !state.pin(&state.journal[0].clone()),
+            "pinning twice does nothing"
+        );
+        assert!(state.pinned(&state.journal[0]));
+        state.unpin(&state.journal[0].clone());
+        assert!(!state.pinned(&state.journal[0]));
+        // Every pin still names an entry the journal actually holds.
+        assert!(
+            state
+                .pins
+                .iter()
+                .all(|pin| state.journal.iter().any(|entry| pin.names(entry)))
+        );
+        // One record per variant, however often a trinket is found again.
+        for round in 0..3 {
+            for variant in 0..12u8 {
+                state.remember_discovery(
+                    variant,
+                    7,
+                    format!("Finder {round}"),
+                    now + time::Duration::hours(i64::from(round)),
+                );
+            }
+        }
+        assert_eq!(state.scrapbook.len(), usize::from(crate::TRINKET_VARIANTS));
+        assert!(
+            state
+                .scrapbook
+                .iter()
+                .all(|record| record.finder_name == "Finder 0"),
+            "the first finder is the one the scrapbook keeps"
+        );
+        state.schedule.transitions = vec![
+            crate::ScheduledTransition {
+                days: 0,
+                minute: 10,
+                preset: 0,
+            },
+            crate::ScheduledTransition {
+                days: 1,
+                minute: 2000,
+                preset: 0,
+            },
+            crate::ScheduledTransition {
+                days: 1,
+                minute: 10,
+                preset: 5,
+            },
+            crate::ScheduledTransition {
+                days: 127,
+                minute: 540,
+                preset: 1,
+            },
+        ];
+        state.appearance.text_scale = 233;
+        state.normalize();
+        assert_eq!(
+            state.schedule.transitions.len(),
+            1,
+            "invalid rows are dropped"
+        );
+        assert_eq!(state.appearance.text_scale, 150);
+    }
+
+    #[test]
     fn v11_migration_keeps_legacy_appearance_and_does_not_assign_a_design() {
         let mut save = example_save();
         let mut creature = crate::World::preview_adult(
@@ -515,7 +1574,7 @@ mod tests {
         value["save_version"] = 11.into();
         assert!(value["creatures"][0]["appearance"].get("design").is_none());
         let migrated = migrate_legacy(value, 11).unwrap();
-        assert_eq!(migrated.save_version, 12);
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
         assert_eq!(migrated.creatures[0], creature);
         let resumed = crate::World::from_save(migrated);
         assert_eq!(resumed.save.creatures[0].appearance, creature.appearance);

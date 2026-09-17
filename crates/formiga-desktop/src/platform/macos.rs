@@ -88,6 +88,40 @@ fn app_kit_window(window: &Window) -> Option<objc2::rc::Retained<objc2_app_kit::
     view.window()
 }
 
+/// Whether the overlay may draw at half its backing resolution when that loses nothing. Core
+/// Animation magnifies the drawable to the window itself, and can be told to do it without
+/// smoothing, so an image with whole-pixel art stays exact.
+pub const OVERLAY_HALF_RESOLUTION: bool = true;
+
+/// Magnify the overlay's drawable without smoothing. wgpu draws into a Metal layer it adds as a
+/// sublayer of the window's view, so the filter goes on that sublayer rather than on the view.
+pub fn use_nearest_overlay_filter(window: &Window) {
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    let nearest = objc2_foundation::NSString::from_str("nearest");
+    unsafe {
+        let view = handle.ns_view.as_ptr().cast::<objc2::runtime::AnyObject>();
+        let root: *mut objc2::runtime::AnyObject = objc2::msg_send![view, layer];
+        if root.is_null() {
+            return;
+        }
+        let sublayers: *mut objc2::runtime::AnyObject = objc2::msg_send![root, sublayers];
+        if sublayers.is_null() {
+            return;
+        }
+        let count: usize = objc2::msg_send![sublayers, count];
+        for index in 0..count {
+            let layer: *mut objc2::runtime::AnyObject =
+                objc2::msg_send![sublayers, objectAtIndex: index];
+            let _: () = objc2::msg_send![layer, setMagnificationFilter: &*nearest];
+        }
+    }
+}
+
 pub fn set_overlay_hittest(window: &Window, enabled: bool) {
     let _ = window.set_cursor_hittest(enabled);
     if let Some(ns_window) = app_kit_window(window) {
@@ -192,13 +226,23 @@ pub fn cursor_and_idle(
     )
 }
 
-pub fn visible_windows() -> Vec<DesktopWindow> {
+type Owner = Option<(ApplicationKey, String)>;
+
+std::thread_local! {
+    /// Which application owns a process, remembered between scans. Asking AppKit for a running
+    /// application's bundle identifier and name is a round trip to another process each time, and
+    /// a desktop scan runs every second or faster, so asking afresh on every scan spent more of
+    /// Formiga's time than drawing the creatures did. A process's bundle never changes while it
+    /// runs; entries for processes that no longer own a window are dropped after each scan.
+    static OWNERS: std::cell::RefCell<BTreeMap<i32, Owner>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+pub fn visible_windows() -> Option<Vec<DesktopWindow>> {
     let options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements;
-    let Some(array) = CGDisplay::window_list_info(options, Some(kCGNullWindowID)) else {
-        return Vec::new();
-    };
+    let array = CGDisplay::window_list_info(options, Some(kCGNullWindowID))?;
     let mut windows = Vec::new();
-    let mut owners = BTreeMap::new();
+    let mut seen = Vec::new();
     for (z_order, raw) in array.iter().enumerate() {
         let raw = *raw;
         let dictionary =
@@ -235,10 +279,15 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
             continue;
         }
         let owner = owner_pid.and_then(|pid| {
-            owners
-                .entry(pid)
-                .or_insert_with(|| application_for_pid(pid))
-                .clone()
+            if !seen.contains(&pid) {
+                seen.push(pid);
+            }
+            OWNERS.with_borrow_mut(|owners| {
+                owners
+                    .entry(pid)
+                    .or_insert_with(|| application_for_pid(pid))
+                    .clone()
+            })
         });
         windows.push(DesktopWindow {
             key: key as u64,
@@ -255,7 +304,8 @@ pub fn visible_windows() -> Vec<DesktopWindow> {
             application_name: owner.map(|(_, name)| name),
         });
     }
-    windows
+    OWNERS.with_borrow_mut(|owners| owners.retain(|pid, _| seen.contains(pid)));
+    Some(windows)
 }
 
 fn application_for_pid(pid: i32) -> Option<(ApplicationKey, String)> {

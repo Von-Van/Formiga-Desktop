@@ -491,6 +491,103 @@ mod tests {
         );
     }
 
+    /// A display can sit left of and above the origin, and at any scale factor. Zones are stored
+    /// as a fraction of the display they were drawn on, so both have to come back as ordinary
+    /// rectangles in desktop points, and a zone drawn on a display that is no longer plugged in
+    /// must not take away the ground on the one that is.
+    #[test]
+    fn a_negative_origin_display_keeps_its_own_zones_and_a_lost_one_leaves_room_to_stand() {
+        let far = |scale: f32| MonitorInfo {
+            id: 2,
+            display_key: DisplayKey([2; 16]),
+            bounds: DesktopRect {
+                x: -1_000.0,
+                y: -600.0,
+                width: 1_000.0,
+                height: 600.0,
+            },
+            usable_bounds: DesktopRect {
+                x: -1_000.0,
+                y: -580.0,
+                width: 1_000.0,
+                height: 580.0,
+            },
+            scale_factor: scale,
+            primary: false,
+        };
+        let mut policy = HabitatPolicy::default();
+        policy.zones.push(HabitatZone {
+            id: 4,
+            display: DisplayKey([2; 16]),
+            normalized_bounds: DesktopRect {
+                x: 0.5,
+                y: 0.0,
+                width: 0.5,
+                height: 1.0,
+            },
+            kind: HabitatZoneKind::Allowed,
+            enabled: true,
+        });
+        let regions = accessible_regions(&policy, &far(1.0));
+        assert_eq!(
+            regions,
+            vec![DesktopRect {
+                x: -500.0,
+                y: -580.0,
+                width: 500.0,
+                height: 580.0,
+            }]
+        );
+        assert!(habitat_contains(
+            &policy,
+            &far(1.0),
+            Point {
+                x: -250.0,
+                y: -300.0
+            }
+        ));
+        assert!(!habitat_contains(
+            &policy,
+            &far(1.0),
+            Point {
+                x: -750.0,
+                y: -300.0
+            }
+        ));
+        assert_eq!(
+            accessible_regions(&policy, &far(3.0)),
+            regions,
+            "a zone is a fraction of a display, not of its pixels"
+        );
+        // The zone belongs to that display alone; the display beside it keeps its whole preset.
+        assert_eq!(
+            accessible_regions(&policy, &monitor()),
+            vec![monitor().usable_bounds]
+        );
+
+        // Standing between the two, a creature is sent to the nearer one; with the far display
+        // unplugged, the zone that named it cannot leave the colony with nowhere to stand.
+        let both = [monitor(), far(1.0)];
+        assert_eq!(
+            nearest_habitat_point(
+                &policy,
+                &both,
+                Point {
+                    x: -200.0,
+                    y: -100.0
+                }
+            )
+            .map(|(id, _)| id),
+            Some(2)
+        );
+        assert_eq!(
+            nearest_habitat_point(&policy, &both, Point { x: 800.0, y: 700.0 }).map(|(id, _)| id),
+            Some(1)
+        );
+        assert!(validate_habitat(&policy, &[monitor()]).is_ok());
+        assert!(!accessible_regions(&policy, &monitor()).is_empty());
+    }
+
     #[test]
     fn primary_preset_excludes_secondary_displays() {
         let mut secondary = monitor();

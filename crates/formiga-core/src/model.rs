@@ -115,6 +115,12 @@ pub struct DesktopSnapshot {
     pub cursor: CursorSnapshot,
     #[serde(with = "duration_millis")]
     pub idle_duration: Duration,
+    /// Actual scan provenance; omitted by synthetic fixtures and never serialized.
+    #[serde(skip)]
+    pub window_sample: Option<crate::WindowSample>,
+    /// Monotonic time of the native cursor sample; never persisted.
+    #[serde(skip)]
+    pub cursor_sample_millis: Option<u64>,
 }
 
 pub trait PlatformDesktop {
@@ -494,6 +500,8 @@ impl Default for Drives {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CreatureState {
+    #[serde(skip)]
+    pub attention: Option<crate::AttentionPose>,
     pub position: Point,
     pub velocity: Point,
     pub facing_right: bool,
@@ -808,7 +816,7 @@ pub struct CreatureMemory {
     pub milestone_bubble_shown: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProfileDescriptor {
     Trusting,
     Wary,
@@ -1244,6 +1252,8 @@ impl Default for ShelterDecorationState {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColonyHome {
+    #[serde(default)]
+    pub hidden_decorations: u8,
     pub display: Option<DisplayKey>,
     pub corner: HomeCorner,
     pub shelter: ShelterGenome,
@@ -1264,6 +1274,7 @@ impl ColonyHome {
     ) -> Self {
         let detail_seed = u64::from_le_bytes(seed[8..16].try_into().unwrap());
         Self {
+            hidden_decorations: 0,
             display,
             corner: if seed[0] & 1 == 0 {
                 HomeCorner::BottomLeft
@@ -1376,6 +1387,8 @@ impl Default for Settings {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SaveFile {
+    #[serde(default)]
+    pub companion: crate::CompanionState,
     pub save_version: u32,
     pub colony_seed: [u8; 32],
     #[serde(with = "time::serde::rfc3339")]

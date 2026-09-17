@@ -1,4 +1,4 @@
-# Modular creature generation · v0.55.6
+# Modular creature generation · v0.57.0
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,

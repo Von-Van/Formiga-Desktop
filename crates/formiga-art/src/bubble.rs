@@ -16,6 +16,11 @@ impl MilestoneBubbleRenderer {
         canvas.set(width as i32 / 2 - 1, 15, outline);
         canvas.set(width as i32 / 2, 16, outline);
         canvas.set(width as i32 / 2 - 1, 14, paper);
+        // A small sprout marks growth; baked only when the existing notice appears.
+        let green = Rgba::new(67, 119, 90, 255);
+        canvas.fill_rect(13, 7, 2, 5, green);
+        canvas.fill_rect(9, 5, 4, 3, green);
+        canvas.fill_rect(15, 4, 4, 3, green);
         canvas
     }
 }
@@ -25,11 +30,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn milestone_thought_bubble_is_blank_and_fixed_size() {
+    fn milestone_thought_bubble_has_growth_symbol_and_fixed_size() {
         let bubble = MilestoneBubbleRenderer::render();
         assert_eq!(bubble.height(), 17);
         assert_eq!(bubble.width(), 28);
         assert!(bubble.alpha_bounds().is_some());
-        assert_eq!(bubble.get(14, 7), Rgba::new(255, 246, 224, 244));
+        assert_eq!(bubble.get(14, 7), Rgba::new(67, 119, 90, 255));
     }
 }

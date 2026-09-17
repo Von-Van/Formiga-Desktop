@@ -6,6 +6,12 @@ use rand_chacha::ChaCha12Rng;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
+mod attention;
+mod rides;
+mod surfaces;
+use attention::{AttentionRuntime, DisplayAttention};
+use surfaces::SurfaceMemory;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ArrivalMilestone {
     Hours(i64),
@@ -69,6 +75,12 @@ pub struct World {
     pending_home_greetings: BTreeSet<CreatureId>,
     colony_plan: Option<ColonyPlan>,
     topology: DesktopTopology,
+    geometry_observer: crate::attention::GeometryObserver,
+    attention: AttentionRuntime,
+    cursor_observer: crate::cursor::CursorObserver,
+    display_attention: DisplayAttention,
+    surface_memory: SurfaceMemory,
+    ride_memory: rides::RideMemory,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -183,6 +195,23 @@ struct HopJourney {
 }
 
 #[derive(Clone)]
+struct GapJourney {
+    source: WindowKey,
+    source_bounds: DesktopRect,
+    target_bounds: DesktopRect,
+    hop: HopJourney,
+    runup: Point,
+    preparation: f32,
+    elapsed: f32,
+    catch: bool,
+    helped: bool,
+    helper: Option<CreatureId>,
+    assistance_checked: bool,
+    assistance_slip: bool,
+    bridge: bool,
+}
+
+#[derive(Clone)]
 struct ClimbJourney {
     target_window: WindowKey,
     target_bounds: DesktopRect,
@@ -214,10 +243,12 @@ struct SqueezeJourney {
 struct WindowRoutePlan {
     geometry_hash: u64,
     remaining: VecDeque<TopologyRouteHop>,
+    repaired: bool,
 }
 
 #[derive(Clone)]
 enum WindowJourney {
+    Gap(GapJourney),
     Hop(HopJourney),
     Climb(ClimbJourney),
     Squeeze(SqueezeJourney),
@@ -239,15 +270,19 @@ struct AmbientTimers {
 impl WindowJourney {
     fn initial_action(&self) -> ActionKind {
         match self {
+            Self::Gap(_) => ActionKind::InspectScreen,
             Self::Hop(_) => ActionKind::Landing,
+            // A staircase step that pauses first looks at where it is going.
+            Self::Climb(journey) if journey.elapsed < 0.0 => ActionKind::InspectScreen,
             Self::Climb(journey) if journey.approach_duration > 0.05 => ActionKind::Traverse,
             Self::Climb(_) => ActionKind::ClimbWindow,
-            Self::Squeeze(_) => ActionKind::SqueezeWindow,
+            Self::Squeeze(_) => ActionKind::InspectScreen,
         }
     }
 
     fn surface(&self) -> &SurfaceAttachment {
         match self {
+            Self::Gap(journey) => &journey.hop.surface,
             Self::Hop(journey) => &journey.surface,
             Self::Climb(journey) => &journey.surface,
             Self::Squeeze(journey) => &journey.surface,
@@ -256,6 +291,20 @@ impl WindowJourney {
 
     fn valid(&self, desktop: &DesktopSnapshot) -> bool {
         match self {
+            Self::Gap(journey) => [
+                (Some(journey.source), journey.source_bounds),
+                (journey.hop.surface.window_key, journey.target_bounds),
+            ]
+            .into_iter()
+            .filter(|(key, _)| {
+                *key != Some(journey.source) || journey.elapsed < journey.preparation
+            })
+            .all(|(key, bounds)| {
+                desktop
+                    .windows
+                    .iter()
+                    .any(|w| Some(w.key) == key && w.visible && !w.minimized && w.bounds == bounds)
+            }),
             Self::Hop(journey) => match journey.surface.window_key {
                 Some(key) => desktop
                     .windows
@@ -292,6 +341,70 @@ impl WindowJourney {
 
     fn advance(&mut self, dt: f32) -> JourneyStep {
         match self {
+            Self::Gap(journey) => {
+                journey.elapsed += dt;
+                if journey.elapsed < journey.preparation {
+                    if journey.bridge {
+                        return JourneyStep {
+                            position: journey.hop.start,
+                            action: ActionKind::InspectScreen,
+                            complete: false,
+                        };
+                    }
+                    let progress = (journey.elapsed - 0.6) / (journey.preparation - 0.6);
+                    let (position, action) = if progress < 0.0 {
+                        (journey.hop.start, ActionKind::InspectScreen)
+                    } else if progress < 0.65 {
+                        (
+                            lerp_point(
+                                journey.hop.start,
+                                journey.runup,
+                                smoothstep(progress / 0.65),
+                            ),
+                            ActionKind::Traverse,
+                        )
+                    } else {
+                        (
+                            lerp_point(
+                                journey.runup,
+                                journey.hop.start,
+                                smoothstep((progress - 0.65) / 0.35),
+                            ),
+                            ActionKind::Sprint,
+                        )
+                    };
+                    JourneyStep {
+                        position,
+                        action,
+                        complete: false,
+                    }
+                } else {
+                    let progress = ((journey.elapsed - journey.preparation) / journey.hop.duration)
+                        .clamp(0.0, 1.0);
+                    let caught_for = journey.elapsed - journey.preparation - journey.hop.duration;
+                    JourneyStep {
+                        position: if journey.bridge {
+                            lerp_point(journey.hop.start, journey.hop.target, progress)
+                        } else {
+                            gap_position(&journey.hop, progress)
+                        },
+                        action: if journey.catch && caught_for >= 0.0 {
+                            if caught_for < 0.65 {
+                                ActionKind::Dangle
+                            } else {
+                                ActionKind::ClimbWindow
+                            }
+                        } else if journey.bridge {
+                            ActionKind::Traverse
+                        } else {
+                            ActionKind::Landing
+                        },
+                        complete: progress >= 1.0
+                            && (!journey.catch
+                                || caught_for >= if journey.helped { 1.7 } else { 2.4 }),
+                    }
+                }
+            }
             Self::Hop(journey) => {
                 journey.elapsed += dt;
                 let progress = (journey.elapsed / journey.duration).clamp(0.0, 1.0);
@@ -313,6 +426,13 @@ impl WindowJourney {
             }
             Self::Climb(journey) => {
                 journey.elapsed += dt;
+                if journey.elapsed < 0.0 {
+                    return JourneyStep {
+                        position: journey.start,
+                        action: ActionKind::InspectScreen,
+                        complete: false,
+                    };
+                }
                 let approach_end = journey.approach_duration;
                 let climb_end = approach_end + journey.climb_duration;
                 let total = climb_end + journey.mantle_duration;
@@ -352,14 +472,48 @@ impl WindowJourney {
             }
             Self::Squeeze(journey) => {
                 journey.elapsed += dt;
-                let progress = (journey.elapsed / journey.duration).clamp(0.0, 1.0);
+                let progress =
+                    ((journey.elapsed - 0.2) / (journey.duration - 0.4).max(0.1)).clamp(0.0, 1.0);
                 JourneyStep {
                     position: lerp_point(journey.start, journey.target, smoothstep(progress)),
-                    action: ActionKind::SqueezeWindow,
-                    complete: progress >= 1.0,
+                    action: if journey.elapsed < 0.2 || journey.elapsed >= journey.duration - 0.2 {
+                        ActionKind::InspectScreen
+                    } else {
+                        ActionKind::SqueezeWindow
+                    },
+                    complete: journey.elapsed >= journey.duration,
                 }
             }
         }
+    }
+}
+
+fn gap_position(hop: &HopJourney, progress: f32) -> Point {
+    let mut point = lerp_point(hop.start, hop.target, progress);
+    point.y -= (progress * std::f32::consts::PI).sin()
+        * (hop.start.distance(hop.target) * 0.18 + 18.0).min(60.0);
+    point
+}
+
+fn gap_hanging(gap: &GapJourney) -> f32 {
+    if !gap.catch {
+        return 0.0;
+    }
+    let elapsed = gap.elapsed - gap.preparation - gap.hop.duration;
+    if elapsed < 0.0 {
+        0.0
+    } else if elapsed < 0.2 {
+        elapsed / 0.2
+    } else if elapsed < 0.65 {
+        1.0
+    } else if gap.helped {
+        (1.0 - (elapsed - 0.65) / 1.05).clamp(0.0, 1.0)
+    } else if elapsed < 1.05 {
+        1.0 - (elapsed - 0.65) * 0.7
+    } else if elapsed < 1.35 {
+        0.72 + (elapsed - 1.05) * 0.6
+    } else {
+        (0.9 * (1.0 - (elapsed - 1.35) / 1.05)).clamp(0.0, 1.0)
     }
 }
 
@@ -468,6 +622,66 @@ pub(crate) fn scheduled_shelter_decoration_at(
     from + Duration::days(rng.random_range(4..=9))
 }
 
+impl World {
+    /// Move to the routine the schedule intends, if that is not already where we are. Only the
+    /// current intended state is applied: a machine that slept through a week of transitions
+    /// wakes into today's routine, not through every one it missed. Visibility, pause, and the
+    /// separate quiet expiry are never touched.
+    fn apply_routine_schedule(&mut self, now: OffsetDateTime) {
+        if !self.save.companion.schedule.enabled {
+            return;
+        }
+        let local = local_time_or_utc(now);
+        let Some(intended) = self.save.companion.schedule.intended(local) else {
+            return;
+        };
+        if self.save.companion.schedule.applied == Some(intended) {
+            return;
+        }
+        let Some(preset) = self
+            .save
+            .companion
+            .modes
+            .get(usize::from(intended))
+            .and_then(Option::as_ref)
+            .filter(|preset| habitat_usable(&preset.habitat))
+            .cloned()
+        else {
+            // The routine it wants has never been saved, or the habitat it saved no longer leaves
+            // anywhere to stand: leave the settings exactly as they are and try again at the next
+            // transition rather than reporting a change nobody asked for.
+            return;
+        };
+        // A scheduled transition is the moment a manual override stops applying.
+        self.save.companion.schedule.overridden = false;
+        self.save.companion.schedule.applied = Some(intended);
+        preset.apply(&mut self.save.settings);
+        self.save.settings.habitat.zones.truncate(MAX_HABITAT_ZONES);
+    }
+
+    /// The user has chosen a routine by hand. It holds until the next scheduled transition.
+    pub fn override_routine(&mut self) {
+        self.save.companion.schedule.overridden = true;
+    }
+
+    /// Hand the routine back to the schedule, which takes effect at once.
+    pub fn resume_routine(&mut self, now: OffsetDateTime) {
+        self.save.companion.schedule.overridden = false;
+        self.save.companion.schedule.applied = None;
+        self.apply_routine_schedule(now);
+    }
+}
+
+/// A saved habitat is usable when it is a preset, or when it still names at least one place a
+/// creature is allowed to be. An empty custom policy would strand the colony.
+fn habitat_usable(policy: &HabitatPolicy) -> bool {
+    policy.preset != HabitatPreset::Custom
+        || policy
+            .zones
+            .iter()
+            .any(|zone| zone.enabled && zone.kind == HabitatZoneKind::Allowed)
+}
+
 fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
     let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
     now.to_offset(offset)
@@ -505,6 +719,15 @@ impl World {
         let mut home = ColonyHome::from_seed(colony_seed, home_display, Some(now), None);
         home.decorations.next_at_utc = scheduled_shelter_decoration_at(colony_seed, 0, now);
         let save = SaveFile {
+            companion: crate::CompanionState {
+                onboarding_complete: false,
+                journal: vec![crate::JournalEntry {
+                    at: now,
+                    creature: Some(creature.id),
+                    moment: crate::JournalMoment::Arrival,
+                }],
+                ..Default::default()
+            },
             save_version: crate::SAVE_VERSION,
             colony_seed,
             created_at_utc: now,
@@ -527,6 +750,7 @@ impl World {
     }
 
     pub fn from_save(mut save: SaveFile) -> Self {
+        save.companion.normalize();
         normalize_colony_roles(&mut save);
         normalize_relationships(&mut save);
         if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
@@ -571,6 +795,7 @@ impl World {
             creature.state.action_duration = 2.5;
             creature.state.velocity = Point::default();
             creature.state.activity_variant = 0;
+            creature.state.attention = None;
         }
         let rngs = save
             .creatures
@@ -600,6 +825,8 @@ impl World {
             last_windows: BTreeMap::new(),
             interaction: None,
             window_journeys: BTreeMap::new(),
+            surface_memory: SurfaceMemory::default(),
+            ride_memory: rides::RideMemory::default(),
             window_routes: BTreeMap::new(),
             ambient_rng,
             ambient_timers,
@@ -616,6 +843,10 @@ impl World {
             pending_home_greetings: BTreeSet::new(),
             colony_plan: None,
             topology: DesktopTopology::default(),
+            geometry_observer: crate::attention::GeometryObserver::default(),
+            attention: AttentionRuntime::default(),
+            cursor_observer: crate::cursor::CursorObserver::default(),
+            display_attention: DisplayAttention::default(),
         }
     }
 
@@ -624,18 +855,53 @@ impl World {
             self.save.maximum_seen_utc = now;
         }
         let timeline_now = self.save.maximum_seen_utc;
+        if self
+            .save
+            .companion
+            .quiet_until
+            .is_some_and(|until| now >= until)
+        {
+            self.save.companion.quiet_until = None;
+            self.dismiss_home(timeline_now, false);
+        }
+        self.apply_routine_schedule(now);
         self.process_arrivals(timeline_now, desktop);
         self.process_adult_mini_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
         self.process_shelter_decorations(timeline_now);
         self.reconcile_colony_objects(desktop);
+        // Capture display loss before route recovery can replace a creature's old attachment.
+        let display_attention_active = self.save.settings.visible
+            && !self.save.settings.paused
+            && !self.save.home.is_active()
+            && self.save.companion.quiet_until.is_none();
+        self.prepare_display_attention(desktop, dt, display_attention_active);
         let topology_changed = self
             .topology
             .rebuild_if_changed(desktop, &self.last_windows);
         if topology_changed && !self.window_routes.is_empty() {
-            let interrupted: Vec<_> = self.window_routes.keys().copied().collect();
-            self.window_routes.clear();
-            for creature_id in interrupted {
+            for (creature_id, mut previous_plan) in std::mem::take(&mut self.window_routes) {
+                let unaffected = self
+                    .window_journeys
+                    .get(&creature_id)
+                    .is_some_and(|j| j.valid(desktop))
+                    && previous_plan.remaining.iter().all(|hop| {
+                        [
+                            (hop.from_window, hop.from_bounds),
+                            (hop.to_window, hop.to_bounds),
+                        ]
+                        .into_iter()
+                        .all(|(key, bounds)| {
+                            desktop.windows.iter().any(|w| {
+                                w.key == key && w.bounds == bounds && w.visible && !w.minimized
+                            })
+                        })
+                    });
+                if unaffected {
+                    previous_plan.geometry_hash = self.topology.geometry_hash();
+                    self.window_routes.insert(creature_id, previous_plan);
+                    continue;
+                }
                 self.window_journeys.remove(&creature_id);
                 if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
                     settle_interrupted_journey(
@@ -644,13 +910,41 @@ impl World {
                         &self.save.settings.habitat,
                         &mut self.events,
                     );
+                    if !previous_plan.repaired
+                        && display_attention_active
+                        && self.save.settings.window_ledges
+                        && !self.save.settings.reduce_motion
+                        && creature.state.surface.window_key.is_some()
+                    {
+                        let mut route = planned_window_route(
+                            creature,
+                            desktop,
+                            &self.save.settings.habitat,
+                            &self.topology,
+                            self.surface_memory.destination(creature, desktop),
+                        );
+                        if !route.is_empty() {
+                            let first = route.remove(0);
+                            let mut journey = build_route_hop_journey(creature, first, desktop);
+                            if let WindowJourney::Climb(climb) = &mut journey {
+                                climb.elapsed = -0.7;
+                            }
+                            creature.state.action = ActionKind::InspectScreen;
+                            creature.state.action_elapsed = 0.0;
+                            creature.state.action_duration = f32::MAX;
+                            self.window_journeys.insert(creature_id, journey);
+                            self.window_routes.insert(
+                                creature_id,
+                                WindowRoutePlan {
+                                    geometry_hash: self.topology.geometry_hash(),
+                                    remaining: route.into(),
+                                    repaired: true,
+                                },
+                            );
+                        }
+                    }
                 }
             }
-        }
-        if self.save.settings.visible && !self.save.settings.paused {
-            self.topology.update_cursor_invitation(desktop, dt);
-        } else {
-            self.topology.clear_invitation();
         }
         if self.colony_plan.is_some()
             && (!self.save.settings.visible
@@ -661,6 +955,31 @@ impl World {
             self.interrupt_colony_plan(timeline_now);
         }
         let home_active = self.update_home_cycle(desktop);
+        let attention_active = self.save.settings.visible
+            && !self.save.settings.paused
+            && !home_active
+            && self.save.companion.quiet_until.is_none();
+        self.cursor_observer.update(
+            desktop,
+            dt,
+            attention_active
+                && self.save.settings.cursor_reactions
+                && desktop.window_sample.is_none_or(|sample| sample.reliable),
+        );
+        if self.cursor_observer.safe && attention_active && self.save.settings.cursor_reactions {
+            self.topology.update_cursor_invitation(desktop, dt);
+        } else {
+            self.topology.clear_invitation();
+        }
+        let observations_ready = self.geometry_observer.update(desktop, dt, attention_active);
+        self.ride_memory
+            .update(&self.save.creatures, desktop, dt, observations_ready);
+        if !observations_ready {
+            self.surface_memory
+                .update(&self.save.creatures, desktop, dt, false);
+            self.cancel_gap_journeys(desktop);
+            self.clear_attention();
+        }
         if self.save.settings.paused {
             self.settle_active_tosses(desktop);
             self.project_events(timeline_now);
@@ -685,13 +1004,16 @@ impl World {
             self.discovery_remaining = (self.discovery_remaining - dt).max(0.0);
         }
 
-        let window_changed =
-            window_change_near_creatures(&self.last_windows, desktop, &self.save.creatures);
+        if observations_ready {
+            self.remember_attention_supports(dt);
+        }
         update_surface_attachments(
             &mut self.save.creatures,
             desktop,
             &self.last_windows,
             &self.topology,
+            observations_ready,
+            &self.window_journeys,
             &mut self.events,
         );
         if self
@@ -712,6 +1034,9 @@ impl World {
         {
             self.try_start_colony_plan(timeline_now, desktop);
         }
+        self.surface_memory
+            .update(&self.save.creatures, desktop, dt, observations_ready);
+        self.advance_attention(desktop, dt, observations_ready);
         let creature_views = self.save.creatures.clone();
         let relationship_views = self.save.relationships.clone();
         self.reacted_to_toss.retain(|(_, target)| {
@@ -790,6 +1115,13 @@ impl World {
                 *self.sleep_elapsed.entry(creature.id).or_default() += dt;
             }
 
+            if self.attention.owns(creature.id) {
+                if !self.attention.crosses_displays(creature.id) {
+                    constrain_to_surface(creature, desktop, &self.save.settings.habitat);
+                }
+                continue;
+            }
+
             if self.window_journeys.contains_key(&creature.id) {
                 let valid = self
                     .window_journeys
@@ -817,7 +1149,20 @@ impl World {
                     monitor.bounds.contains(step.position)
                         && habitat_contains(&self.save.settings.habitat, monitor, step.position)
                 });
-                if !route_point_valid {
+                let gap_step_valid = self
+                    .window_journeys
+                    .get(&creature.id)
+                    .is_none_or(|journey| {
+                        attention::gap_step_safe(
+                            journey,
+                            creature,
+                            step.position,
+                            desktop,
+                            &self.save.settings,
+                            &creature_views,
+                        )
+                    });
+                if !route_point_valid || !gap_step_valid {
                     self.window_journeys.remove(&creature.id);
                     self.window_routes.remove(&creature.id);
                     settle_interrupted_journey(
@@ -829,6 +1174,12 @@ impl World {
                     continue;
                 }
                 let previous_action = creature.state.action;
+                if self.window_journeys.get(&creature.id).is_some_and(|j| {
+                    matches!(j, WindowJourney::Gap(gap)
+                    if gap.catch && gap.elapsed >= gap.preparation + gap.hop.duration)
+                }) {
+                    creature.state.surface = surface.clone();
+                }
                 creature.state.facing_right = step.position.x >= creature.state.position.x;
                 creature.state.position = step.position;
                 if step.action != previous_action {
@@ -874,7 +1225,11 @@ impl World {
                         .filter(|plan| plan.geometry_hash == self.topology.geometry_hash())
                         .and_then(|plan| plan.remaining.pop_front());
                     if let Some(hop) = next_hop {
-                        let journey = build_route_hop_journey(creature, hop, desktop);
+                        let mut journey = build_route_hop_journey(creature, hop, desktop);
+                        // Look at the next step before taking it, so an ascent reads as a staircase.
+                        if let WindowJourney::Climb(climb) = &mut journey {
+                            climb.elapsed = -0.3;
+                        }
                         let next = journey.initial_action();
                         creature.state.action = next;
                         creature.state.action_elapsed = 0.0;
@@ -922,6 +1277,10 @@ impl World {
                 })
                 .min_by(|a, b| a.0.total_cmp(&b.0));
             let context = BehaviorContext {
+                cursor_safe: self.cursor_observer.safe && self.save.settings.cursor_reactions,
+                ambience: self
+                    .geometry_observer
+                    .ambience(creature.state.surface.monitor_id),
                 nearest_creature_distance: nearest.map(|item| item.0),
                 nearest_creature_position: nearest.map(|item| item.1),
                 nearest_creature_id: nearest.map(|item| item.2),
@@ -930,14 +1289,19 @@ impl World {
                 // A ledge is a destination, not a one-time upgrade from the desktop floor.
                 // Continuing to search while perched lets creatures climb between stacked
                 // application windows and later descend when the desktop arrangement changes.
-                reachable_window_ledge: find_nearby_ledge(
-                    creature,
-                    desktop,
-                    &self.save.settings.habitat,
-                    &self.topology,
-                )
-                .is_some(),
-                window_changed_nearby: window_changed.contains(&creature.id),
+                // Turning window ledges off is a request to stay on the floor, so a ledge simply
+                // stops being somewhere a creature can think of going.
+                reachable_window_ledge: self.save.settings.window_ledges
+                    && find_nearby_ledge(
+                        creature,
+                        desktop,
+                        &self.save.settings.habitat,
+                        &self.topology,
+                    )
+                    .is_some(),
+                // Geometry attention owns interruptions and cooldowns; ordinary utility choices
+                // must not independently restart the same event on every window scan.
+                window_changed_nearby: false,
                 objects: nearby_object_utility(
                     creature,
                     &self.save.objects.objects,
@@ -999,33 +1363,6 @@ impl World {
                         final_action: ActionKind::ReactToWindow,
                         experience: RelationshipExperience::ConcernedAfterToss,
                         approaching: false,
-                    },
-                );
-                Self::emit(
-                    &mut self.events,
-                    WorldEvent::ActionStarted {
-                        creature_id: creature.id,
-                        action: ActionKind::ReactToWindow,
-                    },
-                );
-            }
-
-            if self.colony_plan.is_none()
-                && context.window_changed_nearby
-                && creature.state.action != ActionKind::ReactToWindow
-                && creature.state.action_elapsed >= 0.25
-            {
-                self.action_choices.remove(&creature.id);
-                self.bond_plans.remove(&creature.id);
-                creature.state.action = ActionKind::ReactToWindow;
-                creature.state.action_elapsed = 0.0;
-                creature.state.action_duration = 2.2;
-                creature.state.drives.arousal = (creature.state.drives.arousal + 0.3).min(1.0);
-                Self::emit(
-                    &mut self.events,
-                    WorldEvent::WindowReaction {
-                        creature_id: creature.id,
-                        action: ActionKind::ReactToWindow,
                     },
                 );
                 Self::emit(
@@ -1293,12 +1630,13 @@ impl World {
                     }
                 }
                 let mut next = choice.action;
-                if selected == ActionKind::Perch {
+                if selected == ActionKind::Perch && self.save.settings.window_ledges {
                     let mut route = planned_window_route(
                         creature,
                         desktop,
                         &self.save.settings.habitat,
                         &self.topology,
+                        self.surface_memory.destination(creature, desktop),
                     );
                     if !route.is_empty() {
                         let first = route.remove(0);
@@ -1307,6 +1645,7 @@ impl World {
                         self.window_routes.insert(
                             creature.id,
                             WindowRoutePlan {
+                                repaired: false,
                                 geometry_hash: self.topology.geometry_hash(),
                                 remaining: route.into(),
                             },
@@ -1504,6 +1843,7 @@ impl World {
             .into_iter()
             .chain(self.window_journeys.keys().copied())
             .chain(self.tosses.keys().copied())
+            .chain(self.attention.crossing_ids())
             .collect();
         keep_creatures_in_habitat(
             &mut self.save.creatures,
@@ -1582,6 +1922,106 @@ impl World {
             .ok_or(ColonyManagementError::CreatureNotFound)?;
         creature.kept = kept;
         Ok(())
+    }
+
+    /// Uses the existing home path and tick; never alters the user's behavior settings.
+    pub fn set_quiet_mode(&mut self, minutes: u16, now: OffsetDateTime) {
+        if minutes == 0 {
+            self.save.companion.quiet_until = None;
+            self.dismiss_home(now, false);
+            return;
+        }
+        self.interrupt_colony_plan(now);
+        self.save.companion.quiet_until =
+            Some(now + Duration::minutes(i64::from(minutes.min(120))));
+        self.save.home.active_since_utc = Some(now);
+        self.window_journeys.clear();
+        self.window_routes.clear();
+        self.bond_plans.clear();
+        self.action_choices.clear();
+    }
+
+    /// Import the exact source appearance/personality while assigning fresh local history.
+    pub fn adopt_shared_creature(
+        &mut self,
+        shared: SharedCreatureSeed,
+        replace: Option<CreatureId>,
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Result<CreatureId, ColonyManagementError> {
+        let mut incoming = Self::from_shared_creature(shared, now, desktop)
+            .save
+            .creatures
+            .remove(0);
+        let old = if let Some(id) = replace {
+            let old = self
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == id)
+                .ok_or(ColonyManagementError::CreatureNotFound)?
+                .clone();
+            if old.kept {
+                return Err(ColonyManagementError::CreatureKept);
+            }
+            if !old.role.is_adult() && adult_count(&self.save.creatures) >= MAX_ADULT_CREATURES {
+                return Err(ColonyManagementError::AdultLimit);
+            }
+            Some(old)
+        } else {
+            if self.save.creatures.len() >= MAX_COLONY_CREATURES {
+                return Err(ColonyManagementError::ColonyFull);
+            }
+            if adult_count(&self.save.creatures) >= MAX_ADULT_CREATURES {
+                return Err(ColonyManagementError::AdultLimit);
+            }
+            None
+        };
+        if self
+            .save
+            .creatures
+            .iter()
+            .any(|c| Some(c.id) != replace && c.id == incoming.id)
+        {
+            return Err(ColonyManagementError::DuplicateIdentity);
+        }
+        incoming.colony_order = old.as_ref().map_or_else(
+            || next_colony_order(&self.save.creatures),
+            |c| c.colony_order,
+        );
+        if self
+            .save
+            .creatures
+            .iter()
+            .any(|c| Some(c.id) != replace && c.name == incoming.name)
+        {
+            incoming.name = format!(
+                "{} {}",
+                incoming.name.chars().take(18).collect::<String>(),
+                incoming.colony_order + 1
+            );
+        }
+        let id = incoming.id;
+        if let Some(old) = old {
+            incoming.state.position = old.state.position;
+            incoming.state.surface = old.state.surface;
+            self.remove_creature_runtime(old.id);
+            for c in &mut self.save.creatures {
+                if c.role.parent_id() == Some(old.id) {
+                    c.role = CreatureRole::Mini { parent_id: id };
+                }
+            }
+            self.save.creatures.retain(|c| c.id != old.id);
+        }
+        self.register_creature_runtime(&incoming);
+        self.save.creatures.push(incoming);
+        rebalance_minis(&mut self.save.creatures);
+        normalize_relationships(&mut self.save);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::CreatureSpawned { creature_id: id },
+        );
+        Ok(id)
     }
 
     pub fn preview_adult(
@@ -1791,6 +2231,7 @@ impl World {
     }
 
     fn remove_creature_runtime(&mut self, creature_id: CreatureId) {
+        self.cancel_creature_attention(creature_id);
         let mut interrupted: BTreeSet<_> = self
             .action_choices
             .iter()
@@ -1934,7 +2375,7 @@ impl World {
             .retain(|pair, _| calm_pairs.contains(pair));
     }
 
-    fn project_events(&mut self, _now: OffsetDateTime) {
+    fn project_events(&mut self, now: OffsetDateTime) {
         if self.projected_events >= self.events.len() {
             return;
         }
@@ -1943,6 +2384,20 @@ impl World {
         let mut changed_profiles = Vec::new();
 
         for event in pending {
+            // A first find of each trinket goes in the scrapbook, with the finder's name kept so
+            // the record still reads if that creature later leaves.
+            if let WorldEvent::ActionCompleted {
+                creature_id,
+                action: ActionKind::PresentDiscovery,
+            } = event
+                && let Some(finder) = self.save.creatures.iter().find(|c| c.id == creature_id)
+            {
+                let (variant, name) = (finder.state.activity_variant, finder.name.clone());
+                self.save
+                    .companion
+                    .remember_discovery(variant, creature_id, name, now);
+            }
+            self.save.companion.record(&event, now);
             match event {
                 WorldEvent::CreaturePetted { creature_id } => {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
@@ -2049,9 +2504,30 @@ impl World {
                     on_ledge,
                     riding_window,
                     active_seconds,
+                    region,
                     ..
                 } => {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
+                        if self
+                            .surface_memory
+                            .familiar(creature_id, creature.state.surface.window_key)
+                        {
+                            match &mut creature.memory.preferred_region {
+                                Some(place) if place.display == display && place.cell == region => {
+                                    place.confidence = place.confidence.saturating_add(1);
+                                }
+                                Some(place) if place.confidence > 0 => place.confidence -= 1,
+                                place => {
+                                    *place = Some(PreferredRegionMemory {
+                                        display,
+                                        cell: region.min(8),
+                                        confidence: 1,
+                                    })
+                                }
+                            }
+                        } else if let Some(place) = &mut creature.memory.preferred_region {
+                            place.confidence = place.confidence.saturating_sub(1);
+                        }
                         creature.memory.milestone_cooldown_active_seconds = creature
                             .memory
                             .milestone_cooldown_active_seconds
@@ -2096,7 +2572,15 @@ impl World {
                     if let Some(relationship) =
                         relationship_mut_or_insert(&mut self.save.relationships, a, b)
                     {
+                        let before = relationship.affinity;
                         relationship.apply(experience);
+                        if before < 112 && relationship.affinity >= 112 {
+                            self.save.companion.remember(
+                                Some(a.min(b)),
+                                crate::JournalMoment::Friendship(a.max(b)),
+                                now,
+                            );
+                        }
                     }
                 }
                 WorldEvent::HomeAppeared => {
@@ -2137,6 +2621,14 @@ impl World {
                 creature.memory.milestone_bubble_shown = true;
                 creature.memory.milestone_cooldown_active_seconds = 0;
             }
+            self.save.companion.record(
+                &WorldEvent::ProfileChanged {
+                    creature_id,
+                    new_descriptor,
+                    show_milestone,
+                },
+                now,
+            );
             Self::emit(
                 &mut self.events,
                 WorldEvent::ProfileChanged {
@@ -2699,6 +3191,7 @@ impl World {
             .as_ref()
             .is_some_and(|plan| plan.kind == RitualKind::ShelterGathering);
         if !ritual_shelter
+            && self.save.companion.quiet_until.is_none()
             && self
                 .save
                 .home
@@ -2951,6 +3444,9 @@ impl World {
     }
 
     fn dismiss_home(&mut self, now: OffsetDateTime, interrupted: bool) {
+        if interrupted {
+            self.save.companion.quiet_until = None;
+        }
         if !self.save.home.is_active() {
             return;
         }
@@ -3009,6 +3505,7 @@ impl World {
             return false;
         };
         let interrupted_journey = self.window_journeys.remove(&creature_id).is_some();
+        self.cancel_creature_attention(creature_id);
         self.window_routes.remove(&creature_id);
         let interrupted_toss = self.tosses.remove(&creature_id);
         self.action_choices.remove(&creature_id);
@@ -3401,6 +3898,11 @@ impl World {
             arrived: [false; 2],
         };
         creature.state = spawn_state;
+        colony.save.companion.journal.clear();
+        colony
+            .save
+            .companion
+            .remember(Some(creature.id), crate::JournalMoment::Arrival, now);
         colony.save.creatures[0] = creature;
         colony.save.arrival_state.arrived[0] = true;
         colony.save.arrival_state.arrived[1] = true;
@@ -4314,6 +4816,7 @@ fn generate_creature(
         tendencies: LearnedTendencies::default(),
         routines: RoutineTable::default(),
         state: CreatureState {
+            attention: None,
             position,
             velocity: Point::default(),
             facing_right: true,
@@ -4581,6 +5084,17 @@ fn execute_action(
     nearest: Option<(f32, Point, CreatureId)>,
     selected_target: Option<Point>,
 ) {
+    if matches!(
+        creature.state.action,
+        ActionKind::InvestigateCursor | ActionKind::AvoidCursor
+    ) && (!desktop.cursor.available || !context.cursor_safe)
+    {
+        creature.state.action = ActionKind::Idle;
+        creature.state.action_elapsed = 0.0;
+        creature.state.action_duration = 2.5;
+        creature.state.velocity = Point::default();
+        return;
+    }
     let speed = 24.0 + creature.personality.activity * 34.0;
     let mut target_x = None;
     let mut target_stop_distance = 0.0;
@@ -4606,10 +5120,10 @@ fn execute_action(
             };
             creature.state.velocity.x = direction * speed * multiplier;
         }
-        ActionKind::InvestigateCursor if desktop.cursor.available => {
+        ActionKind::InvestigateCursor if desktop.cursor.available && context.cursor_safe => {
             target_x = Some(desktop.cursor.position.x)
         }
-        ActionKind::AvoidCursor if desktop.cursor.available => {
+        ActionKind::AvoidCursor if desktop.cursor.available && context.cursor_safe => {
             target_x = Some(
                 creature.state.position.x
                     + (creature.state.position.x - desktop.cursor.position.x).signum() * 180.0,
@@ -4803,9 +5317,21 @@ fn update_surface_attachments(
     desktop: &DesktopSnapshot,
     previous: &BTreeMap<WindowKey, DesktopRect>,
     topology: &DesktopTopology,
+    react_to_motion: bool,
+    journeys: &BTreeMap<CreatureId, WindowJourney>,
     events: &mut Vec<WorldEvent>,
 ) {
     for creature in creatures {
+        // In-flight contact belongs to the journey. Reattaching first would snap the position
+        // back to the old surface before an observer could see the actual movement.
+        if journeys.contains_key(&creature.id)
+            || matches!(
+                creature.state.action,
+                ActionKind::Tossed | ActionKind::Dragged
+            )
+        {
+            continue;
+        }
         let Some(key) = creature.state.surface.window_key else {
             continue;
         };
@@ -4819,7 +5345,17 @@ fn update_surface_attachments(
                 let relative = creature.state.surface.relative_x.clamp(0.05, 0.95);
                 creature.state.position.x = window.bounds.x + window.bounds.width * relative;
                 creature.state.position.y = window.bounds.y;
-                if old.is_some_and(|old| old != window.bounds) {
+                if let Some(monitor) = desktop
+                    .monitors
+                    .iter()
+                    .find(|m| m.bounds.contains(creature.state.position))
+                {
+                    creature.state.surface.monitor_id = monitor.id;
+                }
+                if react_to_motion
+                    && creature.state.attention.is_none()
+                    && old.is_some_and(|old| old != window.bounds)
+                {
                     let old = old.expect("changed window has previous bounds");
                     let movement = Point {
                         x: window.bounds.x - old.x,
@@ -4830,28 +5366,44 @@ fn update_surface_attachments(
                         + (window.bounds.height - old.height).abs();
                     let rapid = moved_distance > 80.0 || resized > 90.0;
                     let calm_platform = topology.is_slow_platform(key);
-                    creature.state.action = if !calm_platform
+                    let next = if !calm_platform
                         && rapid
                         && creature.personality.window_tolerance < 0.72
                     {
-                        creature.state.drives.arousal =
-                            (creature.state.drives.arousal + 0.35).min(1.0);
                         ActionKind::ReactToWindow
                     } else {
                         ActionKind::RideWindow
                     };
-                    creature.state.action_elapsed = 0.0;
-                    creature.state.action_duration = 2.5;
-                    World::emit(
-                        events,
-                        WorldEvent::WindowReaction {
-                            creature_id: creature.id,
-                            action: creature.state.action,
-                        },
-                    );
+                    if creature.state.action != next {
+                        creature.state.action = next;
+                        creature.state.action_elapsed = 0.0;
+                        creature.state.action_duration = 2.5;
+                        if next == ActionKind::ReactToWindow {
+                            creature.state.drives.arousal =
+                                (creature.state.drives.arousal + 0.35).min(1.0);
+                        }
+                        World::emit(
+                            events,
+                            WorldEvent::WindowReaction {
+                                creature_id: creature.id,
+                                action: next,
+                            },
+                        );
+                    }
                 }
             }
             None => {
+                // A native identifier change with an unchanged frame is the same visible ledge.
+                let mut renamed = desktop.windows.iter().filter(|window| {
+                    window.visible
+                        && !window.minimized
+                        && Some(window.bounds) == previous.get(&key).copied()
+                        && !previous.contains_key(&window.key)
+                });
+                if let (Some(window), None) = (renamed.next(), renamed.next()) {
+                    creature.state.surface.window_key = Some(window.key);
+                    continue;
+                }
                 let monitor = desktop
                     .monitors
                     .iter()
@@ -5153,32 +5705,55 @@ fn build_route_hop_journey(
     }
 }
 
+/// How much rise and drop one creature will take in a single staircase step, in logical points.
+/// Temperament, energy, and learned climbing decide it; a mini reaches less far than an adult.
+fn traversal_ability(creature: &Creature) -> (f32, f32) {
+    let ability = (creature.personality.boldness * 0.45
+        + creature.personality.activity * 0.2
+        + LearnedTendencies::utility(creature.tendencies.climbing).max(0.0) * 0.6
+        + creature.state.drives.energy * 0.25
+        - creature.state.drives.sleep_pressure * 0.2)
+        .clamp(0.0, 1.0);
+    let reach = if creature.role.is_adult() { 1.0 } else { 0.75 };
+    (
+        (160.0 + ability * 200.0) * reach,
+        (240.0 + ability * 160.0) * reach,
+    )
+}
+
 fn planned_window_route(
     creature: &Creature,
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     topology: &DesktopTopology,
+    familiar: Option<Point>,
 ) -> Vec<TopologyRouteHop> {
     let Some(start_window) = creature.state.surface.window_key else {
         return Vec::new();
     };
-    let preferred = creature.memory.preferred_region.and_then(|preferred| {
-        let monitor = desktop
-            .monitors
-            .iter()
-            .find(|monitor| monitor.display_key == preferred.display)?;
-        let column = f32::from(preferred.cell.min(8) % 3);
-        let row = f32::from(preferred.cell.min(8) / 3);
-        Some(Point {
-            x: monitor.usable_bounds.x + monitor.usable_bounds.width * ((column + 0.5) / 3.0),
-            y: monitor.usable_bounds.y + monitor.usable_bounds.height * ((row + 0.5) / 3.0),
-        })
-    });
+    let preferred = creature
+        .memory
+        .preferred_region
+        .filter(|p| p.confidence > 0)
+        .and_then(|preferred| {
+            let monitor = desktop
+                .monitors
+                .iter()
+                .find(|monitor| monitor.display_key == preferred.display)?;
+            let column = f32::from(preferred.cell.min(8) % 3);
+            let row = f32::from(preferred.cell.min(8) / 3);
+            Some(Point {
+                x: monitor.usable_bounds.x + monitor.usable_bounds.width * ((column + 0.5) / 3.0),
+                y: monitor.usable_bounds.y + monitor.usable_bounds.height * ((row + 0.5) / 3.0),
+            })
+        });
     let target_hint = topology
         .invitation()
         .filter(|invitation| cursor_invitation_eligible(creature, *invitation))
         .map(|invitation| invitation.point)
+        .or(familiar)
         .or(preferred);
+    let (max_rise, max_drop) = traversal_ability(creature);
     let route = topology.plan_route(
         start_window,
         RoutePreferences {
@@ -5186,6 +5761,8 @@ fn planned_window_route(
             exploration: creature.tendencies.exploration,
             cursor_trust: creature.tendencies.cursor_trust,
             target_hint,
+            max_rise,
+            max_drop,
         },
     );
     if route.iter().all(|hop| {
@@ -5328,7 +5905,15 @@ fn find_nearby_ledge(
             // Nearby intermediate ledges remain easiest. Isolated window islands become slightly
             // more attractive to curious creatures without bypassing reachability or habitat.
             reachable.then_some((
-                dx * 0.65 + dy * 0.12 - island_bonus,
+                dx * 0.65 + dy * 0.12
+                    - island_bonus
+                    - if creature.personality.window_tolerance > 0.7
+                        && topology.is_slow_platform(window.key)
+                    {
+                        24.0
+                    } else {
+                        0.0
+                    },
                 window,
                 ledge_x,
                 monitor.id,
@@ -5652,36 +6237,6 @@ fn find_drop_support(
         .map(|(_, point, surface)| (point, surface))
 }
 
-fn window_change_near_creatures(
-    previous: &BTreeMap<WindowKey, DesktopRect>,
-    desktop: &DesktopSnapshot,
-    creatures: &[Creature],
-) -> Vec<CreatureId> {
-    let mut changed = std::collections::BTreeSet::new();
-    for window in &desktop.windows {
-        let moved = previous
-            .get(&window.key)
-            .is_none_or(|old| old != &window.bounds);
-        if moved {
-            for creature in creatures {
-                if distance_to_rect(creature.state.position, window.bounds) <= 260.0 {
-                    changed.insert(creature.id);
-                }
-            }
-        }
-    }
-    for (key, bounds) in previous {
-        if !desktop.windows.iter().any(|window| window.key == *key) {
-            for creature in creatures {
-                if distance_to_rect(creature.state.position, *bounds) <= 260.0 {
-                    changed.insert(creature.id);
-                }
-            }
-        }
-    }
-    changed.into_iter().collect()
-}
-
 fn distance_to_rect(point: Point, rect: DesktopRect) -> f32 {
     let dx = if point.x < rect.x {
         rect.x - point.x
@@ -5705,7 +6260,135 @@ mod tests {
     use super::*;
     use time::macros::datetime;
 
-    fn desktop() -> DesktopSnapshot {
+    #[test]
+    fn shared_adoption_preserves_colony_and_exact_legacy_origins() {
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let desktop = desktop();
+        for generation in 0..=3 {
+            let shared = SharedCreatureSeed {
+                source_colony_seed: [88; 32],
+                source_generation: generation,
+                design: None,
+            };
+            let expected = World::from_shared_creature(shared, now, &desktop)
+                .save
+                .creatures
+                .remove(0);
+            let mut world = World::new([7; 32], now, &desktop);
+            world.save.creatures[0].memory.times_petted = 123;
+            let original = world.save.creatures[0].clone();
+            let home = world.save.home.clone();
+            let id = world
+                .adopt_shared_creature(shared, None, now, &desktop)
+                .unwrap();
+            let adopted = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+            assert_eq!(adopted.appearance, expected.appearance);
+            assert_eq!(adopted.personality, expected.personality);
+            assert_eq!(adopted.origin, expected.origin);
+            assert_eq!(adopted.memory.times_petted, 0);
+            assert_eq!(world.save.creatures[0], original);
+            assert_eq!(world.save.home, home);
+            let before = world.save.clone();
+            assert_eq!(
+                world.adopt_shared_creature(shared, None, now, &desktop),
+                Err(ColonyManagementError::DuplicateIdentity)
+            );
+            assert_eq!(world.save, before);
+        }
+    }
+    #[test]
+    fn shared_replacement_respects_keep_and_reparents_minis() {
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([7; 32], now, &desktop);
+        world.tick(now + Duration::hours(2), 0.05, &desktop);
+        let old_id = world.save.creatures[0].id;
+        let shared = SharedCreatureSeed {
+            source_colony_seed: [81; 32],
+            source_generation: 2,
+            design: Some(CreatureDesign::generated([81; 32], 2, None)),
+        };
+        world.set_creature_kept(old_id, true).unwrap();
+        let before = world.save.clone();
+        assert_eq!(
+            world.adopt_shared_creature(shared, Some(old_id), now, &desktop),
+            Err(ColonyManagementError::CreatureKept)
+        );
+        assert_eq!(world.save, before);
+        world.set_creature_kept(old_id, false).unwrap();
+        let mini_ids: Vec<_> = world
+            .save
+            .creatures
+            .iter()
+            .filter(|c| c.role.parent_id() == Some(old_id))
+            .map(|c| c.id)
+            .collect();
+        assert!(!mini_ids.is_empty());
+        let id = world
+            .adopt_shared_creature(shared, Some(old_id), now, &desktop)
+            .unwrap();
+        for mini in world
+            .save
+            .creatures
+            .iter()
+            .filter(|c| mini_ids.contains(&c.id))
+        {
+            assert_eq!(mini.role.parent_id(), Some(id));
+        }
+        assert_eq!(
+            world
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == id)
+                .unwrap()
+                .origin
+                .design,
+            shared.design
+        );
+    }
+    #[test]
+    fn shared_adoption_refuses_full_colony_without_mutation() {
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([7; 32], now, &desktop);
+        world.tick(now + Duration::days(40), 0.05, &desktop);
+        assert_eq!(world.save.creatures.len(), 4);
+        let before = world.save.clone();
+        let shared = SharedCreatureSeed {
+            source_colony_seed: [81; 32],
+            source_generation: 0,
+            design: None,
+        };
+        assert_eq!(
+            world.adopt_shared_creature(shared, None, now, &desktop),
+            Err(ColonyManagementError::ColonyFull)
+        );
+        assert_eq!(world.save, before);
+    }
+    #[test]
+    fn quiet_mode_holds_home_beyond_normal_cycle_and_expires_after_relaunch() {
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([7; 32], now, &desktop);
+        let settings = world.save.settings.clone();
+        world.set_quiet_mode(30, now);
+        world.tick(now + Duration::minutes(20), 0.05, &desktop);
+        assert!(world.save.home.is_active());
+        assert!(!world.try_start_colony_plan(now + Duration::minutes(20), &desktop));
+        assert_eq!(world.save.settings, settings);
+        let mut restored = World::from_save(world.save);
+        restored.tick(now + Duration::minutes(31), 0.05, &desktop);
+        assert!(restored.save.companion.quiet_until.is_none());
+        assert!(!restored.save.home.is_active());
+        assert_eq!(restored.save.settings, settings);
+        restored.set_quiet_mode(60, now + Duration::minutes(32));
+        restored.set_quiet_mode(0, now + Duration::minutes(33));
+        assert!(restored.save.companion.quiet_until.is_none());
+        assert_eq!(restored.save.settings, settings);
+    }
+
+    pub(super) fn desktop() -> DesktopSnapshot {
         DesktopSnapshot {
             monitors: vec![MonitorInfo {
                 id: 1,
@@ -5729,7 +6412,7 @@ mod tests {
         }
     }
 
-    fn let_colony_wander(world: &mut World, now: OffsetDateTime) {
+    pub(super) fn let_colony_wander(world: &mut World, now: OffsetDateTime) {
         world.save.home.active_since_utc = None;
         world.save.home.last_disappeared_utc = Some(now);
     }
@@ -5758,6 +6441,257 @@ mod tests {
             creature.state.action_duration = 100.0;
         }
         world
+    }
+
+    /// The calendar itself is covered where it lives, in the schedule's own tests. This is the
+    /// part the world owns: applying a routine once, leaving a manual choice alone, and never
+    /// touching visibility, pause, or the separate quiet expiry. It uses a routine that is in
+    /// force at every hour, so the result does not depend on the timezone the test runs in.
+    #[test]
+    fn an_opt_in_schedule_applies_a_routine_once_and_yields_to_a_manual_choice() {
+        let created = datetime!(2026-09-14 0:00 UTC);
+        let desktop = desktop();
+        let mut world = two_creature_world([31; 32], created);
+        let work = BehaviorPreset {
+            habitat: HabitatPolicy::default(),
+            window_ledges: false,
+            cursor_reactions: false,
+            reduce_motion: true,
+        };
+        let relax = BehaviorPreset {
+            habitat: HabitatPolicy::default(),
+            window_ledges: true,
+            cursor_reactions: true,
+            reduce_motion: false,
+        };
+        world.save.companion.modes = [Some(work.clone()), Some(relax.clone())];
+        world.save.companion.schedule = RoutineSchedule {
+            enabled: true,
+            transitions: vec![ScheduledTransition {
+                days: 0b1111111,
+                minute: 0,
+                preset: 0,
+            }],
+            ..RoutineSchedule::default()
+        };
+        world.tick(datetime!(2026-09-16 10:00 UTC), 0.05, &desktop);
+        assert!(world.save.settings.reduce_motion);
+        assert!(!world.save.settings.window_ledges);
+        assert_eq!(world.save.companion.schedule.applied, Some(0));
+        // A manual choice holds until the next change comes round.
+        relax.apply(&mut world.save.settings);
+        world.override_routine();
+        world.tick(datetime!(2026-09-16 14:00 UTC), 0.05, &desktop);
+        assert!(
+            world.save.settings.window_ledges,
+            "a manual choice is respected between transitions"
+        );
+        assert!(world.save.companion.schedule.overridden);
+        // The next scheduled change takes the routine back and ends the override.
+        world.save.companion.schedule.applied = Some(1);
+        world.tick(datetime!(2026-09-16 18:30 UTC), 0.05, &desktop);
+        assert_eq!(world.save.companion.schedule.applied, Some(0));
+        assert!(!world.save.companion.schedule.overridden);
+        assert!(world.save.settings.reduce_motion);
+        // Visibility, pause, and the quiet expiry are never a schedule's business.
+        world.save.settings.paused = true;
+        world.save.settings.visible = false;
+        world.save.companion.quiet_until = Some(datetime!(2030-01-01 0:00 UTC));
+        world.save.companion.schedule.applied = Some(1);
+        world.tick(datetime!(2026-09-17 9:30 UTC), 0.05, &desktop);
+        assert_eq!(world.save.companion.schedule.applied, Some(0));
+        assert!(world.save.settings.paused && !world.save.settings.visible);
+        assert!(world.save.companion.quiet_until.is_some());
+        // A routine that was never saved changes nothing, and is not recorded as applied.
+        world.save.companion.modes[0] = None;
+        world.save.companion.schedule.applied = Some(1);
+        relax.apply(&mut world.save.settings);
+        world.tick(datetime!(2026-09-17 10:00 UTC), 0.05, &desktop);
+        assert!(
+            !world.save.settings.reduce_motion,
+            "an unsaved routine is not applied"
+        );
+        assert_eq!(world.save.companion.schedule.applied, Some(1));
+        // Neither does one whose habitat no longer leaves anywhere to stand.
+        world.save.companion.modes[0] = Some(BehaviorPreset {
+            habitat: HabitatPolicy {
+                preset: HabitatPreset::Custom,
+                zones: Vec::new(),
+            },
+            ..work.clone()
+        });
+        world.tick(datetime!(2026-09-17 10:30 UTC), 0.05, &desktop);
+        assert!(!world.save.settings.reduce_motion);
+        assert_eq!(world.save.companion.schedule.applied, Some(1));
+        // Handing the routine back to the schedule takes effect at once.
+        world.save.companion.modes[0] = Some(work);
+        world.resume_routine(datetime!(2026-09-17 11:00 UTC));
+        assert_eq!(world.save.companion.schedule.applied, Some(0));
+        assert!(!world.save.companion.schedule.overridden);
+        assert!(world.save.settings.reduce_motion);
+        // A schedule nobody turned on never touches anything.
+        world.save.companion.schedule.enabled = false;
+        world.save.companion.schedule.applied = None;
+        relax.apply(&mut world.save.settings);
+        world.tick(datetime!(2026-09-17 12:00 UTC), 0.05, &desktop);
+        assert_eq!(world.save.companion.schedule.applied, None);
+        assert!(!world.save.settings.reduce_motion);
+    }
+
+    /// Turning window ledges off is a request, not a hint. A colony already on the floor stays
+    /// there, however inviting the window above it looks.
+    #[test]
+    fn turning_window_ledges_off_keeps_the_colony_on_the_floor() {
+        let created = datetime!(2026-04-01 0:00 UTC);
+        let mut desktop = desktop();
+        desktop.window_sample = Some(WindowSample {
+            monotonic_millis: 0,
+            reliable: true,
+        });
+        desktop.windows.push(DesktopWindow {
+            key: 901,
+            bounds: DesktopRect {
+                x: 260.0,
+                y: 600.0,
+                width: 560.0,
+                height: 230.0,
+            },
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        let mut world = two_creature_world([64; 32], created);
+        let now = created + Duration::hours(1);
+        let tick = |world: &mut World, desktop: &mut DesktopSnapshot, step: i64| {
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = step as u64 * 50;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, desktop);
+        };
+        // With ledges allowed, this desktop is one a creature does climb onto.
+        let mut climbed = false;
+        for step in 1..=3_000 {
+            tick(&mut world, &mut desktop, step);
+            climbed |= world
+                .save
+                .creatures
+                .iter()
+                .any(|c| c.state.surface.kind == SurfaceKind::WindowLedge);
+            if climbed {
+                break;
+            }
+        }
+        assert!(
+            climbed,
+            "the fixture has to be a desktop worth climbing, or the preference proves nothing"
+        );
+        // Turn the preference off and put everyone back on the floor.
+        let mut world = two_creature_world([64; 32], created);
+        world.save.settings.window_ledges = false;
+        for step in 1..=1_200 {
+            tick(&mut world, &mut desktop, step);
+            assert!(
+                world
+                    .save
+                    .creatures
+                    .iter()
+                    .all(|c| c.state.surface.kind != SurfaceKind::WindowLedge),
+                "a creature climbed a ledge at step {step} with the preference off"
+            );
+            assert!(world.window_journeys.is_empty(), "and none set off for one");
+        }
+    }
+
+    /// Nothing the simulation keeps about the moment may grow without bound. Under a desktop that
+    /// keeps shoving windows about, every runtime map stays inside the colony it belongs to, and a
+    /// scene that is cut short leaves no plan, no route, and no reserved landing behind it.
+    #[test]
+    fn every_runtime_map_stays_inside_the_colony_and_a_cut_short_scene_leaves_nothing() {
+        let created = datetime!(2026-05-01 0:00 UTC);
+        let mut desktop = desktop();
+        desktop.window_sample = Some(WindowSample {
+            monotonic_millis: 0,
+            reliable: true,
+        });
+        for index in 0..4 {
+            desktop.windows.push(DesktopWindow {
+                key: 950 + index,
+                bounds: DesktopRect {
+                    x: 120.0 + index as f32 * 300.0,
+                    y: 560.0 + (index % 2) as f32 * 60.0,
+                    width: 260.0,
+                    height: 240.0,
+                },
+                z_order: index as u32,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            });
+        }
+        let mut world = two_creature_world([88; 32], created);
+        let now = created + Duration::hours(1);
+        let colony = world.save.creatures.len();
+        let mut peak = (0, 0, 0, 0);
+        for step in 1..=4_000 {
+            // A restless desktop: something moves every half second, and every so often a scene
+            // is cut short under the colony's feet.
+            if step % 10 == 0 {
+                let index = (step / 10 % 4) as usize;
+                desktop.windows[index].bounds.x += if step % 20 == 0 { 24.0 } else { -24.0 };
+            }
+            if step % 400 == 0 {
+                world.save.settings.paused = true;
+            }
+            if step % 400 == 20 {
+                world.save.settings.paused = false;
+            }
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = step as u64 * 50;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            let (plans, cooldowns) = world.attention.held();
+            peak = (
+                peak.0.max(plans),
+                peak.1.max(cooldowns),
+                peak.2.max(world.window_routes.len()),
+                peak.3.max(world.window_journeys.len()),
+            );
+            for map in [
+                plans,
+                cooldowns,
+                world.window_routes.len(),
+                world.window_journeys.len(),
+                world.tosses.len(),
+            ] {
+                assert!(
+                    map <= colony,
+                    "a runtime map outgrew the colony at step {step}"
+                );
+            }
+            assert!(
+                world.save.companion.journal.len() <= MAX_JOURNAL_ENTRIES,
+                "the journal outgrew its cap at step {step}"
+            );
+        }
+        assert!(peak.0 > 0, "the colony did have scenes to clean up after");
+        // Cut everything short at once, the way hiding the colony does.
+        world.save.settings.visible = false;
+        for step in 4_001..=4_040 {
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = step as u64 * 50;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+        }
+        assert_eq!(world.attention.held().0, 0, "no plan survives the cut");
+        assert!(
+            world.window_journeys.is_empty(),
+            "and no journey does either"
+        );
+        assert!(
+            world
+                .save
+                .creatures
+                .iter()
+                .all(|c| c.state.attention.is_none()),
+            "and nobody is left holding a pose"
+        );
     }
 
     #[test]
@@ -5926,7 +6860,143 @@ mod tests {
     }
 
     #[test]
-    fn narrow_gap_squeeze_is_runtime_only_and_cancels_on_geometry_change() {
+    fn a_tall_staircase_step_needs_individual_traversal_ability() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        // A 240-point tier: reachable for some creatures and out of reach for others.
+        for (key, y) in [(51, 800.0), (52, 560.0)] {
+            desktop.windows.push(DesktopWindow {
+                key,
+                bounds: DesktopRect {
+                    x: 200.0,
+                    y,
+                    width: 400.0,
+                    height: 240.0,
+                },
+                z_order: 0,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            });
+        }
+        let mut world = World::new([12; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
+        world
+            .topology
+            .rebuild_if_changed(&desktop, &BTreeMap::new());
+        let c = &mut world.save.creatures[0];
+        c.state.surface = SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id: 1,
+            window_key: Some(51),
+            relative_x: 0.5,
+        };
+        c.state.position = Point { x: 400.0, y: 800.0 };
+        c.state.drives = Drives::default();
+        let route = |world: &World| {
+            planned_window_route(
+                &world.save.creatures[0],
+                &desktop,
+                &world.save.settings.habitat,
+                &world.topology,
+                None,
+            )
+        };
+        world.save.creatures[0].personality.boldness = 1.0;
+        world.save.creatures[0].personality.activity = 1.0;
+        assert_eq!(route(&world).len(), 1);
+        world.save.creatures[0].personality.boldness = 0.0;
+        world.save.creatures[0].personality.activity = 0.0;
+        assert!(
+            route(&world).is_empty(),
+            "a timid creature refuses the tier"
+        );
+        // Learned climbing and liveliness bring the same creature back over that limit.
+        world.save.creatures[0].tendencies.climbing = 100;
+        world.save.creatures[0].personality.activity = 0.5;
+        assert_eq!(route(&world).len(), 1);
+        // Fatigue takes it away again, without touching the route caps themselves.
+        world.save.creatures[0].state.drives.sleep_pressure = 1.0;
+        assert!(route(&world).is_empty());
+    }
+    #[test]
+    fn personality_scores_stay_bounded_and_identity_does_not_enter_them() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([19; 32], created, &desktop);
+        let base = world.save.creatures[0].clone();
+        for bits in 0..64_u8 {
+            let c = &mut world.save.creatures[0];
+            *c = base.clone();
+            let bit = |index: u8| f32::from(bits >> index & 1);
+            c.personality.boldness = bit(0);
+            c.personality.activity = bit(1);
+            c.personality.curiosity = bit(2);
+            c.personality.playfulness = bit(3);
+            c.state.drives.energy = bit(4);
+            c.state.drives.sleep_pressure = bit(5);
+            c.tendencies.climbing = if bits % 2 == 0 { -100 } else { 100 };
+            let (rise, drop) = traversal_ability(c);
+            assert!((120.0..=400.0).contains(&rise), "rise {rise} for {bits}");
+            assert!((180.0..=440.0).contains(&drop), "drop {drop} for {bits}");
+            assert!(rise.is_finite() && drop.is_finite());
+            // The same traits give the same reach whatever the creature is called.
+            let mut renamed = c.clone();
+            renamed.id = c.id ^ 0xfeed;
+            renamed.name = "Someone else".to_owned();
+            assert_eq!(traversal_ability(&renamed), (rise, drop));
+        }
+    }
+
+    #[test]
+    fn a_native_identifier_change_with_the_same_frame_keeps_the_perch() {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        let window = DesktopWindow {
+            key: 44,
+            bounds: DesktopRect {
+                x: 200.0,
+                y: 300.0,
+                width: 600.0,
+                height: 400.0,
+            },
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        };
+        desktop.windows.push(window.clone());
+        let mut world = World::new([8; 32], created, &desktop);
+        let_colony_wander(&mut world, created);
+        world.save.creatures[0].state.surface = SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id: 1,
+            window_key: Some(44),
+            relative_x: 0.5,
+        };
+        world.tick(created, 0.05, &desktop);
+        desktop.windows[0].key = 45;
+        world.tick(created, 0.05, &desktop);
+        let c = &world.save.creatures[0];
+        assert_eq!(c.state.surface.window_key, Some(45));
+        assert_eq!(c.state.position, Point { x: 500.0, y: 300.0 });
+        assert_ne!(c.state.action, ActionKind::ReactToWindow);
+        // Two new windows with that frame are ambiguous: fall back to ordinary support recovery.
+        let mut twin = window;
+        twin.key = 47;
+        desktop.windows[0].key = 46;
+        desktop.windows.push(twin);
+        world.tick(created, 0.05, &desktop);
+        assert_eq!(
+            world.save.creatures[0].state.surface.kind,
+            SurfaceKind::ScreenFloor
+        );
+    }
+
+    #[test]
+    fn narrow_gap_squeeze_repairs_once_then_cancels_on_another_geometry_change() {
         let created = datetime!(2026-01-01 0:00 UTC);
         let mut desktop = desktop();
         desktop.windows = vec![
@@ -5981,6 +7051,7 @@ mod tests {
         world.window_routes.insert(
             creature_id,
             WindowRoutePlan {
+                repaired: false,
                 geometry_hash: world.topology.geometry_hash(),
                 remaining: VecDeque::new(),
             },
@@ -5988,10 +7059,14 @@ mod tests {
         world.tick(created, 0.1, &desktop);
         assert_eq!(
             world.save.creatures[0].state.action,
-            ActionKind::SqueezeWindow
+            ActionKind::InspectScreen
         );
         assert!(world.window_routes.contains_key(&creature_id));
 
+        desktop.windows[1].bounds.x += 1.0;
+        world.tick(created, 0.05, &desktop);
+        assert!(world.window_routes[&creature_id].repaired);
+        assert!(world.window_journeys[&creature_id].valid(&desktop));
         desktop.windows[1].bounds.x += 1.0;
         world.tick(created, 0.05, &desktop);
         assert!(!world.window_routes.contains_key(&creature_id));
@@ -6253,7 +7328,7 @@ mod tests {
     }
 
     #[test]
-    fn nearby_window_change_interrupts_a_long_running_action() {
+    fn nearby_window_novelty_preserves_sleep_but_attracts_an_awake_creature() {
         let created = datetime!(2026-01-01 0:00 UTC);
         let mut desktop = desktop();
         let mut world = World::new([31; 32], created, &desktop);
@@ -6278,17 +7353,18 @@ mod tests {
             application_name: None,
         });
         world.tick(created, 0.05, &desktop);
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Sleep);
+        world.save.creatures[0].state.action = ActionKind::Idle;
+        world.save.creatures[0].personality.curiosity = 1.0;
+        world.tick(created, 0.05, &desktop);
         assert_eq!(
             world.save.creatures[0].state.action,
-            ActionKind::ReactToWindow
+            ActionKind::InspectScreen
         );
-        assert!(world.drain_events().any(|event| matches!(
-            event,
-            WorldEvent::WindowReaction {
-                action: ActionKind::ReactToWindow,
-                ..
-            }
-        )));
+        assert_eq!(
+            world.save.creatures[0].state.attention.unwrap().emotion,
+            AttentionEmotion::Curious
+        );
     }
 
     #[test]
@@ -7895,6 +8971,8 @@ mod tests {
             .creatures
             .remove(0);
         let context = BehaviorContext {
+            cursor_safe: true,
+            ambience: DesktopAmbience::default(),
             nearest_creature_distance: None,
             nearest_creature_position: None,
             nearest_creature_id: None,
@@ -8649,6 +9727,701 @@ mod tests {
                 DwellingKind::MiniCottage
             ],
             "adults get a full cottage and minis a matching smaller one"
+        );
+    }
+
+    /// A full colony on a desktop of window ledges, with every appetite at its ceiling. Nothing
+    /// here is typical; it is the most reactive colony the generator can be asked for, which is
+    /// what the cadence claim has to survive.
+    fn eager_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let now = created + Duration::days(40);
+        let mut desktop = desktop();
+        desktop.window_sample = Some(WindowSample {
+            monotonic_millis: 0,
+            reliable: true,
+        });
+        for (key, x, y, width, z_order) in [
+            (801_u64, 200.0, 600.0, 600.0, 2_u32),
+            (802, 870.0, 600.0, 300.0, 1),
+            (803, 320.0, 330.0, 420.0, 0),
+        ] {
+            desktop.windows.push(DesktopWindow {
+                key,
+                bounds: DesktopRect {
+                    x,
+                    y,
+                    width,
+                    height: 200.0,
+                },
+                z_order,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            });
+        }
+        let mut world = World::new(seed, created, &desktop);
+        world.tick(now, 0.05, &desktop);
+        let_colony_wander(&mut world, now);
+        world.pending_home_greetings.clear();
+        world.save.ritual.next_at_utc = now + Duration::days(30);
+        // One art pixel per desktop point, so the gap and spacing numbers below read directly.
+        world.save.settings.display_scale = 2;
+        assert_eq!(world.save.creatures.len(), 4);
+        for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+            creature.state.arrival_delay_secs = 0.0;
+            creature.state.drives = Drives::default();
+            creature.personality.curiosity = 1.0;
+            creature.personality.sociability = 1.0;
+            creature.personality.playfulness = 1.0;
+            creature.personality.boldness = 0.8;
+            creature.personality.window_tolerance = 0.5;
+            creature.state.action = ActionKind::Idle;
+            creature.state.action_elapsed = 0.0;
+            creature.state.action_duration = 100.0;
+            if index < 2 {
+                creature.state.surface = SurfaceAttachment {
+                    kind: SurfaceKind::WindowLedge,
+                    monitor_id: 1,
+                    window_key: Some(801),
+                    relative_x: 0.25 + index as f32 * 0.45,
+                };
+                creature.state.position = Point {
+                    x: 350.0 + index as f32 * 270.0,
+                    y: 600.0,
+                };
+            } else {
+                creature.state.surface = SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id: 1,
+                    window_key: None,
+                    relative_x: 0.5,
+                };
+                creature.state.position = Point {
+                    x: 560.0 + (index - 2) as f32 * 110.0,
+                    y: 846.0,
+                };
+            }
+        }
+        world.tick(now, 0.05, &desktop);
+        world.drain_events().for_each(drop);
+        (world, desktop, now)
+    }
+
+    /// Whether a creature is inside an attention scene this tick rather than living its own life.
+    /// The runtime owns watchers that are still waiting for their cue but have no pose yet; the
+    /// pose covers the leaps whose contact belongs to the journey rather than to the plan.
+    fn in_an_attention_scene(world: &World, creature: &Creature) -> bool {
+        world.attention.owns(creature.id) || creature.state.attention.is_some()
+    }
+
+    /// Nobody is left standing on geometry that is not there. Creatures still arriving, in the
+    /// air, or in someone's hand are excused; every other one has to be somewhere real.
+    fn everyone_stands_on_real_geometry(world: &World, desktop: &DesktopSnapshot, note: &str) {
+        for creature in &world.save.creatures {
+            if creature.state.arrival_delay_secs > 0.0
+                || world.window_journeys.contains_key(&creature.id)
+                || world.tosses.contains_key(&creature.id)
+            {
+                continue;
+            }
+            let monitor = desktop
+                .monitors
+                .iter()
+                .find(|m| m.id == creature.state.surface.monitor_id)
+                .unwrap_or_else(|| panic!("{note}: a creature is attached to a missing display"));
+            assert!(
+                monitor.bounds.contains(creature.state.position),
+                "{note}: a creature stands outside every display"
+            );
+            if let Some(key) = creature.state.surface.window_key {
+                assert!(
+                    desktop
+                        .windows
+                        .iter()
+                        .any(|w| w.key == key && w.visible && !w.minimized),
+                    "{note}: a creature still claims window {key}"
+                );
+            }
+        }
+    }
+
+    /// R02's cadence claim, measured rather than argued. The colony above is as reactive as one
+    /// can be, and the desktop below changes far more often than a real desk does. Ordinary life
+    /// still has to be what most of the colony is doing on most of the ticks; the per-creature
+    /// and colony cooldowns are what buy that quiet back.
+    #[test]
+    fn ordinary_quiet_life_still_fills_most_of_a_restless_desktop() {
+        const STEPS: i64 = 2_400;
+        let (mut world, mut desktop, now) = eager_colony([57; 32]);
+        let mut scene_creature_ticks = 0_usize;
+        let mut crowded_ticks = 0_usize;
+        let mut longest_scene = 0_u32;
+        let mut busiest = 0_u32;
+        // Ticks in a scene so far, and the run the creature is in right now.
+        let mut running: BTreeMap<CreatureId, (u32, u32)> = BTreeMap::new();
+        for step in 1..=STEPS {
+            // A window shoves itself across the screen every four seconds, alternating direction
+            // so the desktop stays inside the display. No desk is ever this busy.
+            if step % 80 == 0 {
+                let turn = (step / 80) as usize;
+                let shift = if turn.is_multiple_of(2) {
+                    110.0
+                } else {
+                    -110.0
+                };
+                desktop.windows[turn % 3].bounds.x += shift;
+            }
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            let busy = world
+                .save
+                .creatures
+                .iter()
+                .filter(|c| in_an_attention_scene(&world, c))
+                .count();
+            scene_creature_ticks += busy;
+            if busy * 2 > world.save.creatures.len() {
+                crowded_ticks += 1;
+            }
+            for creature in &world.save.creatures {
+                let entry = running.entry(creature.id).or_default();
+                if in_an_attention_scene(&world, creature) {
+                    entry.0 += 1;
+                    entry.1 += 1;
+                } else {
+                    entry.1 = 0;
+                }
+                longest_scene = longest_scene.max(entry.1);
+                busiest = busiest.max(entry.0);
+            }
+        }
+        let creature_ticks = STEPS as usize * world.save.creatures.len();
+        let scene_share = scene_creature_ticks as f32 / creature_ticks as f32;
+        let crowded_share = crowded_ticks as f32 / STEPS as f32;
+        let busiest_share = busiest as f32 / STEPS as f32;
+        // Measured on this fixture: sixteen percent of creature time, twenty-two percent for the
+        // busiest single creature, more than half the colony caught up in one scene on six
+        // percent of ticks, and no unbroken stretch longer than five and a half seconds. The
+        // bounds below leave room for the catalogue to grow without letting it take the day.
+        assert!(
+            scene_share > 0.02,
+            "the colony barely reacted at all: {scene_share}"
+        );
+        assert!(
+            scene_share < 0.35,
+            "creatures spent {:.0}% of their time in attention scenes",
+            scene_share * 100.0
+        );
+        assert!(
+            busiest_share < 0.4,
+            "the busiest creature spent {:.0}% of its time in scenes",
+            busiest_share * 100.0
+        );
+        assert!(
+            crowded_share < 0.3,
+            "most of the colony was caught up in a scene on {:.0}% of ticks",
+            crowded_share * 100.0
+        );
+        assert!(
+            longest_scene < 600,
+            "one creature stayed inside a scene for {longest_scene} ticks without a break"
+        );
+    }
+
+    /// The other half of R02's cadence claim. This gap is never completed — its far side shifts
+    /// under every attempt — and every scene that does start gathers whoever is nearby. Neither
+    /// failure nor an audience buys the colony more of the day, and a jump nobody finished is
+    /// never recorded as a landing.
+    #[test]
+    fn neither_repeated_failure_nor_an_audience_lets_attention_take_over_the_day() {
+        const STEPS: i64 = 2_400;
+        let (mut world, mut desktop, now) = eager_colony([58; 32]);
+        // A ledge with a seventy point gap off each end: too wide for a route to cross and just
+        // inside what a bold creature will try for itself. The high window off to the right is
+        // too narrow to stand on and too far above to jump to, and exists only to keep giving
+        // the colony something to look at, so every scene here is an attempt or an audience.
+        desktop.windows[2] = DesktopWindow {
+            key: 806,
+            bounds: DesktopRect {
+                x: 1_180.0,
+                y: 200.0,
+                width: 100.0,
+                height: 140.0,
+            },
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        };
+        desktop.windows.push(DesktopWindow {
+            key: 804,
+            bounds: DesktopRect {
+                x: 20.0,
+                y: 600.0,
+                width: 110.0,
+                height: 200.0,
+            },
+            z_order: 3,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+            creature.state.position = Point {
+                x: [770.0, 230.0, 480.0, 570.0][index],
+                y: 600.0,
+            };
+            creature.state.surface = SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id: 1,
+                window_key: Some(801),
+                relative_x: (creature.state.position.x - 200.0) / 600.0,
+            };
+        }
+        let mut attempts = 0_u32;
+        let mut disrupted = 0_u32;
+        let mut committed: Vec<WindowKey> = Vec::new();
+        let mut nudge = 3.0_f32;
+        let mut scene_creature_ticks = 0_usize;
+        let mut landings = 0_u32;
+        for step in 1..=STEPS {
+            // Offer the gap as often as the rest of the system allows. Removing the once-a-minute
+            // ledge interval leaves the cooldowns and the setback window to do the work alone.
+            world.surface_memory.inspect_in = 0.0;
+            if step % 80 == 0 {
+                let turn = (step / 80) as usize;
+                desktop.windows[2].bounds.x += if turn.is_multiple_of(2) {
+                    110.0
+                } else {
+                    -110.0
+                };
+            }
+            // Whichever ledge somebody has just committed to slides three points, alternating
+            // direction so that it stays where it was: enough to lose the destination they were
+            // promised, too little and too slow to read as a window anybody moved.
+            if !committed.is_empty() {
+                for window in &mut desktop.windows {
+                    if committed.contains(&window.key) {
+                        window.bounds.x += nudge;
+                        disrupted += 1;
+                    }
+                }
+                nudge = -nudge;
+            }
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            landings += world
+                .drain_events()
+                .filter(|e| {
+                    matches!(
+                        e,
+                        WorldEvent::ActionCompleted {
+                            action: ActionKind::Landing,
+                            ..
+                        }
+                    )
+                })
+                .count() as u32;
+            let was_committed = !committed.is_empty();
+            committed = world
+                .window_journeys
+                .values()
+                .filter(|j| matches!(j, WindowJourney::Gap(_)))
+                .filter_map(|j| j.surface().window_key)
+                .collect();
+            attempts += u32::from(!committed.is_empty() && !was_committed);
+            scene_creature_ticks += world
+                .save
+                .creatures
+                .iter()
+                .filter(|c| in_an_attention_scene(&world, c))
+                .count();
+        }
+        let share =
+            scene_creature_ticks as f32 / (STEPS as usize * world.save.creatures.len()) as f32;
+        assert!(
+            attempts >= 2,
+            "the colony only tried the gap {attempts} times"
+        );
+        assert!(disrupted > 0, "no attempt was ever actually spoiled");
+        assert_eq!(landings, 0, "a spoiled jump was recorded as a landing");
+        // Measured on this fixture: six percent of creature time across two minutes, below the
+        // sixteen percent of a colony whose desktop keeps rewarding it with something new.
+        assert!(
+            share < 0.3,
+            "a colony that never succeeds spent {:.0}% of its time trying",
+            share * 100.0
+        );
+        everyone_stands_on_real_geometry(&world, &desktop, "after a run of failed jumps");
+    }
+
+    /// R02 asks for adults and minis to be compared. In the simulation they are the same kind of
+    /// participant: the colony that arrives on the calendar is two of each, and a scene draws on
+    /// whoever is near and interested rather than on who is full size.
+    #[test]
+    fn minis_join_a_scene_on_the_same_terms_as_the_adults_they_live_with() {
+        let (mut world, mut desktop, now) = eager_colony([59; 32]);
+        assert_eq!(
+            world
+                .save
+                .creatures
+                .iter()
+                .filter(|c| c.role.is_adult())
+                .count(),
+            2,
+            "this colony is meant to be two adults and two minis"
+        );
+        let minis: Vec<_> = world
+            .save
+            .creatures
+            .iter()
+            .filter(|c| !c.role.is_adult())
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(minis.len(), 2);
+        let mut joined = 0;
+        for step in 1..=40 {
+            if step == 1 {
+                desktop.windows[0].bounds.x += 160.0;
+            }
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            joined += minis.iter().filter(|id| world.attention.owns(**id)).count();
+        }
+        assert!(
+            joined > 0,
+            "no mini was ever part of the scene its colony was watching"
+        );
+    }
+
+    /// The familiar half of R02's last pair. A companion with no curiosity and no appetite for
+    /// company still looks up for someone it knows well; the same companion in a colony of
+    /// strangers keeps to itself.
+    #[test]
+    fn a_familiar_bond_recruits_a_companion_that_curiosity_alone_would_leave_out() {
+        for familiar in [false, true] {
+            let (mut world, mut desktop, now) = eager_colony([60; 32]);
+            let actor = world.save.creatures[0].id;
+            let watcher = world.save.creatures[2].id;
+            for creature in world.save.creatures.iter_mut().skip(2) {
+                creature.personality.curiosity = 0.0;
+                creature.personality.sociability = 0.0;
+            }
+            for bond in &mut world.save.relationships {
+                bond.affinity = if familiar && (bond.a == watcher || bond.b == watcher) {
+                    200
+                } else {
+                    0
+                };
+                bond.avoidance = 0;
+            }
+            for step in 1..=6 {
+                if step == 1 {
+                    desktop.windows[0].bounds.x += 160.0;
+                }
+                desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+                world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            }
+            assert!(
+                world.attention.owns(actor),
+                "the rider should react either way"
+            );
+            assert_eq!(
+                world.attention.owns(watcher),
+                familiar,
+                "an uninterested companion looked up without a bond to explain it"
+            );
+        }
+    }
+
+    /// R03's session disruptions. A workspace switch takes every window away at once, a locked
+    /// screen makes the scan unreliable, a sleeping machine leaves a hole in the clock, and a
+    /// desktop past the window cap cannot be read at all. Each one has to end any scene in
+    /// progress, leave everybody on real geometry, record no success nobody earned, and replay
+    /// nothing when the desktop comes back.
+    #[test]
+    fn a_workspace_switch_a_lock_a_long_sleep_and_a_window_flood_recover_without_replay() {
+        for disruption in 0..4 {
+            let (mut world, mut desktop, now) = eager_colony([61; 32]);
+            // A fourth window, too small to stand on and too far above anything to reach, so
+            // that losing the desktop is a wholesale change of the kind a workspace switch is.
+            desktop.windows.push(DesktopWindow {
+                key: 807,
+                bounds: DesktopRect {
+                    x: 200.0,
+                    y: 100.0,
+                    width: 100.0,
+                    height: 80.0,
+                },
+                z_order: 4,
+                visible: true,
+                minimized: false,
+                application: None,
+                application_name: None,
+            });
+            // Something worth watching, so there is a scene to interrupt.
+            desktop.windows[0].bounds.x += 160.0;
+            for step in 1..=6 {
+                desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+                world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            }
+            assert!(
+                world
+                    .save
+                    .creatures
+                    .iter()
+                    .any(|c| in_an_attention_scene(&world, c)),
+                "disruption {disruption} had no scene to interrupt"
+            );
+            world.drain_events().for_each(drop);
+
+            let restored = desktop.clone();
+            let mut at = now + Duration::milliseconds(350);
+            let mut millis = 400_u64;
+            match disruption {
+                0 => desktop.windows.clear(),
+                1 => desktop.window_sample.as_mut().unwrap().reliable = false,
+                2 => {
+                    // Six hours asleep. The colony is told the shelter has just gone, so the
+                    // home cycle does not answer the gap before the geometry does.
+                    at = now + Duration::hours(6);
+                    millis = 6 * 3_600 * 1_000;
+                    let_colony_wander(&mut world, at);
+                }
+                _ => {
+                    let template = desktop.windows[2].clone();
+                    for extra in 0..70 {
+                        desktop.windows.push(DesktopWindow {
+                            key: 900 + extra,
+                            bounds: DesktopRect {
+                                x: 40.0 + (extra % 10) as f32 * 130.0,
+                                y: 60.0 + (extra / 10) as f32 * 24.0,
+                                ..template.bounds
+                            },
+                            z_order: 20 + extra as u32,
+                            ..template.clone()
+                        });
+                    }
+                }
+            }
+            let note = format!("disruption {disruption}");
+            for step in 0..5 {
+                desktop.window_sample.as_mut().unwrap().monotonic_millis = millis + step * 50;
+                world.tick(
+                    at + Duration::milliseconds(step as i64 * 50),
+                    0.05,
+                    &desktop,
+                );
+                everyone_stands_on_real_geometry(&world, &desktop, &note);
+            }
+            millis += 200;
+            let at = at + Duration::milliseconds(200);
+            assert!(
+                !world
+                    .save
+                    .creatures
+                    .iter()
+                    .any(|c| in_an_attention_scene(&world, c)),
+                "{note}: a scene carried on through it"
+            );
+            assert!(
+                !world.drain_events().any(|e| matches!(
+                    e,
+                    WorldEvent::ActionCompleted {
+                        action: ActionKind::Landing | ActionKind::ClimbWindow,
+                        ..
+                    }
+                )),
+                "{note}: an interrupted attempt was recorded as finished"
+            );
+
+            // The desktop comes back exactly as it was. That is a fresh baseline, not the scene
+            // the colony was in the middle of before the interruption.
+            desktop = restored;
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = millis + 50;
+            world.tick(at + Duration::milliseconds(50), 0.05, &desktop);
+            assert!(
+                !world
+                    .save
+                    .creatures
+                    .iter()
+                    .any(|c| in_an_attention_scene(&world, c)),
+                "{note}: the interrupted scene was replayed on the first scan back"
+            );
+            everyone_stands_on_real_geometry(&world, &desktop, &note);
+        }
+    }
+
+    /// R03's window disruptions, one pass each. A rider keeps its footing when its window only
+    /// moves or grows; it gets put down safely when the window is minimised or closed; and while
+    /// something else is drawn over it, it is out of sight and out of every scene.
+    #[test]
+    fn a_moved_resized_minimised_closed_or_covered_window_always_leaves_its_rider_somewhere_safe() {
+        for disruption in 0..5 {
+            let (mut world, mut desktop, now) = eager_colony([62; 32]);
+            let rider = world.save.creatures[0].id;
+            match disruption {
+                0 => desktop.windows[0].bounds.x += 240.0,
+                1 => {
+                    desktop.windows[0].bounds.width += 260.0;
+                    desktop.windows[0].bounds.height += 120.0;
+                }
+                2 => desktop.windows[0].minimized = true,
+                3 => {
+                    desktop.windows.remove(0);
+                }
+                _ => desktop.windows.push(DesktopWindow {
+                    key: 804,
+                    bounds: DesktopRect {
+                        x: 240.0,
+                        y: 520.0,
+                        width: 520.0,
+                        height: 200.0,
+                    },
+                    z_order: 0,
+                    visible: true,
+                    minimized: false,
+                    application: None,
+                    application_name: None,
+                }),
+            }
+            for step in 1..=30 {
+                desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+                world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+                everyone_stands_on_real_geometry(
+                    &world,
+                    &desktop,
+                    &format!("window disruption {disruption}"),
+                );
+            }
+            let creature = world
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == rider)
+                .expect("the rider is still in the colony");
+            match disruption {
+                0 | 1 => assert_eq!(
+                    creature.state.surface.window_key,
+                    Some(801),
+                    "a window that only moved or grew still carries its rider"
+                ),
+                2 | 3 => {
+                    assert_eq!(
+                        creature.state.surface.kind,
+                        SurfaceKind::ScreenFloor,
+                        "a lost window has to put its rider down"
+                    );
+                    assert_eq!(creature.state.surface.window_key, None);
+                }
+                _ => {
+                    assert_eq!(creature.state.surface.window_key, Some(801));
+                    assert!(
+                        !world.attention.owns(rider),
+                        "a creature nobody can see is not part of a scene"
+                    );
+                }
+            }
+        }
+    }
+
+    /// R03's coordinate disruptions at the layer where creatures actually stand on things. The
+    /// second display is to the left of the origin and at a different scale; its ledges have to
+    /// carry a creature exactly like the ones on the primary display, and losing that display
+    /// has to put the creature back on geometry that still exists.
+    #[test]
+    fn ledges_at_negative_coordinates_and_another_scale_carry_creatures_normally() {
+        let (mut world, mut desktop, now) = eager_colony([63; 32]);
+        let mut second = desktop.monitors[0].clone();
+        second.id = 2;
+        second.display_key = DisplayKey([2; 16]);
+        second.primary = false;
+        second.bounds.x = -1_440.0;
+        second.usable_bounds.x = -1_440.0;
+        second.scale_factor = 1.0;
+        desktop.monitors.push(second);
+        desktop.windows.push(DesktopWindow {
+            key: 805,
+            bounds: DesktopRect {
+                x: -1_100.0,
+                y: 500.0,
+                width: 420.0,
+                height: 200.0,
+            },
+            z_order: 3,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        let traveller = world.save.creatures[3].id;
+        {
+            let creature = creature_mut(&mut world.save.creatures, traveller).unwrap();
+            creature.state.surface = SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id: 2,
+                window_key: Some(805),
+                relative_x: 0.5,
+            };
+            creature.state.position = Point {
+                x: -890.0,
+                y: 500.0,
+            };
+        }
+        for step in 1..=20 {
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            everyone_stands_on_real_geometry(&world, &desktop, "on a display left of the origin");
+        }
+        let creature = world
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == traveller)
+            .unwrap();
+        assert_eq!(creature.state.surface.monitor_id, 2);
+        assert_eq!(creature.state.position.y, 500.0);
+        assert!(creature.state.position.x < 0.0);
+
+        // The same ledge moving on the far display carries its rider with it, negative
+        // coordinates and a different scale factor notwithstanding.
+        desktop.windows.last_mut().unwrap().bounds.x -= 120.0;
+        desktop.window_sample.as_mut().unwrap().monotonic_millis = 1_050;
+        world.tick(now + Duration::milliseconds(1_050), 0.05, &desktop);
+        assert_eq!(
+            world
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == traveller)
+                .unwrap()
+                .state
+                .position
+                .x,
+            -1_010.0
+        );
+
+        // Unplugging that display leaves the creature on the one that is left.
+        desktop.monitors.pop();
+        desktop.windows.pop();
+        desktop.window_sample.as_mut().unwrap().monotonic_millis = 1_100;
+        world.tick(now + Duration::milliseconds(1_100), 0.05, &desktop);
+        everyone_stands_on_real_geometry(&world, &desktop, "after the far display was unplugged");
+        assert_eq!(
+            world
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == traveller)
+                .unwrap()
+                .state
+                .surface
+                .monitor_id,
+            1
         );
     }
 
