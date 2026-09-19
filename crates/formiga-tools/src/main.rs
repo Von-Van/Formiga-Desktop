@@ -10,7 +10,12 @@ use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
+mod colony_card;
+mod prop_sheet;
+mod social_preview;
+mod sticker;
 mod tick_bench;
+mod ui_sheet;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -44,6 +49,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/ambient-sheet.png",
         )),
+        Some("ui-sheet") => ui_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/ui-sheet.png",
+        )),
         Some("hero-image") => {
             hero_image(output_argument_with_default(&args, "docs/assets/hero.png"))
         }
@@ -51,10 +60,22 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/formiga-demo.gif",
         )),
+        Some("social-preview") => social_preview::social_preview(output_argument_with_default(
+            &args,
+            "docs/assets/social-preview.png",
+        )),
+        Some("itch-cover") => social_preview::itch_cover(output_argument_with_default(
+            &args,
+            "packaging/itch/cover.png",
+        )),
         Some("app-icon") => app_icon(
             output_argument_with_default(&args, "packaging/shared"),
             source_argument(&args),
         ),
+        Some("prop-sheet") => prop_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/prop-sheet.png",
+        )),
         Some("shelter-sheet") => shelter_sheet(output_argument_with_default(
             &args,
             "docs/assets/shelter-sheet.png",
@@ -62,6 +83,16 @@ fn main() -> Result<()> {
         Some("creature-card") => creature_card(output_argument_with_default(
             &args,
             "docs/assets/creature-card.png",
+        )),
+        Some("sticker") => sticker::run(
+            output_argument_with_default(&args, "docs/assets/sticker-wave.gif"),
+            sticker::clip_argument(&args)?,
+            sticker::scale_argument(&args)?,
+            sticker::seed_argument(&args)?,
+        ),
+        Some("colony-card") => colony_card::run(output_argument_with_default(
+            &args,
+            "docs/assets/colony-card.png",
         )),
         Some("tick-bench") => tick_bench::run(&args[2..]),
         Some("simulate") => simulate(
@@ -71,7 +102,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -138,8 +169,48 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// One stretch of village ground, drawn exactly where the layout functions put everything: the
+/// colony house, one cottage per later member, the belongings along the same line, and every
+/// resident standing on the porch beside its own door.
+struct YardPanel {
+    cottages: Vec<DwellingKind>,
+    objects: usize,
+    style_seed: u8,
+}
+
+/// Shelter pixels of ground each panel shows, how tall it is, and the blit scale.
+const YARD_STRIP: u32 = 560;
+const YARD_HEIGHT: u32 = 88;
+const YARD_SCALE: u32 = 2;
+
 fn home_yard_sheet(path: PathBuf) -> Result<()> {
-    let (width, height) = (1200, 960);
+    // Four shelter styles with a grown colony, then a colony of one, two, three and four, so the
+    // rule that nobody stands in front of a house can be checked at every size and both corners.
+    let full = vec![
+        DwellingKind::Cottage,
+        DwellingKind::MiniCottage,
+        DwellingKind::MiniCottage,
+    ];
+    let mut panels: Vec<YardPanel> = (0..4)
+        .map(|style| YardPanel {
+            cottages: full.clone(),
+            objects: MAX_COLONY_OBJECTS,
+            style_seed: style,
+        })
+        .collect();
+    for members in 1..=4_usize {
+        panels.push(YardPanel {
+            cottages: full[..members - 1].to_vec(),
+            objects: MAX_COLONY_OBJECTS,
+            style_seed: 3,
+        });
+    }
+
+    let gap = 10;
+    let panel_width = YARD_STRIP * YARD_SCALE;
+    let panel_height = YARD_HEIGHT * YARD_SCALE;
+    let width = panel_width * 2 + gap * 3;
+    let height = (panel_height + gap) * panels.len() as u32 + gap;
     let mut pixels = vec![0; (width * height * 4) as usize];
     fill_gradient(
         &mut pixels,
@@ -148,111 +219,145 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
         [237, 234, 224, 255],
         [209, 226, 219, 255],
     );
-    // One village per shelter style, mirrored at both corners: the colony house, a companion
-    // cottage, two minis' cottages, and the loose objects sharing the same ground line.
-    let cottages = [
-        DwellingKind::Cottage,
-        DwellingKind::MiniCottage,
-        DwellingKind::MiniCottage,
-    ];
-    for style in 0..4 {
-        for (column, corner) in [HomeCorner::BottomLeft, HomeCorner::BottomRight]
+    for (row, panel) in panels.iter().enumerate() {
+        for (column, corner) in [HomeCorner::BottomRight, HomeCorner::BottomLeft]
             .into_iter()
             .enumerate()
         {
-            let mut seed = [55; 32];
-            seed[1] = style as u8;
-            let mut monitor = fixture_desktop().monitors.remove(0);
-            monitor.bounds = DesktopRect {
-                x: 0.0,
-                y: 0.0,
-                width: 200.0,
-                height: 80.0,
-            };
-            monitor.usable_bounds = monitor.bounds;
-            monitor.scale_factor = 1.0;
-            let mut home = ColonyHome::from_seed(
-                seed,
-                Some(monitor.display_key),
-                Some(OffsetDateTime::UNIX_EPOCH),
-                None,
+            let (x, y) = (
+                gap + column as u32 * (panel_width + gap),
+                gap + row as u32 * (panel_height + gap),
             );
-            home.corner = corner;
-            let policy = HabitatPolicy::default();
-            let village =
-                ShelterRenderer::render_village(&home.shelter, &ShelterDecorationKind::ALL);
-            let base_x = column as u32 * 600;
-            let base_y = style * 240;
-            for slot in 0..=cottages.len() {
-                let Some((_, p)) = home_dwelling_position(
-                    &home,
-                    slot,
-                    &cottages,
-                    MAX_COLONY_OBJECTS,
-                    std::slice::from_ref(&monitor),
-                    &policy,
-                    1,
-                ) else {
-                    continue;
-                };
-                let kind = if slot == 0 {
-                    DwellingKind::Main
-                } else {
-                    cottages[slot - 1]
-                };
-                let (cell_x, cell_y) = match kind {
-                    DwellingKind::Main => (0, 0),
-                    DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
-                    DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
-                };
-                let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                for y in 0..SHELTER_SIZE as i32 {
-                    for x in 0..SHELTER_SIZE as i32 {
-                        cell.set(x, y, village.get(cell_x + x, cell_y + y));
-                    }
-                }
-                blit_scaled_square_alpha(
-                    &mut pixels,
-                    width,
-                    base_x + (p.x as u32 - 32) * 3,
-                    base_y + (p.y as u32 - 64) * 3,
-                    &cell.rgba_bytes(),
-                    SHELTER_SIZE,
-                    3,
-                );
-            }
-            let atlas = formiga_art::ColonyObjectRenderer::render_atlas(seed);
-            for slot in 0..MAX_COLONY_OBJECTS {
-                if let Some((_, p)) = home_object_position(
-                    &home,
-                    slot,
-                    &cottages,
-                    std::slice::from_ref(&monitor),
-                    &policy,
-                    1,
-                ) {
-                    let mut tile = formiga_art::Canvas::new(16, 16);
-                    for y in 0..16 {
-                        for x in 0..16 {
-                            tile.set(x, y, atlas.get(slot as i32 * 16 + x, y));
-                        }
-                    }
-                    blit_scaled_square_alpha(
-                        &mut pixels,
-                        width,
-                        base_x + (p.x as u32 - 8) * 3,
-                        base_y + (p.y as u32 - 16) * 3,
-                        &tile.rgba_bytes(),
-                        16,
-                        3,
-                    );
-                }
-            }
+            // Each panel is one corner of a desktop, so the empty half is real: it is the rest
+            // of the display the village is tucked into.
+            fill_rect(
+                &mut pixels,
+                width,
+                x,
+                y,
+                panel_width,
+                panel_height,
+                [255, 255, 255, 90],
+            );
+            fill_rect(
+                &mut pixels,
+                width,
+                x,
+                y + panel_height - (YARD_HEIGHT - 80) * YARD_SCALE,
+                panel_width,
+                YARD_SCALE,
+                [120, 134, 128, 140],
+            );
+            draw_yard_panel(&mut pixels, width, x, y, panel, corner);
         }
     }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
+}
+
+fn draw_yard_panel(
+    pixels: &mut [u8],
+    width: u32,
+    base_x: u32,
+    base_y: u32,
+    panel: &YardPanel,
+    corner: HomeCorner,
+) {
+    let mut seed = [55; 32];
+    seed[1] = panel.style_seed;
+    let mut monitor = fixture_desktop().monitors.remove(0);
+    monitor.bounds = DesktopRect {
+        x: 0.0,
+        y: 0.0,
+        width: YARD_STRIP as f32,
+        height: YARD_HEIGHT as f32,
+    };
+    monitor.usable_bounds = monitor.bounds;
+    monitor.scale_factor = 1.0;
+    let mut home = ColonyHome::from_seed(
+        seed,
+        Some(monitor.display_key),
+        Some(OffsetDateTime::UNIX_EPOCH),
+        None,
+    );
+    home.corner = corner;
+    let policy = HabitatPolicy::default();
+    let monitors = std::slice::from_ref(&monitor);
+    let cottages = &panel.cottages;
+    let village = ShelterRenderer::render_village(&home.shelter, &ShelterDecorationKind::ALL);
+
+    let mut place = |canvas: &formiga_art::Canvas, size: u32, point: Point| {
+        let x = point.x.round() as i32 - size as i32 / 2;
+        let y = point.y.round() as i32 - size as i32;
+        if x < 0 || y < 0 {
+            return;
+        }
+        blit_scaled_square_alpha(
+            pixels,
+            width,
+            base_x + x as u32 * YARD_SCALE,
+            base_y + y as u32 * YARD_SCALE,
+            &canvas.rgba_bytes(),
+            size,
+            YARD_SCALE,
+        );
+    };
+
+    for slot in 0..=cottages.len() {
+        let Some((_, p)) = home_dwelling_position(&home, slot, cottages, monitors, &policy, 1)
+        else {
+            continue;
+        };
+        let kind = if slot == 0 {
+            DwellingKind::Main
+        } else {
+            cottages[slot - 1]
+        };
+        let (cell_x, cell_y) = match kind {
+            DwellingKind::Main => (0, 0),
+            DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
+            DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
+        };
+        let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+        for y in 0..SHELTER_SIZE as i32 {
+            for x in 0..SHELTER_SIZE as i32 {
+                cell.set(x, y, village.get(cell_x + x, cell_y + y));
+            }
+        }
+        place(&cell, SHELTER_SIZE, p);
+    }
+
+    let atlas = formiga_art::ColonyObjectRenderer::render_atlas(seed);
+    for slot in 0..panel.objects {
+        let Some((_, p)) = home_object_position(&home, slot, cottages, monitors, &policy, 1) else {
+            continue;
+        };
+        let mut tile = formiga_art::Canvas::new(16, 16);
+        for y in 0..16 {
+            for x in 0..16 {
+                tile.set(x, y, atlas.get(slot as i32 * 16 + x, y));
+            }
+        }
+        place(&tile, 16, p);
+    }
+
+    // The residents themselves, each on the porch beside its own door and facing the strip.
+    let facing = corner == HomeCorner::BottomLeft;
+    for slot in 0..=cottages.len() {
+        let Some((_, p)) = home_resting_position(&home, slot, cottages, monitors, &policy, 1)
+        else {
+            continue;
+        };
+        let member = World::preview_adult(
+            SeedStream::new(seed).bytes("yard-resident", slot as u64),
+            OffsetDateTime::UNIX_EPOCH,
+            &fixture_desktop(),
+        );
+        let frame =
+            CreatureRenderer::render_frame(&member.appearance, ActionKind::Homebound, 0, facing);
+        place(&frame, FRAME_SIZE, p);
+    }
 }
 
 fn output_argument(args: &[String]) -> PathBuf {
@@ -385,65 +490,145 @@ fn expression_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// Every action, then every gesture pose, for each reference creature.
+/// The face a gesture is reviewed with. A pose and its face have to be judged together, since
+/// half of what a body says is said by where it is looking.
+fn gesture_face(gesture: Gesture) -> FaceRenderState {
+    let (expression, eyelids) = match gesture {
+        Gesture::Cheer | Gesture::Bop => (ExpressionKind::Joy, EyelidPose::Open),
+        Gesture::Gasp => (ExpressionKind::Startled, EyelidPose::Open),
+        Gesture::Cover => (ExpressionKind::Worried, EyelidPose::Closed),
+        Gesture::Worry | Gesture::Balance => (ExpressionKind::Worried, EyelidPose::Open),
+        Gesture::Crouch | Gesture::Heave => (ExpressionKind::Determined, EyelidPose::Open),
+        Gesture::Reach | Gesture::Watch => (ExpressionKind::Curious, EyelidPose::Open),
+    };
+    FaceRenderState {
+        expression,
+        eyelids,
+        // Watching is the one pose whose whole point is that the eyes are on something, so it is
+        // reviewed the way the desktop shows it: aimed out ahead and a little down, at a window.
+        gaze: if gesture == Gesture::Watch {
+            GazeDirection::new(1, 1)
+        } else {
+            GazeDirection::default()
+        },
+    }
+}
+
+/// Every body the art can draw: the three legacy families a long-lived save still carries, then
+/// the five modular body plans the colony grows today.
+fn gesture_subjects() -> Vec<AppearanceGenome> {
+    let mut subjects: Vec<_> = reference_creatures()
+        .into_iter()
+        .map(|creature| creature.appearance)
+        .collect();
+    let preview = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    for plan in BodyPlan::ALL {
+        let mut appearance = preview.appearance.clone();
+        let mut design = appearance
+            .design
+            .expect("a generated companion carries its recipe");
+        design.body = plan;
+        appearance.design = Some(design);
+        subjects.push(appearance);
+    }
+    subjects
+}
+
+/// The two poses a body pose is most easily mistaken for: standing about, and the plain peer a
+/// gesture usually stands in for. Every body plan is shown holding both, right beside its
+/// gestures, so "does this look like anything in particular?" can be answered by looking.
+const REFERENCE_ACTIONS: [ActionKind; 2] = [ActionKind::Idle, ActionKind::InspectScreen];
+
+/// Three bands, all at 3x so a pose is judged near the size a desktop shows it at.
+///
+/// First every action then every gesture, for each legacy family; then, for each modular body
+/// plan, standing about and plain peering followed by every gesture, so a new pose can be
+/// compared against both the nine it has to stay distinct from and the two it replaces; then one
+/// band per body of the whole watching loop, frame by frame, because a held pose is only honest
+/// if it keeps moving while it holds.
 fn gesture_sheet(path: PathBuf) -> Result<()> {
     const COLS: u32 = 7;
     const SCALE: u32 = 3;
-    let creatures = reference_creatures();
+    let subjects = gesture_subjects();
+    let legacy = reference_creatures().len();
     let cell = FRAME_SIZE * SCALE;
-    let cells = (ActionKind::ALL.len() + Gesture::ALL.len()) as u32;
-    let rows_per_family = cells.div_ceil(COLS);
+    let watch_frames = formiga_art::AnimationSpec::for_clip(Gesture::Watch).frames;
+    let full_rows = ((ActionKind::ALL.len() + Gesture::ALL.len()) as u32).div_ceil(COLS);
+    let gesture_rows = ((REFERENCE_ACTIONS.len() + Gesture::ALL.len()) as u32).div_ceil(COLS);
     let width = COLS * cell;
-    let height = creatures.len() as u32 * rows_per_family * cell;
+    let bands = legacy as u32 * full_rows
+        + (subjects.len() - legacy) as u32 * gesture_rows
+        + subjects.len() as u32 * u32::from(watch_frames).div_ceil(COLS);
+    let height = bands * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
-    for (family_index, creature) in creatures.iter().enumerate() {
-        let actions = ActionKind::ALL
-            .into_iter()
-            .enumerate()
-            .map(|(index, action)| {
-                let spec = formiga_art::AnimationSpec::for_action(action);
-                CreatureRenderer::render_frame(
-                    &creature.appearance,
-                    action,
-                    (index as u8 + 1) % spec.frames,
-                    true,
-                )
-            });
-        let gestures = Gesture::ALL.into_iter().map(|gesture| {
-            let spec = formiga_art::AnimationSpec::for_clip(gesture);
-            let (expression, eyelids) = match gesture {
-                Gesture::Cheer | Gesture::Bop => (ExpressionKind::Joy, EyelidPose::Open),
-                Gesture::Gasp => (ExpressionKind::Startled, EyelidPose::Open),
-                Gesture::Cover => (ExpressionKind::Worried, EyelidPose::Closed),
-                Gesture::Worry | Gesture::Balance => (ExpressionKind::Worried, EyelidPose::Open),
-                Gesture::Crouch | Gesture::Heave => (ExpressionKind::Determined, EyelidPose::Open),
-                Gesture::Reach => (ExpressionKind::Curious, EyelidPose::Open),
-            };
-            CreatureRenderer::render_composited_frame(
-                &creature.appearance,
-                gesture,
-                1 % spec.frames,
-                true,
-                false,
-                FaceRenderState {
-                    expression,
-                    eyelids,
-                    gaze: GazeDirection::default(),
-                },
-            )
-        });
-        for (index, rendered) in actions.chain(gestures).enumerate() {
-            let column = index as u32 % COLS;
-            let row = family_index as u32 * rows_per_family + index as u32 / COLS;
+    let mut row_cursor = 0_u32;
+    let place = |pixels: &mut Vec<u8>, row_cursor: &mut u32, frames: Vec<formiga_art::Canvas>| {
+        for (index, rendered) in frames.iter().enumerate() {
             blit_scaled(
-                &mut pixels,
+                pixels,
                 width,
-                column * cell,
-                row * cell,
+                index as u32 % COLS * cell,
+                (*row_cursor + index as u32 / COLS) * cell,
                 &rendered.rgba_bytes(),
                 SCALE,
             );
         }
+        *row_cursor += (frames.len() as u32).div_ceil(COLS);
+    };
+    for (index, genome) in subjects.iter().enumerate() {
+        let mut frames = Vec::new();
+        let actions: Vec<_> = if index < legacy {
+            ActionKind::ALL.to_vec()
+        } else {
+            REFERENCE_ACTIONS.to_vec()
+        };
+        frames.extend(actions.into_iter().enumerate().map(|(step, action)| {
+            let spec = formiga_art::AnimationSpec::for_action(action);
+            CreatureRenderer::render_frame(genome, action, (step as u8 + 1) % spec.frames, true)
+        }));
+        frames.extend(Gesture::ALL.into_iter().map(|gesture| {
+            let spec = formiga_art::AnimationSpec::for_clip(gesture);
+            CreatureRenderer::render_composited_frame(
+                genome,
+                gesture,
+                1 % spec.frames,
+                true,
+                false,
+                gesture_face(gesture),
+            )
+        }));
+        place(&mut pixels, &mut row_cursor, frames);
+    }
+    for genome in &subjects {
+        let mut loop_frames: Vec<_> = (0..watch_frames)
+            .map(|frame| {
+                CreatureRenderer::render_composited_frame(
+                    genome,
+                    Gesture::Watch,
+                    frame,
+                    true,
+                    false,
+                    gesture_face(Gesture::Watch),
+                )
+            })
+            .collect();
+        // The seventh column of each loop is the same pose on a mini, which is the smallest body
+        // the colony grows and therefore the one a held pose has to survive being drawn at.
+        let mut mini = genome.clone();
+        mini.logical_size = 21;
+        loop_frames.push(CreatureRenderer::render_composited_frame(
+            &mini,
+            Gesture::Watch,
+            1,
+            true,
+            false,
+            gesture_face(Gesture::Watch),
+        ));
+        place(&mut pixels, &mut row_cursor, loop_frames);
     }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
@@ -576,7 +761,7 @@ fn ambient_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn reference_creatures() -> Vec<Creature> {
+pub(crate) fn reference_creatures() -> Vec<Creature> {
     let desktop = fixture_desktop();
     [
         BodyFamily::Blob,
@@ -907,13 +1092,24 @@ fn resize_rgba_square(source: &[u8], source_size: u32, target_size: u32) -> Vec<
 }
 
 fn shelter_sheet(path: PathBuf) -> Result<()> {
-    const COLS: u32 = 4;
-    const ROWS: u32 = 2;
     const SCALE: u32 = 3;
-    const PADDING: u32 = 24;
-    let cell = SHELTER_SIZE * SCALE + PADDING;
-    let width = COLS * cell;
-    let height = ROWS * cell;
+    const MARGIN: u32 = 8;
+    const LANE_GAP: u32 = 10;
+    // One row per style, all on one ground line: the colony house plain, the same house carrying
+    // every decoration it can earn, a companion's cottage, a mini's, and a creature drawn at the
+    // very same scale — so both the decoration anchors and the way a cottage reads beside the
+    // thing that lives in it stay reviewable in one glance.
+    let footprints = [
+        DwellingKind::Main.width() as u32,
+        DwellingKind::Main.width() as u32,
+        DwellingKind::Cottage.width() as u32,
+        DwellingKind::MiniCottage.width() as u32,
+        FRAME_SIZE,
+    ];
+    let lane: u32 = footprints.iter().sum::<u32>() + LANE_GAP * (footprints.len() as u32 - 1);
+    let width = (lane + MARGIN * 2) * SCALE;
+    let row_height = SHELTER_SIZE * SCALE + MARGIN * SCALE;
+    let height = row_height * 4 + MARGIN * SCALE;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     fill_gradient(
         &mut pixels,
@@ -922,32 +1118,65 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
         [18, 29, 34, 255],
         [35, 55, 54, 255],
     );
-    // Top row plain, bottom row carrying every decoration, so attachment points stay reviewable.
-    for index in 0..COLS * ROWS {
-        let style = index % COLS;
+    for style in 0..4_u32 {
         let mut seed = [0_u8; 32];
         seed.copy_from_slice(&Sha256::digest(format!("formiga-shelter-{style}")));
         seed[1] = style as u8;
         let home = ColonyHome::from_seed(seed, None, None, None);
-        let shelter = if index < COLS {
-            ShelterRenderer::render(&home.shelter)
-        } else {
-            ShelterRenderer::render_with_decorations(
-                &home.shelter,
-                &formiga_core::ShelterDecorationKind::ALL,
-            )
-        };
-        let x = index % COLS * cell + PADDING / 2;
-        let y = index / COLS * cell + PADDING / 2;
-        blit_scaled_square_alpha(
-            &mut pixels,
-            width,
-            x,
-            y,
-            &shelter.rgba_bytes(),
-            SHELTER_SIZE,
-            SCALE,
+        let village = ShelterRenderer::render_village(&home.shelter, &[]);
+        let resident = World::preview_adult(
+            SeedStream::new(seed).bytes("shelter-sheet-resident", 0),
+            OffsetDateTime::UNIX_EPOCH,
+            &fixture_desktop(),
         );
+        let cell = |x: u32, y: u32| {
+            let mut tile = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+            for ty in 0..SHELTER_SIZE as i32 {
+                for tx in 0..SHELTER_SIZE as i32 {
+                    tile.set(tx, ty, village.get(x as i32 + tx, y as i32 + ty));
+                }
+            }
+            tile
+        };
+        let lane_items = [
+            (ShelterRenderer::render(&home.shelter), SHELTER_SIZE),
+            (
+                ShelterRenderer::render_with_decorations(
+                    &home.shelter,
+                    &formiga_core::ShelterDecorationKind::ALL,
+                ),
+                SHELTER_SIZE,
+            ),
+            (cell(SHELTER_SIZE, 0), SHELTER_SIZE),
+            (cell(0, SHELTER_SIZE), SHELTER_SIZE),
+            (
+                CreatureRenderer::render_frame(
+                    &resident.appearance,
+                    ActionKind::Homebound,
+                    0,
+                    true,
+                ),
+                FRAME_SIZE,
+            ),
+        ];
+        // Every dwelling cell stands on row 61 of its own 64px cell; a creature frame stands on
+        // its own last row. Lining those two up puts everything on one ground line.
+        let baseline = style * row_height + (MARGIN + SHELTER_SIZE - 3) * SCALE;
+        let mut pen = MARGIN;
+        for ((canvas, size), footprint) in lane_items.into_iter().zip(footprints) {
+            let centre = pen + footprint / 2;
+            let foot = if size == FRAME_SIZE { 0 } else { 3 };
+            blit_scaled_square_alpha(
+                &mut pixels,
+                width,
+                (centre.saturating_sub(size / 2)) * SCALE,
+                baseline + foot * SCALE - size * SCALE,
+                &canvas.rgba_bytes(),
+                size,
+                SCALE,
+            );
+            pen = centre + footprint / 2 + LANE_GAP;
+        }
     }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
@@ -1059,7 +1288,7 @@ fn simulate(days: i64) -> Result<()> {
     Ok(())
 }
 
-fn fixture_desktop() -> DesktopSnapshot {
+pub(crate) fn fixture_desktop() -> DesktopSnapshot {
     DesktopSnapshot {
         monitors: vec![MonitorInfo {
             id: 1,
@@ -1275,7 +1504,26 @@ fn draw_cursor(target: &mut [u8], target_width: u32, x: u32, y: u32) {
     );
 }
 
-fn blend_pixel(target: &mut [u8], width: u32, x: u32, y: u32, source: [u8; 4]) {
+fn fill_rect(
+    target: &mut [u8],
+    target_width: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    color: [u8; 4],
+) {
+    for row in y..y + height {
+        for column in x..x + width {
+            if column >= target_width {
+                continue;
+            }
+            blend_pixel(target, target_width, column, row, color);
+        }
+    }
+}
+
+pub(crate) fn blend_pixel(target: &mut [u8], width: u32, x: u32, y: u32, source: [u8; 4]) {
     let index = ((y * width + x) * 4) as usize;
     if index + 4 > target.len() {
         return;
@@ -1288,7 +1536,7 @@ fn blend_pixel(target: &mut [u8], width: u32, x: u32, y: u32, source: [u8; 4]) {
     target[index + 3] = 255;
 }
 
-fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8]) -> Result<()> {
+pub(crate) fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8]) -> Result<()> {
     let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
     let mut encoder = png::Encoder::new(BufWriter::new(file), width, height);
     encoder.set_color(png::ColorType::Rgba);

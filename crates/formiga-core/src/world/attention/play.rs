@@ -315,13 +315,13 @@ impl World {
         desktop: &DesktopSnapshot,
         nearest: f32,
     ) -> bool {
-        let scale = desktop
-            .monitors
-            .iter()
-            .find(|m| m.id == a.state.surface.monitor_id)
-            .map_or(1.0, |m| {
-                (f32::from(self.save.settings.display_scale) / m.scale_factor).clamp(0.5, 2.0)
-            });
+        // Measured against the frame, unclamped: the clamp that used to be here left the band
+        // narrower than the creatures themselves at the largest display scale.
+        let scale = super::super::spacing::creature_frame_width(
+            a,
+            self.save.settings.display_scale,
+            desktop,
+        ) / CREATURE_ART_WIDTH;
         a.id != b.id
             && a.state.surface.monitor_id == b.state.surface.monitor_id
             && a.state.surface.window_key == b.state.surface.window_key

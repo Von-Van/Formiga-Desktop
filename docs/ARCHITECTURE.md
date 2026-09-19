@@ -28,6 +28,24 @@ metadata. User-approved downloads run on a second short-lived worker, stream int
 enforce size limits, and become launchable only after SHA-256 verification. Completion returns to the
 main event loop through `UserEvent`; no async runtime, updater daemon, or render-loop polling is added.
 
+## How the simulation is laid out
+
+`world.rs` holds `World` itself: its fields, `new`, `from_save`, `tick`, and the small helpers that
+belong to none of the themes. Everything else lives in a child module named after what it is about —
+`world/arrivals.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`, `discovery.rs`, `experience.rs`,
+`generation.rs`, `home.rs`, `interaction.rs`, `journeys.rs`, `movement.rs`, `objects.rs`,
+`offers.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `visitors.rs`, alongside the existing
+`rides.rs`, `surfaces.rs`, and the `attention/` family. Each module adds methods to the one `World`
+type rather than owning state of its own, so there is still a single simulation object and a single
+tick.
+
+Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bonds`, `bubbles`,
+`colony_management`, `companion`, `discovery`, `experience`, `home`, `interaction`, `journeys`,
+`misc`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
+`topology_and_attention`, `visitors` — with the shared desktop fixtures and colony builders in
+`world/tests/mod.rs`. The split is behaviour-preserving: a differential harness ran five seeds for
+18,000 ticks each against 0.57.1 and compared the event streams and serialized saves byte for byte.
+
 ## Procedural identity and animation
 
 A 256-bit colony seed derives named ChaCha streams for appearance, personality, markings, animation
@@ -56,19 +74,25 @@ landing pose. A shared `FramePlacement` contract seats normal art by its feet an
 its slightly raised handhold, so the GPU quad and alpha-aware interaction proxy resolve the same
 bounds.
 
-Eight 16×16 gems, keys, leaves, shells, charms, and relic variants are derived from the creature seed
-and palette at atlas-build time. `activity_variant` selects one only while `PresentDiscovery` is
-active. There is no inventory, history, runtime generation, or persistent collection.
+Sixteen 16×16 trinkets — gems, keys, leaves, shells, charms, relics, and the conditional keepsakes
+described under [conditional discoveries](#conditional-discoveries) — are rasterized once per colony
+into a shared atlas rather than into each creature's own texture. `activity_variant` selects one only
+while `PresentDiscovery` is active. There is still no inventory, runtime generation, or carried
+collection; the only durable record is the scrapbook's one first-find row per variant.
 
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture contains eleven expressions, nine gaze directions, three eyelid states, and one
-eight-slot trinket row. The body atlas holds exactly 118 unique frames: 90 for actions, because
-`Tossed` reuses the dragged body clip, and 28 for nine gesture poses. Runtime work normally selects
-two slots and draws two nearest-filtered quads; discovery alone adds one temporary quad. The
-combined textures are exactly 1,437,696 bytes per creature and are enforced below a 1.5 MB test
-limit.
+eight-slot trinket row. That row is still baked, at the same size and in the same place, but nothing
+samples it any more: the overlay's discovery quad and the settings scrapbook both read the colony
+trinket atlas instead. The body atlas holds exactly 124 unique frames: 90 for actions, because
+`Tossed` reuses the dragged body clip, and 34 for ten gesture poses, laid out as ten columns by
+thirteen rows. Runtime work normally selects two slots and draws two nearest-filtered quads;
+discovery alone adds one temporary quad. The combined textures are exactly 1,529,856 bytes per
+creature — 6,119,424 for a full colony of four — and are enforced below a 4,500,000-byte test limit,
+raised deliberately from 1.5 MB so the pose vocabulary has room to grow without the budget moving
+each time.
 
-Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, and bop — are a runtime-only
+Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch — are a runtime-only
 `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
 shows its baked clip in place of the action's; the action still owns movement, placement, facing,
 and frame timing, and the GPU quad, the interaction mask, and the review sheets resolve the same
@@ -84,9 +108,10 @@ also closes the eyes, which the layered face still draws over the paws.
 
 `PetReaction` maps to the existing greeting body clip, so lived experience does not grow that atlas.
 A newly earned profile descriptor may allocate one small sprout thought-bubble texture for five
-seconds; descriptor text remains available only in the Colony profile. Only one bubble exists
-globally, and the GPU texture and CPU pixels are dropped at expiry, so there is no idle bubble
-resource.
+seconds; descriptor text remains available only in the Colony profile. Only one sprout exists
+globally, and the GPU texture and CPU pixels are dropped at expiry, so there is no idle sprout
+resource. It is unrelated to the [thought bubbles](#thought-bubbles) that answer direct
+interaction, which come from the shared UI atlas.
 
 The colony seed also resolves a bottom-corner preference and a compact shelter genome. Leaf tents,
 mushroom huts, cushion dens, and paper houses are rasterized once to a static 64×64 texture. A
@@ -164,6 +189,118 @@ state, and requests another frame. Its creature vertex buffer also grows to the 
 of two if a valid colony frame exceeds the initial four-creature allocation. Simulation positions
 are reconciled to current native monitor IDs before rendering, so display sleep or hot-plug changes
 cannot strand a living creature outside every overlay.
+
+## The creature menu
+
+A secondary click on a creature's existing interaction proxy opens one small strip above its head.
+On macOS a primary click with Control held opens the same strip; the Control state is read from the
+combined-session `CGEventSource` that `cursor_and_idle` already samples, because a proxy never takes
+keyboard focus and so has no modifier state of its own. No new permission, event tap, or global hook
+is involved. Only one menu exists at a time.
+
+A colony member's strip holds Snack, Toy, Home, and Profile. A guest's holds Snack, Toy, then Stay
+when `visitor_can_stay()` is true and Copy code otherwise, then Profile — the two share one cell, so
+the other three never move under the cursor. Snack and Toy issue `WorldCommand::OfferSnack` and
+`OfferToy`; Home issues `WorldCommand::SendHome`; a member's Profile opens the settings window on the
+Colony page with that creature selected, and a guest's opens it on the Journal page, where the guest
+book is. Stay calls `ask_visitor_to_stay`, logging a category and closing the menu if it fails. Copy
+code routes through the application's only clipboard path — egui's, inside the settings window — so
+the window appears on the Journal page with a "Visitor code copied" toast rather than a second
+clipboard owner existing. The menu closes after any choice; the simulation answers with bubbles.
+
+The strip is a hidden-not-dropped native window built from the creature-proxy recipe: borderless,
+transparent, always on top, never activating. It covers only the framed body of the strip, so the
+notch, the label tab, and everything around them stay click-through. macOS hit-tests the frame and
+the shape call is a no-op exactly as it is for creature proxies; Windows clips the window with one
+`CreateRectRgn`/`SetWindowRgn` region.
+
+`MENU_RISE` is 35 art pixels above the crown of the head — the 21-pixel strip, a 1-pixel gap, the
+9-pixel label tab, and 4 pixels of clearance — and is fixed whether or not an item is hovered, so
+the strip never jumps as the cursor crosses it. With no room above, the strip flips below the feet
+at `MENU_NOTCH_GAP` (15 art pixels) with the frame sprite vertically flipped. It is clamped
+horizontally inside the monitor's usable bounds with the notch tracking the creature's centre, and
+snapped to the sprite pixel grid, at every creature size and both integer scale factors.
+
+A menu closes on a choice, on a second secondary click on the same creature, when the cursor stays
+farther than 120 logical points from both the strip and the creature for 0.8 seconds, after 8
+seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, or gone (a
+guest that left), when its monitor changes, and when the settings window *gains* focus — the
+transition, not the standing state. There is no global click capture, and Escape is deliberately
+unavailable, because a proxy never takes keyboard focus.
+
+## Offers
+
+`world/offers.rs` answers `OfferSnack` and `OfferToy`. The creature decides. A score adds want,
+trust, and manner and subtracts tiredness; the chance of acceptance is
+`logistic((score − 0.55) × 2.6)` clamped to `0.03..=0.97`. Want for a snack rises with low energy
+and want for a toy with boredom and playfulness; trust combines learned `cursor_trust`, innate
+sociability, and the difference between times petted and times tossed, capped at ±50. The roll is
+drawn from a private per-creature stream, `SeedStream::new(behavior_seed).rng("offer", …)`, so
+offering something never disturbs the behaviour RNG and the rest of the simulation runs identically
+whether or not anything was offered.
+
+Two states skip the roll entirely: `sleep_pressure` at or above 0.82, or an asleep creature whose
+pressure is still above 0.35. Both show a Sleepy bubble. Three runtime cooldowns bound pestering —
+a 6-second window against repeated offers, 90 seconds after an accepted snack, 45 seconds after an
+accepted toy — and none of them is saved. An offer is refused outright, with nothing shown, for a
+hidden or paused colony, an unknown or not-yet-arrived creature, one being dragged, tossed,
+climbing, squeezing, or dangling, one mid-journey or on a route, one in a colony ritual, and one
+walking home.
+
+Accepting shows a Snack or Toy bubble and then the existing Eat or SoloPlay clip at its usual
+duration; a sufficiently rested sleeper wakes, emitting the same `SleepInterrupted` and
+`CreatureWoke` events any other interruption does. Declining shows Decline, or Sleepy when tired, or
+Question for a toy offered to a creature whose playfulness is below 0.35; a timid creature — boldness
+below 0.38 — shows Ellipsis for 0.55 seconds first. `WorldEvent::OfferAnswered { creature_id, kind,
+accepted }` then nudges `cursor_trust` by +3 for an acceptance and +1 for a decline, and sociability
+by +2 for an acceptance, through the same bounded `LearnedTendencies::adjust` a pet uses: ±100 mapped
+to at most ±0.35 of utility, and reversible by handling the creature badly. No saved field is added.
+A guest answers offers and learns nothing from them; nothing about a visitor is recorded. At home an
+accepted offer is enjoyed at the doorstep through `begin_home_moment`, and a colony ritual will not
+start while an offer response is still playing.
+
+## Send home
+
+`WorldCommand::SendHome` starts an ordinary home visit on demand rather than waiting out the
+15-minute cooldown. It is the same visit in every other respect: the same 15-minute length, the same
+cooldown afterwards, and the same ways of ending early. It is refused while paused, during an
+interaction, and when no usable home display exists. Every member answers with a Home bubble.
+
+## Thought bubbles
+
+`world/bubbles.rs` keeps a runtime-only list of icons over creatures' heads. Nothing about a bubble
+is saved, journaled, or counted. `BubbleIcon` has fourteen members: Heart, Snack, Toy, Home, Sleepy,
+Surprise, Question, Ellipsis, Decline, Music, Dizzy, Hello, Sparkle, and Stay. A bubble lives 2.4
+seconds, growing in over two 0.12-second steps and shrinking out the same way through
+`BubbleGrowth::{Small, Medium, Full}`. Asking for the icon a creature is already showing holds that
+bubble open rather than re-popping it; a different icon swaps in place. At most five exist at once,
+none while the colony is hidden, and reduced motion skips the growth steps.
+
+Every trigger is something the person at the desk did: a pet shows Heart, a pick-up Surprise, a toss
+landing Dizzy, send home Home, an offer one of Snack, Toy, Decline, Sleepy, Question, or Ellipsis, a
+visitor's greeting Hello, and a visitor agreeing to stay Stay. Nothing a creature does on its own
+raises one.
+
+The overlay draws bubbles from the UI atlas, anchored at the real crown of the creature's current
+baked frame — the per-frame silhouette rows measured during the existing atlas bake — so a mini's
+bubble sits as close to its head as an adult's. Bubbles are clamped inside the monitor and are
+occluded and hidden exactly as their creature is.
+
+## The interface atlas
+
+One 256×80 RGBA texture (81,920 bytes) carries every bubble sprite in a 17×16 cell whose anchor
+pixel (8, 15) sits just above the head, the menu frames for strips of two to four cells (16n + 2 art
+pixels wide, 21 tall including the notch), six menu icons — Snack, Toy, Home, Profile, Stay, Copy
+code — in normal and hovered states, and the pixel-font label tabs. It is built on first use,
+released after 240 renders with neither a bubble nor a menu up, and released immediately when the
+colony is hidden or the overlay is torn down. It costs one extra bind group and one extra draw call
+inside the existing pass while something is up, and nothing at all otherwise.
+
+`render` takes `(save, cursor, habitat_editor, windows, milestone, ui: OverlayUi { bubbles,
+reduce_motion, menu: Option<MenuView> })`, and `needs_redraw` takes the same `ui_active` flag. While
+a menu is open the host's tick interval drops to 50 ms; the menu is owner-initiated and closes
+itself within eight seconds, so that rate is bounded by the interaction rather than by a timer.
+`cargo run -p formiga-tools -- ui-sheet` draws the whole atlas for review.
 
 ## Colony rituals
 
@@ -253,6 +390,198 @@ shelter cache key contains only that genome and the bounded decoration list. A s
 the single shelter texture; normal presentation still uses one shelter quad, one bind group, and one
 draw call. Decorations have no world position, action, editor, animation, physics, or render loop.
 
+## The village yard
+
+A dwelling's ground footprint, in shelter pixels, is 60 for the colony house, 46 for a companion
+cottage, and 36 for a mini's. The cottages grew in 0.58.0; the atlas is still one 128×128 texture
+and a dwelling is still one quad.
+
+One walk lays out the whole strip: `Dwelling(0)`, `Porch(0)`, then `Object`, `Dwelling(i)`,
+`Porch(i)` for every later member, then whatever belonging lots are left. All eight belonging lots
+are reserved whether or not the colony has collected them yet. That reservation is also a fix: house
+positions used to be computed against the live belonging count while belonging positions always
+assumed eight, so the two walks disagreed and a cottage and a keepsake could be placed on the same
+spot. A porch is `CREATURE_FRAME_WIDTH − 2 × VILLAGE_GAP` = 38 pixels wide, shares a lot line with
+its own house so its resident waits at its own door, and keeps the ordinary 5-pixel village gap from
+everything else.
+
+`home_resting_position(home, slot, cottages, monitors, policy, display_scale)` places each member
+beside its own door. No resting frame covers a door, or overlaps any house by more than a gap's
+worth. When a porch does not fit — a narrow display, a habitat cut to a sliver — the member stands
+on the free ground past the outermost lot that did fit, spaced by the face-clear ratio; when even
+that fails, the whole colony is lined up from the region's far edge inward. Staying on the display
+and out of one another's faces wins over a clear view of a house that display cannot show properly
+anyway. `home_guest_position` stands a visitor past the outermost *visible* lot and past every
+resting spot, plus a gap and half a frame, and returns `None` when it cannot keep face-clear
+distance from the residents.
+
+While the colony is home, each member has passive doorstep moments, drawn from the seeded
+`home-moments` stream and held only in memory. The first comes 12–80 seconds into a visit and the
+rest 60–180 seconds apart per creature, with at most one resident busy at a time plus one neighbour
+answering a wave. The moments are Eat (6–12 s), Drink (5–10 s), SoloPlay (8–16 s), InspectScreen
+(5–9 s, turning to look at its own house), Greet (4–7 s, with a neighbour within four frames waving
+back), Sleep (60–150 s), and an errand: walk to the nearest belonging within 1.5 frames, pause 2.5
+seconds, and walk back. None starts under reduced motion or while hidden, and one is cancelled at
+once by a pet or a pick-up, by dismissal, by pause or hide, and by a changed display, habitat, or
+scale. They are cosmetic by construction: a moment emits only `ActionStarted`, so no tendency,
+counter, bond, or journal line moves, and petting a dozing resident at home costs it no sleep
+security.
+
+With porches and the larger cottages, a full colony with all eight belongings reaches roughly 505
+shelter pixels along the strip from the house anchor. `home-yard-sheet.png` shows eight cases at
+both corners, including residents on their porches for colonies of one to four, and
+`shelter-sheet.png` gives each style a lane — plain house, decorated house, cottage, mini, and a
+creature at the same scale.
+
+## Visiting creatures
+
+`world/visitors.rs` and `visitor.rs` add one saved `VisitorState`: the guest, if any, a count of how
+many home gatherings the colony has held, and a guest book. Whether a wanderer turns up at gathering
+`n` is `SeedStream::bytes("visitor-cadence-v1", n / 4)[0] % 4 == n % 4` — exactly one gathering in
+every block of four, at a place in the block taken from the colony's own seed. Successive visits are
+therefore one to seven gatherings apart: two can fall back to back where one block's slot is last
+and the next block's is first, but a third never can, and no drought runs past seven. No wanderer
+arrives while a guest is already present or
+when the village has no room to stand one. A brand-new colony's very first gathering is not counted,
+because `World::new` activates that home directly.
+
+A wanderer is a freshly generated creature — seed derived from the colony seed and the ordinal, a
+random modular design, a cosy name, usually an adult and less often a mini — never a copy of a
+colony member. Its visit runs on a timeline: the home appears, 12 seconds pass so residents can
+settle, it walks in along the floor from the far side (capped at 520 points and 40 seconds), greets
+with one Hello bubble for 3.2 seconds, then alternates 15-second idles with 6.5-second beats of Eat,
+PresentDiscovery, SoloPlay, or Perch until 90 seconds remain, says goodbye with a greet and a reach
+for 2.6 seconds, and walks out — gone around 825 seconds into a 900-second gathering. Residents
+answer the hello with a turn and a runtime pose only, staggered by sociability: a bop from a playful
+one, a reach from a bold one, a look from a timid one. Everyone resting at the village answers. No
+resident moves, and no bond, tendency, or memory counter changes; a control gathering with no
+visitor is asserted to project identically.
+
+Interruptions behave like every other scene. Pause freezes the visit; hidden runs it undrawn; quiet
+mode still lets the guest leave on schedule; reduced motion drops the walk in and out, holds the
+hello stationary, and shows no gestures. Dismissing the home takes the guest off the desktop at once,
+signing the book only if it had already said hello, and a lost display or habitat ends the visit
+immediately. A pet holds the scene for the `PetReaction`, and an accepted snack or toy holds it for
+the clip. A relaunch leaves the guest waiting off stage to walk in again next gathering, and a clock
+rollback cannot extend a stay, because the deadline is measured against `maximum_seen_utc`. A guest
+can be petted and offered things, but never picked up: a drag on a guest is a pet, and it never
+dismisses the home.
+
+`World::invite_visitor(shared, now, desktop)` accepts a friend's seed code. It refuses a code that
+is already a colony member (`VisitorError::AlreadyHome`) and one offered while somebody is visiting
+(`GuestPresent`). An invited guest stays 24 hours and attends the houses for every gathering in that
+time; a gathering starts right away so the friend turns up promptly, and the book is signed once for
+the whole stay. `VisitorState.guest_book` holds at most 24 entries, oldest dropped, each with the
+visit timestamp, the name, the origin — the same appearance-and-temperament seed a share code
+carries — and whether the visitor was a wanderer or invited. One `JournalMoment::Visit` is recorded
+per visit.
+
+`visitor_can_stay()` answers whether the colony has room: fewer than four members, fewer than three
+adults, and not a duplicate of somebody already here. `ask_visitor_to_stay(now, desktop)` then runs
+the exact adoption path an imported creature takes — a fresh history, standing where the guest stood,
+and a Stay bubble. `visitor_share_code()` returns the guest's code. The settings Journal page carries
+the guest book, newest first, with Copy code on every entry and the current visitor on top with Ask
+to stay beside its code. The Creature studio's "Adopt a shared companion from a code" offers "Invite
+for a day" from the same explicit preview that adoption uses, disabled while somebody is visiting or
+when the code names a creature already at home.
+
+## Keeping faces clear
+
+`world/spacing.rs` enforces one rule: no creature's face stays covered by another creature for
+longer than a moment. Resting arrangements stay shoulder to shoulder, and awake idle companions
+separate fully.
+
+The model is evidence, not art: `formiga-core` cannot depend on `formiga-art`, so the boxes it
+spaces by were measured. Every creature draws as a 48×48 frame centred on its contact x, and the
+overlay draws in `save.creatures` order, so only an earlier creature's face can end up behind a
+later one's body. A drawn face reaches at most 15 art pixels from the frame centre — the watching
+pose on a long body sets that; every other clip stays within 14 — and a drawn body at most 23. Their
+sum, 38 of 48, rounds up to `FACE_CLEAR_RATIO = 0.80`, which still lets bodies overlap by about 8
+pixels; twice the body box, 46 of 48, rounds up to `FULL_CLEAR_RATIO = 0.96`, at which no pixel is
+shared. The art test `every_face_and_body_stays_inside_the_boxes_the_simulation_spaces_by` keeps
+those two numbers honest, sweeping every body plan at four logical sizes that bracket every size a
+colony can hold, across every baked clip, every frame, every expression, eyelid and gaze, and both
+facings. The village's `REST_CLEAR_RATIO` is const-asserted equal to the face-clear ratio.
+
+Most of the work is at the source sites rather than in a corrector. Bond staging offsets moved from
+flat 28/26/30/37-point constants to `frame_width × 0.80` for greeting, social play, and sleeping
+beside, `× 0.88` for a presentation, and `× 1.00` plus a 5-point settle for a follow; the bond stop
+distance moved from 42/30 points to 2 points from the mark, because the mark already carries the
+spacing — which is what let a pair greet from ten points away. Ritual line-ups went from
+`(width × 0.72).max(22)` to `width × 0.80` plus tolerance, race staggers use full spacing, and
+attention viewing and approach spacing went from `(width × 0.65).clamp(24, 96)` to `width × 0.80`
+with no ceiling. Held game formations — pile, dance circle, tug grip, ledge contest, prank, hush,
+leapfrog landing — use a face-clear `held_gap()`, while momentary contact in tag, a catch, a
+keep-away take, and a leapfrog run-up is unchanged, because those are contact and are meant to be. A
+helper's assist spot is face-clear, two riders on one window are walked apart by `share_the_ledge`,
+and Gather Creatures spaces everyone by the full-clear ratio instead of stacking them.
+
+`resolve_overlaps` runs at the end of every ordinary tick as a safety net, over a bounded runtime
+table of six pairs and four shuffles that is never saved. A covered face acts after 1.25 seconds and
+plain crowding after 2.0; a 5-second per-pair cooldown and a 1.08 clearance margin stop it
+ping-ponging. Who moves is decided by cost: never someone dragged, tossed, airborne, climbing,
+hanging, homebound, or owned by a scene; +8 for being asleep and up to 4 more the longer it has
+slept, so the lighter sleeper moves; +7 for a ritual participant, +6 for a pile anchor, +5 for
+holding a prop, +2 for a bond plan; ties by id. An awake creature takes an ordinary short `Traverse`
+to the nearest spot that clears everybody, respecting habitat, ledge extent, and reservations;
+sleepers and ritual participants get a quiet position-only shuffle that emits no `SleepInterrupted`,
+`CreatureWoke`, or `CreatureRested`, and under reduced motion a sleeper is simply placed. If no spot
+clears every face and the situation has lasted five times the grace period, the creature leaves the
+ledge through the existing descent journey. No event is emitted for a sidestep. A user drag or toss,
+an airborne creature, a climbing or hanging one, and a play scene inside its own bounded deadline
+(at most 21 seconds) are exempt.
+
+The acceptance test runs four seeded four-creature colonies, minis included, on a synthetic desktop
+whose three windows slide and resize continuously, for 1,400 ticks each, sampled every tick. It
+asserts the bound the rule implies rather than a recorded number: the grace period plus four
+seconds, which is the longest an ordinary walk takes to carry a companion a frame and a half out of
+the way. When the work was done, the worst face-cover episode measured 5.55 seconds before and 2.20
+after — 3.60 with the source-site spacing alone — and the worst crowding episode 0.00.
+
+## Conditional discoveries
+
+`world/discovery.rs` reads a find's circumstances from state the simulation already holds. Nothing
+new is observed and nothing new is saved: the scrapbook still records only what, when, and who —
+variant, first find, finder, and the finder's name at the time — and never why a trinket qualified.
+
+- **Night** is the user's local hour outside `6..20`, through `after_dark(local_time_or_utc(now))`.
+  It is deliberately wider than the late-night ritual's 22–05, which is about the person being up
+  late rather than about the world being dark.
+- **High up** is standing on a window ledge with at least 140 logical points of clear drop beneath
+  it, measured by the same relative `surfaces::drop_below` the ledge and gap decisions use, so no
+  absolute screen coordinate is involved.
+- **Mid-ride** is a previous action of `RideWindow`, or `RideMemory::riding(id)` — measured motion,
+  not merely standing on a window that happens to be still.
+- **Beside a close friend** is a bond whose affinity is at least `CLOSE_FRIENDSHIP_AFFINITY` (112,
+  the same threshold the journal uses to record a new close friendship) whose other member has
+  arrived and stands on the same monitor, the same kind of surface, and the same window, within two
+  frame widths (96 art-scaled points).
+
+With no circumstance holding, the choice is uniform over the eight everyday trinkets, exactly as
+before. Otherwise half the draws go to an everyday trinket and half to a qualifying conditional one,
+and among the qualifying ones three in four go to those not yet in the scrapbook when any are
+missing. Exactly one draw is taken from the ambient stream on every path, and the conditional
+decisions run on a private generator keyed from that stream's state without advancing it. The
+everyday sequence is therefore bit-identical to 0.57, and the rest of the simulation's randomness is
+unchanged whether or not any circumstance holds — asserted across all sixteen circumstance masks.
+
+Game playthings are kept out of this. Keep-away and tug-of-war still show the holder in
+`PresentDiscovery`, but the plaything is always an everyday variant chosen from the scene's own seed
+(`seed % 8`), set on every change of hands, never a conditional keepsake — and a game still reaches
+neither the scrapbook nor the journal.
+
+The catalogue itself lives in `formiga-core::trinkets`: sixteen entries of name, description, hint,
+and condition, with `TRINKET_VARIANTS = 16`. `formiga-art::TrinketAtlasRenderer` bakes them into one
+256×32 sheet — sixteen columns by two rows, a rest frame and a glint frame, 32,768 bytes — whose
+inks are drawn from the colony seed and scored against every member's coat at once, so a keepsake
+reads as a separate object whoever is holding it. A single holder's `prop_palette` keeps a belonging
+90 away from that one coat; dodging a whole colony at once is necessarily a little softer, and the
+tests report the worst distance rather than fixing a threshold, because the number that matters is
+comfortably past the roughly 25 at which two colours start to read as the same.
+The overlay's discovery quad and the settings scrapbook both sample it,
+so a trinket costs one texture per colony instead of one row per creature. The scrapbook shows all
+sixteen slots, undiscovered ones as a dim silhouette with the catalogue's hint.
+
 ## Exact offline seed sharing
 
 `CreatureOrigin` remains separate from mutable colony order. Its 256-bit source seed and original
@@ -286,6 +615,38 @@ to three already-promoted profile descriptors, UTC birth month/year, colony orde
 abbreviation of the existing share code. The encoder adds no text chunks or application metadata.
 It never receives memory payloads, relationships, full seed text, screen geometry, device data, or
 the save file itself. Export is therefore read-only and leaves the save untouched.
+
+### Stickers and the colony portrait
+
+Two more exports follow the same contract: the native save dialog first, nothing allocated on
+cancellation, every buffer dropped afterwards, nothing uploaded to the overlay GPU, and the save
+untouched.
+
+`StickerRenderer::render(&Creature, StickerClip, scale) -> Sticker` and `Sticker::encode_gif()`
+produce an animated GIF of one creature. The clips are Walk (Traverse), Wave (Greet), Cheer
+(`Gesture::Cheer`), Play (SoloPlay), Snack (Eat), Sleep, and Dance (`Gesture::Bop`); each carries its
+matching expression plus one blink near the end of the loop, and Sleep keeps its eyes shut
+throughout. Scales are 4× and 8×, with 8× the default. Timing is read from the creature's own
+`MotionSignature` by walking its timeline a centisecond at a time, so the GIF's frame delays are
+that creature's real cadence rather than a nominal frame rate. The encoder uses one global palette
+with a transparent index, quantising gracefully above 255 colours, "restore to background"
+disposal, an infinite loop, and no dithering, and it is byte-deterministic. A sticker file holds
+only pixels: per-frame graphic-control blocks and exactly one NETSCAPE loop block, with no comment,
+application, or plain-text extension — verified by walking the encoded GIF block by block. The
+filename is `<Name>-<clip>.gif`, Unicode-safe.
+
+`ColonyCardRenderer::render(&SaveFile) -> Canvas` produces one 960×600 opaque PNG: every member in a
+friendly pose with its name on a cream plaque, the title and the month the colony began, two stat
+chips for the member count and the number of family lines, and the village behind them, resolved on
+a notional 1:1 desktop so no screen information enters the card. It contains no seeds, memories,
+relationship scores, journal, display keys, visitors, or guest book, and the encoder adds no PNG
+text chunks; a test maxes out memories, tendencies, and relationships and asserts the card comes out
+pixel-identical. The default filename is `Formiga-colony.png`.
+
+The Colony profile gains "Export sticker…" with a clip choice, and the Home page gains "Export
+colony portrait…". The `gif` crate, already in the workspace for `formiga-tools`, is now also a
+dependency of `formiga-art`, so the application and the tools share one encoder; it is the first
+time it is linked into the shipped application.
 
 ## Reference-guided generation and colony roles
 
@@ -351,11 +712,28 @@ remain minis.
   explicit export; cancellation performs no render.
 - Reference matching: one bounded synchronous decode and 512-candidate procedural search occurs
   only after file selection; no reference worker, cache, texture, or idle task persists.
+- Thought bubbles: aged on the ordinary world tick; each lives 2.4 seconds and at most five exist,
+  so there is no bubble timer or wakeup of its own.
+- Creature menu: the host's tick interval drops to 50 ms only while a menu is open, and a menu is
+  owner-initiated and self-closing within eight seconds.
+- Offers: answered at the moment of the command, with runtime-only 6-second, 90-second, and
+  45-second cooldowns advanced by the existing tick.
+- Visitors: whether a wanderer comes is decided per home gathering from the colony seed and the
+  gathering ordinal, never from a clock; a visit's own timeline advances on the ordinary tick and
+  its progress is never serialized.
+- Doorstep moments: the first 12–80 seconds into a home visit, then 60–180 seconds apart per
+  creature, with at most one resident busy at a time; evaluated in the same world tick.
+- Overlap resolution: checked at the end of every ordinary tick, acting after 1.25 seconds of a
+  covered face or 2.0 seconds of crowding, with a 5-second per-pair cooldown.
+- Stickers and the colony portrait: the save dialog, CPU canvases, and encoders exist only during an
+  explicit export; cancellation renders nothing.
 - Display reconciliation: every 2 seconds.
 - Persistence: transitions, settings changes, and every 30 seconds.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 14 migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+Version 15 adds only `visitors`; a v14 colony receives an empty `VisitorState` and nothing else is
+touched. The chain below it is unchanged: migration
+migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
 canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
@@ -381,8 +759,10 @@ deliberately no history database or telemetry layer. Update preferences live in 
 
 `clubhouse.rs` holds only on-demand UI artwork and interaction state; `settings.rs` owns its egui
 window and presentation. Four static portraits, four eight-frame candidate strips (six walk frames
-and two expressions each), the village atlas, one object strip, and the scrapbook's eight trinket
-drawings fit within 416 KiB of artwork textures. The home preview draws the whole corner from the
+and two expressions each), the village atlas, one object strip, and the one colony trinket sheet
+that carries all sixteen trinkets fit within 432 KiB of artwork textures — raised from 416 KiB
+because that sheet replaced eight separate 16×16 drawings with 24 KiB more pixels in a single
+texture, and nothing else on any page grew. The home preview draws the whole corner from the
 village and object atlases the desktop already samples, positioned by the very layout functions
 the overlay uses, so a complete village costs the same two textures whatever its size and nothing
 about looking at it calls the colony home or moves a creature.
@@ -437,7 +817,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–14: version 14 is read directly, versions 1 through 13 are
+Persistence accepts save versions 1–15: version 15 is read directly, versions 1 through 14 are
 migrated on load, and anything else is refused. A missing primary can load its backup; a corrupt
 primary is preserved before repair, without rotating over a valid backup. If both files fail, the
 host disables writes and presents recovery choices. Explicit restores and resets preserve uniquely named copies;
@@ -491,6 +871,28 @@ with at most eight display records. Geometry targets recompute on changed scans 
 several seconds. Small utility bonuses encourage available exploration; empty-space roaming does
 not compete with a reachable ledge. No new persisted action codes or schema fields are required.
 
+### Watching, and where a creature looks
+
+`Gesture::Watch` is the tenth gesture: six frames at 3 fps, a two-second loop of a creature drawn up
+tall with its head leaned two or three pixels toward what it is watching, ears pricked with a
+one-frame flick, a braced stance, and its forelimbs gathered in. It is struck after the notice beat
+by a planted, unstartled actor in a window scene, by a curious creature inspecting a ledge, and by
+the spectators of geometry scenes — window, cursor, display, and ledge — through a new `geometry`
+flag on `Cue`. It is never used for a dance or a copy chain, where the point is the movement itself.
+
+`window_gaze` was also wrong, and in a way that only showed on the desktop. It aimed at the point of
+the window nearest the creature, which for a creature standing beside a window is the ground under
+its own feet. It now aims at the near edge at the window's mid-height, and a creature standing on
+the window looks at the window's centre and turns toward it.
+
+`Pose::lean` had been authored into five gestures and never drawn, because the legacy renderer
+ignored it. All three legacy bodies — blob, hopper, and quadruped — now draw it, alongside the
+modular renderer that already clamped it, and `InspectScreen` gained a slight lean of its own.
+
+The attention review tests draw `window-watching.png`: notice, watch, and settle beside a synthetic
+window, on nine reference bodies — six modular body-and-ear combinations and the three legacy
+families. The gesture sheet was regenerated at 1008×4752 with a Watch-loop band including the mini
+size.
 
 ### Display and cursor attention
 

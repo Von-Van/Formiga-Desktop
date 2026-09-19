@@ -2,6 +2,113 @@
 
 All notable changes are documented here.
 
+## [0.58.0] - 2026-09-18
+
+### Added
+
+- Right-click a creature and a small strip floats above its head: a snack, a toy, send it home,
+  and its profile. Control-click does the same on macOS. Clicking an icon acts; the border and the
+  gaps between icons do nothing, and everything around the strip stays click-through, so the
+  desktop underneath is exactly as usable as it was. The menu closes when you choose something,
+  when you right-click the same creature again, when the cursor wanders off for a moment, or after
+  eight seconds of being left alone.
+- A creature decides for itself what to do with a snack or a toy. A hungry one takes the food; a
+  bored, playful one takes the toy; a tired one shows you it is sleepy and nothing else happens.
+  Being offered the same thing over and over does not wear a creature down — it has just eaten, or
+  just played, and says so. A timid creature thinks about it visibly before answering. Accepting
+  something nudges how much a creature trusts your hand, the same small, reversible amount a pet
+  does.
+- Send home gathers the whole colony at the houses straight away, for the usual fifteen minutes,
+  without waiting out the cooldown first. Everyone answers with a small house over its head.
+- Creatures answer what you do with a picture over the head rather than a word: a heart for a pet,
+  surprise at being picked up, a dizzy swirl after a toss lands, a house for going home, and the snack,
+  toy, question mark, or gentle "no thanks" that goes with an offer. A bubble grows in, holds for a
+  couple of seconds, and shrinks away; asking for the same thing again holds the one that is there
+  instead of popping a second. At most five are ever up at once, none while the colony is hidden,
+  and reduced motion skips the growing.
+- Creatures from elsewhere come to visit. At about one home gathering in four, somebody nobody
+  knows wanders in along the floor, says hello, spends the gathering pottering about with your
+  colony, waves goodbye, and walks off before the houses close — never three gatherings in a row,
+  never more than seven apart, and never while somebody else is already here. Your creatures turn
+  and answer the hello in their own time, then carry on with their own afternoon; nothing about a
+  visit changes a bond, a memory, or a habit.
+- You can also invite a friend's creature for the day. Paste their seed code under
+  **Settings → Creature studio → Adopt a shared companion from a code** and the preview now offers
+  **Invite for a day** beside adopting: they turn up at the houses promptly and come back at every
+  gathering for twenty-four hours, and then go home. The Journal page keeps a guest book of the last
+  twenty-four visitors with the date each one came and a code to copy, and whoever is here right now
+  sits on top of it with **Ask to stay** beside their code. A guest can be petted and offered snacks
+  and toys, but not picked up — a drag on a visitor is only ever a friendly rub.
+- The colony corner is a proper village now. Companion cottages and minis' cottages are visibly
+  bigger, and every creature rests beside its own front door instead of lining up in front of the
+  houses. While the colony is home they get on with small things: a nibble, a drink, a game with a
+  toy, a look up at their own house, a nap in the sun, a wave that the neighbour waves back at, and
+  a short errand out to a belonging and back. None of it counts for anything — it is what a quiet
+  afternoon at home looks like.
+- Creatures no longer stand on top of one another. A face covered by somebody else's body is
+  cleared within a moment or two, either by whoever is on top taking a short step aside or, for a
+  sleeping or ceremonial creature, by a quiet shuffle that does not wake anybody. Resting
+  arrangements are still shoulder to shoulder, because that is how creatures rest; it is faces
+  being hidden that gets fixed. Greetings, games, line-ups, and races all start from spacing that
+  already works, and **Gather Creatures** now sets everyone down with room around them rather than
+  in one stack.
+- There are sixteen kinds of trinket to find rather than eight. Eight turn up on any ordinary day,
+  and the other eight only ever turn up in a particular circumstance: after dark, high up on a ledge
+  with real air beneath it, in the middle of a window ride, or standing beside a close friend. The
+  scrapbook shows all sixteen slots from the start, with the ones nobody has found yet as a dim
+  silhouette and a hint about where to look.
+- Toys, snacks, and drinks are redrawn. A top, a rattle, and a pinwheel read at a glance, a mug is
+  not a bowl is not a bottle, and whatever a creature is holding sits in the paw or at the mouth
+  that is actually drawn, with a little trail as it moves.
+- A creature that is genuinely interested in something now looks it: drawn up tall, head leaned
+  toward whatever it is watching, ears pricked, forelimbs gathered in. It is the pose you will see
+  when a window moves nearby and a creature has stopped to watch what happens next.
+- Any creature can be exported as an animated sticker from its Colony profile — a walk, a wave, a
+  cheer, playing, a snack, a nap, or a dance, at four or eight times size, as an ordinary GIF that
+  loops. The timing is the creature's own, so a sticker moves the way that creature moves.
+- The Home page can export a colony portrait: a 960×600 picture of every member in a friendly pose
+  with its name, the month the colony began, how many of you there are, how many family lines, and
+  your village behind them.
+- Formiga now ships a small distribution kit alongside the app: winget manifest templates and a
+  script that fills them in for a published release, an itch.io page kit, and suggested repository
+  metadata.
+
+### Changed
+
+- Save version 15 adds only the visitor state: whoever is visiting, how many home gatherings the
+  colony has held, and the guest book. Every v1–v14 colony migrates as before, and a v14 colony
+  simply arrives with no visitors and an empty book; nothing else is touched, added, or invented.
+- Each creature's artwork grows from 118 to 124 frames for the new watching pose: 1,529,856 bytes
+  per creature, about 5.84 MiB for a full colony of four. The per-creature limit the tests enforce
+  is now 4,500,000 bytes rather than 1.5 MB — a deliberate raise, so there is room for more poses
+  without the budget having to move again every time one is added.
+- The settings artwork budget is 432 KiB. The scrapbook's eight separate trinket drawings became
+  one sheet carrying all sixteen trinkets and their glints: one texture instead of eight, and the
+  only thing on any page that grew.
+- The simulation's largest source file is now a directory of themed modules, with its tests beside
+  them. Behaviour is unchanged — this matters to anyone reading the code and to nobody else.
+
+### Fixed
+
+- A find could be written into the scrapbook as the gem rather than the trinket that was actually
+  held up. Since the scrapbook shipped in 0.57.0, a presentation that ended by the ordinary route
+  back to everyday behaviour had already had its trinket cleared by the time the find was written
+  down, so it went into the book as the first kind; finds that ended another way were recorded
+  correctly. Finds are now recorded as what they were. Earlier entries are left as they are, since
+  what was really found cannot be reconstructed.
+- Two bonded creatures could greet each other from almost on top of one another. The walk that
+  brought them together stopped a fixed short distance from the companion rather than from the
+  spot it was aiming at, so the greeting could end up nose to nose with one face behind the other.
+- A cottage and a belonging could land on the same spot in the village. Houses were placed against
+  however many belongings the colony happened to own while belongings were placed as though there
+  were always eight, so the two walks disagreed. One walk now lays out the whole strip.
+- A creature reacting to a window looked at its own feet. The gaze aimed at the nearest point of
+  the window, which for a creature standing beside one is the ground it is standing on; it now
+  looks at the near edge halfway up, and a creature standing on the window looks at its middle and
+  turns toward it.
+- Five poses were authored with a lean that never appeared, because the older renderer did not draw
+  it. Leaning is now drawn on every body, and a creature looking at a screen leans in slightly too.
+
 ## [0.57.1] - 2026-09-17
 
 ### Added

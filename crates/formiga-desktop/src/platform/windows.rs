@@ -170,6 +170,22 @@ pub fn set_interaction_shape(window: &Window, mask: &[bool], scale: u8) {
     }
 }
 
+/// The open creature menu's proxy covers one rectangle: the strip's framed body. This is
+/// `set_interaction_shape` with a single run instead of one per mask row, and it matters for the
+/// same reason — the window region is what keeps every pixel outside the control click-through.
+pub fn set_menu_proxy_shape(window: &Window, width: u32, height: u32) {
+    let Some(hwnd) = window_hwnd(window) else {
+        return;
+    };
+    let region = unsafe { CreateRectRgn(0, 0, width.max(1) as i32, height.max(1) as i32) };
+    let accepted = unsafe { windows::Win32::Graphics::Gdi::SetWindowRgn(hwnd, Some(region), true) };
+    if accepted == 0 {
+        unsafe {
+            let _ = DeleteObject(region.into());
+        }
+    }
+}
+
 pub fn begin_interaction_capture(window: &Window) {
     if let Some(hwnd) = window_hwnd(window) {
         unsafe {
@@ -186,6 +202,12 @@ pub fn end_interaction_capture() {
 
 pub fn left_button_down() -> bool {
     unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) < 0 }
+}
+
+/// Windows has a second mouse button of its own and no modifier that stands in for it, so a
+/// primary click is never a secondary one here. The macOS adapter answers for Control-click.
+pub fn secondary_click_modifier() -> bool {
+    false
 }
 
 fn window_hwnd(window: &Window) -> Option<HWND> {

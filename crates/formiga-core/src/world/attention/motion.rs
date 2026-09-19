@@ -39,20 +39,20 @@ impl ShortWalk {
     }
 }
 
-/// Creature-scale contact spacing for play, as a fraction of ordinary personal space.
-pub(super) const PLAY_SPACING: f32 = 0.45;
+/// Creature-scale contact spacing for play, as a fraction of ordinary personal space. Play is
+/// allowed inside the face-clear distance because its contact is momentary — a tag, a vault, a
+/// hand-off. Anything a game then *holds* is spaced by the face-clear distance where it is chosen.
+pub(super) const PLAY_SPACING: f32 = 0.37;
 
 pub(super) fn speed(creature: &Creature) -> f32 {
     24.0 + creature.personality.activity * 34.0
 }
 
+/// Ordinary personal space: shoulder to shoulder, so an approach that ends here leaves the two
+/// faces clear of each other. A flat ceiling used to cap this below half a frame at the largest
+/// display scale, which left a companion's face behind whoever walked up to it.
 fn spacing(creature: &Creature, settings: &Settings, desktop: &DesktopSnapshot) -> f32 {
-    let scale = desktop
-        .monitors
-        .iter()
-        .find(|m| m.id == creature.state.surface.monitor_id)
-        .map_or(1.0, |m| m.scale_factor);
-    (48.0 * f32::from(settings.display_scale) / scale * 0.65).clamp(24.0, 96.0)
+    super::super::spacing::face_clear_gap(creature, settings.display_scale, desktop)
 }
 
 fn same_surface(a: &Creature, b: &Creature) -> bool {

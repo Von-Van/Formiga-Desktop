@@ -6,8 +6,9 @@ use time::OffsetDateTime;
 pub const MAX_JOURNAL_ENTRIES: usize = 64;
 /// Pinned moments sit alongside the rolling journal without extending it.
 pub const MAX_PINNED_ENTRIES: usize = 8;
-/// The eight trinket variants the artwork can draw; the identifier is the variant itself.
-pub const TRINKET_VARIANTS: u8 = 8;
+/// The trinket variants the artwork can draw; the identifier is the variant itself. Eight of them
+/// turn up anywhere and eight only under some circumstance; `crate::trinkets` is the table.
+pub const TRINKET_VARIANTS: u8 = 16;
 /// A week of routine changes is plenty; more would be a calendar, not a habit.
 pub const MAX_SCHEDULED_TRANSITIONS: usize = 14;
 
@@ -20,6 +21,9 @@ pub enum JournalMoment {
     Ritual(RitualKind),
     Object(ColonyObjectKind),
     Decoration(ShelterDecorationKind),
+    /// Someone came by the houses. A visitor is never a colony member, so the moment carries the
+    /// name it went by rather than an identifier the colony could not look up later.
+    Visit(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -58,7 +62,8 @@ impl PinnedMoment {
 /// an aggregate count: a colony that predates the scrapbook simply starts it empty.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScrapbookRecord {
-    /// 0..8, stable for the life of the colony: the identifier the artwork is drawn from.
+    /// A catalogue variant, stable for the life of the colony: the identifier the artwork is
+    /// drawn from and `trinket_info` describes.
     pub variant: u8,
     #[serde(with = "time::serde::rfc3339")]
     pub first_at: OffsetDateTime,
@@ -880,12 +885,14 @@ mod tests {
                 world.save.home.last_disappeared_utc = None;
             },
             |world| {
+                // Everyone is at its own door: standing still there, or partway through one of
+                // the small quiet things residents do while the home is out.
                 world.save.home.is_active()
                     && world
                         .save
                         .creatures
                         .iter()
-                        .all(|creature| creature.state.action == ActionKind::Homebound)
+                        .all(|creature| world.resting_at_home(creature.id))
             },
             4,
         ),

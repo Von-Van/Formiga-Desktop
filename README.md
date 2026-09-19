@@ -1,4 +1,4 @@
-# Formiga · v0.57.1
+# Formiga · v0.58.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.57.1-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.58.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,36 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.58.0
+
+Right-click a creature — Control-click on macOS — and a small strip floats above its head: hold out
+a snack, hold out a toy, send the whole colony home, or open that creature's profile. Whether the
+snack or the toy is taken is up to the creature. A hungry one eats, a bored one plays, a sleepy one
+shows you it would rather not, and a timid one takes a moment to think it over. Creatures answer
+what you do with a small picture above the head rather than with words: a heart for a pet, a dizzy
+swirl after a toss lands, a house when they are on their way home. They have also stopped standing on
+top of one another — a face hidden behind somebody else's body is cleared within a moment, though
+friends still rest shoulder to shoulder, because that is how creatures rest.
+
+![A creature waving, exported as an animated sticker](docs/assets/sticker-wave.gif)
+
+Someone new turns up at about one home gathering in four: a creature from nowhere in particular who
+walks in along the floor, says hello, spends the gathering pottering about with your colony, and
+leaves before the houses close. You can also paste a friend's seed code to invite their creature for
+a day, and if your colony has room you can ask a visitor to stay for good. The Journal page keeps a
+guest book of the last two dozen who came by, each with a code to copy. The corner they visit has
+grown, too: bigger cottages, every creature resting beside its own front door, and small doorstep
+moments while the colony is home — a nibble, a nap, a wave the neighbour waves back at, a short
+errand out to a belonging and back.
+
+There are sixteen kinds of trinket to find now. Eight turn up on any ordinary day; the other eight
+only ever turn up in a particular circumstance — after dark, high on a ledge, in the middle of a
+window ride, or standing beside a close friend — and the scrapbook shows the ones nobody has found
+yet as a dim silhouette with a hint. Any creature can be saved as an animated sticker, and the whole
+colony as a portrait.
+
+![An exportable colony portrait showing every member, the village, and the month the colony began](docs/assets/colony-card.png)
 
 ## New in 0.57.1
 
@@ -104,10 +134,22 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
   ride moving windows, and startle when something shifts nearby.
 - See them traverse short stacks of overlapping windows and squeeze through safe narrow gaps, with
   routes disappearing the moment the desktop changes.
-- Catch quiet moments: snacks, drinks, generated toys, ledge dangling, inspections, and eight
+- Catch quiet moments: snacks, drinks, generated toys, ledge dangling, inspections, and sixteen
   discovery trinkets held up for a look.
 - Click a creature to pet it. Drag it to move it — a quick release tosses it with a soft bounce, a
   slow one places it precisely.
+- Right-click one (Control-click on macOS) for a small strip above its head: a snack, a toy, send
+  the colony home, or its profile. What a creature does about the snack or the toy is its own
+  decision, and it answers with a picture over its head — a heart, a snack, a question mark, or a
+  gentle no.
+- See a creature stop and genuinely watch something: drawn up tall, head leaned toward the window
+  that just moved, ears pricked, waiting to see what happens next.
+- Notice that nobody's face stays hidden behind somebody else's body for more than a moment.
+  Resting friends still sit shoulder to shoulder; it is being covered up that gets sorted out.
+- Watch a stranger come by while the colony is home — a creature nobody knows, who walks in, says
+  hello, spends the gathering with everyone, and wanders off again.
+- Look in on the houses and find small doorstep moments: a nibble, a drink, a game, a look up at
+  its own front door, a nap, a wave to the neighbour, or a short errand out to a belonging.
 - Let bonded creatures follow, greet, sleep together, share or steal a toy, watch each other climb,
   react to a toss, and occasionally squabble.
 - Watch a creature think twice about a long jump: a look down, a step back, up to two changes of
@@ -141,12 +183,16 @@ new close friendship, a completed ritual, a keepsake that turned up, a decoratio
 grouped by Today, Yesterday, and the date, in your own local time. You can filter it to one
 companion, and keep up to eight moments pinned above the rest. A pin points at a moment the journal
 already holds, so it can never say something that did not happen. Alongside it, a
-scrapbook records the first time each of the eight kinds of trinket was found, with a drawing of it,
-the date, and who found it — still named even if that companion has since left. The Home page shows
+scrapbook records the first time each of the sixteen kinds of trinket was found, with a drawing of
+it, the date, and who found it — still named even if that companion has since left. Eight of those
+kinds turn up on any ordinary day; the other eight only in a particular circumstance, and until one
+has been found its slot shows a dim silhouette and a hint about where to look. The Journal page also
+keeps a guest book: the last two dozen creatures who came by the houses, when each one visited, and
+a code that recreates it. The Home page shows
 the corner as it really is: the colony house with the decorations it has earned, a cottage for each
 companion, and the belongings along the same ground line. Looking at it never calls anyone home.
 
-![Climbing, dangling, inspection, presentation poses, and all eight discovery trinkets](docs/assets/ambient-sheet.png)
+![Climbing, dangling, inspection, presentation poses, and the eight everyday discovery trinkets](docs/assets/ambient-sheet.png)
 
 ## Making creatures your own
 
@@ -164,11 +210,25 @@ Any creature can be copied as a checksummed `FORMIGA-…` seed code. Importing o
 appearance and personality entirely offline and starts it with a fresh life and history. Names,
 memories, relationships, and anything about your desktop are never part of the code.
 
+A code can also be an invitation. Paste one under **Settings → Creature studio → Adopt a shared
+companion from a code** and the preview offers **Invite for a day** beside adopting: the friend's
+creature comes to your houses at every gathering for the next twenty-four hours, can be petted and
+offered things like anyone else, and goes home when the day is up. Nobody joins your colony, and
+nothing about theirs is read. If your colony has room you can still ask a visitor to stay, and it
+begins a fresh life of its own exactly as an adopted creature does. A guest's code carries the same
+appearance and temperament as any shared code, and nothing more.
+
 Each Colony profile can also export a 960×600 illustrated creature card using the creature's real
 sprite and palette, with its family, learned descriptors, arrival month, and only a short glimpse of
 its seed.
 
 ![An exportable Formiga creature card for Mallow](docs/assets/creature-card.png)
+
+A profile can export an animated sticker as well: a walk, a wave, a cheer, playing, a snack, a nap,
+or a dance, at four or eight times size, as an ordinary looping GIF timed to that creature's own
+cadence. And the Home page can export a colony portrait of everyone at once, with their names, the
+month the colony began, and your village behind them. All three are ordinary image files; the save
+dialog opens before anything is drawn, and cancelling makes nothing.
 
 ## Settings you may want
 
@@ -229,9 +289,18 @@ cargo run -p formiga-tools -- activity-sheet --output docs/assets/activity-sheet
 cargo run -p formiga-tools -- ambient-sheet --output docs/assets/ambient-sheet.png
 cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
 cargo run -p formiga-tools -- home-yard-sheet --output docs/assets/home-yard-sheet.png
+cargo run -p formiga-tools -- prop-sheet --output docs/assets/prop-sheet.png
+cargo run -p formiga-tools -- ui-sheet --output docs/assets/ui-sheet.png
 cargo run -p formiga-tools -- creature-card --output docs/assets/creature-card.png
+cargo run -p formiga-tools -- colony-card --output docs/assets/colony-card.png
+cargo run -p formiga-tools -- sticker --clip wave --scale 8 --output docs/assets/sticker-wave.gif
+cargo run -p formiga-tools -- social-preview --output docs/assets/social-preview.png
+cargo run -p formiga-tools -- itch-cover --output packaging/itch/cover.png
 cargo run -p formiga-tools -- app-icon --output packaging/shared
 ```
+
+`sticker` also takes `--seed NUMBER`; every one of these subcommands writes to the path shown above
+when `--output` is omitted.
 
 macOS 14+ and Windows 10/11 x64 are the supported targets, and CI builds both. Releases are
 unsigned previews until Developer ID and Authenticode credentials are in place.

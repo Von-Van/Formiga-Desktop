@@ -11,8 +11,15 @@ cargo test --workspace
 cargo run -p formiga-tools -- simulate 181
 cargo run -p formiga-tools -- generation-sheet
 cargo run -p formiga-tools -- home-yard-sheet
-cargo run -p formiga-desktop
+FORMIGA_DATA_DIR=/tmp/formiga-dev cargo run -p formiga-desktop
 ```
+
+Set `FORMIGA_DATA_DIR` to run a development build against a scratch colony. It replaces the
+platform application-data directory outright, so `colony.json`, its backup and recovery copies, the
+rotating `logs/`, and `updates.json` all go there instead. Use it whenever you are trying a change:
+a behaviour experiment, a migration, a reset, or a crash mid-write cannot then touch the colony you
+actually live with. An empty value is ignored, so `FORMIGA_DATA_DIR= cargo run …` is the real
+directory again.
 
 The desktop binary supports macOS 14+ and Windows 10/11 x64. Core simulation, art, habitat,
 persistence, drag-state, and occlusion-region tests are platform-independent. Native overlay and
@@ -28,7 +35,7 @@ a release; a published tag is awkward to take back.
 
 ```sh
 cargo run --release -p formiga-tools -- tick-bench
-scripts/measure-macos.sh --state "four moving, busy desktop" --build "v0.57.1" --colony 4
+scripts/measure-macos.sh --state "four moving, busy desktop" --build "v0.58.0" --colony 4
 ```
 
 `tick-bench` times `World::tick` over deterministic synthetic desktops with one and four creatures,
@@ -37,6 +44,46 @@ It must be built in release to mean anything. `measure-macos.sh` samples a runni
 for the procedure in `PERFORMANCE.md` and prints a row for that document's table; it needs no
 sudo and no dependencies. The Windows equivalents are `Get-Counter '\Process(formiga)\% Processor
 Time'` for CPU and `Get-Process formiga | Select WorkingSet64` for resident memory.
+
+## Review sheets and documentation images
+
+`formiga-tools` draws every reference image in the repository, each subcommand writing to a default
+path when `--output` is omitted:
+
+```sh
+cargo run -p formiga-tools -- ui-sheet          # docs/assets/ui-sheet.png
+cargo run -p formiga-tools -- prop-sheet        # docs/assets/prop-sheet.png
+cargo run -p formiga-tools -- sticker           # docs/assets/sticker-wave.gif
+cargo run -p formiga-tools -- colony-card       # docs/assets/colony-card.png
+cargo run -p formiga-tools -- social-preview    # docs/assets/social-preview.png
+cargo run -p formiga-tools -- itch-cover        # packaging/itch/cover.png
+```
+
+`ui-sheet` draws the whole interface atlas — every thought bubble, menu frame, icon state, and label
+tab. `prop-sheet` draws the eight toys, four snacks, and three kinds of drinkware in the paws and
+mouths that hold them. `sticker` takes `--clip walk|wave|cheer|play|snack|sleep|dance`,
+`--scale 4|8`, and `--seed NUMBER`; `colony-card` renders a whole colony's portrait. `social-preview`
+is a 1280×640 link-preview image and `itch-cover` a 630×500 store cover. Run the tools without a
+subcommand for the full list.
+
+## Distribution kit
+
+`packaging/` holds the material a release needs beyond the built binaries, none of which is
+published automatically:
+
+- `packaging/windows/winget/` — template manifests for the winget package `VonVan.Formiga` (schema
+  1.6.0): the version, installer, and en-US locale files, plus a README covering why the installer
+  manifest is per-user scope with no `ProductCode` and why it states plainly that the installer is
+  unsigned.
+- `scripts/winget-manifest.sh <version>` — reads the already-published GitHub release for that
+  version, verifies the Windows MSI's SHA-256, and writes filled-in manifests to
+  `packaging/windows/winget/out/<version>/`, which is git-ignored. It builds, signs, and uploads
+  nothing, and never touches `microsoft/winget-pkgs`; a maintainer copies the output into a pull
+  request by hand.
+- `packaging/itch/` — `page.md`, a paste-ready itch.io page kit (classification, tags, descriptions,
+  and upload steps), and `cover.png`, drawn by `formiga-tools itch-cover`.
+- `packaging/REPOSITORY.md` — a suggested repository description and topic list with the `gh repo
+  edit` command for the owner to review and run.
 
 ## Downloads for nontechnical users
 

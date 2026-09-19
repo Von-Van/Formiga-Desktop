@@ -1,0 +1,46 @@
+# Formiga winget submission template.
+# `scripts/winget-manifest.sh <version>` fills in the placeholder values below and writes the
+# result to packaging/windows/winget/out/<version>/VonVan.Formiga.installer.yaml. See README.md
+# in this directory for the full submission process, and for why a few fields below are left out.
+#
+# Notes taken from packaging/windows/Formiga.wxs and scripts/package-windows.ps1:
+#   - Scope is "user": the WiX package sets Scope="perUser" and installs under
+#     %LocalAppData%\Formiga, so no admin rights or elevation prompt should be needed.
+#   - InstallerType is "msi", not "wix": `wix build` here produces a plain MSI package, not a
+#     WiX Burn bootstrapper/.exe, so the plain "msi" type is the correct match.
+#   - There is no ProductCode field. WiX 4's <Package> element in Formiga.wxs does not pin one
+#     (no Id attribute), so WiX derives it fresh from the package metadata on every build,
+#     including every version bump. A per-version, non-stable ProductCode is normal for MSI
+#     packages that use <MajorUpgrade> (a new ProductCode per version is what lets Windows
+#     Installer treat the new build as an upgrade of the old one, addressed via the *stable*
+#     UpgradeCode "A66A84EB-D317-43B4-8765-1B1BB3D43A7B" instead), but it does mean this script
+#     cannot read it out of the .wxs source. Extracting it would mean parsing the built MSI's own
+#     summary stream (e.g. with `wix msi` tooling), which is outside this script's curl/gh/
+#     shasum/sed toolset. winget's ProductCode field is optional; omitting it just means winget
+#     correlates the installed package by PackageIdentifier instead. `wingetcreate new`/`update`
+#     (see README.md) can fill it in automatically by downloading and inspecting the MSI, if a
+#     future maintainer wants it.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: VonVan.Formiga
+PackageVersion: @@VERSION@@
+InstallerLocale: en-US
+# WiX/Formiga.wxs does not declare a minimum OS version explicitly; 10.0.17763.0 (Windows 10
+# 1809) is a conservative, commonly used winget floor for a plain Win32 desktop app. Raise this
+# if real-world testing on older Windows 10 builds turns up a problem.
+MinimumOSVersion: 10.0.17763.0
+Platform:
+  - Windows.Desktop
+InstallerType: msi
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: uninstallPrevious
+ReleaseDate: @@RELEASE_DATE@@
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Von-Van/Formiga-Desktop/releases/download/v@@VERSION@@/Formiga-@@VERSION@@-windows-x64.msi
+    InstallerSha256: @@SHA256@@
+ManifestType: installer
+ManifestVersion: 1.6.0

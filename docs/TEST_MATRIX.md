@@ -12,7 +12,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
 | Raised cat tail and visible rabbit puff for every tail style | CI | CI |
 | Resting cats plant all four paws on the same contact row as walking; gesture paws cap long generated reaches | CI | CI |
-| v1–v13→v14 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
+| v1–v14→v15 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
+| A v14 colony migrates to an empty visitor state; the saved-field allowlist and runtime-only field denylist both hold | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | Fixed memory/routine limits and sub-2-KiB per-creature serialized growth | CI | CI |
@@ -59,11 +60,11 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Ambient cadence bounds, deterministic landmarks, pause/hidden suspension | CI | CI |
 | Continuous upward traverse/climb/mantle, downward hops, and route interruption | CI | CI |
 | Raised dangling GPU/proxy handhold placement contract | CI | CI |
-| Eight deterministic opaque trinkets and hold playback | CI | CI |
-| Exactly 118 unique body frames (90 action, 28 gesture), one slot each; layered atlas at or below 1.5 MB | CI | CI |
+| Sixteen deterministic opaque trinkets and hold playback | CI | CI |
+| Exactly 124 unique body frames (90 action, 34 gesture), one slot each; layered atlas at or below 4,500,000 bytes | CI | CI |
 | One limb per side: a raised paw or wing leaves no resting nub or folded wing behind, and winged bodies reach with their wings | CI | CI |
 | Every action and gesture keeps one connected body and the reserved face on every body plan at extreme sizes | CI | CI |
-| Nine gestures are distinct, moving, in-frame poses on every body; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
+| Ten gestures are distinct, moving, in-frame poses on every body; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
 | A gesture is presented at its own frame rate, not that of the action beneath it | CI | CI |
 | Every body pose has a scene that strikes it; poses never appear over travel, hops, hangs, reduced motion, or an action whose own clip is the point | CI | CI |
 | A tug of war reaches its pull and hauls, from the position its settling-in walk actually reaches | CI | CI |
@@ -75,6 +76,22 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Alpha-mask and occlusion geometry | CI | CI |
 | Update version/asset selection and 24-hour throttle | CI | CI |
 | Update digest validation and unsafe-name rejection | CI | CI |
+| Offers: acceptance curve and clamp, sleep hard stops, the three cooldowns, every refusal condition, bounded reversible learning, and a behaviour stream left undisturbed | CI | CI |
+| Send home starts an ordinary visit without the cooldown, refuses while paused, mid-interaction, or with no usable home display, and answers with one bubble each | CI | CI |
+| Thought bubbles: 2.4-second lifetime, growth steps, holding a repeated icon and swapping a different one, the five-at-once cap, hidden and reduced-motion behaviour, and nothing saved | CI | CI |
+| Creature menu: member and guest item sets, the swapped Stay/Copy-code cell, placement above and flipped below at every scale, every dismissal cause, and a hit region covering only the strip body | CI | CI |
+| UI atlas: every bubble, frame, icon, and label tab inside one 256×80 texture, built on demand and released when idle | CI | CI |
+| Visitors: one wanderer per block of four gatherings, the full visit timeline, residents answering without changing a bond, tendency, or counter, and every interruption path | CI | CI |
+| Invitations: a duplicate or already-present code refused, a 24-hour stay attended at every gathering, one guest-book signature per visit, the 24-entry cap, and staying through the ordinary adoption path | CI | CI |
+| Village layout: reserved belonging lots, a porch sharing its own house's lot line, everyone resting beside its own door, both narrow-display fallbacks, and a guest spot clear of every resident | CI | CI |
+| Doorstep moments: pacing bounds, one resident busy at a time, cancellation by pet, pick-up, dismissal, pause, hide, or changed geometry, and no tendency, counter, bond, or journal line moving | CI | CI |
+| Spacing: the face and body boxes hold for every body plan at four sizes across every baked clip, frame, expression, and facing; source-site spacing for bonds, rituals, races, attention, and held formations; Gather Creatures leaving room | CI | CI |
+| Overlap resolution: grace periods, per-pair cooldown and clearance margin, who moves and who never does, silent sleeper shuffles, the descent fallback, and a continuously moving synthetic desktop | CI | CI |
+| Conditional discovery: each circumstance's boundary, one ambient draw on every path, an everyday sequence bit-identical to 0.57 across all sixteen circumstance masks, and game playthings staying everyday | CI | CI |
+| Colony trinket atlas: sixteen variants × rest and glint cells inside one 256×32 sheet, coloured clear of every member's coat | CI | CI |
+| The watching pose and window gaze: a geometry cue raising `Watch`, the near edge at mid-height rather than the creature's own feet, and a lean drawn on every body | CI | CI |
+| Stickers: every clip and scale, byte-deterministic GIFs, the creature's own cadence in the frame delays, an infinite loop, and no comment/application/plain-text blocks | CI | CI |
+| Colony portrait: deterministic 960×600 opaque pixels that stay identical with memories, tendencies, and relationships maxed out, and no PNG text chunks | CI | CI |
 | Universal app / x64 package | CI | CI |
 
 ## Companion interface checks (0.57.0)
@@ -107,6 +124,15 @@ FORMIGA_UI_REVIEW_DIR=/tmp/formiga-ui-review cargo test -p formiga-desktop all_p
 FORMIGA_ATTENTION_REVIEW_DIR="$PWD/target/attention-review" cargo test -p formiga-desktop attention_review
 ```
 
+```sh
+FORMIGA_UI_REVIEW_DIR="$PWD/target/formiga-ui-review" cargo test -p formiga-desktop --bin formiga desktop_ui_review
+```
+
+The third command writes `desktop-ui.png`: the production vertex code compositing real creature
+sprites with thought bubbles and open menus at 2×, 3×, and 4×, both floating above the head and
+flipped below it. It is the only sheet that shows the overlay's own geometry rather than the
+settings window's.
+
 Setting `FORMIGA_ATTENTION_REVIEW_DIR` to an absolute path writes the sheets each of those tests
 draws. They show production sprite composition over synthetic geometry, not the native compositor,
 and they are dense: crop a row and enlarge it with nearest-neighbour scaling before judging a face.
@@ -125,6 +151,9 @@ How to read them:
   loser closes its eyes.
 - `spectator-reactions.png` — one marginal attempt at notice, preparation, the catch, the moment
   after, and the outcome, with three watchers drawn at 4×.
+- `window-watching.png` — notice, watch, and settle beside a synthetic window, on nine reference
+  bodies. This is the sheet to judge the watching pose by: the head should lean toward the window
+  and the ears should be up, and the loop should keep breathing rather than freeze.
 - `body-plans-and-scales.png`, `anchors-by-body-plan.png`, `prop-handoff.png`,
   `outline-on-busy-wallpaper.png`, and `narrow-gaps-and-short-ledges.png` — every body plan at Small,
   Medium, and Large, adult and mini; feet and grips against a drawn contact line; a carried prop in
@@ -185,7 +214,15 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
 | Two- and four-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
-| Package install, relaunch, v14 round trip, and representative v1–v13 migration without creature loss | pending | pending | pending | pending |
+| Right-click and, on macOS, Control-click open the strip without stealing activation or focus; icon clicks act while the border and gaps do nothing | pending | pending | pending | pending |
+| The notch, label tab, and everything around the strip stay click-through; on Windows the region clips to the strip body and WM_RBUTTONDOWN reaches the no-activate tool window without a taskbar flash | pending | pending | pending | pending |
+| The menu survives a Space switch, hides under a full-screen application, sizes correctly on mixed DPI (100/125/150/200%), and closes when the creature is dragged between displays | pending | pending | pending | pending |
+| Thought bubbles read over real wallpaper at every creature size, sit at the crown for adults and minis alike, and clamp inside the display | pending | pending | pending | pending |
+| A full visit on a real desktop: arrival, greeting, residents answering, the calm beats, the farewell, and departure before the houses close | pending | pending | pending | pending |
+| Ask to stay and Copy code from both the menu and the Journal page, including a full colony refusing a stay | pending | pending | pending | pending |
+| Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once | pending | pending | pending | pending |
+| Sticker and colony-portrait export dialogs: save, cancel, Unicode names, and reopening both files in a native viewer | pending | pending | pending | pending |
+| Package install, relaunch, v15 round trip, and representative v1–v14 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

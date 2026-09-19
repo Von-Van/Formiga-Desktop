@@ -255,6 +255,108 @@ impl InteractionProxy {
     }
 }
 
+/// The native window that takes clicks on an open creature menu.
+///
+/// The overlay the strip is drawn on is click-through, so without this the icons would be a
+/// picture. It is the same kind of window as a creature's interaction proxy and is configured
+/// through the same platform calls — borderless, transparent, always on top, never activated,
+/// never given keyboard focus — so the menu can neither pull the desktop's focus away nor put a
+/// window in front of anything. It covers only the strip's framed body: the notch and the label
+/// tab hang outside it, so the only desktop pixels it claims are the ones with icons on them.
+pub struct MenuProxy {
+    pub window: Arc<Window>,
+    physical_position: Option<PhysicalPosition<i32>>,
+    physical_size: Option<PhysicalSize<u32>>,
+    visible: bool,
+}
+
+impl MenuProxy {
+    pub fn new(event_loop: &ActiveEventLoop) -> Result<Self> {
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_title("Formiga creature menu")
+                        .with_inner_size(PhysicalSize::new(FRAME_SIZE, FRAME_SIZE))
+                        .with_resizable(false)
+                        .with_decorations(false)
+                        .with_transparent(true)
+                        .with_window_level(WindowLevel::AlwaysOnTop)
+                        .with_active(false)
+                        .with_visible(false),
+                )
+                .context("create creature menu proxy")?,
+        );
+        platform::configure_interaction_proxy(&window);
+        // A creature proxy switches hit testing on and off as the cursor nears the creature. A
+        // menu only exists while it is being pointed at, so it is simply always live.
+        platform::set_interaction_hittest(&window, true);
+        window.set_cursor(Cursor::Icon(CursorIcon::Default));
+        Ok(Self {
+            window,
+            physical_position: None,
+            physical_size: None,
+            visible: false,
+        })
+    }
+
+    pub fn id(&self) -> WindowId {
+        self.window.id()
+    }
+
+    /// Put the window over the strip. `body` is the strip's clickable body in desktop logical
+    /// points, straight out of `creature_menu`.
+    pub fn sync(
+        &mut self,
+        body: DesktopRect,
+        monitor: &MonitorInfo,
+        overlay_origin: PhysicalPosition<i32>,
+    ) {
+        let factor = monitor.scale_factor;
+        let size = PhysicalSize::new(
+            (body.width * factor).round().max(1.0) as u32,
+            (body.height * factor).round().max(1.0) as u32,
+        );
+        let position = PhysicalPosition::new(
+            overlay_origin.x + ((body.x - monitor.bounds.x) * factor).round() as i32,
+            overlay_origin.y + ((body.y - monitor.bounds.y) * factor).round() as i32,
+        );
+        // Size before position, and re-apply the position whenever the size changes, for the same
+        // reason the creature proxy does: winit's macOS `set_outer_position` flips the Y origin
+        // using the window's current frame height, so positioning a window that is about to be
+        // resized lands it off by the size delta.
+        if self.physical_size != Some(size) {
+            let _ = self.window.request_inner_size(size);
+            platform::set_menu_proxy_shape(&self.window, size.width, size.height);
+            self.physical_size = Some(size);
+            self.physical_position = None;
+        }
+        if self.physical_position != Some(position) {
+            self.window.set_outer_position(position);
+            self.physical_position = Some(position);
+        }
+        if !self.visible {
+            self.window.set_visible(true);
+            self.visible = true;
+            // Geometry applied to a window that has never been ordered in is not guaranteed to
+            // survive being shown, so ask for all of it again on the next sync — the size and the
+            // Windows region with it — rather than trusting what was set before it appeared.
+            self.physical_size = None;
+            self.physical_position = None;
+        }
+    }
+
+    /// Take the window back out of the way when the menu closes. It is hidden rather than dropped
+    /// so that closing a menu from inside the window's own click never destroys the window that
+    /// event came from, and so the next right-click does not pay for a new one.
+    pub fn hide(&mut self) {
+        if self.visible {
+            self.window.set_visible(false);
+            self.visible = false;
+        }
+    }
+}
+
 fn hit_mask(mask: &[bool], bounds: DesktopRect, desktop_x: f32, desktop_y: f32) -> bool {
     if !bounds.contains(formiga_core::Point {
         x: desktop_x,

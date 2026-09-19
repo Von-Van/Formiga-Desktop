@@ -4,3 +4,4 @@
 *.log
 /contact-sheet.png
 /animation-preview.png
+/packaging/windows/winget/out/

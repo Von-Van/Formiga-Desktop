@@ -1,0 +1,10 @@
+# Formiga winget submission template.
+# `scripts/winget-manifest.sh <version>` fills in the placeholder values below and writes the
+# result to packaging/windows/winget/out/<version>/VonVan.Formiga.yaml. See README.md in this
+# directory for the full submission process.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+PackageIdentifier: VonVan.Formiga
+PackageVersion: @@VERSION@@
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

@@ -283,6 +283,193 @@ fn new_window_inspection_renders_notice_approach_and_a_spaced_audience() {
     save_review("inspection-approach.png", &sheet);
 }
 
+/// Window watching, body by body. One real scene — a window opening on an empty desktop — played
+/// out once, with the three moments that matter captured from the companion that reacts to it:
+/// the first look, the held watch, and settling again afterwards. Each moment is then drawn on
+/// every body the art can grow, beside the window it is actually looking at, so the question the
+/// sheet answers is the only one worth asking: does this creature look like it is looking at
+/// *that*? The gaze, the facing and the pose are all asserted against the window's real geometry
+/// first, so a sheet that looks right is right rather than merely pretty.
+#[test]
+fn a_watched_window_is_looked_at_on_every_body_plan() {
+    const WINDOW: DesktopRect = DesktopRect {
+        x: 580.0,
+        y: 650.0,
+        width: 240.0,
+        height: 150.0,
+    };
+    let (mut world, mut desktop, now) = review_scene();
+    desktop.windows.clear();
+    for (index, c) in world.save.creatures.iter_mut().enumerate() {
+        c.state.surface = SurfaceAttachment {
+            monitor_id: 1,
+            window_key: None,
+            kind: SurfaceKind::ScreenFloor,
+            relative_x: 0.5,
+        };
+        c.state.position = Point {
+            x: 480.0 - index as f32 * 65.0,
+            y: 846.0,
+        };
+        c.personality.curiosity = 1.0;
+        // Nobody here is frightened of a window, so nobody flinches instead of watching.
+        c.personality.window_tolerance = 1.0;
+        c.personality.boldness = 0.8;
+    }
+    let mut world = World::from_save(world.save);
+    world.tick(now, 0.05, &desktop);
+    desktop.windows.push(DesktopWindow {
+        key: 702,
+        bounds: WINDOW,
+        z_order: 0,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    });
+    // Notice, the held watch, and settling again: captured whole, so each is drawn exactly as the
+    // overlay would have drawn it at that instant rather than reconstructed afterwards.
+    let mut caught: std::collections::BTreeMap<CreatureId, Vec<(&str, Creature)>> =
+        Default::default();
+    let mut stages = Vec::new();
+    for step in 1..=220 {
+        desktop.window_sample.as_mut().unwrap().monotonic_millis = step as u64 * 50;
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+        for c in &world.save.creatures {
+            let seen = caught.entry(c.id).or_default();
+            let gesture = c.state.attention.and_then(|p| p.gesture);
+            match seen.len() {
+                0 if c.state.attention.is_some() && gesture.is_none() => {
+                    seen.push(("notice", c.clone()));
+                }
+                // A companion watching the companion that is watching the window is a real thing
+                // the colony does, and not what this sheet is about: only a look aimed at the
+                // window itself counts here.
+                1 if gesture == Some(Gesture::Watch)
+                    && c.state.attention.is_some_and(|p| WINDOW.contains(p.target)) =>
+                {
+                    seen.push(("watch", c.clone()));
+                }
+                2 if c.state.attention.is_none() => seen.push(("settle", c.clone())),
+                _ => {}
+            }
+        }
+        if let Some(whole) = caught.values().find(|seen| seen.len() == 3) {
+            stages = whole.clone();
+            break;
+        }
+    }
+    let [(_, notice), (_, watching), (_, settled)] = stages.as_slice() else {
+        panic!("the window was never noticed, watched and let go of: {caught:?}");
+    };
+    // The first look is a look, not yet a pose; the last is the companion getting on with its day.
+    assert_eq!(notice.state.attention.and_then(|p| p.gesture), None);
+    assert_eq!(settled.state.attention, None);
+    // A held watch is a planted one, aimed at the window and turned toward it.
+    assert_eq!(
+        BodyClip::for_creature(watching),
+        BodyClip::Gesture(Gesture::Watch)
+    );
+    assert!(watching.state.facing_right, "{:?}", watching.state.position);
+    let aim = watching.state.attention.unwrap().target;
+    assert!(
+        WINDOW.contains(aim),
+        "a watcher aimed at {aim:?}, which is not on the window"
+    );
+    assert!(
+        aim.x > watching.state.position.x && aim.y < watching.state.position.y,
+        "the window is up and to the right of {:?}, and the look is not",
+        watching.state.position
+    );
+    let gaze = CreatureRenderer::resolve_face_state(watching, desktop.cursor, false).gaze;
+    assert_eq!(gaze, GazeDirection::new(1, -1), "eyes off the window");
+
+    // Two screen pixels per logical point, from a viewport wide enough to hold the whole approach.
+    const CELL: i32 = 440;
+    const VIEW_LEFT: f32 = 440.0;
+    const VIEW_TOP: f32 = 640.0;
+    let at = |point: Point| {
+        (
+            ((point.x - VIEW_LEFT) * 2.0) as i32,
+            ((point.y - VIEW_TOP) * 2.0) as i32,
+        )
+    };
+    let bodies = review_subjects(38);
+    let height = CELL * bodies.len() as i32;
+    let mut sheet = Canvas::new(CELL as u32 * 3, height as u32);
+    sheet.fill_rect(0, 0, CELL * 3, height, PAPER);
+    for (row, (_, body)) in bodies.iter().enumerate() {
+        let top = row as i32 * CELL;
+        for (column, (_, staged)) in stages.iter().enumerate() {
+            let left = column as i32 * CELL;
+            let (window_x, window_y) = at(Point {
+                x: WINDOW.x,
+                y: WINDOW.y,
+            });
+            let (window_right, floor) = at(Point {
+                x: WINDOW.right(),
+                y: staged.state.position.y,
+            });
+            // The window runs off the side of the panel, as it does off the side of a desktop.
+            let window_width = window_right.min(CELL - 2) - window_x;
+            sheet.fill_rect(
+                left + window_x,
+                top + window_y,
+                window_width,
+                (WINDOW.height * 2.0) as i32,
+                SURFACE,
+            );
+            sheet.fill_rect(
+                left + window_x + 4,
+                top + window_y + 4,
+                window_width - 4,
+                (WINDOW.height * 2.0) as i32 - 8,
+                PANEL,
+            );
+            sheet.fill_rect(left, top + floor, CELL, 2, SURFACE);
+            sheet.fill_rect(left, top, 2, CELL, SURFACE);
+            // Where the window says a watcher should be looking, so the eyes can be checked.
+            if let Some(aim) = staged
+                .state
+                .attention
+                .map(|p| p.target)
+                .filter(|aim| WINDOW.contains(*aim))
+            {
+                let (x, y) = at(aim);
+                sheet.fill_rect(left + x - 6, top + y, 13, 1, GUIDE);
+                sheet.fill_rect(left + x, top + y - 6, 1, 13, GUIDE);
+            }
+            let mut drawn = staged.clone();
+            drawn.appearance = body.appearance.clone();
+            let clip = BodyClip::for_creature(&drawn);
+            let frame = CreatureRenderer::render_composited_frame(
+                &drawn.appearance,
+                clip,
+                MotionSignature::for_creature(&drawn).frame(clip, drawn.state.action_elapsed),
+                drawn.state.facing_right,
+                false,
+                CreatureRenderer::resolve_face_state(&drawn, desktop.cursor, false),
+            );
+            let placement = FramePlacement::for_creature(
+                &drawn,
+                CreatureRenderer::resting_baseline(&drawn.appearance, false),
+            );
+            let (feet_x, feet_y) = at(drawn.state.position);
+            let origin_x = left + feet_x - FRAME_SIZE as i32 / 2 * 3;
+            let origin_y = top + feet_y + placement.origin_y * 3;
+            for py in 0..FRAME_SIZE as i32 {
+                for px in 0..FRAME_SIZE as i32 {
+                    let pixel = frame.get(px, py);
+                    if pixel.a != 0 {
+                        sheet.fill_rect(origin_x + px * 3, origin_y + py * 3, 3, 3, pixel);
+                    }
+                }
+            }
+        }
+    }
+    save_review("window-watching.png", &sheet);
+}
+
 #[test]
 fn cursor_and_monitor_attention_render_distinct_notice_and_movement() {
     let mut sheet = Canvas::new(768, 384);

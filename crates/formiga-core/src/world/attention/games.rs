@@ -64,6 +64,19 @@ impl World {
         plan.walk = destination.map(ShortWalk::playing);
     }
 
+    /// Put the scene's own toy in someone's hands. A game borrows `PresentDiscovery` to show a
+    /// plaything off, so the toy is chosen here, from the scene's own seed, and is always an
+    /// everyday trinket: a game is not a find, and what is held up must never be a keepsake that
+    /// only turns up after dark, high up, mid-ride, or beside a close friend — nor be whatever
+    /// this creature last actually found. Called for whoever holds the prop, every tick a toy
+    /// scene runs, so the toy is right even on the paths that only wind the scene down.
+    fn hold_plaything(&mut self, id: CreatureId, seed: u64) {
+        let variant = discovery::plaything_variant(seed);
+        if let Some(creature) = self.save.creatures.iter_mut().find(|c| c.id == id) {
+            creature.state.activity_variant = variant;
+        }
+    }
+
     /// Strike a body pose over the gesture a member was just steered into. The pose lasts until
     /// the member is steered again or the next tick, and shows only while the member stands
     /// still in a pose the body can give over; travel and a toy being shown off keep the body.
@@ -73,6 +86,27 @@ impl World {
         {
             *pose = Some(gesture);
         }
+    }
+
+    /// How near a settling companion has to get before a game counts it as in place.
+    pub(super) fn held_slack(&self, id: CreatureId, desktop: &DesktopSnapshot) -> f32 {
+        CONTACT * 0.5 * self.play_unit(id, desktop)
+    }
+
+    /// Where a game stands companions it is holding in one formation: shoulder to shoulder, with
+    /// room for the slack above at either end, so that for as long as the formation is held
+    /// nobody's face is behind anybody's body. Contact a game only passes through — a tag, a
+    /// vault, a hand-off — is not spaced by this, because it is over in a moment.
+    pub(super) fn held_gap(&self, id: CreatureId, desktop: &DesktopSnapshot) -> f32 {
+        let clear = self
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == id)
+            .map_or(CONTACT * 2.0, |c| {
+                super::super::spacing::face_clear_gap(c, self.save.settings.display_scale, desktop)
+            });
+        clear + self.held_slack(id, desktop) * 2.0
     }
 
     /// A goal on the member's own surface, closer than an audience would stand.
@@ -312,7 +346,6 @@ impl World {
         let Some(lead) = self.play_position(lead_id) else {
             return false;
         };
-        let unit = self.play_unit(lead_id, desktop);
         self.steer_play(lead_id, None, ActionKind::SoloPlay);
         self.look_at(lead_id, lead);
         let partners: Vec<_> = s.with_role(PlayRole::Partner).collect();
@@ -322,8 +355,8 @@ impl World {
             };
             // Gather to either side of the initiator, an arc flattened onto the surface.
             let side = if position.x >= lead.x { 1.0 } else { -1.0 };
-            let spot = lead.x + side * CONTACT * (1.0 + order as f32) * unit;
-            let arrived = (position.x - spot).abs() <= CONTACT * 0.5 * unit;
+            let spot = lead.x + side * self.held_gap(lead_id, desktop) * (1.0 + order as f32);
+            let arrived = (position.x - spot).abs() <= self.held_slack(lead_id, desktop);
             let goal = (!arrived)
                 .then(|| self.play_goal_for(*id, spot, desktop))
                 .flatten();
@@ -356,7 +389,6 @@ impl World {
         let Some(anchor) = self.play_position(anchor_id) else {
             return false;
         };
-        let unit = self.play_unit(anchor_id, desktop);
         let resting = self
             .save
             .creatures
@@ -378,8 +410,8 @@ impl World {
                 continue;
             };
             let side = if position.x >= anchor.x { 1.0 } else { -1.0 };
-            let spot = anchor.x + side * CONTACT * (1.0 + order as f32) * unit;
-            let arrived = (position.x - spot).abs() <= CONTACT * 0.5 * unit;
+            let spot = anchor.x + side * self.held_gap(anchor_id, desktop) * (1.0 + order as f32);
+            let arrived = (position.x - spot).abs() <= self.held_slack(anchor_id, desktop);
             settled += usize::from(arrived);
             let goal = (!arrived)
                 .then(|| self.play_goal_for(*id, spot, desktop))
@@ -430,7 +462,6 @@ impl World {
         let Some(back) = self.play_position(back_id) else {
             return false;
         };
-        let unit = self.play_unit(front_id, desktop);
         if s.swaps >= 4 {
             return false;
         }
@@ -444,8 +475,11 @@ impl World {
             self.look_at(*id, front);
         }
         let gap = (front.x - back.x).abs();
+        let unit = self.play_unit(front_id, desktop);
+        let held = self.held_gap(front_id, desktop);
         if gap > CONTACT * 1.3 * unit {
-            // Close up behind the crouching companion first.
+            // Close up behind the crouching companion first. The run-up is part of the vault, so
+            // it comes to creature-scale contact and is over in a moment.
             let Some(goal) =
                 self.play_goal_for(back_id, front.x - heading * CONTACT * unit, desktop)
             else {
@@ -456,9 +490,8 @@ impl World {
             return true;
         }
         // Vault over, landing clear of the crouching companion on its far side.
-        let Some(landing) =
-            self.play_goal_for(back_id, front.x + heading * CONTACT * 1.6 * unit, desktop)
-        else {
+        // Landing clear of the crouching companion, on its far side, where it then stands.
+        let Some(landing) = self.play_goal_for(back_id, front.x + heading * held, desktop) else {
             return false;
         };
         let Some(creature) = self.save.creatures.iter().find(|c| c.id == back_id) else {
@@ -509,6 +542,7 @@ impl World {
         let Some(prop) = s.prop else {
             return false;
         };
+        self.hold_plaything(prop.holder, s.seed);
         if prop.remaining <= 0.0 || prop.handoffs >= 3 {
             // The tussle is over, but whoever ended up without the toy still reaches after it
             // while the scene winds down around them.
@@ -594,6 +628,7 @@ impl World {
         if let Some(index) = s.members.iter().position(|m| *m == Some(receiver)) {
             s.roles[index] = PlayRole::Lead;
         }
+        self.hold_plaything(receiver, s.seed);
         self.steer_play(receiver, None, ActionKind::PresentDiscovery);
         self.steer_play(previous, None, ActionKind::Greet);
         self.look_at(previous, self.play_position(receiver).unwrap_or(from));
@@ -610,6 +645,7 @@ impl World {
         let Some(prop) = s.prop else {
             return false;
         };
+        self.hold_plaything(prop.holder, s.seed);
         let mut members = s.members.iter().flatten().copied();
         let (Some(first), Some(second)) = (members.next(), members.next()) else {
             return false;
@@ -620,12 +656,13 @@ impl World {
         let unit = self.play_unit(first, desktop);
         // Settle in first: close enough to hold the same toy, facing each other.
         let gap = (a.x - b.x).abs();
-        if gap > CONTACT * 1.4 * unit {
+        let held = self.held_gap(first, desktop);
+        if gap > held * 1.1 {
             let midpoint = (a.x + b.x) * 0.5;
             let mut closing = false;
             for (id, position) in [(first, a), (second, b)] {
                 let side = if position.x >= midpoint { 1.0 } else { -1.0 };
-                let goal = self.play_goal_for(id, midpoint + side * CONTACT * 0.6 * unit, desktop);
+                let goal = self.play_goal_for(id, midpoint + side * held * 0.5, desktop);
                 closing |= goal.is_some();
                 self.steer_play(id, goal, ActionKind::Traverse);
             }
@@ -681,6 +718,7 @@ impl World {
             if let Some(prop) = &mut s.prop {
                 prop.holder = winner;
             }
+            self.hold_plaything(winner, s.seed);
             self.steer_play(winner, None, ActionKind::PresentDiscovery);
             self.steer_play(loser, None, ActionKind::ReactToWindow);
         }
@@ -901,7 +939,7 @@ impl World {
             let goal = creeping
                 .then(|| self.play_goal_for(id, position.x - side * 12.0 * unit, desktop))
                 .flatten()
-                .filter(|goal| (goal.x - point.x).abs() > CONTACT * unit);
+                .filter(|goal| (goal.x - point.x).abs() > self.held_gap(sleeper, desktop));
             self.steer_play(
                 id,
                 goal,
@@ -953,10 +991,10 @@ impl World {
         else {
             return false;
         };
-        let unit = self.play_unit(sleeper, desktop);
-        if (position.x - point.x).abs() > CONTACT * 1.4 * unit {
+        let held = self.held_gap(sleeper, desktop);
+        if (position.x - point.x).abs() > held * 1.15 {
             let side = if position.x >= point.x { 1.0 } else { -1.0 };
-            let goal = self.play_goal_for(prankster, point.x + side * CONTACT * unit, desktop);
+            let goal = self.play_goal_for(prankster, point.x + side * held, desktop);
             if goal.is_none() {
                 return false;
             }
@@ -1132,9 +1170,10 @@ impl World {
             return false;
         }
         // Close enough to make the claim: the occupant yields the spot and steps aside.
+        let claim = self.held_gap(king_id, desktop) * 1.3;
         let claimant = challengers.iter().find(|(_, id)| {
             self.play_position(*id)
-                .is_some_and(|p| (p.x - king.x).abs() <= CONTACT * 1.6 * unit)
+                .is_some_and(|p| (p.x - king.x).abs() <= claim)
         });
         if let Some(&(claim_index, claim_id)) = claimant {
             if s.swaps >= 2 {
@@ -1186,9 +1225,10 @@ impl World {
             };
             // Come up beside whoever is on it, close enough to make the claim.
             let side = if position.x >= spot.x { 1.0 } else { -1.0 };
+            let held = self.held_gap(id, desktop);
             let goal = self
-                .play_goal_for(id, spot.x + side * CONTACT * unit, desktop)
-                .or_else(|| self.play_goal_for(id, spot.x + side * CONTACT * 1.6 * unit, desktop));
+                .play_goal_for(id, spot.x + side * held, desktop)
+                .or_else(|| self.play_goal_for(id, spot.x + side * held * 1.4, desktop));
             self.steer_play(id, goal, ActionKind::Traverse);
             // Straining to get up there. Walking keeps the body, so this shows once a challenger
             // is left standing below the spot as the contest winds down.
@@ -1348,6 +1388,39 @@ pub(in super::super) mod tests {
     fn window_bounds(d: &DesktopSnapshot) -> (f32, f32) {
         let w = d.windows.iter().find(|w| w.key == 701).unwrap();
         (w.bounds.x, w.bounds.right())
+    }
+
+    /// Every formation a game holds is placed with `held_gap`, so one test settles all of them:
+    /// standing that far apart, and settling anywhere within the slack of it, leaves both faces
+    /// clear at every display scale. Contact a game only passes through keeps `CONTACT`, which is
+    /// deliberately closer, because it is over in a moment.
+    #[test]
+    fn a_held_formation_is_face_clear_at_every_display_scale() {
+        let (mut w, mut d, _) = scene(false);
+        let id = w.save.creatures[0].id;
+        for monitor_scale in [1.0_f32, 2.0] {
+            d.monitors[0].scale_factor = monitor_scale;
+            for display_scale in [2_u8, 3, 4] {
+                w.save.settings.display_scale = display_scale;
+                let clear = super::super::spacing::frame_width(display_scale, monitor_scale)
+                    * super::super::spacing::FACE_CLEAR_RATIO;
+                let (gap, slack) = (w.held_gap(id, &d), w.held_slack(id, &d));
+                assert!(
+                    gap - slack >= clear,
+                    "at {display_scale}x on a {monitor_scale}x display a held formation settles \
+                     {} apart, inside the {clear} a creature draws",
+                    gap - slack
+                );
+                assert!(
+                    gap - slack * 2.0 >= clear * 0.999,
+                    "two companions each settling {slack} short of adjacent slots close the gap"
+                );
+                assert!(
+                    CONTACT * w.play_unit(id, &d) < clear,
+                    "momentary contact is meant to be closer than a held formation"
+                );
+            }
+        }
     }
 
     #[test]
@@ -1552,8 +1625,11 @@ pub(in super::super) mod tests {
             if s.elapsed > 0.2 {
                 assert_eq!(w.save.creatures[1].state.action, ActionKind::Perch);
             }
+            // Shoulder to shoulder: near enough to be one pile, far enough that the anchor's
+            // face is not behind whoever settled beside it.
             let gap = (w.save.creatures[0].state.position.x - anchor_start.x).abs();
-            settled_close |= s.elapsed > 2.0 && gap < 60.0;
+            let clear = 48.0 * super::super::super::spacing::FACE_CLEAR_RATIO;
+            settled_close |= s.elapsed > 2.0 && (clear..clear * 2.0).contains(&gap);
         }
         assert!(started && settled_close);
         assert!(w.attention.plans.is_empty());
@@ -1665,6 +1741,9 @@ pub(in super::super) mod tests {
             c.state.action_duration = 100.0;
             c.personality.playfulness = 0.9;
             c.personality.curiosity = 0.2;
+            // Everyone is carrying the memory of a keepsake that only turns up after dark. A toy
+            // is a deliberate choice, so none of it may end up in anybody's hands here.
+            c.state.activity_variant = 9;
         }
         let first = w.save.creatures[0].id;
         let mut audience = Audience::default();
@@ -1689,8 +1768,10 @@ pub(in super::super) mod tests {
             holders.insert(prop.holder);
             for c in &w.save.creatures {
                 if c.state.action == ActionKind::PresentDiscovery {
-                    // Only whoever is holding it shows the toy.
+                    // Only whoever is holding it shows the toy, and the toy is an everyday one
+                    // taken from this scene's own seed rather than whatever they last found.
                     assert_eq!(c.id, prop.holder);
+                    assert_eq!(c.state.activity_variant, (s.seed % 8) as u8);
                     shown.insert(c.id);
                 }
                 chased |= c.id != prop.holder && c.state.action == ActionKind::Sprint;
@@ -1720,6 +1801,16 @@ pub(in super::super) mod tests {
                 .iter()
                 .all(|c| c.memory.discoveries_found == 0),
             "a plaything is never a discovery"
+        );
+        assert!(
+            w.save.companion.scrapbook.is_empty()
+                && !w
+                    .save
+                    .companion
+                    .journal
+                    .iter()
+                    .any(|entry| entry.moment == JournalMoment::Discovery),
+            "a game leaves nothing in the scrapbook or the journal"
         );
         // The tussle is watched. Both companions who are not in it track it up and down the
         // ledge, and both are playful enough to cheer it out at the end rather than just being
@@ -1756,6 +1847,9 @@ pub(in super::super) mod tests {
             c.personality.playfulness = if i < 2 { 0.9 } else { 0.1 };
             c.personality.curiosity = 0.2;
             c.state.facing_right = i == 0;
+            // A keepsake found beside a close friend, still in mind. The toy they haul on is not
+            // it, and holding a toy up is not finding one.
+            c.state.activity_variant = 15;
         }
         let (first, second) = (w.save.creatures[0].id, w.save.creatures[1].id);
         let mut audience = Audience::default();
@@ -1785,18 +1879,30 @@ pub(in super::super) mod tests {
                     pulled_both_ways.insert(c.state.velocity.x > 0.0);
                 }
             }
-            settled |= s.elapsed >= s.ends_at - 2.2
-                && w.save
-                    .creatures
-                    .iter()
-                    .filter(|c| c.state.action == ActionKind::PresentDiscovery)
-                    .count()
-                    == 1;
+            let showing: Vec<_> = w
+                .save
+                .creatures
+                .iter()
+                .filter(|c| c.state.action == ActionKind::PresentDiscovery)
+                .collect();
+            for c in &showing {
+                // The toy is this scene's own, and always an everyday one.
+                assert_eq!(c.state.activity_variant, (s.seed % 8) as u8);
+            }
+            settled |= s.elapsed >= s.ends_at - 2.2 && showing.len() == 1;
         }
         assert!(started && closed_in, "{started} {closed_in}");
         assert_eq!(pulled_both_ways.len(), 2, "the toy moves both ways");
         assert!(settled, "one of them ends up with it");
         assert!(w.attention.plans.is_empty());
+        assert!(
+            w.save.companion.scrapbook.is_empty()
+                && w.save
+                    .creatures
+                    .iter()
+                    .all(|c| c.memory.discoveries_found == 0),
+            "hauling on a toy is not finding one"
+        );
         let _ = (first, second);
         // The two companions with no appetite for a tussle still watch one: their eyes stay on a
         // puller, and when it is decided they are relieved rather than delighted, which is not
@@ -2204,8 +2310,10 @@ pub(in super::super) mod tests {
             let looked = audience.looked_at(id);
             // The spot is in the middle of the ledge, so the gaze stays about there — but it
             // goes with whoever is standing on it, including the moment they step aside.
+            // A challenger comes up a companion's width from the spot, so the gaze reaches
+            // that far out and no further.
             assert!(
-                looked.iter().all(|x| (x - 500).abs() <= 60),
+                looked.iter().all(|x| (x - 500).abs() <= 90),
                 "the gaze stays about the middle of the ledge: {looked:?}"
             );
             assert!(

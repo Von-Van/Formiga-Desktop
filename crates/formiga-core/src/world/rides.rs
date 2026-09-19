@@ -147,6 +147,15 @@ impl RideMemory {
             .find(|r| r.id == id && r.still_for < 0.6)
             .map(|r| r.pose)
     }
+    /// Whether the window under this creature is actually moving. Unlike `pose`, which hands a
+    /// rider a neutral stance the first time it is seen on a window, this asks for measured
+    /// motion: intensity only ever grows from a platform that moved under the rider's own feet.
+    pub fn riding(&self, id: CreatureId) -> bool {
+        self.riders
+            .iter()
+            .flatten()
+            .any(|r| r.id == id && r.still_for < 0.6 && r.intensity > 0.0)
+    }
     pub fn dizzy(&self, id: CreatureId) -> bool {
         self.riders
             .iter()

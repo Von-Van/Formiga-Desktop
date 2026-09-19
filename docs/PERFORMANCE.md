@@ -175,12 +175,13 @@ v0.31 uses adaptive 4–20 Hz simulation deadlines, caches native interaction-wi
 presenting empty, hidden, and fully occluded monitor overlays. Full-screen application coverage also
 hides the native overlay itself, avoiding transparent full-display compositor work while covered.
 
-The procedural atlas budget is independently enforced in tests. The 118-frame body texture plus the
-layered face/trinket texture total exactly 1,437,696 bytes per creature, below the 1.5 MB limit; four
-creatures use 5,750,784 bytes (about 5.48 MiB) for creature textures. This is a deliberate raise
-from 0.57.0's 90 frames and 1,161,216 bytes: 28 frames for nine gesture poses add two body-atlas
-rows, 276,480 bytes per creature and 1,105,920 bytes for a full colony, and the face texture is
-unchanged. A release bake of the larger atlas measured 1.4 ms. Selecting a gesture's slot is the
+The procedural atlas budget is independently enforced in tests. The 124-frame body texture plus the
+layered face/trinket texture total exactly 1,529,856 bytes per creature; four creatures use
+6,119,424 bytes (about 5.84 MiB) for creature textures. The body atlas is ten columns wide, so it
+grows a row at a time. Each step has been a deliberate raise: 0.57.0's 90 frames filled nine rows at
+1,161,216 bytes; 0.57.1's 28 gesture frames took it to twelve rows, 276,480 bytes more per creature;
+and 0.58.0's six watching frames take it to thirteen, another 92,160 bytes. The 331,776-byte face
+texture is unchanged throughout. A release bake of the 0.57.1 atlas measured 1.4 ms. Selecting a gesture's slot is the
 same fixed-size lookup as an action's, so it adds no draw call, texture, or per-frame allocation. Atlas generation occurs only
 when a creature loads or reduced-motion changes. Ambient timers reuse simulation ticks, trinkets are
 pre-baked, and toss integration runs only at the existing movement cadence while airborne.
@@ -341,3 +342,43 @@ selection samples sixteen arc intervals, then rechecks each actual step. Routes 
 copycat visits each member once and all scenes expire. Body and face atlas counts remain unchanged:
 contact changes reuse sprite placement, and shared falls reuse the existing integrator. Native
 profiling remains pending for the expanded library.
+
+## 0.58.0
+
+Creature textures are 1,529,856 bytes each and 6,119,424 bytes for a full colony of four. The
+per-creature test limit moved from 1,500,000 to 4,500,000 bytes. That is not a measurement of
+anything: it is the owner's decision that the budget should stop a creature costing more than a
+creature should, not stop it having poses, so there is room for the next ones without the ceiling
+moving again each time.
+
+The overlay gains one 256×80 RGBA interface atlas: 81,920 bytes, built the first time a bubble or a
+menu appears, released after 240 renders with neither up, and released immediately when the colony
+is hidden or the overlay is torn down. While something is up it costs one extra bind group and one
+extra draw call inside the existing pass; while nothing is, it costs nothing. The colony trinket
+atlas is one 256×32 RGBA texture, 32,768 bytes per loaded colony, and it replaces an eight-slot row
+that was previously baked into every creature's face texture — so the more creatures a colony has,
+the less it holds than before.
+
+The settings artwork budget is 432 KiB (442,368 bytes), raised from 416 KiB. Everything the window
+can hold at once — four 48×48 portraits, four 384×48 candidate strips, one 128×128 village atlas,
+one 128×16 object atlas, and the one 256×32 trinket sheet — measures 438,272 bytes. The sheet is the
+whole of the increase: sixteen trinkets and their glint frames in one texture, where eight separate
+16×16 drawings used to be eight.
+
+The simulation tick is unchanged at 4–20 Hz; the host's tick interval drops to 50 ms only while a
+creature menu is open, and a menu is opened by the person at the desk and closes itself within eight
+seconds. Everything the new behavior remembers is a bounded runtime table, never serialized: six
+overlap pairs and four shuffles with their per-pair cooldowns, three offer cooldowns per creature,
+at most five thought bubbles, one doorstep moment per resident, and one visitor's scene progress.
+
+Stickers and the colony portrait have zero idle cost, like the creature card: the native save dialog
+runs before any canvas exists, cancellation allocates nothing, and every buffer is dropped before
+returning. Neither image is uploaded to the overlay GPU and neither touches the save. The `gif`
+crate, already used by `formiga-tools`, is now also a dependency of `formiga-art`, so it is linked
+into the shipped application for the first time; it is a pure-Rust encoder with no runtime,
+thread, or allocation of its own outside an export.
+
+No native CPU, memory, or energy measurement has been taken for this release. The budgets above are
+storage and resource assertions, not measurements of whole-process cost, and the release-machine
+protocol at the top of this document remains the only thing that can answer whether the budgets are
+met.

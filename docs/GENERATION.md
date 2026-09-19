@@ -1,4 +1,4 @@
-# Modular creature generation · v0.57.1
+# Modular creature generation · v0.58.0
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -42,7 +42,10 @@ The modular renderer lives beside the legacy renderer in `formiga-art`. It uses 
 body frames, 16×16 face frames, poses, expressions, and animation atlases. Tail/ear geometry sits
 behind the body; gestures keep the reserved face area covered and never draw over the layered face;
 outlines connect paws to bodies, and each side has exactly one limb that a gesture carries out. The palette
-resolver softens colors once during atlas construction and guarantees dark facial contrast.
+resolver softens colors once during atlas construction and guarantees dark facial contrast. There
+are ten gesture poses; the tenth, `Watch`, leans the head toward what the creature is looking at and
+pricks its ears, so every body plan needs a head that can lean without leaving the frame or
+uncovering the reserved face.
 
 An absent recipe selects the legacy rendering path. Old saves never acquire a replacement design
 just by loading them. Version 1 seed codes replay legacy creatures unchanged. Version 2 codes carry
@@ -50,6 +53,22 @@ the exact recipe alongside the original seed/generation; keep the serialized enu
 `modular-design-v1` generation stream stable. Incompatible recipe changes require a new format,
 not reinterpretation of existing codes. Source provenance duplicates the bounded recipe so sharing
 does not depend on a reference file or a temporary preview.
+
+## Belongings and keepsakes
+
+What a creature owns is generated from bytes it already carries. `prop_variants(genome)` reads one
+signature out of the appearance genome and picks one of eight toys, one of four snacks, and one of
+three kinds of drinkware; none of them adds a gene, and a creature's belongings never change. They
+are baked into the same action atlas as the body, anchored to the paw or the mouth that is actually
+drawn through `modular::prop_hold`, so a toy is held in a real hand rather than at a guessed offset.
+`prop-sheet` shows all fifteen against the bodies that carry them.
+
+Trinkets are a colony's, not a creature's. `formiga-core::trinkets` is the catalogue — sixteen
+entries of name, description, hint, and condition, with `TRINKET_VARIANTS = 16` — and
+`formiga-art::TrinketAtlasRenderer` bakes it into one 256×32 sheet of sixteen columns by two rows, a
+rest frame and a glint frame. Its colours come from the colony seed and are chosen to stay clear of
+every member's coat, so a found keepsake reads as a separate object however the colony is coloured
+and whoever is holding it. A new variant is a new column, not a new texture per creature.
 
 ## Extending safely
 

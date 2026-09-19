@@ -55,7 +55,7 @@ pub fn prop_palette(palette: Palette, seed: u64) -> Palette {
     }
 }
 
-fn to_hsl(color: Rgba) -> (f32, f32, f32) {
+pub(crate) fn to_hsl(color: Rgba) -> (f32, f32, f32) {
     let (r, g, b) = (
         f32::from(color.r) / 255.0,
         f32::from(color.g) / 255.0,
@@ -79,7 +79,7 @@ fn to_hsl(color: Rgba) -> (f32, f32, f32) {
     ((hue + 360.0) % 360.0, saturation.clamp(0.0, 1.0), lightness)
 }
 
-fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> [u8; 3] {
+pub(crate) fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> [u8; 3] {
     let saturation = saturation.clamp(0.0, 1.0);
     let lightness = lightness.clamp(0.0, 1.0);
     let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;

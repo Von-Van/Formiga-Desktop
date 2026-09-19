@@ -92,7 +92,7 @@ impl World {
                 plan.emotion = AttentionEmotion::Startled;
             }
         }
-        self.advance_shared_ride();
+        self.advance_shared_ride(desktop);
     }
 
     pub(super) fn try_dizzy_attention(&mut self, desktop: &DesktopSnapshot) -> bool {
@@ -153,9 +153,43 @@ impl World {
         true
     }
 
+    /// Where the later-drawn of two riders on one window should move to so that neither face is
+    /// behind the other's body, or `None` when they already share the ledge comfortably.
+    fn share_the_ledge(
+        &self,
+        id: CreatureId,
+        other_id: CreatureId,
+        position: Point,
+        other: Point,
+        desktop: &DesktopSnapshot,
+    ) -> Option<Point> {
+        let order = |wanted: CreatureId| {
+            self.save
+                .creatures
+                .iter()
+                .position(|creature| creature.id == wanted)
+        };
+        if order(id)? < order(other_id)? {
+            return None;
+        }
+        let creature = self.save.creatures.iter().find(|c| c.id == id)?;
+        let clear = super::super::spacing::face_clear_gap(
+            creature,
+            self.save.settings.display_scale,
+            desktop,
+        );
+        if (position.x - other.x).abs() >= clear {
+            return None;
+        }
+        let side = if position.x >= other.x { 1.0 } else { -1.0 };
+        [side, -side].into_iter().find_map(|side| {
+            motion::safe_goal(self, creature, other.x + side * clear * 1.05, desktop)
+        })
+    }
+
     /// Two riders on one moving window turn a steady stretch into a contest: they watch each
     /// other and show off between wobbles. The ride itself still owns their poses and contact.
-    fn advance_shared_ride(&mut self) {
+    fn advance_shared_ride(&mut self, desktop: &DesktopSnapshot) {
         let riders: Vec<_> = self
             .attention
             .plans
@@ -187,8 +221,8 @@ impl World {
                 ))
             })
             .collect();
-        for &(id, window, origin, _, showing_off) in &riders {
-            let Some(&(other_id, .., other_showing)) =
+        for &(id, window, origin, position, showing_off) in &riders {
+            let Some(&(other_id, .., other_position, other_showing)) =
                 riders
                     .iter()
                     .find(|(other, other_window, other_origin, ..)| {
@@ -197,7 +231,13 @@ impl World {
             else {
                 continue;
             };
+            // A window narrowing under two riders draws them together, and a ride lasts. The one
+            // painted over the other moves along the ledge until both faces are clear again.
+            let aside = self.share_the_ledge(id, other_id, position, other_position, desktop);
             let plan = self.attention.plans.get_mut(&id).unwrap();
+            if let Some(goal) = aside {
+                plan.walk = Some(ShortWalk::new(goal));
+            }
             // Watch the one sharing the ride rather than the desktop behind it.
             if let Role::Actor { companion, .. } = &mut plan.role {
                 *companion = Some(other_id);

@@ -139,7 +139,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=13 => migrate_legacy(value, version),
+            1..=14 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -197,6 +197,13 @@ fn migrate_legacy(
         companion.remove("scrapbook");
         companion.remove("schedule");
         companion.remove("appearance");
+    }
+    // v15 adds visitors and their guest book. An older colony has had neither, so both start
+    // empty rather than being read from a field that only happens to share the name.
+    if source_version <= 14
+        && let Some(root) = value.as_object_mut()
+    {
+        root.remove("visitors");
     }
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
@@ -560,16 +567,17 @@ mod tests {
     use crate::{ArrivalState, Settings};
     use time::macros::datetime;
 
-    /// Every field name a version-14 colony file is allowed to use, gathered from a colony that
+    /// Every field name a version-15 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 208] = [
+    const SAVED_FIELDS: [&str; 220] = [
         "Decoration",
         "Friendship",
         "MacBundleId",
         "Object",
         "Preference",
         "Ritual",
+        "Visit",
         "a",
         "accent",
         "accent_index",
@@ -599,6 +607,7 @@ mod tests {
         "boredom",
         "born_at_utc",
         "brow_style",
+        "cell",
         "cheek_style",
         "climbing",
         "coat",
@@ -606,6 +615,7 @@ mod tests {
         "colony_seed",
         "comfort",
         "companion",
+        "confidence",
         "corner",
         "created_at_utc",
         "creature",
@@ -651,7 +661,10 @@ mod tests {
         "forelimbs",
         "fullscreen_app_occlusion",
         "gait_bob",
+        "gatherings",
         "generation",
+        "guest",
+        "guest_book",
         "habitat",
         "hatch_day_acknowledged_year",
         "head",
@@ -696,6 +709,7 @@ mod tests {
         "normalized_bounds",
         "normalized_position",
         "objects",
+        "on_stage",
         "onboarding_complete",
         "ordinal",
         "origin",
@@ -732,6 +746,7 @@ mod tests {
         "scrapbook",
         "settings",
         "shelter",
+        "signed",
         "size",
         "sleep_interruptions",
         "sleep_pressure",
@@ -740,10 +755,12 @@ mod tests {
         "slots",
         "sociability",
         "social_need",
+        "source",
         "source_colony_seed",
         "source_generation",
         "sprite_outline",
         "state",
+        "stays_until_utc",
         "strength",
         "style",
         "surface",
@@ -763,6 +780,8 @@ mod tests {
         "vertical_offset",
         "viewed_profile_revision",
         "visible",
+        "visited_at_utc",
+        "visitors",
         "width",
         "window_climbs",
         "window_key",
@@ -775,17 +794,22 @@ mod tests {
     ];
 
     /// The vocabulary of watching a desktop and of a scene under way. None of it belongs in a file.
-    const RUNTIME_ONLY_FIELDS: [&str; 34] = [
+    const RUNTIME_ONLY_FIELDS: [&str; 39] = [
+        "answers",
         "attention",
+        "beat",
         "bounds",
         "cooldowns",
         "cursor",
+        "doorway",
+        "elapsed",
         "emotion",
         "hanging",
         "holder",
         "hop",
         "hops",
         "idle_duration",
+        "phase",
         "journey",
         "journeys",
         "landing",
@@ -939,7 +963,7 @@ mod tests {
             .collect();
         save.companion.scrapbook = (0..40u8)
             .map(|variant| crate::ScrapbookRecord {
-                variant: variant % 12,
+                variant: variant % crate::TRINKET_VARIANTS,
                 first_at: now,
                 finder: None,
                 finder_name: format!("Finder {variant}"),
@@ -1425,6 +1449,7 @@ mod tests {
                 next_at_utc: datetime!(2026-01-04 0:00 UTC),
                 ..crate::ColonyObjectState::default()
             },
+            visitors: crate::VisitorState::default(),
         }
     }
 
@@ -1477,6 +1502,142 @@ mod tests {
         );
     }
 
+    /// A shared code for somebody who has never lived here.
+    fn a_friends_code() -> crate::SharedCreatureSeed {
+        crate::SharedCreatureSeed {
+            source_colony_seed: [70; 32],
+            source_generation: 1,
+            design: Some(crate::CreatureDesign::generated([70; 32], 1, None)),
+        }
+    }
+
+    #[test]
+    fn v14_migration_leaves_a_colony_with_an_empty_guest_book_and_nobody_visiting() {
+        let desktop = crate::DesktopSnapshot::default();
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let mut world = crate::World::new([65; 32], now, &desktop);
+        world
+            .invite_visitor(a_friends_code(), now, &desktop)
+            .unwrap();
+        world.save.visitors.gatherings = 9;
+        world.save.visitors.guest_book.push(crate::GuestBookEntry {
+            visited_at_utc: now,
+            name: "Someone".into(),
+            origin: a_friends_code().into(),
+            source: crate::VisitorSource::Invited,
+        });
+        let save = world.save.clone();
+        let mut value = serde_json::to_value(&save).unwrap();
+        value["save_version"] = 14.into();
+        let migrated = migrate_legacy(value, 14).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        // A version-14 colony has never had a visitor, whatever a field of the same name held.
+        assert_eq!(migrated.visitors, crate::VisitorState::default());
+        assert!(migrated.visitors.guest.is_none());
+        assert!(migrated.visitors.guest_book.is_empty());
+        assert_eq!(migrated.visitors.gatherings, 0);
+        // Everything the colony really did have is exactly as it was.
+        assert_eq!(migrated.creatures, save.creatures);
+        assert_eq!(migrated.companion, save.companion);
+        assert_eq!(migrated.home, save.home);
+        assert_eq!(migrated.settings, save.settings);
+        assert_eq!(migrated.relationships, save.relationships);
+    }
+
+    #[test]
+    fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
+        let desktop = crate::DesktopSnapshot::default();
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let mut world = crate::World::new([66; 32], now, &desktop);
+        world
+            .invite_visitor(a_friends_code(), now, &desktop)
+            .unwrap();
+        // A full book, of both kinds, and a guest out on the desktop mid-scene.
+        for index in 0..40u32 {
+            world.save.visitors.sign(crate::GuestBookEntry {
+                visited_at_utc: now + time::Duration::hours(i64::from(index)),
+                name: format!("Guest {index}"),
+                origin: crate::CreatureOrigin {
+                    design: None,
+                    source_colony_seed: [index as u8; 32],
+                    source_generation: index as u8 % 4,
+                },
+                source: if index % 2 == 0 {
+                    crate::VisitorSource::Wanderer
+                } else {
+                    crate::VisitorSource::Invited
+                },
+            });
+        }
+        let guest = world
+            .save
+            .visitors
+            .guest
+            .as_mut()
+            .expect("a friend is here");
+        guest.on_stage = true;
+        guest.signed = true;
+        guest.visit = crate::VisitProgress {
+            phase: crate::VisitPhase::Visiting,
+            elapsed: 12.5,
+            since_home: 40.0,
+            greeted: true,
+            since_hello: 8.0,
+            doorway: Some(crate::Point { x: 640.5, y: 846.0 }),
+            beat: 3,
+            beat_remaining: 2.25,
+            answers: vec![crate::ResidentAnswer {
+                creature_id: 7,
+                after: 1.0,
+                hold: 2.0,
+                gesture: Some(crate::Gesture::Bop),
+            }],
+        };
+        let expected = world.save.visitors.guest.clone().expect("a friend is here");
+        world
+            .save
+            .companion
+            .remember(None, crate::JournalMoment::Visit("Wren".into()), now);
+
+        let directory = std::env::temp_dir().join(format!("formiga-visit-{}", std::process::id()));
+        let store = SaveStore::new(directory.join("colony.json"));
+        store.save(&world.save).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(store.path()).unwrap()).unwrap();
+        let mut names = std::collections::BTreeSet::new();
+        collect_field_names(&value, &mut names);
+        for name in &names {
+            assert!(
+                SAVED_FIELDS.contains(&name.as_str()),
+                "a colony with a guest names {name:?}, which no colony file is meant to hold"
+            );
+        }
+        for absent in RUNTIME_ONLY_FIELDS {
+            assert!(!names.contains(absent), "the file names {absent:?}");
+        }
+        assert!(names.contains("guest"), "the sweep is reading the file");
+        assert!(names.contains("Visit"), "the visit is in the journal");
+
+        // Reopening finds the friend still staying, waiting for the next gathering rather than
+        // halfway through the visit it was in the middle of.
+        let loaded = store.load().unwrap().unwrap();
+        assert_eq!(
+            loaded.visitors.guest_book.len(),
+            crate::MAX_GUEST_BOOK_ENTRIES
+        );
+        assert_eq!(loaded.visitors.guest_book, world.save.visitors.guest_book);
+        let reopened = loaded.visitors.guest.clone().expect("still staying");
+        assert_eq!(reopened.creature, expected.creature);
+        assert_eq!(reopened.source, expected.source);
+        assert_eq!(reopened.stays_until_utc, expected.stays_until_utc);
+        assert!(reopened.signed);
+        assert_eq!(reopened.visit, crate::VisitProgress::default());
+        let world = crate::World::from_save(loaded);
+        assert!(world.save.visitors.on_stage().is_none());
+        assert!(world.save.visitors.guest.is_some());
+        let _ = fs::remove_dir_all(directory);
+    }
+
     #[test]
     fn keepsakes_stay_bounded_and_a_pin_only_ever_names_a_real_moment() {
         let now = datetime!(2026-02-01 9:00 UTC);
@@ -1511,7 +1672,7 @@ mod tests {
         );
         // One record per variant, however often a trinket is found again.
         for round in 0..3 {
-            for variant in 0..12u8 {
+            for variant in 0..crate::TRINKET_VARIANTS + 4 {
                 state.remember_discovery(
                     variant,
                     7,

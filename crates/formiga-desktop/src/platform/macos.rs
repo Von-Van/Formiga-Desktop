@@ -148,6 +148,11 @@ pub fn set_interaction_hittest(window: &Window, enabled: bool) {
 
 pub fn set_interaction_shape(_window: &Window, _mask: &[bool], _scale: u8) {}
 
+/// The open creature menu's proxy covers one rectangle, so there is nothing to shape: as with
+/// `set_interaction_shape`, AppKit hit-tests the window's own frame and the overlay decides what
+/// is under the cursor in-process.
+pub fn set_menu_proxy_shape(_window: &Window, _width: u32, _height: u32) {}
+
 /// AppKit routes every event of a mouse-down sequence to the window that received the press, so
 /// unlike Win32 there is no capture to acquire. The drag proxy keeps its hit region enabled for
 /// the duration of the drag, which is all that is needed for the release to arrive.
@@ -162,6 +167,23 @@ pub fn left_button_down() -> bool {
             CG_MOUSE_BUTTON_LEFT,
         )
     }
+}
+
+/// Whether a modifier that turns a primary click into a secondary one is held down: Control, the
+/// long-standing macOS convention for a contextual menu on a one-button mouse.
+///
+/// This is asked of the event source rather than read from a key event, because the interaction
+/// proxies never take keyboard focus and so are never told about modifier changes. It is the same
+/// combined-session source `cursor_and_idle` already samples, so no new permission is involved.
+pub fn secondary_click_modifier() -> bool {
+    CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+        .and_then(CGEvent::new)
+        .map(|event| {
+            event
+                .get_flags()
+                .contains(core_graphics::event::CGEventFlags::CGEventFlagControl)
+        })
+        .unwrap_or(false)
 }
 
 pub fn canonical_monitor_bounds(

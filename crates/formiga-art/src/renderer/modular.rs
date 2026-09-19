@@ -55,13 +55,15 @@ pub(super) fn draw(
         4 => oval(c, p, tx - 2, y, 4, 5, p.accent),
         _ => {}
     }
-    let ear = (f32::from(d.ear_size) * size).round().max(3.0) as i32;
+    // A pricked ear grows out of the base it already had, so it stays joined to the head.
+    let ear = (f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2);
     for side in [-1, 1] {
         let ex = ear_cx + side * ear_span;
         let ey = ear_top;
         match d.ears {
             EarStyle::None => {}
-            EarStyle::Round => oval(c, p, ex, ey - 1, 3, 3, p.accent),
+            // A round ear has no height to grow, so it rides up instead, staying on the head.
+            EarStyle::Round => oval(c, p, ex, ey - 1 - pose.ear_perk.clamp(0, 2), 3, 3, p.accent),
             EarStyle::Long => oval(c, p, ex, ey - ear / 2, 2, ear.min(6), p.coat),
             EarStyle::Floppy => oval(
                 c,
@@ -199,6 +201,42 @@ pub(super) fn draw(
     PixelPoint { x: hx, y: hy }
 }
 
+/// Where this body actually holds what it is using, measured the same way the body itself is
+/// measured. A toy, a snack, or a cup is placed from here rather than from a guess against the
+/// face anchor, so the paw that is drawn is the paw the thing sits in. Nothing about the limbs
+/// changes: this only reads the same numbers `draw` does.
+pub(super) fn prop_hold(design: CreatureDesign, pose: Pose, size: f32) -> PropHold {
+    let d = design.bounded();
+    let body = measure(d, pose, size);
+    let long = d.body == BodyPlan::Long;
+    let hands = if long {
+        // A long body keeps all four paws down, so it plays with what is on the floor in front of
+        // its forepaws rather than with something held up at a shoulder.
+        PixelPoint {
+            x: body.x + body.rx + 1,
+            y: body.floor - 3,
+        }
+    } else {
+        // The folded near paw, which `draw` puts one body-radius out and three rows down.
+        let at = shoulder(body, pose, 1);
+        PixelPoint {
+            x: at.x + 2,
+            y: at.y + 1,
+        }
+    };
+    PropHold {
+        hands,
+        // In front of the muzzle and below the eyes, so a mouthful is carried up to the mouth
+        // rather than held over the face the layered art draws on this head.
+        mouth: PixelPoint {
+            x: body.hx + body.head - 1,
+            y: body.hy + 5,
+        },
+        floor: body.floor,
+        forward: 1,
+    }
+}
+
 /// One side's paw or wing in a frame: folded where it rests, or carried out to a point.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Limb {
@@ -243,7 +281,13 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         x + (8.0 * size).round() as i32
     } else {
         x
-    } + pose.lean.clamp(-2, 2);
+    } + if blob {
+        // A blob has no head to move: its face rides the one mass it is, so carrying that face
+        // more than a pixel slides it off the shape that is supposed to be holding it.
+        pose.lean.clamp(-1, 1)
+    } else {
+        pose.lean.clamp(-3, 3)
+    };
     let hy = match d.body {
         BodyPlan::Round => y - 2,
         BodyPlan::Long => y - 4,
@@ -333,6 +377,11 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
             both(&|side| to(x + side * (rx + 6), y - 1 - side * beat * 2))
         }
         BodyClip::Gesture(Gesture::Reach) => front(to(x + rx + 7, hy - 3 - tick)),
+        // Watching gathers a body instead of putting a part of it out. Both limbs stay folded and
+        // ride high on the shoulders the pose lifts, which is what tells it apart from the reach
+        // it would otherwise be mistaken for: a raised paw at this size only ever reads as
+        // pointing, and pointing is a different thing to say.
+        BodyClip::Gesture(Gesture::Watch) => [Limb::Rest; 2],
         BodyClip::Gesture(Gesture::Bop) => match frame % 4 {
             0 => front(to(beside_head(1), hy - 4)),
             2 => [to(beside_head(-1), hy - 4), Limb::Rest],

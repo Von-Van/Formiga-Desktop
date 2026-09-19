@@ -25,6 +25,10 @@ pub(super) struct Cue {
     /// Seconds the actor has spent in `stage`; a sudden stage can draw a brief gasp.
     pub since: f32,
     pub sudden: bool,
+    /// The scene is a piece of the desktop — a window, the cursor, a display, a ledge — rather
+    /// than a companion's own move. Those are worth settling in to watch; a dance step or a
+    /// copied flourish is the move itself, and a watcher joins in rather than staring at it.
+    pub geometry: bool,
 }
 
 /// Spectators gasp only during the first moment of a catch or an unplanned fall.
@@ -39,6 +43,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: hopping,
             since: plan.elapsed,
             sudden: false,
+            geometry: false,
         });
     }
     if let Role::Journey {
@@ -54,6 +59,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: rewarding || escape,
             since: plan.elapsed - since,
             sudden: escape,
+            geometry: false,
         });
     }
     if let Role::Tumble { stage } = plan.role {
@@ -62,6 +68,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: true,
             since: plan.elapsed,
             sudden: true,
+            geometry: false,
         });
     }
     if let Role::Hesitate {
@@ -83,6 +90,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: true,
             since: phase_elapsed,
             sudden: false,
+            geometry: false,
         });
     }
     // Reaching down for someone who is hanging is as visible an intention as the jump was, and
@@ -99,6 +107,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: true,
             since: plan.elapsed,
             sudden: false,
+            geometry: false,
         });
     }
     if let Role::Dare { .. } = plan.role {
@@ -111,6 +120,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: true,
             since: plan.elapsed,
             sudden: false,
+            geometry: false,
         });
     }
     // Window reactions, cursor interest, and display exploration publish the same stages, so a
@@ -131,6 +141,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
             risky: false,
             since: elapsed.max(0.0) % 2.15,
             sudden: plan.emotion == AttentionEmotion::Startled,
+            geometry: true,
         });
     }
     let Role::Ledge {
@@ -161,6 +172,7 @@ pub(super) fn cue(plan: &Reaction) -> Option<Cue> {
         },
         since: elapsed,
         sudden: false,
+        geometry: true,
     })
 }
 
@@ -214,7 +226,13 @@ pub(super) fn present_observer(creature: &Creature, cue: Cue, watching: &mut Wat
         }
         Stage::Act if cue.risky => (AttentionEmotion::Concerned, fret),
         Stage::Catch => (AttentionEmotion::Concerned, fret),
-        Stage::Act => (AttentionEmotion::Curious, None),
+        // Nothing to fret about and nothing to cheer yet. A window, a cursor or a ledge is worth
+        // settling in to watch, and until now the audience did that by standing about wearing
+        // the same inspecting clip as a creature with nothing on its mind.
+        Stage::Act => (
+            AttentionEmotion::Curious,
+            (cue.geometry && !reduced && !walking).then_some(Gesture::Watch),
+        ),
         Stage::Recover(Outcome::Completed) if creature.personality.playfulness > 0.65 => {
             if !reduced && !walking {
                 **action = ActionKind::Greet;
@@ -463,6 +481,7 @@ mod tests {
             risky: true,
             since: 1.0,
             sudden: false,
+            geometry: false,
         };
         let mut responses = Vec::new();
         for (boldness, playfulness, watching_for) in

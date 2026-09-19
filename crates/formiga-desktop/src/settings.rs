@@ -56,11 +56,17 @@ pub struct SettingsOutcome {
     pub rename_creature: Option<(CreatureId, String)>,
     pub viewed_profile: Option<CreatureId>,
     pub export_creature_card: Option<CreatureId>,
+    pub export_creature_sticker: Option<(CreatureId, formiga_art::StickerClip, u32)>,
+    pub export_colony_card: bool,
     pub set_creature_kept: Option<(CreatureId, bool)>,
     pub remove_creature: Option<CreatureId>,
     pub request_random_creature: bool,
     pub request_reference_creature: bool,
     pub accept_creature_preview: Option<PreviewAcceptance>,
+    /// A friend's code, asked over for a day.
+    pub invite_visitor: Option<SharedCreatureSeed>,
+    /// Whoever is visiting right now, asked to stay for good.
+    pub ask_visitor_to_stay: bool,
     pub regenerate_unkept: bool,
     pub appearance: Option<AppearancePreferences>,
     pub schedule: Option<formiga_core::RoutineSchedule>,
@@ -129,6 +135,9 @@ pub struct SettingsWindow {
     occluded: bool,
     remove_confirmation: Option<CreatureId>,
     bulk_confirmation: bool,
+    /// Text the desktop asked to put on the clipboard. egui owns the clipboard, and it only hands
+    /// anything over from inside a frame, so the request waits here for the next one.
+    pending_copy: Option<String>,
 }
 
 impl SettingsWindow {
@@ -237,6 +246,7 @@ impl SettingsWindow {
             occluded: false,
             remove_confirmation: None,
             bulk_confirmation: false,
+            pending_copy: None,
         })
     }
 
@@ -363,6 +373,30 @@ impl SettingsWindow {
         self.window.request_redraw();
     }
 
+    /// Open the Colony page on one creature, for the profile item of its right-click menu. Call
+    /// this after `show`, which re-checks the selection against the colony it is handed.
+    pub fn select_creature(&mut self, creature_id: CreatureId) {
+        if self.creatures.iter().any(|c| c.id == creature_id) {
+            self.selected_creature = Some(creature_id);
+        }
+        self.tab = SettingsTab::Colony;
+        self.window.request_redraw();
+    }
+
+    /// Open the Journal page, which is where a visit is written down.
+    pub fn select_journal(&mut self) {
+        self.tab = SettingsTab::Journal;
+        self.window.request_redraw();
+    }
+
+    /// Put text on the system clipboard through egui, exactly as the Colony page's copy buttons
+    /// do. It is handed over on the next frame, when egui's platform output is delivered.
+    pub fn copy_text(&mut self, text: String, notice: impl Into<String>) {
+        self.pending_copy = Some(text);
+        self.clubhouse.notify(notice);
+        self.window.request_redraw();
+    }
+
     pub fn on_event(&mut self, event: &WindowEvent) -> bool {
         if let WindowEvent::Occluded(occluded) = event {
             self.occluded = *occluded;
@@ -433,7 +467,13 @@ impl SettingsWindow {
         self.clubhouse.retain_portraits(&creatures);
         let mut remove_confirmation = self.remove_confirmation;
         let mut bulk_confirmation = self.bulk_confirmation;
+        let mut pending_copy = self.pending_copy.take();
         let mut full_output = context.run_ui(input, |ui| {
+            // `take` rather than a clone: egui may run a frame's UI more than once, and the
+            // clipboard should be written exactly as often as the owner asked for it.
+            if let Some(text) = pending_copy.take() {
+                ui.ctx().copy_text(text);
+            }
             draw_settings(
                 ui,
                 &mut draft,
@@ -1124,6 +1164,26 @@ fn colony_tab(
         if ui.button("Export creature card…").clicked() {
             outcome.export_creature_card = Some(creature.id);
         }
+        ui.add_space(8.0);
+        ui.label("Or a looping sticker on a transparent background: just the drawing, animated.");
+        ui.horizontal_wrapped(|ui| {
+            egui::ComboBox::from_id_salt("sticker-clip")
+                .selected_text(clubhouse.sticker_clip.label())
+                .show_ui(ui, |ui| {
+                    for clip in formiga_art::StickerClip::ALL {
+                        ui.selectable_value(&mut clubhouse.sticker_clip, clip, clip.label());
+                    }
+                });
+            ui.selectable_value(&mut clubhouse.small_sticker, false, "8×");
+            ui.selectable_value(&mut clubhouse.small_sticker, true, "4×");
+            if ui.button("Export sticker…").clicked() {
+                outcome.export_creature_sticker = Some((
+                    creature.id,
+                    clubhouse.sticker_clip,
+                    clubhouse.sticker_scale(),
+                ));
+            }
+        });
     });
 
     ui.add_space(8.0);

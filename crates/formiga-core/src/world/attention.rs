@@ -247,6 +247,34 @@ impl AttentionRuntime {
             .iter()
             .filter_map(|(&id, plan)| plan.display_walk.is_some().then_some(id))
     }
+
+    /// Off the ground, with the leap or crossing owning contact until it lands. Overlap handling
+    /// leaves these alone: nothing can step aside mid-air.
+    pub(super) fn airborne(&self, id: CreatureId) -> bool {
+        self.plans.get(&id).is_some_and(|plan| {
+            matches!(
+                plan.role,
+                Role::Play { hopping: true, .. } | Role::Journey { .. } | Role::Hesitate { .. }
+            )
+        })
+    }
+
+    /// How long a game still making contact between two creatures has left to run. Games are
+    /// bounded, so the contact a game is deliberately making carries its own deadline to end by;
+    /// everything else a plan does is beside a creature, not through it, and earns no grace.
+    pub(super) fn contact_scene_remaining(&self, id: CreatureId) -> Option<f32> {
+        self.plans
+            .get(&id)
+            .filter(|plan| matches!(plan.role, Role::Play { .. }))
+            .map(|plan| (plan.seconds + plan.delay + plan.travel_elapsed - plan.elapsed).max(0.0))
+    }
+
+    /// Spots companions have already set off for, which nothing else may claim.
+    pub(super) fn reserved_spots(&self) -> impl Iterator<Item = (CreatureId, Point)> + '_ {
+        self.plans
+            .iter()
+            .filter_map(|(&id, plan)| plan.walk.map(|walk| (id, walk.destination)))
+    }
 }
 
 impl World {
@@ -515,7 +543,7 @@ impl World {
                             .find(|(id, _, _)| *id == other)
                             .map(|(_, point, _)| *point)
                     })
-                    .unwrap_or_else(|| bounds.clamp(creature.state.position));
+                    .unwrap_or_else(|| window_gaze(bounds, creature.state.position));
                 if plan
                     .walk
                     .is_some_and(|walk| walk.watched_bounds.is_some_and(|old| old != bounds))
@@ -1024,7 +1052,7 @@ impl World {
                 vanished: signal.kind == GeometryChange::Disappeared,
                 companion: None,
             },
-            target: signal.bounds.clamp(creature.state.position),
+            target: window_gaze(signal.bounds, creature.state.position),
             emotion,
             elapsed: 0.0,
             seconds: REACTION_SECONDS,
@@ -1514,11 +1542,20 @@ fn present_role(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bo
     let gesture = match plan.role {
         Role::Observer { .. } => watched,
         Role::Helper { .. } => helper_pose(plan),
-        // The support is simply gone: a gasp, then a look around for where it went.
+        // The support is simply gone: a gasp, then a look around for where it went. Nothing is
+        // there to watch, so no watching pose belongs here.
         Role::Actor { vanished: true, .. } => (elapsed < 0.45).then_some(Gesture::Gasp),
-        // A window lurching at a creature standing beside it. A rider's pose belongs to the ride.
+        // A window arriving, growing, moving, or being shoved about with the rest of the desktop.
+        // A startled creature flinches where it stands; once the notice beat is over, anyone still
+        // planted beside or on the window settles into watching it, which is the whole point of
+        // the scene. A rider's own pose still belongs to the ride while the ride owns its body,
+        // and presentation drops this one if it does.
         Role::Actor { .. } => {
-            (!rider && emotion == Some(AttentionEmotion::Startled)).then_some(Gesture::Gasp)
+            if emotion == Some(AttentionEmotion::Startled) {
+                (!rider).then_some(Gesture::Gasp)
+            } else {
+                (elapsed >= 0.45).then_some(Gesture::Watch)
+            }
         }
         // Close enough to the cursor to reach for it, once it has had a look.
         Role::Cursor {
@@ -1528,9 +1565,20 @@ fn present_role(creature: &mut Creature, plan: &mut Reaction, reduced_motion: bo
             && (plan.target.x - creature.state.position.x).abs() > 8.0
             && plan.target.distance(creature.state.position) <= CURSOR_REACH)
             .then_some(Gesture::Reach),
-        // Looking over a long way down. A commute's hang and climb keep the body.
-        Role::Ledge { commute: false, .. } => {
-            (emotion == Some(AttentionEmotion::Concerned)).then_some(Gesture::Worry)
+        // Looking over a long way down. A commute's hang and climb keep the body, and settling
+        // back onto a familiar spot is not an inspection of anything.
+        Role::Ledge {
+            commute: false,
+            resting: false,
+            ..
+        } => {
+            if emotion == Some(AttentionEmotion::Concerned) {
+                Some(Gesture::Worry)
+            } else {
+                // Planted at the edge with the drop in view: the same held look a creature gives
+                // a window from beside it, given to the one it is standing on.
+                (elapsed >= 0.45).then_some(Gesture::Watch)
+            }
         }
         _ => None,
     };
@@ -1612,6 +1660,32 @@ fn target_unchanged(
             .any(|w| w.key == key && w.bounds == bounds && w.visible && !w.minimized),
         (None, None) => true,
         _ => false,
+    }
+}
+
+/// The point on a window a creature reacting to it is actually looking at.
+///
+/// The obvious answer — the window rectangle clamped to the creature — is the point *closest* to
+/// it rather than the point worth looking at, and it made two very visible lies. A creature
+/// standing beside a window got a target at its own feet's height, so however tall the window was
+/// it looked at the floor next to its toes; and a creature standing on the window that moved got
+/// its own position back, so it stared straight down with no direction at all and never even
+/// turned to face what it was reacting to.
+///
+/// So: the near edge, halfway down the window, for a creature beside it, which is the bit of the
+/// frame a companion on the desktop can see; and the window's own centre for one standing over or
+/// under it, which sends the look down and along the surface it is riding. Both are points on the
+/// window rather than points on the creature, which is the whole of the difference.
+fn window_gaze(bounds: DesktopRect, at: Point) -> Point {
+    Point {
+        x: if (bounds.x..=bounds.right()).contains(&at.x) {
+            bounds.x + bounds.width * 0.5
+        } else if at.x < bounds.x {
+            bounds.x
+        } else {
+            bounds.right()
+        },
+        y: bounds.y + bounds.height * 0.5,
     }
 }
 
@@ -1741,6 +1815,37 @@ mod tests {
         world.tick(now + Duration::milliseconds(250), 0.05, desktop);
     }
 
+    /// A window opening above the floor the colony is standing on: the plainest window-watching
+    /// scene there is, and the one the whole vocabulary of window attention exists for. Play it
+    /// from step 21, once the opening is the only piece of news on the desktop.
+    pub(super) fn arrival_scene() -> (World, DesktopSnapshot, OffsetDateTime) {
+        let (mut world, mut desktop, now) = scene();
+        for step in 1..=20 {
+            desktop.window_sample.as_mut().unwrap().monotonic_millis = step * 50;
+            world.tick(
+                now + Duration::milliseconds(step as i64 * 50),
+                0.05,
+                &desktop,
+            );
+        }
+        world.clear_attention();
+        desktop.windows.push(DesktopWindow {
+            key: 777,
+            bounds: DesktopRect {
+                x: 840.0,
+                y: 500.0,
+                width: 320.0,
+                height: 300.0,
+            },
+            z_order: 5,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        (world, desktop, now)
+    }
+
     /// Actions whose own clip is the whole point of them. A pose never stands in for one.
     const BODY_OWNING: [ActionKind; 16] = [
         ActionKind::Traverse,
@@ -1843,6 +1948,17 @@ mod tests {
                         c.state.facing_right,
                         pose.target.x > c.state.position.x,
                         "reaching away from {:?}: {label}",
+                        pose.target
+                    );
+                }
+                // A watching pose is a claim about where a creature's attention is. A creature
+                // holding it while turned the other way is telling the plainest possible lie, so
+                // the recorder checks it wherever the target is far enough off to have a side.
+                if gesture == Gesture::Watch && (pose.target.x - c.state.position.x).abs() > 8.0 {
+                    assert_eq!(
+                        c.state.facing_right,
+                        pose.target.x > c.state.position.x,
+                        "watching {:?} over its shoulder: {label}",
                         pose.target
                     );
                 }
@@ -1949,12 +2065,20 @@ mod tests {
         }
     }
 
-    /// Nine poses, and for each of them a scene the colony plays out by itself to strike it. This
-    /// is what keeps the vocabulary honest: a pose nothing ever reaches is a pose nobody will see.
-    /// Every tick of every scene here is also checked against the rules for showing one at all.
+    /// Every pose in the vocabulary, and for each of them a scene the colony plays out by itself
+    /// to strike it. This is what keeps the vocabulary honest: a pose nothing ever reaches is a
+    /// pose nobody will see. Every tick of every scene here is also checked against the rules for
+    /// showing one at all.
     #[test]
     fn every_pose_in_the_vocabulary_has_a_scene_that_strikes_it() {
         let mut poses = Poses::default();
+        // A window opening on the desktop: noticed, approached, and then watched.
+        let (mut world, mut desktop, now) = arrival_scene();
+        play_out(&mut world, &mut desktop, now, 21..160, &mut poses);
+        assert!(
+            poses.showed(Gesture::Watch),
+            "an arriving window was never watched: {poses:?}"
+        );
         // A bold leap over a gap, in front of the colony: the jumper squares up and celebrates,
         // a timid watcher hides its eyes, a bolder one frets through it.
         let (mut world, mut desktop, now) = super::ledges::tests::edge_scene(true, true);
@@ -2048,6 +2172,52 @@ mod tests {
             "the scenes were never busy enough to mean anything: {busy:?}"
         );
         assert!(!poses.all().is_empty(), "and nothing was ever posed at all");
+    }
+
+    /// A creature reacting to a window has to be looking at the window. The rectangle clamped to
+    /// the creature's own feet is not that: beside a window it aims at the floor by its toes, and
+    /// on one it hands the creature back its own position, which is a gaze with no direction in it
+    /// at all. Both cases are checked here against the window itself.
+    #[test]
+    fn a_window_reaction_aims_at_the_window_rather_than_at_the_creatures_own_feet() {
+        let bounds = DesktopRect {
+            x: 200.0,
+            y: 600.0,
+            width: 600.0,
+            height: 200.0,
+        };
+        let centre = Point {
+            x: bounds.x + bounds.width * 0.5,
+            y: bounds.y + bounds.height * 0.5,
+        };
+        // Standing on the window, anywhere along it: the look goes to its middle, down and along
+        // the surface underfoot, rather than straight at the creature's own toes.
+        for relative in [0.05, 0.5, 0.95] {
+            let standing = Point {
+                x: bounds.x + bounds.width * relative,
+                y: bounds.y,
+            };
+            assert_eq!(window_gaze(bounds, standing), centre);
+            assert_ne!(window_gaze(bounds, standing), bounds.clamp(standing));
+        }
+        // Standing beside it: the near edge, halfway down, whatever height the creature is at.
+        for (position, edge) in [(100.0, bounds.x), (900.0, bounds.right())] {
+            for height in [0.0, bounds.y, 2_000.0] {
+                let beside = Point {
+                    x: position,
+                    y: height,
+                };
+                let aim = window_gaze(bounds, beside);
+                assert_eq!(aim.x, edge);
+                assert_eq!(aim.y, centre.y);
+            }
+        }
+        // And the whole of it lands on the window, which is the only claim that really matters.
+        for x in [0.0, 100.0, 500.0, 900.0] {
+            for y in [0.0, 600.0, 900.0] {
+                assert!(bounds.contains(window_gaze(bounds, Point { x, y })));
+            }
+        }
     }
 
     /// A support that is simply not there any more is a fright first and a puzzle second: the

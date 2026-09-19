@@ -1,18 +1,25 @@
-use crate::card_export::{choose_card_destination, export_to_selected_destination};
-use crate::gpu::{OverlayRenderer, monitor_has_fullscreen_window};
-use crate::interaction::{InteractionProxy, ProxyRuntimeState};
+use crate::card_export::{
+    choose_card_destination, choose_colony_card_destination,
+    export_colony_card_to_selected_destination, export_to_selected_destination,
+};
+use crate::creature_menu::{CreatureMenu, MenuDismissal, MenuTarget, MenuWorld};
+use crate::gpu::{MenuView, OverlayRenderer, OverlayUi, monitor_has_fullscreen_window};
+use crate::interaction::{InteractionProxy, MenuProxy, ProxyRuntimeState};
 use crate::platform;
 use crate::reference_match::match_reference_file;
 use crate::settings::{
     ColonyView, GenerationPreview, PreviewAcceptance, SettingsOutcome, SettingsWindow,
+};
+use crate::sticker_export::{
+    choose_sticker_destination,
+    export_to_selected_destination as export_sticker_to_selected_destination,
 };
 use crate::tray::{TrayAction, TrayState};
 use crate::updater::{
     DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus, check_github, download_update,
 };
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
-use formiga_art::{AnimationSpec, BodyClip};
+use formiga_art::{AnimationSpec, BodyClip, MenuIcon};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -96,6 +103,11 @@ pub struct FormigaApp {
     current_cursor: CursorSnapshot,
     settings_window: Option<SettingsWindow>,
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
+    /// The one open right-click menu, and the small native window that takes clicks on it. The
+    /// window outlives any single menu so that closing one never destroys the window whose own
+    /// click is being handled.
+    creature_menu: Option<CreatureMenu>,
+    menu_proxy: Option<MenuProxy>,
     habitat_editor: Option<HabitatEditor>,
     event_proxy: EventLoopProxy<UserEvent>,
     updates: UpdateController,
@@ -105,15 +117,14 @@ pub struct FormigaApp {
 
 impl FormigaApp {
     pub fn new(log_dir: PathBuf, event_proxy: EventLoopProxy<UserEvent>) -> Result<Self> {
-        let project = ProjectDirs::from("com", "Formiga", "Formiga")
-            .context("resolve application data directory")?;
-        let updates = UpdateController::load(project.data_dir());
+        let data_dir = crate::data_dir()?;
+        let updates = UpdateController::load(&data_dir);
         Ok(Self {
             overlays: BTreeMap::new(),
             monitors: Vec::new(),
             world: None,
             tray: None,
-            save_store: SaveStore::new(project.data_dir().join("colony.json")),
+            save_store: SaveStore::new(data_dir.join("colony.json")),
             previous_cursor: None,
             last_tick: Instant::now(),
             last_save: Instant::now(),
@@ -128,6 +139,8 @@ impl FormigaApp {
             current_cursor: CursorSnapshot::default(),
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
+            creature_menu: None,
+            menu_proxy: None,
             habitat_editor: None,
             event_proxy,
             updates,
@@ -284,6 +297,12 @@ impl FormigaApp {
             return Duration::from_millis(250);
         };
         if world.is_interacting() {
+            return Duration::from_millis(50);
+        }
+        // An open menu is sampling the cursor for its hover highlight, so it needs the same
+        // cadence a drag does. It is the owner who opened it and it closes itself within eight
+        // seconds, so this is bounded and always something the person at the desk asked for.
+        if self.creature_menu.is_some() {
             return Duration::from_millis(50);
         }
         let drawing = self.overlays.values().any(|overlay| {
@@ -445,6 +464,7 @@ impl FormigaApp {
             tracing::error!(%error, "periodic save failed");
         }
         self.sync_overlay_visibility();
+        self.sync_creature_menu(dt);
         let interval = self
             .world
             .as_ref()
@@ -453,9 +473,15 @@ impl FormigaApp {
         if now >= self.redraw_due {
             if let Some(world) = &self.world {
                 let habitat_editor = self.habitat_editor.as_ref().map(|editor| &editor.draft);
+                let ui_active = self.creature_menu.is_some() || !world.thought_bubbles().is_empty();
                 for overlay in self.overlays.values() {
                     if overlay.is_visible()
-                        && overlay.needs_redraw(&world.save, habitat_editor, &self.cached_windows)
+                        && overlay.needs_redraw(
+                            &world.save,
+                            habitat_editor,
+                            &self.cached_windows,
+                            ui_active,
+                        )
                     {
                         overlay.window.request_redraw();
                     }
@@ -629,10 +655,13 @@ impl FormigaApp {
         }
         let Some(world) = &self.world else { return };
         let enabled = world.save.settings.visible && world.save.settings.direct_manipulation;
+        // Whoever is visiting is petted and offered things exactly like a member, so it gets a
+        // proxy of its own for as long as it is out.
         let desired: Vec<_> = world
             .save
             .creatures
             .iter()
+            .chain(world.save.visitors.on_stage())
             .filter(|creature| enabled && creature.state.arrival_delay_secs <= 0.0)
             .map(|creature| creature.id)
             .collect();
@@ -660,6 +689,7 @@ impl FormigaApp {
                 .save
                 .creatures
                 .iter()
+                .chain(world.save.visitors.on_stage())
                 .find(|creature| creature.id == proxy.creature_id)
             else {
                 continue;
@@ -696,17 +726,56 @@ impl FormigaApp {
         }
     }
 
-    fn handle_proxy_event(&mut self, window_id: WindowId, event: &WindowEvent) -> bool {
+    fn handle_proxy_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: &WindowEvent,
+    ) -> bool {
+        if self
+            .menu_proxy
+            .as_ref()
+            .is_some_and(|proxy| proxy.id() == window_id)
+        {
+            self.handle_menu_proxy_event(event_loop, event);
+            return true;
+        }
         if !self.interaction_proxies.contains_key(&window_id) {
             return false;
         }
         match event {
+            // A secondary click opens the creature's menu instead of picking it up. On macOS a
+            // one-button click with Control held means the same thing and arrives as a primary
+            // press, so it is separated out before the drag path below sees it.
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => {
+                self.toggle_creature_menu(event_loop, window_id);
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } if platform::secondary_click_modifier() => {
+                self.toggle_creature_menu(event_loop, window_id);
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
                 ..
             } => {
                 let cursor = self.current_cursor.position;
+                // An open menu is in front of whatever it is about: a press on the strip belongs
+                // to the strip's own window, never to a creature that happens to be behind it.
+                if self
+                    .creature_menu
+                    .as_ref()
+                    .is_some_and(|menu| menu.contains(cursor))
+                {
+                    return true;
+                }
                 // macOS proxies carry no native window shape, so an opaque neighbouring square
                 // can receive a press aimed at the creature drawn underneath it. That happens
                 // constantly at the shelter, where the whole colony shares one corner. Resolve
@@ -717,11 +786,7 @@ impl FormigaApp {
                     .filter(|(_, proxy)| proxy.hit_test(cursor.x, cursor.y))
                     .map(|(id, proxy)| (*id, proxy.creature_id))
                     .collect();
-                let draw_order: Vec<_> = self
-                    .world
-                    .as_ref()
-                    .map(|world| world.save.creatures.iter().map(|c| c.id).collect())
-                    .unwrap_or_default();
+                let draw_order = self.draw_order();
                 if let Some((target_window, target_creature)) =
                     resolve_press_target(window_id, &hits, &draw_order)
                 {
@@ -767,6 +832,328 @@ impl FormigaApp {
             _ => {}
         }
         true
+    }
+
+    /// Back to front, so a press lands on whoever is drawn on top. The guest is drawn last.
+    fn draw_order(&self) -> Vec<CreatureId> {
+        self.world
+            .as_ref()
+            .map(|world| {
+                world
+                    .save
+                    .creatures
+                    .iter()
+                    .chain(world.save.visitors.on_stage())
+                    .map(|creature| creature.id)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// A secondary click on a creature: open its menu, or close the one it already has. Only one
+    /// menu is ever open, so asking for another creature's simply replaces it.
+    fn toggle_creature_menu(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId) {
+        let cursor = self.current_cursor.position;
+        let hits: Vec<_> = self
+            .interaction_proxies
+            .iter()
+            .filter(|(_, proxy)| proxy.hit_test(cursor.x, cursor.y))
+            .map(|(id, proxy)| (*id, proxy.creature_id))
+            .collect();
+        let draw_order = self.draw_order();
+        let Some((_, creature_id)) = resolve_press_target(window_id, &hits, &draw_order) else {
+            return;
+        };
+        if self
+            .creature_menu
+            .as_ref()
+            .is_some_and(|menu| menu.creature_id() == creature_id)
+        {
+            self.close_creature_menu(MenuDismissal::Answered);
+            return;
+        }
+        self.open_creature_menu(event_loop, creature_id);
+    }
+
+    fn open_creature_menu(&mut self, event_loop: &ActiveEventLoop, creature_id: CreatureId) {
+        let Some(world) = &self.world else { return };
+        let guest = world
+            .save
+            .visitors
+            .on_stage()
+            .is_some_and(|guest| guest.id == creature_id);
+        let Some(creature) = world
+            .save
+            .creatures
+            .iter()
+            .chain(world.save.visitors.on_stage())
+            .find(|creature| creature.id == creature_id)
+        else {
+            return;
+        };
+        // A creature that is being carried, or that cannot be seen, has nothing to offer a menu.
+        if matches!(
+            creature.state.action,
+            ActionKind::Dragged | ActionKind::Tossed
+        ) {
+            return;
+        }
+        let monitor_id = creature.state.surface.monitor_id;
+        let target = if guest {
+            MenuTarget::Guest
+        } else {
+            MenuTarget::Member
+        };
+        let can_stay = world.visitor_can_stay();
+        // Whether the settings window has focus *now* is remembered, so only it taking focus
+        // later closes the menu. Opening one while the settings window happens to be up is fine.
+        let settings_focused = self
+            .settings_window
+            .as_ref()
+            .is_some_and(|window| window.window.has_focus());
+        let menu = CreatureMenu::new(creature_id, target, can_stay, monitor_id, settings_focused);
+        if self.menu_proxy.is_none() {
+            match MenuProxy::new(event_loop) {
+                Ok(proxy) => self.menu_proxy = Some(proxy),
+                Err(error) => {
+                    tracing::error!(%error, "could not create the creature menu proxy");
+                    return;
+                }
+            }
+        }
+        self.creature_menu = Some(menu);
+        // Place and show it now rather than on the next tick, so the strip appears under the
+        // click that asked for it instead of up to a frame later.
+        self.sync_creature_menu(0.0);
+    }
+
+    fn close_creature_menu(&mut self, reason: MenuDismissal) {
+        if self.creature_menu.take().is_none() {
+            return;
+        }
+        tracing::debug!(?reason, "creature menu closed");
+        if let Some(proxy) = &mut self.menu_proxy {
+            proxy.hide();
+        }
+        self.request_overlay_redraw();
+    }
+
+    fn request_overlay_redraw(&mut self) {
+        self.redraw_due = Instant::now();
+        for overlay in self.overlays.values() {
+            if overlay.is_visible() {
+                overlay.window.request_redraw();
+            }
+        }
+    }
+
+    /// Keep the open menu attached to its creature, follow the cursor across its cells, and close
+    /// it when any of the dismissal rules fires. `creature_menu` owns every rule; this only feeds
+    /// it the world and acts on the answer.
+    fn sync_creature_menu(&mut self, dt: f32) {
+        let Some(mut menu) = self.creature_menu.take() else {
+            return;
+        };
+        let outcome = self.advance_creature_menu(&mut menu, dt);
+        match outcome {
+            Ok(redraw) => {
+                self.creature_menu = Some(menu);
+                if let Some(placement) = self
+                    .creature_menu
+                    .as_ref()
+                    .and_then(|menu| menu.placement())
+                {
+                    self.sync_menu_proxy(placement.body_desktop());
+                } else if let Some(proxy) = &mut self.menu_proxy {
+                    // Nowhere to put the strip this frame: take the click target away with it.
+                    proxy.hide();
+                }
+                if redraw {
+                    self.request_overlay_redraw();
+                }
+            }
+            Err(reason) => {
+                self.creature_menu = Some(menu);
+                self.close_creature_menu(reason);
+            }
+        }
+    }
+
+    fn advance_creature_menu(
+        &mut self,
+        menu: &mut CreatureMenu,
+        dt: f32,
+    ) -> std::result::Result<bool, MenuDismissal> {
+        let settings_focused = self
+            .settings_window
+            .as_ref()
+            .is_some_and(|window| window.window.has_focus());
+        let (anchor, position) = {
+            let world = self.world.as_ref().ok_or(MenuDismissal::Gone)?;
+            let settings = &world.save.settings;
+            let creature = world
+                .save
+                .creatures
+                .iter()
+                .chain(world.save.visitors.on_stage())
+                .find(|creature| creature.id == menu.creature_id())
+                .ok_or(MenuDismissal::Gone)?;
+            let monitor_id = creature.state.surface.monitor_id;
+            let occluded = self
+                .monitors
+                .iter()
+                .find(|monitor| monitor.id == monitor_id)
+                .is_some_and(|monitor| {
+                    settings.fullscreen_app_occlusion
+                        && monitor_has_fullscreen_window(monitor.bounds, &self.cached_windows)
+                });
+            if let Some(reason) = menu.interruption(MenuWorld {
+                present: true,
+                monitor_id,
+                handled: matches!(
+                    creature.state.action,
+                    ActionKind::Dragged | ActionKind::Tossed
+                ),
+                hidden: !settings.visible
+                    || !settings.direct_manipulation
+                    || self.habitat_editor.is_some()
+                    || creature.state.arrival_delay_secs > 0.0,
+                occluded,
+                settings_focused,
+            }) {
+                return Err(reason);
+            }
+            let anchor = self
+                .overlays
+                .values()
+                .find(|overlay| overlay.monitor.id == monitor_id)
+                .and_then(|overlay| overlay.menu_anchor(creature, settings.display_scale));
+            (anchor, creature.state.position)
+        };
+        menu.attach(anchor);
+        let cursor = self
+            .current_cursor
+            .available
+            .then_some(self.current_cursor.position);
+        let tick = menu.track(dt, cursor, position);
+        match tick.dismissal {
+            Some(reason) => Err(reason),
+            None => Ok(tick.redraw),
+        }
+    }
+
+    fn sync_menu_proxy(&mut self, body: DesktopRect) {
+        let Some(monitor) = self
+            .creature_menu
+            .as_ref()
+            .and_then(|menu| {
+                let id = menu.monitor_id();
+                self.monitors.iter().find(|monitor| monitor.id == id)
+            })
+            .cloned()
+        else {
+            return;
+        };
+        let origin = self
+            .overlays
+            .values()
+            .find(|overlay| overlay.monitor.id == monitor.id)
+            .and_then(|overlay| overlay.window.outer_position().ok())
+            .unwrap_or(PhysicalPosition::new(0, 0));
+        if let Some(proxy) = &mut self.menu_proxy {
+            proxy.sync(body, &monitor, origin);
+        }
+    }
+
+    fn handle_menu_proxy_event(&mut self, event_loop: &ActiveEventLoop, event: &WindowEvent) {
+        if let WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            button,
+            ..
+        } = event
+        {
+            let cursor = self.current_cursor.position;
+            match button {
+                // Right-clicking the strip is another way of saying "never mind".
+                MouseButton::Right => self.close_creature_menu(MenuDismissal::Answered),
+                MouseButton::Left => {
+                    let chosen = self
+                        .creature_menu
+                        .as_ref()
+                        .and_then(|menu| menu.item_at(cursor));
+                    // A press on the frame or in a gap between cells is not a choice, and the
+                    // menu stays open rather than closing under a near miss.
+                    if let Some(icon) = chosen {
+                        self.choose_menu_item(event_loop, icon);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Act on a menu choice. The menu always closes: the simulation answers with its own thought
+    /// bubble, including when a creature is busy and politely declines.
+    fn choose_menu_item(&mut self, event_loop: &ActiveEventLoop, icon: MenuIcon) {
+        let Some(menu) = self.creature_menu.as_ref() else {
+            return;
+        };
+        let creature_id = menu.creature_id();
+        let target = menu.target();
+        self.close_creature_menu(MenuDismissal::Answered);
+        let desktop = self.snapshot();
+        match icon {
+            MenuIcon::Snack | MenuIcon::Toy | MenuIcon::Home => {
+                let command = match icon {
+                    MenuIcon::Snack => WorldCommand::OfferSnack { creature_id },
+                    MenuIcon::Toy => WorldCommand::OfferToy { creature_id },
+                    _ => WorldCommand::SendHome,
+                };
+                if let Some(world) = &mut self.world {
+                    world.handle_command(command, &desktop);
+                }
+            }
+            MenuIcon::Profile => {
+                self.show_settings(event_loop);
+                if let Some(window) = &mut self.settings_window {
+                    match target {
+                        MenuTarget::Member => window.select_creature(creature_id),
+                        // A guest has no colony profile of its own, so its page is the journal,
+                        // where its visit is written down.
+                        MenuTarget::Guest => window.select_journal(),
+                    }
+                }
+            }
+            MenuIcon::Stay => {
+                let result = self
+                    .world
+                    .as_mut()
+                    .map(|world| world.ask_visitor_to_stay(OffsetDateTime::now_utc(), &desktop));
+                if let Some(Err(error)) = result {
+                    tracing::warn!(
+                        reason = colony_management_category(&error),
+                        "the visitor could not be asked to stay"
+                    );
+                }
+            }
+            MenuIcon::CopyCode => {
+                let code = self
+                    .world
+                    .as_ref()
+                    .and_then(|world| world.visitor_share_code());
+                if let Some(code) = code {
+                    // egui owns the clipboard, and it only hands text over from inside one of its
+                    // own frames, so this goes through the very window the Colony page's copy
+                    // buttons use — which also gives the owner something that says it worked.
+                    self.show_settings(event_loop);
+                    if let Some(window) = &mut self.settings_window {
+                        window.select_journal();
+                        window.copy_text(code, "Visitor code copied");
+                    }
+                }
+            }
+        }
+        let _ = self.save();
     }
 
     fn show_settings(&mut self, event_loop: &ActiveEventLoop) {
@@ -935,6 +1322,35 @@ impl FormigaApp {
                 Ok(None) => {}
                 Err(error) => {
                     self.settings_error(format!("Could not export the creature card: {error}"))
+                }
+            }
+        }
+        if let Some((creature_id, clip, scale)) = outcome.export_creature_sticker
+            && let Some(creature) = self.world.as_ref().and_then(|world| {
+                world
+                    .save
+                    .creatures
+                    .iter()
+                    .find(|creature| creature.id == creature_id)
+            })
+        {
+            // The dialog runs first; a cancelled one never renders a frame.
+            let selected = choose_sticker_destination(creature, clip);
+            match export_sticker_to_selected_destination(creature, clip, scale, selected) {
+                Ok(Some(_)) => self.settings_notice("Sticker exported"),
+                Ok(None) => {}
+                Err(error) => self.settings_error(format!("Could not export the sticker: {error}")),
+            }
+        }
+        if outcome.export_colony_card
+            && let Some(save) = self.world.as_ref().map(|world| &world.save)
+        {
+            let selected = choose_colony_card_destination();
+            match export_colony_card_to_selected_destination(save, selected) {
+                Ok(Some(_)) => self.settings_notice("Colony portrait exported"),
+                Ok(None) => {}
+                Err(error) => {
+                    self.settings_error(format!("Could not export the colony portrait: {error}"))
                 }
             }
         }
@@ -1107,6 +1523,55 @@ impl FormigaApp {
                         window.clear_generation_preview();
                     }
                     self.save_with_feedback("Companion welcomed into the colony");
+                    self.redraw_due = Instant::now();
+                    for overlay in self.overlays.values() {
+                        overlay.window.request_redraw();
+                    }
+                }
+                Some(Err(error)) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(error.to_string());
+                    }
+                }
+                None => {}
+            }
+        }
+        if let Some(shared) = outcome.invite_visitor {
+            let desktop = self.snapshot();
+            let now = OffsetDateTime::now_utc();
+            let result = self
+                .world
+                .as_mut()
+                .map(|world| world.invite_visitor(shared, now, &desktop));
+            match result {
+                Some(Ok(())) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.clear_generation_preview();
+                    }
+                    self.save_with_feedback("Your friend is on their way over");
+                    self.redraw_due = Instant::now();
+                    for overlay in self.overlays.values() {
+                        overlay.window.request_redraw();
+                    }
+                }
+                Some(Err(error)) => {
+                    if let Some(window) = &mut self.settings_window {
+                        window.set_error(error.to_string());
+                    }
+                }
+                None => {}
+            }
+        }
+        if outcome.ask_visitor_to_stay {
+            let desktop = self.snapshot();
+            let now = OffsetDateTime::now_utc();
+            let result = self
+                .world
+                .as_mut()
+                .map(|world| world.ask_visitor_to_stay(now, &desktop));
+            match result {
+                Some(Ok(_)) => {
+                    self.save_with_feedback("Your visitor is staying for good");
                     self.redraw_due = Instant::now();
                     for overlay in self.overlays.values() {
                         overlay.window.request_redraw();
@@ -1711,7 +2176,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         if self.handle_habitat_editor_event(window_id, &event) {
             return;
         }
-        if self.handle_proxy_event(window_id, &event) {
+        if self.handle_proxy_event(event_loop, window_id, &event) {
             return;
         }
         if self
@@ -1771,6 +2236,20 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     .as_ref()
                     .filter(|notice| Instant::now() < notice.expires_at)
                     .map(|notice| notice.creature_id);
+                // The strip is drawn by the overlay of the display its creature is on, and by
+                // no other, so a menu never appears twice on a multi-monitor desk.
+                let menu = match (&self.creature_menu, self.overlays.get(&window_id)) {
+                    (Some(menu), Some(overlay)) if overlay.monitor.id == menu.monitor_id() => {
+                        menu.placement().map(|placement| MenuView {
+                            creature_id: menu.creature_id(),
+                            items: menu.items(),
+                            layout: menu.layout(),
+                            placement,
+                            hovered: menu.hovered(),
+                        })
+                    }
+                    _ => None,
+                };
                 if let (Some(overlay), Some(world)) =
                     (self.overlays.get_mut(&window_id), &self.world)
                     && let Err(error) = overlay.render(
@@ -1779,6 +2258,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         self.habitat_editor.as_ref().map(|editor| &editor.draft),
                         &self.cached_windows,
                         milestone,
+                        OverlayUi {
+                            bubbles: world.thought_bubbles(),
+                            reduce_motion: world.save.settings.reduce_motion,
+                            menu,
+                        },
                     )
                 {
                     tracing::error!(%error, "overlay render failed");
@@ -2039,6 +2523,19 @@ fn world_tick_interval(world: &World) -> Duration {
     }
 }
 
+/// A short, fixed category for a refused colony change, in the style of `world_event_category`:
+/// enough to tell a diagnostic log what happened, with nothing about the colony in it.
+fn colony_management_category(error: &ColonyManagementError) -> &'static str {
+    match error {
+        ColonyManagementError::ColonyFull => "colony_full",
+        ColonyManagementError::AdultLimit => "adult_limit",
+        ColonyManagementError::CreatureNotFound => "creature_not_found",
+        ColonyManagementError::LastAdult => "last_adult",
+        ColonyManagementError::CreatureKept => "creature_kept",
+        ColonyManagementError::DuplicateIdentity => "duplicate_identity",
+    }
+}
+
 fn world_event_category(event: &WorldEvent) -> &'static str {
     match event {
         WorldEvent::CreatureSpawned { .. } => "creature_spawned",
@@ -2059,6 +2556,7 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::DragStarted { .. } => "drag_started",
         WorldEvent::DragEnded { .. } => "drag_ended",
         WorldEvent::TossLanded { .. } => "toss_landed",
+        WorldEvent::OfferAnswered { .. } => "offer_answered",
         WorldEvent::HomeAppeared => "home_appeared",
         WorldEvent::HomeDisappeared { .. } => "home_disappeared",
         WorldEvent::RitualStarted { .. } => "ritual_started",

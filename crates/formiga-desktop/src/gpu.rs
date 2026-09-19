@@ -1,15 +1,19 @@
+use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement};
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AnimationSpec, BodyClip, COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH,
-    COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE,
-    FaceRenderState, FramePlacement, MilestoneBubbleRenderer, MotionSignature, PixelPoint,
-    PropAnchor, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE,
+    AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, COLONY_OBJECT_ATLAS_HEIGHT,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, MenuIcon, MenuLayout,
+    MilestoneBubbleRenderer, MotionSignature, PixelPoint, PropAnchor, Rgba, SHELTER_SIZE,
+    ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL,
+    TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH,
+    UiAtlasRenderer, VILLAGE_ATLAS_SIZE,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
-    DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, SaveFile,
-    ShelterDecorationKind, ShelterGenome, accessible_regions, resolved_home_anchor,
+    DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, Point, SaveFile,
+    ShelterDecorationKind, ShelterGenome, ThoughtBubble, accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -56,6 +60,10 @@ struct SpriteGpu {
     face_atlas_width: u32,
     face_atlas_height: u32,
     face_anchors: Vec<PixelPoint>,
+    /// The topmost and just-past-the-lowest drawn rows of each baked body frame, in art pixels
+    /// from the frame's top edge. A bubble hangs off the crown rather than off the frame, so a
+    /// mini keeps its bubble as close to its head as an adult does.
+    silhouette: Vec<(u8, u8)>,
     resting_baseline: u32,
 }
 
@@ -74,10 +82,81 @@ struct BubbleGpu {
     height: u32,
 }
 
+/// The one small texture every icon bubble and every menu part is sampled from. It is built the
+/// first time anything asks for it and dropped again once nothing has, so a colony that is simply
+/// being watched carries none of it.
+struct UiAtlasGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+}
+
+/// Renders without a bubble or a menu before the UI atlas is released again. At the overlay's
+/// redraw cadence this is comfortably more than ten seconds of quiet.
+const UI_ATLAS_IDLE_FRAMES: u32 = 240;
+
+/// What the overlay should draw on top of the colony this frame. Everything here is runtime-only:
+/// none of it is in the save, and none of it is remembered between frames.
+#[derive(Clone, Copy, Default)]
+pub struct OverlayUi<'a> {
+    /// The simulation's answers, one per creature at most.
+    pub bubbles: &'a [ThoughtBubble],
+    pub reduce_motion: bool,
+    /// The open right-click menu, if it belongs to a creature on this monitor.
+    pub menu: Option<MenuView<'a>>,
+}
+
+/// One open creature menu, already placed by `creature_menu`.
+#[derive(Clone, Copy)]
+pub struct MenuView<'a> {
+    pub creature_id: CreatureId,
+    pub items: &'a [MenuIcon; 4],
+    pub layout: &'a MenuLayout,
+    pub placement: MenuPlacement,
+    pub hovered: Option<usize>,
+}
+
 struct ColonyObjectsGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     colony_seed: [u8; 32],
+}
+
+/// The colony's own sheet of found things. One texture for the whole colony rather than eight
+/// slots inside every creature's face texture, so a keepsake costs the same whether one companion
+/// is holding it or four are, and so the scrapbook and the desktop can never disagree.
+struct TrinketAtlasGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    key: TrinketAtlasKey,
+}
+
+/// What the sheet depends on: the colony seed it is derived from, and the colours of everyone it
+/// has to stay distinct from.
+#[derive(Clone, Debug, PartialEq)]
+struct TrinketAtlasKey {
+    colony_seed: [u8; 32],
+    members: Vec<Rgba>,
+}
+
+impl TrinketAtlasKey {
+    fn of(save: &SaveFile) -> Self {
+        Self {
+            colony_seed: save.colony_seed,
+            members: save
+                .creatures
+                .iter()
+                .flat_map(|creature| {
+                    let palette = formiga_art::palette_for(&creature.appearance);
+                    [
+                        palette.coat,
+                        palette.accent,
+                        palette.highlight,
+                        palette.shadow,
+                    ]
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -121,7 +200,10 @@ pub struct OverlayRenderer {
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
     bubble: Option<BubbleGpu>,
+    ui_atlas: Option<UiAtlasGpu>,
+    ui_atlas_idle: u32,
     colony_objects: Option<ColonyObjectsGpu>,
+    trinkets: Option<TrinketAtlasGpu>,
     object_vertex_cache_key: Option<ObjectVertexCacheKey>,
     object_vertices: Vec<Vertex>,
     last_occlusion: Option<OcclusionUniform>,
@@ -386,7 +468,10 @@ impl OverlayRenderer {
             sprites: BTreeMap::new(),
             shelter: None,
             bubble: None,
+            ui_atlas: None,
+            ui_atlas_idle: 0,
             colony_objects: None,
+            trinkets: None,
             object_vertex_cache_key: None,
             object_vertices: Vec::new(),
             last_occlusion: None,
@@ -409,6 +494,12 @@ impl OverlayRenderer {
         }
         self.window.set_visible(visible);
         self.visible = visible;
+        if !visible {
+            // A hidden overlay shows no bubbles and no menu, and cannot be asked to until it comes
+            // back, so the UI atlas goes now rather than waiting out its idle count.
+            self.ui_atlas = None;
+            self.ui_atlas_idle = 0;
+        }
         if visible {
             // Showing a window rebuilds native state on both platforms, so re-apply the whole
             // overlay configuration — input mode, transparency, and Spaces membership — after
@@ -481,20 +572,15 @@ impl OverlayRenderer {
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
         milestone: Option<CreatureId>,
+        ui: OverlayUi<'_>,
     ) -> Result<()> {
         self.apply_render_divisor(save.settings.display_scale);
         self.update_occlusion_cache(save, windows);
         let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
         let occlusion = self.occlusion_uniform(&self.occlusion_rects);
-        let visible: Vec<&Creature> = save
-            .creatures
-            .iter()
-            .filter(|creature| {
-                creature.state.surface.monitor_id == self.monitor.id
-                    && creature.state.arrival_delay_secs <= 0.0
-                    && (!monitor_fully_occluded || creature.state.action == ActionKind::Dragged)
-            })
-            .collect();
+        // Whoever is visiting draws exactly like a member — atlas, face, props, bubbles and all —
+        // and is evicted by the same `retain` below the moment it goes home.
+        let visible = drawn_on_monitor(save, self.monitor.id, monitor_fully_occluded);
         for creature in &visible {
             self.ensure_sprite(
                 creature,
@@ -535,6 +621,12 @@ impl OverlayRenderer {
             self.ensure_bubble(creature.id);
         } else {
             self.bubble = None;
+        }
+        if visible
+            .iter()
+            .any(|creature| creature.state.action == ActionKind::PresentDiscovery)
+        {
+            self.ensure_trinket_atlas(save);
         }
         let object_vertices = if !shelter_visible || save.objects.objects.is_empty() {
             Vec::new()
@@ -583,6 +675,11 @@ impl OverlayRenderer {
             vertices.extend_from_slice(&bubble_vertices);
         }
         let bubble_vertex_count = vertices.len() - bubble_start;
+        let ui_vertices = self.ui_vertices(&visible, save.settings.display_scale, ui);
+        self.sync_ui_atlas(!ui_vertices.is_empty());
+        let ui_start = vertices.len();
+        vertices.extend_from_slice(&ui_vertices);
+        let ui_vertex_count = ui_vertices.len();
         if !vertices.is_empty() {
             self.ensure_vertex_capacity(vertices.len());
             self.queue
@@ -693,8 +790,9 @@ impl OverlayRenderer {
                     pass.set_bind_group(1, &sprite.face_bind_group, &[]);
                     pass.set_vertex_buffer(0, self.vertex_buffer.slice(body_end..face_end));
                     pass.draw(0..6, 0..1);
-                    if has_trinket {
+                    if has_trinket && let Some(trinkets) = &self.trinkets {
                         let trinket_end = face_end + (6 * std::mem::size_of::<Vertex>()) as u64;
+                        pass.set_bind_group(1, &trinkets.bind_group, &[]);
                         pass.set_vertex_buffer(0, self.vertex_buffer.slice(face_end..trinket_end));
                         pass.draw(0..6, 0..1);
                     }
@@ -708,6 +806,18 @@ impl OverlayRenderer {
                 pass.set_bind_group(1, &bubble.bind_group, &[]);
                 pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
                 pass.draw(0..bubble_vertex_count as u32, 0..1);
+            }
+            // Every icon bubble and every part of the open menu comes out of one texture, so the
+            // whole on-desktop UI is a single extra bind group and a single extra draw, last and
+            // therefore on top of the colony it is talking about.
+            if ui_vertex_count > 0
+                && let Some(atlas) = &self.ui_atlas
+            {
+                let start = (ui_start * std::mem::size_of::<Vertex>()) as u64;
+                let end = start + (ui_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                pass.set_bind_group(1, &atlas.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
+                pass.draw(0..ui_vertex_count as u32, 0..1);
             }
         }
         self.queue.submit(Some(encoder.finish()));
@@ -744,8 +854,9 @@ impl OverlayRenderer {
         save: &SaveFile,
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
+        ui_active: bool,
     ) -> bool {
-        if self.has_visual_content || habitat_editor.is_some() {
+        if self.has_visual_content || habitat_editor.is_some() || ui_active {
             return true;
         }
         let occlusion_rects = visible_occlusion_rects(
@@ -755,11 +866,7 @@ impl OverlayRenderer {
             save.settings.fullscreen_app_occlusion,
         );
         let fully_occluded = rects_cover(self.monitor.bounds, &occlusion_rects);
-        let creature_visible = save.creatures.iter().any(|creature| {
-            creature.state.surface.monitor_id == self.monitor.id
-                && creature.state.arrival_delay_secs <= 0.0
-                && (!fully_occluded || creature.state.action == ActionKind::Dragged)
-        });
+        let creature_visible = !drawn_on_monitor(save, self.monitor.id, fully_occluded).is_empty();
         let shelter_visible = !fully_occluded
             && save.home.is_active()
             && save.home.display == Some(self.monitor.display_key)
@@ -1008,6 +1115,7 @@ impl OverlayRenderer {
                     face_atlas_width: atlas.face_width,
                     face_atlas_height: atlas.face_height,
                     face_anchors: atlas.face_anchors,
+                    silhouette: atlas.silhouette,
                     resting_baseline: CreatureRenderer::resting_baseline(
                         &creature.appearance,
                         reduce_motion,
@@ -1148,6 +1256,78 @@ impl OverlayRenderer {
             _texture: texture,
             bind_group,
             colony_seed,
+        });
+    }
+
+    /// One sheet per colony, rebuilt only when the colony seed or a member's colours change —
+    /// the same caching the colony-object atlas uses.
+    fn ensure_trinket_atlas(&mut self, save: &SaveFile) {
+        let key = TrinketAtlasKey::of(save);
+        if self
+            .trinkets
+            .as_ref()
+            .is_some_and(|trinkets| trinkets.key == key)
+        {
+            return;
+        }
+        let members: Vec<formiga_art::Palette> = save
+            .creatures
+            .iter()
+            .map(|creature| formiga_art::palette_for(&creature.appearance))
+            .collect();
+        let pixels = TrinketAtlasRenderer::render(save.colony_seed, &members).rgba_bytes();
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("static colony trinket atlas"),
+            size: wgpu::Extent3d {
+                width: TRINKET_ATLAS_WIDTH,
+                height: TRINKET_ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(TRINKET_ATLAS_WIDTH * 4),
+                rows_per_image: Some(TRINKET_ATLAS_HEIGHT),
+            },
+            wgpu::Extent3d {
+                width: TRINKET_ATLAS_WIDTH,
+                height: TRINKET_ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("static colony trinket bindings"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.trinkets = Some(TrinketAtlasGpu {
+            _texture: texture,
+            bind_group,
+            key,
         });
     }
 
@@ -1302,18 +1482,12 @@ impl OverlayRenderer {
     /// colony house is always first; companion cottages follow along the same ground line.
     fn village_vertices(&self, save: &SaveFile) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
-        let objects = save
-            .objects
-            .objects
-            .len()
-            .min(formiga_core::MAX_COLONY_OBJECTS);
         let mut vertices = Vec::with_capacity((cottages.len() + 1) * 6);
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
                 &save.home,
                 slot,
                 &cottages,
-                objects,
                 std::slice::from_ref(&self.monitor),
                 &save.settings.habitat,
                 save.settings.display_scale,
@@ -1403,6 +1577,181 @@ impl OverlayRenderer {
             vertex([right, bottom], [1.0, 1.0]),
             vertex([left, bottom], [0.0, 1.0]),
         ])
+    }
+
+    /// Build the UI atlas the first time a bubble or a menu wants it, and let it go again once
+    /// nothing has for a while. It is one 256x80 RGBA upload — 81,920 bytes — so the overlay of a
+    /// quiet colony holds nothing for a feature nobody is using.
+    fn sync_ui_atlas(&mut self, needed: bool) {
+        if !needed {
+            self.ui_atlas_idle = self.ui_atlas_idle.saturating_add(1);
+            if self.ui_atlas_idle >= UI_ATLAS_IDLE_FRAMES {
+                self.ui_atlas = None;
+            }
+            return;
+        }
+        self.ui_atlas_idle = 0;
+        if self.ui_atlas.is_some() {
+            return;
+        }
+        let pixels = UiAtlasRenderer::render().rgba_bytes();
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("on-desktop ui atlas"),
+            size: wgpu::Extent3d {
+                width: UI_ATLAS_WIDTH,
+                height: UI_ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(UI_ATLAS_WIDTH * 4),
+                rows_per_image: Some(UI_ATLAS_HEIGHT),
+            },
+            wgpu::Extent3d {
+                width: UI_ATLAS_WIDTH,
+                height: UI_ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("on-desktop ui atlas bind group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.ui_atlas = Some(UiAtlasGpu {
+            _texture: texture,
+            bind_group,
+        });
+    }
+
+    /// The creature's centre column, the crown of its head, and the row just past its lowest drawn
+    /// pixel, all in monitor-local physical pixels. This is the frame the overlay actually draws,
+    /// gesture and pose included, not the 48x48 box it is drawn inside.
+    fn creature_extent(
+        &self,
+        creature: &Creature,
+        sprite: &SpriteGpu,
+        display_scale: u8,
+    ) -> (f32, f32, f32) {
+        let scale = f32::from(display_scale);
+        let local_x = self
+            .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let contact_y = self
+            .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
+        let frame_top = contact_y + placement.origin_y as f32 * scale;
+        let clip = BodyClip::for_creature(creature);
+        let frame =
+            MotionSignature::for_creature(creature).frame(clip, creature.state.action_elapsed);
+        // Mirroring a frame never changes which rows it fills, so one silhouette serves both ways.
+        let (top, bottom) = sprite
+            .silhouette
+            .get(atlas_slot(clip, frame) as usize)
+            .copied()
+            .unwrap_or((0, FRAME_SIZE as u8));
+        (
+            local_x,
+            frame_top + f32::from(top) * scale,
+            frame_top + f32::from(bottom) * scale,
+        )
+    }
+
+    /// Where a menu for this creature would go, for `creature_menu` to place a strip against.
+    /// `None` until the creature's own atlas has been baked, which happens on its first frame.
+    pub fn menu_anchor(&self, creature: &Creature, display_scale: u8) -> Option<MenuAnchor> {
+        let sprite = self.sprites.get(&creature.id)?;
+        let (centre_x, head_top, foot_bottom) =
+            self.creature_extent(creature, sprite, display_scale);
+        let bounds = self.monitor.bounds;
+        let usable = self.monitor.usable_bounds;
+        let factor = self.monitor.scale_factor;
+        Some(MenuAnchor {
+            centre_x,
+            head_top,
+            foot_bottom,
+            art_scale: f32::from(display_scale),
+            grid: self.render_divisor as f32,
+            usable: LocalRect {
+                x: (usable.x - bounds.x) * factor,
+                y: (usable.y - bounds.y) * factor,
+                width: usable.width * factor,
+                height: usable.height * factor,
+            },
+            monitor_origin: Point {
+                x: bounds.x,
+                y: bounds.y,
+            },
+            scale_factor: factor,
+        })
+    }
+
+    /// Every quad sampled from the UI atlas this frame: one bubble per creature answering, then
+    /// the open menu's frame, its four cells, and the label tab under whichever one is hovered.
+    fn ui_vertices(
+        &self,
+        visible: &[&Creature],
+        display_scale: u8,
+        ui: OverlayUi<'_>,
+    ) -> Vec<Vertex> {
+        let mut vertices = Vec::new();
+        for bubble in ui.bubbles {
+            let Some(creature) = visible
+                .iter()
+                .find(|creature| creature.id == bubble.creature_id)
+            else {
+                continue;
+            };
+            let Some(sprite) = self.sprites.get(&creature.id) else {
+                continue;
+            };
+            let (centre_x, head_top, _) = self.creature_extent(creature, sprite, display_scale);
+            let (x, y) = bubble_origin(centre_x, head_top, f32::from(display_scale), self.layout);
+            // A dragged creature opts out of occlusion, and so does what it is thinking.
+            let occlusion = (creature.state.action != ActionKind::Dragged) as u8 as f32;
+            vertices.extend_from_slice(&ui_atlas_quad(
+                UiAtlasRenderer::bubble(bubble.icon, bubble.growth(ui.reduce_motion)),
+                self.snap(x),
+                self.snap(y),
+                f32::from(display_scale),
+                false,
+                occlusion,
+                self.layout,
+            ));
+        }
+
+        if let Some(menu) = ui.menu
+            && visible
+                .iter()
+                .any(|creature| creature.id == menu.creature_id)
+        {
+            vertices.extend(menu_quads(menu, self.layout));
+        }
+        vertices
     }
 
     fn vertices_for(
@@ -1544,17 +1893,16 @@ impl OverlayRenderer {
             },
         ];
         let trinket = (creature.state.action == ActionKind::PresentDiscovery).then(|| {
-            let trinket_slot = trinket_atlas_slot(creature.state.activity_variant);
-            let trinket_column = trinket_slot % FACE_ATLAS_COLUMNS;
-            let trinket_row = trinket_slot / FACE_ATLAS_COLUMNS;
-            let u_left =
-                trinket_column as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
-            let u_right = (trinket_column + 1) as f32 * FACE_FRAME_SIZE as f32
-                / sprite.face_atlas_width as f32;
-            let v_top =
-                trinket_row as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
-            let v_bottom =
-                (trinket_row + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
+            // The colony's own sheet, not this creature's face texture: one quad sampling the
+            // cell for the variant it found, on the glint frame for part of the presentation.
+            let (cell_x, cell_y, _, _) = TrinketAtlasRenderer::cell_rect(
+                creature.state.activity_variant,
+                trinket_frame(frame),
+            );
+            let u_left = cell_x as f32 / TRINKET_ATLAS_WIDTH as f32;
+            let u_right = (cell_x + TRINKET_CELL) as f32 / TRINKET_ATLAS_WIDTH as f32;
+            let v_top = cell_y as f32 / TRINKET_ATLAS_HEIGHT as f32;
+            let v_bottom = (cell_y + TRINKET_CELL) as f32 / TRINKET_ATLAS_HEIGHT as f32;
             // One explicit anchor, shared with the review sheets, rather than a number here.
             let anchor = PropAnchor::for_creature(creature);
             let center_x = face_center_x + anchor.dx * display_scale as f32;
@@ -1770,6 +2118,137 @@ fn subtract_rect(source: DesktopRect, cut: DesktopRect) -> Vec<DesktopRect> {
     .collect()
 }
 
+/// Who this monitor draws right now: its own colony members, and the guest while it is out.
+///
+/// The one list decides three things at once, which is why it is a function rather than a filter
+/// written twice: which sprites are baked, which the overlay keeps — anyone not here is evicted —
+/// and which creatures a bubble or a menu may be drawn against.
+fn drawn_on_monitor(
+    save: &SaveFile,
+    monitor_id: formiga_core::MonitorId,
+    fully_occluded: bool,
+) -> Vec<&Creature> {
+    save.creatures
+        .iter()
+        .chain(save.visitors.on_stage())
+        .filter(|creature| {
+            creature.state.surface.monitor_id == monitor_id
+                && creature.state.arrival_delay_secs <= 0.0
+                && (!fully_occluded || creature.state.action == ActionKind::Dragged)
+        })
+        .collect()
+}
+
+/// Where a creature's bubble cell goes, in monitor-local physical pixels.
+///
+/// `BUBBLE_ANCHOR` names the blank cell pixel one row under the tail's tip, and it lands on the
+/// art pixel directly above the crown of the head, so the tail reaches down to a one-pixel gap and
+/// never covers the creature. A creature at the very top or the very edge of a display keeps its
+/// whole bubble on screen.
+fn bubble_origin(
+    centre_x: f32,
+    head_top: f32,
+    scale: f32,
+    drawable: PhysicalSize<u32>,
+) -> (f32, f32) {
+    let width = BUBBLE_CELL.0 as f32 * scale;
+    let height = BUBBLE_CELL.1 as f32 * scale;
+    let x = centre_x - BUBBLE_ANCHOR.0 as f32 * scale;
+    let y = head_top - (BUBBLE_ANCHOR.1 + 1) as f32 * scale;
+    (
+        x.clamp(0.0, (drawable.width as f32 - width).max(0.0)),
+        y.clamp(0.0, (drawable.height as f32 - height).max(0.0)),
+    )
+}
+
+/// The open menu, drawn: its frame, one quad per cell, and the label tab under whichever cell is
+/// hovered. Below the creature the frame sprite is drawn upside down, which puts the notch on top
+/// pointing up; the frame is symmetric about its body, so only the notch actually moves, and the
+/// cells and the tab are placed the right way up on top of it.
+fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec<Vertex> {
+    let placement = menu.placement;
+    let art = placement.art_scale;
+    let Some(frame) = UiAtlasRenderer::menu_frame(menu.items.len() as u8) else {
+        return Vec::new();
+    };
+    let mut vertices = Vec::with_capacity(6 * (menu.items.len() + 2));
+    vertices.extend_from_slice(&ui_atlas_quad(
+        frame,
+        placement.x,
+        placement.y,
+        art,
+        placement.below,
+        1.0,
+        drawable,
+    ));
+    let body = placement.body_rect();
+    for (index, icon) in menu.items.iter().enumerate() {
+        let Some(cell) = menu.layout.cell(index) else {
+            continue;
+        };
+        vertices.extend_from_slice(&ui_atlas_quad(
+            UiAtlasRenderer::menu_icon(*icon, menu.hovered == Some(index)),
+            body.x + cell.x as f32 * art,
+            body.y + cell.y as f32 * art,
+            art,
+            false,
+            1.0,
+            drawable,
+        ));
+    }
+    if let Some(hovered) = menu.hovered
+        && let (Some(tab), Some(icon)) = (menu.layout.label_tab(hovered), menu.layout.item(hovered))
+    {
+        vertices.extend_from_slice(&ui_atlas_quad(
+            UiAtlasRenderer::menu_label(icon),
+            placement.x + tab.x as f32 * art,
+            placement.y + tab.y as f32 * art,
+            art,
+            false,
+            1.0,
+            drawable,
+        ));
+    }
+    vertices
+}
+
+/// One nearest-sampled quad out of the UI atlas, placed by its top-left corner in monitor-local
+/// physical pixels.
+fn ui_atlas_quad(
+    rect: SpriteRect,
+    x: f32,
+    y: f32,
+    scale: f32,
+    flip_vertically: bool,
+    occlusion_enabled: f32,
+    drawable: PhysicalSize<u32>,
+) -> [Vertex; 6] {
+    let left = x / drawable.width as f32 * 2.0 - 1.0;
+    let right = (x + rect.width as f32 * scale) / drawable.width as f32 * 2.0 - 1.0;
+    let top = 1.0 - y / drawable.height as f32 * 2.0;
+    let bottom = 1.0 - (y + rect.height as f32 * scale) / drawable.height as f32 * 2.0;
+    let u_left = rect.x as f32 / UI_ATLAS_WIDTH as f32;
+    let u_right = (rect.x + rect.width) as f32 / UI_ATLAS_WIDTH as f32;
+    let mut v_top = rect.y as f32 / UI_ATLAS_HEIGHT as f32;
+    let mut v_bottom = (rect.y + rect.height) as f32 / UI_ATLAS_HEIGHT as f32;
+    if flip_vertically {
+        std::mem::swap(&mut v_top, &mut v_bottom);
+    }
+    let vertex = |position, uv| Vertex {
+        position,
+        uv,
+        occlusion_enabled,
+    };
+    [
+        vertex([left, top], [u_left, v_top]),
+        vertex([right, top], [u_right, v_top]),
+        vertex([right, bottom], [u_right, v_bottom]),
+        vertex([left, top], [u_left, v_top]),
+        vertex([right, bottom], [u_right, v_bottom]),
+        vertex([left, bottom], [u_left, v_bottom]),
+    ]
+}
+
 struct AtlasPixels {
     body_width: u32,
     body_height: u32,
@@ -1778,6 +2257,16 @@ struct AtlasPixels {
     face_height: u32,
     face_pixels: Vec<u8>,
     face_anchors: Vec<PixelPoint>,
+    silhouette: Vec<(u8, u8)>,
+}
+
+/// The first and just-past-the-last rows a frame actually draws on, in art pixels. Measured after
+/// the optional outline, because that is the picture the overlay puts on the desktop.
+fn silhouette_rows(canvas: &formiga_art::Canvas) -> (u8, u8) {
+    match canvas.alpha_bounds() {
+        Some((_, top, _, bottom)) => (top as u8, (bottom + 1) as u8),
+        None => (0, FRAME_SIZE as u8),
+    }
 }
 
 fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -> AtlasPixels {
@@ -1787,6 +2276,7 @@ fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -
     let body_height = body_rows * FRAME_SIZE;
     let mut body_pixels = vec![0_u8; (body_width * body_height * 4) as usize];
     let mut face_anchors = vec![PixelPoint::default(); body_slots as usize];
+    let mut silhouette = vec![(0_u8, FRAME_SIZE as u8); body_slots as usize];
     for clip in BodyClip::baked() {
         let spec = AnimationSpec::for_clip(clip);
         for frame in 0..spec.frames {
@@ -1802,6 +2292,7 @@ fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -
             }
             let slot = atlas_slot(clip, frame);
             face_anchors[slot as usize] = rendered.face_anchor;
+            silhouette[slot as usize] = silhouette_rows(&rendered.canvas);
             blit_atlas_frame(
                 &mut body_pixels,
                 body_width,
@@ -1861,6 +2352,7 @@ fn build_atlas_pixels(creature: &Creature, reduce_motion: bool, outline: bool) -
         face_height,
         face_pixels,
         face_anchors,
+        silhouette,
     }
 }
 
@@ -1911,6 +2403,19 @@ fn face_atlas_slot(state: FaceRenderState) -> u32 {
     state.expression.index() * 27 + state.eyelids.index() * 9 + state.gaze.index()
 }
 
+/// Which frame of a trinket to show. Presentation is four frames at 2fps, so a keepsake rests for
+/// half a second and twinkles for half a second without any timer of its own.
+fn trinket_frame(body_frame: u8) -> u8 {
+    if body_frame % 4 >= 2 {
+        TRINKET_FRAME_GLINT
+    } else {
+        TRINKET_FRAME_REST
+    }
+}
+
+/// The eight slots kept in each creature's face texture. Nothing samples them any more — the
+/// overlay and the scrapbook both draw from the colony atlas — but the layout, and the exact
+/// per-creature texture budget it produces, are unchanged.
 fn trinket_atlas_slot(variant: u8) -> u32 {
     face_slot_count() + u32::from(variant % 8)
 }
@@ -2174,7 +2679,7 @@ mod tests {
             .collect();
         for (choice, atlas) in choices.iter().zip(&first) {
             let bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
-            assert_eq!(bytes, 1_437_696, "{choice:?} costs {bytes} bytes");
+            assert_eq!(bytes, 1_529_856, "{choice:?} costs {bytes} bytes");
             assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
         }
         // Thrown away and baked again, twice over: the same atlas, byte for byte, every time.
@@ -2191,11 +2696,38 @@ mod tests {
                 );
             }
         }
-        // The eight scrapbook trinkets ride in the face atlas the creature already has, so
-        // collecting them all costs no texture and no draw call.
+        // The eight slots the face atlas has always ended with are still there and still the
+        // same size, so switching the overlay to the colony sheet changed nothing per creature.
         assert_eq!(trinket_atlas_slot(0), face_slot_count());
         assert_eq!(trinket_atlas_slot(7) + 1, face_slot_count() + 8);
         assert_eq!(trinket_atlas_slot(8), trinket_atlas_slot(0));
+    }
+
+    /// Every variant the catalogue has — including the eight the simulation cannot pick yet —
+    /// samples a real cell of the colony sheet, on both of its frames.
+    #[test]
+    fn every_trinket_in_the_catalogue_samples_its_own_cell_of_the_colony_sheet() {
+        let mut seen = std::collections::BTreeSet::new();
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
+            for body_frame in 0..4_u8 {
+                let frame = trinket_frame(body_frame);
+                let (x, y, width, height) =
+                    formiga_art::TrinketAtlasRenderer::cell_rect(variant, frame);
+                assert_eq!((width, height), (TRINKET_CELL, TRINKET_CELL));
+                assert!(
+                    x + width <= TRINKET_ATLAS_WIDTH && y + height <= TRINKET_ATLAS_HEIGHT,
+                    "variant {variant} samples outside the sheet"
+                );
+                seen.insert((variant, x, y));
+            }
+        }
+        // Sixteen variants, each on a rest cell and a glint cell.
+        assert_eq!(seen.len(), usize::from(formiga_core::TRINKET_VARIANTS) * 2);
+        // The presentation clip rests for half of itself and twinkles for the other half.
+        assert_eq!(trinket_frame(0), formiga_art::TRINKET_FRAME_REST);
+        assert_eq!(trinket_frame(1), formiga_art::TRINKET_FRAME_REST);
+        assert_eq!(trinket_frame(2), formiga_art::TRINKET_FRAME_GLINT);
+        assert_eq!(trinket_frame(3), formiga_art::TRINKET_FRAME_GLINT);
     }
 
     #[test]
@@ -2227,11 +2759,14 @@ mod tests {
         let bake_time = started.elapsed();
         let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
         eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-        // 90 action frames and 28 gesture frames: ten columns by twelve rows of 48px bodies,
-        // plus the unchanged face atlas. Raised deliberately from 1,161,216 bytes in 0.57.0.
-        assert_eq!(total_animation_frames(), 118);
-        assert_eq!(total_bytes, 1_437_696);
-        assert!(total_bytes <= 1_500_000, "atlas uses {total_bytes} bytes");
+        // 90 action frames and 34 gesture frames: ten columns by thirteen rows of 48px bodies,
+        // plus the unchanged face atlas. Raised deliberately from 1,437,696 bytes in 0.57.1,
+        // where the twelfth row was already full.
+        assert_eq!(total_animation_frames(), 124);
+        assert_eq!(total_bytes, 1_529_856);
+        // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
+        // stops a creature costing more than a creature should, not what stops it having poses.
+        assert!(total_bytes <= 4_500_000, "atlas uses {total_bytes} bytes");
         assert!(total_bytes * 4 < 6_291_456, "four atlases exceed 6 MiB");
         assert!(total_bytes < atlas.body_pixels.len() * 3);
         // The optional outline is baked into the same atlas: no extra texture, no extra frame,
@@ -2287,5 +2822,459 @@ mod tests {
                 "release atlas bake took {bake_time:?}"
             );
         }
+    }
+
+    // -------------------------------------------------------------------------------------
+    // On-desktop UI: icon bubbles, the right-click menu, and whoever is visiting.
+    // -------------------------------------------------------------------------------------
+
+    /// One Retina monitor with a menu bar's worth of inset at the top.
+    fn ui_desktop() -> formiga_core::DesktopSnapshot {
+        formiga_core::DesktopSnapshot {
+            monitors: vec![MonitorInfo {
+                id: 1,
+                display_key: DisplayKey([3; 16]),
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 836.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// The single place these tests build a guest, so the shape of `Visitor` only has to be
+    /// followed in one spot.
+    fn test_guest(creature: Creature) -> formiga_core::Visitor {
+        let mut guest =
+            formiga_core::Visitor::new(creature, formiga_core::VisitorSource::Wanderer, None);
+        guest.on_stage = true;
+        guest
+    }
+
+    fn ui_world() -> World {
+        World::new([11; 32], time::OffsetDateTime::UNIX_EPOCH, &ui_desktop())
+    }
+
+    const DRAWABLE: PhysicalSize<u32> = PhysicalSize::new(1440, 900);
+
+    /// A quad's pixel rectangle, back out of clip space: left, top, right, bottom.
+    fn quad_pixels(quad: &[Vertex]) -> (f32, f32, f32, f32) {
+        let to_x = |value: f32| (value + 1.0) / 2.0 * DRAWABLE.width as f32;
+        let to_y = |value: f32| (1.0 - value) / 2.0 * DRAWABLE.height as f32;
+        (
+            to_x(quad[0].position[0]),
+            to_y(quad[0].position[1]),
+            to_x(quad[1].position[0]),
+            to_y(quad[5].position[1]),
+        )
+    }
+
+    /// Positions and UVs make a round trip through clip space, so they are compared at
+    /// sub-pixel tolerance rather than bit for bit.
+    #[track_caller]
+    fn close(actual: f32, expected: f32, what: &str) {
+        assert!(
+            (actual - expected).abs() < 0.01,
+            "{what}: {actual} is not {expected}"
+        );
+    }
+
+    /// The atlas rect a quad samples, back out of its UVs: x, y, width, height.
+    fn quad_sprite(quad: &[Vertex]) -> (f32, f32, f32, f32) {
+        let left = quad[0].uv[0] * UI_ATLAS_WIDTH as f32;
+        let right = quad[1].uv[0] * UI_ATLAS_WIDTH as f32;
+        let top = quad[0].uv[1] * UI_ATLAS_HEIGHT as f32;
+        let bottom = quad[5].uv[1] * UI_ATLAS_HEIGHT as f32;
+        (left, top.min(bottom), right - left, (bottom - top).abs())
+    }
+
+    #[test]
+    fn the_crown_of_a_head_is_the_frame_it_draws_not_the_box_it_is_drawn_in() {
+        let world = ui_world();
+        let creature = &world.save.creatures[0];
+        let atlas = build_atlas_pixels(creature, false, false);
+        assert_eq!(atlas.silhouette.len(), total_animation_frames() as usize);
+        for clip in BodyClip::baked() {
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let (top, bottom) = atlas.silhouette[atlas_slot(clip, frame) as usize];
+                assert!(top < bottom, "{clip:?} frame {frame} draws nothing");
+                assert!(u32::from(bottom) <= FRAME_SIZE);
+                // A creature never fills its own frame to the very top edge, which is exactly
+                // why a bubble hangs off this row rather than off the frame.
+                assert!(
+                    top > 0,
+                    "{clip:?} frame {frame} touches the frame's top edge"
+                );
+            }
+        }
+        // Mirroring a frame moves no row, so one silhouette serves a creature facing either way.
+        let baked = atlas.silhouette[atlas_slot(ActionKind::Idle, 0) as usize];
+        for facing_right in [false, true] {
+            let mirrored = CreatureRenderer::render_composited_frame(
+                &creature.appearance,
+                BodyClip::from(ActionKind::Idle),
+                0,
+                facing_right,
+                false,
+                FaceRenderState {
+                    expression: formiga_art::ExpressionKind::Neutral,
+                    eyelids: formiga_art::EyelidPose::Open,
+                    gaze: formiga_art::GazeDirection::new(0, 0),
+                },
+            );
+            let bounds = mirrored.alpha_bounds().expect("the creature is drawn");
+            // The composited frame carries the face too, which may reach a row above the body
+            // on its own; the crown is never lower than the body's own first row.
+            assert!(bounds.1 as u8 <= baked.0, "facing_right {facing_right}");
+            assert!(bounds.1 > 0);
+        }
+    }
+
+    #[test]
+    fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
+        let world = ui_world();
+        let adult = world.save.creatures[0].clone();
+        let mut mini = adult.clone();
+        mini.appearance.logical_size = adult.appearance.logical_size / 2;
+        let slot = atlas_slot(ActionKind::Idle, 0) as usize;
+        let adult_top = build_atlas_pixels(&adult, false, false).silhouette[slot].0;
+        let mini_top = build_atlas_pixels(&mini, false, false).silhouette[slot].0;
+        assert!(
+            mini_top > adult_top,
+            "a smaller creature's crown is further down its frame ({mini_top} vs {adult_top})"
+        );
+        // Both bubbles sit the same distance above their own crown, so neither floats.
+        for (name, top) in [("adult", adult_top), ("mini", mini_top)] {
+            let scale = 3.0;
+            let head_top = 400.0 + f32::from(top) * scale;
+            let (_, y) = bubble_origin(700.0, head_top, scale, DRAWABLE);
+            assert_eq!(
+                y + BUBBLE_ANCHOR.1 as f32 * scale,
+                head_top - scale,
+                "{name}: the anchor pixel belongs one art pixel above the crown"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
+        for scale in [2.0_f32, 3.0, 4.0] {
+            let (x, y) = bubble_origin(700.0, 400.0, scale, DRAWABLE);
+            // Centred: the tail column is the creature's own centre column.
+            assert_eq!(x + BUBBLE_ANCHOR.0 as f32 * scale, 700.0);
+            // The tail's tip is the cell's row 14, so exactly one art pixel of daylight is left
+            // between the tip and the crown.
+            let tip_bottom = y + 15.0 * scale;
+            assert_eq!(
+                400.0 - tip_bottom,
+                scale,
+                "one art pixel of gap at {scale}x"
+            );
+            let quad = ui_atlas_quad(
+                UiAtlasRenderer::bubble(
+                    formiga_core::BubbleIcon::Heart,
+                    formiga_core::BubbleGrowth::Full,
+                ),
+                x,
+                y,
+                scale,
+                false,
+                1.0,
+                DRAWABLE,
+            );
+            let (left, top, right, bottom) = quad_pixels(&quad);
+            close(right - left, BUBBLE_CELL.0 as f32 * scale, "bubble width");
+            close(bottom - top, BUBBLE_CELL.1 as f32 * scale, "bubble height");
+            close(left, x, "bubble left");
+            close(top, y, "bubble top");
+            let sprite = quad_sprite(&quad);
+            close(sprite.2, BUBBLE_CELL.0 as f32, "bubble sprite width");
+            close(sprite.3, BUBBLE_CELL.1 as f32, "bubble sprite height");
+        }
+    }
+
+    #[test]
+    fn a_bubble_at_the_top_or_the_edge_of_a_display_stays_on_it() {
+        let scale = 4.0;
+        let width = BUBBLE_CELL.0 as f32 * scale;
+        let height = BUBBLE_CELL.1 as f32 * scale;
+        // A creature with its head at the very top of the display.
+        let (_, y) = bubble_origin(700.0, 6.0, scale, DRAWABLE);
+        assert_eq!(y, 0.0);
+        assert!(y + height <= DRAWABLE.height as f32);
+        // And one pressed against either side.
+        let (left, _) = bubble_origin(2.0, 400.0, scale, DRAWABLE);
+        assert_eq!(left, 0.0);
+        let (right, _) = bubble_origin(DRAWABLE.width as f32 - 2.0, 400.0, scale, DRAWABLE);
+        assert_eq!(right, DRAWABLE.width as f32 - width);
+        // Every growth step is the same cell, so growing never pushes a clamped bubble off.
+        for growth in [
+            formiga_core::BubbleGrowth::Small,
+            formiga_core::BubbleGrowth::Medium,
+            formiga_core::BubbleGrowth::Full,
+        ] {
+            let rect = UiAtlasRenderer::bubble(formiga_core::BubbleIcon::Snack, growth);
+            assert_eq!((rect.width, rect.height), BUBBLE_CELL);
+        }
+    }
+
+    fn placed_menu(below: bool) -> (MenuLayout, [MenuIcon; 4], MenuPlacement) {
+        use crate::creature_menu::{LocalRect, MenuAnchor, MenuTarget, menu_items, place};
+        let items = menu_items(MenuTarget::Member, false);
+        let layout = MenuLayout::new(&items);
+        let scale = 3.0;
+        let usable = LocalRect {
+            x: 0.0,
+            y: 48.0,
+            width: DRAWABLE.width as f32,
+            height: DRAWABLE.height as f32 - 48.0,
+        };
+        let head_top = if below { usable.y + 2.0 } else { 500.0 };
+        let placement = place(
+            &layout,
+            MenuAnchor {
+                centre_x: 700.0,
+                head_top,
+                foot_bottom: head_top + 36.0 * scale,
+                art_scale: scale,
+                grid: 1.0,
+                usable,
+                monitor_origin: Point { x: 0.0, y: 0.0 },
+                scale_factor: 2.0,
+            },
+        );
+        assert_eq!(placement.below, below);
+        (layout, items, placement)
+    }
+
+    #[test]
+    fn an_open_menu_draws_one_frame_one_quad_per_cell_and_one_label_tab() {
+        let (layout, items, placement) = placed_menu(false);
+        let view = |hovered| MenuView {
+            creature_id: 1,
+            items: &items,
+            layout: &layout,
+            placement,
+            hovered,
+        };
+        // Nothing hovered: the frame and its four cells, and no tab.
+        assert_eq!(menu_quads(view(None), DRAWABLE).len(), 6 * 5);
+        let hovered = menu_quads(view(Some(2)), DRAWABLE);
+        assert_eq!(hovered.len(), 6 * 6);
+
+        // The frame quad is the atlas's own four-cell frame, at the placed top-left.
+        let expected = UiAtlasRenderer::menu_frame(4).expect("four cells have a frame");
+        let sprite = quad_sprite(&hovered[..6]);
+        close(sprite.0, expected.x as f32, "frame sprite x");
+        close(sprite.1, expected.y as f32, "frame sprite y");
+        close(sprite.2, expected.width as f32, "frame sprite width");
+        close(sprite.3, expected.height as f32, "frame sprite height");
+        let (left, top, right, bottom) = quad_pixels(&hovered[..6]);
+        close(left, placement.x, "frame left");
+        close(top, placement.y, "frame top");
+        close(
+            right - left,
+            layout.size().0 as f32 * placement.art_scale,
+            "frame width",
+        );
+        close(
+            bottom - top,
+            formiga_art::MENU_STRIP_HEIGHT as f32 * placement.art_scale,
+            "frame height",
+        );
+
+        // Each cell quad lands on its own cell, and only the hovered one is the hovered sprite.
+        let body = placement.body_rect();
+        for index in 0..4 {
+            let quad = &hovered[6 * (index + 1)..6 * (index + 2)];
+            let cell = layout.cell(index).expect("four cells");
+            let (left, top, right, bottom) = quad_pixels(quad);
+            close(
+                left,
+                body.x + cell.x as f32 * placement.art_scale,
+                "cell left",
+            );
+            close(
+                top,
+                body.y + cell.y as f32 * placement.art_scale,
+                "cell top",
+            );
+            let side = formiga_art::MENU_CELL as f32 * placement.art_scale;
+            close(right - left, side, "cell width");
+            close(bottom - top, side, "cell height");
+            close(
+                quad_sprite(quad).0,
+                UiAtlasRenderer::menu_icon(items[index], index == 2).x as f32,
+                &format!("cell {index} samples the wrong icon"),
+            );
+        }
+    }
+
+    #[test]
+    fn the_label_tab_hangs_under_the_hovered_cell_and_inside_the_strip() {
+        let (layout, items, placement) = placed_menu(false);
+        for hovered in 0..4 {
+            let quads = menu_quads(
+                MenuView {
+                    creature_id: 1,
+                    items: &items,
+                    layout: &layout,
+                    placement,
+                    hovered: Some(hovered),
+                },
+                DRAWABLE,
+            );
+            let tab = &quads[6 * 5..];
+            let (left, top, right, bottom) = quad_pixels(tab);
+            let sprite = UiAtlasRenderer::menu_label(items[hovered]);
+            close(quad_sprite(tab).0, sprite.x as f32, "tab sprite x");
+            close(
+                right - left,
+                sprite.width as f32 * placement.art_scale,
+                "tab width",
+            );
+            close(
+                bottom - top,
+                formiga_art::LABEL_TAB_HEIGHT as f32 * placement.art_scale,
+                "tab height",
+            );
+            // Below the strip, never overlapping it, and never hanging off its sides.
+            let frame = placement.frame_rect();
+            assert!(top >= frame.bottom(), "the tab must clear the strip");
+            assert!(left >= frame.x - 0.01 && right <= frame.right() + 0.01);
+            // And under its own cell.
+            let cell = layout.cell(hovered).expect("four cells");
+            let cell_centre = placement.body_rect().x
+                + (cell.x as f32 + formiga_art::MENU_CELL as f32 / 2.0) * placement.art_scale;
+            assert!(
+                (left..=right).contains(&cell_centre),
+                "the tab for cell {hovered} is not under it"
+            );
+        }
+    }
+
+    #[test]
+    fn a_menu_under_a_creature_flips_only_its_frame() {
+        let (layout, items, placement) = placed_menu(true);
+        let quads = menu_quads(
+            MenuView {
+                creature_id: 1,
+                items: &items,
+                layout: &layout,
+                placement,
+                hovered: Some(0),
+            },
+            DRAWABLE,
+        );
+        // The frame samples the same sprite upside down, which points the notch up instead.
+        let frame = &quads[..6];
+        assert!(
+            frame[0].uv[1] > frame[5].uv[1],
+            "the frame is not flipped, so the notch still points down"
+        );
+        close(
+            quad_sprite(frame).0,
+            UiAtlasRenderer::menu_frame(4).expect("frame").x as f32,
+            "flipped frame sprite x",
+        );
+        // The cells and the tab are not flipped, and the cells start a notch further down.
+        for index in 1..6 {
+            let quad = &quads[6 * index..6 * (index + 1)];
+            assert!(quad[0].uv[1] < quad[5].uv[1], "quad {index} is upside down");
+        }
+        let cells_top = quad_pixels(&quads[6..12]).1;
+        let strip_top = quad_pixels(frame).1;
+        close(
+            cells_top - strip_top,
+            (formiga_art::MENU_NOTCH_HEIGHT + 2) as f32 * placement.art_scale,
+            "the cells start a notch and a border below the flipped strip",
+        );
+    }
+
+    #[test]
+    fn the_overlay_draws_whoever_is_visiting_and_forgets_it_the_moment_it_leaves() {
+        let mut world = ui_world();
+        let mut guest =
+            World::preview_adult([42; 32], time::OffsetDateTime::UNIX_EPOCH, &ui_desktop());
+        guest.state.surface.monitor_id = 1;
+        guest.state.arrival_delay_secs = 0.0;
+        let guest_id = guest.id;
+        world.save.visitors.guest = Some(test_guest(guest));
+        let drawn = |save: &SaveFile| -> Vec<CreatureId> {
+            drawn_on_monitor(save, 1, false)
+                .iter()
+                .map(|creature| creature.id)
+                .collect()
+        };
+        let with_guest = drawn(&world.save);
+        assert!(
+            with_guest.contains(&guest_id),
+            "a guest on stage is drawn like anyone else"
+        );
+        assert_eq!(with_guest.last(), Some(&guest_id), "and drawn last, on top");
+
+        // The sprite cache keeps exactly whoever is on that list, so stepping back inside is
+        // enough to evict the guest's atlas — this is the overlay's own `retain`, verbatim.
+        let mut sprites: BTreeSet<CreatureId> = with_guest.iter().copied().collect();
+        world
+            .save
+            .visitors
+            .guest
+            .as_mut()
+            .expect("a guest")
+            .on_stage = false;
+        let without_guest = drawn(&world.save);
+        assert!(!without_guest.contains(&guest_id));
+        sprites.retain(|id| without_guest.contains(id));
+        assert!(
+            !sprites.contains(&guest_id),
+            "the guest's atlas is released"
+        );
+        assert_eq!(sprites.len(), without_guest.len());
+
+        // And leaving for good is the same again.
+        world.save.visitors.guest = None;
+        assert_eq!(drawn(&world.save), without_guest);
+        // A guest is never mistaken for a colony member.
+        assert!(!world.save.creatures.iter().any(|c| c.id == guest_id));
+    }
+
+    #[test]
+    fn a_fully_covered_monitor_drops_the_guest_too_unless_it_is_being_carried() {
+        let mut world = ui_world();
+        let mut guest =
+            World::preview_adult([43; 32], time::OffsetDateTime::UNIX_EPOCH, &ui_desktop());
+        guest.state.surface.monitor_id = 1;
+        guest.state.arrival_delay_secs = 0.0;
+        let guest_id = guest.id;
+        world.save.visitors.guest = Some(test_guest(guest));
+        assert!(drawn_on_monitor(&world.save, 1, true).is_empty());
+        world
+            .save
+            .visitors
+            .guest
+            .as_mut()
+            .expect("a guest")
+            .creature
+            .state
+            .action = ActionKind::Dragged;
+        assert_eq!(
+            drawn_on_monitor(&world.save, 1, true)
+                .iter()
+                .map(|c| c.id)
+                .collect::<Vec<_>>(),
+            vec![guest_id]
+        );
     }
 }

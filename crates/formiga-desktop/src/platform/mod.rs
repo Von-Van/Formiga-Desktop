@@ -8,18 +8,18 @@ pub use macos::{
     OVERLAY_HALF_RESOLUTION, begin_interaction_capture, browse_application,
     canonical_monitor_bounds, configure_interaction_proxy, configure_native_overlay,
     cursor_and_idle, display_key, end_interaction_capture, launch_update, left_button_down,
-    normalize_cursor, normalize_windows, open_directory, set_interaction_hittest,
-    set_interaction_shape, set_launch_at_login, set_overlay_hittest, use_nearest_overlay_filter,
-    visible_windows,
+    normalize_cursor, normalize_windows, open_directory, secondary_click_modifier,
+    set_interaction_hittest, set_interaction_shape, set_launch_at_login, set_menu_proxy_shape,
+    set_overlay_hittest, use_nearest_overlay_filter, visible_windows,
 };
 #[cfg(target_os = "windows")]
 pub use windows::{
     OVERLAY_HALF_RESOLUTION, begin_interaction_capture, browse_application,
     canonical_monitor_bounds, configure_interaction_proxy, configure_native_overlay,
     cursor_and_idle, display_key, end_interaction_capture, launch_update, left_button_down,
-    normalize_cursor, normalize_windows, open_directory, set_interaction_hittest,
-    set_interaction_shape, set_launch_at_login, set_overlay_hittest, use_nearest_overlay_filter,
-    visible_windows,
+    normalize_cursor, normalize_windows, open_directory, secondary_click_modifier,
+    set_interaction_hittest, set_interaction_shape, set_launch_at_login, set_menu_proxy_shape,
+    set_overlay_hittest, use_nearest_overlay_filter, visible_windows,
 };
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

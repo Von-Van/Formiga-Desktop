@@ -19,21 +19,21 @@ impl World {
                         .iter()
                         .find(|c| c.id == helper)
                         .is_some_and(|c| {
-                            let scale = desktop
-                                .monitors
-                                .iter()
-                                .find(|m| m.id == c.state.surface.monitor_id)
-                                .map_or(1.0, |m| {
-                                    (f32::from(self.save.settings.display_scale) / m.scale_factor)
-                                        .clamp(0.5, 2.0)
-                                });
+                            // As far as a helper can lean out from the spot it is standing on,
+                            // which is a companion's width away so it does not cover the face of
+                            // whoever it is pulling up.
+                            let reach = super::super::spacing::face_clear_gap(
+                                c,
+                                self.save.settings.display_scale,
+                                desktop,
+                            ) * 1.4;
                             self.attention
                                 .plans
                                 .get(&helper)
                                 .and_then(|p| p.walk)
                                 .is_none()
                                 && c.state.surface.window_key == gap.hop.surface.window_key
-                                && c.state.position.distance(gap.hop.target) <= 36.0 * scale
+                                && c.state.position.distance(gap.hop.target) <= reach
                         });
                 if !engaged {
                     gap.helper = None;
@@ -78,7 +78,6 @@ impl World {
         let target = gap.hop.target;
         let window = gap.hop.surface.window_key.unwrap();
         let bounds = gap.target_bounds;
-        let monitor = gap.hop.surface.monitor_id;
         let candidate = self
             .save
             .creatures
@@ -100,21 +99,21 @@ impl World {
                 })
             })
             .filter_map(|c| {
-                let scale = desktop
-                    .monitors
-                    .iter()
-                    .find(|m| m.id == monitor)
-                    .map_or(1.0, |m| {
-                        (f32::from(self.save.settings.display_scale) / m.scale_factor)
-                            .clamp(0.5, 2.0)
-                    });
+                // Alongside the hanging companion: close enough to reach it, and far enough that
+                // the helper is not drawn over its face for the length of the rescue.
+                let reach = super::super::spacing::face_clear_gap(
+                    c,
+                    self.save.settings.display_scale,
+                    desktop,
+                );
                 let side = if c.state.position.x >= target.x {
                     1.0
                 } else {
                     -1.0
                 };
-                let destination =
-                    motion::safe_goal(self, c, target.x + side * 34.0 * scale, desktop)?;
+                let destination = [1.0, 1.15, 1.35].into_iter().find_map(|out| {
+                    motion::safe_goal(self, c, target.x + side * reach * out, desktop)
+                })?;
                 Some((c.state.position.distance(destination), c.id, destination))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0));

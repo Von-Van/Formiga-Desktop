@@ -223,6 +223,10 @@ impl AnimationSpec {
             Gesture::Balance => (4, 5),
             Gesture::Reach => (2, 4),
             Gesture::Bop => (4, 6),
+            // Held interest, not a beat: six frames at three a second is a two-second breath,
+            // slow enough that the tilt and the ear twitch read as one creature paying attention
+            // rather than as a body doing something.
+            Gesture::Watch => (6, 3),
         };
         Self {
             frames,
@@ -470,6 +474,7 @@ impl CreatureRenderer {
                     genome,
                     palette,
                     face_anchor,
+                    pose,
                     action,
                     frame,
                     reduce_motion,
@@ -512,10 +517,17 @@ impl CreatureRenderer {
         canvas
     }
 
+    /// One trinket at the size the prop quad samples, coloured against this creature alone. The
+    /// desktop draws found things from the colony atlas instead; this is for the single-sprite
+    /// paths — the review sheets, the contact sheet, and the slots kept in the face texture.
     pub fn render_trinket(genome: &AppearanceGenome, variant: u8) -> Canvas {
         let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
-        let palette = crate::palette_for(genome);
-        draw_generated_trinket(&mut canvas, palette, variant % 8, genome.marking_seed);
+        draw_generated_trinket(
+            &mut canvas,
+            crate::palette_for(genome),
+            variant,
+            genome.marking_seed,
+        );
         canvas
     }
 
@@ -659,9 +671,20 @@ struct Pose {
     appendage_lift: i32,
     tail_sway: i32,
     /// Head carried forward (positive) or back over the body, in art pixels.
+    ///
+    /// A modular body moves its whole head oval; the older family bodies have no separate head,
+    /// so they carry the ears and the reserved face across the mass they already drew. Either way
+    /// the feet stay where they are, which is what makes it read as leaning rather than stepping.
     lean: i32,
     /// Legs folded under the body: it sinks while the feet stay planted.
     crouch: i32,
+    /// Ears, antennae or tufts pricked up past their resting height, in art pixels.
+    ///
+    /// Separate from `appendage_lift`, which lifts the shoulders: this is the pair on top of the
+    /// head, and it grows the ear from its base rather than moving it, so a pricked ear stays
+    /// attached to the head it grew on. Only a pose that is listening as well as looking asks
+    /// for it, so no existing clip changes shape.
+    ear_perk: i32,
 }
 
 impl Pose {
@@ -791,6 +814,9 @@ impl Pose {
                 tail_sway: alternate * 2,
                 ..Self::default()
             },
+            // The plain peek a creature does while it works out what it is looking at. Its own
+            // clip still reads, so it keeps it; it only gains a lean toward the thing, so that
+            // even the unposed half of window attention is pointed at something.
             ActionKind::InspectScreen => Self {
                 bob: i32::from(frame % 2),
                 squash_x: 1,
@@ -800,6 +826,7 @@ impl Pose {
                 play_lift: 1,
                 appendage_lift: 1 + walk.abs(),
                 tail_sway: alternate,
+                lean: 1,
                 ..Self::default()
             },
             ActionKind::PresentDiscovery => Self {
@@ -836,6 +863,9 @@ impl Pose {
     fn for_gesture(gesture: Gesture, frame: u8) -> Self {
         let tick = i32::from(frame % 2);
         let beat = [0, 1, 0, -1][usize::from(frame % 4)];
+        // The watching loop is six frames long, so it gets its own slow counters rather than
+        // borrowing the two- and four-frame ones every other pose shares.
+        let slow = usize::from(frame % 6);
         match gesture {
             // A hop on every other beat, landing squashed and springing up stretched.
             Gesture::Cheer => {
@@ -930,6 +960,31 @@ impl Pose {
                 lean: beat,
                 ..Self::default()
             },
+            // Settled forward over a planted, staggered stance with the ears up: the weight stays
+            // put, the head tilts out and back across the loop, and one ear drops for a single
+            // frame. Everything here is small on purpose — a watching creature is nearly still,
+            // and the pose has to hold for as long as the thing is worth watching.
+            Gesture::Watch => Self {
+                bob: 0,
+                // Drawn in narrower and up taller, which also carries the head higher: attention
+                // gathers a body rather than spreading it, and the lifted head is half of what
+                // says the creature is looking at something rather than standing about.
+                squash_x: -1,
+                squash_y: 2,
+                // Front foot forward, back foot braced: a stance already turned to the thing.
+                step_a: -1,
+                step_b: 2,
+                play_lift: 0,
+                // Shoulders held high and tight, dropping once in the middle of the loop.
+                appendage_lift: [3, 3, 3, 1, 3, 3][slow],
+                // The tail drifts rather than swings.
+                tail_sway: [0, 1, 1, 1, 0, 0][slow],
+                // The head carried out over the forward foot, easing further and settling back.
+                lean: [2, 3, 3, 3, 2, 2][slow],
+                crouch: 0,
+                // Ears up the whole time, with a single flick on the fourth frame.
+                ear_perk: [2, 2, 2, 1, 2, 2][slow],
+            },
         }
     }
 
@@ -945,6 +1000,9 @@ impl Pose {
         self.step_b /= 2;
         self.lean = self.lean.clamp(-1, 1);
         self.crouch = self.crouch.min(1);
+        // A pricked ear is shape rather than travel, so it survives at half height: the pose still
+        // reads as listening, and it holds that one shape without twitching.
+        self.ear_perk = self.ear_perk.clamp(0, 1);
     }
 }
 
@@ -965,8 +1023,10 @@ fn draw_blob(
     let ry = ((genome.body_height as f32 * s / 2.0).round() as i32 + pose.squash_y).clamp(5, 14);
     let cx = 26;
     let cy = 38 - ry + pose.bob - pose.play_lift;
+    // A blob is one mass with its face on it, so leaning carries the face and the ears together.
+    let lean = pose.lean.clamp(-2, 2);
     draw_tail(canvas, genome, palette, cx - rx + 1, cy, s, pose);
-    draw_head_appendages(canvas, genome, palette, cx, cy - ry + 2, s, pose);
+    draw_head_appendages(canvas, genome, palette, cx + lean, cy - ry + 2, s, pose);
     canvas.fill_ellipse(cx, cy + 1, rx + 1, ry + 1, palette.outline);
     canvas.fill_ellipse(cx, cy, rx, ry, palette.coat);
     canvas.fill_ellipse(
@@ -999,7 +1059,7 @@ fn draw_blob(
         },
     );
     PixelPoint {
-        x: cx + 2,
+        x: cx + 2 + lean,
         y: cy - 1,
     }
 }
@@ -1021,9 +1081,11 @@ fn draw_hopper(
     let ground = 43;
     // A crouch folds the legs: the body sinks and the feet stay on the ground.
     let cy = ground - leg - ry + pose.bob - pose.play_lift + pose.crouch.clamp(0, leg - 2);
+    // A hopper carries its face on the front of its mass, so the ears and the face lean together.
+    let lean = pose.lean.clamp(-2, 2);
     // Rooted low on the rear edge so the puff clears the body ellipse drawn over it.
     draw_tail(canvas, genome, palette, cx - rx, cy + ry / 2, s, pose);
-    draw_head_appendages(canvas, genome, palette, cx, cy - ry + 2, s, pose);
+    draw_head_appendages(canvas, genome, palette, cx + lean, cy - ry + 2, s, pose);
     draw_hopper_leg(
         canvas,
         palette,
@@ -1065,7 +1127,7 @@ fn draw_hopper(
         },
     );
     PixelPoint {
-        x: cx + 1,
+        x: cx + 1 + lean,
         y: cy - 2,
     }
 }
@@ -1163,7 +1225,9 @@ fn draw_quadruped(
         },
         ground,
     );
-    let head_x = body_x + body_rx - 1;
+    // A cat has a head of its own, so the whole head — ears, muzzle and reserved face — leans
+    // out over the forward paws while the body and the legs stay exactly where they stood.
+    let head_x = body_x + body_rx - 1 + pose.lean.clamp(-3, 3);
     let head_y = body_y - 2;
     // Rooted at the crown so the head circle only buries the base of each ear.
     draw_head_appendages(
@@ -1471,7 +1535,8 @@ fn draw_head_appendages(
     s: f32,
     pose: Pose,
 ) {
-    let size = ((genome.head_appendages.size as f32 * s).round() as i32).clamp(2, 8);
+    let size = ((genome.head_appendages.size as f32 * s).round() as i32).clamp(2, 8)
+        + pose.ear_perk.clamp(0, 2);
     match genome.family {
         // Cats and rabbits always keep ears; the style gene varies their shape instead of
         // removing them, so both families stay recognizable across every genome.
@@ -1757,6 +1822,7 @@ fn draw_quadruped_forelimbs(
                 | Gesture::Balance
                 | Gesture::Reach
                 | Gesture::Bop
+                | Gesture::Watch
         )
     ) {
         draw_quad_leg(
@@ -1954,6 +2020,14 @@ fn gesture_limb_targets(
                 2 => (at(left.x - length, left.y - length - 2), resting_right),
                 _ => offset_pair(left, right, ((-length, 0), (length, 0))),
             }
+        }
+        // The far paw stays where it rests and the near one is gathered up in front of the chest,
+        // curled rather than stretched: half the span a reach uses, and nowhere near the face.
+        // Both limbs gathered in against the chest and held there: a body drawn together around
+        // what it is looking at, rather than a part of it put out toward the thing.
+        Gesture::Watch => {
+            let curl = [0, 1, 1, 0, 0, 0][usize::from(frame % 6)];
+            offset_pair(left, right, ((2, 3 - curl), (-1, 2 - curl)))
         }
     }
 }
@@ -2256,44 +2330,182 @@ fn draw_quad_leg(
     canvas.fill_ellipse(x + step + 1, ground, 2, 1, palette.accent);
 }
 
+/// How many kinds of each belonging the generator can produce. Every one is resolved from genes
+/// the appearance genome already stores, so nothing is added to a save: an existing companion
+/// simply reaches for a clearer toy from a larger shelf.
+pub const TOY_KINDS: u8 = 8;
+pub const SNACK_KINDS: u8 = 4;
+pub const DRINK_KINDS: u8 = 3;
+
+/// The one number every belonging is resolved from.
+fn prop_signature(genome: &AppearanceGenome) -> u64 {
+    genome.marking_seed ^ u64::from(genome.face_signature)
+}
+
+/// Which toy, snack, and cup one appearance owns. Stable for the life of a creature.
+pub fn prop_variants(genome: &AppearanceGenome) -> (u8, u8, u8) {
+    let signature = prop_signature(genome);
+    (
+        (signature % u64::from(TOY_KINDS)) as u8,
+        ((signature >> 7) % u64::from(SNACK_KINDS)) as u8,
+        ((signature >> 13) % u64::from(DRINK_KINDS)) as u8,
+    )
+}
+
+/// Where a body holds what it is using. Props are placed from these two points rather than from an
+/// offset guessed against the face, so a toy lands in the paw that is actually drawn and a snack
+/// arrives at the mouth that is eating it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PropHold {
+    pub(crate) hands: PixelPoint,
+    pub(crate) mouth: PixelPoint,
+    pub(crate) floor: i32,
+    /// Which way is away from this body's own face: `1` for a body whose paws are in front of its
+    /// head, `-1` for one whose head leads and whose chest trails behind it.
+    pub(crate) forward: i32,
+}
+
+fn prop_hold(genome: &AppearanceGenome, pose: Pose, face: PixelPoint) -> PropHold {
+    if let Some(design) = genome.design {
+        return modular::prop_hold(design, pose, scale(genome));
+    }
+    // The original families carry their face on the body itself, so a belonging is placed out to
+    // the side of the mass rather than in front of a separate head.
+    let (dx, dy) = match genome.family {
+        BodyFamily::Blob => (12, 4),
+        BodyFamily::Hopper => (12, 5),
+        // A soft quadruped's head is the anchor and its chest is behind it.
+        BodyFamily::SoftQuadruped => (-12, 7),
+    };
+    PropHold {
+        hands: PixelPoint {
+            x: face.x + dx,
+            y: face.y + dy,
+        },
+        mouth: PixelPoint {
+            x: face.x + 6,
+            y: face.y + 5,
+        },
+        floor: 42,
+        forward: dx.signum(),
+    }
+}
+
+/// One round of play, one mouthful, or one sip — placed where the body can reach it.
+#[allow(clippy::too_many_arguments)]
 fn draw_activity_prop(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
     palette: Palette,
     face: PixelPoint,
+    pose: Pose,
     action: ActionKind,
     frame: u8,
     reduce_motion: bool,
 ) {
     let phase = if reduce_motion { 0 } else { frame % 4 };
-    let signature = genome.marking_seed ^ u64::from(genome.face_signature);
-    let variant = (signature % 4) as u8;
+    let (toy, snack, drink) = prop_variants(genome);
     // Belongings are coloured against the creature, not from it, so a held toy stays readable.
-    let palette = crate::prop_palette(palette, signature);
+    let palette = crate::prop_palette(palette, prop_signature(genome));
+    let hold = prop_hold(genome, pose, face);
     match action {
         ActionKind::SoloPlay => {
-            let (x, y) = match phase {
-                0 => (face.x + 7, face.y + 8),
-                1 => (face.x + 10, face.y + 3),
-                2 => (face.x + 6, face.y - 7),
-                _ => (face.x + 3, face.y + 2),
-            };
-            draw_generated_toy(canvas, palette, genome.effect_motif, variant, x, y);
+            // One round of keep-up, read straight off the paw: knocked up off the paw, over the
+            // head, caught coming down, and back onto the paw. The toy is the thing that moves,
+            // and it passes through the paw twice a loop, so play reads as play even on a body
+            // whose forelimbs stay folded.
+            let at = |phase: u8| play_path(hold, phase);
+            let (x, y, spin) = at(phase);
+            if !reduce_motion {
+                let (px, py, _) = at((phase + 3) % 4);
+                draw_prop_trail(canvas, palette, (px, py), (x, y));
+            }
+            draw_generated_toy(canvas, palette, genome.effect_motif, toy, x, y, spin);
+            if phase == 0 || phase == 3 {
+                // The knock itself: two ticks where the toy meets the paw that is keeping it up.
+                for (dx, dy) in [(-1, 3), (1, 4)] {
+                    canvas.set(x + dx * hold.forward, y + dy, palette.highlight);
+                }
+            }
         }
         ActionKind::Eat => {
-            let x = face.x + 5 - i32::from(phase >= 2);
-            let y = face.y + 5 - i32::from(phase % 3);
-            draw_generated_snack(canvas, palette, variant, x, y, phase);
+            // Carried up to the mouth and taken down to a crumb.
+            let lift = [0, 2, 3, 1][usize::from(phase)];
+            let x = hold.mouth.x - 1 + i32::from(phase == 0) * 2;
+            let y = hold.mouth.y + 2 - lift;
+            draw_generated_snack(canvas, palette, snack, x, y, phase);
+            if phase == 3 {
+                // Crumbs, so the last frame is the end of a mouthful rather than an empty hand.
+                canvas.set(hold.mouth.x - 2, hold.mouth.y + 5, palette.shadow);
+                canvas.set(hold.mouth.x + 1, hold.mouth.y + 6, palette.highlight);
+            }
         }
         ActionKind::Drink => {
-            let x = face.x + 4;
-            let y = face.y + 7 - i32::from(phase == 1 || phase == 2) * 2;
-            draw_generated_drinkware(canvas, palette, variant, x, y);
+            let tipped = phase == 1 || phase == 2;
+            let x = hold.mouth.x - 1;
+            let y = hold.mouth.y + 4 - i32::from(tipped) * 3;
+            draw_generated_drinkware(canvas, palette, drink, x, y, tipped, phase);
         }
         _ => {}
     }
 }
 
+/// Where the toy is on each beat of the play loop, and how far it has turned by then.
+fn play_path(hold: PropHold, phase: u8) -> (i32, i32, u8) {
+    let (hx, hy) = (hold.hands.x, hold.hands.y);
+    let (dx, dy, spin) = match phase {
+        // Resting on the paw.
+        0 => (0, -1, 0),
+        // Knocked up and away from the body.
+        1 => (3, -5, 1),
+        // The top of its arc: clear of the creature, never over its face, and never so high that
+        // the paw it came off has visibly let go of it.
+        2 => (5, -8, 2),
+        // Coming back down onto the paw.
+        _ => (1, -4, 3),
+    };
+    let dx = dx * hold.forward;
+    // Nothing sinks into the surface underfoot, and the widest toy still keeps the one-pixel
+    // margin the atlas needs without the whole sprite being shifted to make room for it.
+    (
+        (hx + dx).clamp(8, FRAME_SIZE as i32 - 9),
+        (hy + dy)
+            .min(hold.floor - 4)
+            .clamp(8, FRAME_SIZE as i32 - 9),
+        spin,
+    )
+}
+
+/// Two short dashes along the way the toy has just come. Nothing here is animated on its own: the
+/// marks are simply drawn between this beat's position and the last one's.
+fn draw_prop_trail(canvas: &mut Canvas, palette: Palette, from: (i32, i32), to: (i32, i32)) {
+    for step in [2, 4, 6] {
+        let x = from.0 + (to.0 - from.0) * step / 8;
+        let y = from.1 + (to.1 - from.1) * step / 8;
+        canvas.set(x, y, palette.outline);
+        canvas.set(x + 1, y, palette.highlight);
+    }
+}
+
+/// A shape with the shared dark edge every belonging carries, so nothing melts into a coat.
+fn prop_blob(canvas: &mut Canvas, palette: Palette, x: i32, y: i32, rx: i32, ry: i32, fill: Rgba) {
+    canvas.fill_ellipse(x, y, rx + 1, ry + 1, palette.outline);
+    canvas.fill_ellipse(x, y, rx, ry, fill);
+}
+
+fn prop_box(canvas: &mut Canvas, palette: Palette, x: i32, y: i32, rx: i32, ry: i32, fill: Rgba) {
+    canvas.fill_rect(
+        x - rx - 1,
+        y - ry - 1,
+        rx * 2 + 3,
+        ry * 2 + 3,
+        palette.outline,
+    );
+    canvas.fill_rect(x - rx, y - ry, rx * 2 + 1, ry * 2 + 1, fill);
+}
+
+/// Eight playthings, each with a silhouette that survives being shrunk to 2x on a busy desktop:
+/// a ball, a spinning top, a plush, a block, a yo-yo, a rattle, a pinwheel, and a hoop.
 fn draw_generated_toy(
     canvas: &mut Canvas,
     palette: Palette,
@@ -2301,25 +2513,109 @@ fn draw_generated_toy(
     variant: u8,
     x: i32,
     y: i32,
+    spin: u8,
 ) {
-    match variant {
+    let tilt = [0, 1, 0, -1][usize::from(spin % 4)];
+    match variant % TOY_KINDS {
+        // Ball, with a seam that turns as it flies.
         0 => {
-            canvas.fill_circle(x, y, 3, palette.outline);
-            canvas.fill_circle(x, y, 2, palette.accent);
-            canvas.line(x - 1, y - 2, x + 2, y + 1, 1, palette.highlight);
+            prop_blob(canvas, palette, x, y, 4, 4, palette.accent);
+            match spin % 4 {
+                0 => canvas.line(x, y - 3, x, y + 3, 1, palette.shadow),
+                1 => canvas.line(x - 3, y - 2, x + 3, y + 2, 1, palette.shadow),
+                2 => canvas.line(x - 3, y, x + 3, y, 1, palette.shadow),
+                _ => canvas.line(x - 3, y + 2, x + 3, y - 2, 1, palette.shadow),
+            }
+            canvas.set(x - 2, y - 2, palette.highlight);
+            canvas.set(x - 1, y - 3, palette.highlight);
         }
+        // Spinning top: a broad disc on a point, leaning further over the faster it goes.
         1 => {
-            canvas.fill_circle(x, y, 3, palette.outline);
-            canvas.fill_circle(x, y, 2, palette.shadow);
-            canvas.line(x - 2, y, x + 2, y - 1, 1, palette.highlight);
-            canvas.line(x - 1, y + 2, x + 1, y - 2, 1, palette.accent);
-            canvas.line(x + 2, y + 1, x + 4, y + 2, 1, palette.shadow);
+            canvas.fill_ellipse(x + tilt, y - 1, 6, 4, palette.outline);
+            canvas.fill_ellipse(x + tilt, y - 1, 5, 3, palette.accent);
+            canvas.line(x + tilt, y + 1, x + tilt * 2, y + 5, 3, palette.outline);
+            canvas.line(x + tilt, y + 1, x + tilt * 2, y + 5, 1, palette.highlight);
+            canvas.fill_rect(x + tilt - 2, y - 6, 5, 3, palette.outline);
+            canvas.fill_rect(x + tilt - 1, y - 5, 3, 2, palette.highlight);
+            canvas.line(x + tilt - 4, y - 1, x + tilt + 4, y - 2, 1, palette.shadow);
         }
+        // Plush, with its own two ears and two stitched eyes.
         2 => {
-            canvas.line(x - 2, y + 2, x + 2, y - 2, 1, palette.outline);
-            canvas.fill_ellipse(x - 1, y, 2, 1, palette.accent);
-            canvas.fill_ellipse(x + 1, y - 1, 2, 1, palette.highlight);
+            for side in [-1, 1] {
+                prop_blob(canvas, palette, x + side * 3, y - 4, 2, 2, palette.accent);
+            }
+            prop_blob(canvas, palette, x, y + 1, 4, 4, palette.accent);
+            canvas.set(x - 2, y - 1, palette.outline);
+            canvas.set(x + 2, y - 1, palette.outline);
+            canvas.line(x - 1, y + 2, x + 1, y + 2, 1, palette.shadow);
+            canvas.set(x - 3, y - 1, palette.highlight);
         }
+        // Building block, with a mark cut into its face.
+        3 => {
+            prop_box(canvas, palette, x, y, 4, 4, palette.accent);
+            canvas.fill_rect(x - 4, y - 4, 9, 1, palette.highlight);
+            canvas.fill_rect(x - 4, y - 4, 1, 9, palette.highlight);
+            canvas.fill_rect(x - 2, y - 2, 5, 5, palette.shadow);
+            canvas.fill_rect(x - 1, y - 1, 3, 3, palette.accent);
+        }
+        // Yo-yo, on a string from the paw above it.
+        4 => {
+            canvas.line(x, y - 10, x, y - 4, 1, palette.outline);
+            prop_blob(canvas, palette, x, y, 4, 4, palette.accent);
+            canvas.fill_rect(x - 4, y - 1, 9, 2, palette.shadow);
+            canvas.set(x - 2, y - 2, palette.highlight);
+        }
+        // Rattle: a bulb on a handle, shaking the way it is carried.
+        5 => {
+            canvas.line(x - tilt, y + 1, x - tilt * 2, y + 7, 3, palette.outline);
+            canvas.line(x - tilt, y + 1, x - tilt * 2, y + 7, 1, palette.highlight);
+            prop_blob(canvas, palette, x, y - 3, 5, 5, palette.accent);
+            canvas.fill_rect(x - 2, y - 4, 4, 2, palette.shadow);
+            canvas.set(x - 3, y - 5, palette.highlight);
+            canvas.set(x - 2, y - 6, palette.highlight);
+        }
+        // Pinwheel: four sails on a stick, turning with the beat.
+        6 => {
+            canvas.line(x, y, x, y + 7, 3, palette.outline);
+            canvas.line(x, y, x, y + 7, 1, palette.highlight);
+            let mut sail = [
+                (0, -1),
+                (0, -2),
+                (0, -3),
+                (0, -4),
+                (1, -2),
+                (1, -3),
+                (1, -4),
+                (2, -3),
+                (2, -4),
+                (3, -4),
+            ];
+            for turn in 0..4 {
+                let fill = if (turn + spin).is_multiple_of(2) {
+                    palette.accent
+                } else {
+                    palette.shadow
+                };
+                for (dx, dy) in sail {
+                    canvas.fill_circle(x + dx, y + dy, 1, palette.outline);
+                }
+                for (dx, dy) in sail {
+                    canvas.set(x + dx, y + dy, fill);
+                }
+                sail = sail.map(|(dx, dy)| (-dy, dx));
+            }
+            canvas.fill_circle(x, y, 1, palette.outline);
+            canvas.set(x, y, palette.highlight);
+        }
+        // Hoop, wide enough to be a hoop rather than a bead.
+        7 => {
+            canvas.fill_ellipse(x, y, 5, 5, palette.outline);
+            canvas.fill_ellipse(x, y, 4, 4, palette.accent);
+            canvas.fill_ellipse(x, y, 2, 2, palette.shadow);
+            canvas.set(x - 3, y - 2, palette.highlight);
+            canvas.set(x - 2, y - 3, palette.highlight);
+        }
+        // Unreachable while TOY_KINDS is 8; kept so a larger shelf never draws nothing.
         _ => draw_motif(
             canvas,
             if motif == EffectMotif::None {
@@ -2334,6 +2630,7 @@ fn draw_generated_toy(
     }
 }
 
+/// Four things worth eating, each one visibly smaller by the mouthful.
 fn draw_generated_snack(
     canvas: &mut Canvas,
     palette: Palette,
@@ -2342,117 +2639,99 @@ fn draw_generated_snack(
     y: i32,
     phase: u8,
 ) {
-    if phase == 3 {
-        canvas.set(x - 1, y, palette.accent);
-        canvas.set(x + 1, y + 1, palette.highlight);
-        return;
-    }
-    match variant % 3 {
+    // Whole, bitten, half gone, and down to the last of it.
+    let left = [3, 3, 2, 1][usize::from(phase % 4)];
+    match variant % SNACK_KINDS {
+        // A berry on its stem.
         0 => {
-            canvas.fill_circle(x, y, 2, palette.outline);
-            canvas.fill_circle(x, y, 1, palette.accent);
-            canvas.line(x, y - 2, x + 1, y - 4, 1, palette.shadow);
+            canvas.line(x, y - left - 1, x + 2, y - left - 3, 1, palette.shadow);
+            prop_blob(canvas, palette, x, y, left, left, palette.accent);
+            canvas.set(x - 1, y - 1, palette.highlight);
         }
+        // A biscuit with seeds in it.
         1 => {
-            canvas.fill_rect(x - 3, y - 2, 6, 5, palette.outline);
-            canvas.fill_rect(x - 2, y - 1, 4, 3, palette.accent);
-            canvas.set(x - 1, y, palette.shadow);
-            canvas.set(x + 1, y + 1, palette.shadow);
+            prop_box(canvas, palette, x, y, left, left - 1, palette.accent);
+            for (dx, dy) in [(-1, -1), (1, 0), (0, 1)] {
+                canvas.set(x + dx, y + dy, palette.shadow);
+            }
+            canvas.fill_rect(x - left, y - left + 1, left, 1, palette.highlight);
         }
-        _ => {
-            canvas.line(x - 2, y + 2, x + 2, y - 2, 1, palette.outline);
-            canvas.fill_ellipse(x, y, 3, 1, palette.accent);
-            canvas.line(x - 1, y + 1, x + 1, y - 1, 1, palette.highlight);
-        }
-    }
-}
-
-fn draw_generated_drinkware(canvas: &mut Canvas, palette: Palette, variant: u8, x: i32, y: i32) {
-    if variant.is_multiple_of(2) {
-        canvas.fill_rect(x - 3, y - 3, 6, 5, palette.outline);
-        canvas.fill_rect(x - 2, y - 2, 4, 3, palette.highlight);
-        canvas.line(x + 3, y - 2, x + 4, y + 1, 1, palette.outline);
-    } else {
-        canvas.fill_ellipse(x, y, 4, 2, palette.outline);
-        canvas.fill_ellipse(x, y - 1, 3, 1, palette.highlight);
-        canvas.line(x - 3, y, x - 2, y + 2, 1, palette.outline);
-        canvas.line(x + 3, y, x + 2, y + 2, 1, palette.outline);
-    }
-    canvas.set(x, y - 2, palette.accent);
-}
-
-fn draw_generated_trinket(canvas: &mut Canvas, palette: Palette, variant: u8, detail_seed: u64) {
-    let palette = crate::prop_palette(palette, detail_seed ^ u64::from(variant));
-    let accent = if detail_seed & 1 == 0 {
-        palette.accent
-    } else {
-        palette.highlight
-    };
-    match variant % 8 {
-        // Gem
-        0 => {
-            canvas.line(8, 2, 13, 7, 1, palette.outline);
-            canvas.line(13, 7, 8, 14, 1, palette.outline);
-            canvas.line(8, 14, 3, 7, 1, palette.outline);
-            canvas.line(3, 7, 8, 2, 1, palette.outline);
-            canvas.fill_ellipse(8, 8, 3, 4, accent);
-            canvas.line(6, 5, 9, 4, 1, palette.highlight);
-        }
-        // Key
-        1 => {
-            canvas.fill_circle(5, 5, 3, palette.outline);
-            canvas.fill_circle(5, 5, 1, Rgba::TRANSPARENT);
-            canvas.line(7, 7, 13, 13, 2, palette.outline);
-            canvas.line(7, 7, 13, 13, 1, accent);
-            canvas.line(11, 11, 13, 9, 1, palette.outline);
-        }
-        // Leaf
+        // A seed, pointed at one end.
         2 => {
-            canvas.fill_ellipse(8, 7, 5, 4, palette.outline);
-            canvas.fill_ellipse(8, 7, 4, 3, accent);
-            canvas.line(4, 11, 12, 3, 1, palette.shadow);
-            canvas.line(8, 7, 12, 8, 1, palette.highlight);
+            prop_blob(canvas, palette, x, y, left - 1, left, palette.accent);
+            canvas.line(x, y - left, x + 1, y - left - 2, 1, palette.outline);
+            canvas.set(x - 1, y, palette.highlight);
         }
-        // Shell
-        3 => {
-            canvas.fill_ellipse(8, 9, 6, 4, palette.outline);
-            canvas.fill_ellipse(8, 8, 5, 3, accent);
-            canvas.line(8, 5, 8, 12, 1, palette.shadow);
-            canvas.line(5, 6, 6, 12, 1, palette.highlight);
-            canvas.line(11, 6, 10, 12, 1, palette.shadow);
-        }
-        // Ring charm
-        4 => {
-            canvas.fill_circle(8, 8, 5, palette.outline);
-            canvas.fill_circle(8, 8, 3, Rgba::TRANSPARENT);
-            canvas.fill_circle(8, 2, 2, accent);
-            canvas.set(7, 1, palette.highlight);
-        }
-        // Tiny bottle
-        5 => {
-            canvas.fill_rect(6, 2, 4, 3, palette.outline);
-            canvas.fill_rect(4, 5, 8, 9, palette.outline);
-            canvas.fill_rect(5, 6, 6, 7, palette.shadow);
-            canvas.fill_rect(5, 9, 6, 4, accent);
-            canvas.set(6, 7, palette.highlight);
-        }
-        // Star relic
-        6 => {
-            canvas.line(8, 2, 8, 14, 2, palette.outline);
-            canvas.line(2, 8, 14, 8, 2, palette.outline);
-            canvas.line(4, 4, 12, 12, 1, palette.outline);
-            canvas.line(12, 4, 4, 12, 1, palette.outline);
-            canvas.fill_circle(8, 8, 2, accent);
-            canvas.set(8, 7, palette.highlight);
-        }
-        // Odd little tablet
+        // A slice, rind side down.
         _ => {
-            canvas.fill_rect(3, 3, 10, 11, palette.outline);
-            canvas.fill_rect(4, 4, 8, 9, accent);
-            canvas.fill_circle(8, 7, 2, palette.shadow);
-            canvas.line(6, 11, 10, 11, 1, palette.highlight);
+            canvas.fill_ellipse(x, y, left + 1, left, palette.outline);
+            canvas.fill_ellipse(x, y, left, left - 1, palette.accent);
+            canvas.fill_rect(x - left, y + left - 1, left * 2 + 1, 1, palette.shadow);
+            canvas.set(x - 1, y - 1, palette.highlight);
         }
     }
+    if phase > 0 {
+        // The bite taken out of it, on the side the mouth is.
+        canvas.fill_circle(x + left, y - 1, 1, Rgba::TRANSPARENT);
+    }
+}
+
+/// Three things to drink from, each tipped toward the mouth on the swallow.
+fn draw_generated_drinkware(
+    canvas: &mut Canvas,
+    palette: Palette,
+    variant: u8,
+    x: i32,
+    y: i32,
+    tipped: bool,
+    phase: u8,
+) {
+    let lean = i32::from(tipped);
+    let x = x + lean;
+    match variant % DRINK_KINDS {
+        // A tall mug with a C handle on the side, steaming while it rests.
+        0 => {
+            prop_box(canvas, palette, x - 1, y, 3, 4, palette.highlight);
+            canvas.fill_rect(x - 4, y - 4 + lean * 2, 7, 2, palette.accent);
+            canvas.fill_ellipse(x + 4, y + 1, 3, 3, palette.outline);
+            canvas.fill_ellipse(x + 4, y + 1, 2, 2, Rgba::TRANSPARENT);
+            canvas.fill_rect(x + 1, y - 1, 3, 5, palette.highlight);
+            if !tipped {
+                for (dx, dy) in [(-1, -7), (0, -9), (1, -11)] {
+                    canvas.set(x + dx, y + dy, palette.highlight);
+                }
+            }
+        }
+        // A wide shallow bowl, with the surface tilting as it is lifted.
+        1 => {
+            canvas.fill_ellipse(x, y, 6, 4, palette.outline);
+            canvas.fill_rect(x - 6, y - 4, 13, 4, Rgba::TRANSPARENT);
+            canvas.fill_ellipse(x, y, 5, 3, palette.highlight);
+            canvas.fill_rect(x - 5, y - 3, 11, 3, Rgba::TRANSPARENT);
+            canvas.fill_rect(x - 5, y - 1 - lean, 11, 2, palette.accent);
+            canvas.fill_rect(x - 6, y - 2, 13, 1, palette.outline);
+            canvas.fill_rect(x - 5, y - 2, 4, 1, palette.highlight);
+        }
+        // A narrow bottle with a cap and a bent straw standing out of it.
+        _ => {
+            prop_box(canvas, palette, x, y + 1, 2, 3, palette.highlight);
+            canvas.fill_rect(x - 2, y + 1, 5, 4, palette.accent);
+            canvas.fill_rect(x - 2, y - 4, 5, 2, palette.outline);
+            canvas.fill_rect(x - 1, y - 3, 3, 1, palette.highlight);
+            canvas.fill_rect(x - 1, y - 6, 3, 2, palette.outline);
+            // The straw leans a little further out on alternate beats, so a sip reads as a sip.
+            let bend = 2 + i32::from(phase % 2);
+            canvas.line(x + 1, y - 5, x + bend, y - 10, 2, palette.outline);
+            canvas.line(x + 1, y - 5, x + bend, y - 10, 1, palette.accent);
+        }
+    }
+}
+
+/// One found thing, drawn from the shared catalogue so a keepsake looks the same wherever it is
+/// shown — the scrapbook, a review sheet, or a companion holding it up.
+fn draw_generated_trinket(canvas: &mut Canvas, palette: Palette, variant: u8, detail_seed: u64) {
+    let ink = crate::trinkets::ink_against(palette, detail_seed ^ u64::from(variant));
+    crate::draw_trinket(canvas, ink, variant, crate::TRINKET_FRAME_REST, 0, 0);
 }
 
 fn draw_effects(
@@ -2621,7 +2900,9 @@ fn draw_gesture_effects(
             canvas.set(x + 2, y - 3, palette.accent);
             canvas.fill_circle(x, y + 1, 1, palette.accent);
         }
-        Gesture::Cover | Gesture::Crouch | Gesture::Balance | Gesture::Reach => {}
+        // Nothing floats over a watching creature. A mark here would be the creature telling the
+        // viewer it is interested; the pose has to say that by itself.
+        Gesture::Cover | Gesture::Crouch | Gesture::Balance | Gesture::Reach | Gesture::Watch => {}
     }
 }
 
@@ -3063,38 +3344,155 @@ mod tests {
 
     #[test]
     fn generated_activity_props_are_deterministic_distinct_and_opaque() {
-        let palette = PALETTES[2];
+        let palette = crate::prop_palette(PALETTES[2], 17);
         let mut hashes = std::collections::BTreeSet::new();
-        for variant in 0..4 {
+        for variant in 0..TOY_KINDS {
             let mut first = Canvas::new(FRAME_SIZE, FRAME_SIZE);
             let mut second = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-            draw_generated_toy(&mut first, palette, EffectMotif::Spark, variant, 24, 24);
-            draw_generated_toy(&mut second, palette, EffectMotif::Spark, variant, 24, 24);
+            draw_generated_toy(&mut first, palette, EffectMotif::Spark, variant, 24, 24, 0);
+            draw_generated_toy(&mut second, palette, EffectMotif::Spark, variant, 24, 24, 0);
             assert_eq!(first, second);
+            // Every toy is big enough to be recognised, not a speck beside a paw.
+            let opaque = first.pixels().iter().filter(|pixel| pixel.a > 0).count();
+            assert!(opaque >= 40, "toy {variant} covers only {opaque} pixels");
+            let (min_x, min_y, max_x, max_y) = first.alpha_bounds().expect("a toy is visible");
             assert!(
-                AlphaMask::from_canvas(&first)
-                    .pixels
-                    .into_iter()
-                    .any(|pixel| pixel)
+                max_x - min_x >= 6 && max_y - min_y >= 6,
+                "toy {variant} is {}x{} and would vanish at 2x",
+                max_x - min_x + 1,
+                max_y - min_y + 1
             );
             hashes.insert(Sha256::digest(first.rgba_bytes()).to_vec());
         }
-        assert_eq!(hashes.len(), 4);
+        assert_eq!(hashes.len(), usize::from(TOY_KINDS));
 
-        let mut snack = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        draw_generated_snack(&mut snack, palette, 1, 24, 24, 0);
-        let mut drinkware = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        draw_generated_drinkware(&mut drinkware, palette, 1, 24, 24);
-        assert!(snack.alpha_bounds().is_some());
-        assert!(drinkware.alpha_bounds().is_some());
-        assert_ne!(snack, drinkware);
+        // A toy that turns looks different as it turns.
+        let turned = |spin| {
+            let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_generated_toy(&mut canvas, palette, EffectMotif::Spark, 0, 24, 24, spin);
+            canvas
+        };
+        assert_ne!(turned(0), turned(2));
+
+        let mut snacks = std::collections::BTreeSet::new();
+        for variant in 0..SNACK_KINDS {
+            let mut snack = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_generated_snack(&mut snack, palette, variant, 24, 24, 0);
+            assert!(snack.alpha_bounds().is_some());
+            // A mouthful visibly goes out of it.
+            let mut later = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_generated_snack(&mut later, palette, variant, 24, 24, 2);
+            let count = |canvas: &Canvas| canvas.pixels().iter().filter(|p| p.a > 0).count();
+            assert!(
+                count(&later) < count(&snack),
+                "snack {variant} is never actually eaten"
+            );
+            snacks.insert(Sha256::digest(snack.rgba_bytes()).to_vec());
+        }
+        assert_eq!(snacks.len(), usize::from(SNACK_KINDS));
+
+        let mut cups = std::collections::BTreeSet::new();
+        for variant in 0..DRINK_KINDS {
+            let mut cup = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_generated_drinkware(&mut cup, palette, variant, 24, 24, false, 0);
+            assert!(cup.alpha_bounds().is_some());
+            let mut tipped = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            draw_generated_drinkware(&mut tipped, palette, variant, 24, 24, true, 1);
+            assert_ne!(cup, tipped, "cup {variant} never tips toward the mouth");
+            cups.insert(Sha256::digest(cup.rgba_bytes()).to_vec());
+        }
+        assert_eq!(cups.len(), usize::from(DRINK_KINDS));
+    }
+
+    /// Exactly the pixels one belonging adds to a frame, drawn on their own so they can be
+    /// measured against the body that is using them.
+    fn prop_only(genome: &AppearanceGenome, action: ActionKind, frame: u8) -> (Canvas, PixelPoint) {
+        let body = CreatureRenderer::render_body_frame(genome, action, frame, false);
+        let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        draw_activity_prop(
+            &mut canvas,
+            genome,
+            crate::palette_for(genome),
+            body.face_anchor,
+            Pose::new(genome, BodyClip::Action(action), frame, false),
+            action,
+            frame,
+            false,
+        );
+        (canvas, body.face_anchor)
+    }
+
+    /// A toy is something the creature is playing with, not something hanging near it: it stays in
+    /// the frame, keeps off the face, travels over the round, and comes back to the body.
+    #[test]
+    fn a_toy_is_carried_through_the_paws_clear_of_the_face_and_inside_the_frame() {
+        for family in [
+            BodyFamily::Blob,
+            BodyFamily::Hopper,
+            BodyFamily::SoftQuadruped,
+        ] {
+            let genome = genome(family);
+            for action in [ActionKind::SoloPlay, ActionKind::Eat, ActionKind::Drink] {
+                let mut places = std::collections::BTreeSet::new();
+                let mut touching = 0;
+                for frame in 0..4 {
+                    let (prop, anchor) = prop_only(&genome, action, frame);
+                    let bounds = prop
+                        .alpha_bounds()
+                        .unwrap_or_else(|| panic!("{family:?} {action:?} {frame} draws nothing"));
+                    assert!(
+                        bounds.0 > 0
+                            && bounds.1 > 0
+                            && bounds.2 < FRAME_SIZE - 1
+                            && bounds.3 < FRAME_SIZE - 1,
+                        "{family:?} {action:?} {frame}: a prop at {bounds:?} leaves the frame"
+                    );
+                    // The eyes the layered face draws over this body: anything on top of them is
+                    // worn rather than held.
+                    for dx in -4..=4 {
+                        for dy in -3..=0 {
+                            assert_eq!(
+                                prop.get(anchor.x + dx, anchor.y + dy).a,
+                                0,
+                                "{family:?} {action:?} {frame} draws a prop across the face"
+                            );
+                        }
+                    }
+                    places.insert((bounds.0, bounds.1));
+                    // Contact: the prop's own pixels sit against the body actually drawn.
+                    let body = CreatureRenderer::render_body_frame(&genome, action, frame, false);
+                    let close = (0..FRAME_SIZE as i32).any(|y| {
+                        (0..FRAME_SIZE as i32).any(|x| {
+                            prop.get(x, y).a > 0
+                                && (-2..=2).any(|dx| {
+                                    (-2..=2).any(|dy| {
+                                        prop.get(x + dx, y + dy).a == 0
+                                            && body.canvas.get(x + dx, y + dy).a > 0
+                                    })
+                                })
+                        })
+                    });
+                    touching += usize::from(close);
+                }
+                assert!(
+                    touching >= 2,
+                    "{family:?} never touches what it is {action:?}-ing"
+                );
+                if action == ActionKind::SoloPlay {
+                    assert!(
+                        places.len() >= 3,
+                        "{family:?} holds its toy still instead of playing with it"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
-    fn generated_discoveries_have_eight_deterministic_opaque_silhouettes() {
+    fn generated_discoveries_have_sixteen_deterministic_opaque_silhouettes() {
         let genome = genome(BodyFamily::Blob);
         let mut hashes = std::collections::BTreeSet::new();
-        for variant in 0..8 {
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
             let first = CreatureRenderer::render_trinket(&genome, variant);
             let second = CreatureRenderer::render_trinket(&genome, variant);
             assert_eq!(first, second);
@@ -3109,7 +3507,7 @@ mod tests {
             );
             hashes.insert(Sha256::digest(first.rgba_bytes()).to_vec());
         }
-        assert_eq!(hashes.len(), 8);
+        assert_eq!(hashes.len(), usize::from(formiga_core::TRINKET_VARIANTS));
     }
 
     #[test]
@@ -3534,6 +3932,127 @@ mod tests {
                     left_eye && right_eye,
                     "seed {index}, {expression:?} loses its two-eye grammar"
                 );
+            }
+        }
+    }
+
+    /// The simulation crate cannot depend on this one, so `world::spacing` approximates where a
+    /// face and a body sit inside the 48x48 frame with two fixed boxes, both measured from the
+    /// frame's centre column: a face box 15 art pixels to either side, and a body box 23. Their
+    /// sum, 38, is why `FACE_CLEAR_RATIO` is rounded up from 38/48 of how wide a creature draws,
+    /// and twice the body box is why full separation is 46/48. The watching pose leans a long
+    /// body's head furthest, and is what sets the face box; every other clip stays within 14.
+    ///
+    /// This is the evidence for those numbers. If a new body plan, size, or clip ever reached
+    /// further than the boxes, the simulation would space companions too closely and a face would
+    /// stay behind a body; this is what catches that here rather than on screen.
+    #[test]
+    fn every_face_and_body_stays_inside_the_boxes_the_simulation_spaces_by() {
+        /// Half-width of the simulation's face box, in art pixels from the frame centre.
+        const FACE_BOX_HALF: i32 = 15;
+        /// Half-width of the simulation's body box, in art pixels from the frame centre.
+        const BODY_BOX_HALF: i32 = 23;
+        const CENTRE: i32 = FRAME_SIZE as i32 / 2;
+
+        let desktop = DesktopSnapshot {
+            monitors: vec![MonitorInfo {
+                id: 1,
+                display_key: formiga_core::DisplayKey([1; 16]),
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 836.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..DesktopSnapshot::default()
+        };
+        let mut creature =
+            World::preview_adult([61; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
+        let mut design = creature
+            .appearance
+            .design
+            .expect("every generated creature carries a design");
+        for plan in formiga_core::BodyPlan::ALL {
+            design.body = plan;
+            creature.appearance.design = Some(design);
+            // An adult sits at the top of the range and the smallest mini at the bottom, so these
+            // four values bracket every `logical_size` a colony can hold.
+            for logical_size in [19_u8, 25, 34, 40] {
+                creature.appearance.logical_size = logical_size;
+                let genome = &creature.appearance;
+                // How far the drawn face spreads from the middle of its own 16x16 tile, at its
+                // widest across every expression, eyelid, and gaze.
+                let mut face_reach = 0;
+                for expression in ExpressionKind::ALL {
+                    for eyelids in EyelidPose::ALL {
+                        for gaze in [
+                            GazeDirection::default(),
+                            GazeDirection { x: 1, y: 1 },
+                            GazeDirection { x: -1, y: -1 },
+                        ] {
+                            let face = CreatureRenderer::render_face_frame(
+                                genome,
+                                FaceRenderState {
+                                    expression,
+                                    eyelids,
+                                    gaze,
+                                },
+                            );
+                            let (min_x, _, max_x, _) =
+                                face.alpha_bounds().expect("a face is never rendered empty");
+                            face_reach = face_reach
+                                .max(FACE_FRAME_SIZE as i32 / 2 - min_x as i32)
+                                .max(max_x as i32 - FACE_FRAME_SIZE as i32 / 2);
+                        }
+                    }
+                }
+                for clip in BodyClip::baked() {
+                    for frame in 0..AnimationSpec::for_clip(clip).frames {
+                        let rendered =
+                            CreatureRenderer::render_body_frame(genome, clip, frame, false);
+                        let (min_x, _, max_x, _) = rendered
+                            .canvas
+                            .alpha_bounds()
+                            .expect("a body is never rendered empty");
+                        let label = format!("{plan:?} size {logical_size} {clip:?} frame {frame}");
+                        // Mirroring sends the anchor to `FRAME_SIZE - anchor.x` and the silhouette
+                        // to `FRAME_SIZE - 1 - x`, so both facings are measured together.
+                        for anchor_x in [
+                            rendered.face_anchor.x,
+                            FRAME_SIZE as i32 - rendered.face_anchor.x,
+                        ] {
+                            let reach = (CENTRE - (anchor_x - face_reach))
+                                .max(anchor_x + face_reach - CENTRE);
+                            assert!(
+                                reach <= FACE_BOX_HALF,
+                                "{label}: a face reaches {reach} from the frame centre, past the \
+                                 {FACE_BOX_HALF} the simulation spaces by"
+                            );
+                        }
+                        for body_x in [
+                            min_x as i32,
+                            max_x as i32,
+                            FRAME_SIZE as i32 - 1 - max_x as i32,
+                            FRAME_SIZE as i32 - 1 - min_x as i32,
+                        ] {
+                            let reach = (CENTRE - body_x).max(body_x - CENTRE);
+                            assert!(
+                                reach <= BODY_BOX_HALF,
+                                "{label}: a body reaches {reach} from the frame centre, past the \
+                                 {BODY_BOX_HALF} the simulation spaces by"
+                            );
+                        }
+                    }
+                }
             }
         }
     }

@@ -1,0 +1,43 @@
+# Formiga winget submission template.
+# `scripts/winget-manifest.sh <version>` fills in the placeholder values below and writes the
+# result to packaging/windows/winget/out/<version>/VonVan.Formiga.locale.en-US.yaml. See
+# README.md in this directory for the full submission process.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: VonVan.Formiga
+PackageVersion: @@VERSION@@
+PackageLocale: en-US
+Publisher: Von-Van
+PublisherUrl: https://github.com/Von-Van
+PublisherSupportUrl: https://github.com/Von-Van/Formiga-Desktop/issues
+PackageName: Formiga
+PackageUrl: https://github.com/Von-Van/Formiga-Desktop
+License: MIT
+LicenseUrl: https://github.com/Von-Van/Formiga-Desktop/blob/main/LICENSE
+Copyright: Formiga contributors
+ShortDescription: A privacy-first desktop companion of seeded procedural pixel creatures that live on your desktop.
+Description: >-
+  Formiga is a privacy-first desktop companion. Seeded procedural pixel creatures live in
+  transparent overlays on your desktop, perch on your real windows, react to your cursor, and
+  grow into a four-creature colony with a home of its own. Everything runs locally: there is no
+  account system, analytics, or advertising SDK, and the only optional network feature is a
+  once-a-day check for new releases that can be turned off in Settings.
+
+
+  This build is unsigned, so Windows SmartScreen will warn on first run - choose "More info",
+  then "Run anyway". Formiga will never ask you to disable an operating-system security feature.
+Moniker: formiga
+Tags:
+  - desktop-pet
+  - desktop-companion
+  - virtual-pet
+  - pixel-art
+  - procedural-generation
+  - simulation
+  - rust
+  - privacy
+  - offline-first
+  - game
+PrivacyUrl: https://github.com/Von-Van/Formiga-Desktop/blob/main/docs/PRIVACY.md
+ReleaseNotesUrl: https://github.com/Von-Van/Formiga-Desktop/releases/tag/v@@VERSION@@
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

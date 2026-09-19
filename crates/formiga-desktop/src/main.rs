@@ -5,11 +5,15 @@ mod app;
 mod attention_review;
 mod card_export;
 mod clubhouse;
+mod creature_menu;
+#[cfg(test)]
+mod desktop_ui_review;
 mod gpu;
 mod interaction;
 mod platform;
 mod reference_match;
 mod settings;
+mod sticker_export;
 mod tray;
 mod updater;
 
@@ -45,10 +49,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn initialize_diagnostics() -> Result<PathBuf> {
+/// Where the colony, its logs, and the update preferences live. Setting `FORMIGA_DATA_DIR` points
+/// a development build at a scratch colony, so trying a change never touches the real one.
+pub(crate) fn data_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os("FORMIGA_DATA_DIR").filter(|dir| !dir.is_empty()) {
+        return Ok(PathBuf::from(dir));
+    }
     let project = ProjectDirs::from("com", "Formiga", "Formiga")
         .ok_or_else(|| anyhow::anyhow!("resolve application data directory"))?;
-    let log_dir = project.data_dir().join("logs");
+    Ok(project.data_dir().to_path_buf())
+}
+
+fn initialize_diagnostics() -> Result<PathBuf> {
+    let log_dir = data_dir()?.join("logs");
     fs::create_dir_all(&log_dir)?;
     let current = log_dir.join("formiga.log");
     if current

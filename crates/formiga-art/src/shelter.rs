@@ -6,6 +6,14 @@ pub const SHELTER_SIZE: u32 = 64;
 /// Two-by-two grid of shelter cells: the colony house, a cottage, and a mini's cottage.
 pub const VILLAGE_ATLAS_SIZE: u32 = SHELTER_SIZE * 2;
 
+/// How large each dwelling draws, in twelfths of the colony house. A companion cottage is only
+/// a little smaller than the house it stands beside — small enough that the colony house is
+/// plainly the main building, big enough to read as a home next to a 48px creature — and a
+/// mini's cottage is two thirds of a cottage rather than a model of one.
+pub const MAIN_SPAN: i32 = 12;
+pub const COTTAGE_SPAN: i32 = 10;
+pub const MINI_COTTAGE_SPAN: i32 = 7;
+
 pub struct ShelterRenderer;
 
 impl ShelterRenderer {
@@ -18,7 +26,7 @@ impl ShelterRenderer {
         decorations: &[ShelterDecorationKind],
     ) -> Canvas {
         let mut canvas = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-        draw_dwelling(&mut canvas, genome, decorations, 32, 61, 3);
+        draw_dwelling(&mut canvas, genome, decorations, 32, 61, MAIN_SPAN);
         canvas
     }
 
@@ -32,9 +40,9 @@ impl ShelterRenderer {
         // a cell is clipped exactly as it is for a lone shelter, never bleeding into the
         // neighbour below. Only the colony house carries the decorations it earned over time.
         for (span, decorations, origin_x, origin_y) in [
-            (3, decorations, 0, 0),
-            (2, &[][..], cell, 0),
-            (1, &[][..], 0, cell),
+            (MAIN_SPAN, decorations, 0, 0),
+            (COTTAGE_SPAN, &[][..], cell, 0),
+            (MINI_COTTAGE_SPAN, &[][..], 0, cell),
         ] {
             let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
             draw_dwelling(&mut tile, genome, decorations, 32, 61, span);
@@ -51,8 +59,17 @@ impl ShelterRenderer {
     }
 }
 
+/// The drawn size of a dwelling at `span`, in shelter pixels. Cottages keep the colony house's
+/// own proportions, so a mini's home is the same house seen smaller rather than a different one.
+fn dwelling_size(genome: &ShelterGenome, span: i32) -> (i32, i32) {
+    (
+        (i32::from(genome.width).clamp(34, 42) * span / MAIN_SPAN).max(16),
+        (i32::from(genome.height).clamp(27, 36) * span / MAIN_SPAN).max(13),
+    )
+}
+
 /// Draws one dwelling into `canvas`, centred on `cx` and standing on `bottom`. `span` scales
-/// the house in thirds: 3 is the colony house, 2 a companion cottage, 1 a mini's.
+/// the house in twelfths of the colony house: see `MAIN_SPAN` and its companions.
 fn draw_dwelling(
     canvas: &mut Canvas,
     genome: &ShelterGenome,
@@ -63,13 +80,12 @@ fn draw_dwelling(
 ) {
     let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
     let accent = PALETTES[genome.accent_index as usize % PALETTES.len()];
-    let width = (i32::from(genome.width).clamp(34, 42) * span / 3).max(16);
-    let height = (i32::from(genome.height).clamp(27, 36) * span / 3).max(13);
+    let (width, height) = dwelling_size(genome, span);
     let left = cx - width / 2;
     let top = bottom - height;
     // Style details scale with the dwelling, so a mini's house keeps the proportions of the
     // colony house it matches. At full span this resolves to the original constants exactly.
-    let unit = |value: i32| (value * span / 3).max(1);
+    let unit = |value: i32| (value * span / MAIN_SPAN).max(1);
 
     // A single-pixel ground shadow keeps every generated shelter readable on bright desktops.
     canvas.fill_ellipse(
@@ -265,26 +281,26 @@ struct ShelterFrame {
 
 impl ShelterFrame {
     fn resolve(genome: &ShelterGenome, cx: i32, bottom: i32, span: i32) -> Self {
-        let width = (i32::from(genome.width).clamp(34, 42) * span / 3).max(16);
-        let height = (i32::from(genome.height).clamp(27, 36) * span / 3).max(13);
+        let (width, height) = dwelling_size(genome, span);
         let top = bottom - height;
         let half = width / 2;
+        let unit = |value: i32| (value * span / MAIN_SPAN).max(1);
         match genome.style {
             ShelterStyle::LeafTent => Self {
                 cx,
                 peak_y: top,
                 eave_y: top + height * 6 / 10,
-                eave_half: (half + 2) * 6 / 10,
+                eave_half: (half + unit(2)) * 6 / 10,
                 wall_y: top + height * 7 / 10,
-                wall_half: (half + 2) * 7 / 10,
-                ground_y: bottom - 2,
-                ground_half: half + 2,
+                wall_half: (half + unit(2)) * 7 / 10,
+                ground_y: bottom - unit(2),
+                ground_half: half + unit(2),
             },
             ShelterStyle::MushroomHut => Self {
                 cx,
-                peak_y: top - 2,
-                eave_y: top + 14,
-                eave_half: (half + 2) * 4 / 5,
+                peak_y: top - unit(2),
+                eave_y: top + unit(14),
+                eave_half: (half + unit(2)) * 4 / 5,
                 wall_y: bottom - height / 3,
                 wall_half: width / 3,
                 ground_y: bottom,
@@ -294,18 +310,18 @@ impl ShelterFrame {
                 cx,
                 peak_y: top,
                 eave_y: top + height / 3,
-                eave_half: (half - 3) * 9 / 10,
+                eave_half: (half - unit(3)) * 9 / 10,
                 wall_y: top + height / 2,
-                wall_half: half - 3,
-                ground_y: bottom - 2,
-                ground_half: half + 2,
+                wall_half: half - unit(3),
+                ground_y: bottom - unit(2),
+                ground_half: half + unit(2),
             },
             ShelterStyle::PaperHouse => Self {
                 cx,
-                peak_y: top - 1,
-                eave_y: top + 13,
-                eave_half: half + 3,
-                wall_y: top + 10 + (height - 10) / 2,
+                peak_y: top - unit(1),
+                eave_y: top + unit(13),
+                eave_half: half + unit(3),
+                wall_y: top + unit(10) + (height - unit(10)) / 2,
                 wall_half: half,
                 ground_y: bottom,
                 ground_half: half,
@@ -385,10 +401,10 @@ fn draw_decoration(
         ShelterDecorationKind::RoofOrnament => {
             let y = frame.peak_y - 4;
             canvas.line(frame.cx, frame.peak_y + 2, frame.cx, y, 1, outline);
-            canvas.line(29, y, 35, y, 1, accent);
+            canvas.line(frame.cx - 3, y, frame.cx + 3, y, 1, accent);
             canvas.line(frame.cx, y - 3, frame.cx, y + 3, 1, accent);
-            canvas.line(30, y - 2, 34, y + 2, 1, highlight);
-            canvas.line(30, y + 2, 34, y - 2, 1, highlight);
+            canvas.line(frame.cx - 2, y - 2, frame.cx + 2, y + 2, 1, highlight);
+            canvas.line(frame.cx - 2, y + 2, frame.cx + 2, y - 2, 1, highlight);
         }
     }
 }
@@ -467,9 +483,9 @@ mod tests {
             assert_eq!(village.height(), VILLAGE_ATLAS_SIZE);
             let cell = SHELTER_SIZE as i32;
             for (span, decorations, origin_x, origin_y) in [
-                (3, &ShelterDecorationKind::ALL[..], 0, 0),
-                (2, &[][..], cell, 0),
-                (1, &[][..], 0, cell),
+                (MAIN_SPAN, &ShelterDecorationKind::ALL[..], 0, 0),
+                (COTTAGE_SPAN, &[][..], cell, 0),
+                (MINI_COTTAGE_SPAN, &[][..], 0, cell),
             ] {
                 let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
                 draw_dwelling(&mut tile, &genome, decorations, 32, 61, span);
@@ -499,6 +515,57 @@ mod tests {
             for y in cell..cell * 2 {
                 for x in cell..cell * 2 {
                     assert_eq!(village.get(x, y).a, 0, "{style:?} bled into the spare cell");
+                }
+            }
+        }
+    }
+
+    /// The village spaces its lots by `DwellingKind::width`, so a house that grew past its own
+    /// footprint would start touching the neighbour the simulation thinks it is clear of. Every
+    /// genome the generator can produce has to stay inside the ground its kind claims, and a
+    /// cottage has to stay plainly smaller than the colony house it matches.
+    #[test]
+    fn every_dwelling_stays_inside_the_footprint_the_village_reserves_for_it() {
+        use formiga_core::DwellingKind;
+        for style in [
+            ShelterStyle::LeafTent,
+            ShelterStyle::MushroomHut,
+            ShelterStyle::CushionDen,
+            ShelterStyle::PaperHouse,
+        ] {
+            for width in [34_u8, 38, 42] {
+                for height in [27_u8, 32, 36] {
+                    let genome = ShelterGenome {
+                        style,
+                        palette_index: 1,
+                        accent_index: 4,
+                        width,
+                        height,
+                        detail_seed: 0x0bad_f00d_dead_beef,
+                    };
+                    let mut previous = f32::MAX;
+                    for (span, kind) in [
+                        (MAIN_SPAN, DwellingKind::Main),
+                        (COTTAGE_SPAN, DwellingKind::Cottage),
+                        (MINI_COTTAGE_SPAN, DwellingKind::MiniCottage),
+                    ] {
+                        let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                        draw_dwelling(&mut tile, &genome, &[], 32, 61, span);
+                        let bounds = tile.alpha_bounds().expect("a dwelling is drawn");
+                        let drawn = (bounds.2 - bounds.0 + 1) as f32;
+                        assert!(
+                            drawn <= kind.width(),
+                            "{style:?} {width}x{height}: {kind:?} draws {drawn} wide but the \
+                             village reserves {}",
+                            kind.width()
+                        );
+                        assert!(
+                            drawn < previous,
+                            "{style:?} {width}x{height}: {kind:?} is not smaller than the \
+                             dwelling above it"
+                        );
+                        previous = drawn;
+                    }
                 }
             }
         }

@@ -38,6 +38,34 @@ fn fixture() -> (SaveFile, Vec<MonitorInfo>) {
         | ProfileDescriptor::Playful.flag()
         | ProfileDescriptor::LovesHighPlaces.flag();
     world.save.companion.onboarding_complete = true;
+    // Someone at the door and a full guest book, so the Journal page is reviewed with both.
+    let friend = SharedCreatureSeed {
+        source_colony_seed: [70; 32],
+        source_generation: 1,
+        design: Some(CreatureDesign::generated([70; 32], 1, None)),
+    };
+    world.invite_visitor(friend, now, &desktop).unwrap();
+    for index in 0..MAX_GUEST_BOOK_ENTRIES {
+        world.save.visitors.guest_book.push(GuestBookEntry {
+            visited_at_utc: now - time::Duration::days((MAX_GUEST_BOOK_ENTRIES - index) as i64),
+            name: format!("Wanderer {index}"),
+            origin: CreatureOrigin {
+                design: None,
+                source_colony_seed: [index as u8; 32],
+                source_generation: index as u8 % 4,
+            },
+            source: if index % 2 == 0 {
+                VisitorSource::Wanderer
+            } else {
+                VisitorSource::Invited
+            },
+        });
+    }
+    world.save.companion.journal.push(JournalEntry {
+        at: now,
+        creature: None,
+        moment: JournalMoment::Visit("Wanderer 0".into()),
+    });
     world.save.home.decorations.decorations = ShelterDecorationKind::ALL.to_vec();
     world.save.objects.objects = ColonyObjectKind::ALL
         .iter()
@@ -100,17 +128,35 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
             configure_style(&context, appearance);
             let mut clubhouse = Clubhouse::default();
             if page == SettingsTab::Studio {
+                // The last candidate — the one a fresh page shows — came from a pasted code, so
+                // the page is reviewed with the adopt-or-invite choice a shared creature offers.
+                let shared = SharedCreatureSeed {
+                    source_colony_seed: [17; 32],
+                    source_generation: 0,
+                    design: Some(CreatureDesign::generated([17; 32], 0, None)),
+                };
                 for index in 0..4 {
                     let seed = [index + 17; 32];
+                    let shared = (index == 3).then_some(shared);
                     clubhouse.push_preview(
                         &context,
                         GenerationPreview {
-                            shared: None,
-                            creature: World::preview_adult(
-                                seed,
-                                save.maximum_seen_utc,
-                                &DesktopSnapshot::default(),
-                            ),
+                            shared,
+                            creature: match shared {
+                                Some(shared) => World::from_shared_creature(
+                                    shared,
+                                    save.maximum_seen_utc,
+                                    &DesktopSnapshot::default(),
+                                )
+                                .save
+                                .creatures
+                                .remove(0),
+                                None => World::preview_adult(
+                                    seed,
+                                    save.maximum_seen_utc,
+                                    &DesktopSnapshot::default(),
+                                ),
+                            },
                             source_seed: seed,
                             similarity: None,
                             summary: "A new companion with fresh memories.".into(),
@@ -536,6 +582,37 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
 /// A pin is a promise that this moment will still be here. The rolling journal keeps only the
 /// most recent sixty-four, so a kept moment has to outlive its own entry — and stay removable,
 /// or a reader could lose one of their eight slots to something they can no longer see.
+/// Both new exports reach the app the same way the creature card does: by asking for one on the
+/// outcome. Nothing is rendered and no file is chosen here — the app opens the save dialog first,
+/// and only then draws anything.
+#[test]
+fn the_sticker_and_colony_portrait_controls_ask_the_app_for_an_export() {
+    use formiga_art::{DEFAULT_STICKER_SCALE, STICKER_SCALES, StickerClip};
+
+    let mut h = Harness::new(SettingsTab::Home);
+    let before = (h.save.clone(), h.draft.clone());
+    assert!(h.click("Export colony portrait…").export_colony_card);
+
+    h.tab = SettingsTab::Colony;
+    let creature = h.save.creatures[0].id;
+    // The clip is chosen right beside the button, and carried with the request.
+    h.clubhouse.sticker_clip = StickerClip::Dance;
+    assert_eq!(
+        h.click("Export sticker…").export_creature_sticker,
+        Some((creature, StickerClip::Dance, DEFAULT_STICKER_SCALE))
+    );
+    // Both offered sizes are reachable at the size the window actually opens at.
+    let [smaller, larger] = STICKER_SCALES;
+    assert_eq!(DEFAULT_STICKER_SCALE, larger);
+    h.click("4×");
+    assert_eq!(
+        h.click("Export sticker…").export_creature_sticker,
+        Some((creature, StickerClip::Dance, smaller))
+    );
+    // Asking for a picture never changes the colony or the preferences being edited.
+    assert!(h.save == before.0 && h.draft == before.1);
+}
+
 #[test]
 fn a_kept_moment_outlives_the_journal_entry_it_was_taken_from() {
     let mut h = Harness::new(SettingsTab::Journal);
@@ -681,6 +758,12 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
     configure_style(&h.context, AppearancePreferences::default());
 }
 
+/// Every texture the settings window may hold at once. The scrapbook went from eight 16x16
+/// drawings baked per creature to one 256x32 colony sheet that carries all sixteen trinkets and
+/// their glint frames: one texture instead of eight, and 24 KiB more pixels, which is what moves
+/// this from 416 to 432 KiB. Nothing else on any page grew.
+const ARTWORK_BUDGET: usize = 432 * 1024;
+
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
     let mut h = Harness::new(SettingsTab::Home);
@@ -743,10 +826,13 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
         "the menu costs more each time it is opened: {rounds:?}"
     );
     let (textures, bytes) = rounds[0];
-    assert!(bytes <= 416 * 1024, "UI artwork exceeded budget: {bytes}");
-    // Four portraits, four candidate strips, the village atlas, the object atlas, and one drawing
-    // per trinket variant.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + usize::from(TRINKET_VARIANTS));
+    assert!(
+        bytes <= ARTWORK_BUDGET,
+        "UI artwork exceeded budget: {bytes}"
+    );
+    // Four portraits, four candidate strips, the village atlas, the object atlas, and one sheet
+    // holding every trinket — sixteen of them now, for the price of one texture.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1);
 }
 
 #[test]
@@ -785,7 +871,10 @@ fn all_ui_artwork_together_fits_the_budget() {
         .iter()
         .map(|id| textures[id].0.pixels.len() * 4)
         .sum();
-    assert!(total <= 416 * 1024, "Combined UI artwork: {total} bytes");
+    assert!(
+        total <= ARTWORK_BUDGET,
+        "Combined UI artwork: {total} bytes"
+    );
     h.clubhouse.release_images();
     assert!(h.clubhouse.texture_ids().is_empty());
 }

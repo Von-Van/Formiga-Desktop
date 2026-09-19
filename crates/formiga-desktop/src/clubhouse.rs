@@ -3,7 +3,8 @@ use crate::settings::{GenerationPreview, PreviewAcceptance, SettingsOutcome};
 use egui::{Color32, RichText, TextureHandle, Ui};
 use formiga_art::{
     COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, Canvas, ColonyObjectRenderer, CreatureRenderer,
-    SHELTER_SIZE, ShelterRenderer,
+    SHELTER_SIZE, ShelterRenderer, StickerClip, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH,
+    TRINKET_FRAME_REST, TrinketAtlasRenderer,
 };
 use formiga_core::*;
 use std::collections::BTreeMap;
@@ -96,10 +97,16 @@ pub struct Clubhouse {
     pub fresh_confirmed: bool,
     pub replace_confirmed: bool,
     pub show_intro: bool,
+    /// Which clip the sticker export will use. A view preference, never saved.
+    pub sticker_clip: StickerClip,
+    /// Whether the sticker export draws at the smaller of the two offered scales. The default,
+    /// `false`, is the large one, which is what most places want to post.
+    pub small_sticker: bool,
     home_texture: Option<(ShelterGenome, Vec<ShelterDecorationKind>, TextureHandle)>,
     object_texture: Option<([u8; 32], TextureHandle)>,
-    /// One drawing per trinket variant, generated once from the colony's own seed.
-    scrapbook_textures: Option<([u8; 32], Vec<TextureHandle>)>,
+    /// The colony's own sheet of found things: one texture the scrapbook cuts every slot out of,
+    /// and the very same sheet the desktop samples when a companion holds one up.
+    trinket_atlas: Option<([u8; 32], TextureHandle)>,
 }
 
 pub fn upload(context: &egui::Context, name: &str, canvas: &Canvas) -> TextureHandle {
@@ -116,6 +123,11 @@ impl Clubhouse {
     pub fn notify(&mut self, message: impl Into<String>) {
         self.feedback = Some((message.into(), std::time::Instant::now()));
     }
+    /// The scale the sticker export will draw at, from the two the art offers.
+    pub fn sticker_scale(&self) -> u32 {
+        let [small, large] = formiga_art::STICKER_SCALES;
+        if self.small_sticker { small } else { large }
+    }
     pub fn clear_previews(&mut self) {
         self.candidates.clear();
         self.selected = 0;
@@ -128,11 +140,7 @@ impl Clubhouse {
             .chain(self.candidates.iter().map(|c| c.texture.id()))
             .chain(self.home_texture.iter().map(|(_, _, t)| t.id()))
             .chain(self.object_texture.iter().map(|(_, t)| t.id()))
-            .chain(
-                self.scrapbook_textures
-                    .iter()
-                    .flat_map(|(_, textures)| textures.iter().map(TextureHandle::id)),
-            )
+            .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
             .collect()
     }
     pub fn release_images(&mut self) {
@@ -140,7 +148,7 @@ impl Clubhouse {
         self.clear_previews();
         self.home_texture = None;
         self.object_texture = None;
-        self.scrapbook_textures = None;
+        self.trinket_atlas = None;
     }
     pub fn locks(&self) -> (Option<CreatureDesign>, bool, bool) {
         (
@@ -371,7 +379,10 @@ impl Clubhouse {
         egui::CollapsingHeader::new("Adopt a shared companion from a code")
             .default_open(!self.seed_code.trim().is_empty())
             .show(ui, |ui| {
-                ui.label("Paste a creature code to preview it. Your colony stays together.");
+                ui.label(
+                    "Paste a creature code to preview it. From the preview you can adopt them, \
+                     or ask them over for a day. Your colony stays together either way.",
+                );
                 ui.add(
                     egui::TextEdit::singleline(&mut self.seed_code)
                         .char_limit(256)
@@ -471,6 +482,39 @@ impl Clubhouse {
         if animate {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(166));
+        }
+        // A code can also be an invitation rather than an adoption: the same preview, and a
+        // friend who goes home again at the end of the day.
+        if let Some(shared) = candidate.preview.shared {
+            ui.add_space(12.0);
+            card(ui, |ui| {
+                ui.strong("Or ask them over for a day");
+                ui.small(
+                    "They come by the houses at every gathering for a day, then head home. Nobody \
+                     joins your colony, and nothing about their own is read.",
+                );
+                let visiting = save.visitors.guest.is_some();
+                let already_home = save
+                    .creatures
+                    .iter()
+                    .any(|c| c.id == candidate.preview.creature.id);
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            !visiting && !already_home,
+                            egui::Button::new("Invite for a day"),
+                        )
+                        .clicked()
+                    {
+                        outcome.invite_visitor = Some(shared);
+                    }
+                    if visiting {
+                        ui.label("Someone is already visiting the houses.");
+                    } else if already_home {
+                        ui.label("This companion already lives here.");
+                    }
+                });
+            });
         }
         let adults = save.creatures.iter().filter(|c| c.role.is_adult()).count();
         let accept = |replace| match candidate.preview.shared {
@@ -586,6 +630,14 @@ impl Clubhouse {
                 });
             });
         });
+        ui.add_space(10.0);
+        card(ui, |ui| {
+            ui.strong("A portrait of everyone");
+            ui.small("The village as it stands and every companion in front of it, as one 960×600 picture.");
+            if ui.button("Export colony portrait…").clicked() {
+                outcome.export_colony_card = true;
+            }
+        });
         ui.add_space(16.0);
         ui.strong("Earned decorations");
         if save.home.decorations.decorations.is_empty() {
@@ -671,64 +723,41 @@ impl Clubhouse {
         self.scrapbook(ui, save);
     }
 }
-/// The eight trinket variants, in the order the artwork draws them. The identifier is the
-/// variant number itself, which is what the scrapbook stores.
-pub const TRINKETS: [(&str, &str); 8] = [
-    (
-        "Gem",
-        "A cut stone that throws a little colour when the light moves.",
-    ),
-    (
-        "Key",
-        "A small key. Nobody has found the lock it belongs to.",
-    ),
-    ("Leaf", "A leaf pressed flat, kept for the shape of it."),
-    ("Shell", "A spiral shell, carried a long way from any sea."),
-    (
-        "Ring charm",
-        "A ring far too small for anyone here to wear.",
-    ),
-    (
-        "Tiny bottle",
-        "A stoppered bottle with something cloudy inside.",
-    ),
-    (
-        "Star relic",
-        "A little star of worn metal, its edges gone soft.",
-    ),
-    (
-        "Odd little tablet",
-        "A flat tablet marked with lines nobody can read.",
-    ),
-];
-
 impl Clubhouse {
-    /// Drawings for the eight variants. They come from the colony's own seed, so they are the
-    /// same every time this page opens and do not depend on who is still here.
-    fn scrapbook_art(&mut self, ui: &Ui, save: &SaveFile) -> &[TextureHandle] {
+    /// The colony's sheet of found things, uploaded once. It comes from the colony's own seed and
+    /// the colours of whoever lives here, so the book always shows the keepsake the desktop would
+    /// show, and a page of sixteen costs one texture rather than sixteen.
+    fn trinket_atlas(&mut self, ui: &Ui, save: &SaveFile) -> TextureHandle {
         if self
-            .scrapbook_textures
+            .trinket_atlas
             .as_ref()
             .is_none_or(|(seed, _)| *seed != save.colony_seed)
         {
-            let genome = formiga_core::World::preview_adult(
-                save.colony_seed,
-                save.created_at_utc,
-                &DesktopSnapshot::default(),
-            )
-            .appearance;
-            let textures = (0..8u8)
-                .map(|variant| {
-                    upload(
-                        ui.ctx(),
-                        &format!("trinket-{variant}"),
-                        &CreatureRenderer::render_trinket(&genome, variant),
-                    )
-                })
+            let members: Vec<formiga_art::Palette> = save
+                .creatures
+                .iter()
+                .map(|creature| formiga_art::palette_for(&creature.appearance))
                 .collect();
-            self.scrapbook_textures = Some((save.colony_seed, textures));
+            let canvas = TrinketAtlasRenderer::render(save.colony_seed, &members);
+            let texture = upload(ui.ctx(), "colony-trinkets", &canvas);
+            self.trinket_atlas = Some((save.colony_seed, texture));
         }
-        &self.scrapbook_textures.as_ref().unwrap().1
+        self.trinket_atlas.as_ref().unwrap().1.clone()
+    }
+
+    /// Where one keepsake lives on that sheet, in the 0..1 coordinates egui samples with.
+    fn trinket_uv(variant: u8) -> egui::Rect {
+        let (x, y, width, height) = TrinketAtlasRenderer::cell_rect(variant, TRINKET_FRAME_REST);
+        egui::Rect::from_min_size(
+            egui::pos2(
+                x as f32 / TRINKET_ATLAS_WIDTH as f32,
+                y as f32 / TRINKET_ATLAS_HEIGHT as f32,
+            ),
+            egui::vec2(
+                width as f32 / TRINKET_ATLAS_WIDTH as f32,
+                height as f32 / TRINKET_ATLAS_HEIGHT as f32,
+            ),
+        )
     }
 
     /// The corner as it actually is: the colony house with the decorations it has earned, one
@@ -753,7 +782,6 @@ impl Clubhouse {
                 &save.home,
                 slot,
                 &cottages,
-                objects,
                 monitors,
                 &save.settings.habitat,
                 scale,
@@ -863,12 +891,12 @@ impl Clubhouse {
     pub fn scrapbook(&mut self, ui: &mut Ui, save: &SaveFile) {
         let offset = local_offset();
         let found = save.companion.scrapbook.clone();
-        let textures: Vec<TextureHandle> = self.scrapbook_art(ui, save).to_vec();
+        let atlas = self.trinket_atlas(ui, save);
         ui.label(
             RichText::new(format!(
                 "THE SCRAPBOOK · {} of {}",
                 found.len(),
-                TRINKETS.len()
+                TRINKET_VARIANTS
             ))
             .color(forest())
             .size(11.0),
@@ -884,26 +912,27 @@ impl Clubhouse {
             });
             ui.add_space(8.0);
         }
-        for (variant, (name, description)) in TRINKETS.iter().enumerate() {
-            let record = found.iter().find(|r| usize::from(r.variant) == variant);
+        for info in formiga_core::all_trinkets() {
+            let record = found.iter().find(|r| r.variant == info.variant);
             card(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if let Some(texture) = textures.get(variant) {
-                        let tint = if record.is_some() {
-                            Color32::WHITE
-                        } else {
-                            Color32::from_rgba_unmultiplied(255, 255, 255, 40)
-                        };
-                        ui.add(
-                            egui::Image::new(texture)
-                                .fit_to_exact_size([48.0, 48.0].into())
-                                .tint(tint),
-                        );
-                    }
+                    // An empty slot still shows the shape of what belongs in it, dimmed to a
+                    // silhouette, so the page reads as a book with room left in it.
+                    let tint = if record.is_some() {
+                        Color32::WHITE
+                    } else {
+                        Color32::from_rgba_unmultiplied(255, 255, 255, 40)
+                    };
+                    ui.add(
+                        egui::Image::new(&atlas)
+                            .uv(Self::trinket_uv(info.variant))
+                            .fit_to_exact_size([48.0, 48.0].into())
+                            .tint(tint),
+                    );
                     ui.vertical(|ui| match record {
                         Some(record) => {
-                            ui.strong(*name);
-                            ui.label(*description);
+                            ui.strong(info.name);
+                            ui.label(info.description);
                             // The finder's name was kept when it was found, so a companion who
                             // has since left is still the one credited.
                             let finder = record
@@ -914,8 +943,8 @@ impl Clubhouse {
                             ui.small(format!("Found by {finder} · {}", at.date()));
                         }
                         None => {
-                            ui.strong(RichText::new(*name).color(muted()));
-                            ui.small("Not found yet");
+                            ui.strong(RichText::new(info.name).color(muted()));
+                            ui.small(RichText::new(info.hint).color(muted()));
                         }
                     });
                 });
@@ -1012,6 +1041,8 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
             "The home earned a {}",
             words(&format!("{kind:?}")).to_lowercase()
         ),
+        // A visitor is never a colony member, so the moment carries the name it went by.
+        JournalMoment::Visit(ref visitor) => format!("{visitor} came by the houses"),
     }
 }
 
@@ -1058,6 +1089,84 @@ fn label_was_shortened(name: &str) -> bool {
     name.chars().count() > 16
 }
 
+/// Who has come by the houses: whoever is here now, and the last two dozen before them. A line
+/// in the book carries a name, a day, and the code that recreates the visitor — the same code
+/// they would have handed over themselves.
+fn guest_book(
+    ui: &mut Ui,
+    save: &SaveFile,
+    clubhouse: &mut Clubhouse,
+    outcome: &mut SettingsOutcome,
+    offset: time::UtcOffset,
+) {
+    let visiting = save.visitors.guest.as_ref();
+    if visiting.is_none() && save.visitors.guest_book.is_empty() {
+        return;
+    }
+    ui.label(RichText::new("THE GUEST BOOK").color(forest()).size(11.0));
+    ui.add_space(6.0);
+    if let Some(guest) = visiting {
+        card(ui, |ui| {
+            ui.strong(format!("{} is visiting", guest.creature.name));
+            ui.small(match guest.source {
+                VisitorSource::Invited => "Invited with a code, here for the day.",
+                VisitorSource::Wanderer => "Passing through, and stopped at the houses.",
+            });
+            ui.horizontal_wrapped(|ui| {
+                let room = save.visitors.can_stay(&save.creatures);
+                let stay = ui.add_enabled(room, egui::Button::new("Ask to stay").fill(mint()));
+                if stay.clicked() {
+                    outcome.ask_visitor_to_stay = true;
+                }
+                if !room {
+                    stay.on_hover_text(
+                        "Your colony is full. Keep their code and ask them again another time.",
+                    );
+                }
+                if ui.button("Copy code").clicked() {
+                    ui.ctx()
+                        .copy_text(encode_creature_seed(guest.creature.origin));
+                    clubhouse.notify("Visitor code copied");
+                }
+            });
+        });
+        ui.add_space(8.0);
+    }
+    if !save.visitors.guest_book.is_empty() {
+        let heading = format!("Visitors before this · {}", save.visitors.guest_book.len());
+        egui::CollapsingHeader::new(heading)
+            .id_salt("guest-book")
+            .show(ui, |ui| {
+                for entry in save.visitors.guest_book.iter().rev() {
+                    let local = entry.visited_at_utc.to_offset(offset);
+                    card(ui, |ui| {
+                        ui.small(format!(
+                            "{} · {}",
+                            local.date(),
+                            match entry.source {
+                                VisitorSource::Invited => "invited for a day",
+                                VisitorSource::Wanderer => "came by the houses",
+                            }
+                        ));
+                        ui.strong(&entry.name);
+                        if ui.small_button("Copy code").clicked() {
+                            ui.ctx().copy_text(encode_creature_seed(entry.origin));
+                            clubhouse.notify("Visitor code copied");
+                        }
+                    });
+                    ui.add_space(8.0);
+                }
+                ui.small(format!(
+                    "The last {MAX_GUEST_BOOK_ENTRIES} visitors stay on this computer. A code \
+                     recreates how a visitor looked and what they were like, and nothing else."
+                ));
+            });
+    }
+    ui.add_space(10.0);
+    ui.separator();
+    ui.add_space(8.0);
+}
+
 pub fn journal(
     ui: &mut Ui,
     save: &SaveFile,
@@ -1067,6 +1176,7 @@ pub fn journal(
     title(ui, "The colony journal", "Small moments, kept close.");
     let offset = local_offset();
     let now = OffsetDateTime::now_utc();
+    guest_book(ui, save, clubhouse, outcome, offset);
     if save.companion.journal.is_empty() && save.companion.pins.is_empty() {
         card(ui, |ui| {
             ui.heading("The story is just beginning");

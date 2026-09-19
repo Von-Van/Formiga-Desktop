@@ -47,10 +47,16 @@ pub enum Gesture {
     Reach,
     /// A side-to-side dance with the limbs swinging in turn.
     Bop,
+    /// Settled forward on its haunches with its ears up and one paw gathered in: watching
+    /// something in particular, and going on watching it. Unlike [`Self::Reach`], nothing is
+    /// being grabbed for; unlike [`Self::Gasp`], nothing has gone wrong. The loop is a slow
+    /// tilt of the head and a twitch of one ear, so the interest keeps breathing rather than
+    /// freezing — the creature's own blink rhythm carries the rest.
+    Watch,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -60,6 +66,7 @@ impl Gesture {
         Self::Balance,
         Self::Reach,
         Self::Bop,
+        Self::Watch,
     ];
 }
 

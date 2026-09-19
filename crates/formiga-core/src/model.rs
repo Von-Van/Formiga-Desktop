@@ -1406,6 +1406,15 @@ pub struct SaveFile {
     pub ritual: RitualState,
     #[serde(default)]
     pub objects: ColonyObjectState,
+    #[serde(default)]
+    pub visitors: crate::VisitorState,
+}
+
+/// What the person at the desk is holding out. Runtime-only: an offer is a moment, not a record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum OfferKind {
+    Snack,
+    Toy,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1486,6 +1495,14 @@ pub enum WorldEvent {
         surface: SurfaceKind,
         bounced: bool,
     },
+    /// Something was held out to one creature and it gave its answer. Being asked kindly is a
+    /// good thing to have happen whichever way the answer went; the meal or the game that may
+    /// follow is counted by its own completed action, not by this.
+    OfferAnswered {
+        creature_id: CreatureId,
+        kind: OfferKind,
+        accepted: bool,
+    },
     HomeAppeared,
     HomeDisappeared {
         interrupted: bool,
@@ -1524,6 +1541,16 @@ pub enum WorldCommand {
     },
     CancelInteraction,
     GatherCreatures,
+    /// Hold out a snack. The creature decides for itself whether it wants one.
+    OfferSnack {
+        creature_id: CreatureId,
+    },
+    /// Hold out a toy. The creature decides for itself whether it feels like playing.
+    OfferToy {
+        creature_id: CreatureId,
+    },
+    /// Call the whole colony home now, exactly as the ordinary home visit would.
+    SendHome,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

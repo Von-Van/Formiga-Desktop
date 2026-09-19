@@ -8,13 +8,13 @@ use time::Month;
 pub const CARD_WIDTH: u32 = 960;
 pub const CARD_HEIGHT: u32 = 600;
 
-const INK: Rgba = Rgba::new(34, 47, 43, 255);
-const MUTED_INK: Rgba = Rgba::new(79, 91, 81, 255);
-const PAPER: Rgba = Rgba::new(249, 239, 211, 255);
-const PAPER_SHADOW: Rgba = Rgba::new(213, 185, 143, 255);
-const NIGHT: Rgba = Rgba::new(18, 39, 38, 255);
-const NIGHT_LIGHT: Rgba = Rgba::new(27, 61, 56, 255);
-const CREAM: Rgba = Rgba::new(255, 246, 221, 255);
+pub(crate) const INK: Rgba = Rgba::new(34, 47, 43, 255);
+pub(crate) const MUTED_INK: Rgba = Rgba::new(79, 91, 81, 255);
+pub(crate) const PAPER: Rgba = Rgba::new(249, 239, 211, 255);
+pub(crate) const PAPER_SHADOW: Rgba = Rgba::new(213, 185, 143, 255);
+pub(crate) const NIGHT: Rgba = Rgba::new(18, 39, 38, 255);
+pub(crate) const NIGHT_LIGHT: Rgba = Rgba::new(27, 61, 56, 255);
+pub(crate) const CREAM: Rgba = Rgba::new(255, 246, 221, 255);
 
 /// Stateless by design: all card-only allocations are dropped when an export finishes.
 pub struct CreatureCardRenderer;
@@ -132,7 +132,7 @@ pub fn abbreviated_seed_code(creature: &Creature) -> String {
     format!("{first}…{}", &body[last_start..])
 }
 
-fn draw_background(canvas: &mut Canvas, rng: &mut CardRng, accent: Rgba) {
+pub(crate) fn draw_background(canvas: &mut Canvas, rng: &mut CardRng, accent: Rgba) {
     canvas.fill_rect(0, 0, CARD_WIDTH as i32, CARD_HEIGHT as i32, NIGHT);
     canvas.fill_rect(0, 0, CARD_WIDTH as i32, 16, NIGHT_LIGHT);
     canvas.fill_rect(
@@ -209,7 +209,14 @@ fn draw_divider(canvas: &mut Canvas, accent: Rgba) {
     }
 }
 
-fn draw_chip(canvas: &mut Canvas, text: &mut CardText, x: i32, y: i32, label: &str, tint: Rgba) {
+pub(crate) fn draw_chip(
+    canvas: &mut Canvas,
+    text: &mut CardText,
+    x: i32,
+    y: i32,
+    label: &str,
+    tint: Rgba,
+) {
     let width = (text.measure(label, 17.0).ceil() as i32 + 26).clamp(80, 394);
     stepped_panel(canvas, x, y, width, 34, tint);
     canvas.fill_rect(x + 5, y + 5, width - 10, 24, CREAM);
@@ -238,7 +245,7 @@ fn birth_month_year(creature: &Creature) -> String {
     )
 }
 
-const fn month_label(month: Month) -> &'static str {
+pub(crate) const fn month_label(month: Month) -> &'static str {
     match month {
         Month::January => "January",
         Month::February => "February",
@@ -263,7 +270,14 @@ const fn family_label(family: BodyFamily) -> &'static str {
     }
 }
 
-fn stepped_panel(canvas: &mut Canvas, x: i32, y: i32, width: i32, height: i32, color: Rgba) {
+pub(crate) fn stepped_panel(
+    canvas: &mut Canvas,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    color: Rgba,
+) {
     canvas.fill_rect(x + 7, y, width - 14, height, color);
     canvas.fill_rect(x, y + 7, width, height - 14, color);
 }
@@ -278,7 +292,14 @@ fn draw_vine(canvas: &mut Canvas, x: i32, y: i32, right: bool, color: Rgba) {
     }
 }
 
-fn draw_motif(canvas: &mut Canvas, x: i32, y: i32, motif: EffectMotif, scale: i32, color: Rgba) {
+pub(crate) fn draw_motif(
+    canvas: &mut Canvas,
+    x: i32,
+    y: i32,
+    motif: EffectMotif,
+    scale: i32,
+    color: Rgba,
+) {
     match motif {
         EffectMotif::Heart => {
             canvas.fill_circle(x - 2 * scale, y - scale, 2 * scale, color);
@@ -321,7 +342,7 @@ fn draw_motif(canvas: &mut Canvas, x: i32, y: i32, motif: EffectMotif, scale: i3
     }
 }
 
-fn blit_scaled(destination: &mut Canvas, source: &Canvas, x: i32, y: i32, scale: i32) {
+pub(crate) fn blit_scaled(destination: &mut Canvas, source: &Canvas, x: i32, y: i32, scale: i32) {
     for source_y in 0..source.height() as i32 {
         for source_x in 0..source.width() as i32 {
             let pixel = source.get(source_x, source_y);
@@ -342,7 +363,7 @@ fn blit_scaled(destination: &mut Canvas, source: &Canvas, x: i32, y: i32, scale:
     }
 }
 
-fn blend(destination: Rgba, foreground: Rgba, coverage: u8) -> Rgba {
+pub(crate) fn blend(destination: Rgba, foreground: Rgba, coverage: u8) -> Rgba {
     let alpha = u32::from(coverage) * u32::from(foreground.a) / 255;
     let inverse = 255 - alpha;
     Rgba::new(
@@ -353,22 +374,28 @@ fn blend(destination: Rgba, foreground: Rgba, coverage: u8) -> Rgba {
     )
 }
 
-struct CardText {
+pub(crate) struct CardText {
     fonts: Fonts,
 }
 
 impl CardText {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             fonts: Fonts::new(TextOptions::default(), FontDefinitions::default()),
         }
     }
 
-    fn measure(&mut self, value: &str, size: f32) -> f32 {
+    pub(crate) fn measure(&mut self, value: &str, size: f32) -> f32 {
         self.layout(value, size).rect.width()
     }
 
-    fn fit_size(&mut self, value: &str, maximum_width: f32, start: f32, minimum: f32) -> f32 {
+    pub(crate) fn fit_size(
+        &mut self,
+        value: &str,
+        maximum_width: f32,
+        start: f32,
+        minimum: f32,
+    ) -> f32 {
         let mut size = start;
         while size > minimum && self.measure(value, size) > maximum_width {
             size -= 2.0;
@@ -384,7 +411,61 @@ impl CardText {
         )
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, x: i32, y: i32, value: &str, size: f32, color: Rgba) {
+    /// Draw `value` centred on `center_x`. Card typography is laid out by eye against fixed
+    /// columns; a centred line is the one case where the measured width has to decide.
+    pub(crate) fn draw_centered(
+        &mut self,
+        canvas: &mut Canvas,
+        center_x: i32,
+        y: i32,
+        value: &str,
+        size: f32,
+        color: Rgba,
+    ) {
+        let width = self.measure(value, size);
+        self.draw(
+            canvas,
+            center_x - (width / 2.0).round() as i32,
+            y,
+            value,
+            size,
+            color,
+        );
+    }
+
+    /// Shorten `value` with an ellipsis until it fits `maximum_width`, cutting on character
+    /// boundaries so a multi-byte name is never split mid-glyph. Used where a column is too
+    /// narrow to shrink the type any further.
+    pub(crate) fn truncate_to_width(
+        &mut self,
+        value: &str,
+        size: f32,
+        maximum_width: f32,
+    ) -> String {
+        if self.measure(value, size) <= maximum_width {
+            return value.to_owned();
+        }
+        let characters: Vec<char> = value.chars().collect();
+        let mut kept = characters.len();
+        while kept > 0 {
+            kept -= 1;
+            let candidate: String = characters[..kept].iter().collect::<String>() + "…";
+            if self.measure(&candidate, size) <= maximum_width {
+                return candidate;
+            }
+        }
+        "…".to_owned()
+    }
+
+    pub(crate) fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        x: i32,
+        y: i32,
+        value: &str,
+        size: f32,
+        color: Rgba,
+    ) {
         let galley = self.layout(value, size);
         let atlas = self.fonts.image();
         for placed_row in &galley.rows {
@@ -414,10 +495,10 @@ impl CardText {
     }
 }
 
-struct CardRng(u64);
+pub(crate) struct CardRng(u64);
 
 impl CardRng {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         Self(seed ^ 0x464F_524D_4947_4121)
     }
 
@@ -428,7 +509,7 @@ impl CardRng {
         self.0
     }
 
-    fn range(&mut self, upper: i32) -> i32 {
+    pub(crate) fn range(&mut self, upper: i32) -> i32 {
         (self.next() % upper.max(1) as u64) as i32
     }
 }

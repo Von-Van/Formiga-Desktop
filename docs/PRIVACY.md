@@ -62,8 +62,8 @@ creature's name are read-only views of this local state.
 
 The save also holds four bounded keepsakes added in version 14. At most eight **pinned moments**,
 each naming a journal entry that already exists by its timestamp, creature, and typed moment — a
-pin cannot record anything the journal does not. At most eight **scrapbook records**, one per
-trinket variant, each holding the variant number, the first-find timestamp, the finder's stable ID,
+pin cannot record anything the journal does not. At most one **scrapbook record** per trinket
+variant — sixteen since 0.58.0 — each holding the variant number, the first-find timestamp, the finder's stable ID,
 and the finder's name as it was then, so the record still reads after that companion leaves without
 keeping a copy of the creature. **Appearance preferences** are a theme choice, a text-scale
 percentage, and one outline flag. A **routine schedule** is an enabled flag, at most fourteen rows
@@ -71,7 +71,43 @@ of weekday bitmask plus local minute plus preset index, one override flag, and w
 last applied. None of these records a desktop observation, a window, a cursor position, or a time
 the application was running: a schedule stores the times you chose, never the times you were there.
 
-Save version 14 accepts and deterministically migrates every v1–v13 colony. A v13 colony receives
+Save version 15 adds one record and nothing else: `visitors`, a bounded `VisitorState`. It holds
+`gatherings`, a count of how many times the colony has gone home; `guest`, present only while
+somebody is actually visiting, carrying that visitor's generated `creature`, its `source` (wanderer
+or invited), an optional `stays_until_utc` for an invitation's twenty-four hours, `on_stage` for
+whether it is out on the desktop right now, and `signed` for whether this visit is already in the
+book; and `guest_book`, at most twenty-four entries of `visited_at_utc`, `name`, `origin`, and
+`source`. A guest book's `origin` is the same `CreatureOrigin` a share code carries — appearance and
+temperament — and nothing about the person who shared it, their computer, or their colony. One
+`Visit` moment is added to the existing journal.
+
+What a visit does *not* save is the visit itself: the scene's progress is `#[serde(skip)]`, so its
+phase, beat, elapsed time, doorway, and the residents' answers exist only while the program is
+running. The same is true of every other interaction added in 0.58.0 — thought bubbles, the open
+menu, offer cooldowns, the overlap timers and per-pair cooldowns, and doorstep moments at the
+houses. The circumstances a trinket was found in are not saved either: the scrapbook records what,
+when, and who, exactly as it did before, and never why a particular keepsake qualified.
+
+Opening the menu with Control-click on macOS reads the modifier flags from the same combined-session
+event source Formiga already samples for the cursor and idle time. It is not a keyboard hook, adds
+no event tap, and needs no permission Formiga did not already have; an interaction proxy never takes
+keyboard focus, which is why the modifier has to come from there at all.
+
+Sticker and colony-portrait exports contain only rendered pixels. A sticker is a GIF of one
+creature's own frames: per-frame graphic-control blocks and exactly one loop block, with no comment,
+application, or plain-text extension. A colony portrait is a 960×600 opaque PNG of every member,
+their names, the month the colony began, how many of you there are, how many family lines, and the
+village, resolved on a notional 1:1 desktop so no screen geometry reaches it. Neither contains a
+seed, a share code, memories, learned tendencies, relationship scores, the journal, the guest book,
+display keys, habitat zones, device data, source paths, or hidden text metadata. The save dialog
+runs first, cancellation renders nothing, and the buffers are released afterwards.
+
+Save version 15 accepts and deterministically migrates every v1–v14 colony. A v14 colony receives an
+empty visitor state — no guest, no gatherings counted, an empty book — and nothing else about it is
+read, rewritten, or invented.
+
+Version 14 accepted and deterministically migrated every v1–v13 colony, and that chain is unchanged
+beneath version 15. A v13 colony receives
 empty pins, an empty scrapbook, default appearance preferences, and a disabled schedule; the
 scrapbook is never populated from an existing aggregate discovery count, because that count cannot
 say which trinket was found, when, or by whom. Migration converts legacy

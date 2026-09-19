@@ -32,6 +32,13 @@ test.
 
 ### Writing behavior scenarios
 
+The simulation is one `World` split across themed modules: `world.rs` holds the type, `new`,
+`from_save`, and `tick`, and everything else lives in `world/<theme>.rs` — `offers.rs`, `home.rs`,
+`spacing.rs`, `visitors.rs`, `discovery.rs`, and the rest — each adding methods to that same type.
+The tests mirror it: `world/tests/<theme>.rs`, with the shared desktop fixtures and colony builders
+in `world/tests/mod.rs`. Put a new scenario in the file named after what it is about, and reach for
+the fixtures in `mod.rs` before writing another one.
+
 The behavior tests drive `World::tick` over synthetic desktops in 50 ms steps. A few things about
 the simulation make a scenario quietly test the wrong thing:
 
@@ -53,8 +60,14 @@ the simulation make a scenario quietly test the wrong thing:
   rather than on one.
 - No expected value may depend on the local timezone: the schedule reads the local offset, which is
   not UTC on most developer machines. Use a routine in force at every hour, or pass explicit offsets.
+- Two creatures left standing on one another will be separated by `world/spacing.rs` at the end of
+  an ordinary tick, so a fixture that places them on top of each other may not stay that way. Place
+  them a frame apart, or assert across the grace period rather than on one tick.
 - Only the review sheets show whether a pose reads. They are dense; see `docs/TEST_MATRIX.md` for how
   to generate and read them.
+- Run the desktop against a scratch colony — `FORMIGA_DATA_DIR=/tmp/formiga-dev cargo run -p
+  formiga-desktop` — so an experiment, a migration, or a reset cannot touch your real one. See
+  `docs/BUILD.md`.
 
 Formiga intentionally avoids telemetry, global input hooks, Accessibility, Screen Recording, Input
 Monitoring, administrator requirements, and application-content inspection. Forks are encouraged

@@ -45,7 +45,7 @@ screen capture, window titles, or content inspection.
 ## Reliability strategy
 
 The simulation and RNG are platform-independent. Injected time accelerates the one-hour, one-week,
-and clamped one-calendar-month colony schedule; save v14 migrates every v1–v13 colony without
+and clamped one-calendar-month colony schedule; save v15 migrates every v1–v14 colony without
 regenerating identity; atomic writes retain a backup; removed supports or displays always resolve to
 a safe habitat point. CI denies Clippy warnings and exercises both platform builds.
 

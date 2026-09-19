@@ -1,5 +1,46 @@
 # Formiga roadmap
 
+## v0.58.0 direct-interaction and visitors release
+
+Implemented: the person at the desk can address a creature directly, and the creature answers for
+itself. A secondary click — Control-click on macOS — opens a small strip above the head offering a
+snack, a toy, sending the colony home, or that creature's profile, drawn from one shared interface
+atlas and hit-tested by a proxy window covering only the strip's own body. An offer is a proposal,
+not a command: the creature weighs want, trust, manner and tiredness on a private stream that leaves
+the behaviour RNG undisturbed, refuses outright while it is busy or asleep, and answers with a
+thought bubble. Send home starts an ordinary home visit without waiting out its cooldown. Thought
+bubbles are runtime-only icons raised by the person's own interactions, at most five at once,
+anchored at the real crown of whatever frame a creature is drawing.
+
+Also implemented: creatures from outside the colony, as wanderers at exactly one home gathering in
+every block of four and as day-long invitations pasted from a friend's seed code, with a bounded
+guest book, one journal moment per visit, and an ask-to-stay that runs the existing adoption path. A
+village overhaul that gives every member a porch beside its own door, reserves all eight belonging
+lots in one layout walk, and fills a home visit with small cosmetic doorstep moments. A spacing
+model measured from the art rather than guessed, which keeps faces clear at the source sites and
+behind a bounded safety net, and which stops Gather Creatures stacking a colony. Eight conditional
+trinkets beside the original eight, chosen from circumstances the simulation already knows and
+drawn from one colony-level atlas, with the everyday sequence left bit-identical to 0.57. A redrawn
+set of toys, snacks and drinkware. A tenth gesture for watching, an honest window gaze, and a lean
+that five poses had been authored with and never drawn. Animated stickers and a colony portrait,
+both on the creature card's export contract. A distribution kit of winget manifest templates, an
+itch.io page kit and repository metadata. The simulation's largest source file became a directory of
+themed modules with its tests beside them, verified behaviour-identical against 0.57.1 over five
+seeds and 18,000 ticks. A find could previously be written into the scrapbook as the gem rather than
+the trinket actually held up; finds are now recorded as what they were. Save v15 adds the visitor
+state and nothing else, and every v1–v14 colony migrates untouched.
+
+Resource constraints: creature textures are 1,529,856 bytes each, under a per-creature test limit
+raised deliberately from 1.5 MB to 4,500,000 bytes so the pose vocabulary has room to grow. One
+256×80 interface atlas (81,920 bytes) is built on demand and released when no bubble or menu has
+been drawn for 240 renders, costing one extra bind group and one extra draw call only while
+something is up; one 256×32 colony trinket atlas (32,768 bytes) replaces an eight-slot row baked
+into every creature. Settings artwork fits 432 KiB. The tick interval drops to 50 ms only while a
+menu is open. Overlaps, offers, bubbles, doorstep moments and visit progress are bounded runtime
+tables that are never serialized. No new thread, worker, polling loop or permission; the `gif`
+encoder already in the workspace is now linked into the application. Native release-machine
+verification remains tracked in TEST_MATRIX.md and PERFORMANCE.md.
+
 ## v0.57.0 social desktop release
 
 Implemented: creatures notice a changing desktop and react to it as a group, not individually.
