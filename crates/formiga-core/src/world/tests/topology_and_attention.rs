@@ -4,6 +4,16 @@ use super::*;
 /// here is typical; it is the most reactive colony the generator can be asked for, which is
 /// what the cadence claim has to survive.
 pub(super) fn eager_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
+    eager_colony_of(seed, false)
+}
+
+/// The same fixture with the colony grown to the cap: every companion it can hold, on the one
+/// floor, which is what a colony that has been going a few weeks actually looks like.
+pub(super) fn eager_full_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
+    eager_colony_of(seed, true)
+}
+
+fn eager_colony_of(seed: [u8; 32], full: bool) -> (World, DesktopSnapshot, OffsetDateTime) {
     let created = datetime!(2026-01-01 0:00 UTC);
     let now = created + Duration::days(40);
     let mut desktop = desktop();
@@ -32,16 +42,25 @@ pub(super) fn eager_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDat
         });
     }
     let mut world = World::new(seed, created, &desktop);
+    if full {
+        // Arrivals are staged, so a colony only fills if it is given the days to fill in.
+        for day in 1..=40 {
+            world.tick(created + Duration::days(day), 0.05, &desktop);
+        }
+    }
     world.tick(now, 0.05, &desktop);
     let_colony_wander(&mut world, now);
     world.pending_home_greetings.clear();
     world.save.ritual.next_at_utc = now + Duration::days(30);
     // One art pixel per desktop point, so the gap and spacing numbers below read directly.
     world.save.settings.display_scale = 2;
-    // Four, because one tick across forty days stages only the arrivals that tick earns. The
-    // colony cap is higher, so the spacing bounds these colonies are held to are bounds for four
-    // bodies on one floor rather than for a full village out on the desktop.
-    assert_eq!(world.save.creatures.len(), 4);
+    // Four when the fixture is not asked to fill: one tick across forty days stages only the
+    // arrivals that tick earns. `eager_full_colony` is the same floor with every companion the
+    // colony can hold on it.
+    assert_eq!(
+        world.save.creatures.len(),
+        if full { crate::MAX_COLONY_CREATURES } else { 4 }
+    );
     for (index, creature) in world.save.creatures.iter_mut().enumerate() {
         creature.state.arrival_delay_secs = 0.0;
         creature.state.drives = Drives::default();

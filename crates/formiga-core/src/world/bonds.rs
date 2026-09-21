@@ -228,8 +228,36 @@ pub(super) fn bond_target_point(
     } else {
         1.0
     };
+    // A mark measured against one companion keeps the actor clear of that companion and of nobody
+    // else. On a floor with room to spare those are the same thing; on a crowded one they are not,
+    // and a mark that lands on a third creature leaves two companions drawn through one another
+    // while each of them is standing exactly where its own errand sent it — so neither can be
+    // asked to move, and the pair stays that way for as long as the errands last.
+    //
+    // So on open ground the mark slides outward past whoever is already standing on it: always
+    // further from the companion, and always on the side the actor is on, because sending it round
+    // to the other side would turn the actor about the moment it crossed over and it would spend
+    // the errand walking back and forth. A ledge is not open ground — there is nowhere to slide
+    // to, and overlap handling has its own answer for a perch with no room left — so a mark on one
+    // is left where it falls.
+    let mut x = target.state.position.x + side * staging_offset;
+    if actor.state.surface.kind == SurfaceKind::ScreenFloor {
+        let clear = spacing::FACE_CLEAR_RATIO * frame_width;
+        for _ in 0..creatures.len() {
+            let blocker = creatures.iter().find(|other| {
+                other.id != actor.id
+                    && other.id != target.id
+                    && other.state.arrival_delay_secs <= 0.0
+                    && other.state.surface.monitor_id == actor.state.surface.monitor_id
+                    && other.state.surface.kind == SurfaceKind::ScreenFloor
+                    && (other.state.position.x - x).abs() < clear
+            });
+            let Some(blocker) = blocker else { break };
+            x = blocker.state.position.x + side * (clear + BOND_SETTLE);
+        }
+    }
     Some(Point {
-        x: target.state.position.x + side * staging_offset,
+        x,
         y: target.state.position.y,
     })
 }

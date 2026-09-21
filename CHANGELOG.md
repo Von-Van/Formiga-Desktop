@@ -2,6 +2,29 @@
 
 All notable changes are documented here.
 
+## [0.58.9] - 2026-09-21
+
+### Fixed
+
+- A colony that has filled up left companions standing on one another's faces. The table that
+  watches which pairs are drawn through each other had one slot for every pair a colony of four
+  can make; six companions make fifteen pairs, and a table too small to hold them all does not
+  merely lose the odd pair — it hands back whichever record it landed on, so one pair's time was
+  credited to another and another's cooldown was read in its place, and nobody was asked to step
+  aside from an overlap that was really happening. Across sixteen seeded sessions of a full
+  colony the worst episode falls from 22.2 seconds to 8.2, and the number of sessions with any
+  episode longer than a moment and a walk falls from twelve to three. A colony of four is
+  unaffected, measuring exactly as it did before.
+- A companion asked to step aside was treated as having already moved. The pair was then left
+  alone for five seconds whether or not anything came of it, so an overlap that the step did not
+  clear simply sat there. The pair is now given only as long as the move itself takes, and asked
+  again if they are still drawn through each other once the mover has arrived. A sleeper part way
+  through shuffling over is left to finish, which it was not before.
+- A companion walking over to a friend aimed at a spot measured against that friend and nobody
+  else, so on a crowded floor it walked into a third companion and stood there — both of them
+  exactly where their own errands had sent them, and so neither one able to be asked to move. On
+  open ground the spot now slides clear of whoever is already standing there.
+
 ## [0.58.8] - 2026-09-20
 
 ### Fixed

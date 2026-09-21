@@ -62,6 +62,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | A keepsake is drawn square whatever the shape of the sheet it is cut from | CI | CI |
 | The open habitat editor takes the pointer and leaves the overlay every other event, its redraw above all | CI | CI |
 | The ground the colony is founded on clears a Dock or taskbar at its factory size | CI | CI |
+| The overlap table holds every pair a full colony can make, and hands each pair its own record | CI | CI |
+| A full colony over sixteen seeded sessions leaves no face covered for something one could sit and watch; a colony of four still meets the tighter bound | CI | CI |
 | Keepsakes and belongings in the yards: eight anchors a tree with the catalogue split by condition, every found keepsake drawn once inside its own tree's cell, four belongings to each yard fixed by slot, `BELONGING_CLEARANCE` held after the per-colony drift, and no resident standing on one | CI | CI |
 | Belonging colors stay distinct from every creature palette they are carried against | CI | CI |
 | Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
@@ -212,6 +214,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | The desktop editor draws the region under the cursor, the settings window stays in front of it throughout, and Apply, Cancel and Reset all remain clickable | pending | pending | pending | pending |
 | Creature menus, petting and dragging all still work after an edit is applied and after one is cancelled | pending | pending | pending | pending |
 | The village and a creature resting at the foot of the screen stand clear of the Dock, shown and auto-hidden, and of the taskbar | pending | pending | pending | pending |
+| A colony of six out on the desktop: nobody is left drawn through anybody for more than a moment, stepping aside reads as walking rather than twitching, and a sleeper shuffles without waking | pending | pending | pending | pending |
 | Invalid habitat cannot replace valid policy | pending | pending | pending | pending |
 | Selected app occlusion and rule removal | pending | pending | pending | pending |
 | Window ordering/minimize/close | pending | pending | pending | pending |

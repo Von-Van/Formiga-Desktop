@@ -47,12 +47,10 @@ const ARRIVED_SLACK: f32 = 6.0;
 const CROWD_GRACE_SECONDS: f32 = 2.0;
 
 /// A step aside goes slightly past the distance that triggered it, so arriving does not leave the
-/// pair balanced on the threshold and ready to trigger again.
+/// pair balanced on the threshold and ready to trigger again. A pair that has come apart by this
+/// much is not drawn through each other at all, so nothing below sees it again until the two meet
+/// afresh — which is what stops two resolvers passing the same pair back and forth.
 const CLEAR_MARGIN: f32 = 1.08;
-
-/// After a pair has been separated, it is left alone for this long. With the margin above, this
-/// is what stops two resolvers passing the same pair back and forth.
-const PAIR_COOLDOWN_SECONDS: f32 = 5.0;
 
 /// The longest any scene is allowed to run. A contact a scene is still making is left alone while
 /// the scene has less than this left, because the scene ends itself; a plan claiming longer than
@@ -71,9 +69,16 @@ const SHUFFLE_SPEED: f32 = 30.0;
 /// The shortest sideways move worth making, matching the shortest walk attention will set off on.
 const STEP_POINTS: f32 = 8.0;
 
-/// Four creatures make six pairs, and the colony is capped at four.
-const MAX_PAIRS: usize = 6;
-const MAX_SHUFFLES: usize = 4;
+/// One slot for every unordered pair a full colony can make, so the table always holds the whole
+/// picture at once. Sizing it for a smaller colony than the one that can turn up does not merely
+/// lose the odd pair: `watch` hands back whichever record it landed on, so a table too small
+/// credits one pair's time to another and reads another's cooldown, and nobody is ever asked to
+/// step off a face that is genuinely covered.
+const MAX_PAIRS: usize = crate::MAX_COLONY_CREATURES * (crate::MAX_COLONY_CREATURES - 1) / 2;
+
+/// One for every member: a whole colony may be asleep in a row, and every one of them may need to
+/// shuffle over.
+const MAX_SHUFFLES: usize = crate::MAX_COLONY_CREATURES;
 
 /// How wide a creature's frame draws, in desktop points.
 pub(super) fn frame_width(display_scale: u8, monitor_scale: f32) -> f32 {
@@ -151,12 +156,20 @@ impl OverlapWatch {
                     })
                     .expect("the pair table is never empty")
             });
-        self.pairs[index].get_or_insert(PairWatch {
-            a,
-            b,
-            covered: 0.0,
-            cooldown: 0.0,
-        })
+        // The table holds every pair a full colony can make, so `index` is either this pair's own
+        // slot or a free one. Claim it outright: `get_or_insert` kept whatever was already there
+        // and handed the caller another pair's record.
+        if self.pairs[index].is_none_or(|watch| watch.a != a || watch.b != b) {
+            self.pairs[index] = Some(PairWatch {
+                a,
+                b,
+                covered: 0.0,
+                cooldown: 0.0,
+            });
+        }
+        self.pairs[index]
+            .as_mut()
+            .expect("the slot was just claimed for this pair")
     }
 
     /// Drop everything about creatures the colony no longer has.
@@ -305,16 +318,16 @@ impl World {
                 // Leaving a surface altogether is the last thing tried, so it waits out several
                 // graces first: a companion crowding a ledge is usually only passing through.
                 let pressing = hidden && covered >= COVER_GRACE_SECONDS * 5.0;
-                let moved = self.step_one_aside(&back, &front, shared, pressing, &placed, desktop);
-                let watch = self.overlaps.watch(back.id, front.id);
-                if moved {
-                    watch.covered = 0.0;
-                    watch.cooldown = PAIR_COOLDOWN_SECONDS;
-                } else {
-                    // Nobody could be asked this time. Ask again shortly rather than on every
-                    // tick, and keep the episode's own clock running.
-                    watch.cooldown = RETRY_SECONDS;
-                }
+                self.step_one_aside(&back, &front, shared, pressing, &placed, desktop);
+                // A move is ordered here, not finished. Whoever was asked is walking or shuffling
+                // to the spot it was given and `contact_excused` leaves it alone until it gets
+                // there, so all this cooldown has to do is stop the pair being asked afresh on the
+                // very next tick. The episode's own clock keeps running either way: a pair still
+                // drawn through one another once the mover has arrived is asked again, rather than
+                // sitting out the rest of a cooldown granted on the assumption that the move
+                // worked. Coming apart is what clears the clock, and the branch above does that by
+                // itself the moment the two are no longer drawn through each other.
+                self.overlaps.watch(back.id, front.id).cooldown = RETRY_SECONDS;
             }
         }
     }
@@ -385,6 +398,13 @@ impl World {
             || self.window_journeys.contains_key(&id)
             || self.attention.airborne(id)
         {
+            return true;
+        }
+        // Already shuffling over. A sleeper on its way is in the same position as a walker with a
+        // mark below, and is left to get there for the same reason: a shuffle is not registered as
+        // a walk, so without this the sleeper would be asked again half way across and its partner
+        // moved as well, when only one of the two ever needed to.
+        if self.overlaps.shuffling(id) {
             return true;
         }
         // Still walking to a spot it chose for itself. Shuffling it now would drag it away from

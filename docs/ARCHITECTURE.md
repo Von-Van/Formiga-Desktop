@@ -662,9 +662,16 @@ helper's assist spot is face-clear, two riders on one window are walked apart by
 and Gather Creatures spaces everyone by the full-clear ratio instead of stacking them.
 
 `resolve_overlaps` runs at the end of every ordinary tick as a safety net, over a bounded runtime
-table of six pairs and four shuffles that is never saved. A covered face acts after 1.25 seconds and
-plain crowding after 2.0; a 5-second per-pair cooldown and a 1.08 clearance margin stop it
-ping-ponging. Who moves is decided by cost: never someone dragged, tossed, airborne, climbing,
+table that is never saved: one slot for every unordered pair a full colony can make, and one
+shuffle per member. Those sizes come from `MAX_COLONY_CREATURES` rather than from a number written
+down beside it, because `watch` hands back whichever record it lands on — a table too small to hold
+every pair credits one pair's time to another and reads another's cooldown, so nobody is asked to
+step off a face that is genuinely covered. A covered face acts after 1.25 seconds and plain
+crowding after 2.0. A step aside is ordered, not finished: the pair is held only long enough not to
+be asked again on the next tick, and the episode's own clock keeps running, so a pair still drawn
+through one another once the mover has arrived is asked afresh instead of sitting out a cooldown
+granted on the assumption the move worked. Coming apart is what clears the clock, and the 1.08
+clearance margin is what stops a separated pair landing back on the threshold. Who moves is decided by cost: never someone dragged, tossed, airborne, climbing,
 hanging, homebound, or owned by a scene; +8 for being asleep and up to 4 more the longer it has
 slept, so the lighter sleeper moves; +7 for a ritual participant, +6 for a pile anchor, +5 for
 holding a prop, +2 for a bond plan; ties by id. An awake creature takes an ordinary short `Traverse`
@@ -674,9 +681,21 @@ sleepers and ritual participants get a quiet position-only shuffle that emits no
 clears every face and the situation has lasted five times the grace period, the creature leaves the
 ledge through the existing descent journey. No event is emitted for a sidestep. A user drag or toss,
 an airborne creature, a climbing or hanging one, and a play scene inside its own bounded deadline
-(at most 21 seconds) are exempt. So is a creature still walking to a spot it chose for itself: the
-resolver would drag it off the mark while its own walk pushed back, the two moving it a pixel at a
-time in opposite directions, and once it arrives it is standing still and can be asked properly.
+(at most 21 seconds) are exempt. So is a creature still walking to a spot it chose for itself, or a
+sleeper part way through a shuffle: the resolver would drag it off the mark while its own walk
+pushed back, the two moving it a pixel at a time in opposite directions, and once it arrives it is
+standing still and can be asked properly. An exemption covers the pair, not just the creature
+holding it — asking the free one of the two to move instead was measured and is worse, because it
+walks the movable companion along in front of whoever is busy rather than resolving anything.
+
+Because the exemption covers the pair, a colony large enough to crowd one floor needs its marks to
+be right in the first place. A bond mark measured against one companion keeps its actor clear of
+that companion and of nobody else, so on open ground it now slides outward past anybody already
+standing on it — always further from the companion, always on the side the actor is already on, so
+that it does not turn round mid-walk. A ledge is left alone: there is nowhere to slide to, and
+`leave_the_surface` is the answer for a perch with no room. Without this, two companions each
+standing exactly where its own errand sent it stayed drawn through each other for the length of
+both errands, with neither one eligible to be asked to move.
 
 Nothing that moves a creature may step past what it was aiming at. A walk covers one to three
 points in a tick, so a target with no stop distance around it is overshot, turned toward, overshot

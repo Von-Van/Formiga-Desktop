@@ -1,4 +1,4 @@
-# Formiga · v0.58.8
+# Formiga · v0.58.9
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.58.8-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.58.9-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,23 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.58.9
+
+A colony that has filled up no longer leaves anybody standing on somebody else's face. Six
+companions share the floor four used to, and the bookkeeping that watches for one of them being
+drawn through another only had room for a colony of four — so once the sixth arrived it started
+crediting one pair's time to a different pair entirely, and nobody was ever asked to step aside
+from an overlap that was genuinely happening. The worst case measured twenty-two seconds of one
+face behind another body. It is a little over two now, and across sixteen seeded sessions the
+worst anywhere fell from 22.2 seconds to 8.2.
+
+Two smaller things came out of the same work. A companion asked to step aside is now given the
+time to actually do it before anybody checks again, instead of being assumed to have succeeded the
+moment it was asked — which is what let a pair sit drawn through each other through a five-second
+cooldown. And a companion walking over to a friend now keeps clear of whoever else is standing
+about on the way, rather than aiming at a spot measured against its friend alone and landing on a
+third.
 
 ## New in 0.58.8
 

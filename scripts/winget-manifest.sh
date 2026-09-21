@@ -8,7 +8,7 @@
 #
 # Usage:
 #   scripts/winget-manifest.sh <version>
-#     <version> is the release version, with or without a leading "v" (e.g. 0.58.8 or v0.58.8).
+#     <version> is the release version, with or without a leading "v" (e.g. 0.58.9 or v0.58.9).
 #
 # Tools used: curl, gh (its own --jq filter, not a system jq install), shasum, sed - plus
 # ordinary shell builtins (cd, mkdir, mktemp, read, trap) that any bash script needs.
@@ -20,7 +20,7 @@ set -euo pipefail
 REPO="Von-Van/Formiga-Desktop"
 
 if [[ $# -ne 1 || "$1" == "-h" || "$1" == "--help" ]]; then
-  echo "usage: $(basename "$0") <version>   e.g. $(basename "$0") 0.58.8" >&2
+  echo "usage: $(basename "$0") <version>   e.g. $(basename "$0") 0.58.9" >&2
   exit 1
 fi
 
