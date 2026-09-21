@@ -11,16 +11,21 @@ mod colony_management;
 mod companion;
 mod discovery;
 mod experience;
+mod habits;
+mod hangouts;
 mod home;
 mod interaction;
 mod journeys;
 mod misc;
+mod moments;
 mod objects_and_decorations;
 mod offers;
 mod perches;
 mod rituals;
 mod spacing;
 mod topology_and_attention;
+mod undo;
+mod village;
 mod visitors;
 
 pub(super) fn desktop() -> DesktopSnapshot {

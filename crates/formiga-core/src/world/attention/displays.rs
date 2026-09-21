@@ -25,7 +25,7 @@ pub(crate) struct DisplayAttention {
     previous: [Option<DisplayShape>; MAX_DISPLAYS],
     initialized: bool,
     discovery: Option<Discovery>,
-    reorient: [Option<CreatureId>; MAX_PARTICIPANTS],
+    reorient: [Option<CreatureId>; MAX_COLONY_CREATURES],
     recovery_age: f32,
     next_origin: u64,
     sample_at: Option<u64>,
@@ -293,12 +293,12 @@ impl World {
         self.clear_attention();
         self.cursor_observer.reset();
         // Stable display keys distinguish real removal from native identifier/DPI churn.
-        let mut affected = [None; MAX_PARTICIPANTS];
+        let mut affected = [None; MAX_COLONY_CREATURES];
         for (index, creature) in self
             .save
             .creatures
             .iter_mut()
-            .take(MAX_PARTICIPANTS)
+            .take(MAX_COLONY_CREATURES)
             .enumerate()
         {
             let Some(previous) = old
@@ -386,11 +386,13 @@ impl World {
                     / monitor.scale_factor
                     * 0.65)
                     .clamp(24.0, 96.0);
-                if let Some(spaced) = (0..=8)
+                // Enough slots for the whole colony on one side, since a recovery against a
+                // screen edge can only spread the other way.
+                if let Some(spaced) = (0..=2 * MAX_COLONY_CREATURES)
                     .filter_map(|slot| {
                         let direction = if slot % 2 == 0 { 1.0 } else { -1.0 };
                         let candidate = Point {
-                            x: position.x + direction * ((slot + 1) / 2) as f32 * gap,
+                            x: position.x + direction * slot.div_ceil(2) as f32 * gap,
                             y: position.y,
                         };
                         (habitat_contains(&self.save.settings.habitat, monitor, candidate)
@@ -798,6 +800,9 @@ mod tests {
     #[test]
     fn removal_recovers_a_whole_colony_into_separate_safe_places_even_while_paused() {
         let (mut world, mut desktop, now) = super::super::tests::open_scene();
+        // A full colony, so the fifth and sixth are carried back as surely as the first four.
+        super::super::tests::fill_colony(&mut world, &desktop, now);
+        assert_eq!(world.save.creatures.len(), MAX_COLONY_CREATURES);
         attach(&mut desktop);
         ticks(&mut world, &desktop, now, 1);
         for (index, creature) in world.save.creatures.iter_mut().enumerate() {

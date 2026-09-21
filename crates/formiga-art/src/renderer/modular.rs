@@ -17,6 +17,7 @@ pub(super) fn draw(
     frame: u8,
 ) -> PixelPoint {
     let d = design.bounded();
+    let k = d.classic;
     let long = d.body == BodyPlan::Long;
     // A blob is one soft mass carrying its own face, so it keeps a rounder minimum and
     // never grows the separate head oval every other plan draws.
@@ -42,25 +43,33 @@ pub(super) fn draw(
 
     // Tail and ears go behind the body and never through the reserved face area.
     let tx = x - rx + 1;
-    match d.tail {
-        1 => oval(c, p, tx - 2, y + 1, 3, 3, p.highlight),
-        2 | 3 => {
-            let ty = y - 3 + pose.tail_sway.clamp(-2, 2);
-            c.line(tx, y + 3, (tx - 6).max(3), ty, 3, p.outline);
-            c.line(tx, y + 3, (tx - 6).max(3), ty, 2, p.accent);
-            if d.tail == 3 {
-                oval(c, p, (tx - 6).max(4), ty - 2, 2, 3, p.accent);
+    if k.tail > 0 {
+        classic_tail(c, p, k.tail, tx, y, pose);
+    } else {
+        match d.tail {
+            1 => oval(c, p, tx - 2, y + 1, 3, 3, p.highlight),
+            2 | 3 => {
+                let ty = y - 3 + pose.tail_sway.clamp(-2, 2);
+                c.line(tx, y + 3, (tx - 6).max(3), ty, 3, p.outline);
+                c.line(tx, y + 3, (tx - 6).max(3), ty, 2, p.accent);
+                if d.tail == 3 {
+                    oval(c, p, (tx - 6).max(4), ty - 2, 2, 3, p.accent);
+                }
             }
+            4 => oval(c, p, tx - 2, y, 4, 5, p.accent),
+            _ => {}
         }
-        4 => oval(c, p, tx - 2, y, 4, 5, p.accent),
-        _ => {}
     }
     // A pricked ear grows out of the base it already had, so it stays joined to the head.
     let ear = (f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2);
+    if k.crown > 0 {
+        classic_crown(c, p, k.crown, ear_cx, ear_span, ear_top, ear, pose);
+    }
     for side in [-1, 1] {
         let ex = ear_cx + side * ear_span;
         let ey = ear_top;
         match d.ears {
+            _ if k.crown > 0 => {}
             EarStyle::None => {}
             // A round ear has no height to grow, so it rides up instead, staying on the head.
             EarStyle::Round => oval(c, p, ex, ey - 1 - pose.ear_perk.clamp(0, 2), 3, 3, p.accent),
@@ -94,21 +103,35 @@ pub(super) fn draw(
     if long {
         for dx in [-rx + 3, rx - 3] {
             c.line(x + dx + 1, y + ry - 2, x + dx + 1, floor - 2, 2, p.outline);
-            oval(
-                c,
-                p,
-                x + dx + 1,
-                floor - 2 + pose.step_b.clamp(-1, 1),
-                2,
-                2,
-                p.shadow,
-            );
+            let at = PixelPoint {
+                x: x + dx + 1,
+                y: floor - 2 + pose.step_b.clamp(-1, 1),
+            };
+            if k.limbs > 0 {
+                classic_foot(c, p, k.limbs, at);
+            } else {
+                oval(c, p, at.x, at.y, 2, 2, p.shadow);
+            }
         }
     }
     let limbs = limbs(clip, frame, body, d.body);
-    oval(c, p, x, y, rx, ry, p.coat);
-    c.fill_ellipse(x, y + ry / 2, rx - 3, (ry / 2).max(3), p.shadow);
+    if k.coat > 0 {
+        lit_oval(c, p, x, y, rx, ry, p.coat);
+        // A crescent of shade under a lit top, rather than a shaded lower half.
+        c.fill_ellipse(
+            x - 2,
+            y + ry / 2,
+            (rx - 2).max(2),
+            (ry / 3).max(2),
+            p.shadow,
+        );
+        c.fill_ellipse(x, y - 1, rx - 2, (ry - 2).max(2), p.coat);
+    } else {
+        oval(c, p, x, y, rx, ry, p.coat);
+        c.fill_ellipse(x, y + ry / 2, rx - 3, (ry / 2).max(3), p.shadow);
+    }
     match d.marking {
+        _ if k.pattern > 0 => classic_pattern(c, p, d, x, y, rx - 1, ry - 1),
         1 => c.fill_ellipse(x, y + 3, (rx - 4).max(3), (ry - 2).max(3), p.highlight),
         2 => {
             for dx in [-5, 0, 5] {
@@ -133,11 +156,14 @@ pub(super) fn draw(
         // A four-pawed plan lifts the front paw it gestures with off the ground.
         if !(long && limb != Limb::Rest) {
             let fx = x + side * (rx - 4) + step.clamp(-2, 2);
+            let lift = step.abs().min(2);
+            // Stick legs are drawn in shade, so they read as thin legs rather than coat.
+            let leg = if k.limbs == 2 { p.shadow } else { p.coat };
             c.line(
                 x + side * (rx - 4),
                 y + ry - 2,
                 fx,
-                floor - 2 - step.abs().min(2),
+                floor - 2 - lift,
                 2,
                 p.outline,
             );
@@ -145,23 +171,41 @@ pub(super) fn draw(
                 x + side * (rx - 4),
                 y + ry - 2,
                 fx,
-                floor - 2 - step.abs().min(2),
+                floor - 2 - lift,
                 1,
-                p.coat,
+                leg,
             );
-            oval(c, p, fx, floor - 1 - step.abs().min(2), 3, 2, p.coat);
+            if k.limbs > 0 {
+                classic_foot(
+                    c,
+                    p,
+                    k.limbs,
+                    PixelPoint {
+                        x: fx,
+                        y: floor - 1 - lift,
+                    },
+                );
+            } else {
+                oval(c, p, fx, floor - 1 - lift, 3, 2, p.coat);
+            }
         }
         if !long && limb == Limb::Rest {
             let at = shoulder(side);
             if d.body == BodyPlan::Winged {
                 draw_wing(c, p, wing_style(d), at.x, at.y, side);
+            } else if k.limbs > 0 {
+                classic_nub(c, p, at, side);
             } else {
                 oval(c, p, at.x, at.y, 2, 3, p.coat);
             }
         }
     }
     if !blob {
-        oval(c, p, hx, hy, head, head - 1, p.coat);
+        if k.coat > 0 {
+            lit_oval(c, p, hx, hy, head, head - 1, p.coat);
+        } else {
+            oval(c, p, hx, hy, head, head - 1, p.coat);
+        }
     }
     if d.muzzle > 0 {
         c.fill_ellipse(
@@ -172,15 +216,19 @@ pub(super) fn draw(
             p.highlight,
         );
     }
-    c.fill_ellipse(
-        hx - 2,
-        if blob { y - ry + 3 } else { hy - head + 3 },
-        3,
-        1,
-        p.highlight,
-    );
+    // Candy coats are lit from above already, so only the modular one carries a painted gleam.
+    if k.coat == 0 {
+        c.fill_ellipse(
+            hx - 2,
+            if blob { y - ry + 3 } else { hy - head + 3 },
+            3,
+            1,
+            p.highlight,
+        );
+    }
     // A limb in use is the same limb carried out from where it rests, drawn last so a paw raised
     // to the face or across the chest stays in front of what it covers.
+    let arm = if k.limbs > 0 { classic_arm } else { draw_arm };
     for (side, limb) in [-1, 1].into_iter().zip(limbs) {
         let Limb::Reach(hand) = limb else {
             continue;
@@ -191,14 +239,156 @@ pub(super) fn draw(
                 x: x + side * (rx - 3),
                 y: y + 2,
             };
-            draw_arm(c, p, root, hand);
+            arm(c, p, root, hand);
         } else if d.body == BodyPlan::Winged {
             draw_open_wing(c, p, wing_style(d), shoulder(side), hand, side);
         } else {
-            draw_arm(c, p, shoulder(side), hand);
+            arm(c, p, shoulder(side), hand);
         }
     }
     PixelPoint { x: hx, y: hy }
+}
+
+/// A mass lit from above, the way the original bodies are drawn: the fill is carried a row up
+/// inside its outline, so the top edge meets the light with no ink across it and the underside
+/// sits on a heavier line. The silhouette is exactly the outlined one, so everything measured
+/// against it, from the reserved face to the spacing boxes, holds as it does for a plain oval.
+fn lit_oval(c: &mut Canvas, p: Palette, x: i32, y: i32, rx: i32, ry: i32, color: Rgba) {
+    c.fill_ellipse(x, y, rx + 1, ry + 1, p.outline);
+    c.fill_ellipse(x, y - 1, rx, ry, color);
+}
+
+/// A foot of the original kind, pointing the way the creature faces: a small accent cross in a
+/// dark rim, or under a stick leg a longer, forked one.
+fn classic_foot(c: &mut Canvas, p: Palette, limbs: u8, at: PixelPoint) {
+    let (rim, fork) = if limbs == 2 { (4, 3) } else { (3, 2) };
+    c.fill_ellipse(at.x, at.y, rim, 2, p.outline);
+    c.fill_ellipse(at.x + 1, at.y, fork, 1, p.accent);
+}
+
+/// A small paw of the original kind, folded at the side: a short stub from the shoulder ending in
+/// an accent tip. It covers the same spot beside the body a modular paw does, so raising it
+/// leaves that spot empty exactly as raising a modular paw would.
+fn classic_nub(c: &mut Canvas, p: Palette, at: PixelPoint, side: i32) {
+    let tip = PixelPoint {
+        x: at.x + side,
+        y: at.y + 2,
+    };
+    c.line(at.x - side, at.y, tip.x, tip.y, 2, p.outline);
+    c.fill_circle(tip.x, tip.y, 2, p.outline);
+    c.line(at.x - side, at.y, tip.x, tip.y, 1, p.coat);
+    c.fill_circle(tip.x, tip.y, 1, p.accent);
+}
+
+/// The same paw carried out: a thin arm to an accent tip, its root filled back into the body.
+fn classic_arm(c: &mut Canvas, p: Palette, root: PixelPoint, hand: PixelPoint) {
+    c.line(root.x, root.y, hand.x, hand.y, 2, p.outline);
+    c.fill_circle(hand.x, hand.y, 2, p.outline);
+    c.line(root.x, root.y, hand.x, hand.y, 1, p.coat);
+    c.fill_circle(hand.x, hand.y, 1, p.accent);
+    c.fill_circle(root.x, root.y, 1, p.coat);
+}
+
+/// Antennae or sprouts in place of ears, rooted where the ears would be so they stay on the head.
+/// Antenna tips bob against each other as the body moves.
+#[allow(clippy::too_many_arguments)]
+fn classic_crown(
+    c: &mut Canvas,
+    p: Palette,
+    crown: u8,
+    cx: i32,
+    span: i32,
+    top: i32,
+    reach: i32,
+    pose: Pose,
+) {
+    for side in [-1, 1] {
+        let root = PixelPoint {
+            x: cx + side * (span - 1),
+            y: top + 1,
+        };
+        if crown == 1 {
+            let tip = PixelPoint {
+                x: cx + side * (span + 1),
+                y: (top - reach - side * pose.bob.clamp(-1, 1)).max(3),
+            };
+            c.line(root.x, root.y, tip.x, tip.y, 1, p.outline);
+            c.fill_circle(tip.x, tip.y, 1, p.accent);
+        } else {
+            let tip = PixelPoint {
+                x: cx + side * (span + 3),
+                y: (top - reach + 1).max(3),
+            };
+            c.line(root.x, root.y + 1, tip.x, tip.y, 2, p.outline);
+            c.line(root.x, root.y, tip.x, tip.y + 1, 1, p.accent);
+        }
+    }
+}
+
+/// A tail of the original kind: a thin dark stalk ending in an open curl, or in an accent star.
+fn classic_tail(c: &mut Canvas, p: Palette, tail: u8, tx: i32, y: i32, pose: Pose) {
+    let sway = pose.tail_sway.clamp(-2, 2);
+    if tail == 1 {
+        let tip = PixelPoint {
+            x: (tx - 5).max(4),
+            y: y - 2 + sway,
+        };
+        c.line(tx, y + 2, tip.x, tip.y, 2, p.outline);
+        c.fill_circle(tip.x, tip.y - 2, 3, p.outline);
+        c.fill_circle(tip.x, tip.y - 2, 1, Rgba::TRANSPARENT);
+    } else {
+        // The star rides higher and further out, so its stalk clears the body it grows from.
+        let tip = PixelPoint {
+            x: (tx - 6).max(3),
+            y: y - 5 + sway,
+        };
+        c.line(tx, y + 2, tip.x, tip.y, 2, p.outline);
+        c.fill_circle(tip.x, tip.y, 2, p.outline);
+        c.fill_circle(tip.x, tip.y, 1, p.accent);
+    }
+}
+
+/// Stripes, spots, or patches of accent across the body, as the original coats wore them. They
+/// are placed from the recipe's own bytes, so a creature's pattern never moves, and like the
+/// originals a patch near the edge may run over the outline rather than stop short of it.
+fn classic_pattern(
+    c: &mut Canvas,
+    p: Palette,
+    d: CreatureDesign,
+    x: i32,
+    y: i32,
+    rx: i32,
+    ry: i32,
+) {
+    if rx <= 2 || ry <= 2 {
+        return;
+    }
+    if d.classic.pattern == 1 {
+        for offset in (-rx + 3..rx - 2).step_by(4) {
+            for row in y - ry..=y + ry {
+                let column = x + offset + (row - y).div_euclid(4);
+                if inside_ellipse(column, row, x, y, rx, ry) {
+                    c.set(column, row, p.accent);
+                }
+            }
+        }
+        return;
+    }
+    let mut seed = [0_u8; 32];
+    seed[..20].copy_from_slice(&d.to_bytes());
+    let mut rng = ChaCha12Rng::from_seed(seed);
+    let (count, radius) = if d.classic.pattern == 2 {
+        (rng.random_range(3..=6), 1)
+    } else {
+        (rng.random_range(2..=3), 3)
+    };
+    for _ in 0..count {
+        let spot_x = rng.random_range(x - rx + 2..=x + rx - 2);
+        let spot_y = rng.random_range(y - ry + 2..=y + ry - 2);
+        if inside_ellipse(spot_x, spot_y, x, y, rx, ry) {
+            c.fill_circle(spot_x, spot_y, radius, p.accent);
+        }
+    }
 }
 
 /// Where this body actually holds what it is using, measured the same way the body itself is
@@ -272,8 +462,17 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     }
     let x = if long { 22 } else { 24 };
     let floor = 40 + pose.bob.clamp(-2, 2) - pose.play_lift.clamp(0, 3);
-    // Blobs settle onto stubby feet rather than standing on visible legs.
-    let stance = f32::from(d.legs) * size * if blob { 0.4 } else { 1.0 };
+    // Blobs settle onto stubby feet rather than standing on visible legs, and stick legs lift
+    // every body higher, a blob most of all, since it otherwise barely shows a leg.
+    let stilts = d.classic.limbs == 2;
+    let stance = f32::from(d.legs)
+        * size
+        * match (blob, stilts) {
+            (true, false) => 0.4,
+            (true, true) => 1.1,
+            (false, false) => 1.0,
+            (false, true) => 1.35,
+        };
     // A crouch folds the legs rather than sinking the feet, so contact with the surface holds.
     let stance = (stance.round() as i32 - pose.crouch.clamp(0, 4)).max(0);
     let y = floor - stance - ry;
@@ -387,6 +586,18 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
             2 => [to(beside_head(-1), hy - 4), Limb::Rest],
             _ => [Limb::Rest; 2],
         },
+        // A long body stretches along the ground with every paw planted.
+        BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Long => [Limb::Rest; 2],
+        // Wings open up and out as far as they go.
+        BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Winged => {
+            let up = [0, 1, 2, 2][usize::from(frame.min(3))];
+            both(&|side| to(x + side * (rx + 4 + up), hy - head - up))
+        }
+        // Paws up and in over the head, higher each frame until they are at full stretch.
+        BodyClip::Gesture(Gesture::Stretch) => {
+            let up = [0, 2, 3, 3][usize::from(frame.min(3))];
+            both(&|side| to(hx + side * (head / 2 + 2), hy - head - 2 - up))
+        }
     };
     // A long body's far paw would have to cross the whole body to reach its face or its chest,
     // so it stays planted and the near paw makes the gesture alone.
@@ -535,13 +746,44 @@ fn draw_wing(c: &mut Canvas, p: Palette, style: u8, x: i32, y: i32, side: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use formiga_core::ClassicParts;
 
+    /// A plain modular companion. Classic parts are switched off here so these tests keep
+    /// covering the modular parts alone; the classic ones are exercised on their own below.
     fn preview() -> formiga_core::Creature {
-        formiga_core::World::preview_adult(
+        let mut creature = formiga_core::World::preview_adult(
             [55; 32],
             time::OffsetDateTime::UNIX_EPOCH,
             &formiga_core::DesktopSnapshot::default(),
-        )
+        );
+        let design = CreatureDesign::modular([55; 32], 0, None);
+        formiga_core::apply_creature_design(&mut creature, Some(design));
+        creature
+    }
+
+    /// Every combination of the classic parts that changes a body's shape. The face is drawn on
+    /// its own layer, so it is covered by the face tests instead.
+    fn classic_bodies() -> Vec<ClassicParts> {
+        let mut all = Vec::new();
+        for coat in 0..=1 {
+            for limbs in 0..=2 {
+                for crown in 0..=2 {
+                    for pattern in 0..=3 {
+                        for tail in 0..=2 {
+                            all.push(ClassicParts {
+                                coat,
+                                face: 0,
+                                limbs,
+                                crown,
+                                pattern,
+                                tail,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        all
     }
 
     /// Draws one modular frame exactly as the body renderer does, before props and effects.
@@ -786,5 +1028,134 @@ mod tests {
             pawed.contains(&p.coat),
             "a round body reaches with its paws"
         );
+    }
+
+    #[test]
+    fn every_classic_part_keeps_a_connected_body_and_a_reserved_face_at_extreme_sizes() {
+        let creature = preview();
+        for body in BodyPlan::ALL {
+            for classic in classic_bodies() {
+                for small in [false, true] {
+                    let mut d = creature.appearance.design.unwrap();
+                    d.body = body;
+                    d.classic = classic;
+                    d.width = if small { 8 } else { 12 };
+                    d.height = if small { 7 } else { 11 };
+                    d.head = if small { 7 } else { 9 };
+                    d.legs = if small { 3 } else { 6 };
+                    d.ear_size = 7;
+                    d.tail = 4;
+                    d.marking = 6;
+                    let (c, anchor, _) = render(
+                        &creature,
+                        d,
+                        BodyClip::Action(ActionKind::Idle),
+                        0,
+                        if small { 0.55 } else { 1.05 },
+                    );
+                    assert_whole(&c, anchor, &format!("{body:?} {classic:?}, small={small}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn classic_limbs_and_crowns_keep_one_connected_body_through_every_action_and_gesture() {
+        let creature = preview();
+        for body in BodyPlan::ALL {
+            for (limbs, crown) in [(1, 1), (2, 2), (2, 1)] {
+                for small in [false, true] {
+                    let mut d = creature.appearance.design.unwrap();
+                    d.body = body;
+                    d.classic = ClassicParts {
+                        coat: 1,
+                        limbs,
+                        crown,
+                        tail: 1,
+                        ..ClassicParts::default()
+                    };
+                    d.width = if small { 8 } else { 12 };
+                    d.height = if small { 7 } else { 11 };
+                    d.head = if small { 7 } else { 9 };
+                    d.legs = if small { 3 } else { 6 };
+                    d.ear_size = 7;
+                    for clip in BodyClip::baked() {
+                        for frame in 0..AnimationSpec::for_clip(clip).frames {
+                            let size = if small { 0.55 } else { 1.05 };
+                            let (c, anchor, _) = render(&creature, d, clip, frame, size);
+                            let label =
+                                format!("{body:?} {limbs} {crown} {clip:?} {frame} {small}");
+                            assert_whole(&c, anchor, &label);
+                            let (min_x, min_y, max_x, max_y) = c.alpha_bounds().unwrap();
+                            assert!(
+                                min_x > 0
+                                    && min_y > 0
+                                    && max_x < FRAME_SIZE - 1
+                                    && max_y < FRAME_SIZE - 1,
+                                "{label} leaves the frame"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A classic nub or stick leg is still the one limb on its side: folded, it covers the spot
+    /// beside the body a modular paw covers, and raised, it leaves that spot empty.
+    #[test]
+    fn a_classic_paw_is_carried_out_rather_than_grown_beside_the_one_at_rest() {
+        let creature = preview();
+        for kind in 1..=2 {
+            for plan in [BodyPlan::Round, BodyPlan::Upright, BodyPlan::Blob] {
+                let mut d = creature.appearance.design.unwrap();
+                d.body = plan;
+                d.ears = EarStyle::None;
+                d.classic = ClassicParts {
+                    limbs: kind,
+                    ..ClassicParts::default()
+                };
+                for clip in BodyClip::baked() {
+                    for frame in 0..AnimationSpec::for_clip(clip).frames {
+                        let (canvas, _, pose) = render(&creature, d, clip, frame, 1.0);
+                        let body = measure(d, pose, 1.0);
+                        for (side, limb) in [-1, 1].into_iter().zip(limbs(clip, frame, body, plan))
+                        {
+                            let at = shoulder(body, pose, side);
+                            let raised = matches!(limb, Limb::Reach(hand) if hand.y <= at.y - 3);
+                            if limb != Limb::Rest && !raised {
+                                continue;
+                            }
+                            let probe = canvas.get(body.x + side * (body.rx + 1), at.y + 2);
+                            assert_eq!(
+                                probe.a > 0,
+                                limb == Limb::Rest,
+                                "{plan:?} limbs {kind} {clip:?} frame {frame} side {side}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stick legs stand a body up off the floor the others share, and never move the feet.
+    #[test]
+    fn stick_legs_lift_the_body_but_keep_the_feet_on_the_floor() {
+        let creature = preview();
+        for plan in BodyPlan::ALL {
+            let mut d = creature.appearance.design.unwrap();
+            d.body = plan;
+            d.legs = 6;
+            let pose = Pose::default();
+            let plain = measure(d, pose, 1.0);
+            d.classic.limbs = 2;
+            let stilts = measure(d, pose, 1.0);
+            assert_eq!(plain.floor, stilts.floor, "{plan:?}");
+            assert!(
+                stilts.y < plain.y,
+                "{plan:?} stands no taller on stick legs"
+            );
+        }
     }
 }

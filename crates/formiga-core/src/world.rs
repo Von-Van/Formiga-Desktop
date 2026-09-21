@@ -14,9 +14,11 @@ mod colony;
 mod discovery;
 mod experience;
 mod generation;
+mod habits;
 mod home;
 mod interaction;
 mod journeys;
+mod moments;
 mod movement;
 mod objects;
 mod offers;
@@ -25,12 +27,14 @@ mod rituals;
 mod routine;
 mod spacing;
 mod surfaces;
+mod undo;
 mod visitors;
 use attention::{AttentionRuntime, DisplayAttention};
 use bonds::*;
 pub use bubbles::{BubbleGrowth, ThoughtBubble};
 use colony::*;
 use generation::*;
+use habits::*;
 use interaction::*;
 use journeys::*;
 use movement::*;
@@ -39,6 +43,7 @@ pub(crate) use objects::{scheduled_colony_object_at, scheduled_shelter_decoratio
 pub(crate) use rituals::scheduled_ritual_at;
 use rituals::*;
 use surfaces::SurfaceMemory;
+pub use undo::{ColonyEdit, UndoError};
 
 /// Width of a creature's art frame, matching `formiga_art::FRAME_SIZE`. The simulation crate
 /// cannot depend on the art crate, so shelter layout mirrors the constant the way `home_anchor`
@@ -79,6 +84,16 @@ pub struct World {
     /// for choosing. Runtime-only: a relaunch simply sends everybody wandering again.
     home_roam: BTreeMap<CreatureId, home::RoamStep>,
     home_roam_rng: ChaCha12Rng,
+    /// Whether a moment becomes a habit, and whether a habit is done this time. A stream of its
+    /// own, so habits never shift any other choice the colony makes.
+    habit_rng: ChaCha12Rng,
+    /// A picnic, dance or nap the village was asked to share and is sharing now.
+    village_moment: Option<moments::VillageMomentPlan>,
+    /// Who joins a moment the village is asked to share. A stream of its own, like the habits'.
+    moment_rng: ChaCha12Rng,
+    /// The last change made to the colony from the settings window, kept so it can be taken
+    /// back. Never saved: it lasts as long as the app runs.
+    last_edit: Option<undo::UndoPoint>,
     colony_plan: Option<ColonyPlan>,
     topology: DesktopTopology,
     geometry_observer: crate::attention::GeometryObserver,
@@ -216,6 +231,7 @@ impl World {
                 scheduled_ritual_at(save.colony_seed, save.ritual.ordinal, save.maximum_seen_utc);
         }
         save.objects.objects.truncate(MAX_COLONY_OBJECTS);
+        save.home.normalize_village();
         if save.objects.next_at_utc == OffsetDateTime::UNIX_EPOCH {
             save.objects.next_at_utc = scheduled_colony_object_at(
                 save.colony_seed,
@@ -307,6 +323,10 @@ impl World {
             home_moment_rng: streams.rng("home-moments", 0),
             home_roam: BTreeMap::new(),
             home_roam_rng: streams.rng("home-roaming", 0),
+            habit_rng: streams.rng("habits", 0),
+            village_moment: None,
+            last_edit: None,
+            moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             creature_views: Vec::new(),
             relationship_views: Vec::new(),
@@ -455,8 +475,10 @@ impl World {
             return;
         }
         if home_active {
+            self.advance_village_moment(dt);
             self.tick_homebound_creatures(timeline_now, dt, desktop);
             self.tick_visitor(timeline_now, dt, desktop);
+            self.advance_flourishes();
             self.sample_observations(dt, desktop);
             self.last_windows = desktop
                 .windows
@@ -785,6 +807,9 @@ impl World {
                     self.save.settings.display_scale,
                 ),
                 hour_utc: now.hour(),
+                // Filled in where the action is chosen, like the ledge search: only a homebody
+                // setting out reads it.
+                home_point: None,
             };
 
             if let Some(bond) = context.bond
@@ -1104,6 +1129,22 @@ impl World {
                                 &self.topology,
                             )
                             .is_some(),
+                        home_point: (creature.leaning == RoamingLeaning::Homebody)
+                            .then(|| {
+                                desktop.monitors.iter().find(|monitor| {
+                                    monitor.id == creature.state.surface.monitor_id
+                                        && self.save.home.display == Some(monitor.display_key)
+                                })
+                            })
+                            .flatten()
+                            .and_then(|monitor| {
+                                resolved_home_anchor(
+                                    &self.save.home,
+                                    monitor,
+                                    self.save.settings.display_scale,
+                                    &self.save.settings.habitat,
+                                )
+                            }),
                         ..context
                     };
                     selected_choice = Some(choose_action(creature, desktop, context, rng));
@@ -1194,9 +1235,52 @@ impl World {
                         self.window_journeys.insert(creature.id, journey);
                     }
                 }
+                // A companion its owner would rather keep lower down comes off a ledge to do
+                // whatever it has chosen next, the way the colony comes down to walk home: the
+                // same hop to the floor below, and the chosen action once it has landed.
+                let comes_down = match creature.leaning {
+                    RoamingLeaning::FloorDweller => 0.7,
+                    RoamingLeaning::Homebody => 0.4,
+                    RoamingLeaning::Anywhere | RoamingLeaning::Climber => 0.0,
+                };
+                if comes_down > 0.0
+                    && creature.state.surface.kind == SurfaceKind::WindowLedge
+                    && !matches!(selected, ActionKind::Perch | ActionKind::RideWindow)
+                    && !self.window_journeys.contains_key(&creature.id)
+                    && rng.random_bool(comes_down)
+                    && let Some((monitor_id, floor)) = nearest_habitat_point(
+                        &self.save.settings.habitat,
+                        &desktop.monitors,
+                        creature.state.position,
+                    )
+                    && (floor.y - creature.state.position.y).abs() > 0.5
+                {
+                    let journey = WindowJourney::Hop(HopJourney {
+                        start: creature.state.position,
+                        target: floor,
+                        surface: SurfaceAttachment {
+                            kind: SurfaceKind::ScreenFloor,
+                            monitor_id,
+                            window_key: None,
+                            relative_x: 0.5,
+                        },
+                        elapsed: 0.0,
+                        duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
+                    });
+                    next = journey.initial_action();
+                    self.window_journeys.insert(creature.id, journey);
+                }
                 creature.state.action = next;
                 creature.state.action_elapsed = 0.0;
                 creature.state.action_duration = action_duration(next, rng);
+                cue_habit(
+                    creature,
+                    next,
+                    &mut self.habit_rng,
+                    true,
+                    self.save.settings.reduce_motion,
+                    &mut self.events,
+                );
                 choice.action = next;
                 self.action_choices.insert(creature.id, choice);
                 if !scheduled_ambient {
@@ -1383,6 +1467,7 @@ impl World {
             &unconstrained,
         );
         self.resolve_overlaps(dt, desktop);
+        self.advance_flourishes();
         self.last_windows = desktop
             .windows
             .iter()
@@ -1390,6 +1475,20 @@ impl World {
             .collect();
         self.sample_observations(dt, desktop);
         self.project_events(timeline_now);
+    }
+
+    /// Moves every habit being done along: a waiting one starts once its companion has stopped,
+    /// and a finished one lets the action carry on as usual.
+    fn advance_flourishes(&mut self) {
+        let guest = self
+            .save
+            .visitors
+            .guest
+            .as_mut()
+            .map(|guest| &mut guest.creature);
+        for creature in self.save.creatures.iter_mut().chain(guest) {
+            advance_flourish(creature);
+        }
     }
 
     pub fn drain_events(&mut self) -> impl Iterator<Item = WorldEvent> + '_ {

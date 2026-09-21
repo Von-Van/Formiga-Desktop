@@ -24,6 +24,8 @@ pub enum JournalMoment {
     /// Someone came by the houses. A visitor is never a colony member, so the moment carries the
     /// name it went by rather than an identifier the colony could not look up later.
     Visit(String),
+    /// A companion picked up a little habit of its own.
+    Habit(Habit),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -254,6 +256,9 @@ impl CompanionState {
             WorldEvent::RitualCompleted { kind } => (None, JournalMoment::Ritual(kind)),
             WorldEvent::ColonyObjectAdded { kind, .. } => (None, JournalMoment::Object(kind)),
             WorldEvent::ShelterDecorationAdded { kind } => (None, JournalMoment::Decoration(kind)),
+            WorldEvent::HabitLearned { creature_id, habit } => {
+                (Some(creature_id), JournalMoment::Habit(habit))
+            }
             _ => return,
         };
         self.remember(creature, moment, at);

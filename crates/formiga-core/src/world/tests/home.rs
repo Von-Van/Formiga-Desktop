@@ -242,7 +242,7 @@ fn home_walk_waits_at_excluded_regions_and_resumes_when_reopened() {
 }
 
 /// A colony of `members`, already walked home and standing perfectly still at its own doors.
-fn settled_colony(
+pub(super) fn settled_colony(
     seed: [u8; 32],
     members: usize,
     created: OffsetDateTime,

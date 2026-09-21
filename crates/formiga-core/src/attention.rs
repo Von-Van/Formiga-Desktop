@@ -53,10 +53,13 @@ pub enum Gesture {
     /// tilt of the head and a twitch of one ear, so the interest keeps breathing rather than
     /// freezing — the creature's own blink rhythm carries the rest.
     Watch,
+    /// Drawn up tall on its toes with its paws overhead, held a moment: the stretch a companion
+    /// with that habit takes before a nap. No attention scene strikes it; it belongs to a habit.
+    Stretch,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -67,7 +70,13 @@ impl Gesture {
         Self::Reach,
         Self::Bop,
         Self::Watch,
+        Self::Stretch,
     ];
+
+    /// Whether attention scenes strike this pose. The rest belong to habits.
+    pub const fn in_scenes(self) -> bool {
+        !matches!(self, Self::Stretch)
+    }
 }
 
 /// A presentation hint shared with the art renderer. This is explicitly excluded from saves.

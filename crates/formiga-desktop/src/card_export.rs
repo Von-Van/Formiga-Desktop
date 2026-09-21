@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use formiga_art::{
     CARD_HEIGHT, CARD_WIDTH, COLONY_CARD_HEIGHT, COLONY_CARD_WIDTH, ColonyCardRenderer,
-    CreatureCardRenderer,
+    CreatureCardRenderer, POSTCARD_HEIGHT, POSTCARD_WIDTH, PostcardRenderer, PostcardScene,
 };
 use formiga_core::{Creature, SaveFile};
 use std::fs::File;
@@ -51,6 +51,42 @@ fn write_colony_card_png(save: &SaveFile, path: &Path) -> Result<()> {
     )
 }
 
+/// A postcard is named for its scene alone, for the same reason the portrait is named for nothing:
+/// it is a picture of the colony, and neither a companion's name nor the caption belongs in a
+/// filename that may travel further than the picture does.
+fn postcard_filename(scene: PostcardScene) -> String {
+    format!("Formiga-postcard-{}.png", scene.slug())
+}
+
+pub fn choose_postcard_destination(scene: PostcardScene) -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .add_filter("PNG image", &["png"])
+        .set_file_name(postcard_filename(scene))
+        .save_file()
+}
+
+pub fn export_postcard_to_selected_destination(
+    save: &SaveFile,
+    scene: PostcardScene,
+    caption: &str,
+    selected: Option<PathBuf>,
+) -> Result<Option<PathBuf>> {
+    let Some(path) = selected else {
+        return Ok(None);
+    };
+    let path = with_png_extension(path);
+    // Drawn only once there is somewhere to put it, like both cards.
+    let card = PostcardRenderer::render(save, scene, caption);
+    write_png(
+        &path,
+        POSTCARD_WIDTH,
+        POSTCARD_HEIGHT,
+        &card.rgba_bytes(),
+        "postcard",
+    )?;
+    Ok(Some(path))
+}
+
 pub fn export_to_selected_destination(
     creature: &Creature,
     selected: Option<PathBuf>,
@@ -77,7 +113,8 @@ fn write_card_png(creature: &Creature, path: &Path) -> Result<()> {
 }
 
 /// Straight RGBA, eight bits, and no ancillary chunks at all: no text, no timestamp, no profile.
-/// Both cards go out through here so neither can grow hidden metadata the other does not have.
+/// Both cards and the postcards go out through here so none can grow hidden metadata the others
+/// do not have.
 fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8], what: &str) -> Result<()> {
     let file =
         File::create(path).with_context(|| format!("create {what} at {}", path.display()))?;
@@ -276,6 +313,49 @@ mod tests {
         assert!(!contains(&save.colony_seed));
 
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn a_cancelled_postcard_writes_nothing_and_a_sent_one_is_only_pixels() {
+        let save = colony();
+        assert_eq!(
+            export_postcard_to_selected_destination(&save, PostcardScene::Picnic, "", None)
+                .unwrap(),
+            None
+        );
+        let path = std::env::temp_dir().join(format!(
+            "formiga-postcard-export-test-{}",
+            std::process::id()
+        ));
+        let written = export_postcard_to_selected_destination(
+            &save,
+            PostcardScene::Dusk,
+            "Goodnight from all of us",
+            Some(path.clone()),
+        )
+        .unwrap()
+        .expect("a destination was chosen");
+        assert_eq!(written, path.with_extension("png"));
+        assert_no_hidden_metadata(&written, POSTCARD_WIDTH, POSTCARD_HEIGHT);
+        let bytes = std::fs::read(&written).unwrap();
+        let contains = |needle: &[u8]| {
+            !needle.is_empty() && bytes.windows(needle.len()).any(|window| window == needle)
+        };
+        assert!(
+            !contains(b"Goodnight"),
+            "the caption is drawn, never stored as text"
+        );
+        for creature in &save.creatures {
+            assert!(!contains(creature.name.as_bytes()));
+        }
+        std::fs::remove_file(written).unwrap();
+        for scene in PostcardScene::ALL {
+            let name = postcard_filename(scene);
+            assert!(name.starts_with("Formiga-postcard-") && name.ends_with(".png"));
+            for creature in &save.creatures {
+                assert!(!name.contains(&creature.name));
+            }
+        }
     }
 
     #[test]

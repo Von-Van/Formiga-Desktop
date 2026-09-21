@@ -1,9 +1,10 @@
 use crate::card_export::{
-    choose_card_destination, choose_colony_card_destination,
-    export_colony_card_to_selected_destination, export_to_selected_destination,
+    choose_card_destination, choose_colony_card_destination, choose_postcard_destination,
+    export_colony_card_to_selected_destination, export_postcard_to_selected_destination,
+    export_to_selected_destination,
 };
 use crate::creature_menu::{CreatureMenu, MenuDismissal, MenuTarget, MenuWorld};
-use crate::gpu::{MenuView, OverlayRenderer, OverlayUi, monitor_has_fullscreen_window};
+use crate::gpu::{MenuView, OverlayRenderer, OverlayUi, SideView, monitor_has_fullscreen_window};
 use crate::interaction::{InteractionProxy, MenuProxy, ProxyRuntimeState};
 use crate::platform;
 use crate::reference_match::match_reference_file;
@@ -19,7 +20,7 @@ use crate::updater::{
     DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus, check_github, download_update,
 };
 use anyhow::{Context, Result};
-use formiga_art::{AnimationSpec, BodyClip, MenuIcon};
+use formiga_art::{AnimationSpec, BodyPresentation, MenuIcon};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -92,6 +93,8 @@ pub struct FormigaApp {
     previous_cursor: Option<(Point, Instant)>,
     last_tick: Instant,
     last_save: Instant,
+    /// The most urgent thing waiting to be written since the last save.
+    save_waiting: SaveUrgency,
     redraw_due: Instant,
     cached_windows: Vec<DesktopWindow>,
     last_window_scan: Instant,
@@ -113,6 +116,10 @@ pub struct FormigaApp {
     updates: UpdateController,
     milestone_notice: Option<MilestoneNotice>,
     recovery_pending: bool,
+    /// Whether it is dark out where the owner is, and when that was last looked at. The local
+    /// clock is read at most once a minute rather than every frame.
+    night: bool,
+    night_checked: Option<Instant>,
 }
 
 impl FormigaApp {
@@ -128,6 +135,7 @@ impl FormigaApp {
             previous_cursor: None,
             last_tick: Instant::now(),
             last_save: Instant::now(),
+            save_waiting: SaveUrgency::None,
             redraw_due: Instant::now(),
             cached_windows: Vec::new(),
             last_window_scan: Instant::now() - Duration::from_secs(2),
@@ -146,6 +154,8 @@ impl FormigaApp {
             updates,
             milestone_notice: None,
             recovery_pending: false,
+            night: false,
+            night_checked: None,
         })
     }
 
@@ -218,7 +228,7 @@ impl FormigaApp {
                 id,
                 display_key: platform::display_key(&monitor),
                 bounds,
-                usable_bounds: colony_bounds(bounds),
+                usable_bounds: colony_bounds(bounds, platform::work_area_insets(&monitor)),
                 scale_factor: scale,
                 primary: primary_monitor,
             };
@@ -362,6 +372,19 @@ impl FormigaApp {
         }
         let dt = now.duration_since(self.last_tick).as_secs_f32().min(0.2);
         self.last_tick = now;
+        if self
+            .night_checked
+            .is_none_or(|checked| now.duration_since(checked) >= Duration::from_secs(60))
+        {
+            let night =
+                is_night(OffsetDateTime::now_utc().to_offset(crate::clubhouse::local_offset()));
+            if night != self.night {
+                // The houses light up, or go dark, on the next frame rather than the next move.
+                self.request_overlay_redraw();
+            }
+            self.night = night;
+            self.night_checked = Some(now);
+        }
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
@@ -400,21 +423,9 @@ impl FormigaApp {
                 filtered.windows.clear();
             }
             world.tick(OffsetDateTime::now_utc(), dt, &filtered);
-            let mut save_on_transition = false;
             let mut milestone = None;
             for event in world.drain_events() {
-                save_on_transition |= matches!(
-                    event,
-                    WorldEvent::CreatureSpawned { .. }
-                        | WorldEvent::ActionStarted { .. }
-                        | WorldEvent::SurfaceChanged { .. }
-                        | WorldEvent::HomeAppeared
-                        | WorldEvent::HomeDisappeared { .. }
-                        | WorldEvent::RitualStarted { .. }
-                        | WorldEvent::RitualInterrupted { .. }
-                        | WorldEvent::ColonyObjectAdded { .. }
-                        | WorldEvent::ShelterDecorationAdded { .. }
-                );
+                self.save_waiting = self.save_waiting.max(event.save_urgency());
                 if let WorldEvent::ProfileChanged {
                     creature_id,
                     new_descriptor: Some(_),
@@ -447,14 +458,13 @@ impl FormigaApp {
                     });
                 }
             }
-            if save_on_transition && let Err(error) = self.save() {
-                tracing::error!(%error, "transition save failed");
-            }
         }
-        if self.last_save.elapsed() >= Duration::from_secs(30)
+        // Arrivals and the houses are written at once; everyday movement waits for the next
+        // routine checkpoint; and a colony with nothing waiting is still written periodically.
+        if save_due(self.save_waiting, self.last_save.elapsed())
             && let Err(error) = self.save()
         {
-            tracing::error!(%error, "periodic save failed");
+            tracing::error!(%error, "colony save failed");
         }
         self.sync_overlay_visibility();
         self.sync_creature_menu(dt);
@@ -904,7 +914,15 @@ impl FormigaApp {
             .settings_window
             .as_ref()
             .is_some_and(|window| window.window.has_focus());
-        let menu = CreatureMenu::new(creature_id, target, can_stay, monitor_id, settings_focused);
+        // While the houses are out, the cell that would send everyone home offers the moments the
+        // village could share instead.
+        let offer_moments = !guest
+            && (world.village_moment().is_some() || !world.available_village_moments().is_empty());
+        let mut menu =
+            CreatureMenu::new(creature_id, target, can_stay, monitor_id, settings_focused);
+        if offer_moments {
+            menu = menu.offering_moments();
+        }
         if self.menu_proxy.is_none() {
             match MenuProxy::new(event_loop) {
                 Ok(proxy) => self.menu_proxy = Some(proxy),
@@ -951,12 +969,12 @@ impl FormigaApp {
         match outcome {
             Ok(redraw) => {
                 self.creature_menu = Some(menu);
-                if let Some(placement) = self
+                if let Some(area) = self
                     .creature_menu
                     .as_ref()
-                    .and_then(|menu| menu.placement())
+                    .and_then(|menu| menu.click_area())
                 {
-                    self.sync_menu_proxy(placement.body_desktop());
+                    self.sync_menu_proxy(area);
                 } else if let Some(proxy) = &mut self.menu_proxy {
                     // Nowhere to put the strip this frame: take the click target away with it.
                     proxy.hide();
@@ -1085,9 +1103,20 @@ impl FormigaApp {
         }
     }
 
-    /// Act on a menu choice. The menu always closes: the simulation answers with its own thought
-    /// bubble, including when a creature is busy and politely declines.
+    /// Act on a menu choice. Choosing Moment opens or closes the strip of moments beside the menu,
+    /// and the menu stays. Anything else closes it: the simulation answers with its own thought
+    /// bubbles, including when a creature is busy and politely declines.
     fn choose_menu_item(&mut self, event_loop: &ActiveEventLoop, icon: MenuIcon) {
+        if icon == MenuIcon::Moment {
+            let items = self.moment_items();
+            if let Some(menu) = &mut self.creature_menu {
+                menu.toggle_side(&items);
+            }
+            // Placed and made clickable at once, under the click that asked for it.
+            self.sync_creature_menu(0.0);
+            self.request_overlay_redraw();
+            return;
+        }
         let Some(menu) = self.creature_menu.as_ref() else {
             return;
         };
@@ -1096,16 +1125,37 @@ impl FormigaApp {
         self.close_creature_menu(MenuDismissal::Answered);
         let desktop = self.snapshot();
         match icon {
-            MenuIcon::Snack | MenuIcon::Toy | MenuIcon::Home => {
+            MenuIcon::Snack
+            | MenuIcon::Toy
+            | MenuIcon::Home
+            | MenuIcon::Picnic
+            | MenuIcon::Dance
+            | MenuIcon::Nap
+            | MenuIcon::Stop => {
                 let command = match icon {
                     MenuIcon::Snack => WorldCommand::OfferSnack { creature_id },
                     MenuIcon::Toy => WorldCommand::OfferToy { creature_id },
+                    MenuIcon::Picnic => WorldCommand::InviteVillageMoment {
+                        creature_id,
+                        moment: VillageMoment::Picnic,
+                    },
+                    MenuIcon::Dance => WorldCommand::InviteVillageMoment {
+                        creature_id,
+                        moment: VillageMoment::Dance,
+                    },
+                    MenuIcon::Nap => WorldCommand::InviteVillageMoment {
+                        creature_id,
+                        moment: VillageMoment::Nap,
+                    },
+                    MenuIcon::Stop => WorldCommand::StopVillageMoment,
                     _ => WorldCommand::SendHome,
                 };
                 if let Some(world) = &mut self.world {
                     world.handle_command(command, &desktop);
                 }
             }
+            // Opens the strip of moments instead, above.
+            MenuIcon::Moment => {}
             MenuIcon::Profile => {
                 self.show_settings(event_loop);
                 if let Some(window) = &mut self.settings_window {
@@ -1147,6 +1197,29 @@ impl FormigaApp {
             }
         }
         let _ = self.save();
+    }
+
+    /// What the Moment item offers: a way to stop the moment under way, if there is one, and then
+    /// every moment the village could share right now.
+    fn moment_items(&self) -> Vec<MenuIcon> {
+        let Some(world) = &self.world else {
+            return Vec::new();
+        };
+        world
+            .village_moment()
+            .map(|_| MenuIcon::Stop)
+            .into_iter()
+            .chain(
+                world
+                    .available_village_moments()
+                    .into_iter()
+                    .map(|moment| match moment {
+                        VillageMoment::Picnic => MenuIcon::Picnic,
+                        VillageMoment::Dance => MenuIcon::Dance,
+                        VillageMoment::Nap => MenuIcon::Nap,
+                    }),
+            )
+            .collect()
     }
 
     fn show_settings(&mut self, event_loop: &ActiveEventLoop) {
@@ -1244,23 +1317,62 @@ impl FormigaApp {
                 world.save.companion.onboarding_complete = true;
                 companion_changed = true;
             }
+            // Every change to how the village is laid out goes through `World::edit`, so the
+            // last one can be taken back.
             if let Some(corner) = outcome.home_corner {
-                world.save.home.corner = corner;
+                world.edit(ColonyEdit::MovedHome, |world| {
+                    world.save.home.corner = corner
+                });
                 companion_changed = true;
             }
             if let Some(display) = outcome.home_display {
-                world.save.home.display = Some(display);
+                world.edit(ColonyEdit::MovedHome, |world| {
+                    world.save.home.display = Some(display);
+                });
                 companion_changed = true;
             }
             if let Some(hidden) = outcome.hidden_decorations {
-                world.save.home.hidden_decorations = hidden & 0x3f;
+                world.edit(ColonyEdit::Decorations, |world| {
+                    world.save.home.hidden_decorations = hidden & 0x3f;
+                });
+                companion_changed = true;
+            }
+            if let Some((kind, along)) = outcome.set_hangout {
+                companion_changed |= world.edit(ColonyEdit::Hangout(kind), |world| {
+                    world.save.home.set_hangout(kind, along)
+                });
+            }
+            if let Some(order) = outcome.cottage_order.clone() {
+                world.edit(ColonyEdit::MovedCottages, |world| {
+                    let creatures = world.save.creatures.clone();
+                    world.save.home.arrange_cottages(order, &creatures);
+                });
+                companion_changed = true;
+            }
+            if let Some(palette) = outcome.village_palette {
+                world.edit(ColonyEdit::PaintedVillage, |world| {
+                    world.save.home.palette = palette;
+                });
+                companion_changed = true;
+            }
+            if let Some((kind, along)) = outcome.set_garden {
+                companion_changed |= world.edit(ColonyEdit::Garden(kind), |world| {
+                    world.save.home.set_garden(kind, along)
+                });
+            }
+            if outcome.reset_village {
+                world.edit(ColonyEdit::PutVillageBack, |world| {
+                    world.save.home.reset_arrangement();
+                });
                 companion_changed = true;
             }
             if let Some((a, b)) = outcome.move_object
                 && a < world.save.objects.objects.len()
                 && b < world.save.objects.objects.len()
             {
-                world.save.objects.objects.swap(a, b);
+                world.edit(ColonyEdit::RearrangedKeepsakes, |world| {
+                    world.save.objects.objects.swap(a, b);
+                });
                 companion_changed = true;
             }
             if let Some((index, preset)) = outcome.save_mode
@@ -1291,6 +1403,26 @@ impl FormigaApp {
             if let Some(entry) = &outcome.unpin_moment {
                 world.save.companion.unpin(entry);
                 companion_changed = true;
+            }
+            if let Some((name, origin)) = &outcome.keep_favorite_visitor {
+                match world
+                    .save
+                    .visitors
+                    .keep_favorite(name, *origin, OffsetDateTime::now_utc())
+                {
+                    Ok(()) => companion_changed = true,
+                    Err(error) => {
+                        if let Some(window) = &mut self.settings_window {
+                            window.set_error(error.to_string());
+                        }
+                    }
+                }
+            }
+            if let Some(origin) = &outcome.forget_favorite_visitor {
+                companion_changed |= world.save.visitors.forget_favorite(origin);
+            }
+            if let Some((creature_id, leaning)) = outcome.set_roaming_leaning {
+                companion_changed |= world.set_roaming_leaning(creature_id, leaning);
             }
         }
         if companion_changed {
@@ -1347,6 +1479,18 @@ impl FormigaApp {
                 }
             }
         }
+        if let Some((scene, caption)) = outcome.export_postcard.as_ref()
+            && let Some(save) = self.world.as_ref().map(|world| &world.save)
+        {
+            let selected = choose_postcard_destination(*scene);
+            match export_postcard_to_selected_destination(save, *scene, caption, selected) {
+                Ok(Some(_)) => self.settings_notice("Postcard exported"),
+                Ok(None) => {}
+                Err(error) => {
+                    self.settings_error(format!("Could not export the postcard: {error}"))
+                }
+            }
+        }
         if let Some((creature_id, kept)) = outcome.set_creature_kept {
             let result = self
                 .world
@@ -1365,10 +1509,12 @@ impl FormigaApp {
             }
         }
         if let Some(creature_id) = outcome.remove_creature {
-            let result = self
-                .world
-                .as_mut()
-                .map(|world| world.remove_colony_creature(creature_id));
+            let result = self.world.as_mut().map(|world| {
+                let name = creature_name(world, creature_id);
+                world.edit(ColonyEdit::Removed { name }, |world| {
+                    world.remove_colony_creature(creature_id)
+                })
+            });
             match result {
                 Some(Ok(())) => {
                     let _ = self.save();
@@ -1490,25 +1636,38 @@ impl FormigaApp {
         if let Some(acceptance) = outcome.accept_creature_preview {
             let desktop = self.snapshot();
             let now = OffsetDateTime::now_utc();
-            let result = self.world.as_mut().map(|world| match acceptance {
-                PreviewAcceptance::Shared { shared, replace } => {
-                    world.adopt_shared_creature(shared, replace, now, &desktop)
-                }
-                PreviewAcceptance::Add {
-                    source_seed,
-                    design,
-                } => world.add_designed_adult(source_seed, design, now, &desktop),
-                PreviewAcceptance::Replace {
-                    creature_id,
-                    source_seed,
-                    design,
-                } => world.replace_creature_with_design(
-                    creature_id,
-                    source_seed,
-                    design,
-                    now,
-                    &desktop,
-                ),
+            let result = self.world.as_mut().map(|world| {
+                let replaced = match acceptance {
+                    PreviewAcceptance::Shared { replace, .. } => replace,
+                    PreviewAcceptance::Add { .. } => None,
+                    PreviewAcceptance::Replace { creature_id, .. } => Some(creature_id),
+                };
+                let edit = match replaced {
+                    Some(creature_id) => ColonyEdit::Replaced {
+                        name: creature_name(world, creature_id),
+                    },
+                    None => ColonyEdit::Welcomed,
+                };
+                world.edit(edit, |world| match acceptance {
+                    PreviewAcceptance::Shared { shared, replace } => {
+                        world.adopt_shared_creature(shared, replace, now, &desktop)
+                    }
+                    PreviewAcceptance::Add {
+                        source_seed,
+                        design,
+                    } => world.add_designed_adult(source_seed, design, now, &desktop),
+                    PreviewAcceptance::Replace {
+                        creature_id,
+                        source_seed,
+                        design,
+                    } => world.replace_creature_with_design(
+                        creature_id,
+                        source_seed,
+                        design,
+                        now,
+                        &desktop,
+                    ),
+                })
             });
             match result {
                 Some(Ok(_)) => {
@@ -1592,7 +1751,9 @@ impl FormigaApp {
                 Ok(seeds) => {
                     let desktop = self.snapshot();
                     let changed = self.world.as_mut().map_or(0, |world| {
-                        world.regenerate_unkept(&seeds, OffsetDateTime::now_utc(), &desktop)
+                        world.edit(ColonyEdit::StartedOver, |world| {
+                            world.regenerate_unkept(&seeds, OffsetDateTime::now_utc(), &desktop)
+                        })
                     });
                     if changed > 0 {
                         let _ = self.save();
@@ -1607,6 +1768,20 @@ impl FormigaApp {
                         window.set_error(format!("Could not generate secure seeds: {error}"));
                     }
                 }
+            }
+        }
+        if outcome.undo_last_edit {
+            let result = self.world.as_mut().map(World::undo_last_edit);
+            match result {
+                Some(Ok(edit)) => {
+                    self.save_with_feedback(&format!("Undid {}", edit.describe()));
+                    self.redraw_due = Instant::now();
+                    for overlay in self.overlays.values() {
+                        overlay.window.request_redraw();
+                    }
+                }
+                Some(Err(error)) => self.settings_error(format!("Could not undo: {error}")),
+                None => {}
             }
         }
         let renamed = outcome.rename_creature.is_some();
@@ -2144,6 +2319,7 @@ impl FormigaApp {
             }
             self.save_store.save(&world.save)?;
             self.last_save = Instant::now();
+            self.save_waiting = SaveUrgency::None;
         }
         Ok(())
     }
@@ -2212,6 +2388,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         let Some(world) = &self.world else {
                             return;
                         };
+                        window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
                         match window.render(
                             event_loop,
                             &self.monitors,
@@ -2260,6 +2437,13 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             layout: menu.layout(),
                             placement,
                             hovered: menu.hovered(),
+                            side: menu.side().and_then(|side| {
+                                side.placement().map(|placement| SideView {
+                                    layout: side.layout(),
+                                    placement,
+                                    hovered: side.hovered(),
+                                })
+                            }),
                         })
                     }
                     _ => None,
@@ -2275,6 +2459,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         OverlayUi {
                             bubbles: world.thought_bubbles(),
                             reduce_motion: world.save.settings.reduce_motion,
+                            night: self.night,
                             menu,
                         },
                     )
@@ -2355,13 +2540,33 @@ fn monitor_id(
 /// The part of a display the colony may use: below the menu bar, and clear of the strip the
 /// system keeps along the bottom for the Dock or the taskbar. The village stands on the floor of
 /// this, so whatever is reserved here is what the houses sit on top of rather than behind.
-fn colony_bounds(bounds: DesktopRect) -> DesktopRect {
-    let top_inset = 24.0;
+/// The ground a display gives the colony: whatever the system's own bars leave of it, as the
+/// platform reports the display's work area, so a Dock on the side, a taller menu bar, a taskbar
+/// along the top, or a bar that hides all move the ground with them. Where the work area cannot
+/// be read, the old fixed strips stand in: a menu bar's height along the top, and the factory Dock
+/// or taskbar along the bottom. Either way the ground keeps at least 100 points each way.
+fn colony_bounds(bounds: DesktopRect, insets: Option<platform::Insets>) -> DesktopRect {
+    let insets = insets.unwrap_or(platform::Insets {
+        top: 24.0,
+        bottom: platform::BOTTOM_RESERVED,
+        ..Default::default()
+    });
+    let inset = |value: f32, room: f32| {
+        if value.is_finite() {
+            value.clamp(0.0, (room - 100.0).max(0.0))
+        } else {
+            0.0
+        }
+    };
+    let left = inset(insets.left, bounds.width);
+    let right = inset(insets.right, bounds.width - left);
+    let top = inset(insets.top, bounds.height);
+    let bottom = inset(insets.bottom, bounds.height - top);
     DesktopRect {
-        x: bounds.x,
-        y: bounds.y + top_inset,
-        width: bounds.width,
-        height: (bounds.height - top_inset - platform::BOTTOM_RESERVED).max(100.0),
+        x: bounds.x + left,
+        y: bounds.y + top,
+        width: (bounds.width - left - right).max(100.0),
+        height: (bounds.height - top - bottom).max(100.0),
     }
 }
 
@@ -2521,7 +2726,7 @@ fn world_redraw_interval(world: &World) -> Duration {
         .creatures
         .iter()
         .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
-        .map(|creature| AnimationSpec::for_clip(BodyClip::for_creature(creature)).fps)
+        .map(|creature| AnimationSpec::for_clip(BodyPresentation::for_creature(creature).clip).fps)
         .max()
         .unwrap_or(2)
         .max(1);
@@ -2540,7 +2745,7 @@ fn world_tick_interval(world: &World) -> Duration {
     }
     let has_expressive_action = world.save.creatures.iter().any(|creature| {
         creature.state.arrival_delay_secs <= 0.0
-            && AnimationSpec::for_clip(BodyClip::for_creature(creature)).fps >= 8
+            && AnimationSpec::for_clip(BodyPresentation::for_creature(creature).clip).fps >= 8
     });
     let needs_responsive_gaze =
         world.save.settings.cursor_reactions
@@ -2577,6 +2782,12 @@ fn colony_management_category(error: &ColonyManagementError) -> &'static str {
     }
 }
 
+/// Whether it is dark where the owner is: from seven in the evening until seven in the morning,
+/// when the houses are lit from inside.
+fn is_night(local: OffsetDateTime) -> bool {
+    local.hour() >= 19 || local.hour() < 7
+}
+
 fn world_event_category(event: &WorldEvent) -> &'static str {
     match event {
         WorldEvent::CreatureSpawned { .. } => "creature_spawned",
@@ -2605,7 +2816,21 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::RitualInterrupted { .. } => "ritual_interrupted",
         WorldEvent::ColonyObjectAdded { .. } => "colony_object_added",
         WorldEvent::ShelterDecorationAdded { .. } => "shelter_decoration_added",
+        WorldEvent::HabitLearned { .. } => "habit_learned",
     }
+}
+
+/// A companion's name as it stands now, for naming the change about to be made to it.
+fn creature_name(world: &World, creature_id: CreatureId) -> String {
+    world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == creature_id)
+        .map_or_else(
+            || "a companion".to_owned(),
+            |creature| creature.name.clone(),
+        )
 }
 
 #[cfg(test)]
@@ -2673,7 +2898,8 @@ mod tests {
                 height: 1080.0,
             },
         ] {
-            let usable = colony_bounds(screen);
+            // With no work area to read, the fixed strips stand in.
+            let usable = colony_bounds(screen, None);
             // Where the houses are founded and where everybody's feet meet the ground.
             let ground = usable.bottom() - 4.0;
             assert!(
@@ -2683,6 +2909,52 @@ mod tests {
             );
             assert_eq!(usable.x, screen.x);
             assert_eq!(usable.width, screen.width);
+        }
+    }
+
+    /// The ground follows the work area the system reports: a Dock on the side narrows it
+    /// instead of lifting it, a hidden Dock gives the floor back, a notched display's taller menu
+    /// bar pushes the top down, and a taskbar along the top leaves the bottom free. Nonsense
+    /// insets never leave the colony less than 100 points to stand in.
+    #[test]
+    fn the_ground_follows_where_the_system_bars_really_are() {
+        let screen = DesktopRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1512.0,
+            height: 982.0,
+        };
+        let bars = |left, top, right, bottom| {
+            Some(crate::platform::Insets {
+                left,
+                top,
+                right,
+                bottom,
+            })
+        };
+        let dock_on_the_left = colony_bounds(screen, bars(64.0, 37.0, 0.0, 0.0));
+        assert_eq!((dock_on_the_left.x, dock_on_the_left.width), (64.0, 1448.0));
+        assert_eq!(
+            (dock_on_the_left.y, dock_on_the_left.bottom()),
+            (37.0, 982.0)
+        );
+        let hidden_dock = colony_bounds(screen, bars(0.0, 24.0, 0.0, 4.0));
+        assert_eq!(hidden_dock.bottom(), 978.0);
+        let taskbar_on_top = colony_bounds(screen, bars(0.0, 48.0, 0.0, 0.0));
+        assert_eq!((taskbar_on_top.y, taskbar_on_top.bottom()), (48.0, 982.0));
+        let tall_dock = colony_bounds(screen, bars(0.0, 24.0, 0.0, 128.0));
+        assert_eq!(tall_dock.bottom(), 854.0);
+        for nonsense in [
+            bars(-40.0, f32::NAN, 5_000.0, f32::INFINITY),
+            bars(2_000.0, 2_000.0, 2_000.0, 2_000.0),
+        ] {
+            let usable = colony_bounds(screen, nonsense);
+            assert!(
+                usable.width >= 100.0 && usable.height >= 100.0,
+                "{usable:?}"
+            );
+            assert!(usable.x >= screen.x && usable.right() <= screen.right() + 0.01);
+            assert!(usable.y >= screen.y && usable.bottom() <= screen.bottom() + 0.01);
         }
     }
 
@@ -2699,17 +2971,28 @@ mod tests {
             creature.state.velocity = Point::default();
             creature.state.attention = None;
         }
-        // Inspecting animates at four frames a second; a cheer over it animates at eight.
+        // Inspecting animates at four frames a second; a gasp over it animates at six.
         assert_eq!(world_redraw_interval(&world), Duration::from_secs_f32(0.25));
-        world.save.creatures[0].state.attention = Some(AttentionPose {
+        let mut pose = AttentionPose {
             target: Point::default(),
-            emotion: AttentionEmotion::Enjoying,
+            emotion: AttentionEmotion::Startled,
             hanging: 0.0,
-            gesture: Some(Gesture::Cheer),
-        });
+            gesture: Some(Gesture::Gasp),
+        };
+        world.save.creatures[0].state.attention = Some(pose);
         assert_eq!(
             world_redraw_interval(&world),
-            Duration::from_secs_f32(0.125)
+            Duration::from_secs_f32(1.0 / 6.0)
+        );
+        // A cheer is done the creature's own way, at the rate of its own celebration.
+        pose.gesture = Some(Gesture::Cheer);
+        world.save.creatures[0].state.attention = Some(pose);
+        let celebration = Celebration::for_creature(&world.save.creatures[0]).gesture();
+        assert_eq!(
+            world_redraw_interval(&world),
+            Duration::from_secs_f32(
+                1.0 / f32::from(formiga_art::AnimationSpec::for_clip(celebration).fps)
+            )
         );
     }
 

@@ -5,6 +5,10 @@ use time::OffsetDateTime;
 /// How many past visitors the guest book remembers.
 pub const MAX_GUEST_BOOK_ENTRIES: usize = 24;
 
+/// How many visitors can be kept as favorites. A favorite stays until it is forgotten: it is not a
+/// line in the guest book, so it outlasts the book moving on past the visit it came from.
+pub const MAX_FAVORITE_VISITORS: usize = 8;
+
 /// How many places a guest's walk around the village stops at, counting the spot it walked in
 /// to. Three to five is a tour; more would be pacing, and a village laid out for four rarely
 /// has the spare ground for more anyway.
@@ -18,6 +22,15 @@ pub enum VisitorError {
     AlreadyHome,
     #[error("someone is already visiting")]
     GuestPresent,
+}
+
+/// Why a visitor could not be kept as a favorite.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum FavoriteError {
+    #[error("this visitor is already a favorite")]
+    AlreadyKept,
+    #[error("all {MAX_FAVORITE_VISITORS} favorites are in use; forget one to keep another")]
+    Full,
 }
 
 /// Why a visitor is here.
@@ -198,6 +211,16 @@ pub struct GuestBookEntry {
     pub source: VisitorSource,
 }
 
+/// A visitor kept to be invited again: the name it went by and the origin that recreates it —
+/// what a guest-book line or a share code already carries, and nothing more.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FavoriteVisitor {
+    #[serde(with = "time::serde::rfc3339")]
+    pub kept_at_utc: OffsetDateTime,
+    pub name: String,
+    pub origin: CreatureOrigin,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VisitorState {
@@ -207,6 +230,9 @@ pub struct VisitorState {
     /// is decided from the colony seed and this count, never from a clock.
     pub gatherings: u32,
     pub guest_book: Vec<GuestBookEntry>,
+    /// Visitors kept to be invited again, oldest first. Never more than
+    /// [`MAX_FAVORITE_VISITORS`], and never the same visitor twice.
+    pub favorites: Vec<FavoriteVisitor>,
 }
 
 impl VisitorState {
@@ -235,6 +261,42 @@ impl VisitorState {
                 .any(|member| member.id == guest.creature.id)
     }
 
+    /// Whether this visitor is kept as a favorite.
+    pub fn is_favorite(&self, origin: &CreatureOrigin) -> bool {
+        self.favorites
+            .iter()
+            .any(|favorite| favorite.origin == *origin)
+    }
+
+    /// Keep a visitor to invite again. Nothing is dropped to make room: a full list stays full
+    /// until one is forgotten, so a favorite never quietly disappears.
+    pub fn keep_favorite(
+        &mut self,
+        name: &str,
+        origin: CreatureOrigin,
+        now: OffsetDateTime,
+    ) -> Result<(), FavoriteError> {
+        if self.is_favorite(&origin) {
+            return Err(FavoriteError::AlreadyKept);
+        }
+        if self.favorites.len() >= MAX_FAVORITE_VISITORS {
+            return Err(FavoriteError::Full);
+        }
+        self.favorites.push(FavoriteVisitor {
+            kept_at_utc: now,
+            name: name.to_owned(),
+            origin,
+        });
+        Ok(())
+    }
+
+    /// Forget a favorite. Whether or not it is visiting right now, its visit carries on.
+    pub fn forget_favorite(&mut self, origin: &CreatureOrigin) -> bool {
+        let before = self.favorites.len();
+        self.favorites.retain(|favorite| favorite.origin != *origin);
+        self.favorites.len() != before
+    }
+
     /// Remember a visitor, oldest dropped once the book is full. This is a line in a book, not a
     /// change to the visit itself: whoever is here carries on exactly as they were.
     pub(crate) fn sign(&mut self, entry: GuestBookEntry) {
@@ -253,6 +315,13 @@ impl VisitorState {
     /// guest is found waiting between gatherings, and walks in again when the houses next appear.
     pub fn normalize(&mut self) {
         self.trim();
+        let mut seen = Vec::with_capacity(self.favorites.len());
+        self.favorites.retain(|favorite| {
+            let first = !seen.contains(&favorite.origin);
+            seen.push(favorite.origin);
+            first
+        });
+        self.favorites.truncate(MAX_FAVORITE_VISITORS);
         if let Some(guest) = &mut self.guest {
             guest.on_stage = false;
             guest.visit = VisitProgress::default();

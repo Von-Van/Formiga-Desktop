@@ -61,6 +61,32 @@ fn fixture() -> (SaveFile, Vec<MonitorInfo>) {
             },
         });
     }
+    // Two favorites kept from the book, one of them the friend visiting now.
+    let visiting = world
+        .save
+        .visitors
+        .guest
+        .clone()
+        .expect("a friend is visiting");
+    world
+        .save
+        .visitors
+        .keep_favorite(
+            &visiting.creature.name,
+            visiting.creature.origin,
+            now - time::Duration::days(3),
+        )
+        .unwrap();
+    let wanderer = world.save.visitors.guest_book[2].clone();
+    world
+        .save
+        .visitors
+        .keep_favorite(
+            &wanderer.name,
+            wanderer.origin,
+            now - time::Duration::days(9),
+        )
+        .unwrap();
     world.save.companion.journal.push(JournalEntry {
         at: now,
         creature: None,
@@ -421,7 +447,8 @@ impl Harness {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1000.0, 1400.0),
+                // Tall enough for the whole Home page with a full village to arrange.
+                egui::vec2(1000.0, 2200.0),
             )),
             time: Some(self.time),
             events,
@@ -782,9 +809,13 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 
 /// Every texture the settings window may hold at once. The scrapbook went from eight 16x16
 /// drawings baked per creature to one 256x32 colony sheet that carries all sixteen trinkets and
-/// their glint frames: one texture instead of eight, and 24 KiB more pixels, which is what moves
-/// this from 416 to 432 KiB. Nothing else on any page grew.
-const ARTWORK_BUDGET: usize = 432 * 1024;
+/// their glint frames: one texture instead of eight, and 24 KiB more pixels, which is what moved
+/// this from 416 to 432 KiB. In 0.59.0 every house got a cell of its own, so each can wear its
+/// resident's curtain, and the Home page's daylit village grew from 128x128 to 256x128: 64 KiB
+/// more, which moved this to 496 KiB. The object sheet then grew from eight cells to fourteen,
+/// three hangout spots and three garden patches of 16x16 each: 6 KiB more, which is what moves
+/// this to 500 KiB.
+const ARTWORK_BUDGET: usize = 500 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -899,4 +930,273 @@ fn all_ui_artwork_together_fits_the_budget() {
     );
     h.clubhouse.release_images();
     assert!(h.clubhouse.texture_ids().is_empty());
+}
+
+/// Every pair of companions appears once, grouped by how they get along with the pair keeping its
+/// distance first, and a pair that has never spent time together reads as getting acquainted.
+#[test]
+fn the_colony_view_lists_every_pair_once_by_how_they_get_along() {
+    let (save, _) = fixture();
+    let creatures = &save.creatures;
+    assert!(creatures.len() >= 4, "a colony worth reading");
+    let (a, b, c, d) = (
+        creatures[0].id,
+        creatures[1].id,
+        creatures[2].id,
+        creatures[3].id,
+    );
+    let record = |x, y, affinity, familiarity, playfulness, avoidance| {
+        let mut relationship = CreatureRelationship::new(x, y).unwrap();
+        relationship.affinity = affinity;
+        relationship.familiarity = familiarity;
+        relationship.playfulness = playfulness;
+        relationship.avoidance = avoidance;
+        relationship
+    };
+    let relationships = vec![
+        record(a, b, 200, 180, 90, 0),
+        record(a, c, 20, 30, 120, 10),
+        record(b, c, 60, 60, 20, 170),
+        record(a, d, 120, 90, 10, 5),
+    ];
+    let pairs = colony_standings(creatures, &relationships);
+    let expected = creatures.len() * (creatures.len() - 1) / 2;
+    assert_eq!(pairs.len(), expected);
+    let mut seen = std::collections::BTreeSet::new();
+    for pair in &pairs {
+        assert!(
+            seen.insert((pair.a.min(pair.b), pair.a.max(pair.b))),
+            "a pair listed twice"
+        );
+    }
+    let standing = |x: CreatureId, y: CreatureId| {
+        pairs
+            .iter()
+            .find(|pair| (pair.a == x && pair.b == y) || (pair.a == y && pair.b == x))
+            .map(|pair| pair.standing)
+            .unwrap()
+    };
+    assert_eq!(standing(b, c), Standing::Distant);
+    assert_eq!(standing(a, b), Standing::Close);
+    assert_eq!(standing(a, d), Standing::Close);
+    assert_eq!(standing(a, c), Standing::Playmates);
+    assert_eq!(standing(c, d), Standing::Acquainting);
+    // Grouped in order, and closest first within a group.
+    assert!(pairs.windows(2).all(|w| w[0].standing <= w[1].standing));
+    let close: Vec<_> = pairs
+        .iter()
+        .filter(|pair| pair.standing == Standing::Close)
+        .collect();
+    // Pairs are named in colony order, and the closest of the two close pairs comes first.
+    assert_eq!((close[0].a, close[0].b), (a, b));
+}
+
+/// Today's recap reads only what was written down today, newest first, and says so when a full
+/// journal may already have dropped some of today's earlier moments.
+#[test]
+fn today_recaps_only_what_was_recorded_today_and_admits_what_rolled_out() {
+    let (mut save, _) = fixture();
+    let offset = time::UtcOffset::UTC;
+    let now = time::macros::datetime!(2026-09-14 18:00 UTC);
+    let today_date = now.date();
+    let creature = save.creatures[0].id;
+    save.companion.journal.clear();
+    save.companion.scrapbook.clear();
+    // Yesterday's and today's moments.
+    save.companion.journal.push(JournalEntry {
+        at: now - time::Duration::days(1),
+        creature: Some(creature),
+        moment: JournalMoment::Discovery,
+    });
+    for hour in [9, 12, 15] {
+        save.companion.journal.push(JournalEntry {
+            at: time::macros::datetime!(2026-09-14 0:00 UTC) + time::Duration::hours(hour),
+            creature: Some(creature),
+            moment: JournalMoment::Discovery,
+        });
+    }
+    save.companion.scrapbook.push(ScrapbookRecord {
+        variant: 5,
+        first_at: now - time::Duration::hours(2),
+        finder: Some(creature),
+        finder_name: "Mallow".into(),
+    });
+    let recap = clubhouse::today(&save, today_date, offset);
+    assert_eq!(recap.moments.len(), 3);
+    assert!(
+        recap.moments.windows(2).all(|w| w[0].at >= w[1].at),
+        "newest first"
+    );
+    assert_eq!(recap.found, vec![5]);
+    assert!(
+        !recap.rolled_out,
+        "yesterday's entry is still here, so nothing of today was lost"
+    );
+    // A full journal that begins today may have lost some of today's earlier moments.
+    save.companion
+        .journal
+        .retain(|entry| entry.at.date() == today_date);
+    while save.companion.journal.len() < MAX_JOURNAL_ENTRIES {
+        save.companion.journal.push(JournalEntry {
+            at: now,
+            creature: None,
+            moment: JournalMoment::Ritual(RitualKind::Picnic),
+        });
+    }
+    assert!(clubhouse::today(&save, today_date, offset).rolled_out);
+    // Another day has nothing to say about this one.
+    let tomorrow = clubhouse::today(&save, today_date.next_day().unwrap(), offset);
+    assert!(tomorrow.moments.is_empty() && tomorrow.found.is_empty() && !tomorrow.rolled_out);
+}
+
+/// A companion's own ways are on its page, under the portrait: how it celebrates, then each habit
+/// it has picked up in the order it picked them up. Picking one up is a journal line of its own.
+#[test]
+fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    let creature = h.save.creatures[0].id;
+    let name = h.save.creatures[0].name.clone();
+    let celebration = Celebration::for_creature(&h.save.creatures[0]).label();
+    h.frame(Vec::new());
+    assert!(
+        h.labels.iter().any(|(text, _)| text == celebration),
+        "a companion with no habits yet still has its own celebration"
+    );
+    h.save.creatures[0].memory.habits = vec![Habit::CirclesBeforeNaps, Habit::WavesHello];
+    h.frame(Vec::new());
+    let wanted = format!("{celebration} · Turns in circles before a nap · Waves hello");
+    assert!(
+        h.labels.iter().any(|(text, _)| *text == wanted),
+        "{:?}",
+        h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
+    let entry = JournalEntry {
+        at: h.save.created_at_utc,
+        creature: Some(creature),
+        moment: JournalMoment::Habit(Habit::WavesHello),
+    };
+    assert_eq!(
+        clubhouse::moment_text(&h.save, &entry),
+        format!("{name} picked up a little habit: waves hello")
+    );
+}
+
+/// A hangout spot is put down in the middle of the ground from the Home page, slides along it,
+/// and is picked up again. The page only asks: the app is what changes the colony.
+#[test]
+fn a_hangout_spot_is_put_down_and_picked_up_from_the_home_page() {
+    let mut h = Harness::new(SettingsTab::Home);
+    let before = h.save.clone();
+    assert_eq!(
+        h.click("Put down").set_hangout,
+        Some((HangoutKind::Cushion, Some(0.5)))
+    );
+    assert!(h.save == before, "asking never changes the colony itself");
+    h.save.home.set_hangout(HangoutKind::Cushion, Some(0.5));
+    h.frame(Vec::new());
+    for label in ["Nap cushion", "Picnic blanket", "Lookout", "Left", "Right"] {
+        assert!(
+            h.labels.iter().any(|(text, _)| text == label),
+            "{label} is on the page"
+        );
+    }
+    assert_eq!(
+        h.click("Put down").set_hangout,
+        Some((HangoutKind::Cushion, None))
+    );
+}
+
+/// The village is arranged from the Home page: a cottage moved further along, a garden planted, a
+/// named palette chosen, and all of it put back as it grew once that has been asked twice. The
+/// page only asks: the app is what changes the colony.
+#[test]
+fn the_village_is_arranged_from_the_home_page() {
+    let mut h = Harness::new(SettingsTab::Home);
+    // Two cottages to put in order: one of the minis grown up for the purpose.
+    let grown = h
+        .save
+        .creatures
+        .iter()
+        .position(|creature| !creature.role.is_adult())
+        .expect("the fixture has a mini");
+    h.save.creatures[grown].role = CreatureRole::Adult;
+    let owners = house_owners(&h.save.creatures, &[]);
+    let owners = owners.as_slice();
+    assert_eq!(owners.len(), 3);
+    let before = h.save.clone();
+    assert_eq!(
+        h.click("Further").cottage_order,
+        Some(vec![owners[2], owners[1]])
+    );
+    assert_eq!(
+        h.click("Plant").set_garden,
+        Some((GardenKind::Flowers, Some(0.5)))
+    );
+    h.click("From the colony");
+    assert_eq!(
+        h.click("Autumn").village_palette,
+        Some(Some(VillagePalette::Autumn))
+    );
+    assert!(h.save == before, "asking never changes the colony itself");
+
+    // Nothing is arranged yet, so there is nothing to put back.
+    let reset = "Put the village back as it grew…";
+    assert!(!h.click(reset).reset_village);
+    assert!(!h.labels.iter().any(|(text, _)| text == "Put back"));
+
+    h.save.home.palette = Some(VillagePalette::Autumn);
+    h.save.home.set_garden(GardenKind::Herbs, Some(0.3));
+    assert!(!h.click(reset).reset_village, "the first click only asks");
+    assert!(!h.click("Keep them").reset_village);
+    h.frame(Vec::new());
+    assert!(!h.labels.iter().any(|(text, _)| text == "Put back"));
+    h.click(reset);
+    assert!(h.click("Put back").reset_village);
+}
+
+/// A postcard is chosen and written on the Home page: a scene picked, a caption typed, and the
+/// export asked for with the caption made safe to write. The page draws nothing and keeps nothing:
+/// the postcard is only ever the file it is exported to.
+#[test]
+fn a_postcard_is_chosen_and_captioned_from_the_home_page() {
+    let mut h = Harness::new(SettingsTab::Home);
+    h.frame(Vec::new());
+    let before = h.artwork_bytes();
+    assert_eq!(
+        h.click("Export postcard…").export_postcard,
+        Some((formiga_art::PostcardScene::Nap, String::new()))
+    );
+    h.click("A picnic");
+    h.clubhouse.postcard_caption = "  Snacks \t for everyone\n".into();
+    assert_eq!(
+        h.click("Export postcard…").export_postcard,
+        Some((
+            formiga_art::PostcardScene::Picnic,
+            "Snacks for everyone".to_owned()
+        ))
+    );
+    assert!(h.save.creatures.len() > 1);
+    assert_eq!(
+        h.artwork_bytes(),
+        before,
+        "choosing a postcard uploads nothing"
+    );
+}
+
+/// The last change to the colony can be taken back from the footer of any page, and only while
+/// there is one: the page asks, and the app is what undoes it.
+#[test]
+fn the_last_change_is_offered_back_on_every_page() {
+    for tab in [SettingsTab::Colony, SettingsTab::Home, SettingsTab::Journal] {
+        let mut h = Harness::new(tab);
+        h.frame(Vec::new());
+        assert!(
+            !h.labels.iter().any(|(text, _)| text.starts_with("Undo ")),
+            "nothing to undo, nothing offered"
+        );
+        h.clubhouse.last_edit = Some("removing Poppy".into());
+        let before = h.save.clone();
+        assert!(h.click("Undo removing Poppy").undo_last_edit);
+        assert!(h.save == before, "asking never changes the colony itself");
+    }
 }

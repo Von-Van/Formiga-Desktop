@@ -46,7 +46,7 @@ const MAX_BLOCKED: usize = 2 * MAX_COLONY_CREATURES + MAX_COLONY_OBJECTS;
 const MAX_VISIT_ANSWERS: usize = 2 * MAX_COLONY_CREATURES;
 
 /// The residents a guest can see from where it is standing. On the stack: a colony is never more
-/// than four, and this is rebuilt on every tick of a visit.
+/// than six, and this is rebuilt on every tick of a visit.
 type Residents = [Option<(CreatureId, Point)>; MAX_COLONY_CREATURES];
 
 /// Where a guest stands, and where it walks in from.
@@ -125,14 +125,17 @@ impl World {
             .find(|monitor| monitor.id == stage.monitor_id)
             .cloned();
         // Who the guest can go over to, gathered before it is borrowed: a colony is never more
-        // than four, so this costs nothing and never allocates.
+        // than six, so this costs nothing and never allocates.
+        // Anyone sharing a moment with the rest of the village is busy, and is left to it.
         let mut residents: Residents = [None; MAX_COLONY_CREATURES];
         for (slot, entry) in residents.iter_mut().enumerate() {
             *entry = self
                 .save
                 .creatures
                 .get(slot)
-                .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+                .filter(|creature| {
+                    creature.state.arrival_delay_secs <= 0.0 && !self.in_village_moment(creature.id)
+                })
                 .map(|creature| (creature.id, creature.state.position));
         }
         let seed = self.visit_seed();
@@ -473,6 +476,9 @@ impl World {
             if since < answer.after || since >= answer.after + answer.hold {
                 continue;
             }
+            if self.in_village_moment(answer.creature_id) {
+                continue;
+            }
             let Some(creature) = creature_mut(&mut self.save.creatures, answer.creature_id) else {
                 continue;
             };
@@ -491,7 +497,9 @@ impl World {
         self.save
             .creatures
             .iter()
-            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .filter(|creature| {
+                creature.state.arrival_delay_secs <= 0.0 && !self.in_village_moment(creature.id)
+            })
             .filter(|creature| {
                 self.resting_at_home(creature.id)
                     || creature.state.position.distance(spot) <= NOTICE_DISTANCE
@@ -505,6 +513,9 @@ impl World {
     /// asked for a single answer rather than a round of them: a turn, a hold, and whatever its
     /// temperament makes of the moment. It never leaves its door, and nothing is written down.
     fn answer_the_greeting(&mut self, creature_id: CreatureId) {
+        if self.in_village_moment(creature_id) {
+            return;
+        }
         let reduce_motion = self.save.settings.reduce_motion;
         let Some(answer) = self
             .save

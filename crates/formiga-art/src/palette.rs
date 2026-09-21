@@ -15,6 +15,9 @@ pub fn palette_for(genome: &formiga_core::AppearanceGenome) -> Palette {
     let Some(design) = genome.design else {
         return PALETTES[genome.palette_index as usize % PALETTES.len()];
     };
+    if design.classic.coat > 0 {
+        return candy_palette(design.coat, design.accent);
+    }
     let soften = |rgb: [u8; 3]| rgb.map(|c| ((u16::from(c) * 3 + 220) / 4) as u8);
     let rgb = soften(design.coat);
     let rgba = |v: [u8; 3]| Rgba::new(v[0], v[1], v[2], 255);
@@ -25,6 +28,35 @@ pub fn palette_for(genome: &formiga_core::AppearanceGenome) -> Palette {
         highlight: rgba(rgb.map(|c| ((u16::from(c) + 255) / 2) as u8)),
         accent: rgba(soften(design.accent)),
         eye: c(0x201b29),
+    }
+}
+
+/// Candy colours, built the way the original hand-made palettes are: the coat and accent at full
+/// strength, a shade that keeps the coat's hue but drops most of its saturation, a bright tinted
+/// highlight, and an outline and eyes that are near-black tinted toward the coat instead of one
+/// fixed ink. Lightness is held inside the band those palettes use, so a dark coat from a reference
+/// image still leaves the eyes readable against it.
+fn candy_palette(coat: [u8; 3], accent: [u8; 3]) -> Palette {
+    let rgba = |value: [u8; 3]| Rgba::new(value[0], value[1], value[2], 255);
+    let (hue, saturation, lightness) = to_hsl(rgba(coat));
+    let lightness = lightness.clamp(0.55, 0.78);
+    let (accent_hue, accent_saturation, accent_lightness) = to_hsl(rgba(accent));
+    let ink = (saturation * 0.4).min(0.3);
+    Palette {
+        outline: rgba(from_hsl(hue, ink, 0.19)),
+        shadow: rgba(from_hsl(
+            hue,
+            (saturation * 0.5).min(0.45),
+            (lightness - 0.24).clamp(0.36, 0.52),
+        )),
+        coat: rgba(from_hsl(hue, saturation, lightness)),
+        highlight: rgba(from_hsl(hue, (saturation * 1.4 + 0.15).min(1.0), 0.86)),
+        accent: rgba(from_hsl(
+            accent_hue,
+            accent_saturation,
+            accent_lightness.clamp(0.62, 0.82),
+        )),
+        eye: rgba(from_hsl(hue, ink, 0.11)),
     }
 }
 
@@ -203,6 +235,37 @@ pub const PALETTES: [Palette; 12] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Candy colours come at full strength from anywhere, a reference photo included, so the
+    /// palette itself has to keep the eyes dark against the coat and the outline darker still.
+    #[test]
+    fn candy_colours_keep_a_dark_readable_face_on_any_coat() {
+        let lightness = |color: Rgba| to_hsl(color).2;
+        let mut coats = vec![[0, 0, 0], [255, 255, 255], [128, 128, 128]];
+        for r in (0..=255).step_by(51) {
+            for g in (0..=255).step_by(51) {
+                for b in (0..=255).step_by(51) {
+                    coats.push([r as u8, g as u8, b as u8]);
+                }
+            }
+        }
+        for coat in &coats {
+            for accent in [[0, 0, 0], [255, 255, 255], [255, 224, 129]] {
+                let palette = candy_palette(*coat, accent);
+                assert!(
+                    lightness(palette.coat) - lightness(palette.eye) >= 0.4,
+                    "{coat:?}: eyes too close to the coat"
+                );
+                assert!(lightness(palette.outline) < lightness(palette.shadow));
+                assert!(lightness(palette.shadow) < lightness(palette.coat));
+                assert!(lightness(palette.coat) < lightness(palette.highlight));
+                assert!(
+                    lightness(palette.accent) - lightness(palette.eye) >= 0.4,
+                    "{accent:?}: an accent cheek or beak has to show on the face"
+                );
+            }
+        }
+    }
 
     #[test]
     fn belongings_stay_distinct_from_the_creature_carrying_them() {

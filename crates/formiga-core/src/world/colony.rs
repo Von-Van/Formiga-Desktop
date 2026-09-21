@@ -132,6 +132,20 @@ impl World {
         generated_adult(source_seed, now, desktop, 0, &[], true)
     }
 
+    /// Set where a companion's owner would like it to roam. Returns whether anything changed.
+    pub fn set_roaming_leaning(
+        &mut self,
+        creature_id: CreatureId,
+        leaning: RoamingLeaning,
+    ) -> bool {
+        let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) else {
+            return false;
+        };
+        let changed = creature.leaning != leaning;
+        creature.leaning = leaning;
+        changed
+    }
+
     pub fn add_designed_adult(
         &mut self,
         source_seed: [u8; 32],
@@ -251,6 +265,7 @@ impl World {
             return Err(ColonyManagementError::LastAdult);
         }
         self.save.creatures.remove(index);
+        self.save.home.cottage_order.retain(|id| *id != creature_id);
         self.remove_creature_runtime(creature_id);
         rebalance_minis(&mut self.save.creatures);
         normalize_relationships(&mut self.save);
@@ -316,6 +331,12 @@ impl World {
                 creature.role = CreatureRole::Mini { parent_id: new_id };
             }
         }
+        // The newcomer keeps the cottage where it stood.
+        for id in &mut self.save.home.cottage_order {
+            if *id == old_id {
+                *id = new_id;
+            }
+        }
         self.remove_creature_runtime(old_id);
         self.register_creature_runtime(&replacement);
         self.save.creatures[index] = replacement;
@@ -360,7 +381,7 @@ impl World {
         );
     }
 
-    fn remove_creature_runtime(&mut self, creature_id: CreatureId) {
+    pub(super) fn remove_creature_runtime(&mut self, creature_id: CreatureId) {
         self.cancel_creature_attention(creature_id);
         let mut interrupted: BTreeSet<_> = self
             .action_choices

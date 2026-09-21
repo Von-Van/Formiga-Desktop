@@ -129,6 +129,15 @@ impl World {
             WorldCommand::OfferSnack { creature_id } => self.offer_snack(creature_id, desktop),
             WorldCommand::OfferToy { creature_id } => self.offer_toy(creature_id, desktop),
             WorldCommand::SendHome => self.send_home(desktop),
+            WorldCommand::InviteVillageMoment {
+                creature_id,
+                moment,
+            } => self.invite_village_moment(creature_id, moment, desktop),
+            WorldCommand::StopVillageMoment => {
+                let under_way = self.village_moment.is_some();
+                self.end_village_moment(false);
+                under_way
+            }
         };
         self.project_events(self.save.maximum_seen_utc);
         handled

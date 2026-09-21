@@ -1,6 +1,6 @@
 use crate::{
-    ColonyHome, ColonyObject, Creature, CreatureRole, DesktopRect, HabitatPolicy, HabitatPreset,
-    HabitatZoneKind, HomeCorner, MonitorInfo, Point,
+    ColonyHome, ColonyObject, Creature, CreatureRole, DesktopRect, GardenKind, HabitatPolicy,
+    HabitatPreset, HabitatZoneKind, HangoutKind, HomeCorner, MonitorInfo, Point,
 };
 
 pub const MAX_HABITAT_ZONES: usize = 32;
@@ -178,9 +178,9 @@ pub const TREE_WIDTH: f32 = 56.0;
 
 /// How much of a house's own footprint a resting frame may reach across: the outermost pixels of
 /// a wall or an eave, and the ground decoration standing against it. Every dwelling keeps its
-/// doorway far inside this — the narrowest, a mini's cottage, has eighteen pixels between its
-/// door's own middle and the edge of its lot, and its doorway is five of them — so a resident
-/// waiting at its door never stands in front of one.
+/// doorway far inside this — the narrowest, a companion's cottage, has more than eighteen pixels
+/// between its door's own middle and the edge of its lot, and its doorway is at most five of them
+/// — so a resident waiting at its door never stands in front of one.
 pub const REST_WALL_SLIVER: f32 = 9.0;
 
 /// The ground a companion standing on the commons claims for itself. Less than the frame it
@@ -505,16 +505,23 @@ impl HomeCommons {
     /// other. Kept out of the trees' yards, and off the very ends, so a companion standing there
     /// is inside the village and not in its belongings.
     pub fn along(&self, fraction: f32) -> Point {
-        let half = RESTING_WIDTH / 2.0 * self.scale;
-        let (mut low, mut high) = (self.stand_low_x + half, self.stand_high_x - half);
-        if high < low {
-            // A village too cramped to keep its yards clear: the whole walk is fair ground.
-            low = self.low_x + half;
-            high = (self.high_x - half).max(low);
-        }
+        let (low, high) = self.standing_span();
         Point {
             x: low + (high - low) * fraction.clamp(0.0, 1.0),
             y: self.ground_y,
+        }
+    }
+
+    /// The first and last places along the walk a companion may stand, as `along` measures them.
+    pub fn standing_span(&self) -> (f32, f32) {
+        let half = RESTING_WIDTH / 2.0 * self.scale;
+        let (low, high) = (self.stand_low_x + half, self.stand_high_x - half);
+        if high < low {
+            // A village too cramped to keep its yards clear: the whole walk is fair ground.
+            let low = self.low_x + half;
+            (low, (self.high_x - half).max(low))
+        } else {
+            (low, high)
         }
     }
 }
@@ -696,10 +703,11 @@ impl Cottages {
 }
 
 /// Companion houses for the colony, in stable colony order, without touching the allocator. The
-/// first member shares the colony house; every later arrival gets one of its own, and a mini gets
-/// a matching half-size one, so the corner grows into a small village as the colony does.
+/// first full-size member shares the colony house, every later full-size arrival gets a cottage
+/// of its own, and a mini lives in its big version's, so the corner grows into a small village as
+/// the colony does.
 ///
-/// A colony is never more than four, so the four smallest `(colony_order, id)` keys are picked out
+/// A colony is never more than six, so the six smallest `(colony_order, id)` keys are picked out
 /// one at a time rather than by sorting the whole list into a fresh `Vec` — which this used to do
 /// twice, on a path the simulation walks for every belonging on every tick.
 pub fn colony_cottage_list(creatures: &[Creature]) -> Cottages {
@@ -731,10 +739,61 @@ pub fn colony_cottage_list(creatures: &[Creature]) -> Cottages {
     cottages
 }
 
+/// Who keeps each house, in the order they stand along the village: the founder in the colony
+/// house, then the cottages as the owner arranged them, and any cottage never arranged in the
+/// order its keeper arrived. Only full-size companions keep a house; a mini lives in its big
+/// version's. Held in place, like `Cottages`, since the homebound walk asks every tick.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HouseOwners {
+    ids: [crate::CreatureId; crate::MAX_COLONY_CREATURES],
+    len: usize,
+}
+
+impl HouseOwners {
+    pub fn as_slice(&self) -> &[crate::CreatureId] {
+        &self.ids[..self.len]
+    }
+
+    fn push(&mut self, id: crate::CreatureId) {
+        if self.len < self.ids.len() && !self.as_slice().contains(&id) {
+            self.ids[self.len] = id;
+            self.len += 1;
+        }
+    }
+}
+
+pub fn house_owners(creatures: &[Creature], cottage_order: &[crate::CreatureId]) -> HouseOwners {
+    let mut owners = HouseOwners::default();
+    let adults = || creatures.iter().filter(|creature| creature.role.is_adult());
+    let Some(founder) = adults().min_by_key(|creature| (creature.colony_order, creature.id)) else {
+        return owners;
+    };
+    owners.push(founder.id);
+    for id in cottage_order {
+        if adults().any(|creature| creature.id == *id) {
+            owners.push(*id);
+        }
+    }
+    // Everyone else in the order they arrived, picked in place.
+    let mut taken: Option<(u8, crate::CreatureId)> = None;
+    while let Some(next) = adults()
+        .filter(|creature| taken.is_none_or(|last| (creature.colony_order, creature.id) > last))
+        .min_by_key(|creature| (creature.colony_order, creature.id))
+    {
+        taken = Some((next.colony_order, next.id));
+        owners.push(next.id);
+    }
+    owners
+}
+
 /// Which house a companion belongs to, counting the colony house as slot zero. A mini takes its
-/// big version's, and keeps it if it ever grows into a full-size companion of its own: the house
-/// a creature comes home to is settled when it arrives and does not move afterwards.
-pub fn house_slot_for(creature: &Creature, creatures: &[Creature]) -> usize {
+/// big version's. The founder keeps the colony house; the cottages stand in the order the owner
+/// arranged them, or the order their keepers arrived.
+pub fn house_slot_for(
+    creature: &Creature,
+    creatures: &[Creature],
+    cottage_order: &[crate::CreatureId],
+) -> usize {
     let of_interest = match creature.role {
         CreatureRole::Mini { parent_id } => creatures
             .iter()
@@ -742,27 +801,23 @@ pub fn house_slot_for(creature: &Creature, creatures: &[Creature]) -> usize {
             .unwrap_or(creature),
         CreatureRole::Adult => creature,
     };
-    let mut slot = 0;
-    let mut taken: Option<(u8, crate::CreatureId)> = None;
-    for _ in 0..crate::MAX_COLONY_CREATURES {
-        let Some(next) = creatures
-            .iter()
-            .filter(|candidate| {
-                taken.is_none_or(|last| (candidate.colony_order, candidate.id) > last)
-            })
-            .min_by_key(|candidate| (candidate.colony_order, candidate.id))
-        else {
-            break;
-        };
-        taken = Some((next.colony_order, next.id));
-        if next.id == of_interest.id {
-            return slot;
-        }
-        if next.role.is_adult() {
-            slot += 1;
-        }
+    let owners = house_owners(creatures, cottage_order);
+    let owners = owners.as_slice();
+    if let Some(slot) = owners.iter().position(|id| *id == of_interest.id) {
+        return slot;
     }
-    0
+    // A mini whose big version has gone: the house of the last companion to arrive before it.
+    let before = owners
+        .iter()
+        .filter(|id| {
+            creatures.iter().any(|candidate| {
+                candidate.id == **id
+                    && (candidate.colony_order, candidate.id)
+                        < (of_interest.colony_order, of_interest.id)
+            })
+        })
+        .count();
+    before.saturating_sub(1)
 }
 
 /// The same houses as `colony_cottage_list`, for callers that want them owned.
@@ -867,6 +922,95 @@ pub fn home_object_positions(
         *place = Some((ground.monitor.id, ground.point(centre + sideways, forward)));
     }
     places
+}
+
+/// How wide a hangout spot stands on the ground, in shelter pixels: the art's own cell.
+pub const HANGOUT_WIDTH: f32 = 16.0;
+
+/// Something put down on the village ground by the person at the desk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GroundItem {
+    Hangout(HangoutKind),
+    Garden(GardenKind),
+}
+
+/// Where everything put down on the village ground stands, resolved in one go: hangout spots and
+/// garden patches each at its own fraction of the ground a companion may stand on, and none
+/// nearer another than its own width and a little more, so two never sit on top of one another
+/// however they were placed. A village with no ground puts nothing down, and a ground too short
+/// for all of them keeps the ones that fit.
+pub fn home_ground_positions(
+    home: &ColonyHome,
+    cottages: &[DwellingKind],
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Vec<(GroundItem, u64, Point)> {
+    if home.hangouts.is_empty() && home.gardens.is_empty() {
+        return Vec::new();
+    }
+    let Some(commons) = home_commons(home, cottages, monitors, policy, display_scale) else {
+        return Vec::new();
+    };
+    let (low, high) = commons.standing_span();
+    let gap = (HANGOUT_WIDTH + 2.0) * commons.scale;
+    let at = |along: f32| low + (high - low) * along.clamp(0.0, 1.0);
+    let mut spots: Vec<(GroundItem, f32)> = home
+        .hangouts
+        .iter()
+        .map(|spot| (GroundItem::Hangout(spot.kind), at(spot.along)))
+        .chain(
+            home.gardens
+                .iter()
+                .map(|patch| (GroundItem::Garden(patch.kind), at(patch.along))),
+        )
+        .collect();
+    let rank = |item: GroundItem| match item {
+        GroundItem::Hangout(kind) => kind.index(),
+        GroundItem::Garden(kind) => 8 + kind.index(),
+    };
+    spots.sort_by(|a, b| a.1.total_cmp(&b.1).then(rank(a.0).cmp(&rank(b.0))));
+    // Pushed apart from the left, then back inside the right-hand end.
+    for index in 1..spots.len() {
+        spots[index].1 = spots[index].1.max(spots[index - 1].1 + gap);
+    }
+    if let Some(last) = spots.last_mut() {
+        last.1 = last.1.min(high);
+    }
+    for index in (0..spots.len().saturating_sub(1)).rev() {
+        spots[index].1 = spots[index].1.min(spots[index + 1].1 - gap);
+    }
+    spots
+        .into_iter()
+        .filter(|(_, x)| *x >= low - 0.01)
+        .map(|(item, x)| {
+            (
+                item,
+                commons.monitor_id,
+                Point {
+                    x,
+                    y: commons.ground_y,
+                },
+            )
+        })
+        .collect()
+}
+
+/// Where every hangout spot stands: the hangout spots among everything on the ground.
+pub fn home_hangout_positions(
+    home: &ColonyHome,
+    cottages: &[DwellingKind],
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Vec<(HangoutKind, u64, Point)> {
+    home_ground_positions(home, cottages, monitors, policy, display_scale)
+        .into_iter()
+        .filter_map(|(item, monitor_id, point)| match item {
+            GroundItem::Hangout(kind) => Some((kind, monitor_id, point)),
+            GroundItem::Garden(_) => None,
+        })
+        .collect()
 }
 
 pub fn accessible_regions(policy: &HabitatPolicy, monitor: &MonitorInfo) -> Vec<DesktopRect> {

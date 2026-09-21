@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use formiga_art::{
-    CARD_HEIGHT, CARD_WIDTH, CreatureCardRenderer, CreatureRenderer, ExpressionKind, EyelidPose,
-    FRAME_SIZE, FaceRenderState, GazeDirection, SHELTER_SIZE, ShelterRenderer,
+    BodyClip, CARD_HEIGHT, CARD_WIDTH, CreatureCardRenderer, CreatureRenderer, ExpressionKind,
+    EyelidPose, FRAME_SIZE, FaceRenderState, GazeDirection, SHELTER_SIZE, ShelterRenderer,
 };
 use formiga_core::*;
 use sha2::{Digest, Sha256};
@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
 mod colony_card;
+mod habit_sheet;
+mod palette_sheet;
+mod postcard;
 mod prop_sheet;
 mod social_preview;
 mod sticker;
@@ -24,6 +27,10 @@ fn main() -> Result<()> {
         Some("generation-sheet") => generation_sheet(output_argument_with_default(
             &args,
             "docs/assets/generation-sheet.png",
+        )),
+        Some("classic-sheet") => classic_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/classic-sheet.png",
         )),
         Some("home-yard-sheet") => home_yard_sheet(output_argument_with_default(
             &args,
@@ -40,6 +47,10 @@ fn main() -> Result<()> {
         Some("gesture-sheet") => gesture_sheet(output_argument_with_default(
             &args,
             "docs/assets/gesture-sheet.png",
+        )),
+        Some("habit-sheet") => habit_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/habit-sheet.png",
         )),
         Some("activity-sheet") => activity_sheet(output_argument_with_default(
             &args,
@@ -80,6 +91,10 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/shelter-sheet.png",
         )),
+        Some("village-palette-sheet") => palette_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/village-palette-sheet.png",
+        )),
         Some("creature-card") => creature_card(output_argument_with_default(
             &args,
             "docs/assets/creature-card.png",
@@ -94,6 +109,15 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/colony-card.png",
         )),
+        Some("postcard") => postcard::run(
+            output_argument_with_default(&args, "docs/assets/postcard.png"),
+            postcard::scene_argument(&args)?,
+            &postcard::caption_argument(&args),
+        ),
+        Some("postcard-sheet") => postcard::sheet(output_argument_with_default(
+            &args,
+            "docs/assets/postcards.png",
+        )),
         Some("tick-bench") => tick_bench::run(&args[2..]),
         Some("simulate") => simulate(
             args.get(2)
@@ -102,7 +126,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -147,7 +171,8 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
                 SeedStream::new([55; 32]).bytes("generation-sheet", (row * 6 + column) as u64);
             let mut creature =
                 World::preview_adult(seed, OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
-            let mut design = creature.appearance.design.unwrap();
+            // The grid is of modular parts, so it starts from the modular recipe alone.
+            let mut design = CreatureDesign::modular(seed, 0, None);
             design.body = body;
             design.ears = ears;
             apply_creature_design(&mut creature, Some(design));
@@ -169,6 +194,142 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Each classic part alone on every body plan, then wholly classic companions in motion.
+///
+/// The first band starts every row from the same plain modular recipe and changes one part per
+/// column: candy colours, the five eye arrangements, nubs and stick legs, antennae and sprouts,
+/// the three patterns, and the two tails. The second band gives each plan every classic part at
+/// once and runs it through standing, walking, greeting, hanging, sleeping, and five gestures,
+/// which is where a nub, a stick leg, or an antenna would come loose if it were going to.
+fn classic_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 3;
+    let parts = |edit: fn(&mut ClassicParts)| {
+        let mut parts = ClassicParts::default();
+        edit(&mut parts);
+        parts
+    };
+    let singles = [
+        parts(|_| {}),
+        parts(|p| p.coat = 1),
+        parts(|p| p.face = 1),
+        parts(|p| p.face = 2),
+        parts(|p| p.face = 3),
+        parts(|p| p.face = 4),
+        parts(|p| p.face = 5),
+        parts(|p| p.limbs = 1),
+        parts(|p| p.limbs = 2),
+        parts(|p| p.crown = 1),
+        parts(|p| p.crown = 2),
+        parts(|p| p.pattern = 1),
+        parts(|p| p.pattern = 2),
+        parts(|p| p.pattern = 3),
+        parts(|p| p.tail = 1),
+        parts(|p| p.tail = 2),
+    ];
+    let motion: [(BodyClip, u8); 10] = [
+        (BodyClip::Action(ActionKind::Idle), 0),
+        (BodyClip::Action(ActionKind::Traverse), 1),
+        (BodyClip::Action(ActionKind::Greet), 1),
+        (BodyClip::Action(ActionKind::Dangle), 0),
+        (BodyClip::Action(ActionKind::Sleep), 0),
+        (BodyClip::Gesture(Gesture::Cheer), 1),
+        (BodyClip::Gesture(Gesture::Gasp), 0),
+        (BodyClip::Gesture(Gesture::Cover), 0),
+        (BodyClip::Gesture(Gesture::Reach), 1),
+        (BodyClip::Gesture(Gesture::Watch), 0),
+    ];
+    let cell = FRAME_SIZE * SCALE;
+    let rows = BodyPlan::ALL.len() as u32;
+    let (width, height) = (cell * singles.len() as u32, cell * rows * 2);
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [237, 234, 224, 255],
+        [209, 226, 219, 255],
+    );
+    let mut creature =
+        World::preview_adult([13; 32], OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
+    // A coat and accent far enough apart that every accent-coloured part shows against the body.
+    let base = CreatureDesign {
+        classic: ClassicParts::default(),
+        coat: [118, 172, 196],
+        accent: [242, 168, 88],
+        ..creature
+            .appearance
+            .design
+            .expect("a generated companion carries its recipe")
+    };
+    let mut draw = |creature: &Creature, clip: BodyClip, frame: u8, column: u32, row: u32| {
+        let state = FaceRenderState {
+            expression: ExpressionKind::Neutral,
+            eyelids: if clip == BodyClip::Action(ActionKind::Sleep) {
+                EyelidPose::Closed
+            } else {
+                EyelidPose::Open
+            },
+            gaze: GazeDirection::default(),
+        };
+        let canvas = CreatureRenderer::render_composited_frame(
+            &creature.appearance,
+            clip,
+            frame,
+            true,
+            false,
+            state,
+        );
+        blit_scaled_square_alpha(
+            &mut pixels,
+            width,
+            column * cell,
+            row * cell,
+            &canvas.rgba_bytes(),
+            FRAME_SIZE,
+            SCALE,
+        );
+    };
+    for (row, body) in BodyPlan::ALL.into_iter().enumerate() {
+        for (column, classic) in singles.iter().enumerate() {
+            apply_creature_design(
+                &mut creature,
+                Some(CreatureDesign {
+                    body,
+                    classic: *classic,
+                    ..base
+                }),
+            );
+            let idle = BodyClip::Action(ActionKind::Idle);
+            draw(&creature, idle, 0, column as u32, row as u32);
+        }
+        // Every part at once, with a different eye arrangement, crown, and tail on each row.
+        let index = row as u8;
+        apply_creature_design(
+            &mut creature,
+            Some(CreatureDesign {
+                body,
+                classic: ClassicParts {
+                    coat: 1,
+                    face: 1 + index % 5,
+                    limbs: 1 + index % 2,
+                    crown: 1 + index % 2,
+                    pattern: 1 + index % 3,
+                    tail: 1 + index % 2,
+                },
+                coat: [0xe9, 0x8a, 0xb5],
+                accent: [0xff, 0xe0, 0x81],
+                ..base
+            }),
+        );
+        for (column, (clip, frame)) in motion.into_iter().enumerate() {
+            draw(&creature, clip, frame, column as u32, rows + row as u32);
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
 /// One stretch of village ground, drawn exactly where the layout functions put everything: the
 /// two keepsake trees bookending the strip with whatever the scrapbook holds hung between them,
 /// the colony house, one cottage per later member, the belongings in the yard at each trunk, and
@@ -176,6 +337,14 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
 struct YardPanel {
     cottages: Vec<DwellingKind>,
     objects: usize,
+    /// Hangout spots put down on the ground, as fractions along it: cushion, blanket, lookout.
+    hangouts: [Option<f32>; 3],
+    /// Garden patches planted along the ground: flowers, vegetables, herbs.
+    gardens: [Option<f32>; 3],
+    /// The palette the village is painted in, if not its own colours.
+    palette: Option<VillagePalette>,
+    /// After dark: the houses lit from inside, on a night sky.
+    night: bool,
     /// How many of the sixteen trinkets this colony has found, so the trees can be judged bare,
     /// part-filled and full.
     found: usize,
@@ -188,38 +357,72 @@ const YARD_HEIGHT: u32 = 88;
 const YARD_SCALE: u32 = 2;
 
 fn home_yard_sheet(path: PathBuf) -> Result<()> {
-    // Four shelter styles with a grown colony and the two trees filling up as the scrapbook does
-    // — the outward one takes the first eight finds, the inward one the rest — then a colony of
-    // one, two, three and four, so the rule that nobody stands in front of a house can be checked
-    // at every size and both corners, and so can the widest village there is, which is the last
-    // row: four adults, eight belongings split between the yards, and two bare trees.
-    let full = vec![
-        DwellingKind::Cottage,
-        DwellingKind::Cottage,
-        DwellingKind::Cottage,
-    ];
+    // Four shelter styles with a full colony of six and the two trees filling up as the scrapbook
+    // does — the outward one takes the first eight finds, the inward one the rest — then a colony
+    // of one to six, so the rule that nobody stands in front of a house can be checked at every
+    // size and both corners, and so can the widest village there is: six full-size companions,
+    // eight belongings split between the yards, and two bare trees. Last, the four styles again
+    // after dark, lit from inside, each door hung with its own resident's curtain. Along the way,
+    // hangout spots and garden patches spread out, bunched up and mixed together, and villages
+    // painted in a named palette rather than their own colours.
+    let full = vec![DwellingKind::Cottage; MAX_COLONY_CREATURES - 1];
     let mut panels: Vec<YardPanel> = (0..4)
         .map(|style| YardPanel {
             cottages: full.clone(),
             objects: MAX_COLONY_OBJECTS,
+            // Two of the grown villages with spots put down, spread out and bunched up; one with
+            // its three gardens planted; and one with spots and gardens mixed along the ground.
+            hangouts: match style {
+                0 => [Some(0.15), Some(0.5), Some(0.9)],
+                1 => [Some(0.6), Some(0.6), Some(0.6)],
+                3 => [Some(0.2), None, Some(0.7)],
+                _ => [None; 3],
+            },
+            gardens: match style {
+                2 => [Some(0.1), Some(0.45), Some(0.85)],
+                3 => [Some(0.35), Some(0.5), Some(0.95)],
+                _ => [None; 3],
+            },
+            palette: match style {
+                2 => Some(VillagePalette::Meadow),
+                3 => Some(VillagePalette::Twilight),
+                _ => None,
+            },
             found: [0, 5, 11, 16][style as usize],
             style_seed: style,
+            night: false,
         })
         .collect();
-    for members in 1..=4_usize {
+    for members in 1..=MAX_COLONY_CREATURES {
         panels.push(YardPanel {
-            cottages: if members == 4 {
-                vec![
-                    DwellingKind::Cottage,
-                    DwellingKind::Cottage,
-                    DwellingKind::Cottage,
-                ]
-            } else {
-                full[..members - 1].to_vec()
-            },
+            cottages: full[..members - 1].to_vec(),
             objects: MAX_COLONY_OBJECTS,
-            found: [16, 8, 3, 0][members - 1],
+            hangouts: [None; 3],
+            gardens: [None; 3],
+            palette: None,
+            found: [16, 12, 8, 5, 3, 0][members - 1],
             style_seed: 3,
+            night: false,
+        });
+    }
+    for style in 0..4 {
+        panels.push(YardPanel {
+            cottages: full.clone(),
+            objects: MAX_COLONY_OBJECTS,
+            hangouts: if style == 1 {
+                [Some(0.3), Some(0.55), Some(0.8)]
+            } else {
+                [None; 3]
+            },
+            gardens: if style == 2 {
+                [Some(0.2), Some(0.5), Some(0.8)]
+            } else {
+                [None; 3]
+            },
+            palette: (style == 2).then_some(VillagePalette::Harbour),
+            found: 8,
+            style_seed: style,
+            night: true,
         });
     }
 
@@ -254,7 +457,12 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
                 y,
                 panel_width,
                 panel_height,
-                [255, 255, 255, 90],
+                if panel.night {
+                    // A desktop wallpaper after dark.
+                    [28, 34, 58, 235]
+                } else {
+                    [255, 255, 255, 90]
+                },
             );
             fill_rect(
                 &mut pixels,
@@ -299,10 +507,35 @@ fn draw_yard_panel(
         None,
     );
     home.corner = corner;
+    home.palette = panel.palette;
+    for (kind, along) in HangoutKind::ALL.into_iter().zip(panel.hangouts) {
+        home.set_hangout(kind, along);
+    }
+    for (kind, along) in GardenKind::ALL.into_iter().zip(panel.gardens) {
+        home.set_garden(kind, along);
+    }
     let policy = HabitatPolicy::default();
     let monitors = std::slice::from_ref(&monitor);
     let cottages = &panel.cottages;
-    let village = ShelterRenderer::render_village(&home.shelter, &ShelterDecorationKind::ALL);
+    let residents: Vec<Creature> = (0..=cottages.len())
+        .map(|slot| {
+            World::preview_adult(
+                SeedStream::new(seed).bytes("yard-resident", slot as u64),
+                OffsetDateTime::UNIX_EPOCH,
+                &fixture_desktop(),
+            )
+        })
+        .collect();
+    let marks: Vec<Option<formiga_art::ResidentMark>> = residents
+        .iter()
+        .map(|resident| Some(formiga_art::ResidentMark::of(resident)))
+        .collect();
+    let village = ShelterRenderer::render_village(
+        &home.drawn_shelter(),
+        &ShelterDecorationKind::ALL,
+        &marks,
+        true,
+    );
 
     // Everything is blitted by the top-left of its own square, so a quad hung in a tree lands
     // by its anchor and a house lands by its footprint's middle on the ground line.
@@ -347,6 +580,7 @@ fn draw_yard_panel(
         let Some((_, tree)) = home_tree_position(&home, end, cottages, monitors, &policy, 1) else {
             continue;
         };
+        let (tree_x, tree_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::Tree);
         let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
         for y in 0..SHELTER_SIZE as i32 {
             for x in 0..SHELTER_SIZE as i32 {
@@ -355,11 +589,7 @@ fn draw_yard_panel(
                 } else {
                     x
                 };
-                cell.set(
-                    x,
-                    y,
-                    village.get(SHELTER_SIZE as i32 + read, SHELTER_SIZE as i32 + y),
-                );
+                cell.set(x, y, village.get(tree_x as i32 + read, tree_y as i32 + y));
             }
         }
         let (left, top) = standing(SHELTER_SIZE, tree);
@@ -397,19 +627,14 @@ fn draw_yard_panel(
         else {
             continue;
         };
-        let kind = if slot == 0 {
-            DwellingKind::Main
-        } else {
-            cottages[slot - 1]
-        };
-        let (cell_x, cell_y) = match kind {
-            DwellingKind::Main => (0, 0),
-            DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
-        };
+        let (cell_x, cell_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::House {
+            slot,
+            lit: panel.night,
+        });
         let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
         for y in 0..SHELTER_SIZE as i32 {
             for x in 0..SHELTER_SIZE as i32 {
-                cell.set(x, y, village.get(cell_x + x, cell_y + y));
+                cell.set(x, y, village.get(cell_x as i32 + x, cell_y as i32 + y));
             }
         }
         let (x, y) = standing(SHELTER_SIZE, p);
@@ -435,9 +660,26 @@ fn draw_yard_panel(
         corner_of(&tile, 16, x, y);
     }
 
+    // The spots put down and the patches planted on the ground, the lookout turned out over the
+    // rest of the display.
+    let middle = monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0;
+    for (item, _, p) in home_ground_positions(&home, cottages, monitors, &policy, 1) {
+        let cell = formiga_art::ColonyObjectRenderer::ground_cell(item) as i32;
+        let mirrored = formiga_art::ColonyObjectRenderer::ground_mirrored(item, p.x, middle);
+        let mut tile = formiga_art::Canvas::new(16, 16);
+        for y in 0..16 {
+            for x in 0..16 {
+                let read = if mirrored { 15 - x } else { x };
+                tile.set(x, y, atlas.get(cell * 16 + read, y));
+            }
+        }
+        let (x, y) = standing(16, p);
+        corner_of(&tile, 16, x, y);
+    }
+
     // The residents themselves, spread along the ground in front of the row and facing the strip.
     let facing = corner == HomeCorner::BottomLeft;
-    for slot in 0..=cottages.len() {
+    for (slot, member) in residents.iter().enumerate() {
         let Some((_, p)) = home_resting_position(
             &home,
             slot,
@@ -449,11 +691,6 @@ fn draw_yard_panel(
         ) else {
             continue;
         };
-        let member = World::preview_adult(
-            SeedStream::new(seed).bytes("yard-resident", slot as u64),
-            OffsetDateTime::UNIX_EPOCH,
-            &fixture_desktop(),
-        );
         let frame =
             CreatureRenderer::render_frame(&member.appearance, ActionKind::Homebound, 0, facing);
         let (x, y) = standing(FRAME_SIZE, p);
@@ -601,6 +838,8 @@ fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Worry | Gesture::Balance => (ExpressionKind::Worried, EyelidPose::Open),
         Gesture::Crouch | Gesture::Heave => (ExpressionKind::Determined, EyelidPose::Open),
         Gesture::Reach | Gesture::Watch => (ExpressionKind::Curious, EyelidPose::Open),
+        // Shown as the desktop shows the top of it: eyes screwed shut.
+        Gesture::Stretch => (ExpressionKind::Content, EyelidPose::Closed),
     };
     FaceRenderState {
         expression,
@@ -615,8 +854,9 @@ fn gesture_face(gesture: Gesture) -> FaceRenderState {
     }
 }
 
-/// Every body the art can draw: the three legacy families a long-lived save still carries, then
-/// the five modular body plans the colony grows today.
+/// Every body the art can draw: the three reference creatures — a plain modular body from each of
+/// the blob, hopper, and soft-quadruped families — then the five modular body plans on one shared
+/// look, so a pose is judged across every plan.
 fn gesture_subjects() -> Vec<AppearanceGenome> {
     let mut subjects: Vec<_> = reference_creatures()
         .into_iter()
@@ -629,9 +869,8 @@ fn gesture_subjects() -> Vec<AppearanceGenome> {
     );
     for plan in BodyPlan::ALL {
         let mut appearance = preview.appearance.clone();
-        let mut design = appearance
-            .design
-            .expect("a generated companion carries its recipe");
+        // Classic limbs make their own gestures, reviewed on the classic sheet.
+        let mut design = CreatureDesign::modular([29; 32], 0, None);
         design.body = plan;
         appearance.design = Some(design);
         subjects.push(appearance);
@@ -646,7 +885,7 @@ const REFERENCE_ACTIONS: [ActionKind; 2] = [ActionKind::Idle, ActionKind::Inspec
 
 /// Three bands, all at 3x so a pose is judged near the size a desktop shows it at.
 ///
-/// First every action then every gesture, for each legacy family; then, for each modular body
+/// First every action then every gesture, for each reference creature; then, for each modular body
 /// plan, standing about and plain peering followed by every gesture, so a new pose can be
 /// compared against both the nine it has to stay distinct from and the two it replaces; then one
 /// band per body of the whole watching loop, frame by frame, because a held pose is only honest
@@ -655,14 +894,14 @@ fn gesture_sheet(path: PathBuf) -> Result<()> {
     const COLS: u32 = 7;
     const SCALE: u32 = 3;
     let subjects = gesture_subjects();
-    let legacy = reference_creatures().len();
+    let references = reference_creatures().len();
     let cell = FRAME_SIZE * SCALE;
     let watch_frames = formiga_art::AnimationSpec::for_clip(Gesture::Watch).frames;
     let full_rows = ((ActionKind::ALL.len() + Gesture::ALL.len()) as u32).div_ceil(COLS);
     let gesture_rows = ((REFERENCE_ACTIONS.len() + Gesture::ALL.len()) as u32).div_ceil(COLS);
     let width = COLS * cell;
-    let bands = legacy as u32 * full_rows
-        + (subjects.len() - legacy) as u32 * gesture_rows
+    let bands = references as u32 * full_rows
+        + (subjects.len() - references) as u32 * gesture_rows
         + subjects.len() as u32 * u32::from(watch_frames).div_ceil(COLS);
     let height = bands * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
@@ -682,7 +921,7 @@ fn gesture_sheet(path: PathBuf) -> Result<()> {
     };
     for (index, genome) in subjects.iter().enumerate() {
         let mut frames = Vec::new();
-        let actions: Vec<_> = if index < legacy {
+        let actions: Vec<_> = if index < references {
             ActionKind::ALL.to_vec()
         } else {
             REFERENCE_ACTIONS.to_vec()
@@ -862,6 +1101,9 @@ fn ambient_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Three reference creatures, one from each of the blob, hopper, and soft-quadruped families:
+/// the first seed of each that grows into that family, on a plain modular recipe, so the review
+/// sheets that compare poses keep the same three subjects whatever the generator now mixes in.
 pub(crate) fn reference_creatures() -> Vec<Creature> {
     let desktop = fixture_desktop();
     [
@@ -877,10 +1119,12 @@ pub(crate) fn reference_creatures() -> Vec<Creature> {
                 seed.copy_from_slice(&Sha256::digest(format!(
                     "formiga-reference-{family:?}-{index}"
                 )));
-                let creature = World::new(seed, OffsetDateTime::UNIX_EPOCH, &desktop)
+                let mut creature = World::new(seed, OffsetDateTime::UNIX_EPOCH, &desktop)
                     .save
                     .creatures
                     .remove(0);
+                // Classic parts have their own sheet; these subjects stay as they have been.
+                apply_creature_design(&mut creature, Some(CreatureDesign::modular(seed, 0, None)));
                 (creature.appearance.family == family).then_some(creature)
             })
             .expect("a deterministic reference seed exists for every family")
@@ -1197,10 +1441,11 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
     const MARGIN: u32 = 8;
     const LANE_GAP: u32 = 10;
     // One row per style, all on one ground line: the colony house plain, the same house carrying
-    // every decoration it can earn, a companion's cottage, a mini's, the keepsake tree the colony
-    // hangs its finds on, and a creature drawn at the very same scale — so the decoration anchors,
-    // the way a cottage reads beside the thing that lives in it, and every cell of the one village
-    // atlas stay reviewable in one glance.
+    // every decoration it can earn, a companion's cottage hung with that companion's curtain, the
+    // same cottage lit from inside after dark, the keepsake tree the colony hangs its finds on,
+    // and the companion itself drawn at the very same scale — so the decoration anchors, the way
+    // a cottage reads beside the one who lives in it, and the village atlas's day and night cells
+    // stay reviewable in one glance.
     let footprints = [
         DwellingKind::Main.width() as u32,
         DwellingKind::Main.width() as u32,
@@ -1226,13 +1471,15 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
         seed.copy_from_slice(&Sha256::digest(format!("formiga-shelter-{style}")));
         seed[1] = style as u8;
         let home = ColonyHome::from_seed(seed, None, None, None);
-        let village = ShelterRenderer::render_village(&home.shelter, &[]);
         let resident = World::preview_adult(
             SeedStream::new(seed).bytes("shelter-sheet-resident", 0),
             OffsetDateTime::UNIX_EPOCH,
             &fixture_desktop(),
         );
-        let cell = |x: u32, y: u32| {
+        let marks = [None, Some(formiga_art::ResidentMark::of(&resident))];
+        let village = ShelterRenderer::render_village(&home.shelter, &[], &marks, true);
+        let cell = |cell: formiga_art::VillageCell| {
+            let (x, y) = ShelterRenderer::village_cell(cell);
             let mut tile = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
             for ty in 0..SHELTER_SIZE as i32 {
                 for tx in 0..SHELTER_SIZE as i32 {
@@ -1241,6 +1488,7 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
             }
             tile
         };
+        let cottage = |lit| formiga_art::VillageCell::House { slot: 1, lit };
         let lane_items = [
             (ShelterRenderer::render(&home.shelter), SHELTER_SIZE),
             (
@@ -1250,9 +1498,9 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
                 ),
                 SHELTER_SIZE,
             ),
-            (cell(SHELTER_SIZE, 0), SHELTER_SIZE),
-            (cell(0, SHELTER_SIZE), SHELTER_SIZE),
-            (cell(SHELTER_SIZE, SHELTER_SIZE), SHELTER_SIZE),
+            (cell(cottage(false)), SHELTER_SIZE),
+            (cell(cottage(true)), SHELTER_SIZE),
+            (cell(formiga_art::VillageCell::Tree), SHELTER_SIZE),
             (
                 CreatureRenderer::render_frame(
                     &resident.appearance,

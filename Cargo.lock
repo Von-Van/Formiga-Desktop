@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.58.9"
+version = "0.59.0"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.58.9"
+version = "0.59.0"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.58.9"
+version = "0.59.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.58.9"
+version = "0.59.0"
 dependencies = [
  "anyhow",
  "formiga-art",

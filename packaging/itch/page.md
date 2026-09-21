@@ -41,6 +41,7 @@ three matter most for the page's thumbnail carousel.
 8. `docs/assets/expression-sheet.png` - close-up emotional readability.
 9. `docs/assets/generation-sheet.png` - body-plan x ear-style variety, for the customization angle.
 10. `docs/assets/ambient-sheet.png` - climbing, dangling, inspecting, and the eight trinkets.
+11. `docs/assets/postcards.png` - the four postcard scenes, a ready-made "look what they get up to".
 
 `docs/assets/shelter-sheet.png` and `docs/assets/animation-preview.png` are optional extras (the
 latter is more of a QA reference sheet than a sales screenshot - fine to skip).
@@ -59,7 +60,7 @@ Formiga is a tiny colony that lives on your desktop.
 Drop it onto your screen and a handful of seeded, procedurally generated pixel creatures move
 in - literally onto your desktop, in transparent windows that sit alongside your normal apps.
 They perch on the tops of your real windows, ride them when you move things around, react to
-your cursor, and slowly grow into a four-creature colony with a home of its own.
+your cursor, and slowly grow into a six-creature colony with a village of its own.
 
 No two creatures are alike. Each one resolves from a 256-bit seed into its own body plan, ears,
 tail, proportions, markings, palette, and personality, rasterized into its own sprite the moment
@@ -75,6 +76,10 @@ friendship - or a rivalry - with a neighbor.
   more - that any creature is free to decline.
 - A colony home that grows into a small village as companions arrive, plus a journal and
   scrapbook that remember arrivals, discoveries, and keepsakes.
+- A village you can arrange - stand the cottages in any order, paint it in a named palette, plant
+  a garden or two - and invite to a picnic, a dance, or a nap together.
+- Postcards of the whole colony napping, picnicking, playing, or waving goodnight at dusk, with a
+  caption of your own.
 - A creature studio for previewing new arrivals, including turning your own PNG or JPEG into a
   cute (never exact) reinterpretation.
 
@@ -96,7 +101,7 @@ developer the first time you open one - that's expected, not a sign anything is 
 - **Windows 10/11 (64-bit):** download the `.msi` and run it - it adds normal Desktop and
   Start-menu shortcuts. If SmartScreen appears, choose *More info -> Run anyway*.
 
-Every download is named after its release (for example `Formiga-0.58.9-macOS-universal.dmg`) and
+Every download is named after its release (for example `Formiga-0.59.0-macOS-universal.dmg`) and
 ships with a matching `.sha256` file if you'd like to verify it yourself.
 
 **System requirements**
@@ -122,16 +127,16 @@ typed into a terminal or committed anywhere).
 
 ```sh
 # macOS - the universal .dmg is the artifact the README already recommends to users.
-butler push Formiga-0.58.9-macOS-universal.dmg <itch-user>/formiga:mac-universal --userversion 0.58.9
+butler push Formiga-0.59.0-macOS-universal.dmg <itch-user>/formiga:mac-universal --userversion 0.59.0
 
 # Windows - the .msi, for the same reason (adds Desktop/Start-menu shortcuts).
-butler push Formiga-0.58.9-windows-x64.msi <itch-user>/formiga:windows-x64 --userversion 0.58.9
+butler push Formiga-0.59.0-windows-x64.msi <itch-user>/formiga:windows-x64 --userversion 0.59.0
 ```
 
 Bump `--userversion` (and the filenames) for every new release; itch keeps each channel's
 version history and lets installed copies auto-update through the itch app.
 
 Optional: the release also publishes portable `.zip` builds for both platforms
-(`Formiga-0.58.9-macOS-universal.zip`, `Formiga-0.58.9-windows-x64.zip`). They are not required,
+(`Formiga-0.59.0-macOS-universal.zip`, `Formiga-0.59.0-windows-x64.zip`). They are not required,
 but can be uploaded as extra files on the same page (via itch's web dashboard rather than
 butler) for people who would rather not run an installer.

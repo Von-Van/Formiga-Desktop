@@ -10,7 +10,9 @@ use windows::Win32::Foundation::{COLORREF, CloseHandle, HWND, LPARAM, POINT, REC
 use windows::Win32::Graphics::Dwm::{
     DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
 };
-use windows::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, DeleteObject, RGN_OR};
+use windows::Win32::Graphics::Gdi::{
+    CombineRgn, CreateRectRgn, DeleteObject, GetMonitorInfoW, HMONITOR, MONITORINFO, RGN_OR,
+};
 use windows::Win32::Storage::Packaging::Appx::GetApplicationUserModelId;
 use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_SET_VALUE, REG_SZ, RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
@@ -53,8 +55,34 @@ pub const OVERLAY_HALF_RESOLUTION: bool = false;
 pub fn use_nearest_overlay_filter(_window: &Window) {}
 
 /// The strip along the bottom of a display that belongs to the system: the taskbar, which stands
-/// forty-eight points tall at its default size on Windows 11 and shorter on Windows 10.
+/// forty-eight points tall at its default size on Windows 11 and shorter on Windows 10. It stands
+/// in only when a display's real work area cannot be read.
 pub const BOTTOM_RESERVED: f32 = 48.0;
+
+/// How far the taskbar and any other docked bar reach into a display, from the difference between
+/// the monitor's rectangle and its work area: wherever the taskbar sits, however tall, and
+/// whether or not it hides. Only those two rectangles are read. Both are in physical pixels, so
+/// the insets are divided by the monitor's scale to come back in points.
+pub fn work_area_insets(monitor: &MonitorHandle) -> Option<super::Insets> {
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: the handle comes from winit for a monitor it has just enumerated, and `info` is a
+    // correctly sized MONITORINFO that outlives the call.
+    let read = unsafe { GetMonitorInfoW(HMONITOR(monitor.hmonitor() as *mut _), &mut info) };
+    if !read.as_bool() {
+        return None;
+    }
+    let scale = monitor.scale_factor() as f32;
+    let (whole, work) = (info.rcMonitor, info.rcWork);
+    Some(super::Insets {
+        left: (work.left - whole.left) as f32 / scale,
+        top: (work.top - whole.top) as f32 / scale,
+        right: (whole.right - work.right) as f32 / scale,
+        bottom: (whole.bottom - work.bottom) as f32 / scale,
+    })
+}
 
 /// Lift a window clear of the desktop overlays. Windows keeps every topmost window in one band
 /// and offers nothing above it, so this re-asserts the settings window's place at the front of

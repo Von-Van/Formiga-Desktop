@@ -127,9 +127,38 @@ pub fn use_nearest_overlay_filter(window: &Window) {
 
 /// The strip along the bottom of a display that belongs to the system. The Dock at its factory
 /// size stands about this tall: forty-eight point tiles inside a panel with its own padding, and
-/// a margin between that panel and the screen edge. Ground kept this far up is ground the Dock
-/// never covers, whether it is on show or sliding up under the cursor.
+/// a margin between that panel and the screen edge. It stands in only when a display's real work
+/// area cannot be read.
 pub const BOTTOM_RESERVED: f32 = 76.0;
+
+/// How far the menu bar and the Dock reach into a display, from the difference between the
+/// screen's frame and its visible frame: the part AppKit gives windows, wherever the Dock sits,
+/// however large it is, and whether or not it hides. Only those two rectangles are read. `None`
+/// off the main thread or for a screen AppKit does not list, and the caller keeps a fixed strip.
+pub fn work_area_insets(monitor: &MonitorHandle) -> Option<super::Insets> {
+    let mtm = objc2_foundation::MainThreadMarker::new()?;
+    let id = monitor.native_id();
+    let screen = objc2_app_kit::NSScreen::screens(mtm)
+        .into_iter()
+        .find(|screen| screen_number(screen) == Some(id))?;
+    let (frame, visible) = (screen.frame(), screen.visibleFrame());
+    Some(super::Insets {
+        left: (visible.origin.x - frame.origin.x) as f32,
+        top: ((frame.origin.y + frame.size.height) - (visible.origin.y + visible.size.height))
+            as f32,
+        right: ((frame.origin.x + frame.size.width) - (visible.origin.x + visible.size.width))
+            as f32,
+        bottom: (visible.origin.y - frame.origin.y) as f32,
+    })
+}
+
+/// The display a screen shows, as the `CGDirectDisplayID` winit also names monitors by.
+fn screen_number(screen: &objc2_app_kit::NSScreen) -> Option<u32> {
+    let description = screen.deviceDescription();
+    let number = description.objectForKey(objc2_foundation::ns_string!("NSScreenNumber"))?;
+    let number = number.downcast::<objc2_foundation::NSNumber>().ok()?;
+    Some(number.as_u32())
+}
 
 /// Lift a window clear of the desktop overlays, or let it back down among them.
 ///

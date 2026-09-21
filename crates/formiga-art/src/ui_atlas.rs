@@ -118,14 +118,20 @@ const GLYPH_ADVANCE: u32 = GLYPH_WIDTH + 1;
 /// The atlas. Small enough to live beside the creature atlas without a second bind group.
 pub const UI_ATLAS_WIDTH: u32 = 256;
 /// See [`UI_ATLAS_WIDTH`].
-pub const UI_ATLAS_HEIGHT: u32 = 80;
+pub const UI_ATLAS_HEIGHT: u32 = 120;
 
 const BUBBLE_COLUMNS: u32 = 8;
 /// Two shared no-icon steps (`Small`, `Medium`) come first, then one `Full` cell per icon.
 const SHARED_BUBBLE_SLOTS: u32 = 2;
+/// Menu cells, normal and hovered side by side, fill two rows of cells across the atlas.
 const MENU_ICON_ROW_Y: u32 = 32;
-const MENU_FRAME_ROW_Y: u32 = MENU_ICON_ROW_Y + MENU_CELL;
-const MENU_LABEL_ROW_Y: u32 = MENU_FRAME_ROW_Y + MENU_STRIP_HEIGHT;
+const MENU_ICON_ROWS: u32 = 2;
+const MENU_CELLS_PER_ROW: u32 = UI_ATLAS_WIDTH / MENU_CELL;
+/// Strips that point at a creature, then strips that sit beside one and point at nothing.
+const MENU_FRAME_ROW_Y: u32 = MENU_ICON_ROW_Y + MENU_ICON_ROWS * MENU_CELL;
+const MENU_PLAIN_ROW_Y: u32 = MENU_FRAME_ROW_Y + MENU_STRIP_HEIGHT;
+/// Label tabs, packed along as many rows as they need.
+const MENU_LABEL_ROW_Y: u32 = MENU_PLAIN_ROW_Y + MENU_BODY_HEIGHT;
 
 // ---------------------------------------------------------------------------------------------
 // Public types
@@ -152,9 +158,11 @@ impl SpriteRect {
 
 /// What a cell of the right-click menu offers.
 ///
-/// A colony creature is offered `Snack, Toy, Home, Profile`. A visitor is offered
+/// A colony creature is offered `Snack, Toy, Home, Profile`, with `Moment` in place of `Home`
+/// while the houses are out and there is something the village could share. A visitor is offered
 /// `Snack, Toy, Stay, Profile` while it may still be invited to stay, and
-/// `Snack, Toy, CopyCode, Profile` once it cannot.
+/// `Snack, Toy, CopyCode, Profile` once it cannot. `Moment` opens a second strip beside the first,
+/// holding the moments on offer — `Picnic`, `Dance`, `Nap` — and `Stop` while one is under way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MenuIcon {
     Snack,
@@ -163,16 +171,26 @@ pub enum MenuIcon {
     Profile,
     Stay,
     CopyCode,
+    Moment,
+    Picnic,
+    Dance,
+    Nap,
+    Stop,
 }
 
 impl MenuIcon {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 11] = [
         Self::Snack,
         Self::Toy,
         Self::Home,
         Self::Profile,
         Self::Stay,
         Self::CopyCode,
+        Self::Moment,
+        Self::Picnic,
+        Self::Dance,
+        Self::Nap,
+        Self::Stop,
     ];
 
     fn index(self) -> u32 {
@@ -192,6 +210,11 @@ pub fn menu_label_text(icon: MenuIcon) -> &'static str {
         MenuIcon::Profile => "profile",
         MenuIcon::Stay => "stay",
         MenuIcon::CopyCode => "copy code",
+        MenuIcon::Moment => "moment",
+        MenuIcon::Picnic => "picnic",
+        MenuIcon::Dance => "dance",
+        MenuIcon::Nap => "nap",
+        MenuIcon::Stop => "stop",
     }
 }
 
@@ -359,10 +382,12 @@ impl UiAtlasRenderer {
             }
         }
 
-        // Menu frames.
+        // Menu frames: pointing at a creature, and plain for a strip beside another.
         for cells in MENU_MIN_ITEMS..=MENU_MAX_ITEMS {
             let rect = Self::menu_frame(cells as u8).expect("2..=4 cells have a frame");
             draw_menu_frame(&mut canvas, rect.x as i32, rect.y as i32, cells as u32);
+            let plain = Self::menu_frame_plain(cells as u8).expect("2..=4 cells have a frame");
+            draw_menu_body(&mut canvas, plain.x as i32, plain.y as i32, cells as u32);
         }
 
         // Label tabs.
@@ -405,31 +430,50 @@ impl UiAtlasRenderer {
         })
     }
 
+    /// The frame for a strip of `cells` items with no pointer notch: the one drawn beside a menu
+    /// rather than over a creature, exactly the height of a strip's body. `None` outside 2..=4.
+    pub fn menu_frame_plain(cells: u8) -> Option<SpriteRect> {
+        let frame = Self::menu_frame(cells)?;
+        Some(SpriteRect {
+            y: MENU_PLAIN_ROW_Y,
+            height: MENU_BODY_HEIGHT,
+            ..frame
+        })
+    }
+
     /// One `MENU_CELL`-square cell: the icon, plus the hover highlight when `hovered`.
     /// Draw it into the matching `MenuLayout::cell` rect.
     pub fn menu_icon(icon: MenuIcon, hovered: bool) -> SpriteRect {
         let slot = icon.index() * 2 + u32::from(hovered);
         SpriteRect {
-            x: slot * MENU_CELL,
-            y: MENU_ICON_ROW_Y,
+            x: slot % MENU_CELLS_PER_ROW * MENU_CELL,
+            y: MENU_ICON_ROW_Y + slot / MENU_CELLS_PER_ROW * MENU_CELL,
             width: MENU_CELL,
             height: MENU_CELL,
         }
     }
 
-    /// The paper tab carrying an item's label. Draw it into `MenuLayout::label_tab`.
+    /// The paper tab carrying an item's label. Draw it into `MenuLayout::label_tab`. Tabs are
+    /// laid along a row until the next would not fit, then along the next row down.
     pub fn menu_label(icon: MenuIcon) -> SpriteRect {
-        let x = MenuIcon::ALL
-            .into_iter()
-            .take_while(|candidate| *candidate != icon)
-            .map(|candidate| label_tab_width(menu_label_text(candidate)))
-            .sum();
-        SpriteRect {
-            x,
-            y: MENU_LABEL_ROW_Y,
-            width: label_tab_width(menu_label_text(icon)),
-            height: LABEL_TAB_HEIGHT,
+        let (mut x, mut y) = (0, MENU_LABEL_ROW_Y);
+        for candidate in MenuIcon::ALL {
+            let width = label_tab_width(menu_label_text(candidate));
+            if x + width > UI_ATLAS_WIDTH {
+                x = 0;
+                y += LABEL_TAB_HEIGHT;
+            }
+            if candidate == icon {
+                return SpriteRect {
+                    x,
+                    y,
+                    width,
+                    height: LABEL_TAB_HEIGHT,
+                };
+            }
+            x += width;
         }
+        unreachable!("every MenuIcon is in ALL")
     }
 }
 
@@ -907,11 +951,146 @@ fn draw_menu_icon(canvas: &mut Canvas, x: i32, y: i32, icon: MenuIcon) {
             ],
             &[('o', OUTLINE), ('+', SHADE), ('p', PAPER), ('#', SLATE)],
         ),
+        // Two companions side by side with a heart between them: something to share.
+        MenuIcon::Moment => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "....#.#.....",
+                "...#####....",
+                "....###.....",
+                ".....#......",
+                "............",
+                ".aaa....bbb.",
+                "aaaaa..bbbbb",
+                "aoaoa..bobob",
+                "aaaaa..bbbbb",
+                "aaaa+..bbbb+",
+                ".aa+....bb+.",
+                "............",
+            ],
+            &[
+                ('#', ROSE),
+                ('a', PERIWINKLE),
+                ('b', AMBER),
+                ('+', SLATE_DEEP),
+                ('o', OUTLINE),
+            ],
+        ),
+        // A wicker basket with an apple peeking out under the handle.
+        MenuIcon::Picnic => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "............",
+                "...oooooo...",
+                "..o......o..",
+                "..o.g....o..",
+                "..orrr...o..",
+                ".oooooooooo.",
+                ".o#+#+#+#+o.",
+                ".o+#+#+#+#o.",
+                ".o#+#+#+#+o.",
+                "..o+#+#+#o..",
+                "..oooooooo..",
+                "............",
+            ],
+            &[
+                ('#', TAN),
+                ('+', TAN_DEEP),
+                ('o', OUTLINE),
+                ('r', ROSE),
+                ('g', LEAF),
+            ],
+        ),
+        // Two notes on one beam.
+        MenuIcon::Dance => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "............",
+                ".....######.",
+                ".....######.",
+                ".....#....#.",
+                ".....#....#.",
+                ".....#....#.",
+                "...###..###.",
+                "..####.####.",
+                "..###+.###+.",
+                "...++...++..",
+                "............",
+                "............",
+            ],
+            &[('#', VIOLET), ('+', VIOLET_DEEP)],
+        ),
+        // A crescent moon, and a small z.
+        MenuIcon::Nap => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "...####.zzz.",
+                "..###.....z.",
+                ".###.....z..",
+                ".##.....zzz.",
+                "###.........",
+                "###.........",
+                "###.........",
+                ".###......#.",
+                ".####....##.",
+                "..#########.",
+                "...######...",
+                "............",
+            ],
+            &[('#', GOLD), ('z', PERIWINKLE_DEEP)],
+        ),
+        // A round sign with a bar across it: that's enough for now.
+        MenuIcon::Stop => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "............",
+                "...######...",
+                "..########..",
+                ".##########.",
+                ".##########.",
+                ".#pppppppp#.",
+                ".#pppppppp#.",
+                ".#########+.",
+                ".########++.",
+                "..######++..",
+                "...####++...",
+                "............",
+            ],
+            &[('#', ROSE), ('+', ROSE_DEEP), ('p', PAPER)],
+        ),
     }
 }
 
 /// The framed strip, its cell separators and the pointer notch under its centre.
 fn draw_menu_frame(canvas: &mut Canvas, x: i32, y: i32, cells: u32) {
+    draw_menu_body(canvas, x, y, cells);
+    let width = menu_frame_width(cells) as i32;
+    let body = MENU_BODY_HEIGHT as i32;
+
+    // Notch: a five-three-one taper piercing the bottom edge.
+    let notch = width / 2;
+    canvas.fill_rect(x + notch - 2, y + body - 1, 5, 1, PAPER_SOLID);
+    for (row, half) in [(body, 2_i32), (body + 1, 1)] {
+        canvas.set(x + notch - half, y + row, OUTLINE);
+        canvas.set(x + notch + half, y + row, OUTLINE);
+        canvas.fill_rect(x + notch - half + 1, y + row, half * 2 - 1, 1, PAPER_SOLID);
+    }
+    canvas.set(x + notch, y + body + 2, OUTLINE);
+}
+
+/// The strip itself: an outlined paper tray with a hairline between each pair of cells, and no
+/// notch, so it can stand beside another strip without pointing at anything.
+fn draw_menu_body(canvas: &mut Canvas, x: i32, y: i32, cells: u32) {
     let width = menu_frame_width(cells) as i32;
     let body = MENU_BODY_HEIGHT as i32;
     canvas.fill_rect(x + 1, y, width - 2, body, OUTLINE);
@@ -924,16 +1103,6 @@ fn draw_menu_frame(canvas: &mut Canvas, x: i32, y: i32, cells: u32) {
         let column = (MENU_BORDER + gap * (MENU_CELL + MENU_GAP) - MENU_GAP) as i32;
         canvas.fill_rect(x + column, y + 4, 1, MENU_CELL as i32 - 4, SHADE);
     }
-
-    // Notch: a five-three-one taper piercing the bottom edge.
-    let notch = width / 2;
-    canvas.fill_rect(x + notch - 2, y + body - 1, 5, 1, PAPER_SOLID);
-    for (row, half) in [(body, 2_i32), (body + 1, 1)] {
-        canvas.set(x + notch - half, y + row, OUTLINE);
-        canvas.set(x + notch + half, y + row, OUTLINE);
-        canvas.fill_rect(x + notch - half + 1, y + row, half * 2 - 1, 1, PAPER_SOLID);
-    }
-    canvas.set(x + notch, y + body + 2, OUTLINE);
 }
 
 /// A label on its own small paper tab.
@@ -1008,6 +1177,7 @@ mod tests {
         }
         for cells in 2..=4 {
             rects.push(UiAtlasRenderer::menu_frame(cells).expect("2..=4 have frames"));
+            rects.push(UiAtlasRenderer::menu_frame_plain(cells).expect("2..=4 have frames"));
         }
         rects.sort_by_key(|rect| (rect.y, rect.x, rect.width, rect.height));
         rects.dedup();
@@ -1207,6 +1377,53 @@ mod tests {
                 }
             }
             assert!(layout.notch_x() > 0 && layout.notch_x() < width as i32);
+        }
+    }
+
+    /// A strip beside the menu points at nothing: its frame is only the tray, the same width as
+    /// the pointing one, with an unbroken bottom edge where the notch would pierce it.
+    #[test]
+    fn a_plain_frame_is_the_tray_without_its_notch() {
+        let atlas = UiAtlasRenderer::render();
+        for cells in 2..=4_u8 {
+            let plain = UiAtlasRenderer::menu_frame_plain(cells).unwrap();
+            let pointing = UiAtlasRenderer::menu_frame(cells).unwrap();
+            assert_eq!(plain.width, pointing.width);
+            assert_eq!(plain.height, MENU_BODY_HEIGHT);
+            let bottom = plain.y + plain.height - 1;
+            for x in 1..plain.width - 1 {
+                assert_eq!(
+                    atlas.get((plain.x + x) as i32, bottom as i32),
+                    OUTLINE,
+                    "{cells} cells: the bottom edge is broken at {x}"
+                );
+            }
+            // Row for row, the tray is the pointing frame's body.
+            for y in 0..MENU_BODY_HEIGHT - 1 {
+                for x in 0..plain.width {
+                    assert_eq!(
+                        atlas.get((plain.x + x) as i32, (plain.y + y) as i32),
+                        atlas.get((pointing.x + x) as i32, (pointing.y + y) as i32),
+                        "{cells} cells differ at ({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Every menu item is its own picture, so a strip never holds two that look alike.
+    #[test]
+    fn every_menu_icon_is_a_different_picture() {
+        let atlas = UiAtlasRenderer::render();
+        let mut seen: Vec<(MenuIcon, Vec<Rgba>)> = Vec::new();
+        for icon in MenuIcon::ALL {
+            let pixels = crop(&atlas, UiAtlasRenderer::menu_icon(icon, false));
+            let drawn = pixels.iter().filter(|pixel| pixel.a > 0).count();
+            assert!(drawn >= 30, "{icon:?} draws only {drawn} pixels");
+            for (other, other_pixels) in &seen {
+                assert_ne!(pixels, *other_pixels, "{icon:?} looks like {other:?}");
+            }
+            seen.push((icon, pixels));
         }
     }
 

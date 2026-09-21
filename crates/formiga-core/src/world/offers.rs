@@ -412,6 +412,28 @@ impl World {
         creature.state.action_duration = seconds;
         creature.state.velocity = Point::default();
         creature.state.activity_variant = 0;
+        // Something held out is still eaten or played with its own way. A guest shows the habits
+        // it came with but picks up none here: it is not this colony's to teach.
+        let reduce_motion = self.save.settings.reduce_motion;
+        let receiver = if guest {
+            self.save
+                .visitors
+                .guest
+                .as_mut()
+                .map(|guest| &mut guest.creature)
+        } else {
+            creature_mut(&mut self.save.creatures, creature_id)
+        };
+        if let Some(creature) = receiver {
+            cue_habit(
+                creature,
+                action,
+                &mut self.habit_rng,
+                !guest,
+                reduce_motion,
+                &mut self.events,
+            );
+        }
         if let Some(elapsed_seconds) = slept_for {
             self.sleep_elapsed.remove(&creature_id);
             Self::emit(

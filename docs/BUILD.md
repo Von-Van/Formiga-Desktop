@@ -10,7 +10,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo run -p formiga-tools -- simulate 181
 cargo run -p formiga-tools -- generation-sheet
+cargo run -p formiga-tools -- classic-sheet
+cargo run -p formiga-tools -- habit-sheet
 cargo run -p formiga-tools -- home-yard-sheet
+cargo run -p formiga-tools -- village-palette-sheet
 FORMIGA_DATA_DIR=/tmp/formiga-dev cargo run -p formiga-desktop
 ```
 

@@ -1,6 +1,6 @@
 use crate::platform;
 use anyhow::{Context, Result};
-use formiga_art::{BodyClip, CreatureRenderer, FRAME_SIZE, FramePlacement, MotionSignature};
+use formiga_art::{BodyClip, BodyPresentation, CreatureRenderer, FRAME_SIZE, FramePlacement};
 use formiga_core::{Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -173,16 +173,19 @@ impl InteractionProxy {
             self.physical_position = Some(position);
         }
 
-        // The hit proxy must show the same frame the overlay draws, gesture included.
-        let clip = BodyClip::for_creature(creature);
-        let frame =
-            MotionSignature::for_creature(creature).frame(clip, creature.state.action_elapsed);
+        // The hit proxy must show the same frame the overlay draws: gestures, celebrations and
+        // habits included, turned whichever way the overlay has turned them.
+        let BodyPresentation {
+            clip,
+            frame,
+            facing_right,
+        } = BodyPresentation::for_creature(creature);
         let face_state =
             CreatureRenderer::resolve_face_state(creature, cursor, settings.cursor_reactions);
         let signature = MaskSignature {
             clip,
             frame,
-            facing_right: creature.state.facing_right,
+            facing_right,
             reduce_motion: settings.reduce_motion,
             scale,
         };
@@ -190,7 +193,7 @@ impl InteractionProxy {
             let artwork = MaskArtworkSignature {
                 clip,
                 frame,
-                facing_right: creature.state.facing_right,
+                facing_right,
                 reduce_motion: settings.reduce_motion,
             };
             self.mask = self
@@ -201,7 +204,7 @@ impl InteractionProxy {
                         &creature.appearance,
                         clip,
                         frame,
-                        creature.state.facing_right,
+                        facing_right,
                         settings.reduce_motion,
                         face_state,
                     );

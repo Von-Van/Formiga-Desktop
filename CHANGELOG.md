@@ -2,6 +2,177 @@
 
 All notable changes are documented here.
 
+## [0.59.0] - 2026-09-21
+
+### Added
+
+- Classic parts bring the charm of the original one-piece companions into the modular recipe:
+  candy colours with a lit top and a crescent of shade; a mask, a visor, beads, tall eyes, or square
+  eyes; accent nubs or stick legs on forked feet; antennae or sprouts; stripes, spots, or patches
+  across the coat; and an open curl or a star on the tail. Each part is chosen on its own, so a
+  companion can sit anywhere between the tidy modular look and the older, scrappier one.
+- New companions lean a quarter of the time wholly modular, a quarter wholly classic, and otherwise
+  mix the two a part at a time: about 29% come out plainly modular, and colours, face, and limbs
+  are each classic about half the time. Minis keep their parent's colouring, face, and build, and
+  usually its crown, pattern, and tail. Image references reach classic parts too, always in the
+  reference's own colours, and match as closely as before.
+- Each companion can be given a leaning from its profile — wherever they like, homebody,
+  floor-dweller, or climber — kept apart from its nature and what it has learned. It nudges rather
+  than forbids: in a colony that spent 96% of its time out on the desktop up on ledges, homebodies
+  spent about half as much and floor-dwellers about 11%. A floor-dweller or homebody on a ledge
+  comes down to do what it chose next, and a homebody that sets out usually heads for home.
+- The Journal page opens with "Today in your colony": who the day was about, what kinds of thing
+  happened, the treasures first found today, and the latest few moments, all read from what the
+  journal actually recorded. It never fills in time the app was not running, and says so when
+  some of today's earlier moments have already rolled out of the journal.
+- The Colony page shows how everyone gets along: every pair of companions once, grouped as keeping
+  their distance, close friends, playmates, or still getting to know each other, with the same bond
+  and play words the profiles use. A name opens that companion's profile.
+- Visitors can be kept as favorites and invited again from the Journal page, without copying codes
+  around. Up to eight are kept apart from the guest book, so a favorite stays after the book moves
+  on; inviting one uses the same invitation a friend's code does and brings back the same visitor.
+- Companions have little ways of their own. Each celebrates its own way from the day it arrives —
+  a hop, a little dance, or a twirl, from its temperament and its own seed — and over its first
+  hours and days picks up as many as two habits, each for a different kind of moment: looking a
+  snack over before eating it, stretching or turning in circles before a nap, waving hello, or a
+  play bow before a game. It does a habit most times the moment comes round, standing still for
+  the second or so it takes, and the action then carries on exactly as it would have. Its profile
+  lists them, and the journal records the day each one was picked up. Across three simulated
+  colonies of five, every companion had a habit within about ten hours and 11 of the 15 a second
+  within a day. Reduced motion hides the flourishes, as it hides every other pose.
+- While the houses are out, a companion's menu offers Moment in place of Home. It opens a second
+  strip beside the menu — nothing in the menu moves — with whatever the village could share right
+  now: a picnic, a dance, or a nap on the ground between the houses. Everyone home answers for
+  themselves with a bubble, and whoever wants to join lines up, faces the middle, and does it
+  together; a dance ends with each dancer celebrating its own way. The same strip stops a moment
+  under way. A moment keeps the houses out until it is over, ends if the colony is hidden or
+  paused or when a companion is picked up and the houses go, carries on through a pet, and happens
+  where everyone stands under reduced motion, which never offers a dance. One that runs its course
+  goes in the journal and brings everyone in it a little closer.
+- The Home page can put down a nap cushion, a picnic blanket, and a lookout on the ground between
+  the houses, one of each, each slid along the ground to wherever you like; they never land on one
+  another or off the ground. While the houses are out the colony sometimes goes to nap on the
+  cushion, snack or sip on the blanket, or look out over the desktop from beside the spyglass, a
+  sleepy, hungry, or curious companion more often, and otherwise carries on as before. An invited
+  picnic or nap gathers around its spot, and the spots appear in the Home page's preview and in
+  the colony portrait.
+- Every house has been rebuilt to stand beside the creatures: its own materials with a roof, walls
+  and trim that each have a shade and a light, lit from the upper left, a recessed doorway on a
+  threshold, and a sign that somebody lives there. The leaf tent is three leaves leaned on tied
+  twigs over a straw floor, with a planter; the mushroom hut a spotted domed cap on a stem with a
+  round window and a stepping stone; the cushion den an unmistakable pillow fort under a gingham
+  blanket, with a patch, a pillow inside and a cushion on the doorstep; and the paper house folded
+  card with a taped roof, a cut-out window and a mat. Each companion's door is hung with a curtain
+  in its own colours, which goes wherever its house does, and from seven in the evening until seven
+  in the morning the houses glow from inside, the colony house's lamp too if it has earned one.
+  Saved shelter styles, seeds and decorations are drawn anew rather than rerolled.
+- The Home page arranges the village. The cottages can be stood in any order, each keeper's
+  curtain going with its house and everyone walking home to where theirs now stands; the colony
+  house always stays first. The village can be painted in one of six named palettes — Meadow,
+  Blossom, Harbour, Autumn, Twilight, or Pebble — or keep its own colours, and a palette recolours
+  every house and both trees without changing a single house's shape. A flower bed, a vegetable
+  patch, and a herb box can be planted along the ground, each slid to wherever you like and kept
+  clear of the hangout spots and of each other. One button, asked twice, puts the order, the
+  colours, and the gardens back as the village grew, and leaves the hangout spots where they are.
+  A companion replaced from the Colony page keeps the cottage where it stood. The preview, the
+  desktop, and the colony portrait all show the arrangement.
+- The Home page sends postcards. Pick a scene — everyone asleep on a patchwork quilt one golden
+  afternoon, round a gingham blanket with a snack or a cup each, playing on the grass with a ball in
+  the air and a kite overhead, or waving goodnight in front of the village at dusk with every house
+  lit — add a caption of up to sixty characters if you like, and export a 960×600 picture with a
+  stamp and a postmark. The whole colony is in it, posed from the same frames the desktop draws,
+  in front of its own village as it is arranged. A postcard carries no names, and nothing about it
+  is saved.
+- The last change to the colony can be undone from the settings window's footer, on any page, for
+  as long as the app runs. It covers a companion removed, replaced, started over, or welcomed from
+  the studio, and every change to how the village is laid out: cottages, colours, gardens, spots,
+  the home's corner and display, decorations, and keepsakes. A companion brought back returns
+  exactly as it left, with the same identity, memories, bonds, minis, and cottage, standing where it
+  or its replacement last stood, while everyone else keeps whatever they did in the meantime and
+  anyone who arrived on their own since stays. Only the one most recent change is kept, and never
+  in the colony file.
+- `classic-sheet` shows each classic part alone on every body plan, and wholly classic companions
+  standing, walking, greeting, hanging, sleeping, and gesturing. `habit-sheet` shows every habit
+  and celebration on every body, drawn the way the desktop draws them. `village-palette-sheet`
+  shows every style of house in its own colours and in each named palette. `postcard` draws one
+  postcard of a sample colony in any scene with any caption, and `postcard-sheet` all four.
+
+### Changed
+
+- The colony's ground follows where the system's own bars really are on each display — the Dock
+  on either side or hidden, a larger or smaller Dock, a notched display's taller menu bar, or a
+  taskbar along any edge — instead of assuming a menu bar 24 points tall and a Dock or taskbar of
+  factory size along the bottom. A bar that moves is followed within a couple of seconds, and
+  anyone standing on ground that moved is carried to where it now is. With a Dock that hides, the
+  colony stands on the floor of the screen and the Dock slides over it when it shows. Only the
+  rectangle each system leaves for windows is read.
+
+### Fixed
+
+- A companion that walked up to a snack, a drink, a game on its own, a ledge to hang from, a find to
+  hold up, or something to look over kept the walk's speed through the whole of it and glided
+  across the desktop mid-snack: about 30 px a second, 150 to 280 px over a snack. It now comes to a
+  stop in about an eighth of a second, as it always did when it simply stood about.
+- The fifth and sixth companions of a full colony were left out of things the first four had: a
+  window they rode on was never felt as a ride, a ledge they loved was never remembered, nobody
+  looked for a playmate among them, and when a display went away they could be left pointing at a
+  monitor that no longer existed. A full colony carried back from a removed display could also
+  stack its last companion on its first. Everything remembered about each companion is now sized
+  by the colony; a scene still gathers at most four.
+- A companion from before recipes gave its new minis an unrelated modular recipe. Its minis are
+  now drawn from its own genes the way the originals always were, and share through a version 1
+  code that replays them exactly.
+
+### Compatibility
+
+- Every existing companion keeps its exact appearance: a real five-companion colony and every
+  modular body plan, ear, clip, and frame render pixel-identical to v0.58.9. Modular recipes are
+  generated byte for byte as before, and their share codes and imported lineages are unchanged.
+- A recipe with classic parts is shared as a version 3 code, a version 2 code whose four reserved
+  bytes hold the parts; it needs v0.59.0 or newer to import.
+- Save version 17 adds classic parts to stored recipes and migrates nothing. It moved so an older
+  build refuses the colony rather than quietly dropping the parts.
+- Hangout spots are kept with the village in the colony file, as a kind and a place along the
+  ground, and are absent until one is put down. The cottage order, the chosen palette, and the
+  garden patches are kept the same way, each absent until it is chosen; an order put back to the
+  order everyone arrived in is not written down.
+- A companion's habits are kept with it in the colony file, absent until it picks one up, and each
+  is recorded in the journal. A share code carries none: a companion shared into another colony
+  celebrates the same way, since that comes from its seed, and picks up habits of its own there.
+
+### Performance
+
+- A busy colony is no longer rewritten to disk every time a creature starts an action. Arrivals,
+  the houses, rituals, and new belongings are still saved at once; everyday movement is gathered
+  into a checkpoint at most every fifteen seconds, so a full colony on a busy desktop writes its
+  file about 4 times a minute instead of about 85, saving roughly 390 ms of main-thread time and
+  12 MB of disk writes a minute. At most fifteen seconds of everyday movement can be lost to a
+  crash.
+- `tick-bench` measures a full colony of six and a guest touring the village, holds each
+  scenario's colony at its named size, keeps homebound scenarios at home for the whole run, and
+  reports how often the colony asks to be saved and how often it is written, with the cost of a
+  save. A full colony on a busy desktop costs 6.5 µs a tick, against v0.58.9's 6.7 in the same
+  sitting.
+- On the desktop it was written on, with the owner's own colony, the finished build averaged 0.81%
+  CPU over three minutes against 0.86% for v0.58.9 freshly launched on the same colony, with the
+  same 111 MB footprint. A companion that stops to eat or play no longer glides, so a lone creature
+  is in motion 19% of the time instead of 30%, and the app ticks at its fastest only while something
+  moves.
+- A recipe grows from 16 to 22 bytes in memory. Classic parts are drawn into the existing body and
+  face frames when the atlas is built, so they add no frame, quad, texture, or per-frame work.
+- The village texture grows from 128×128 to 256×256 so every house has a cell of its own, by day
+  and after dark: 196,608 bytes more on the display the village is on. The settings window holds
+  only the daylit half, 64 KiB more than before.
+- The stretch before a nap is four new frames in each companion's atlas, in slots the atlas
+  already had spare, so a creature's textures stay 1,529,856 bytes. Every other habit and
+  celebration reuses frames that were already baked.
+- A postcard, like the colony portrait, is drawn only once its save dialog has a destination and
+  is dropped as soon as it is written; choosing a scene or typing a caption draws nothing.
+- The colony's object sheet grows from eight 16×16 cells to fourteen for the three hangout spots
+  and three garden patches, 6 KiB, and the settings window's artwork budget from 432 KiB to
+  500 KiB with the Home page's larger village. A palette or a new cottage order redraws the
+  village texture once; nothing about either is done per frame.
+
 ## [0.58.9] - 2026-09-21
 
 ### Fixed

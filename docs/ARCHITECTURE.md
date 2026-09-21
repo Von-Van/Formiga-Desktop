@@ -114,7 +114,7 @@ trinket atlas instead. The body atlas holds exactly 124 unique frames: 90 for ac
 `Tossed` reuses the dragged body clip, and 34 for ten gesture poses, laid out as ten columns by
 thirteen rows. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad. The combined textures are exactly 1,529,856 bytes per
-creature — 6,119,424 for a full colony of four — and are enforced below a 4,500,000-byte test limit,
+creature — 9,179,136 for a full colony of six — and are enforced below a 4,500,000-byte test limit,
 raised deliberately from 1.5 MB so the pose vocabulary has room to grow without the budget moving
 each time.
 
@@ -181,12 +181,65 @@ home neither builds a bond nor spends the calm minutes a pair had already gather
 targeted actions emit the other bond experiences. No encounter list, target route, object
 ownership, or social history is serialized.
 
+The Colony page reads the same records back as "How everyone gets along": every pair once, under
+the first of four headings it meets — keeping their distance (avoidance at least 160), close
+friends (affinity at least 112), playmates (playfulness at least 72), and still getting to know each
+other — ordered by closeness within a heading and described with the profile's own bond and play
+labels. A pair with no record yet has not spent time together. Nothing is inferred beyond the four
+scores, so the card never suggests an event the colony did not record.
+
 At action boundaries, utility selection receives the preferred pair as a `BondContext`. A
 runtime-only `BondPlan` can approach through `Follow` and then execute an existing targeted action.
 Target points refresh from the current creature snapshot each tick; plans cancel to idle if the
 target disappears, moves to an incompatible surface or display, sleeps, becomes homebound, is
 tossed, or otherwise cannot participate. Follow, sleep, presentation, social play, greeting,
 inspection, and window reaction reuse their existing body clips, leaving the atlas unchanged.
+
+Each companion also carries a `RoamingLeaning` its owner chose — wherever it likes, homebody,
+floor-dweller, or climber — kept apart from its innate personality and its learned tendencies and
+never carried in a share code. It adds a bias to the same utility sum, on the scale learned
+tendencies use: a climber's perching and riding rise, a floor-dweller's and a homebody's fall, and
+a homebody rests more and sprints less. At an action boundary on a ledge, a floor-dweller comes down
+first seven times in ten and a homebody four in ten, through the same hop to the floor below that
+the colony takes to walk home, and a homebody that sets out walks toward the colony house on its
+display seven times in ten. Nothing is forbidden: the habitat, hidden and paused states, and every
+safety check still decide what a companion can do.
+
+## Little habits
+
+`habits.rs` gives each companion its own ways of doing ordinary things. Its `Celebration` — a hop,
+a little dance, or a twirl — is read from its personality and a value mixed from its behaviour
+seed, so it is never stored and is the same wherever the creature lives. Whenever a scene strikes
+the cheer pose, the art draws that creature's celebration in its place: the dance is the existing
+bop, and the twirl is the cheer turning round every quarter of a second.
+
+Learned habits live in `CreatureMemory.habits`: at most two, one for each `HabitCue` — a meal, a
+nap, a hello, a game. When an action with a cue starts on the main path, at a ritual's ceremony, or
+on an accepted offer, `cue_habit` may pick one up. The chance is scaled by how often that kind of
+moment comes round, so each is about as likely as another to become a habit, and by how well the
+candidate suits the creature's temperament and learned tendencies; a nap goes to whichever of
+stretching and circling suits it better. A second habit comes at three tenths of the first's rate.
+A moment at the door while the houses are out shows habits but teaches none, and a visiting guest
+shows the ones it came with. Picking one up bumps the profile revision and emits `HabitLearned`,
+which the journal records and which is saved at once. The dice come from a runtime `habits` stream
+of their own, so no other choice the colony makes shifts.
+
+A companion with a habit does it four times in five as its moment comes round: a runtime-only
+`Flourish` on `CreatureState` names the habit and the action it opens. A meal or a game alone
+starts it at once; a nap, a greeting, or a visit to the pointer waits until the walk to the pillow,
+the friend, or the pointer is over, and lets it go after eight seconds if the walk never ends.
+While it shows, `execute_action` holds the creature still; the action's length, drives, bonds and
+tendencies are untouched, and anything replacing the action ends it. Reduced motion never starts
+one.
+
+`BodyPresentation` in the art crate is the one place a frame is chosen: an attention gesture first,
+with the cheer becoming the creature's celebration, then a flourish, then the action. The overlay,
+the hit mask, the redraw cadence, and the review sheets all draw from it, and the face resolver
+reads the same flourish: curious and looking down at a snack, eyes screwed shut at the top of a
+stretch, and awake while turning round before a nap. Only the stretch is new art — four frames that
+play once and hold, baked into slots the atlas already had spare, on all fours for long bodies and
+with wings spread for winged ones. Every other habit reuses baked frames: the meal's opening frame
+held, the walk stepped on the spot with the facing turned, the reach, and the crouch.
 
 ## Desktop composition
 
@@ -208,10 +261,15 @@ Habitat policies are the union of allowed rectangles (or a preset) minus exclude
 Rectangles are normalized against privacy-safe display identities, so DPI and resolution changes do
 not invalidate them. Window-ledges are clipped to the same reachable habitat.
 
-The ground a policy is measured against is `colony_bounds`: the display inside the menu bar at the
-top and clear of `platform::BOTTOM_RESERVED` at the bottom — the strip the system keeps for the
-Dock at its factory size on macOS, or the taskbar on Windows. The colony is founded on the floor
-of that, so the houses stand on top of the Dock rather than behind it.
+The ground a policy is measured against is `colony_bounds`: the display's work area, which
+`platform::work_area_insets` reads as insets from each edge — the difference between a screen's
+frame and `NSScreen.visibleFrame` on macOS, or between `rcMonitor` and `rcWork` on Windows — so the
+ground moves with a Dock on the side, a taller menu bar, a taskbar along the top, a resized bar,
+and a bar that hides, on every display separately. The display scan every two seconds picks up a
+bar that moves, and display attention re-seats anyone whose ground moved under them. Where the
+work area cannot be read, a 24-point menu bar and `platform::BOTTOM_RESERVED` — the factory Dock
+on macOS, the taskbar on Windows — stand in. The colony is founded on the floor of that ground, so
+the houses stand on top of a Dock that stays out rather than behind it.
 
 While the desktop habitat editor is open, every overlay is hit-testable across its whole display
 so a press anywhere draws a region. `habitat_editor_claims` limits what the editor takes to
@@ -245,15 +303,27 @@ combined-session `CGEventSource` that `cursor_and_idle` already samples, because
 keyboard focus and so has no modifier state of its own. No new permission, event tap, or global hook
 is involved. Only one menu exists at a time.
 
-A colony member's strip holds Snack, Toy, Home, and Profile. A guest's holds Snack, Toy, then Stay
-when `visitor_can_stay()` is true and Copy code otherwise, then Profile — the two share one cell, so
-the other three never move under the cursor. Snack and Toy issue `WorldCommand::OfferSnack` and
+A colony member's strip holds Snack, Toy, Home, and Profile, with Moment in Home's cell while the
+houses are out and the village has something it could share or is sharing one. A guest's holds
+Snack, Toy, then Stay when `visitor_can_stay()` is true and Copy code otherwise, then Profile — the
+two share one cell, so the other three never move under the cursor. Snack and Toy issue `WorldCommand::OfferSnack` and
 `OfferToy`; Home issues `WorldCommand::SendHome`; a member's Profile opens the settings window on the
 Colony page with that creature selected, and a guest's opens it on the Journal page, where the guest
 book is. Stay calls `ask_visitor_to_stay`, logging a category and closing the menu if it fails. Copy
 code routes through the application's only clipboard path — egui's, inside the settings window — so
 the window appears on the Journal page with a "Visitor code copied" toast rather than a second
-clipboard owner existing. The menu closes after any choice; the simulation answers with bubbles.
+clipboard owner existing. The menu closes after any choice but Moment; the simulation answers with
+bubbles.
+
+Moment opens a second strip beside the first, on its row and level with its body: to the right
+where the usable area has room and to the left where it does not, clamped inside it, and never
+moving the menu. It holds Stop while a moment is under way, then whatever
+`World::available_village_moments` offers — Picnic, Dance, Nap — so it is two or three cells. Its
+tray is a frame sprite without the notch, since it points at nothing, and a hovered item's label
+hangs level with the menu's own tabs. The menu's hover, stray, and untouched rules count the strip
+as part of the menu, and the click proxy grows to the rectangle around both bodies. Choosing Moment
+again puts the strip away; a moment issues `WorldCommand::InviteVillageMoment` and Stop issues
+`StopVillageMoment`, and both close the menu.
 
 The strip is a hidden-not-dropped native window built from the creature-proxy recipe: borderless,
 transparent, always on top, never activating. It covers only the framed body of the strip, so the
@@ -365,6 +435,39 @@ pausing, dragging, tossing, or changing the supporting display geometry discards
 schedules a deterministic two-to-six-hour retry. No ritual history, path, animation, asset, or
 dedicated update loop is created.
 
+### Village moments
+
+A scheduled ritual never starts while the houses are out. `world/moments.rs` is the village's own
+path, run inside the homebound tick: the owner asks for a picnic, a dance, or a nap from a
+companion's menu, and `invite_village_moment` checks again that the houses are out and in sight,
+nothing is paused or hidden, nobody is being carried, no ritual is under way, and at least two
+companions are home on their own feet — reduced motion never offers a dance. Everyone home answers
+for themselves from a runtime `village-moments` stream: a companion already asleep stays asleep,
+tiredness and temperament make the rest more or less willing, and the one that was asked is twice
+as willing. Each answers with a bubble; fewer than two willing means no moment, and the one who
+would have come shows a question mark.
+
+Those who join get places in one line on the commons, shoulder to shoulder at the village's own
+face-clear spacing, centred on the one that was asked and kept inside the walkable ground; a line
+longer than the ground keeps the companions nearest the host. Their quiet moments at the door and
+their roaming are set aside, and the homebound tick walks each to its place, where it faces the
+middle of the line. Once everyone has gathered, or after sixteen seconds, they do the moment
+together — eating and drinking by turns, social play under a runtime `Bop` pose that turns into
+each dancer's own celebration for the last 1.6 seconds, or sleep — for 14, 12, or 30 seconds, with
+habits cued as each action starts. Under reduced motion the places are where everyone already
+stands.
+
+A moment that runs its course emits `RitualCompleted` for `Picnic`, `Dance`, or `GroupNap`, which
+the journal records like any shared moment, and one bond experience for every pair who shared it.
+Stopping it, hiding or pausing the colony, and the houses going all end it with
+`RitualInterrupted` and nothing else; picking a participant up sends the houses away, as picking
+up any resident does. A pet is answered in place and the moment carries on. Something held out to a
+participant while the village is still gathering takes only that one out, the rest carrying on
+while two remain; once the moment is under way a participant is busy and turns it down. The houses
+stay out for a moment under way. A visiting guest neither greets nor draws answers from companions who are in one.
+`RitualKind::Dance` exists only for these: the scheduler never chooses it, and nothing about a
+moment is stored beyond the journal line.
+
 ## Desktop topology
 
 `DesktopTopology` is a runtime-only projection of the same privacy-safe window rectangles already
@@ -412,19 +515,42 @@ placing dwellings and a keepsake tree at each end, and every belonging is scatte
 inside one of the two trees' yards. The same walk drives rendering and nearby utility using the
 home's corner, display, scale, and accessible region. Lots without room remain stored but hidden;
 all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
-village. The renderer builds one 128×16 seed-derived atlas, retains at most eight quads, and
-rebuilds those vertices only when object state, cottages, home state, habitat, display geometry, or
-scale changes.
+village. The renderer builds one 224×16 seed-derived sheet — the eight belongings, the three
+hangout spots, then the three garden patches — retains at most fourteen quads, and rebuilds those
+vertices only when object state, cottages, home state, habitat, display geometry, or scale changes.
 
-Dwellings and trees come from one 128×128 village atlas: a two-by-two grid of 64-pixel cells, all
-four of which now carry art — the decorated colony house, a companion cottage, a mini's cottage,
-and, since 0.58.5, the keepsake tree in the cell that used to be left empty. Each is drawn into its
-own cell-sized tile so art that would overrun a cell is clipped exactly as it is for a lone
-shelter. The first colony member shares the colony house and each later one adds a single quad
-sampling its cell, and the two trees add one quad each, so a full village is six quads against one
-texture and bind group. Shelter decorations resolve their attachment points from the style's own
-silhouette — peak, eaves, wall, and ground line — so a banner hangs from the real
+Dwellings and trees come from one 256×256 village atlas of 64-pixel cells, four across: the six
+houses by day and the keepsake tree in the top two rows, and the same six houses lit from inside
+in the two rows below. Every house has a cell of its own — the decorated colony house in slot 0
+and a cottage in each later slot — because each is hung with its own resident's curtain, so a
+village needs one cell per house rather than one per kind. Each is drawn into its own cell-sized
+tile so art that would overrun a cell is clipped exactly as it is for a lone shelter. The first
+colony member shares the colony house and each later one adds a single quad sampling its slot's
+cell, by day or after dark, and the two trees add one quad each, so a full village is eight quads
+against one texture and bind group. The Home page and the colony portrait only ever draw by day, so
+they build just the top half, 256×128. Shelter decorations resolve their attachment points from
+the style's own silhouette — peak, eaves, wall, and ground line — so a banner hangs from the real
 roof rather than a shared canvas height.
+
+Each style is drawn in the creatures' own pixel-art language, from `shelter/houses.rs`: separate
+materials for the roof or canopy, the walls or supports, and the trim, each with a base, a shade
+and a light, lit from the upper left; a recessed doorway in the same fixed near-black, with a
+threshold; and one or two signs that someone lives there. The leaf tent is three big leaves
+leaned together on crossed twigs tied with twine, its near leaf lit and folded back at the door,
+over a straw floor, with a planter by the door. The mushroom hut is a domed cap with its gills in
+shadow and a few spots, on a cream stem with a round window and a stepping stone. The cushion den
+is a pillow fort: stacks of buttoned cushions for walls, a gingham blanket thrown over them,
+hanging in scallops over the door with a patch sewn on, a pillow glimpsed inside and a floor
+cushion outside. The paper house is folded card: a lit front wall and a side wall folded back into
+shade, a roof folded along its ridge and taped on, a cut-out window and a striped mat. The colony's
+shelter palette dyes the roof, cap, leaves or fabric; bark, straw, cream stems, stone and card are
+fixed materials. `ResidentMark` reads each full-size companion's own colours for the curtain in its
+doorway, tied back to a side its seed chooses, so a house keeps its resident's look wherever the
+village moves it, and a mini shares its big version's. Customizing the village changes the house
+itself; the curtain always stays the resident's. After dark — seven in the evening until seven in
+the morning, read from the local clock at most once a minute — the overlay draws the lit cells:
+lamplight filling each doorway inside a dark rim, glowing windows, and the colony house's lamp
+lit if it has earned one. It is a still picture, so reduced motion changes nothing.
 Nearby semantic roles add a bounded `+0.25` to existing action utility at ordinary selection
 boundaries; objects have no physics body, interaction proxy, action state, or update loop.
 
@@ -447,8 +573,9 @@ draw call. Decorations have no world position, action, editor, animation, physic
 A dwelling's ground footprint, in shelter pixels, is 60 for the colony house and 46 for a
 companion's. There is no mini's cottage: a house belongs to a full-size companion, and a mini
 lives in its big version's — `house_slot_for` answers which house any companion comes home to,
-and a mini keeps that answer if it ever grows full-size. The atlas is still one 128×128 texture
-with a dwelling still one quad; the cell the mini's cottage used is simply empty now.
+and a mini keeps that answer if it ever grows full-size. `house_owners` lists the keepers in the
+order their houses stand: the founder in the colony house, then the cottages in the order the
+owner arranged them, then anyone never arranged in the order they arrived.
 
 One walk lays out the whole strip: `Tree(Outward)`, `Dwelling(0)` through `Dwelling(n)` a
 `VILLAGE_GAP` apart, and `Tree(Inward)`. Neither belongings nor standing places are lots any more
@@ -498,7 +625,7 @@ of the cell, highest and most central filled first — so neither tree can overf
 depends on its variant alone, so it never moves once found and never changes ends when the village
 mirrors into the other corner. `formiga_art::trinket_place(variant)` answers with the end and the
 anchor as it is actually drawn there. Because the anchor set is mirror-symmetric, the inward tree
-is the same atlas cell sampled with its horizontal UVs swapped: still one 128×128 texture and one
+is the same atlas cell sampled with its horizontal UVs swapped: still one village texture and one
 extra bind group, and every keepsake still meets the cord drawn down to it. The overlay draws one
 16×16 quad per found keepsake from the colony's own trinket atlas, so the trees fill in exactly as
 the scrapbook does. `colony_card.rs` draws both trees the same way, the inward one mirrored, so a
@@ -564,19 +691,57 @@ scale. They are cosmetic by construction: a moment emits only `ActionStarted`, s
 counter, bond, or journal line moves, and petting a dozing resident at home costs it no sleep
 security.
 
+The owner can put down up to three hangout spots from the Home page — a nap cushion, a picnic
+blanket, and a lookout, one of each — stored in `ColonyHome::hangouts` as a kind and a fraction
+along the ground, normalized to one of each kind on the ground whenever the colony opens.
+`home_ground_positions` puts each spot, and each garden patch, at its fraction of the commons'
+standing span and pushes them all apart to their own width and a little more, so however they were
+placed they stand on the ground a companion may use and never on one another; a ground too short
+keeps the ones that fit. `home_hangout_positions` is the spots among them, so a garden planted
+beside a spot moves it exactly as far on the desktop as in the simulation. The overlay draws them
+from the colony object sheet, which grew from eight cells to fourteen for the spots and patches,
+while the houses are out, with the lookout's spyglass turned toward the middle of the display; the Home page
+preview and the colony portrait place them the same way. Each free spot adds one weighted choice
+to a resident's quiet moment: the cushion a nap, the blanket a snack or a drink, the lookout a look
+out over the desktop from beside it — weight two, or four for a companion who feels like it, a
+sleepy one, a hungry one, or a curious one — so a spot draws moments without taking them over. The
+companion walks there, taking at most thirty seconds, and does it on the spot. A spot someone is
+standing at is not offered, and a village without spots draws exactly the choices it always did. An
+invited picnic lines up around the blanket and an invited nap around the cushion.
+
+The owner can also arrange the village itself, and the arrangement is three more optional fields
+of `ColonyHome`, each absent until chosen. `cottage_order` lists the companions whose cottages have
+been moved, in the order they now stand; `house_owners` reads it, ignoring anyone who is not a
+full-size member and never moving the founder out of the colony house, and `arrange_cottages`
+writes nothing down when the order asked for is only the order everyone arrived in. A replaced
+companion hands its place in the order to its replacement, and one that leaves takes its place with
+it. `palette` names one of six `VillagePalette`s, each a hand-made pairing of two of the twelve
+creature palettes chosen so both halves suit its name, because some styles and the tree wear the
+main colour most and others the accent; `drawn_shelter` swaps only the genome's two palette
+indices, so style, size, and details are untouched, and every renderer — the overlay, the Home
+page, the colony portrait — draws from it. `gardens` holds up to three `GardenPatch`es, a flower
+bed, a vegetable patch, and a herb box, placed like the spots; they are something to look at and
+draw no choices. `reset_arrangement` clears all three and leaves the spots alone. Because the
+village texture is keyed on the drawn genome and the curtains, a new palette or order redraws it
+once and costs nothing per frame.
+
 The layout allocates next to nothing, because the simulation walks it several times a tick.
-`village_walk` is the fixed-capacity stack array above, `colony_cottage_list` picks the members in
-place, `home_resting_position` and `home_guest_position` allocate nothing at all,
+`village_walk` is the fixed-capacity stack array above, `colony_cottage_list` and `house_owners`
+pick the members in place, `home_resting_position` and `home_guest_position` allocate nothing at all,
 `VillageGround::resolve` lists the habitat's accessible regions once and keeps the one the anchor
 landed in rather than listing them again for every lot, and `home_object_positions` resolves the
 village once for all eight belongings. `reconcile_colony_objects` went from roughly 34 allocations
 a tick to 1, and `tick_homebound_creatures` from roughly 76 to 8.
 
-`home-yard-sheet.png` shows eight cases at both corners: four shelter styles with a grown colony
-and the trees filling up as the scrapbook does — nothing found, five, eleven, all sixteen — then
-colonies of one to six with their residents on the commons, ending on the widest village there
-is. `shelter-sheet.png` gives each style a lane — plain house, decorated house, cottage, mini, and
-a creature at the same scale.
+`home-yard-sheet.png` shows fourteen cases at both corners: four shelter styles with a full colony
+of six and the trees filling up as the scrapbook does — nothing found, five, eleven, all sixteen —
+then colonies of one to six with their residents on the commons, ending on the widest village there
+is, and last the four styles after dark, each door hung with its resident's curtain. Along the
+way the spots and the garden patches are spread out, bunched up, and mixed together, and three
+villages are painted in a named palette. `shelter-sheet.png` gives each style a lane — plain house,
+decorated house, a cottage with its resident's curtain, the same cottage lit after dark, the tree,
+and the resident at the same scale — and `village-palette-sheet.png` shows each style in its own
+colours and then in every named palette.
 
 ## Visiting creatures
 
@@ -621,12 +786,16 @@ visit timestamp, the name, the origin — the same appearance-and-temperament se
 carries — and whether the visitor was a wanderer or invited. One `JournalMoment::Visit` is recorded
 per visit.
 
-`visitor_can_stay()` answers whether the colony has room: fewer than four members, fewer than three
-adults, and not a duplicate of somebody already here. `ask_visitor_to_stay(now, desktop)` then runs
+`visitor_can_stay()` answers whether the colony has room: fewer than six members, the same bound the
+adult cap sets, and not a duplicate of somebody already here. `ask_visitor_to_stay(now, desktop)` then runs
 the exact adoption path an imported creature takes — a fresh history, standing where the guest stood,
 and a Stay bubble. `visitor_share_code()` returns the guest's code. The settings Journal page carries
 the guest book, newest first, with Copy code on every entry and the current visitor on top with Ask
-to stay beside its code. The Creature studio's "Adopt a shared companion from a code" offers "Invite
+to stay beside its code. Any visitor there can be kept as a favorite: `VisitorState::favorites` holds
+at most `MAX_FAVORITE_VISITORS` (eight) names and origins apart from the book, so a favorite outlasts
+the book moving on, is never kept twice, and a full list waits for one to be forgotten rather than
+dropping one. Inviting a favorite goes through `invite_visitor` exactly as a pasted code does, so the
+same checks answer and the same visitor, under the same name, comes back. The Creature studio's "Adopt a shared companion from a code" offers "Invite
 for a day" from the same explicit preview that adoption uses, disabled while somebody is visiting or
 when the code names a creature already at home.
 
@@ -777,9 +946,12 @@ birth and compact history. A domain-separated derived colony seed drives its new
 companions, so the source lineage cannot reproduce itself. Import allocates no service, socket,
 worker, or persistent code cache. Modular creatures use format version 2: the same seed and
 generation followed by a 16-byte bounded design, four reserved zero bytes, and a four-byte checksum.
-Its 57-byte payload is 92 Base32 characters in 23 groups. Legacy format 1 is unchanged; a recipe
-is applied after legacy named-stream reconstruction so inherited traits and personalities replay
-exactly. Design bytes also participate in the imported colony's lineage hash.
+Its 57-byte payload is 92 Base32 characters in 23 groups. A recipe with classic parts uses format
+version 3, identical except that the four reserved bytes hold those parts two to a byte; a recipe
+without them is still written as version 2, so its code is unchanged. Legacy format 1 is unchanged;
+a recipe is applied after legacy named-stream reconstruction so inherited traits and personalities
+replay exactly. Design bytes also participate in the imported colony's lineage hash, the classic
+bytes only when there are classic parts, so an existing code's lineage is unchanged.
 
 ## On-demand creature cards
 
@@ -823,8 +995,24 @@ relationship scores, journal, display keys, visitors, or guest book, and the enc
 text chunks; a test maxes out memories, tendencies, and relationships and asserts the card comes out
 pixel-identical. The default filename is `Formiga-colony.png`.
 
+`PostcardRenderer::render(&SaveFile, PostcardScene, caption) -> Canvas` produces a 960×600 opaque
+postcard of the whole colony in one of four scenes the sender picks: a nap on a patchwork quilt one
+golden afternoon, a picnic round a gingham blanket, a game on the grass with a ball in the air and a
+kite overhead, or the village at dusk with its houses lit. The picture is painted on a canvas of its
+own inside the card's frame — banded, dithered skies, two rows of hills, a meadow of tufts and
+flowers — with the colony's own village across the back, laid out by `village_lots` exactly as the
+portrait lays it out and faded toward the sky, the lamplit windows staying lit after dark. Every
+member is drawn in the scene's pose from the frames the desktop already bakes — asleep with its eyes
+shut, eating or drinking with its own snack or cup, playing, cheering, dancing, or waving — turned
+toward the middle of the group, at the largest whole scale the group fits at. A stamp with the
+colony house and a postmark with the month sit on the corner, and under the picture the caption,
+if any, and the scene's name. `postcard_caption` keeps a caption to one line of at most sixty
+characters with no control characters; the card carries no names, seeds, memories, scores, journal,
+visitors, or display information, and its default filename names only the scene.
+
 The Colony profile gains "Export sticker…" with a clip choice, and the Home page gains "Export
-colony portrait…". The `gif` crate, already in the workspace for `formiga-tools`, is now also a
+colony portrait…" and, in 0.59.0, a postcard with a scene, an optional caption, and "Export
+postcard…". The `gif` crate, already in the workspace for `formiga-tools`, is now also a
 dependency of `formiga-art`, so the application and the tools share one encoder; it is the first
 time it is linked into the shipped application.
 
@@ -836,7 +1024,7 @@ to a maximum 64×64 analysis surface without distorting aspect ratio. Alpha-awar
 summarize aspect, occupancy, symmetry, and upper/lower/side extensions. A fixed 512-bin color
 histogram chooses dominant coat and contrasting accent colors. Exactly 512 named-stream candidate
 recipes are adapted to these cues, rendered, and scored. The chosen preview contains its generated
-creature, seed, 16-byte recipe, and display-only affinity score; image bytes, path, metadata,
+creature, seed, recipe, and display-only affinity score; image bytes, path, metadata,
 analysis pixels, and feature vectors leave scope after matching. This is not semantic recognition.
 
 Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
@@ -848,8 +1036,20 @@ mouth, draws connected rounded bodies and paired limbs, and keeps appendages in 
 48×48 frame. Mini bodies scale down while retaining readable large faces. Colors are softened
 once during atlas construction, with a fixed dark outline and eye color. Recipes without image
 guidance use the same grammar; minis inherit body plans and gently varied parental colors.
-Absent recipes preserve legacy rendering and version 1 seed codes. Preview acceptance carries
-the exact recipe into add/replace; cards and overlays share the same palette resolver.
+Absent recipes preserve legacy rendering and version 1 seed codes, and a companion without a recipe
+has minis drawn from its own genes the same way. Preview acceptance carries the exact recipe into
+add/replace; cards and overlays share the same palette resolver.
+
+Save version 17 adds six classic parts to the recipe — coat, face, limbs, crown, pattern, and tail —
+each zero for the plain modular part, so every earlier recipe reads unchanged. They come from a
+`classic-parts-v1` stream drawn after the modular one, whose draws are untouched;
+`CreatureDesign::modular` returns a seed's recipe before them. A new companion leans a quarter of
+the time wholly modular, a quarter wholly classic, and otherwise mixes the parts at a lean of 0.35
+or 0.65, so about 29% come out plainly modular and each main part is classic about half the time. Candy coats derive a full palette from the recipe's coat and accent —
+tinted near-black ink, a desaturated shade, a bright highlight — with coat lightness held so the
+eyes stay readable. The lit top moves the fill inside an unchanged outlined silhouette, classic nubs
+cover the same resting spot as modular paws, and stick legs lift the body over unmoved feet, so the
+reserved face, one limb per side, and the spacing boxes hold for every combination.
 
 Save version 11 gives every creature a typed adult or mini role, a persistent Keep flag, and a
 two-bit adult mini-arrival projection. Total colony size remains four, adult count is capped at
@@ -911,13 +1111,18 @@ remain minis.
   creature, with at most one resident busy at a time; evaluated in the same world tick.
 - Overlap resolution: checked at the end of every ordinary tick, acting after 1.25 seconds of a
   covered face or 2.0 seconds of crowding, with a 5-second per-pair cooldown.
-- Stickers and the colony portrait: the save dialog, CPU canvases, and encoders exist only during an
-  explicit export; cancellation renders nothing.
+- Stickers, the colony portrait, and postcards: the save dialog, CPU canvases, and encoders exist
+  only during an explicit export; cancellation renders nothing, and choosing a scene or typing a
+  caption draws and uploads nothing.
 - Display reconciliation: every 2 seconds.
-- Persistence: transitions, settings changes, and every 30 seconds.
+- Persistence: arrivals, the houses coming and going, rituals, new belongings, and settings changes
+  at once; everyday movement in a checkpoint at most every 15 seconds (`save_due`); and every 30
+  seconds regardless.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 15 adds only `visitors`; a v14 colony receives an empty `VisitorState` and nothing else is
+Version 17 adds the classic parts inside recipes, favorite visitors, each companion's roaming
+leaning, and the habits each has picked up, and migrates nothing; version 16 added no
+field and moved only so an older build would refuse a colony of six. Version 15 adds only `visitors`; a v14 colony receives an empty `VisitorState` and nothing else is
 touched. 0.58.5 adds no saved field and needs no migration: the version is still 15, and the two
 keepsake trees, where every find hangs, and where every belonging lies are all derived at runtime
 from the colony seed and the scrapbook the save already holds. The chain below it is unchanged:
@@ -947,14 +1152,33 @@ deliberately no history database or telemetry layer. Update preferences live in 
 
 `clubhouse.rs` holds only on-demand UI artwork and interaction state; `settings.rs` owns its egui
 window and presentation. Four static portraits, four eight-frame candidate strips (six walk frames
-and two expressions each), the village atlas, one object strip, and the one colony trinket sheet
-that carries all sixteen trinkets fit within 432 KiB of artwork textures — raised from 416 KiB
-because that sheet replaced eight separate 16×16 drawings with 24 KiB more pixels in a single
-texture, and nothing else on any page grew. The home preview draws the whole corner — houses, both
+and two expressions each), the daylit half of the village atlas, one object strip, and the one
+colony trinket sheet that carries all sixteen trinkets fit within 500 KiB of artwork textures. It
+was 416 KiB until that sheet replaced eight separate 16×16 drawings with 24 KiB more pixels in a
+single texture, 432 KiB until 0.59.0 gave every house a cell of its own and the Home page's village
+grew from 128×128 to 256×128, and 496 KiB until the object strip grew from eight cells to fourteen
+for the hangout spots and garden patches. The home preview draws the whole corner — houses, both
 trees, the keepsakes hung in them, and the belongings in the yards — from the village, trinket,
 and object atlases the desktop already samples, positioned by the very layout functions the
 overlay uses, so a complete village costs the same three textures whatever its size and nothing
 about looking at it calls the colony home or moves a creature.
+
+The last change to who lives here or how the village is laid out can be taken back. The app makes
+each such change through `World::edit(ColonyEdit, change)`, which applies it and, if it changed the
+members, the home, or the keepsakes' order, keeps one `UndoPoint` in the world: the creatures,
+bonds, home, and keepsakes as they stood before, and the ids of any companion the change itself
+brought in. It is runtime only and holds one change; a later one replaces it, and a failed or empty
+one leaves it. `undo_last_edit` puts back what the change touched and nothing else. For a companion
+removed, replaced, started over, or welcomed from the studio, the membership is rebuilt from the
+old list: everyone still here keeps their current self, with the role they had, so a mini has its
+own big version back; anyone gone comes back exactly as saved, with its id, memories, and bonds
+with those still here, standing where it or its stand-in last stood; whoever the change brought in
+goes, runtime and all; anyone who arrived on their own since stays; and the cottage order goes back
+with them. A colony with no room to bring everyone back refuses and keeps the change to try again.
+For a layout change — cottages, colours, gardens, spots, corner, display, decorations, keepsakes —
+exactly those fields go back, with keepsakes found since kept after the rest. Renames, keeps, and
+preferences are not part of it. The settings window's footer offers "Undo …" on every page while
+there is something to take back.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
@@ -971,6 +1195,13 @@ two optional behavior presets. Projection reuses existing events; continuous obs
 enter the journal. A close friendship is recorded only when affinity crosses the existing close-bond
 threshold. Repeated equal moments are throttled for six hours. Quiet mode holds the existing home
 cycle until its deadline, then resumes ordinary behavior without rewriting preferences.
+
+The Journal page opens on "Today in your colony", read by `clubhouse::today` from nothing but the
+journal and the scrapbook: today's entries by the local date, newest first; portraits of the
+companions they name; a count of each kind of moment; the treasures first found today; and the
+latest four lines. It says nothing about time the app was not running, since nothing was written
+then, and when the journal is full and its oldest entry is itself from today it says that some of
+today's earlier moments have already rolled out. It stores nothing.
 
 Save version 14 adds four bounded keepsakes to `CompanionState`. **Pins** are at most eight
 `PinnedMoment` records, each naming an existing journal entry by its timestamp, creature, and
@@ -1007,8 +1238,10 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–16: version 16 is read directly, versions 1 through 15 are
-migrated on load, and anything else is refused. A missing primary can load its backup; a corrupt
+Persistence accepts save versions 1–17: version 17 is read directly, versions 1 through 16 are
+migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
+migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
+refuses the colony rather than quietly dropping the parts. A missing primary can load its backup; a corrupt
 primary is preserved before repair, without rotating over a valid backup. If both files fail, the
 host disables writes and presents recovery choices. Explicit restores and resets preserve uniquely named copies;
 snapshot imports validate bounded input before confirmation and replacement.
@@ -1051,7 +1284,10 @@ or leaves its habitat.
 `world/attention.rs` coordinates one scene of up to four actors/observers. Notice, optional short
 approach, reaction, and recovery reuse existing actions and transient `AttentionPose` face, gaze,
 and gesture hints. Individual and colony cooldowns prevent continuous window drags from restarting scenes.
-An eight-second, four-creature support memory lets a confirmed loss prompt one search even after
+Scenes stay at four, but everything remembered per resident — supports, setbacks, refused
+invitations, display moves, rides, hangouts — is sized by `MAX_COLONY_CREATURES`, so the fifth and
+sixth companions are noticed, walked around, looked at, and invited like the first four. An
+eight-second support memory for every resident lets a confirmed loss prompt one search even after
 a recent ride. Safety interruption releases the audience immediately; normal completion permits
 a brief recovery. Grabbing, sleep, journeys, social plans, home, quiet mode, and hidden/paused state
 retain priority over ambient attention.
@@ -1124,7 +1360,7 @@ second. Missing places decay quickly; only an established coarse region can rein
 saved preference. Relative height comes from the nearest exposed support below the current ledge.
 
 `world/rides.rs` uses actual scan intervals, velocity changes measured at the rider's own contact
-point, and capped ride intensity for four riders. The attention library authors balance, grip, dismount, boundary retreat, elevator, and
+point, and capped ride intensity for every resident on a window. The attention library authors balance, grip, dismount, boundary retreat, elevator, and
 dizziness stages. Gap journeys validate runway, sampled arcs, and landing reservations; confidence
 combines temperament, energy, and learned climbing. Close compatible edges use a walking bridge.
 Marginal attempts catch and pull up, with one optional helper and a rare bounded shared tumble.
@@ -1136,7 +1372,7 @@ margin a look down, a step back, an approach, and at most two reconsiderations, 
 at the start from temperament; it then commits from the edge (preparation skipped, revalidated,
 same origin, forced catch) or retreats. The scene is bounded at 16 seconds and never begins under
 reduced motion. A retreat, an attempt invalidated mid-scene, a shared tumble, or an accidental
-launch records one of four runtime setbacks for 90 seconds, which raise perceived risk and block an
+launch records one runtime setback per resident for 90 seconds, which raise perceived risk and block an
 immediate retry of the same gap. Sleepiness lowers confidence alongside energy, height, and width.
 
 `world/attention/geometry_comedy.rs` measures converging window edges against the creature's own

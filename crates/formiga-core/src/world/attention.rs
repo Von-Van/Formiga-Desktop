@@ -22,6 +22,11 @@ use displays::DisplayWalk;
 use motion::{MAX_APPROACH_SECONDS, ShortWalk};
 use spectacle::{Cue, Outcome, Stage};
 
+/// The most creatures one scene gathers: the riders reacting to one window, the reactions
+/// running at once, or a play session's members. Scenes stay this small on purpose. Anything that
+/// remembers something about each resident — setbacks, refused invitations, supports, display
+/// moves, rides — is sized by the colony instead, so the fifth and sixth companions are noticed
+/// and remembered exactly like the first four.
 const MAX_PARTICIPANTS: usize = 4;
 const REACTION_SECONDS: f32 = 3.2;
 const REACTION_COOLDOWN: f32 = 12.0;
@@ -166,7 +171,7 @@ pub(super) struct AttentionRuntime {
     // Last actual support, retained briefly through attachment recovery; never saved.
     recent_supports: BTreeMap<CreatureId, (WindowKey, f32, Option<u64>)>,
     play: play::PlayRuntime,
-    setbacks: [Option<Setback>; MAX_PARTICIPANTS],
+    setbacks: [Option<Setback>; MAX_COLONY_CREATURES],
 }
 
 impl AttentionRuntime {
@@ -185,7 +190,7 @@ impl AttentionRuntime {
             .position(|s| s.is_some_and(|s| s.creature == creature))
             .or_else(|| self.setbacks.iter().position(Option::is_none))
             .unwrap_or_else(|| {
-                (0..MAX_PARTICIPANTS)
+                (0..MAX_COLONY_CREATURES)
                     .min_by(|&a, &b| {
                         let remaining = |i: usize| self.setbacks[i].map_or(0.0, |s| s.remaining);
                         remaining(a).total_cmp(&remaining(b))
@@ -299,7 +304,7 @@ impl World {
                 *remaining -= dt;
                 *remaining > 0.0 && self.save.creatures.iter().any(|c| c.id == *id)
             });
-        for creature in self.save.creatures.iter().take(MAX_PARTICIPANTS) {
+        for creature in self.save.creatures.iter().take(MAX_COLONY_CREATURES) {
             if let Some(key) = creature.state.surface.window_key {
                 let support = self
                     .attention
@@ -467,7 +472,7 @@ impl World {
             .save
             .creatures
             .iter()
-            .take(MAX_PARTICIPANTS)
+            .take(MAX_COLONY_CREATURES)
             .filter(|c| c.state.arrival_delay_secs <= 0.0)
             .map(|c| (c.id, c.state.surface.clone(), c.state.position))
             .chain(self.window_journeys.iter().map(|(&id, journey)| {
@@ -483,7 +488,7 @@ impl World {
             .save
             .creatures
             .iter()
-            .take(MAX_PARTICIPANTS)
+            .take(MAX_COLONY_CREATURES)
             .map(|c| {
                 (
                     c.id,
@@ -1809,6 +1814,21 @@ mod tests {
         (world, desktop, now)
     }
 
+    /// Fills a fixture's colony to the cap with full-size companions, all of them already arrived,
+    /// so a test can put the fifth and sixth wherever it needs them.
+    pub(super) fn fill_colony(world: &mut World, desktop: &DesktopSnapshot, now: OffsetDateTime) {
+        let mut seed = 160_u8;
+        while world.save.creatures.len() < MAX_COLONY_CREATURES {
+            seed += 1;
+            world
+                .add_designed_adult([seed; 32], None, now, desktop)
+                .unwrap();
+        }
+        for creature in &mut world.save.creatures {
+            creature.state.arrival_delay_secs = 0.0;
+        }
+    }
+
     fn start(world: &mut World, desktop: &mut DesktopSnapshot, now: OffsetDateTime) {
         desktop.window_sample.as_mut().unwrap().monotonic_millis = 250;
         desktop.windows[0].bounds.x += 120.0;
@@ -2093,7 +2113,10 @@ mod tests {
         // A toy nobody else can have.
         let (mut world, mut desktop, now) = super::games::tests::keep_away_scene();
         play_out(&mut world, &mut desktop, now, 1..300, &mut poses);
-        for gesture in Gesture::ALL {
+        for gesture in Gesture::ALL
+            .into_iter()
+            .filter(|gesture| gesture.in_scenes())
+        {
             assert!(
                 poses.showed(gesture),
                 "no scene ever struck {gesture:?}; between them these showed {:?}",

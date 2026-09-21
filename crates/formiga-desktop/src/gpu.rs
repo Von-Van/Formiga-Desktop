@@ -1,14 +1,15 @@
-use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement};
+use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement, SidePlacement};
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, COLONY_OBJECT_ATLAS_HEIGHT,
-    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, MenuIcon, MenuLayout,
-    MilestoneBubbleRenderer, MotionSignature, PixelPoint, PropAnchor, Rgba, SHELTER_SIZE,
-    ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL,
-    TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
-    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_SIZE,
+    AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, BodyPresentation,
+    COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
+    ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
+    FramePlacement, MenuIcon, MenuLayout, MilestoneBubbleRenderer, PixelPoint, PropAnchor,
+    ResidentMark, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT,
+    TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor,
+    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_SIZE,
+    VILLAGE_HOUSES, VillageCell,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
@@ -73,6 +74,7 @@ struct ShelterGpu {
     bind_group: wgpu::BindGroup,
     genome: ShelterGenome,
     decorations: Vec<ShelterDecorationKind>,
+    marks: [Option<ResidentMark>; VILLAGE_HOUSES],
 }
 
 struct BubbleGpu {
@@ -102,6 +104,8 @@ pub struct OverlayUi<'a> {
     /// The simulation's answers, one per creature at most.
     pub bubbles: &'a [ThoughtBubble],
     pub reduce_motion: bool,
+    /// Whether it is dark out where the owner is, so the houses glow from inside.
+    pub night: bool,
     /// The open right-click menu, if it belongs to a creature on this monitor.
     pub menu: Option<MenuView<'a>>,
 }
@@ -113,6 +117,16 @@ pub struct MenuView<'a> {
     pub items: &'a [MenuIcon; 4],
     pub layout: &'a MenuLayout,
     pub placement: MenuPlacement,
+    pub hovered: Option<usize>,
+    /// A strip opened beside the menu, if any.
+    pub side: Option<SideView<'a>>,
+}
+
+/// A strip opened beside the menu, already placed by `creature_menu`.
+#[derive(Clone, Copy)]
+pub struct SideView<'a> {
+    pub layout: &'a MenuLayout,
+    pub placement: SidePlacement,
     pub hovered: Option<usize>,
 }
 
@@ -187,15 +201,15 @@ struct TreeVertexCacheKey {
     display_scale: u8,
 }
 
-/// Which quadrant of the 128x128 village atlas a lot samples: a dwelling's own cell, or — with no
-/// dwelling — the keepsake tree in the fourth. Both of the village's trees come from that one
-/// cell; the inward one is drawn from it mirrored.
-fn village_cell(kind: Option<formiga_core::DwellingKind>) -> (f32, f32) {
-    match kind {
-        Some(formiga_core::DwellingKind::Main) => (0.0, 0.0),
-        Some(formiga_core::DwellingKind::Cottage) => (0.5, 0.0),
-        None => (0.5, 0.5),
-    }
+/// Where a lot samples the village atlas, as the top-left texture coordinate of its cell: each
+/// house its own cell, by day or lit after dark, and both trees the one tree cell, the inward one
+/// drawn from it mirrored.
+fn village_cell(cell: VillageCell) -> (f32, f32) {
+    let (x, y) = ShelterRenderer::village_cell(cell);
+    (
+        x as f32 / VILLAGE_ATLAS_SIZE as f32,
+        y as f32 / VILLAGE_ATLAS_SIZE as f32,
+    )
 }
 
 /// Whether a tree at this end of the village samples its cell mirrored. The inward bookend does,
@@ -672,7 +686,11 @@ impl OverlayRenderer {
                     count += 1;
                 }
             }
-            self.ensure_shelter(save.home.shelter, &visible_decorations[..count]);
+            self.ensure_shelter(
+                save.home.drawn_shelter(),
+                &visible_decorations[..count],
+                ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
+            );
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
@@ -697,14 +715,16 @@ impl OverlayRenderer {
         {
             self.ensure_trinket_atlas(save);
         }
-        let object_vertices = if !shelter_visible || save.objects.objects.is_empty() {
+        let object_vertices = if !shelter_visible
+            || (save.objects.objects.is_empty() && !save.home.has_ground_items())
+        {
             Vec::new()
         } else {
             self.ensure_colony_object_atlas(save.colony_seed);
             self.cached_colony_object_vertices(save).to_vec()
         };
         let village_vertices = if shelter_visible {
-            self.village_vertices(save)
+            self.village_vertices(save, ui.night)
         } else {
             Vec::new()
         };
@@ -967,16 +987,17 @@ impl OverlayRenderer {
             .is_some();
         let cottages = formiga_core::colony_cottage_list(&save.creatures);
         let object_visible = shelter_visible
-            && !save.objects.objects.is_empty()
-            && formiga_core::home_object_positions(
-                &save.home,
-                cottages.as_slice(),
-                std::slice::from_ref(&self.monitor),
-                &save.settings.habitat,
-                save.settings.display_scale,
-            )
-            .iter()
-            .any(Option::is_some);
+            && ((!save.objects.objects.is_empty()
+                && formiga_core::home_object_positions(
+                    &save.home,
+                    cottages.as_slice(),
+                    std::slice::from_ref(&self.monitor),
+                    &save.settings.habitat,
+                    save.settings.display_scale,
+                )
+                .iter()
+                .any(Option::is_some))
+                || save.home.has_ground_items());
         creature_visible || shelter_visible || object_visible
     }
 
@@ -1212,12 +1233,15 @@ impl OverlayRenderer {
         }
     }
 
-    fn ensure_shelter(&mut self, genome: ShelterGenome, decorations: &[ShelterDecorationKind]) {
-        if self
-            .shelter
-            .as_ref()
-            .is_some_and(|shelter| shelter.genome == genome && shelter.decorations == decorations)
-        {
+    fn ensure_shelter(
+        &mut self,
+        genome: ShelterGenome,
+        decorations: &[ShelterDecorationKind],
+        marks: [Option<ResidentMark>; VILLAGE_HOUSES],
+    ) {
+        if self.shelter.as_ref().is_some_and(|shelter| {
+            shelter.genome == genome && shelter.decorations == decorations && shelter.marks == marks
+        }) {
             return;
         }
         let decorations: Vec<_> = decorations
@@ -1225,7 +1249,8 @@ impl OverlayRenderer {
             .copied()
             .take(formiga_core::MAX_SHELTER_DECORATIONS)
             .collect();
-        let pixels = ShelterRenderer::render_village(&genome, &decorations).rgba_bytes();
+        let pixels =
+            ShelterRenderer::render_village(&genome, &decorations, &marks, true).rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("procedural colony village"),
             size: wgpu::Extent3d {
@@ -1279,6 +1304,7 @@ impl OverlayRenderer {
             bind_group,
             genome,
             decorations,
+            marks,
         });
     }
 
@@ -1458,7 +1484,30 @@ impl OverlayRenderer {
         for (object, point) in yard {
             self.object_vertices
                 .extend_from_slice(&self.object_vertices_for(
-                    object,
+                    ColonyObjectRenderer::object_cell(object.kind),
+                    false,
+                    point,
+                    save.settings.display_scale,
+                ));
+        }
+        // The spots put down and the patches planted on the ground between the houses, the
+        // lookout turned to face out over the open desktop.
+        let middle = self.monitor.usable_bounds.x + self.monitor.usable_bounds.width / 2.0;
+        let ground = formiga_core::home_ground_positions(
+            &save.home,
+            &cottages,
+            std::slice::from_ref(&self.monitor),
+            &save.settings.habitat,
+            save.settings.display_scale,
+        );
+        for (item, monitor_id, point) in ground {
+            if monitor_id != self.monitor.id {
+                continue;
+            }
+            self.object_vertices
+                .extend_from_slice(&self.object_vertices_for(
+                    ColonyObjectRenderer::ground_cell(item),
+                    ColonyObjectRenderer::ground_mirrored(item, point.x, middle),
                     point,
                     save.settings.display_scale,
                 ));
@@ -1469,7 +1518,8 @@ impl OverlayRenderer {
 
     fn object_vertices_for(
         &self,
-        object: &ColonyObject,
+        cell: u32,
+        mirrored: bool,
         point: formiga_core::Point,
         display_scale: u8,
     ) -> [Vertex; 6] {
@@ -1481,8 +1531,10 @@ impl OverlayRenderer {
         let top_px = contact_y - size;
         let top = 1.0 - top_px / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - contact_y / self.layout.height as f32 * 2.0;
-        let u_left = f32::from(object.kind.index()) / 8.0;
-        let u_right = f32::from(object.kind.index() + 1) / 8.0;
+        let (mut u_left, mut u_right) = ColonyObjectRenderer::cell_u(cell);
+        if mirrored {
+            std::mem::swap(&mut u_left, &mut u_right);
+        }
         let vertex = |position, uv| Vertex {
             position,
             uv,
@@ -1570,7 +1622,7 @@ impl OverlayRenderer {
     /// Every dwelling in the village and the two keepsake trees that bookend it, sampled from
     /// their own cells of the shared atlas. The colony house is always first; companion cottages
     /// follow along the same ground line, and a tree closes each end of it.
-    fn village_vertices(&self, save: &SaveFile) -> Vec<Vertex> {
+    fn village_vertices(&self, save: &SaveFile, night: bool) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
         for end in formiga_core::TreeEnd::BOTH {
@@ -1585,7 +1637,7 @@ impl OverlayRenderer {
             {
                 vertices.extend_from_slice(&self.village_cell_vertices(
                     point,
-                    village_cell(None),
+                    village_cell(VillageCell::Tree),
                     tree_is_mirrored(end),
                     save.settings.display_scale,
                 ));
@@ -1605,27 +1657,14 @@ impl OverlayRenderer {
             if monitor_id != self.monitor.id {
                 continue;
             }
-            let kind = if slot == 0 {
-                formiga_core::DwellingKind::Main
-            } else {
-                cottages[slot - 1]
-            };
-            vertices.extend_from_slice(&self.dwelling_vertices(
+            vertices.extend_from_slice(&self.village_cell_vertices(
                 point,
-                kind,
+                village_cell(VillageCell::House { slot, lit: night }),
+                false,
                 save.settings.display_scale,
             ));
         }
         vertices
-    }
-
-    fn dwelling_vertices(
-        &self,
-        anchor: formiga_core::Point,
-        kind: formiga_core::DwellingKind,
-        display_scale: u8,
-    ) -> [Vertex; 6] {
-        self.village_cell_vertices(anchor, village_cell(Some(kind)), false, display_scale)
     }
 
     /// One quadrant of the village atlas, standing on the ground line at `anchor`. `mirror` swaps
@@ -1645,7 +1684,8 @@ impl OverlayRenderer {
         let right = (local_x + size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let top = 1.0 - (local_y - size) / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - local_y / self.layout.height as f32 * 2.0;
-        let (u_left, u_right) = if mirror { (u + 0.5, u) } else { (u, u + 0.5) };
+        let cell = SHELTER_SIZE as f32 / VILLAGE_ATLAS_SIZE as f32;
+        let (u_left, u_right) = if mirror { (u + cell, u) } else { (u, u + cell) };
         let vertex = |position, uv| Vertex {
             position,
             uv,
@@ -1654,10 +1694,10 @@ impl OverlayRenderer {
         [
             vertex([left, top], [u_left, v]),
             vertex([right, top], [u_right, v]),
-            vertex([right, bottom], [u_right, v + 0.5]),
+            vertex([right, bottom], [u_right, v + cell]),
             vertex([left, top], [u_left, v]),
-            vertex([right, bottom], [u_right, v + 0.5]),
-            vertex([left, bottom], [u_left, v + 0.5]),
+            vertex([right, bottom], [u_right, v + cell]),
+            vertex([left, bottom], [u_left, v + cell]),
         ]
     }
 
@@ -1880,9 +1920,7 @@ impl OverlayRenderer {
             .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
         let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * scale;
-        let clip = BodyClip::for_creature(creature);
-        let frame =
-            MotionSignature::for_creature(creature).frame(clip, creature.state.action_elapsed);
+        let BodyPresentation { clip, frame, .. } = BodyPresentation::for_creature(creature);
         // Mirroring a frame never changes which rows it fills, so one silhouette serves both ways.
         let (top, bottom) = sprite
             .silhouette
@@ -1995,10 +2033,13 @@ impl OverlayRenderer {
         let top = 1.0 - frame_top / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - frame_bottom / self.layout.height as f32 * 2.0;
         // Each creature keeps its own cadence and phase; the atlas and slots are unchanged. A
-        // gesture shows its own baked clip in place of the action's.
-        let clip = BodyClip::for_creature(creature);
-        let frame =
-            MotionSignature::for_creature(creature).frame(clip, creature.state.action_elapsed);
+        // gesture, a celebration or a habit shows its own baked clip in place of the action's,
+        // and a twirl or a turn round flips the way it faces while it lasts.
+        let BodyPresentation {
+            clip,
+            frame,
+            facing_right,
+        } = BodyPresentation::for_creature(creature);
         let slot = atlas_slot(clip, frame);
         let column = slot % ATLAS_COLUMNS;
         let row = slot / ATLAS_COLUMNS;
@@ -2006,7 +2047,7 @@ impl OverlayRenderer {
         let mut u_right = (column + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
         let v_top = row as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
         let v_bottom = (row + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
-        if !creature.state.facing_right {
+        if !facing_right {
             std::mem::swap(&mut u_left, &mut u_right);
         }
         let occlusion_enabled = (creature.state.action != ActionKind::Dragged) as u8 as f32;
@@ -2044,7 +2085,7 @@ impl OverlayRenderer {
         ];
 
         let anchor = sprite.face_anchors[slot as usize];
-        let anchor_x = if creature.state.facing_right {
+        let anchor_x = if facing_right {
             anchor.x
         } else {
             FRAME_SIZE as i32 - anchor.x
@@ -2059,7 +2100,7 @@ impl OverlayRenderer {
         let face_top = 1.0 - (face_center_y - face_size / 2.0) / self.layout.height as f32 * 2.0;
         let face_bottom = 1.0 - (face_center_y + face_size / 2.0) / self.layout.height as f32 * 2.0;
         let mut source_face_state = face_state;
-        if !creature.state.facing_right {
+        if !facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
         }
         let face_slot = face_atlas_slot(source_face_state);
@@ -2069,7 +2110,7 @@ impl OverlayRenderer {
             face_column as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
         let mut face_u_right =
             (face_column + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
-        if !creature.state.facing_right {
+        if !facing_right {
             std::mem::swap(&mut face_u_left, &mut face_u_right);
         }
         let face_v_top = face_row as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
@@ -2119,7 +2160,7 @@ impl OverlayRenderer {
             let v_top = cell_y as f32 / TRINKET_ATLAS_HEIGHT as f32;
             let v_bottom = (cell_y + TRINKET_CELL) as f32 / TRINKET_ATLAS_HEIGHT as f32;
             // One explicit anchor, shared with the review sheets, rather than a number here.
-            let anchor = PropAnchor::for_creature(creature);
+            let anchor = PropAnchor::facing(facing_right);
             let center_x = face_center_x + anchor.dx * display_scale as f32;
             let center_y = face_center_y + anchor.dy * display_scale as f32;
             let left = (center_x - face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
@@ -2418,6 +2459,57 @@ fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec<Vertex> {
             UiAtlasRenderer::menu_label(icon),
             placement.x + tab.x as f32 * art,
             placement.y + tab.y as f32 * art,
+            art,
+            false,
+            1.0,
+            drawable,
+        ));
+    }
+    if let Some(side) = menu.side {
+        vertices.extend(side_strip_quads(side, drawable));
+    }
+    vertices
+}
+
+/// A strip beside the menu: its plain tray, its cells, and the label of whichever is hovered,
+/// hung level with the menu's own labels.
+fn side_strip_quads(side: SideView<'_>, drawable: PhysicalSize<u32>) -> Vec<Vertex> {
+    let placement = side.placement;
+    let art = placement.art_scale;
+    let Some(frame) = UiAtlasRenderer::menu_frame_plain(side.layout.len() as u8) else {
+        return Vec::new();
+    };
+    let mut vertices = Vec::with_capacity(6 * (side.layout.len() + 2));
+    vertices.extend_from_slice(&ui_atlas_quad(
+        frame,
+        placement.x,
+        placement.y,
+        art,
+        false,
+        1.0,
+        drawable,
+    ));
+    for index in 0..side.layout.len() {
+        let (Some(cell), Some(icon)) = (side.layout.cell(index), side.layout.item(index)) else {
+            continue;
+        };
+        vertices.extend_from_slice(&ui_atlas_quad(
+            UiAtlasRenderer::menu_icon(icon, side.hovered == Some(index)),
+            placement.x + cell.x as f32 * art,
+            placement.y + cell.y as f32 * art,
+            art,
+            false,
+            1.0,
+            drawable,
+        ));
+    }
+    if let Some(hovered) = side.hovered
+        && let (Some(tab), Some(icon)) = (side.layout.label_tab(hovered), side.layout.item(hovered))
+    {
+        vertices.extend_from_slice(&ui_atlas_quad(
+            UiAtlasRenderer::menu_label(icon),
+            placement.x + tab.x as f32 * art,
+            placement.label_y,
             art,
             false,
             1.0,
@@ -2950,28 +3042,33 @@ mod tests {
         assert_eq!(trinket_frame(3), formiga_art::TRINKET_FRAME_GLINT);
     }
 
-    /// The village atlas is one texture with four cells in it, and both trees come from the
-    /// fourth. No two lots may sample the same quadrant, and none may sample off the sheet.
+    /// The village atlas is one texture: a cell for every house by day and another for it lit
+    /// after dark, and one tree cell both trees come from. No two lots may sample the same cell,
+    /// and none may sample off the sheet.
     #[test]
-    fn every_village_cell_including_the_tree_has_its_own_quadrant_of_the_one_atlas() {
-        let cells = [
-            village_cell(Some(formiga_core::DwellingKind::Main)),
-            village_cell(Some(formiga_core::DwellingKind::Cottage)),
-            village_cell(None),
-        ];
+    fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
+        let cell = SHELTER_SIZE as f32 / VILLAGE_ATLAS_SIZE as f32;
+        let mut cells: Vec<VillageCell> = (0..VILLAGE_HOUSES)
+            .flat_map(|slot| [false, true].map(|lit| VillageCell::House { slot, lit }))
+            .collect();
+        cells.push(VillageCell::Tree);
         let mut seen = std::collections::BTreeSet::new();
-        for (u, v) in cells {
-            assert!((0.0..=0.5).contains(&u) && (0.0..=0.5).contains(&v));
-            assert!(seen.insert(((u * 2.0) as u8, (v * 2.0) as u8)));
+        for kind in cells {
+            let (u, v) = village_cell(kind);
+            assert!(
+                (0.0..=1.0 - cell).contains(&u) && (0.0..=1.0 - cell).contains(&v),
+                "{kind:?} samples off the sheet"
+            );
+            assert!(
+                seen.insert(((u / cell).round() as u8, (v / cell).round() as u8)),
+                "{kind:?} shares a cell"
+            );
+            // By day everything is in the top half, which is all the Home page holds.
+            if !matches!(kind, VillageCell::House { lit: true, .. }) {
+                assert!(v + cell <= 0.5, "{kind:?} is not in the daylit half");
+            }
         }
-        // Three cells carry art: the colony house, a companion's house, and the tree the two
-        // ends of the village share. The fourth is deliberately empty.
-        assert_eq!(seen.len(), 3);
-        assert_eq!(
-            village_cell(None),
-            (0.5, 0.5),
-            "the trees share the last cell"
-        );
+        assert_eq!(seen.len(), VILLAGE_HOUSES * 2 + 1);
         assert!(
             tree_is_mirrored(formiga_core::TreeEnd::Inward)
                 && !tree_is_mirrored(formiga_core::TreeEnd::Outward),
@@ -2979,8 +3076,8 @@ mod tests {
         );
         assert_eq!(
             formiga_art::VILLAGE_ATLAS_SIZE,
-            SHELTER_SIZE * 2,
-            "four cells, one 128x128 texture"
+            SHELTER_SIZE * 4,
+            "sixteen cells, one 256x256 texture"
         );
     }
 
@@ -3080,15 +3177,21 @@ mod tests {
         let bake_time = started.elapsed();
         let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
         eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-        // 90 action frames and 34 gesture frames: ten columns by thirteen rows of 48px bodies,
+        // 90 action frames and 38 gesture frames: ten columns by thirteen rows of 48px bodies,
         // plus the unchanged face atlas. Raised deliberately from 1,437,696 bytes in 0.57.1,
-        // where the twelfth row was already full.
-        assert_eq!(total_animation_frames(), 124);
+        // where the twelfth row was already full. The habits' stretch took four of the six
+        // spare slots in the thirteenth row in 0.59.0, so it cost no bytes.
+        assert_eq!(total_animation_frames(), 128);
         assert_eq!(total_bytes, 1_529_856);
         // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
         // stops a creature costing more than a creature should, not what stops it having poses.
         assert!(total_bytes <= 4_500_000, "atlas uses {total_bytes} bytes");
-        assert!(total_bytes * 4 < 6_291_456, "four atlases exceed 6 MiB");
+        // A full colony of six: 9,179,136 bytes, held to the same 1.5 MiB a creature the budget
+        // for four once set.
+        assert!(
+            total_bytes * formiga_core::MAX_COLONY_CREATURES < 9_437_184,
+            "a full colony's atlases exceed 9 MiB"
+        );
         assert!(total_bytes < atlas.body_pixels.len() * 3);
         // The optional outline is baked into the same atlas: no extra texture, no extra frame,
         // and the same bytes. It touches only pixels the creature itself does not occupy.
@@ -3388,6 +3491,7 @@ mod tests {
             layout: &layout,
             placement,
             hovered,
+            side: None,
         };
         // Nothing hovered: the frame and its four cells, and no tab.
         assert_eq!(menu_quads(view(None), DRAWABLE).len(), 6 * 5);
@@ -3453,6 +3557,7 @@ mod tests {
                     layout: &layout,
                     placement,
                     hovered: Some(hovered),
+                    side: None,
                 },
                 DRAWABLE,
             );
@@ -3485,6 +3590,70 @@ mod tests {
         }
     }
 
+    /// The strip of moments beside a menu is its plain tray, one quad per cell, and the hovered
+    /// cell's label hung level with the menu's own labels; the menu's quads come first, unchanged.
+    #[test]
+    fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
+        let (layout, items, placement) = placed_menu(false);
+        let side_layout = MenuLayout::new(&[MenuIcon::Picnic, MenuIcon::Dance, MenuIcon::Nap]);
+        let usable = LocalRect {
+            x: 0.0,
+            y: 0.0,
+            width: DRAWABLE.width as f32,
+            height: DRAWABLE.height as f32,
+        };
+        let side = crate::creature_menu::place_beside(&side_layout, placement, usable);
+        let alone = menu_quads(
+            MenuView {
+                creature_id: 1,
+                items: &items,
+                layout: &layout,
+                placement,
+                hovered: None,
+                side: None,
+            },
+            DRAWABLE,
+        );
+        let quads = menu_quads(
+            MenuView {
+                creature_id: 1,
+                items: &items,
+                layout: &layout,
+                placement,
+                hovered: None,
+                side: Some(SideView {
+                    layout: &side_layout,
+                    placement: side,
+                    hovered: Some(1),
+                }),
+            },
+            DRAWABLE,
+        );
+        assert!(
+            bytemuck::cast_slice::<Vertex, u8>(&quads[..alone.len()])
+                == bytemuck::cast_slice::<Vertex, u8>(&alone),
+            "the menu's own quads are unchanged"
+        );
+        let strip = &quads[alone.len()..];
+        // The tray, three cells, and one label.
+        assert_eq!(strip.len(), 6 * 5);
+        let tray = UiAtlasRenderer::menu_frame_plain(3).expect("three cells have a tray");
+        let sprite = quad_sprite(&strip[..6]);
+        close(sprite.0, tray.x as f32, "tray sprite x");
+        close(sprite.1, tray.y as f32, "tray sprite y");
+        let (left, top, _, _) = quad_pixels(&strip[..6]);
+        close(left, side.x, "tray left");
+        close(top, side.y, "tray top");
+        let label = UiAtlasRenderer::menu_label(MenuIcon::Dance);
+        close(
+            quad_sprite(&strip[6 * 4..]).0,
+            label.x as f32,
+            "label sprite x",
+        );
+        let (_, label_top, _, _) = quad_pixels(&strip[6 * 4..]);
+        close(label_top, side.label_y, "label hangs level with the menu's");
+    }
+
     #[test]
     fn a_menu_under_a_creature_flips_only_its_frame() {
         let (layout, items, placement) = placed_menu(true);
@@ -3495,6 +3664,7 @@ mod tests {
                 layout: &layout,
                 placement,
                 hovered: Some(0),
+                side: None,
             },
             DRAWABLE,
         );

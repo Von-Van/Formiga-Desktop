@@ -39,15 +39,17 @@ fn every_ritual_uses_a_bounded_runtime_plan_and_existing_actions() {
                 .all(|participant| ActionKind::ALL.contains(&participant.ceremony_action))
         );
         seen.insert(plan.kind);
-        if seen.len() == RitualKind::ALL.len() - 1 {
+        if seen.len() == RitualKind::ALL.len() - 2 {
             break;
         }
     }
+    // Hatch day comes once a year, and a dance only when the village is asked for one.
     for expected in RitualKind::ALL {
-        if expected != RitualKind::HatchDay {
+        if !matches!(expected, RitualKind::HatchDay | RitualKind::Dance) {
             assert!(seen.contains(&expected), "did not schedule {expected:?}");
         }
     }
+    assert!(!seen.contains(&RitualKind::Dance), "a dance was scheduled");
 }
 
 #[test]

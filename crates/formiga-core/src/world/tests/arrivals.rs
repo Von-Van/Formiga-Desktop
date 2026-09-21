@@ -99,6 +99,33 @@ fn a_calendar_arrival_and_an_adult_mini_due_together_still_queue_up() {
     );
 }
 
+/// A companion from before recipes has none to pass on, so its mini is one of the originals too:
+/// its parent's family and palette, and a version 1 code that replays it exactly.
+#[test]
+fn an_original_companions_mini_is_drawn_the_original_way() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut world = World::new([4; 32], created, &desktop());
+    crate::apply_creature_design(&mut world.save.creatures[0], None);
+    world.tick(created + time::Duration::hours(1), 0.05, &desktop());
+    let parent = &world.save.creatures[0];
+    let mini = &world.save.creatures[1];
+    assert_eq!(mini.role.parent_id(), Some(parent.id));
+    assert_eq!(mini.appearance.design, None);
+    assert_eq!(mini.origin.design, None);
+    assert_eq!(parent.appearance.family, mini.appearance.family);
+    assert_eq!(
+        parent.appearance.palette_index,
+        mini.appearance.palette_index
+    );
+    let code = crate::encode_creature_seed(mini.origin);
+    let imported = World::from_shared_creature(
+        crate::decode_creature_seed(&code).unwrap(),
+        created,
+        &desktop(),
+    );
+    assert_eq!(imported.save.creatures[0].appearance, mini.appearance);
+}
+
 #[test]
 fn mini_is_related_but_not_identical() {
     let created = datetime!(2026-01-01 0:00 UTC);

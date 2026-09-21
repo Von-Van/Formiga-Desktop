@@ -1,4 +1,4 @@
-//! Motion is sampled only for the four actual riders, using native scan timestamps.
+//! Motion is sampled only for the colony's actual riders, using native scan timestamps.
 use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,7 +30,7 @@ struct Rider {
 
 #[derive(Default)]
 pub(super) struct RideMemory {
-    riders: [Option<Rider>; 4],
+    riders: [Option<Rider>; MAX_COLONY_CREATURES],
     sample_at: Option<f64>,
     clock: f64,
 }
@@ -59,7 +59,7 @@ impl RideMemory {
         self.sample_at = Some(at);
         let previous = self.riders;
         self.riders.fill(None);
-        for (index, c) in creatures.iter().take(4).enumerate() {
+        for (index, c) in creatures.iter().take(MAX_COLONY_CREATURES).enumerate() {
             let Some(window) =
                 desktop.windows.iter().take(MAX_TOPOLOGY_WINDOWS).find(|w| {
                     Some(w.key) == c.state.surface.window_key && w.visible && !w.minimized

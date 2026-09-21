@@ -28,6 +28,17 @@ const BUBBLE_SCENE: (u32, u32) = (40, 40);
 /// One menu scene, in art pixels: a strip, a label tab, and the head it points at. Wide enough
 /// that four of them span the same width as the fourteen bubble columns above.
 const MENU_SCENE: (u32, u32) = (140, 56);
+/// One moments scene: a colony menu with the strip of moments open beside it.
+const MOMENT_SCENE: (u32, u32) = (180, 56);
+/// Art pixels between a menu and the strip beside it, as the desktop places it.
+const SIDE_GAP: i32 = 2;
+
+/// The strips of moments shown open beside a menu, and which of their cells is hovered.
+const MOMENT_STRIPS: [(&[MenuIcon], usize); 3] = [
+    (&[MenuIcon::Picnic, MenuIcon::Dance, MenuIcon::Nap], 0),
+    (&[MenuIcon::Picnic, MenuIcon::Dance, MenuIcon::Nap], 2),
+    (&[MenuIcon::Stop, MenuIcon::Dance, MenuIcon::Nap], 0),
+];
 
 const GUTTER: u32 = 152;
 const HEADER: u32 = 30;
@@ -36,15 +47,24 @@ const BAND_GAP: u32 = 14;
 
 const SHEET_WIDTH: u32 = GUTTER + BubbleIcon::ALL.len() as u32 * BUBBLE_SCENE.0 * SCALE;
 
-/// The menus a creature can be offered. The first is a colony creature; the other two are the
-/// two shapes a visitor's menu takes.
-const MENUS: [(&str, [MenuIcon; 4]); 3] = [
+/// The menus a creature can be offered. The first two are a colony creature's, out on the desktop
+/// and at home with the houses out; the other two are the two shapes a visitor's menu takes.
+const MENUS: [(&str, [MenuIcon; 4]); 4] = [
     (
         "colony",
         [
             MenuIcon::Snack,
             MenuIcon::Toy,
             MenuIcon::Home,
+            MenuIcon::Profile,
+        ],
+    ),
+    (
+        "at home",
+        [
+            MenuIcon::Snack,
+            MenuIcon::Toy,
+            MenuIcon::Moment,
             MenuIcon::Profile,
         ],
     ),
@@ -83,8 +103,9 @@ pub fn run(path: PathBuf) -> Result<()> {
 
     let bubble_band = HEADER + NAME_ROW + GROWTHS.len() as u32 * BUBBLE_SCENE.1 * SCALE + BAND_GAP;
     let menu_band = HEADER + MENUS.len() as u32 * MENU_SCENE.1 * SCALE + BAND_GAP;
+    let moment_band = HEADER + MOMENT_SCENE.1 * SCALE + BAND_GAP;
     let small_band = HEADER + 116 + BAND_GAP;
-    let height = 8 + 3 * (bubble_band + menu_band + small_band) + 8;
+    let height = 8 + 3 * (bubble_band + menu_band + moment_band + small_band) + 8;
 
     let mut painter = Painter {
         sheet: Sheet::new(SHEET_WIDTH, height),
@@ -97,6 +118,9 @@ pub fn run(path: PathBuf) -> Result<()> {
     }
     for background in BACKGROUNDS {
         y = painter.menu_band(background, y);
+    }
+    for background in BACKGROUNDS {
+        y = painter.moment_band(background, y);
     }
     for background in BACKGROUNDS {
         y = painter.small_band(background, y);
@@ -161,6 +185,95 @@ impl Painter<'_> {
         grid_y + MENUS.len() as u32 * MENU_SCENE.1 * SCALE + BAND_GAP
     }
 
+    /// A colony menu at home with its strip of moments open beside it, a different cell of the
+    /// strip hovered in each scene: what the owner sees after choosing Moment.
+    fn moment_band(&mut self, background: Background, top: u32) -> u32 {
+        self.sheet
+            .header(top, &format!("moments 4x on {}", background.name()));
+        let y = top + HEADER;
+        for (index, (strip, hovered)) in MOMENT_STRIPS.into_iter().enumerate() {
+            let x = GUTTER + index as u32 * MOMENT_SCENE.0 * SCALE;
+            self.moment_scene(background, x, y, strip, hovered);
+        }
+        y + MOMENT_SCENE.1 * SCALE + BAND_GAP
+    }
+
+    fn moment_scene(
+        &mut self,
+        background: Background,
+        x: u32,
+        y: u32,
+        strip: &[MenuIcon],
+        hovered: usize,
+    ) {
+        let (width, height) = (MOMENT_SCENE.0 * SCALE, MOMENT_SCENE.1 * SCALE);
+        self.sheet.fill(x, y, width, height, background.base());
+        background.decorate(&mut self.sheet, x, y, width, height);
+
+        let items = MENUS[1].1;
+        let layout = MenuLayout::new(&items);
+        // The creature a third of the way in, so the strip beside its menu has room.
+        let centre = MOMENT_SCENE.0 as i32 / 3;
+        let strip_x = centre - layout.notch_x();
+        let head_top =
+            MENU_STRIP_HEIGHT as i32 + LABEL_TAB_GAP as i32 + LABEL_TAB_HEIGHT as i32 + 5;
+        let bounds = self.frame.alpha_bounds().unwrap_or((0, 0, 0, 0));
+        let frame_x = centre - (bounds.0 + bounds.2) as i32 / 2;
+        self.sheet.blit_canvas(
+            self.frame,
+            x as i32 + frame_x * SCALE as i32,
+            y as i32 + (head_top - bounds.1 as i32) * SCALE as i32,
+            SCALE,
+        );
+        let origin = (x as i32 + strip_x * SCALE as i32, y as i32 + SCALE as i32);
+        // Nothing on the menu itself is hovered: the cursor has moved on to the strip.
+        self.menu(&layout, &items, origin, usize::MAX, SCALE);
+        let side = MenuLayout::new(strip);
+        let side_origin = (
+            origin.0 + (layout.size().0 as i32 + SIDE_GAP) * SCALE as i32,
+            origin.1,
+        );
+        self.side_strip(&side, strip, side_origin, hovered, SCALE);
+    }
+
+    /// A strip beside a menu: its plain tray, its cells, and the hovered item's label tab hung
+    /// level with the menu's own.
+    fn side_strip(
+        &mut self,
+        layout: &MenuLayout,
+        items: &[MenuIcon],
+        origin: (i32, i32),
+        hovered: usize,
+        scale: u32,
+    ) {
+        let (x, y) = origin;
+        let tray =
+            UiAtlasRenderer::menu_frame_plain(items.len() as u8).expect("2..=4 cells have a tray");
+        self.sheet.blit(self.atlas, tray, x, y, scale);
+        for (index, icon) in items.iter().enumerate() {
+            let Some(cell) = layout.cell(index) else {
+                continue;
+            };
+            let rect = UiAtlasRenderer::menu_icon(*icon, index == hovered);
+            self.sheet.blit(
+                self.atlas,
+                rect,
+                x + cell.x * scale as i32,
+                y + cell.y * scale as i32,
+                scale,
+            );
+        }
+        if let (Some(tab), Some(icon)) = (layout.label_tab(hovered), layout.item(hovered)) {
+            self.sheet.blit(
+                self.atlas,
+                UiAtlasRenderer::menu_label(icon),
+                x + tab.x * scale as i32,
+                y + tab.y * scale as i32,
+                scale,
+            );
+        }
+    }
+
     /// The scale that decides everything: 2x, with the bubbles in a clear row and one creature
     /// beside them so their size against a head stays honest.
     fn small_band(&mut self, background: Background, top: u32) -> u32 {
@@ -179,15 +292,26 @@ impl Painter<'_> {
                 .blit(self.atlas, rect, x as i32, y as i32 + 8, SMALL_SCALE);
         }
 
-        // Each menu, first cell hovered, with its label.
+        // Each menu, first cell hovered, with its label, and the moments open beside the one a
+        // companion is offered at home.
         let menus_y = y as i32 + 8 + (BUBBLE_CELL.1 as i32 + 6) * SMALL_SCALE as i32;
-        for (index, (_, items)) in MENUS.into_iter().enumerate() {
+        let mut x = 12;
+        for (name, items) in MENUS {
             let layout = MenuLayout::new(&items);
-            let x = 12 + index as u32 * (layout.size().0 + 12) * SMALL_SCALE;
             self.menu(&layout, &items, (x as i32, menus_y), 0, SMALL_SCALE);
+            x += (layout.size().0 + 12) * SMALL_SCALE;
+            if name == "at home" {
+                let (strip, _) = MOMENT_STRIPS[0];
+                let side = MenuLayout::new(strip);
+                let side_x = x as i32 - (12 - SIDE_GAP) * SMALL_SCALE as i32;
+                self.side_strip(&side, strip, (side_x, menus_y), 1, SMALL_SCALE);
+                x = side_x as u32 + (side.size().0 + 12) * SMALL_SCALE;
+            }
         }
 
-        let creature_x = 24 + BubbleIcon::ALL.len() as u32 * (BUBBLE_CELL.0 + 2) * SMALL_SCALE;
+        // Past whichever runs further, the row of bubbles or the row of menus.
+        let creature_x =
+            (24 + BubbleIcon::ALL.len() as u32 * (BUBBLE_CELL.0 + 2) * SMALL_SCALE).max(x + 12);
         let bounds = self.frame.alpha_bounds().unwrap_or((0, 0, 0, 0));
         self.sheet.blit_canvas(
             self.frame,
@@ -609,5 +733,23 @@ mod tests {
         assert!(head_top < MENU_SCENE.1, "the head must fit under the strip");
         // And a bubble cell fits above a head in a bubble scene.
         assert!(BUBBLE_CELL.0 <= BUBBLE_SCENE.0 && BUBBLE_CELL.1 < BUBBLE_SCENE.1);
+        // A menu and the strip beside it both fit a moments scene, with the creature a third in.
+        for (strip, hovered) in MOMENT_STRIPS {
+            let menu = MenuLayout::new(&MENUS[1].1);
+            let side = MenuLayout::new(strip);
+            assert!(hovered < side.len());
+            let right = MOMENT_SCENE.0 as i32 / 3 - menu.notch_x()
+                + menu.size().0 as i32
+                + SIDE_GAP
+                + side.size().0 as i32;
+            assert!(
+                right <= MOMENT_SCENE.0 as i32,
+                "the strip must fit its scene"
+            );
+        }
+        assert!(
+            GUTTER + MOMENT_STRIPS.len() as u32 * MOMENT_SCENE.0 * SCALE <= SHEET_WIDTH,
+            "the moments scenes fit the sheet"
+        );
     }
 }

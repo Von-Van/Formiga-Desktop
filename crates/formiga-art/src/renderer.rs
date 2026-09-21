@@ -2,9 +2,9 @@
 use crate::PALETTES;
 use crate::{Canvas, Palette, Rgba};
 use formiga_core::{
-    ActionKind, AppearanceGenome, BodyFamily, BrowStyle, CheekStyle, Creature, CursorSnapshot,
-    EffectMotif, EyeShape, ForelimbStyle, Gesture, HeadAppendageStyle, HighlightStyle,
-    LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose, TailStyle,
+    ActionKind, AppearanceGenome, BodyFamily, BrowStyle, Celebration, CheekStyle, Creature,
+    CursorSnapshot, EffectMotif, EyeShape, ForelimbStyle, Gesture, Habit, HeadAppendageStyle,
+    HighlightStyle, LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose, TailStyle,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -227,11 +227,19 @@ impl AnimationSpec {
             // slow enough that the tilt and the ear twitch read as one creature paying attention
             // rather than as a body doing something.
             Gesture::Watch => (6, 3),
+            // One long breath: a second to get all the way up, then held at the top.
+            Gesture::Stretch => (4, 3),
         };
         Self {
             frames,
             fps,
-            playback: PlaybackMode::Loop,
+            // A stretch is done once, from the moment the habit starts, and held until it lets
+            // go; every other gesture loops for as long as the moment asks for it.
+            playback: if gesture == Gesture::Stretch {
+                PlaybackMode::Hold
+            } else {
+                PlaybackMode::Loop
+            },
         }
     }
 
@@ -319,6 +327,86 @@ impl MotionSignature {
         ((advanced as u32).wrapping_add(u32::from(self.phase[group])) % u32::from(spec.frames))
             as u8
     }
+}
+
+/// What a creature's body shows this frame, with its own ways of doing things laid over the
+/// action: which clip, which frame of it, and which way it faces. The overlay, the hit mask and
+/// the review sheets all draw this, so a twirl or a stretch looks, and is grabbed, the same
+/// everywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BodyPresentation {
+    pub clip: BodyClip,
+    pub frame: u8,
+    pub facing_right: bool,
+}
+
+/// A twirl turns the creature round twice a second, with its hop.
+const TWIRL_TURN_SECS: f32 = 0.25;
+/// Circling before a nap turns it round a little slower, stepping as it goes.
+const CIRCLE_TURN_SECS: f32 = 0.4;
+
+impl BodyPresentation {
+    pub fn for_creature(creature: &Creature) -> Self {
+        let state = &creature.state;
+        let motion = MotionSignature::for_creature(creature);
+        let shown = |clip: BodyClip, elapsed: f32| Self {
+            clip,
+            frame: motion.frame(clip, elapsed),
+            facing_right: state.facing_right,
+        };
+        if let Some(gesture) = state.attention.and_then(|pose| pose.gesture) {
+            if gesture != Gesture::Cheer {
+                return shown(BodyClip::Gesture(gesture), state.action_elapsed);
+            }
+            // Celebrating is done the creature's own way.
+            let celebration = Celebration::for_creature(creature);
+            let mut body = shown(
+                BodyClip::Gesture(celebration.gesture()),
+                state.action_elapsed,
+            );
+            if celebration == Celebration::Twirl {
+                body.facing_right ^= turned(state.action_elapsed, TWIRL_TURN_SECS);
+            }
+            return body;
+        }
+        let Some((habit, action, into)) = flourish_shown(creature) else {
+            return shown(BodyClip::Action(state.action), state.action_elapsed);
+        };
+        match habit {
+            // The snack or the drink held up in front before the first bite or sip: the opening
+            // frame of the meal, kept while the creature looks it over.
+            Habit::LooksFoodOver => Self {
+                clip: BodyClip::Action(action),
+                frame: 0,
+                facing_right: state.facing_right,
+            },
+            Habit::StretchesBeforeNaps => shown(BodyClip::Gesture(Gesture::Stretch), into),
+            // Stepping round on the spot, turning as it goes.
+            Habit::CirclesBeforeNaps => {
+                let mut body = shown(BodyClip::Action(ActionKind::Traverse), into);
+                body.facing_right ^= turned(into, CIRCLE_TURN_SECS);
+                body
+            }
+            Habit::WavesHello => shown(BodyClip::Gesture(Gesture::Reach), into),
+            Habit::PlayBows => shown(BodyClip::Gesture(Gesture::Crouch), into),
+        }
+    }
+}
+
+/// The habit a creature is doing right now, the action it opens and how far into it the creature
+/// is. Anything its attention is on comes first, so a flourish never shows under a scene.
+fn flourish_shown(creature: &Creature) -> Option<(Habit, ActionKind, f32)> {
+    let state = &creature.state;
+    if state.attention.is_some() {
+        return None;
+    }
+    let flourish = state.flourish?;
+    Some((flourish.habit, flourish.action, flourish.progress(state)?))
+}
+
+/// Whether something turning round every `period` seconds faces the other way `elapsed` in.
+fn turned(elapsed: f32, period: f32) -> bool {
+    (elapsed.max(0.0) / period) as u32 % 2 == 1
 }
 
 /// Where a carried thing rides, relative to the creature's own face anchor, in art pixels.
@@ -691,6 +779,13 @@ impl Pose {
     fn new(genome: &AppearanceGenome, clip: BodyClip, frame: u8, reduce_motion: bool) -> Self {
         let action = match clip {
             BodyClip::Action(action) => action,
+            BodyClip::Gesture(Gesture::Stretch) if stretches_long(genome) => {
+                let mut pose = Self::long_stretch(frame);
+                if reduce_motion {
+                    pose.calm();
+                }
+                return pose;
+            }
             BodyClip::Gesture(gesture) => {
                 let mut pose = Self::for_gesture(gesture, frame);
                 if reduce_motion {
@@ -985,6 +1080,38 @@ impl Pose {
                 // Ears up the whole time, with a single flick on the fourth frame.
                 ear_perk: [2, 2, 2, 1, 2, 2][slow],
             },
+            // Up onto its toes and drawn up tall as the paws go overhead, rocked back a touch at
+            // the top and held there. Played once rather than looped, so the last frame is the
+            // top of the stretch, and the nap it opens is what lets it go.
+            Gesture::Stretch => {
+                let rise = [0, 1, 2, 2][usize::from(frame.min(3))];
+                Self {
+                    squash_x: -1,
+                    squash_y: rise,
+                    play_lift: i32::from(frame >= 1),
+                    appendage_lift: 1 + rise,
+                    tail_sway: i32::from(frame >= 2),
+                    lean: -i32::from(frame >= 2),
+                    ear_perk: i32::from(frame >= 2),
+                    ..Self::default()
+                }
+            }
+        }
+    }
+
+    /// A four-footed stretch: drawn out long with every paw planted and the head carried well
+    /// forward, the way a cat stretches, rather than standing up on its hind legs. It stays on
+    /// its feet, since sinking down would read as the nap already begun.
+    fn long_stretch(frame: u8) -> Self {
+        let reach = [0, 1, 2, 2][usize::from(frame.min(3))];
+        Self {
+            squash_x: reach,
+            squash_y: -i32::from(frame >= 2),
+            appendage_lift: -1,
+            tail_sway: 1 + i32::from(frame >= 2),
+            lean: 1 + reach,
+            ear_perk: i32::from(frame >= 2),
+            ..Self::default()
         }
     }
 
@@ -1260,11 +1387,22 @@ fn draw_face(
     state: FaceRenderState,
 ) {
     let mut face = genome.face;
-    if genome.design.is_some() {
-        face.eye_size = 2;
-        face.eye_spacing = 6;
+    if let Some(design) = genome.design {
+        // A recipe sets the eyes; pupils, brows, cheeks, and mouth stay the creature's own. The
+        // classic arrangements are the originals' eyes: close-set pairs that run together into a
+        // mask or a visor, and smaller or taller pairs held apart.
+        let (eye_shape, eye_size, eye_spacing) = match design.classic.face {
+            1 => (EyeShape::Round, 2, 4),
+            2 => (EyeShape::SoftSquare, 2, 4),
+            3 => (EyeShape::Round, 1, 6),
+            4 => (EyeShape::Tall, 2, 6),
+            5 => (EyeShape::SoftSquare, 1, 6),
+            _ => (EyeShape::Round, 2, 6),
+        };
+        face.eye_shape = eye_shape;
+        face.eye_size = eye_size;
+        face.eye_spacing = eye_spacing;
         face.vertical_offset = -1;
-        face.eye_shape = EyeShape::Round;
     }
     let spacing = (face.eye_spacing as i32 / 2).clamp(2, 3);
     let y = center_y + face.vertical_offset as i32;
@@ -2021,6 +2159,11 @@ fn gesture_limb_targets(
                 _ => offset_pair(left, right, ((-length, 0), (length, 0))),
             }
         }
+        // Both paws go up and in over the head, higher each frame until they are at full stretch.
+        Gesture::Stretch => {
+            let up = [3, 5, 7, 7][usize::from(frame.min(3))];
+            offset_pair(left, right, ((1, -length - up), (-1, -length - up)))
+        }
         // The far paw stays where it rests and the near one is gathered up in front of the chest,
         // curled rather than stretched: half the span a reach uses, and nowhere near the face.
         // Both limbs gathered in against the chest and held there: a body drawn together around
@@ -2030,6 +2173,16 @@ fn gesture_limb_targets(
             offset_pair(left, right, ((2, 3 - curl), (-1, 2 - curl)))
         }
     }
+}
+
+/// Whether a creature stretches on all fours rather than standing up to do it: the original
+/// soft quadrupeds, and the long body plan among the modular ones.
+fn stretches_long(genome: &AppearanceGenome) -> bool {
+    genome
+        .design
+        .map_or(genome.family == BodyFamily::SoftQuadruped, |design| {
+            design.body == formiga_core::BodyPlan::Long
+        })
 }
 
 fn offset_pair(
@@ -2902,7 +3055,12 @@ fn draw_gesture_effects(
         }
         // Nothing floats over a watching creature. A mark here would be the creature telling the
         // viewer it is interested; the pose has to say that by itself.
-        Gesture::Cover | Gesture::Crouch | Gesture::Balance | Gesture::Reach | Gesture::Watch => {}
+        Gesture::Cover
+        | Gesture::Crouch
+        | Gesture::Balance
+        | Gesture::Reach
+        | Gesture::Watch
+        | Gesture::Stretch => {}
     }
 }
 
@@ -3047,6 +3205,13 @@ fn default_eyelids(action: ActionKind, frame: u8) -> EyelidPose {
 
 fn resolve_expression(creature: &Creature) -> ExpressionKind {
     let drives = &creature.state.drives;
+    if let Some((habit, ..)) = flourish_shown(creature) {
+        return match habit {
+            Habit::LooksFoodOver => ExpressionKind::Curious,
+            Habit::StretchesBeforeNaps | Habit::CirclesBeforeNaps => ExpressionKind::Content,
+            Habit::WavesHello | Habit::PlayBows => ExpressionKind::Joy,
+        };
+    }
     if creature.state.action == ActionKind::Sleep {
         return ExpressionKind::Sleepy;
     }
@@ -3155,7 +3320,13 @@ fn resolve_eyelids(creature: &Creature) -> EyelidPose {
     }) {
         return EyelidPose::Closed;
     }
-    if creature.state.action == ActionKind::Sleep {
+    let flourish = flourish_shown(creature);
+    // Screwed shut at the top of a stretch, as a stretch is.
+    if flourish.is_some_and(|(habit, _, into)| habit == Habit::StretchesBeforeNaps && into >= 0.6) {
+        return EyelidPose::Closed;
+    }
+    // Not asleep yet while it is still getting ready to be.
+    if creature.state.action == ActionKind::Sleep && flourish.is_none() {
         return EyelidPose::Closed;
     }
     if matches!(resolve_expression(creature), ExpressionKind::Startled) {
@@ -3195,6 +3366,15 @@ fn resolve_gaze(
             axis_direction(pose.target.x - creature.state.position.x, 10.0),
             axis_direction(pose.target.y - (creature.state.position.y - 28.0), 10.0),
         );
+    }
+    let forward = if creature.state.facing_right { 1 } else { -1 };
+    // Looking the snack over: down at it, closer, then up and along it.
+    if let Some((Habit::LooksFoodOver, _, into)) = flourish_shown(creature) {
+        return match into {
+            into if into < 0.55 => GazeDirection::new(forward, 1),
+            into if into < 1.1 => GazeDirection::new(0, 1),
+            _ => GazeDirection::new(forward, 0),
+        };
     }
     match creature.state.action {
         ActionKind::InspectScreen => {
@@ -3597,6 +3777,59 @@ mod tests {
         }
     }
 
+    /// Masks and visors run the two eyes together, so this is where the two-eye grammar is most
+    /// at risk: every arrangement still shows an eye on each side in every expression, and no two
+    /// arrangements draw the same face.
+    #[test]
+    fn every_classic_face_keeps_two_readable_eyes_and_its_own_arrangement() {
+        use std::collections::BTreeSet;
+
+        let mut genome = World::preview_adult(
+            [23; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        )
+        .appearance;
+        let base = formiga_core::CreatureDesign::modular([23; 32], 0, None);
+        let mut neutral = BTreeSet::new();
+        for face in 0..=5 {
+            genome.design = Some(formiga_core::CreatureDesign {
+                classic: formiga_core::ClassicParts {
+                    face,
+                    ..Default::default()
+                },
+                ..base
+            });
+            let palette = crate::palette_for(&genome);
+            for expression in ExpressionKind::ALL {
+                for eyelids in EyelidPose::ALL {
+                    let rendered = CreatureRenderer::render_face_frame(
+                        &genome,
+                        FaceRenderState {
+                            expression,
+                            eyelids,
+                            gaze: GazeDirection::default(),
+                        },
+                    );
+                    let side = |left: bool| {
+                        rendered.pixels().iter().enumerate().any(|(index, pixel)| {
+                            (index as u32 % FACE_FRAME_SIZE < FACE_FRAME_SIZE / 2) == left
+                                && *pixel == palette.eye
+                        })
+                    };
+                    assert!(
+                        side(true) && side(false),
+                        "face {face} {expression:?} {eyelids:?}"
+                    );
+                    if expression == ExpressionKind::Neutral && eyelids == EyelidPose::Open {
+                        neutral.insert(Sha256::digest(rendered.rgba_bytes()).to_vec());
+                    }
+                }
+            }
+        }
+        assert_eq!(neutral.len(), 6, "every eye arrangement is its own");
+    }
+
     #[test]
     fn all_body_anchors_keep_the_layered_face_inside_the_sprite() {
         let half_face = FACE_FRAME_SIZE as i32 / 2;
@@ -3977,12 +4210,35 @@ mod tests {
         };
         let mut creature =
             World::preview_adult([61; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
-        let mut design = creature
-            .appearance
-            .design
-            .expect("every generated creature carries a design");
-        for plan in formiga_core::BodyPlan::ALL {
+        let base = formiga_core::CreatureDesign::modular([61; 32], 0, None);
+        // Plain modular parts, then the classic parts that reach furthest: stick legs, a visor or
+        // tall eyes, antennae or sprouts, and both classic tails.
+        let classics = [
+            formiga_core::ClassicParts::default(),
+            formiga_core::ClassicParts {
+                coat: 1,
+                face: 2,
+                limbs: 2,
+                crown: 1,
+                pattern: 3,
+                tail: 1,
+            },
+            formiga_core::ClassicParts {
+                coat: 1,
+                face: 4,
+                limbs: 1,
+                crown: 2,
+                pattern: 1,
+                tail: 2,
+            },
+        ];
+        for (plan, classic) in formiga_core::BodyPlan::ALL
+            .into_iter()
+            .flat_map(|plan| classics.map(|classic| (plan, classic)))
+        {
+            let mut design = base;
             design.body = plan;
+            design.classic = classic;
             creature.appearance.design = Some(design);
             // An adult sits at the top of the range and the smallest mini at the bottom, so these
             // four values bracket every `logical_size` a colony can hold.
@@ -4023,7 +4279,9 @@ mod tests {
                             .canvas
                             .alpha_bounds()
                             .expect("a body is never rendered empty");
-                        let label = format!("{plan:?} size {logical_size} {clip:?} frame {frame}");
+                        let label = format!(
+                            "{plan:?} {classic:?} size {logical_size} {clip:?} frame {frame}"
+                        );
                         // Mirroring sends the anchor to `FRAME_SIZE - anchor.x` and the silhouette
                         // to `FRAME_SIZE - 1 - x`, so both facings are measured together.
                         for anchor_x in [
@@ -4324,12 +4582,18 @@ mod tests {
         .into_iter()
         .map(|family| (format!("{family:?}"), genome(family)))
         .collect();
-        for plan in formiga_core::BodyPlan::ALL {
-            let mut appearance = preview.appearance.clone();
-            let mut design = appearance.design.expect("preview adults are modular");
-            design.body = plan;
-            appearance.design = Some(design);
-            bodies.push((format!("{plan:?}"), appearance));
+        for limbs in 0..=2 {
+            for plan in formiga_core::BodyPlan::ALL {
+                let mut appearance = preview.appearance.clone();
+                let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+                design.body = plan;
+                design.classic = formiga_core::ClassicParts {
+                    limbs,
+                    ..Default::default()
+                };
+                appearance.design = Some(design);
+                bodies.push((format!("{plan:?} limbs {limbs}"), appearance));
+            }
         }
         for (body, genome) in &bodies {
             // The pose a gesture most often stands in for is the plain inspecting one.
@@ -4338,7 +4602,14 @@ mod tests {
             let mut poses: Vec<(Gesture, Canvas)> = Vec::new();
             for gesture in Gesture::ALL {
                 let spec = AnimationSpec::for_clip(gesture);
-                assert_eq!(spec.playback, PlaybackMode::Loop, "{gesture:?}");
+                // A scene holds a pose for as long as the moment lasts. A habit's stretch is done
+                // once and held at the top until the nap it opens takes over.
+                let playback = if gesture.in_scenes() {
+                    PlaybackMode::Loop
+                } else {
+                    PlaybackMode::Hold
+                };
+                assert_eq!(spec.playback, playback, "{gesture:?}");
                 assert!(spec.frames >= 2, "{gesture:?} is a pose that moves");
                 let frames: Vec<_> = (0..spec.frames)
                     .map(|frame| CreatureRenderer::render_body_frame(genome, gesture, frame, false))
@@ -4425,5 +4696,161 @@ mod tests {
         for clip in &baked {
             assert_eq!(clip.body(), *clip, "{clip:?} is baked under its own name");
         }
+    }
+
+    fn celebrating(celebration: formiga_core::Celebration) -> Creature {
+        let mut creature = World::preview_adult(
+            [37; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        for salt in 0..=u8::MAX {
+            creature.behavior_seed[31] = salt;
+            if formiga_core::Celebration::for_creature(&creature) == celebration {
+                return creature;
+            }
+        }
+        unreachable!("every celebration turns up within 256 seeds")
+    }
+
+    /// A scene asks for a cheer; each creature answers it its own way. Nothing else a scene asks
+    /// for is changed.
+    #[test]
+    fn a_cheer_is_the_creatures_own_celebration() {
+        use formiga_core::Celebration;
+        for celebration in Celebration::ALL {
+            let mut creature = celebrating(celebration);
+            creature.state.action = ActionKind::InspectScreen;
+            creature.state.facing_right = true;
+            let mut pose = formiga_core::AttentionPose {
+                target: creature.state.position,
+                emotion: formiga_core::AttentionEmotion::Enjoying,
+                hanging: 0.0,
+                gesture: Some(Gesture::Cheer),
+            };
+            creature.state.attention = Some(pose);
+            let facings: Vec<bool> = [0.1, 0.35, 0.6, 0.85]
+                .into_iter()
+                .map(|at| {
+                    creature.state.action_elapsed = at;
+                    let body = BodyPresentation::for_creature(&creature);
+                    assert_eq!(body.clip, BodyClip::Gesture(celebration.gesture()));
+                    body.facing_right
+                })
+                .collect();
+            if celebration == Celebration::Twirl {
+                assert_eq!(facings, [true, false, true, false], "a twirl turns");
+            } else {
+                assert!(facings.iter().all(|facing| *facing), "{celebration:?}");
+            }
+            pose.gesture = Some(Gesture::Gasp);
+            creature.state.attention = Some(pose);
+            let body = BodyPresentation::for_creature(&creature);
+            assert_eq!(body.clip, BodyClip::Gesture(Gesture::Gasp));
+            assert!(body.facing_right);
+        }
+    }
+
+    /// A habit is drawn while it is being done and not a moment longer, and never under
+    /// something the creature's attention is on.
+    #[test]
+    fn a_habit_is_drawn_only_while_it_is_being_done() {
+        use formiga_core::{Flourish, Habit};
+        let mut creature = World::preview_adult(
+            [41; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        creature.state.facing_right = true;
+        creature.state.attention = None;
+        let doing = |creature: &mut Creature, habit: Habit, action: ActionKind, at: f32| {
+            creature.state.action = action;
+            creature.state.action_elapsed = at;
+            creature.state.flourish = Some(Flourish {
+                habit,
+                action,
+                started_at: Some(0.0),
+            });
+            BodyPresentation::for_creature(creature)
+        };
+        // A stretch is played once from its first frame and held at the top.
+        let stretch = |creature: &mut Creature, at| {
+            doing(creature, Habit::StretchesBeforeNaps, ActionKind::Sleep, at)
+        };
+        assert_eq!(
+            stretch(&mut creature, 0.1).clip,
+            BodyClip::Gesture(Gesture::Stretch)
+        );
+        assert_eq!(stretch(&mut creature, 0.1).frame, 0);
+        assert_eq!(stretch(&mut creature, 1.2).frame, 3);
+        assert_eq!(stretch(&mut creature, 1.45).frame, 3);
+        let face =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        assert_eq!(face.eyelids, EyelidPose::Closed, "eyes shut at the top");
+        // Then the nap it opened.
+        assert_eq!(
+            stretch(&mut creature, 1.6).clip,
+            BodyClip::Action(ActionKind::Sleep)
+        );
+        // Turning round steps on the spot and faces each way in turn, eyes open until it lies
+        // down.
+        let turns: Vec<_> = [0.1, 0.5, 0.9, 1.3]
+            .into_iter()
+            .map(|at| {
+                doing(
+                    &mut creature,
+                    Habit::CirclesBeforeNaps,
+                    ActionKind::Sleep,
+                    at,
+                )
+            })
+            .collect();
+        assert!(
+            turns
+                .iter()
+                .all(|body| body.clip == BodyClip::Action(ActionKind::Traverse))
+        );
+        assert_eq!(
+            turns
+                .iter()
+                .map(|body| body.facing_right)
+                .collect::<Vec<_>>(),
+            [true, false, true, false]
+        );
+        let face =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        assert_ne!(face.eyelids, EyelidPose::Closed);
+        assert_ne!(face.expression, ExpressionKind::Sleepy);
+        // Looking a snack over holds it up in front, with an eye on it.
+        for at in [0.1, 0.7, 1.4] {
+            let body = doing(&mut creature, Habit::LooksFoodOver, ActionKind::Eat, at);
+            assert_eq!(body.clip, BodyClip::Action(ActionKind::Eat));
+            assert_eq!(body.frame, 0);
+        }
+        doing(&mut creature, Habit::LooksFoodOver, ActionKind::Drink, 0.2);
+        let face =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        assert_eq!(face.expression, ExpressionKind::Curious);
+        assert_eq!(face.gaze.y, 1, "looking down at it");
+        assert_eq!(
+            doing(&mut creature, Habit::WavesHello, ActionKind::Greet, 0.2).clip,
+            BodyClip::Gesture(Gesture::Reach)
+        );
+        assert_eq!(
+            doing(&mut creature, Habit::PlayBows, ActionKind::SocialPlay, 0.2).clip,
+            BodyClip::Gesture(Gesture::Crouch)
+        );
+        // Something the creature is paying attention to comes first.
+        doing(&mut creature, Habit::PlayBows, ActionKind::SocialPlay, 0.2);
+        creature.state.attention = Some(formiga_core::AttentionPose {
+            target: creature.state.position,
+            emotion: formiga_core::AttentionEmotion::Curious,
+            hanging: 0.0,
+            gesture: None,
+        });
+        assert_eq!(
+            BodyPresentation::for_creature(&creature).clip,
+            BodyClip::Action(ActionKind::SocialPlay)
+        );
     }
 }

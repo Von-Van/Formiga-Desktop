@@ -50,14 +50,13 @@ pub(super) fn generate_mini_for_parent(
             .clamp(1, 3)
     };
     let mut mini = if imported_root {
+        // A parent without a recipe is one of the original companions, and its mini is too.
         let shared = SharedCreatureSeed {
             source_colony_seed: colony_seed,
             source_generation: generation,
-            design: Some(crate::CreatureDesign::generated(
-                colony_seed,
-                generation,
-                parent.appearance.design,
-            )),
+            design: parent.appearance.design.map(|design| {
+                crate::CreatureDesign::generated(colony_seed, generation, Some(design))
+            }),
         };
         let mut creature = generate_source_creature(shared, now, desktop);
         creature.name = default_creature_name(colony_seed, generation, &existing_names);
@@ -99,6 +98,11 @@ pub(super) fn generate_new_creature(
         existing_names,
         parent,
     );
+    // An original companion has no recipe to pass on, so its mini keeps the genes it inherited
+    // from it rather than taking an unrelated recipe of its own.
+    if parent.is_some_and(|parent| parent.appearance.design.is_none()) {
+        return creature;
+    }
     let design = CreatureDesign::generated(
         colony_seed,
         generation,
@@ -302,6 +306,7 @@ fn generate_creature(
         memory: CreatureMemory::default(),
         tendencies: LearnedTendencies::default(),
         routines: RoutineTable::default(),
+        leaning: RoamingLeaning::default(),
         state: CreatureState {
             attention: None,
             position,
@@ -320,6 +325,7 @@ fn generate_creature(
             cursor_cooldown: 0.0,
             activity_variant: 0,
             arrival_delay_secs: 0.0,
+            flourish: None,
         },
     }
 }

@@ -1,7 +1,8 @@
 //! Test-only visual review of actual world attention and the production composited sprite path.
 use formiga_art::{
-    AnimationSpec, BodyClip, Canvas, CreatureRenderer, ExpressionKind, FACE_FRAME_SIZE, FRAME_SIZE,
-    FramePlacement, GazeDirection, MotionSignature, PixelPoint, PropAnchor, Rgba,
+    AnimationSpec, BodyClip, BodyPresentation, Canvas, CreatureRenderer, ExpressionKind,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, PixelPoint,
+    PropAnchor, Rgba,
 };
 use formiga_core::*;
 use time::{Duration, macros::datetime};
@@ -143,15 +144,7 @@ fn riders_and_spectators_render_notice_reaction_and_relief() {
             if step == 58 && index != 1 {
                 assert_eq!(face.expression, ExpressionKind::Content);
             }
-            let frame = CreatureRenderer::render_composited_frame(
-                &c.appearance,
-                BodyClip::for_creature(c),
-                MotionSignature::for_creature(c)
-                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
-                c.state.facing_right,
-                false,
-                face,
-            );
+            let frame = overlay_frame(c, face);
             assert!(frame.alpha_bounds().is_some());
             let x = index as i32 * 192;
             let y = row * 192;
@@ -254,15 +247,7 @@ fn new_window_inspection_renders_notice_approach_and_a_spaced_audience() {
         }
         for c in &world.save.creatures {
             let face = CreatureRenderer::resolve_face_state(c, desktop.cursor, false);
-            let frame = CreatureRenderer::render_composited_frame(
-                &c.appearance,
-                BodyClip::for_creature(c),
-                MotionSignature::for_creature(c)
-                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
-                c.state.facing_right,
-                false,
-                face,
-            );
+            let frame = overlay_frame(c, face);
             let placement = formiga_art::FramePlacement::for_action(
                 c.state.action,
                 CreatureRenderer::resting_baseline(&c.appearance, false),
@@ -441,13 +426,8 @@ fn a_watched_window_is_looked_at_on_every_body_plan() {
             }
             let mut drawn = staged.clone();
             drawn.appearance = body.appearance.clone();
-            let clip = BodyClip::for_creature(&drawn);
-            let frame = CreatureRenderer::render_composited_frame(
-                &drawn.appearance,
-                clip,
-                MotionSignature::for_creature(&drawn).frame(clip, drawn.state.action_elapsed),
-                drawn.state.facing_right,
-                false,
+            let frame = overlay_frame(
+                &drawn,
                 CreatureRenderer::resolve_face_state(&drawn, desktop.cursor, false),
             );
             let placement = FramePlacement::for_creature(
@@ -555,15 +535,7 @@ fn cursor_and_monitor_attention_render_distinct_notice_and_movement() {
                     }
                 );
             }
-            let frame = CreatureRenderer::render_composited_frame(
-                &c.appearance,
-                BodyClip::for_creature(c),
-                MotionSignature::for_creature(c)
-                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
-                c.state.facing_right,
-                false,
-                face,
-            );
+            let frame = overlay_frame(c, face);
             let x = case * 192;
             let y = row as i32 * 192;
             sheet.fill_rect(x + 8, y + 8, 176, 176, Rgba::new(222, 234, 213, 255));
@@ -660,15 +632,7 @@ fn ledge_peeking_refusal_and_jump_outcomes_render_with_their_audience() {
             }
             for c in &world.save.creatures {
                 let face = CreatureRenderer::resolve_face_state(c, desktop.cursor, false);
-                let frame = CreatureRenderer::render_composited_frame(
-                    &c.appearance,
-                    BodyClip::for_creature(c),
-                    MotionSignature::for_creature(c)
-                        .frame(BodyClip::for_creature(c), c.state.action_elapsed),
-                    c.state.facing_right,
-                    false,
-                    face,
-                );
+                let frame = overlay_frame(c, face);
                 let bx = x + (c.state.position.x - 500.0) as i32 - 24;
                 let by = y + (c.state.position.y - 500.0) as i32 - 48
                     + CreatureRenderer::resting_baseline(&c.appearance, false) as i32;
@@ -717,15 +681,7 @@ fn paint_scene(
     }
     for c in &world.save.creatures {
         let face = CreatureRenderer::resolve_face_state(c, desktop.cursor, false);
-        let frame = CreatureRenderer::render_composited_frame(
-            &c.appearance,
-            BodyClip::for_creature(c),
-            MotionSignature::for_creature(c)
-                .frame(BodyClip::for_creature(c), c.state.action_elapsed),
-            c.state.facing_right,
-            false,
-            face,
-        );
+        let frame = overlay_frame(c, face);
         let placement = FramePlacement::for_creature(
             c,
             CreatureRenderer::resting_baseline(&c.appearance, false),
@@ -1008,15 +964,7 @@ fn spectator_reactions_read_without_labels() {
         // Three watchers at 4x, so the face tells the story without a caption.
         for (index, c) in w.save.creatures.iter().enumerate().skip(1) {
             let face = CreatureRenderer::resolve_face_state(c, d.cursor, false);
-            let frame = CreatureRenderer::render_composited_frame(
-                &c.appearance,
-                BodyClip::for_creature(c),
-                MotionSignature::for_creature(c)
-                    .frame(BodyClip::for_creature(c), c.state.action_elapsed),
-                c.state.facing_right,
-                false,
-                face,
-            );
+            let frame = overlay_frame(c, face);
             let x = col as i32 * 432 + (index as i32 - 1) * 144;
             sheet.fill_rect(x + 4, 4, 136, 568, Rgba::new(222, 234, 213, 255));
             for py in 0..48 {
@@ -1181,6 +1129,20 @@ fn overlay_sprite(
         }
     }
     (body.canvas, body.face_anchor)
+}
+
+/// A companion exactly as the overlay draws it at this moment: the clip, frame and facing it
+/// presents, its own celebration or a habit it is doing included, under the face given.
+fn overlay_frame(creature: &Creature, face: FaceRenderState) -> Canvas {
+    let body = BodyPresentation::for_creature(creature);
+    CreatureRenderer::render_composited_frame(
+        &creature.appearance,
+        body.clip,
+        body.frame,
+        body.facing_right,
+        false,
+        face,
+    )
 }
 
 /// The lowest row a frame paints, counted from the contact point the overlay seats it on. A

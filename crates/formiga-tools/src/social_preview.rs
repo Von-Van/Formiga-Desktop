@@ -266,13 +266,11 @@ fn varied_creatures() -> Vec<Creature> {
         .collect()
 }
 
-/// Draws the colony house, a cottage, and a mini cottage as one small village row, all standing
-/// on the same `baseline_y` ground line at `x`. `ShelterRenderer::render_village` lays those
-/// three dwellings out as a 2x2 cell atlas meant for custom per-cell placement (see
-/// `home_yard_sheet` in `main.rs`); blitting that atlas whole puts the mini cottage a full cell
-/// below the other two, which reads as scattered rather than a village. Extracting each cell and
-/// cropping it to its own drawn pixels - trimming the transparent padding every cell carries so
-/// smaller dwellings do not leave awkward gaps - keeps the three houses snug together here.
+/// Draws the colony house and two cottages as one small village row, all standing on the same
+/// `baseline_y` ground line at `x`. `ShelterRenderer::render_village` lays every house out in its
+/// own cell of an atlas meant for per-cell placement (see `home_yard_sheet` in `main.rs`), so each
+/// is extracted and cropped to its own drawn pixels - trimming the transparent padding every cell
+/// carries so a smaller cottage does not leave an awkward gap - to keep the three snug together.
 /// Returns the x just past the rightmost house, in case a caller wants to place something next
 /// to it.
 fn draw_village(
@@ -284,11 +282,14 @@ fn draw_village(
     scale: i32,
 ) -> i32 {
     let genome = ColonyHome::from_seed([166; 32], None, None, None).shelter;
-    let atlas = ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL);
+    let atlas = ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL, &[], false);
     let size = SHELTER_SIZE as i32;
     let gap = 4 * scale;
     let mut cursor = x;
-    for (cell_x, cell_y) in [(0, 0), (size, 0), (0, size)] {
+    for slot in 0..3 {
+        let (cell_x, cell_y) =
+            ShelterRenderer::village_cell(formiga_art::VillageCell::House { slot, lit: false });
+        let (cell_x, cell_y) = (cell_x as i32, cell_y as i32);
         let (cell_w, cell_h, sprite) = extract_cell_cropped(&atlas, cell_x, cell_y, size);
         blit_rect_alpha(
             pixels,
@@ -307,8 +308,8 @@ fn draw_village(
 }
 
 /// Reads one `size`x`size` cell out of a village atlas and trims it to the bounding box of its
-/// non-transparent pixels, so a small mini cottage does not carry the same wide empty margin a
-/// full-size colony house does.
+/// non-transparent pixels, so a cottage does not carry the same wide empty margin a full-size
+/// colony house does.
 fn extract_cell_cropped(
     atlas: &formiga_art::Canvas,
     cell_x: i32,

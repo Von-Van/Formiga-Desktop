@@ -10,8 +10,11 @@ struct Hangout {
     seconds: f32,
 }
 
+/// How many favourite places each companion keeps; the least-used one makes way for a new one.
+const PLACES_PER_CREATURE: usize = 4;
+
 pub(super) struct SurfaceMemory {
-    places: [Option<Hangout>; 16],
+    places: [Option<Hangout>; MAX_COLONY_CREATURES * PLACES_PER_CREATURE],
     sample_in: f32,
     pub inspect_in: f32,
     pub next_origin: u64,
@@ -20,7 +23,7 @@ pub(super) struct SurfaceMemory {
 impl Default for SurfaceMemory {
     fn default() -> Self {
         Self {
-            places: [None; 16],
+            places: [None; MAX_COLONY_CREATURES * PLACES_PER_CREATURE],
             sample_in: 1.0,
             inspect_in: 18.0,
             next_origin: 0,
@@ -62,7 +65,7 @@ impl SurfaceMemory {
                 *slot = None;
             }
         }
-        for creature in creatures.iter().take(4) {
+        for creature in creatures.iter().take(MAX_COLONY_CREATURES) {
             let Some(window) = creature.state.surface.window_key else {
                 continue;
             };
@@ -102,7 +105,7 @@ impl SurfaceMemory {
                     .flatten()
                     .filter(|p| p.creature == creature.id)
                     .count();
-                if count < 4 {
+                if count < PLACES_PER_CREATURE {
                     self.places.iter().position(Option::is_none)
                 } else {
                     self.places
@@ -408,6 +411,71 @@ mod tests {
         (world, desktop)
     }
 
+    /// Favourite places are kept for every companion in a full colony, each keeping its own few.
+    #[test]
+    fn every_companion_of_a_full_colony_keeps_its_own_favourite_places() {
+        let (mut world, desktop) = fixture();
+        let now = datetime!(2026-01-01 0:00 UTC);
+        let mut seed = 60_u8;
+        while world.save.creatures.len() < MAX_COLONY_CREATURES {
+            seed += 1;
+            world
+                .add_designed_adult([seed; 32], None, now, &desktop)
+                .unwrap();
+        }
+        for (index, c) in world.save.creatures.iter_mut().enumerate() {
+            c.state.arrival_delay_secs = 0.0;
+            c.state.surface = SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id: 1,
+                window_key: Some(321),
+                relative_x: 0.1 + index as f32 * 0.15,
+            };
+            c.state.position = Point {
+                x: 240.0 + index as f32 * 60.0,
+                y: 400.0,
+            };
+            c.state.action = ActionKind::Perch;
+        }
+        for _ in 0..70 {
+            world
+                .surface_memory
+                .update(&world.save.creatures, &desktop, 1.0, true);
+        }
+        for c in &world.save.creatures {
+            assert!(
+                world.surface_memory.familiar(c.id, Some(321)),
+                "companion {} kept no favourite place",
+                c.colony_order
+            );
+        }
+        // Each keeps no more than its own share, however many places it tries.
+        let mut desktop = desktop;
+        for key in 322..330 {
+            desktop.windows[0].key = key;
+            for c in &mut world.save.creatures {
+                c.state.surface.window_key = Some(key);
+            }
+            world
+                .surface_memory
+                .update(&world.save.creatures, &desktop, 1.0, true);
+        }
+        for c in &world.save.creatures {
+            let kept = world
+                .surface_memory
+                .places
+                .iter()
+                .flatten()
+                .filter(|p| p.creature == c.id)
+                .count();
+            assert!(
+                (1..=PLACES_PER_CREATURE).contains(&kept),
+                "{}: {kept}",
+                c.colony_order
+            );
+        }
+    }
+
     #[test]
     fn hangouts_need_dwell_decay_when_missing_and_are_never_serialized() {
         let (mut world, mut desktop) = fixture();
@@ -493,7 +561,7 @@ mod tests {
                 .surface_memory
                 .update(&world.save.creatures, &desktop, 1.0, true);
         }
-        assert!(world.surface_memory.places.iter().flatten().count() <= 4);
+        assert!(world.surface_memory.places.iter().flatten().count() <= PLACES_PER_CREATURE);
     }
 
     #[test]

@@ -44,6 +44,9 @@ pub const STRAY_SECS: f32 = 0.8;
 /// How long an untouched menu stays open. The timer restarts whenever an item is hovered.
 pub const UNTOUCHED_SECS: f32 = 8.0;
 
+/// Art pixels between the menu and a strip opened beside it.
+pub const SIDE_STRIP_GAP: i32 = 2;
+
 /// Whose menu this is. A colony member can be sent home; a guest can be asked to stay instead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuTarget {
@@ -260,6 +263,101 @@ pub fn place(layout: &MenuLayout, anchor: MenuAnchor) -> MenuPlacement {
     }
 }
 
+/// Where a strip opened beside a menu is drawn. It has no notch: it points at nothing, and sits on
+/// the menu's own row, level with its body, to the right where there is room and to the left
+/// where there is not. The menu never moves to make room for it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SidePlacement {
+    /// The strip's top-left, which is also its body's, in monitor-local physical pixels.
+    pub x: f32,
+    pub y: f32,
+    pub art_scale: f32,
+    /// The strip's width in art pixels.
+    pub width_art: u32,
+    /// Where a hovered item's label tab hangs: level with the menu's own tabs.
+    pub label_y: f32,
+    monitor_origin: Point,
+    scale_factor: f32,
+}
+
+impl SidePlacement {
+    /// The whole strip, which is all body, in monitor-local physical pixels.
+    pub fn body_rect(&self) -> LocalRect {
+        LocalRect {
+            x: self.x,
+            y: self.y,
+            width: self.width_art as f32 * self.art_scale,
+            height: MENU_BODY_HEIGHT as f32 * self.art_scale,
+        }
+    }
+
+    /// [`SidePlacement::body_rect`] in desktop logical points.
+    pub fn body_desktop(&self) -> DesktopRect {
+        let body = self.body_rect();
+        DesktopRect {
+            x: self.monitor_origin.x + body.x / self.scale_factor,
+            y: self.monitor_origin.y + body.y / self.scale_factor,
+            width: body.width / self.scale_factor,
+            height: body.height / self.scale_factor,
+        }
+    }
+
+    /// Which item the cursor is over, from a global cursor sample in logical points.
+    pub fn hover(&self, layout: &MenuLayout, cursor: Point) -> Option<usize> {
+        let body = self.body_desktop();
+        let art = self.art_scale / self.scale_factor;
+        if art <= 0.0 {
+            return None;
+        }
+        layout.hit_test((cursor.x - body.x) / art, (cursor.y - body.y) / art)
+    }
+}
+
+/// Put a strip beside a placed menu, on the menu's row and inside the usable area.
+pub fn place_beside(layout: &MenuLayout, menu: MenuPlacement, usable: LocalRect) -> SidePlacement {
+    let art = menu.art_scale;
+    let width = layout.size().0 as f32 * art;
+    let gap = SIDE_STRIP_GAP as f32 * art;
+    let frame = menu.frame_rect();
+    let right = frame.right() + gap;
+    let x = if right + width <= usable.right() {
+        right
+    } else {
+        (frame.x - gap - width).max(usable.x)
+    };
+    SidePlacement {
+        x,
+        y: menu.body_rect().y,
+        art_scale: art,
+        width_art: layout.size().0,
+        label_y: menu.y + (MENU_STRIP_HEIGHT + LABEL_TAB_GAP) as f32 * art,
+        monitor_origin: menu.monitor_origin,
+        scale_factor: menu.scale_factor,
+    }
+}
+
+/// A strip opened beside the menu: the moments the village could share, or the way to stop one.
+#[derive(Clone, Debug)]
+pub struct SideStrip {
+    layout: MenuLayout,
+    placement: Option<SidePlacement>,
+    hovered: Option<usize>,
+}
+
+impl SideStrip {
+    pub fn layout(&self) -> &MenuLayout {
+        &self.layout
+    }
+
+    pub fn placement(&self) -> Option<SidePlacement> {
+        self.placement
+    }
+
+    pub fn hovered(&self) -> Option<usize> {
+        self.hovered
+    }
+}
+
 /// The facts that close a menu regardless of what the cursor is doing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MenuWorld {
@@ -303,6 +401,10 @@ pub struct CreatureMenu {
     /// closes a menu: a settings window that was already up and focused when the owner
     /// right-clicked a creature is not a reason to refuse them the menu.
     settings_focused: bool,
+    /// A strip opened beside this one, if any.
+    side: Option<SideStrip>,
+    /// The usable area the menu was last placed in, which a strip beside it keeps inside too.
+    usable: Option<LocalRect>,
 }
 
 impl CreatureMenu {
@@ -325,7 +427,64 @@ impl CreatureMenu {
             strayed_for: 0.0,
             untouched_for: 0.0,
             settings_focused,
+            side: None,
+            usable: None,
         }
+    }
+
+    /// While the houses are out nobody needs sending home, so the same cell offers the moments
+    /// the village could share instead, and nothing else in the strip moves.
+    pub fn offering_moments(mut self) -> Self {
+        for item in &mut self.items {
+            if *item == MenuIcon::Home {
+                *item = MenuIcon::Moment;
+            }
+        }
+        self.layout = MenuLayout::new(&self.items);
+        self
+    }
+
+    /// Open a strip beside the menu holding `items`, or close the one that is open. A strip needs
+    /// between two and four items; anything else opens nothing. Returns whether one is open now.
+    pub fn toggle_side(&mut self, items: &[MenuIcon]) -> bool {
+        if self.side.take().is_some() {
+            return false;
+        }
+        let layout = MenuLayout::new(items);
+        if layout.is_empty() {
+            return false;
+        }
+        let placement = self
+            .placement
+            .zip(self.usable)
+            .map(|(menu, usable)| place_beside(&layout, menu, usable));
+        self.side = Some(SideStrip {
+            layout,
+            placement,
+            hovered: None,
+        });
+        true
+    }
+
+    pub fn side(&self) -> Option<&SideStrip> {
+        self.side.as_ref()
+    }
+
+    /// Everything that takes clicks — the menu's body, and a strip beside it — as one rectangle
+    /// in desktop logical points: the frame the click proxy is laid over.
+    pub fn click_area(&self) -> Option<DesktopRect> {
+        let menu = self.placement?.body_desktop();
+        let Some(side) = self.side.as_ref().and_then(|side| side.placement) else {
+            return Some(menu);
+        };
+        let side = side.body_desktop();
+        let (x, y) = (menu.x.min(side.x), menu.y.min(side.y));
+        Some(DesktopRect {
+            x,
+            y,
+            width: menu.right().max(side.right()) - x,
+            height: menu.bottom().max(side.bottom()) - y,
+        })
     }
 
     pub fn creature_id(&self) -> CreatureId {
@@ -360,24 +519,46 @@ impl CreatureMenu {
     /// with `None` when it cannot, which parks the menu until it can be placed again.
     pub fn attach(&mut self, anchor: Option<MenuAnchor>) {
         self.placement = anchor.map(|anchor| place(&self.layout, anchor));
+        self.usable = anchor.map(|anchor| anchor.usable);
+        if let Some(side) = &mut self.side {
+            side.placement = self
+                .placement
+                .zip(self.usable)
+                .map(|(menu, usable)| place_beside(&side.layout, menu, usable));
+        }
     }
 
-    /// The item under the cursor right now, without changing anything. Used by the click handler
-    /// so a press is resolved against the same geometry the last frame drew.
+    /// The item under the cursor right now, on the menu or on a strip beside it, without changing
+    /// anything. Used by the click handler so a press is resolved against the same geometry the
+    /// last frame drew.
     pub fn item_at(&self, cursor: Point) -> Option<MenuIcon> {
-        let index = self.placement?.hover(&self.layout, cursor)?;
-        self.layout.item(index)
+        if let Some(index) = self
+            .placement
+            .and_then(|placement| placement.hover(&self.layout, cursor))
+        {
+            return self.layout.item(index);
+        }
+        let side = self.side.as_ref()?;
+        let index = side.placement?.hover(&side.layout, cursor)?;
+        side.layout.item(index)
     }
 
-    /// Whether a point is on the strip's body — the whole control, cells, border and gaps alike.
+    /// Whether a point is on the strip's body — the whole control, cells, border and gaps alike —
+    /// or on a strip opened beside it.
     pub fn contains(&self, cursor: Point) -> bool {
-        self.placement.is_some_and(|placement| {
-            let body = placement.body_desktop();
+        let inside = |body: DesktopRect| {
             cursor.x >= body.x
                 && cursor.y >= body.y
                 && cursor.x < body.right()
                 && cursor.y < body.bottom()
-        })
+        };
+        self.placement
+            .is_some_and(|placement| inside(placement.body_desktop()))
+            || self
+                .side
+                .as_ref()
+                .and_then(|side| side.placement)
+                .is_some_and(|placement| inside(placement.body_desktop()))
     }
 
     /// The conditions that close a menu at once, whatever the cursor is doing.
@@ -413,10 +594,19 @@ impl CreatureMenu {
             self.placement
                 .and_then(|placement| placement.hover(&self.layout, cursor))
         });
-        let redraw = hovered != self.hovered;
+        let mut redraw = hovered != self.hovered;
         self.hovered = hovered;
+        let mut side_hovered = None;
+        if let Some(side) = &mut self.side {
+            side_hovered = cursor.and_then(|cursor| {
+                side.placement
+                    .and_then(|placement| placement.hover(&side.layout, cursor))
+            });
+            redraw |= side_hovered != side.hovered;
+            side.hovered = side_hovered;
+        }
 
-        if hovered.is_some() {
+        if hovered.is_some() || side_hovered.is_some() {
             self.untouched_for = 0.0;
         } else {
             self.untouched_for += dt;
@@ -429,6 +619,13 @@ impl CreatureMenu {
                     || self.placement.is_some_and(|placement| {
                         distance_to(placement.body_desktop(), cursor) <= STRAY_RADIUS
                     })
+                    || self
+                        .side
+                        .as_ref()
+                        .and_then(|side| side.placement)
+                        .is_some_and(|placement| {
+                            distance_to(placement.body_desktop(), cursor) <= STRAY_RADIUS
+                        })
             }
             // A cursor the platform cannot see cannot be straying towards anything.
             None => false,
@@ -937,6 +1134,109 @@ mod tests {
             assert_eq!(stay.layout().item(index), code.layout().item(index));
             assert_eq!(stay.layout().cell(index), code.layout().cell(index));
         }
+    }
+
+    /// While the houses are out, the cell that would send everyone home offers the village's
+    /// moments instead, and nothing else in the strip moves.
+    #[test]
+    fn with_the_houses_out_home_becomes_moment_in_the_same_cell() {
+        let plain = CreatureMenu::new(7, MenuTarget::Member, false, 1, false);
+        let moments = CreatureMenu::new(7, MenuTarget::Member, false, 1, false).offering_moments();
+        assert_eq!(plain.layout().item(2), Some(MenuIcon::Home));
+        assert_eq!(moments.layout().item(2), Some(MenuIcon::Moment));
+        assert_eq!(plain.layout().size(), moments.layout().size());
+        for index in [0, 1, 3] {
+            assert_eq!(plain.layout().item(index), moments.layout().item(index));
+            assert_eq!(plain.layout().cell(index), moments.layout().cell(index));
+        }
+        // A guest's menu has no Home to swap.
+        let guest = CreatureMenu::new(3, MenuTarget::Guest, true, 1, false).offering_moments();
+        assert_eq!(guest.layout().item(2), Some(MenuIcon::Stay));
+    }
+
+    fn side_cell_centre(menu: &CreatureMenu, index: usize) -> Point {
+        let side = menu.side().expect("a strip beside the menu");
+        let placement = side.placement().expect("placed");
+        let body = placement.body_desktop();
+        let cell = side.layout().cell(index).expect("cell");
+        let art = placement.art_scale / 1.0;
+        Point {
+            x: body.x + (cell.x as f32 + MENU_CELL as f32 / 2.0) * art,
+            y: body.y + (cell.y as f32 + MENU_CELL as f32 / 2.0) * art,
+        }
+    }
+
+    /// Opening the moments puts a second strip beside the first, on its row and level with its
+    /// body, without moving the menu under a pointer already on it. The strip answers the cursor
+    /// and clicks like the menu does, and choosing Moment again puts it away.
+    #[test]
+    fn the_moments_open_beside_the_menu_without_moving_it() {
+        let mut menu = open().offering_moments();
+        menu.attach(Some(anchor(900.0, 600.0, 3.0, 1.0)));
+        let before = menu.placement().unwrap();
+        let moments = [MenuIcon::Picnic, MenuIcon::Dance, MenuIcon::Nap];
+        assert!(menu.toggle_side(&moments));
+        menu.attach(Some(anchor(900.0, 600.0, 3.0, 1.0)));
+        assert_eq!(menu.placement(), Some(before), "the menu stays put");
+        let side = menu.side().unwrap().placement().unwrap();
+        let body = before.body_rect();
+        assert_eq!(side.y, body.y, "level with the menu's body");
+        assert_eq!(
+            side.x,
+            before.frame_rect().right() + SIDE_STRIP_GAP as f32 * 3.0,
+            "to the right, where there is room"
+        );
+        assert_eq!(
+            side.label_y,
+            before.y + (MENU_STRIP_HEIGHT + LABEL_TAB_GAP) as f32 * 3.0,
+            "its labels hang level with the menu's"
+        );
+        for (index, icon) in moments.into_iter().enumerate() {
+            let centre = side_cell_centre(&menu, index);
+            assert_eq!(menu.item_at(centre), Some(icon));
+            assert!(menu.contains(centre));
+            let tick = menu.track(0.1, Some(centre), Point { x: 900.0, y: 700.0 });
+            assert_eq!(menu.side().unwrap().hovered(), Some(index));
+            assert_eq!(menu.hovered(), None);
+            assert_eq!(tick.dismissal, None);
+        }
+        // The menu's own cells still answer as they did.
+        assert_eq!(menu.item_at(cell_centre(&menu, 0)), Some(MenuIcon::Snack));
+        // One click target covers both strips, and the gap between them.
+        let area = menu.click_area().unwrap();
+        let menu_body = before.body_desktop();
+        let side_body = side.body_desktop();
+        assert_eq!(area.x, menu_body.x);
+        assert_eq!(area.right(), side_body.right());
+        assert_eq!(area.height, menu_body.height);
+        // Choosing Moment again puts the strip away.
+        assert!(!menu.toggle_side(&moments));
+        assert!(menu.side().is_none());
+        assert_eq!(menu.click_area(), Some(menu_body));
+        // A strip needs two to four items.
+        assert!(!menu.toggle_side(&[MenuIcon::Stop]));
+        assert!(menu.side().is_none());
+    }
+
+    /// Against the right edge of the display the strip opens to the left of the menu instead,
+    /// still without moving it.
+    #[test]
+    fn at_the_right_edge_the_moments_open_to_the_left() {
+        let scale = 3.0;
+        let usable = anchor(0.0, 600.0, scale, 1.0).usable;
+        let at = anchor(usable.right() - 40.0, 600.0, scale, 1.0);
+        let mut menu = CreatureMenu::new(7, MenuTarget::Member, false, 1, false).offering_moments();
+        menu.attach(Some(at));
+        let before = menu.placement().unwrap();
+        assert!(menu.toggle_side(&[MenuIcon::Stop, MenuIcon::Nap]));
+        menu.attach(Some(at));
+        assert_eq!(menu.placement(), Some(before));
+        let side = menu.side().unwrap().placement().unwrap();
+        assert!(
+            side.body_rect().right() <= before.x,
+            "to the left of the menu"
+        );
+        assert!(side.x >= usable.x);
     }
 
     #[test]

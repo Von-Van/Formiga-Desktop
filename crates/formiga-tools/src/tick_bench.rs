@@ -11,8 +11,9 @@
 use std::time::Instant;
 
 use formiga_core::{
-    ActionKind, CursorSnapshot, DesktopRect, DesktopSnapshot, DesktopWindow, DisplayKey,
-    MonitorInfo, Point, SurfaceAttachment, SurfaceKind, World,
+    ActionKind, CreatureDesign, CursorSnapshot, DesktopRect, DesktopSnapshot, DesktopWindow,
+    DisplayKey, MonitorInfo, Point, SaveStore, SaveUrgency, SharedCreatureSeed, SurfaceAttachment,
+    SurfaceKind, World, save_due,
 };
 use time::{Duration, OffsetDateTime, macros::datetime};
 
@@ -25,6 +26,7 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
     let mut ticks = 40_000usize;
     let mut warmup = 4_000usize;
     let mut filter: Option<String> = None;
+    let mut saved = None;
 
     let mut args = args.iter().cloned();
     while let Some(arg) = args.next() {
@@ -48,10 +50,19 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
     println!("#                 the same pair formiga-desktop's App::tick runs each cadence.");
     println!();
     println!(
-        "{:<36} {:>3} {:>9} {:>9} {:>9} {:>9} {:>8}  notes",
-        "scenario", "n", "mean us", "p50 us", "p95 us", "max us", "motion%"
+        "{:<36} {:>3} {:>9} {:>9} {:>9} {:>9} {:>8} {:>6} {:>8} {:>9}  notes",
+        "scenario",
+        "n",
+        "mean us",
+        "p50 us",
+        "p95 us",
+        "max us",
+        "motion%",
+        "home%",
+        "asks/min",
+        "saves/min"
     );
-    println!("{}", "-".repeat(122));
+    println!("{}", "-".repeat(148));
 
     for scenario in scenarios() {
         if let Some(filter) = &filter
@@ -59,9 +70,9 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
         {
             continue;
         }
-        let result = measure(&scenario, warmup, ticks);
+        let (result, world) = measure(&scenario, warmup, ticks);
         println!(
-            "{:<36} {:>3} {:>9.2} {:>9.2} {:>9.2} {:>9.2} {:>8.1}  {}",
+            "{:<36} {:>3} {:>9.2} {:>9.2} {:>9.2} {:>9.2} {:>8.1} {:>6.1} {:>8.1} {:>9.1}  {}",
             scenario.name,
             result.creatures,
             result.mean_us,
@@ -69,8 +80,17 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
             result.p95_us,
             result.max_us,
             result.motion_pct,
+            result.home_pct,
+            result.asks_per_minute,
+            result.saves_per_minute,
             result.notes
         );
+        if scenario.name == SAVE_SCENARIO {
+            saved = Some(world);
+        }
+    }
+    if let Some(world) = saved {
+        save_cost(&world)?;
     }
 
     println!();
@@ -84,6 +104,43 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
     println!("#   core the SIMULATION costs at the worst cadence; the app's total CPU also");
     println!("#   includes the native desktop scan, egui, and the GPU overlay present, which this");
     println!("#   harness does not measure. This is a floor, not the application's CPU figure.");
+    println!("#   asks/min counts the ticks whose events ask for the colony to be saved, per");
+    println!("#   simulated minute: what formiga-desktop wrote before routine checkpoints.");
+    println!("#   saves/min is how often it writes now, through formiga_core::save_due.");
+    Ok(())
+}
+
+/// The scenario whose colony, as the run leaves it, is written out to measure what a save costs.
+const SAVE_SCENARIO: &str = "6 creatures, busy desktop + cursor";
+
+/// What one full save of a colony costs, through the same `SaveStore::save` the app calls:
+/// serialize, write and flush a temporary file, read and validate the current one, copy it to the
+/// backup, and replace it. Written to a fresh temporary directory, removed afterwards.
+fn save_cost(world: &World) -> anyhow::Result<()> {
+    const SAVES: usize = 200;
+    let directory = std::env::temp_dir().join(format!("formiga-save-bench-{}", std::process::id()));
+    std::fs::create_dir_all(&directory)?;
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&world.save)?;
+    let mut samples = Vec::with_capacity(SAVES);
+    for _ in 0..SAVES {
+        let at = Instant::now();
+        store.save(&world.save)?;
+        samples.push(at.elapsed().as_secs_f64() * 1_000.0);
+    }
+    let bytes = std::fs::metadata(store.path())?.len();
+    std::fs::remove_dir_all(&directory)?;
+    samples.sort_by(f64::total_cmp);
+    let mean = samples.iter().sum::<f64>() / samples.len() as f64;
+    println!();
+    println!("# Save cost ({SAVE_SCENARIO}, as the run left it)");
+    println!(
+        "#   {SAVES} saves of a {bytes}-byte colony file: mean {mean:.2} ms, p50 {:.2} ms, \
+         p95 {:.2} ms, max {:.2} ms",
+        samples[samples.len() / 2],
+        samples[samples.len() * 95 / 100],
+        samples[samples.len() - 1]
+    );
     Ok(())
 }
 
@@ -92,8 +149,10 @@ struct Scenario {
     creatures: usize,
     desktop: DesktopKind,
     paused: bool,
-    /// Keep the colony at the shelter rather than letting it wander the desktop.
+    /// Keep the colony at the houses for the whole run rather than letting it wander the desktop.
     homebound: bool,
+    /// A friend invited for the day, touring the village while the colony is home.
+    visitor: bool,
     notes: &'static str,
 }
 
@@ -107,55 +166,116 @@ enum DesktopKind {
 }
 
 fn scenarios() -> Vec<Scenario> {
+    let scenario = |name, creatures, desktop, paused, homebound, visitor, notes| Scenario {
+        name,
+        creatures,
+        desktop,
+        paused,
+        homebound,
+        visitor,
+        notes,
+    };
+    use DesktopKind::{Busy, Quiet};
     vec![
-        Scenario {
-            name: "1 creature, quiet desktop",
-            creatures: 1,
-            desktop: DesktopKind::Quiet,
-            paused: false,
-            homebound: false,
-            notes: "cheapest realistic input",
-        },
-        Scenario {
-            name: "4 creatures, quiet desktop",
-            creatures: 4,
-            desktop: DesktopKind::Quiet,
-            paused: false,
-            homebound: false,
-            notes: "",
-        },
-        Scenario {
-            name: "1 creature, busy desktop + cursor",
-            creatures: 1,
-            desktop: DesktopKind::Busy,
-            paused: false,
-            homebound: false,
-            notes: "",
-        },
-        Scenario {
-            name: "4 creatures, busy desktop + cursor",
-            creatures: 4,
-            desktop: DesktopKind::Busy,
-            paused: false,
-            homebound: false,
-            notes: "most expensive realistic input",
-        },
-        Scenario {
-            name: "4 creatures, homebound at shelter",
-            creatures: 4,
-            desktop: DesktopKind::Quiet,
-            paused: false,
-            homebound: true,
-            notes: "",
-        },
-        Scenario {
-            name: "4 creatures, paused, busy desktop",
-            creatures: 4,
-            desktop: DesktopKind::Busy,
-            paused: true,
-            homebound: false,
-            notes: "paused: budget forbids a busy loop",
-        },
+        scenario(
+            "1 creature, quiet desktop",
+            1,
+            Quiet,
+            false,
+            false,
+            false,
+            "cheapest realistic input",
+        ),
+        scenario(
+            "4 creatures, quiet desktop",
+            4,
+            Quiet,
+            false,
+            false,
+            false,
+            "",
+        ),
+        scenario(
+            "6 creatures, quiet desktop",
+            6,
+            Quiet,
+            false,
+            false,
+            false,
+            "a full colony",
+        ),
+        scenario(
+            "1 creature, busy desktop + cursor",
+            1,
+            Busy,
+            false,
+            false,
+            false,
+            "",
+        ),
+        scenario(
+            "4 creatures, busy desktop + cursor",
+            4,
+            Busy,
+            false,
+            false,
+            false,
+            "",
+        ),
+        scenario(
+            "6 creatures, busy desktop + cursor",
+            6,
+            Busy,
+            false,
+            false,
+            false,
+            "most expensive realistic input",
+        ),
+        scenario(
+            "4 creatures, homebound at shelter",
+            4,
+            Quiet,
+            false,
+            true,
+            false,
+            "",
+        ),
+        scenario(
+            "6 creatures, homebound at shelter",
+            6,
+            Quiet,
+            false,
+            true,
+            false,
+            "",
+        ),
+        scenario(
+            "6 creatures + visitor, homebound",
+            6,
+            Quiet,
+            false,
+            true,
+            true,
+            "an invited friend touring the village",
+        ),
+        scenario(
+            "4 creatures, paused, busy desktop",
+            4,
+            Busy,
+            true,
+            false,
+            false,
+            "paused: budget forbids a busy loop",
+        ),
+        scenario(
+            "6 creatures, paused, busy desktop",
+            6,
+            Busy,
+            true,
+            false,
+            false,
+            "paused: budget forbids a busy loop",
+        ),
     ]
 }
 
@@ -169,6 +289,13 @@ struct Outcome {
     /// desktop, using the same predicate `formiga-desktop` uses to pick its 20 Hz cadence. It is
     /// what makes a "resting" or "moving" scenario label checkable rather than asserted.
     motion_pct: f64,
+    /// Share of measured ticks with the houses out, which is what makes "homebound" checkable.
+    home_pct: f64,
+    /// Ticks per simulated minute whose events ask for a save: before routine checkpoints, each
+    /// of them wrote the whole colony to disk.
+    asks_per_minute: f64,
+    /// Whole-colony writes per simulated minute under the app's save policy.
+    saves_per_minute: f64,
     notes: String,
 }
 
@@ -197,7 +324,7 @@ fn has_spatial_motion(world: &World) -> bool {
     })
 }
 
-fn measure(scenario: &Scenario, warmup: usize, ticks: usize) -> Outcome {
+fn measure(scenario: &Scenario, warmup: usize, ticks: usize) -> (Outcome, World) {
     let created = datetime!(2026-09-16 10:00 UTC);
     let mut world = build_world(scenario, created);
     let started_with = world.save.creatures.len();
@@ -208,6 +335,7 @@ fn measure(scenario: &Scenario, warmup: usize, ticks: usize) -> Outcome {
     // Warm-up: let the colony settle into ordinary behaviour before anything is timed.
     for _ in 0..warmup {
         let desktop = desktop_for(scenario.desktop, step);
+        hold_gathering(&mut world, scenario, clock);
         world.tick(clock, DT, &desktop);
         let _ = world.drain_events().count();
         clock += Duration::seconds_f64(f64::from(DT));
@@ -216,15 +344,31 @@ fn measure(scenario: &Scenario, warmup: usize, ticks: usize) -> Outcome {
 
     let mut samples: Vec<u64> = Vec::with_capacity(ticks);
     let mut moving_ticks = 0usize;
+    let mut home_ticks = 0usize;
+    let (mut ask_ticks, mut saves) = (0usize, 0usize);
+    let (mut waiting, mut since_save) = (SaveUrgency::None, std::time::Duration::ZERO);
     for _ in 0..ticks {
         let desktop = desktop_for(scenario.desktop, step);
+        hold_gathering(&mut world, scenario, clock);
         let at = Instant::now();
         world.tick(clock, DT, &desktop);
-        let drained = world.drain_events().count();
+        let urgency = world.drain_events().fold(SaveUrgency::None, |most, event| {
+            most.max(event.save_urgency())
+        });
         samples.push(at.elapsed().as_nanos() as u64);
-        std::hint::black_box(drained);
+        ask_ticks += usize::from(std::hint::black_box(urgency) > SaveUrgency::None);
+        waiting = waiting.max(urgency);
+        since_save += std::time::Duration::from_secs_f32(DT);
+        if save_due(waiting, since_save) {
+            saves += 1;
+            waiting = SaveUrgency::None;
+            since_save = std::time::Duration::ZERO;
+        }
         if has_spatial_motion(&world) {
             moving_ticks += 1;
+        }
+        if world.save.home.is_active() {
+            home_ticks += 1;
         }
         clock += Duration::seconds_f64(f64::from(DT));
         step += 1;
@@ -243,14 +387,28 @@ fn measure(scenario: &Scenario, warmup: usize, ticks: usize) -> Outcome {
         notes = format!("{notes} [colony changed {started_with}->{ended_with}]");
     }
 
-    Outcome {
+    let outcome = Outcome {
         creatures: ended_with,
         mean_us,
         p50_us,
         p95_us,
         max_us,
         motion_pct: moving_ticks as f64 * 100.0 / ticks as f64,
+        home_pct: home_ticks as f64 * 100.0 / ticks as f64,
+        asks_per_minute: ask_ticks as f64 / (ticks as f64 * f64::from(DT) / 60.0),
+        saves_per_minute: saves as f64 / (ticks as f64 * f64::from(DT) / 60.0),
         notes,
+    };
+    (outcome, world)
+}
+
+/// A gathering lasts fifteen simulated minutes, a third of a default run, so a homebound scenario
+/// keeps its houses out by holding the gathering five minutes in. Outside the timed region, and
+/// only for the scenarios that ask to stay home.
+fn hold_gathering(world: &mut World, scenario: &Scenario, clock: OffsetDateTime) {
+    if scenario.homebound {
+        world.save.home.active_since_utc = Some(clock - Duration::minutes(5));
+        world.save.home.last_disappeared_utc = None;
     }
 }
 
@@ -271,6 +429,15 @@ fn build_world(scenario: &Scenario, created: OffsetDateTime) -> World {
                 break;
             }
         }
+        // Arrivals stop short of a full colony; full-size companions added the way the studio
+        // adds them make up the rest.
+        let mut seed = 0x60_u8;
+        while world.save.creatures.len() < scenario.creatures {
+            seed += 1;
+            world
+                .add_designed_adult([seed; 32], None, at, &desktop)
+                .expect("the colony has room for the companions a scenario asks for");
+        }
         // Clear the staggered reveal delay so every creature is actually simulated.
         for _ in 0..200 {
             at += Duration::seconds(1);
@@ -279,14 +446,28 @@ fn build_world(scenario: &Scenario, created: OffsetDateTime) -> World {
         }
         world.save.creatures.truncate(scenario.creatures);
     }
-    // Stop further scheduled arrivals so the colony size stays fixed for the whole run.
+    // Stop further scheduled arrivals, the colony's and every adult's minis, so the colony size
+    // stays fixed for the whole run.
     world.save.arrival_state.arrived = [true; 3];
+    for creature in &mut world.save.creatures {
+        creature.mini_arrivals.arrived = [true; 2];
+    }
 
     world.save.settings.paused = scenario.paused;
 
     if scenario.homebound {
         world.save.home.active_since_utc = Some(created + Duration::days(40));
         world.save.home.last_disappeared_utc = None;
+        if scenario.visitor {
+            let friend = SharedCreatureSeed {
+                source_colony_seed: [0x77; 32],
+                source_generation: 0,
+                design: Some(CreatureDesign::generated([0x77; 32], 0, None)),
+            };
+            world
+                .invite_visitor(friend, created + Duration::days(40), &desktop)
+                .expect("nobody else is visiting");
+        }
     } else {
         // Same trick `world.rs`'s own `let_colony_wander` test fixture uses: retire the shelter so
         // the colony is out on the desktop instead of tucked away at home.

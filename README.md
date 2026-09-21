@@ -1,4 +1,4 @@
-# Formiga · v0.58.9
+# Formiga · v0.59.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.58.9-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.59.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,35 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.59.0
+
+Companions have more of the charm the very first ones had. New companions mix in classic parts —
+candy colours, masks and visors, beads and tall eyes, stick legs on forked feet, antennae and
+sprouts, stripes and spots, curled and starry tails — a part at a time, so one colony can hold the
+tidy modular look, the older scrappier one, and everything between. Every companion you already
+have looks exactly as it did. Each one also has little ways of its own now: a hop, a little dance,
+or a twirl when something goes well, and before long a habit or two, like stretching before a nap
+or looking a snack over before eating it.
+
+The village has been rebuilt to match. Every house is made of its own materials and shaded like the
+creatures, with its keeper's curtain in the doorway and a lamp in the window after seven in the
+evening. From the Home page you can stand the cottages in any order, paint the village in one of
+six named palettes, plant a flower bed, a vegetable patch, and a herb box, and put down a nap
+cushion, a picnic blanket, and a lookout for the colony to use. While the houses are out, a
+companion's menu offers a moment for the whole village — a picnic, a dance, or a nap — and whoever
+wants to joins in.
+
+You can send the colony as a postcard, too: everyone napping, picnicking, playing, or waving
+goodnight in front of the village at dusk, with a caption of your own. The Journal opens on what
+today was about, the Colony page shows how everyone gets along, favourite visitors can be invited
+back from the Journal, and each companion can be given a leaning — homebody, floor-dweller, or
+climber — that nudges where it likes to spend its time. The last change you make to the colony can
+be undone from the footer of the settings window, a companion brought back exactly as it left.
+
+A full colony of six gets everything a colony of four did, the colony follows where your Dock and
+menu bar really are, a busy colony writes its file a few times a minute instead of every second or
+so, and a companion that stops for a snack no longer glides across the desktop while it eats.
 
 ## New in 0.58.9
 
@@ -184,7 +213,20 @@ Decorations the home earns over time now attach to the shelter they belong to: b
 actual roofline, lamps mount on the wall, ornaments sit on the real peak, and stones and flowers rest
 on the ground. Only the ground pieces still drift, and only by a pixel.
 
-![Four shelter styles, plain and carrying every decoration](docs/assets/shelter-sheet.png)
+Every house is built from its own materials — leaves on twigs, a spotted cap on a stem, a gingham
+blanket over cushions, folded card — shaded as the creatures are, with a sign that somebody lives
+there. Each companion's door is hung with a curtain in its own colours, and after dark the houses
+glow from inside.
+
+![Four shelter styles: plain, decorated, a cottage with its resident's curtain, and lit after dark](docs/assets/shelter-sheet.png)
+
+The village is yours to arrange from the Home page. Stand the cottages in whatever order you like —
+each curtain goes with its house, and everyone walks home to where theirs now stands — paint the
+village in Meadow, Blossom, Harbour, Autumn, Twilight, or Pebble instead of its own colours, and
+plant a flower bed, a vegetable patch, and a herb box along the ground. The colony house always
+stands first, and one button puts the order, the colours, and the gardens back as the village grew.
+
+![Every style of house in its own colours and in each of the six named palettes](docs/assets/village-palette-sheet.png)
 
 Toys, snacks, cups, and found trinkets are colored against the creature holding them instead of from
 its coat, so a belonging reads as a separate thing rather than another marking.
@@ -211,6 +253,10 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
   the colony home, or its profile. What a creature does about the snack or the toy is its own
   decision, and it answers with a picture over its head — a heart, a snack, a question mark, or a
   gentle no.
+- While the houses are out, the same menu offers a moment for the whole village instead of home:
+  a second strip opens beside it with a picnic, a dance, or a nap. Everyone home decides for
+  themselves; whoever wants to lines up on the ground between the houses and does it together, and
+  a dance ends with each dancer celebrating its own way.
 - See a creature stop and genuinely watch something: drawn up tall, head leaned toward the window
   that just moved, ears pricked, waiting to see what happens next.
 - Notice that nobody's face stays hidden behind somebody else's body for more than a moment.
@@ -247,6 +293,14 @@ personality they were generated with stays recognizable. The Colony tab shows th
 three learned descriptors, age, favorite places, and closest companions; the name is the only thing
 you can edit.
 
+Each companion also has little ways of its own. It celebrates the same way every time — a hop, a
+little dance, or a twirl — and over its first days picks up as many as two habits: looking a snack
+over before eating it, stretching or turning in circles before a nap, waving hello, or a play bow
+before a game. It does them most times the moment comes round, and they appear on its profile and
+in the journal on the day it picks them up.
+
+![Every habit and celebration on every body](docs/assets/habit-sheet.png)
+
 A journal keeps small moments — arrivals, discoveries, a preference a creature has settled into, a
 new close friendship, a completed ritual, a keepsake that turned up, a decoration the home earned —
 grouped by Today, Yesterday, and the date, in your own local time. You can filter it to one
@@ -261,7 +315,10 @@ keeps a guest book: the last two dozen creatures who came by the houses, when ea
 a code that recreates it. The Home page shows
 the corner as it really is: the colony house with the decorations it has earned, a cottage for each
 companion, a keepsake tree at either end with everything the colony has found hanging in it, and
-the belongings scattered in the two yards. Looking at it never calls anyone home.
+the belongings scattered in the two yards. Looking at it never calls anyone home. It is also where
+you can put down a nap cushion, a picnic blanket, or a lookout on the ground between the houses and
+slide each where you like: while the houses are out, the colony sometimes goes to nap, snack, or
+look out from them, and a picnic or a nap you invite gathers there.
 
 ![Climbing, dangling, inspection, presentation poses, and the eight everyday discovery trinkets](docs/assets/ambient-sheet.png)
 
@@ -272,6 +329,11 @@ In **Settings → Colony → Creature studio** you can preview a fresh creature,
 contrasting accents, proportions, and appendage cues steer the result. It is an interpretation, not
 object recognition — clear subjects on plain or transparent backgrounds work best. Try another
 preview for a different take, then add it or replace a creature you have not kept.
+
+Changed your mind? The settings window keeps your last change to the colony — a companion removed,
+replaced, started over or welcomed, or the village rearranged — and its footer offers to undo it
+for as long as Formiga is running. A companion brought back returns exactly as it left: its name,
+memories, friendships, minis, and cottage.
 
 There is no AI model, cloud service, or background image processing behind this. The picture is read
 once, in memory, to pick parts from Formiga's own bounded set; the pixels, path, and everything
@@ -298,8 +360,12 @@ its seed.
 A profile can export an animated sticker as well: a walk, a wave, a cheer, playing, a snack, a nap,
 or a dance, at four or eight times size, as an ordinary looping GIF timed to that creature's own
 cadence. And the Home page can export a colony portrait of everyone at once, with their names, the
-month the colony began, and your village behind them. All three are ordinary image files; the save
-dialog opens before anything is drawn, and cancelling makes nothing.
+month the colony began, and your village behind them, or a postcard: everyone napping on a quilt,
+picnicking round a blanket, playing on the grass, or waving goodnight in front of the village at
+dusk, with a caption of your own if you like. All of them are ordinary image files; the save dialog
+opens before anything is drawn, and cancelling makes nothing.
+
+![Four postcards of one colony: a nap, a picnic, a game, and the village at dusk](docs/assets/postcards.png)
 
 ## Settings you may want
 
@@ -353,17 +419,21 @@ cargo run -p formiga-tools -- hero-image
 cargo run -p formiga-tools -- demo-animation
 cargo run -p formiga-tools -- contact-sheet --output docs/assets/contact-sheet.png
 cargo run -p formiga-tools -- generation-sheet --output docs/assets/generation-sheet.png
+cargo run -p formiga-tools -- classic-sheet --output docs/assets/classic-sheet.png
 cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/animation-preview.png
 cargo run -p formiga-tools -- expression-sheet --output docs/assets/expression-sheet.png
 cargo run -p formiga-tools -- gesture-sheet --output docs/assets/gesture-sheet.png
+cargo run -p formiga-tools -- habit-sheet --output docs/assets/habit-sheet.png
 cargo run -p formiga-tools -- activity-sheet --output docs/assets/activity-sheet.png
 cargo run -p formiga-tools -- ambient-sheet --output docs/assets/ambient-sheet.png
 cargo run -p formiga-tools -- shelter-sheet --output docs/assets/shelter-sheet.png
+cargo run -p formiga-tools -- village-palette-sheet --output docs/assets/village-palette-sheet.png
 cargo run -p formiga-tools -- home-yard-sheet --output docs/assets/home-yard-sheet.png
 cargo run -p formiga-tools -- prop-sheet --output docs/assets/prop-sheet.png
 cargo run -p formiga-tools -- ui-sheet --output docs/assets/ui-sheet.png
 cargo run -p formiga-tools -- creature-card --output docs/assets/creature-card.png
 cargo run -p formiga-tools -- colony-card --output docs/assets/colony-card.png
+cargo run -p formiga-tools -- postcard-sheet --output docs/assets/postcards.png
 cargo run -p formiga-tools -- sticker --clip wave --scale 8 --output docs/assets/sticker-wave.gif
 cargo run -p formiga-tools -- social-preview --output docs/assets/social-preview.png
 cargo run -p formiga-tools -- itch-cover --output packaging/itch/cover.png

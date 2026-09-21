@@ -34,6 +34,12 @@ pub(super) fn update_drives(creature: &mut Creature, dt: f32) {
     }
 }
 
+/// A creature doing something where it stands comes to a stop from whatever pace it arrived at,
+/// in about an eighth of a second, rather than carrying a walk's speed through a snack or a game.
+fn coast(creature: &mut Creature, dt: f32) {
+    creature.state.velocity.x *= (1.0 - dt * 8.0).max(0.0);
+}
+
 pub(super) fn execute_action(
     creature: &mut Creature,
     desktop: &DesktopSnapshot,
@@ -51,6 +57,12 @@ pub(super) fn execute_action(
         creature.state.action_elapsed = 0.0;
         creature.state.action_duration = 2.5;
         creature.state.velocity = Point::default();
+        return;
+    }
+    // A companion doing one of its little habits does it where it stands. The action carries on
+    // as usual once it has finished, walking on to wherever it was going if it has somewhere.
+    if flourishing(creature) {
+        creature.state.velocity.x = 0.0;
         return;
     }
     let speed = 24.0 + creature.personality.activity * 34.0;
@@ -112,24 +124,29 @@ pub(super) fn execute_action(
             target_stop_distance = 5.0;
         }
         ActionKind::SoloPlay => {
+            coast(creature, dt);
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.09).max(0.0);
         }
         ActionKind::Eat => {
+            coast(creature, dt);
             creature.state.drives.energy = (creature.state.drives.energy + dt * 0.025).min(1.0);
             creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.018).min(1.0);
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.018).max(0.0);
         }
         ActionKind::Drink => {
+            coast(creature, dt);
             creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.024).min(1.0);
             creature.state.drives.arousal = (creature.state.drives.arousal - dt * 0.04).max(0.0);
             creature.state.drives.curiosity_satisfaction =
                 (creature.state.drives.curiosity_satisfaction + dt * 0.012).min(1.0);
         }
         ActionKind::Dangle => {
+            coast(creature, dt);
             creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.012).min(1.0);
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.025).max(0.0);
         }
         ActionKind::InspectScreen => {
+            coast(creature, dt);
             if let Some(target) = selected_target {
                 creature.state.facing_right = target.x >= creature.state.position.x;
             }
@@ -138,6 +155,7 @@ pub(super) fn execute_action(
             creature.state.drives.boredom = (creature.state.drives.boredom - dt * 0.035).max(0.0);
         }
         ActionKind::PresentDiscovery => {
+            coast(creature, dt);
             creature.state.drives.curiosity_satisfaction =
                 (creature.state.drives.curiosity_satisfaction + dt * 0.035).min(1.0);
             creature.state.drives.comfort = (creature.state.drives.comfort + dt * 0.012).min(1.0);
@@ -158,7 +176,7 @@ pub(super) fn execute_action(
             }
             creature.state.drives.arousal = (creature.state.drives.arousal + dt * 0.5).min(1.0);
         }
-        _ => creature.state.velocity.x *= (1.0 - dt * 8.0).max(0.0),
+        _ => coast(creature, dt),
     }
     if let Some(target) = target_x {
         let dx = target - creature.state.position.x;

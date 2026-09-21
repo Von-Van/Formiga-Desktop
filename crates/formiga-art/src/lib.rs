@@ -4,6 +4,7 @@ mod card;
 mod colony_card;
 mod objects;
 mod palette;
+mod postcard;
 mod renderer;
 mod shelter;
 mod sticker;
@@ -17,16 +18,24 @@ pub use card::{CARD_HEIGHT, CARD_WIDTH, CreatureCardRenderer, abbreviated_seed_c
 pub use colony_card::{COLONY_CARD_HEIGHT, COLONY_CARD_WIDTH, ColonyCardRenderer};
 pub type PixelCanvas = Canvas;
 pub use objects::{
-    COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer,
+    COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_CELLS, COLONY_OBJECT_SIZE,
+    ColonyObjectRenderer,
 };
 pub use palette::{PALETTES, Palette, palette_for, prop_palette};
-pub use renderer::{
-    AlphaMask, AnimationAtlas, AnimationSpec, BodyClip, CreatureRenderer, DRINK_KINDS,
-    ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement,
-    GazeDirection, MotionSignature, PixelPoint, PlaybackMode, PropAnchor, RenderedBodyFrame,
-    SNACK_KINDS, TOY_KINDS, prop_variants,
+pub use postcard::{
+    POSTCARD_CAPTION_LIMIT, POSTCARD_HEIGHT, POSTCARD_WIDTH, PostcardRenderer, PostcardScene,
+    postcard_caption,
 };
-pub use shelter::{SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE};
+pub use renderer::{
+    AlphaMask, AnimationAtlas, AnimationSpec, BodyClip, BodyPresentation, CreatureRenderer,
+    DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
+    FramePlacement, GazeDirection, MotionSignature, PixelPoint, PlaybackMode, PropAnchor,
+    RenderedBodyFrame, SNACK_KINDS, TOY_KINDS, prop_variants,
+};
+pub use shelter::{
+    ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE, VILLAGE_DAY_HEIGHT,
+    VILLAGE_HOUSES, VillageCell,
+};
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
 };

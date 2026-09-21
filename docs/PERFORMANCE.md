@@ -213,13 +213,14 @@ measurements remain pending in the table above.
 Reference matching has zero idle cost. A selected image is decoded once under 16 MB, 4096×4096,
 and 16-million-pixel limits, downsampled within 64×64, and compared with exactly 512 temporary modular
 creature frames. A fixed 512-bin color histogram and bounded geometry cues adapt candidate recipes.
-Only the winning seed, 16-byte design recipe, and preview survive the matching call; clearing or
+Only the winning seed, design recipe, and preview survive the matching call; clearing or
 accepting the preview drops its one small settings texture. Colony role checks and mini balancing
 operate across the existing four-creature bound and introduce no new simulation loop or draw call.
 
 The v0.55.6 generator adds no dependency, model weights, external service, source-image texture,
-or idle worker. Each optional recipe is 16 bytes plus its option discriminant, stored in appearance
-and immutable origin. Existing body/face frame dimensions, animation counts, and GPU atlas budgets
+or idle worker. Each optional recipe is 22 bytes — sixteen modular and six classic parts — plus its
+option discriminant, stored in appearance and immutable origin. Classic parts are drawn into the same
+body and face frames at atlas construction, so they add no frame, quad, texture, or per-frame work. Existing body/face frame dimensions, animation counts, and GPU atlas budgets
 are unchanged. Wing structure is a handful of extra lines inside the existing appendage, baked into
 the same body frames at atlas construction, so it costs no quad, texture, or per-frame work. The
 village still uses at most eight object quads against the existing 128×16 object
@@ -416,3 +417,158 @@ No native CPU, memory, or energy measurement has been taken for this release. Th
 per-tick costs and storage assertions, not measurements of whole-process cost, and the
 release-machine protocol at the top of this document remains the only thing that can answer whether
 the budgets are met.
+
+## 0.59.0
+
+### A full colony, measured
+
+`tick-bench` now holds every scenario's colony at the size it names, adds a full colony of six on
+each kind of desktop and at the houses, adds an invited guest touring the village, and prints the
+share of ticks with the houses out beside the share in motion, so a "homebound" label can be checked
+the way "resting" and "moving" already could. Two earlier flaws make its numbers from before this
+release incomparable with these: once 0.58.7 raised the cap to six, each "four creatures" scenario
+grew to six partway through its run, because every adult's own minis kept arriving; and the
+homebound scenario kept its houses out only for the fifteen simulated minutes a gathering lasts, a
+third of a default run.
+
+Measured with
+
+```sh
+cargo run --release -p formiga-tools -- tick-bench --ticks 40000 --warmup 4000
+```
+
+on an Apple M5, macOS 26.5.1, release profile, three rounds, medians. Microseconds per
+`World::tick` plus `World::drain_events`:
+
+| Scenario | mean | p95 | in motion | at home |
+|---|---:|---:|---:|---:|
+| one creature, quiet desktop | 0.90 | 1.08 | 19% | 45% |
+| four creatures, quiet desktop | 2.24 | 2.88 | 48% | 45% |
+| six creatures, quiet desktop | 3.14 | 3.62 | 55% | 45% |
+| one creature, busy desktop with cursor | 3.92 | 4.92 | 40% | 45% |
+| four creatures, busy desktop with cursor | 5.54 | 6.62 | 54% | 45% |
+| six creatures, busy desktop with cursor | 6.48 | 8.50 | 56% | 45% |
+| four creatures, homebound | 2.01 | 2.12 | 1% | 100% |
+| six creatures, homebound | 3.13 | 3.29 | 0% | 100% |
+| six creatures and a visitor, homebound | 4.08 | 4.46 | 0% | 100% |
+| four creatures, paused, busy desktop | 1.68 | 1.75 | 0% | 45% |
+| six creatures, paused, busy desktop | 1.71 | 1.79 | 0% | 45% |
+
+A full colony on a busy desktop costs 6.5 µs a tick: at the 20 Hz cadence, where 500 µs a tick is
+one percent of one core, that is about 0.013%. A guest touring the village adds about a
+microsecond. The simulation is not where the application's CPU goes.
+
+This machine ran about twice as fast in one sitting during the release as in the others,
+v0.58.9's own `tick-bench` included, so only numbers from one sitting are compared. The table is
+the finished release's. In the same sitting, v0.58.9's `tick-bench` gave 3.9 µs for one creature on
+a busy desktop and 6.7 µs for the colony its "four creatures" scenario grew into, six on a busy
+desktop, against 3.9 and 6.5 here: the habits, village moments, hangout spots, arranged cottages,
+and a kept undo point cost nothing measurable per tick. `house_owners`, which the homebound walk
+asks for every tick, holds its answer in place like `Cottages` rather than allocating.
+
+The one column that moved is "in motion". A companion that stopped to eat, drink, play on its
+own, dangle, look something over, or hold up a find used to keep the speed it walked in with and
+glide through the whole action; now it stops. A lone creature on a quiet desktop is in motion 19%
+of the time instead of 30%, and the application only ticks at its 20 Hz moving cadence while
+something is.
+
+### On the desktop
+
+The finished build ran for three minutes on the desktop it was written on — an Apple M5 with the
+Dock hidden, the owner's own five-companion colony copied into a scratch data directory with
+`FORMIGA_DATA_DIR`, the houses out, and a browser playing video alongside — after a minute to
+settle. Beside it, the same three minutes of the installed v0.58.9, freshly launched on the same
+colony:
+
+| | average CPU | energy impact | physical footprint |
+|---|---:|---:|---:|
+| v0.58.9 | 0.86% | 0.7–1.4 | 111 MB |
+| 0.59.0 | 0.81% | 0.7–1.4 | 111 MB |
+
+CPU is the process's own CPU time over the window; energy impact is `top`'s power column, sampled
+every thirty seconds; the footprint is `footprint`'s `phys_footprint`. The v0.58.9 process that had
+been running for fifteen hours before it was restarted for this measured 152 MB and 1.9% over the
+same window, busier at first and settling toward the fresh figures; its footprint has not been
+looked into.
+
+### Saving
+
+The same run counts, per simulated minute, the ticks whose events ask for the colony to be saved,
+and how often it is actually written. Until this release every one of those asks wrote the whole
+file at once, as well as the half-minute periodic write:
+
+| Scenario | asked for | written |
+|---|---:|---:|
+| six creatures, busy desktop with cursor | 85.0 a minute | 3.6 a minute |
+| six creatures, quiet desktop | 28.6 | 3.5 |
+| four creatures, busy desktop with cursor | 58.8 | 3.5 |
+| six creatures, homebound | 4.7 | 3.1 |
+| six creatures, paused, busy desktop | 0.1 | 2.0 |
+
+A save of that colony — serialize, write and flush a temporary file, read and validate the current
+one, copy it to the backup, and replace it — took 4.73 ms on average over 200 saves of its
+51,395-byte file, 5.31 ms at the 95th percentile and 6.42 ms at worst, medians of three runs, on
+the main thread. At 87 writes a minute a busy full colony spent about 410 ms a minute saving and
+wrote about 13 MB; it now spends about 17 ms and writes about half a megabyte.
+
+What changed. `WorldEvent::save_urgency` sorts events into those kept at once — an arrival, the
+houses coming or going, a ritual, a new belonging or decoration — and everyday movement: an action
+starting or a creature stepping onto another surface. `formiga_core::save_due` writes a prompt
+change immediately, gathers movement into a checkpoint at most every fifteen seconds, and still
+writes a colony with nothing waiting every thirty. Explicit actions and quitting save at once as
+before, and recovery is unchanged: at most fifteen seconds of who was doing what, and where, can be
+lost to a crash. Writes stay on the main thread; at a few a minute a worker would add ordering
+problems without a measurable gain.
+
+### Storage
+
+Everything the simulation remembers about each resident is now sized by the colony instead of a
+scene. Measured with `size_of`, every structure stays inside the bound its test asserts:
+
+| Structure | 0.58.9 | 0.59.0 | bound |
+|---|---:|---:|---:|
+| `SurfaceMemory` (favourite places, four each) | 656 | 976 | 1,024 |
+| `RideMemory` | 280 | 408 | 1,024 |
+| `PlayRuntime` | 400 | 464 | 512 |
+| `DisplayAttention` | 720 | 752 | 1,024 |
+
+A full colony's creature textures are 9,179,136 bytes, six of the 1,529,856-byte atlases; the test
+holds a full colony under 9 MiB, the same 1.5 MiB a creature the budget for four set. A recipe is
+22 bytes in memory, 16 modular and 6 classic, and classic parts are drawn into the existing body and
+face frames, so they add no frame, quad, texture, or per-frame work.
+
+### Artwork
+
+Every house now has a cell of its own, by day and lit after dark, so the village texture on the
+display the village is on grows from 128×128 to 256×256: 262,144 bytes, 196,608 more. The colony's
+object sheet grows from eight 16×16 cells to fourteen for the three hangout spots and three garden
+patches, 14,336 bytes. A chosen palette or cottage order is in the village texture's key, so either
+redraws it once and costs nothing per frame. The settings window holds only the daylit half of the
+village, 131,072 bytes, and everything it can hold at once measures 509,952 bytes against a budget
+raised from 432 KiB to 500 KiB, the house cells and the object sheet being the whole of the rise.
+
+A postcard, like the colony portrait, is drawn only once its save dialog has a destination: one
+960×600 canvas, the colony's village atlas, and the members' frames, all dropped as soon as the
+PNG is written. Choosing a scene or typing a caption draws and uploads nothing, which a test holds.
+
+The one change that can be undone keeps the colony's creatures, bonds, home, and keepsakes as they
+stood before it, a single clone replaced by the next change and never written to disk. For the
+five-companion colony that the smoke test loaded, the same data is about 19 KB of its 30 KB
+compact file.
+
+### One GPU device per display (O3)
+
+Each overlay creates its own wgpu device and pipelines. A headless probe that builds the same
+pipelines, buffers, and sampler for one to six overlays, measured with `footprint` on the same
+Apple M5, found each additional display costs about 0.7 MB of physical footprint and 3 ms of setup
+with a device of its own, against about 0.06 MB and 0.7 ms sharing one: sharing would save roughly
+0.65 MB and 2.4 ms per extra display. It was not done. A shared device would have to be compatible
+with every display's surface, which a Mac with a second GPU or a Windows PC with several adapters
+does not promise, and a display unplugged mid-run would take recovery for every overlay with it;
+the saving is under half of one creature's 1.5 MB textures, which are only ever held by the display
+the creature is on.
+
+No native CPU, memory, or energy measurement has been taken for a full colony. The figures above are
+per-tick costs, save costs, and storage assertions, not measurements of whole-process cost; the
+release-machine protocol at the top of this document remains the only thing that can answer whether
+the budgets are met, and no Windows hardware has been available to run it there.

@@ -218,7 +218,7 @@ pub(super) struct PlayRuntime {
     encounter: Option<Encounter>,
     pub(super) session: Option<Session>,
     pub(super) cooldown: f32,
-    refusals: [Option<Refusal>; MAX_PARTICIPANTS],
+    refusals: [Option<Refusal>; MAX_COLONY_CREATURES],
 }
 
 impl PlayRuntime {
@@ -247,7 +247,7 @@ impl PlayRuntime {
             .iter()
             .position(Option::is_none)
             .unwrap_or_else(|| {
-                (0..MAX_PARTICIPANTS)
+                (0..MAX_COLONY_CREATURES)
                     .min_by(|&a, &b| {
                         let remaining = |i: usize| self.refusals[i].map_or(0.0, |r| r.remaining);
                         remaining(a).total_cmp(&remaining(b))
@@ -362,7 +362,7 @@ impl World {
         }
         let mut candidate = None;
         let travelling = !self.save.settings.reduce_motion;
-        for a in self.save.creatures.iter().take(MAX_PARTICIPANTS) {
+        for a in self.save.creatures.iter().take(MAX_COLONY_CREATURES) {
             if !self.play_ready(a, desktop, true) {
                 continue;
             }
@@ -371,7 +371,7 @@ impl World {
                 .get(&a.id)
                 .filter(|_| a.state.action == ActionKind::Follow)
                 .map(|plan| plan.target);
-            for b in self.save.creatures.iter().take(MAX_PARTICIPANTS) {
+            for b in self.save.creatures.iter().take(MAX_COLONY_CREATURES) {
                 let receptive = matches!(
                     b.state.action,
                     ActionKind::Idle | ActionKind::Perch | ActionKind::InspectScreen
@@ -1293,6 +1293,44 @@ pub(super) mod tests {
         );
         assert!(restored.attention.play.session.is_none());
         assert!(restored.attention.play.encounter.is_none());
+    }
+
+    /// Play is found between any two companions who want it, not only among the first four: with
+    /// everyone else in no mood for company, the fifth and sixth still find each other.
+    #[test]
+    fn the_fifth_and_sixth_companions_find_a_game_of_their_own() {
+        let (mut w, mut d, now) = scene(false);
+        super::super::tests::fill_colony(&mut w, &d, now);
+        for (i, c) in w.save.creatures.iter_mut().enumerate() {
+            c.state.surface.monitor_id = 1;
+            c.state.surface.window_key = Some(701);
+            c.state.surface.kind = SurfaceKind::WindowLedge;
+            c.state.surface.relative_x = (130.0 + i as f32 * 80.0) / 600.0;
+            c.state.position = Point {
+                x: 330.0 + i as f32 * 80.0,
+                y: 600.0,
+            };
+            c.state.action = ActionKind::Perch;
+            c.state.action_duration = 100.0;
+            c.state.action_elapsed = 0.0;
+            c.state.facing_right = i == 4;
+            c.personality.boldness = 0.7;
+            c.personality.curiosity = 0.8;
+            c.personality.playfulness = 1.0;
+            c.personality.sociability = if i < 4 { 0.0 } else { 0.9 };
+            c.state.drives = Drives::default();
+        }
+        let pair = [w.save.creatures[4].id, w.save.creatures[5].id];
+        let mut played = false;
+        for step in 1..300 {
+            tick(&mut w, &mut d, now, step);
+            if let Some(s) = w.attention.play.session {
+                let members: Vec<_> = s.members.iter().flatten().copied().collect();
+                assert!(members.iter().all(|id| pair.contains(id)), "{members:?}");
+                played |= pair.iter().all(|id| members.contains(id));
+            }
+        }
+        assert!(played, "the last two never played together");
     }
 
     #[test]

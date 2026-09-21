@@ -27,7 +27,9 @@ application-data directory.
 
 The desktop adapters read only:
 
-- usable monitor geometry and scale;
+- usable monitor geometry and scale, including each display's work area — the rectangle the
+  system leaves once its menu bar, Dock, or taskbar is taken away (`NSScreen.visibleFrame` on
+  macOS, `MONITORINFO.rcWork` on Windows), which says where those bars sit and nothing else;
 - global cursor position and derived velocity;
 - system idle duration;
 - visible top-level window rectangles and front-to-back order;
@@ -80,7 +82,9 @@ whether it is out on the desktop right now, and `signed` for whether this visit 
 book; and `guest_book`, at most twenty-four entries of `visited_at_utc`, `name`, `origin`, and
 `source`. A guest book's `origin` is the same `CreatureOrigin` a share code carries — appearance and
 temperament — and nothing about the person who shared it, their computer, or their colony. One
-`Visit` moment is added to the existing journal.
+`Visit` moment is added to the existing journal. `favorites` keeps at most eight visitors the reader
+chose to invite again, each only a `kept_at_utc`, the `name` it went by, and the same `origin`; a
+favorite stays until it is forgotten and never grows past eight on its own.
 
 What a visit does *not* save is the visit itself: the scene's progress is `#[serde(skip)]`, so its
 phase, beat, elapsed time, doorway, the places a guest tours, whom it has already gone over to,
@@ -106,12 +110,36 @@ Sticker and colony-portrait exports contain only rendered pixels. A sticker is a
 creature's own frames: per-frame graphic-control blocks and exactly one loop block, with no comment,
 application, or plain-text extension. A colony portrait is a 960×600 opaque PNG of every member,
 their names, the month the colony began, how many of you there are, how many family lines, and the
-village, resolved on a notional 1:1 desktop so no screen geometry reaches it. Neither contains a
-seed, a share code, memories, learned tendencies, relationship scores, the journal, the guest book,
-display keys, habitat zones, device data, source paths, or hidden text metadata. The save dialog
-runs first, cancellation renders nothing, and the buffers are released afterwards.
+village, resolved on a notional 1:1 desktop so no screen geometry reaches it. A postcard is a
+960×600 opaque PNG of every member in the chosen scene in front of the village, with the scene's
+name, a month, and the caption you typed, if you typed one; it carries no names at all, and its
+filename names only the scene. None of them contains a seed, a share code, memories, learned
+tendencies, relationship scores, the journal, the guest book, display keys, habitat zones, device
+data, source paths, or hidden text metadata. The save dialog runs first, cancellation renders
+nothing, and the buffers are released afterwards. A caption is never saved; it lives in the
+settings window until the postcard is exported and is gone when the window closes. The colony as
+it stood before your last change, kept so the change can be undone, lives in memory only: it is
+never written to the colony file and is gone when the app quits.
 
-Save version 16 accepts and deterministically migrates every v1–v15 colony. It adds no field of
+Save version 17 accepts and deterministically migrates every v1–v16 colony. It adds the classic
+parts of a recipe — six small numbers choosing a coat, face, limbs, crown, pattern, and tail — which
+describe how a companion is drawn and nothing about the person or the desktop; the favorite
+visitors described above; each companion's `leaning`, written only once its owner picks one of
+the four roaming choices, which stays in this colony and is never part of a share code; and each
+companion's `habits`, written only once it picks one up: at most two names from a fixed list of
+five, with a journal line for each, and nothing about when, where, or how often it did them. A
+share code carries no habits. How a companion celebrates is read from its seed and never stored.
+The hangout spots put down on the village ground are stored with the home as a kind and a
+fraction along the ground — never a screen position — and only once one is put down. The garden
+patches are stored the same way, the chosen palette by its name, and a cottage order as the ids of
+companions already in the colony, each only once it is chosen.
+A moment the village is asked to share while the houses are out is runtime only: who was asked,
+who answered what, and where anyone stood are never written, and one that runs its course leaves
+only the same shared-moment line in the journal a ritual leaves. A v16 colony opens unchanged, its recipes reading as plain modular ones
+and no favorites kept; the version moved so an older build refuses the file instead of quietly
+dropping what it cannot hold.
+
+Save version 16 accepted and deterministically migrated every v1–v15 colony. It adds no field of
 its own: the version moved only because a colony may now hold six companions and the fifteen
 bond records six of them make, and an older build reading such a file would quietly drop what it
 could not hold rather than say so. A v15 colony opens unchanged.
@@ -136,8 +164,8 @@ network request and does not upload
 either the old or migrated save.
 
 Seed sharing is fully offline. A code contains only a format nibble, original generation, immutable
-256-bit creature-origin seed, the sixteen-byte design recipe when the creature has one, and a
-checksum. It does not contain the creature's custom name, birth
+256-bit creature-origin seed, the sixteen-byte design recipe when the creature has one, four bytes of
+classic parts when that recipe has any, and a checksum. It does not contain the creature's custom name, birth
 time, memory, tendencies, routines, relationships, current colony seed, objects, shelter, display
 keys, settings, device data, or desktop information. Copying uses the local system clipboard;
 Formiga does not transmit, register, resolve, or look up a code.

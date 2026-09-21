@@ -234,9 +234,10 @@ pub(super) fn preferred_shelter_decoration(save: &SaveFile) -> Option<ShelterDec
             RitualKind::ShelterGathering | RitualKind::QuietDayHuddle => {
                 ShelterDecorationKind::Leaf
             }
-            RitualKind::Catch | RitualKind::GroupPresentation | RitualKind::HatchDay => {
-                ShelterDecorationKind::Banner
-            }
+            RitualKind::Catch
+            | RitualKind::GroupPresentation
+            | RitualKind::HatchDay
+            | RitualKind::Dance => ShelterDecorationKind::Banner,
         };
         scores[decoration.index()] = scores[decoration.index()].saturating_add(256);
     }

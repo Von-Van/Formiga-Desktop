@@ -111,6 +111,7 @@ fn passive_activity_actions_have_distinct_state_outcomes() {
         window_changed_nearby: false,
         objects: ObjectUtility::default(),
         hour_utc: 12,
+        home_point: None,
     };
 
     let mut eating = creature.clone();
@@ -138,6 +139,57 @@ fn passive_activity_actions_have_distinct_state_outcomes() {
     assert!(sprinting.state.position.x - start_x > walking_speed * 0.5 * 2.0);
 }
 
+/// A creature that walks up to something and then does it where it stands — eats, drinks, plays
+/// by itself, hangs off a ledge, looks something over, or holds up a find — comes to a stop the
+/// way one that simply stands about does, rather than carrying the walk's speed through the whole
+/// action and gliding across the desktop mid-snack.
+#[test]
+fn doing_something_where_it_stands_brings_a_walk_to_a_stop() {
+    let desktop = desktop();
+    let creature = World::new([61; 32], datetime!(2026-01-01 0:00 UTC), &desktop)
+        .save
+        .creatures
+        .remove(0);
+    let context = BehaviorContext {
+        cursor_safe: true,
+        ambience: DesktopAmbience::default(),
+        nearest_creature_distance: None,
+        nearest_creature_position: None,
+        nearest_creature_id: None,
+        bond: None,
+        on_window_ledge: false,
+        reachable_window_ledge: false,
+        window_changed_nearby: false,
+        objects: ObjectUtility::default(),
+        hour_utc: 12,
+        home_point: None,
+    };
+    let walking = 24.0 + creature.personality.activity * 34.0;
+    let mut sliding = Vec::new();
+    for action in [
+        ActionKind::Eat,
+        ActionKind::Drink,
+        ActionKind::SoloPlay,
+        ActionKind::Dangle,
+        ActionKind::InspectScreen,
+        ActionKind::PresentDiscovery,
+    ] {
+        let mut settling = creature.clone();
+        settling.state.action = action;
+        settling.state.velocity = Point { x: walking, y: 0.0 };
+        let start = settling.state.position.x;
+        for _ in 0..40 {
+            execute_action(&mut settling, &desktop, context, 0.05, None, None);
+        }
+        let travelled = settling.state.position.x - start;
+        eprintln!("{action:?}: {travelled:.1} px in two seconds from {walking:.1} px/s");
+        if travelled >= 10.0 || settling.state.velocity.x.abs() >= 0.5 {
+            sliding.push((action, travelled));
+        }
+    }
+    assert!(sliding.is_empty(), "still sliding: {sliding:?}");
+}
+
 #[test]
 fn stale_monitor_ids_rebind_all_arrived_creatures_instead_of_hiding_them() {
     let created = datetime!(2026-01-01 0:00 UTC);
@@ -160,4 +212,85 @@ fn stale_monitor_ids_rebind_all_arrived_creatures_instead_of_hiding_them() {
             .iter()
             .all(|creature| creature.state.surface.monitor_id == desktop.monitors[0].id)
     );
+}
+
+/// Over half an hour on a desktop full of windows, the same colony spends more of its time up on
+/// ledges when its companions are climbers and less when they are floor-dwellers, and a leaning
+/// is kept in the save only once someone chooses one.
+#[test]
+fn a_colony_of_climbers_lives_higher_than_a_colony_of_floor_dwellers() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    for index in 0..6_u64 {
+        desktop.windows.push(DesktopWindow {
+            key: 900 + index,
+            bounds: DesktopRect {
+                x: 80.0 + (index % 3) as f32 * 440.0,
+                y: 260.0 + (index / 3) as f32 * 260.0,
+                width: 380.0,
+                height: 200.0,
+            },
+            z_order: index as u32,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+    }
+    let share_up_high = |leaning: RoamingLeaning| {
+        let mut world = World::new([83; 32], created, &desktop);
+        let start = created + Duration::days(40);
+        world.tick(start, 0.05, &desktop);
+        let_colony_wander(&mut world, start);
+        world.save.ritual.next_at_utc = start + Duration::days(1);
+        for creature in &mut world.save.creatures {
+            creature.state.arrival_delay_secs = 0.0;
+            creature.leaning = leaning;
+        }
+        // Everyone is on the floor at the houses whatever their leaning, so only time out on the
+        // desktop says anything about where a companion likes to be.
+        let (mut up, mut total) = (0_usize, 0_usize);
+        for step in 1..=36_000_i64 {
+            world.tick(start + Duration::milliseconds(step * 50), 0.05, &desktop);
+            world.drain_events().for_each(drop);
+            if world.save.home.is_active() {
+                continue;
+            }
+            for creature in &world.save.creatures {
+                total += 1;
+                up += usize::from(creature.state.surface.kind == SurfaceKind::WindowLedge);
+            }
+        }
+        up as f32 / total.max(1) as f32
+    };
+    let climbers = share_up_high(RoamingLeaning::Climber);
+    let anywhere = share_up_high(RoamingLeaning::Anywhere);
+    let homebodies = share_up_high(RoamingLeaning::Homebody);
+    let floor = share_up_high(RoamingLeaning::FloorDweller);
+    eprintln!(
+        "time on ledges while out: climbers {:.1}%, anywhere {:.1}%, homebodies {:.1}%, \
+         floor-dwellers {:.1}%",
+        climbers * 100.0,
+        anywhere * 100.0,
+        homebodies * 100.0,
+        floor * 100.0
+    );
+    assert!(
+        climbers >= anywhere && anywhere > homebodies && homebodies > floor,
+        "{climbers} {anywhere} {homebodies} {floor}"
+    );
+    assert!(floor < anywhere / 2.0, "a floor-dweller rarely climbs");
+
+    let mut world = World::new([83; 32], created, &desktop);
+    let id = world.save.creatures[0].id;
+    let text = serde_json::to_string(&world.save).unwrap();
+    assert!(
+        !text.contains("leaning"),
+        "an untouched colony writes no leaning"
+    );
+    assert!(world.set_roaming_leaning(id, RoamingLeaning::Homebody));
+    assert!(!world.set_roaming_leaning(id, RoamingLeaning::Homebody));
+    let reloaded: SaveFile =
+        serde_json::from_str(&serde_json::to_string(&world.save).unwrap()).unwrap();
+    assert_eq!(reloaded.creatures[0].leaning, RoamingLeaning::Homebody);
 }

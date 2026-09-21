@@ -83,6 +83,7 @@ fn ritual_ceremony_duration(kind: RitualKind) -> f32 {
         | RitualKind::Catch
         | RitualKind::GroupPresentation
         | RitualKind::HatchDay => 10.0,
+        RitualKind::Dance => 12.0,
     }
 }
 
@@ -116,7 +117,8 @@ impl World {
             .filter(|kind| match kind {
                 RitualKind::FloorRace => !self.save.settings.reduce_motion,
                 RitualKind::ShelterGathering => shelter_available,
-                RitualKind::HatchDay => false,
+                // A dance is something the village is asked to do, never something it schedules.
+                RitualKind::HatchDay | RitualKind::Dance => false,
                 RitualKind::QuietDayHuddle => quiet_day,
                 RitualKind::LateNightSleepPile => late_night,
                 _ => true,
@@ -324,6 +326,7 @@ impl World {
                 ),
                 RitualKind::HatchDay => (lineup, lineup, ActionKind::Greet),
                 RitualKind::QuietDayHuddle => (lineup, lineup, ActionKind::Idle),
+                RitualKind::Dance => (lineup, lineup, ActionKind::SocialPlay),
             };
             participants.push(RitualParticipant {
                 creature_id: *creature_id,
@@ -435,6 +438,7 @@ impl World {
         if plan.phase == RitualPhase::Approach && (gathered || plan.remaining_secs <= 0.0) {
             let kind = plan.kind;
             let participants = plan.participants.clone();
+            let reduce_motion = self.save.settings.reduce_motion;
             plan.phase = RitualPhase::Ceremony;
             plan.remaining_secs = ritual_ceremony_duration(kind);
             for participant in participants {
@@ -456,6 +460,14 @@ impl World {
                 creature.state.action_elapsed = 0.0;
                 creature.state.action_duration = f32::MAX;
                 creature.state.velocity = Point::default();
+                cue_habit(
+                    creature,
+                    participant.ceremony_action,
+                    &mut self.habit_rng,
+                    true,
+                    reduce_motion,
+                    &mut self.events,
+                );
                 if participant.ceremony_action == ActionKind::PresentDiscovery {
                     creature.state.activity_variant =
                         (self.save.ritual.ordinal as u8).wrapping_sub(1) % 8;
@@ -547,9 +559,10 @@ impl World {
             RitualKind::GroupNap | RitualKind::QuietDayHuddle | RitualKind::LateNightSleepPile => {
                 RelationshipExperience::SharedRest
             }
-            RitualKind::FloorRace | RitualKind::Catch | RitualKind::HatchDay => {
-                RelationshipExperience::PositivePlay
-            }
+            RitualKind::FloorRace
+            | RitualKind::Catch
+            | RitualKind::HatchDay
+            | RitualKind::Dance => RelationshipExperience::PositivePlay,
             RitualKind::Picnic | RitualKind::ShelterGathering | RitualKind::GroupPresentation => {
                 RelationshipExperience::Greeting
             }

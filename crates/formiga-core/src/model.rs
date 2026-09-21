@@ -519,6 +519,9 @@ pub struct CreatureState {
     /// It is persisted so quitting during the reveal sequence cannot skip or duplicate a mini.
     #[serde(default)]
     pub arrival_delay_secs: f32,
+    /// A habit being done at the start of the current action. Runtime only, like `attention`.
+    #[serde(skip)]
+    pub flourish: Option<crate::Flourish>,
 }
 
 pub const MAX_RELATIONSHIPS: usize = MAX_COLONY_CREATURES * (MAX_COLONY_CREATURES - 1) / 2;
@@ -817,6 +820,10 @@ pub struct CreatureMemory {
     pub viewed_profile_revision: u16,
     pub milestone_cooldown_active_seconds: u32,
     pub milestone_bubble_shown: bool,
+    /// The little habits it has picked up, in the order it picked them up: at most
+    /// [`crate::MAX_HABITS`], one per kind of moment. Absent from the file while there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub habits: Vec<crate::Habit>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -997,6 +1004,54 @@ pub fn default_creature_name(
         .to_owned()
 }
 
+/// Where the person at the desk would like a companion to spend its time. It is theirs, not the
+/// creature's: kept apart from the innate personality and from what it has learned, it only nudges
+/// the companion's own choices, and the habitat, hidden and paused states, and every safety check
+/// still decide what it can do. Local to this colony, so it never travels in a share code.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RoamingLeaning {
+    /// Wherever it likes: temperament and what it has learned decide.
+    #[default]
+    Anywhere,
+    /// Keeps close to the village and to the floor.
+    Homebody,
+    /// Rarely climbs, and comes down from a ledge sooner.
+    FloorDweller,
+    /// Seeks out ledges, and stays up on them longer.
+    Climber,
+}
+
+impl RoamingLeaning {
+    pub const ALL: [Self; 4] = [
+        Self::Anywhere,
+        Self::Homebody,
+        Self::FloorDweller,
+        Self::Climber,
+    ];
+
+    pub fn is_anywhere(&self) -> bool {
+        *self == Self::Anywhere
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Anywhere => "Wherever they like",
+            Self::Homebody => "Homebody",
+            Self::FloorDweller => "Floor-dweller",
+            Self::Climber => "Climber",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Anywhere => "Their own nature and what they have learned decide.",
+            Self::Homebody => "Stays close to the village and the floor.",
+            Self::FloorDweller => "Rarely climbs, and comes down from a ledge sooner.",
+            Self::Climber => "Seeks out ledges and stays up on them longer.",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Creature {
     pub id: CreatureId,
@@ -1020,6 +1075,9 @@ pub struct Creature {
     pub tendencies: LearnedTendencies,
     pub routines: RoutineTable,
     pub state: CreatureState,
+    /// Where its owner would like it to roam. Absent from the file while it is `Anywhere`.
+    #[serde(default, skip_serializing_if = "RoamingLeaning::is_anywhere")]
+    pub leaning: RoamingLeaning,
 }
 
 const fn default_true() -> bool {
@@ -1046,10 +1104,12 @@ pub enum RitualKind {
     HatchDay,
     QuietDayHuddle,
     LateNightSleepPile,
+    /// A dance on the ground between the houses. Only ever invited, never scheduled.
+    Dance,
 }
 
 impl RitualKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Picnic,
         Self::GroupNap,
         Self::FloorRace,
@@ -1059,7 +1119,31 @@ impl RitualKind {
         Self::HatchDay,
         Self::QuietDayHuddle,
         Self::LateNightSleepPile,
+        Self::Dance,
     ];
+}
+
+/// Something the person at the desk can invite the whole village to share while the houses are
+/// out, on the ground between them. Runtime only: the journal records one that was shared as the
+/// shared moment it is, and nothing else about it is kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VillageMoment {
+    Picnic,
+    Dance,
+    Nap,
+}
+
+impl VillageMoment {
+    pub const ALL: [Self; 3] = [Self::Picnic, Self::Dance, Self::Nap];
+
+    /// The shared moment the journal writes it down as.
+    pub const fn ritual(self) -> RitualKind {
+        match self {
+            Self::Picnic => RitualKind::Picnic,
+            Self::Dance => RitualKind::Dance,
+            Self::Nap => RitualKind::GroupNap,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1266,6 +1350,172 @@ pub struct ColonyHome {
     pub last_disappeared_utc: Option<OffsetDateTime>,
     #[serde(default)]
     pub decorations: ShelterDecorationState,
+    /// The spots the person at the desk has put down on the ground between the houses. Absent
+    /// from the file while there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hangouts: Vec<HangoutSpot>,
+    /// The order the cottages stand in, as the person at the desk arranged them: companions by
+    /// id, the founder's colony house always first. Absent while they stand as they arrived.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cottage_order: Vec<CreatureId>,
+    /// A named palette the village is painted in, in place of the colours it was generated with.
+    /// Absent while it keeps its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palette: Option<VillagePalette>,
+    /// Little garden patches planted along the ground. Absent while there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gardens: Vec<GardenPatch>,
+}
+
+/// A palette the village can be painted in: a hand-made pairing of a main colour for roofs,
+/// caps, leaves and fabric with an accent for the trim. Choosing none keeps the colours the
+/// colony's own seed gave it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum VillagePalette {
+    Meadow,
+    Blossom,
+    Harbour,
+    Autumn,
+    Twilight,
+    Pebble,
+}
+
+impl VillagePalette {
+    pub const ALL: [Self; 6] = [
+        Self::Meadow,
+        Self::Blossom,
+        Self::Harbour,
+        Self::Autumn,
+        Self::Twilight,
+        Self::Pebble,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Meadow => "Meadow",
+            Self::Blossom => "Blossom",
+            Self::Harbour => "Harbour",
+            Self::Autumn => "Autumn",
+            Self::Twilight => "Twilight",
+            Self::Pebble => "Pebble",
+        }
+    }
+
+    /// The main and accent palettes it paints the village with, from the same twelve hand-made
+    /// palettes the colony's own colours are drawn from. Some houses and the tree wear the main
+    /// colour most and some the accent, so both halves of a pair belong to its name: two greens
+    /// for a meadow, two pinks for blossom, sea blues for a harbour, warm oranges for autumn,
+    /// dusky purples for twilight, and stone grey with moss for pebbles.
+    pub const fn palettes(self) -> (u8, u8) {
+        match self {
+            Self::Meadow => (4, 8),
+            Self::Blossom => (0, 10),
+            Self::Harbour => (6, 1),
+            Self::Autumn => (2, 5),
+            Self::Twilight => (7, 3),
+            Self::Pebble => (9, 11),
+        }
+    }
+}
+
+/// The most garden patches a village has: one of each kind.
+pub const MAX_GARDENS: usize = 3;
+
+/// A little patch planted on the village ground. Something to look at, not somewhere to go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GardenKind {
+    Flowers,
+    Vegetables,
+    Herbs,
+}
+
+impl GardenKind {
+    pub const ALL: [Self; 3] = [Self::Flowers, Self::Vegetables, Self::Herbs];
+
+    pub const fn index(self) -> u8 {
+        match self {
+            Self::Flowers => 0,
+            Self::Vegetables => 1,
+            Self::Herbs => 2,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Flowers => "Flower bed",
+            Self::Vegetables => "Vegetable patch",
+            Self::Herbs => "Herb box",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Flowers => "Three flowers in the colony's own colours.",
+            Self::Vegetables => "A cabbage, a carrot and a pumpkin coming along.",
+            Self::Herbs => "Rosemary, basil and lavender in a planter box.",
+        }
+    }
+}
+
+/// One garden patch: what is growing in it, and how far along the village ground it is, as a
+/// fraction from its left end to its right.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GardenPatch {
+    pub kind: GardenKind,
+    pub along: f32,
+}
+
+/// The most hangout spots a village has: one of each kind.
+pub const MAX_HANGOUTS: usize = 3;
+
+/// Something the person at the desk can put down on the village ground for the colony to gather
+/// at. Each gently draws one kind of quiet moment at home to it; a companion is free to do
+/// something else instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HangoutKind {
+    /// A plump floor cushion: somewhere to nap.
+    Cushion,
+    /// A picnic blanket spread out: somewhere to snack and sip.
+    Blanket,
+    /// A little spyglass on a stand: somewhere to stand and look out.
+    Lookout,
+}
+
+impl HangoutKind {
+    pub const ALL: [Self; 3] = [Self::Cushion, Self::Blanket, Self::Lookout];
+
+    pub const fn index(self) -> u8 {
+        match self {
+            Self::Cushion => 0,
+            Self::Blanket => 1,
+            Self::Lookout => 2,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cushion => "Nap cushion",
+            Self::Blanket => "Picnic blanket",
+            Self::Lookout => "Lookout",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Cushion => "Somewhere soft for a nap at home.",
+            Self::Blanket => "Somewhere to snack and sip, and where a picnic gathers.",
+            Self::Lookout => "Somewhere to stand and look out over the desktop.",
+        }
+    }
+}
+
+/// One hangout spot: what it is, and how far along the village ground it stands, as a fraction
+/// from its left end to its right, so it keeps its place on the ground as the village grows,
+/// shrinks, or moves.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HangoutSpot {
+    pub kind: HangoutKind,
+    pub along: f32,
 }
 
 impl ColonyHome {
@@ -1300,11 +1550,147 @@ impl ColonyHome {
             active_since_utc,
             last_disappeared_utc,
             decorations: ShelterDecorationState::default(),
+            hangouts: Vec::new(),
+            cottage_order: Vec::new(),
+            palette: None,
+            gardens: Vec::new(),
         }
+    }
+
+    /// The shelter as it is drawn: the colony's own, repainted in the palette chosen for the
+    /// village if one was. Its style, size and details are never touched.
+    pub fn drawn_shelter(&self) -> ShelterGenome {
+        let mut shelter = self.shelter;
+        if let Some(palette) = self.palette {
+            (shelter.palette_index, shelter.accent_index) = palette.palettes();
+        }
+        shelter
+    }
+
+    /// Stand the cottages in a new order, given as the companions who keep them. The founder's
+    /// colony house stays first whatever the order says, a cottage left out keeps its place after
+    /// the ones given, and an order that is just the order everyone arrived in is not written
+    /// down at all.
+    pub fn arrange_cottages(&mut self, order: Vec<CreatureId>, creatures: &[Creature]) {
+        self.cottage_order = order;
+        self.normalize_village();
+        let arranged = crate::house_owners(creatures, &self.cottage_order);
+        self.cottage_order = if arranged == crate::house_owners(creatures, &[]) {
+            Vec::new()
+        } else {
+            arranged.as_slice()[1..].to_vec()
+        };
+    }
+
+    /// Plant a patch, move it, or with `None` dig it up. A fraction outside the ground is brought
+    /// back onto it; one that is not a number is refused.
+    pub fn set_garden(&mut self, kind: GardenKind, along: Option<f32>) -> bool {
+        match along {
+            Some(along) if !along.is_finite() => false,
+            Some(along) => {
+                let along = along.clamp(0.0, 1.0);
+                match self.gardens.iter_mut().find(|patch| patch.kind == kind) {
+                    Some(patch) => patch.along = along,
+                    None => self.gardens.push(GardenPatch { kind, along }),
+                }
+                self.normalize_village();
+                true
+            }
+            None => {
+                self.gardens.retain(|patch| patch.kind != kind);
+                true
+            }
+        }
+    }
+
+    /// Everything the person at the desk arranged about the village put back as it was
+    /// generated: the cottages in the order their keepers arrived, the colony's own colours, and
+    /// no garden patches. Hangout spots are left where they were put.
+    pub fn reset_arrangement(&mut self) {
+        self.cottage_order.clear();
+        self.palette = None;
+        self.gardens.clear();
+    }
+
+    /// One patch of each kind at most, each somewhere on the ground, and hangout spots likewise.
+    pub fn normalize_village(&mut self) {
+        self.normalize_hangouts();
+        let mut seen = Vec::new();
+        self.gardens.retain(|patch| {
+            let fresh = patch.along.is_finite() && !seen.contains(&patch.kind);
+            seen.push(patch.kind);
+            fresh
+        });
+        for patch in &mut self.gardens {
+            patch.along = patch.along.clamp(0.0, 1.0);
+        }
+        self.gardens.sort_by_key(|patch| patch.kind.index());
+        self.gardens.truncate(MAX_GARDENS);
+        let mut seen = Vec::new();
+        self.cottage_order.retain(|id| {
+            let fresh = !seen.contains(id);
+            seen.push(*id);
+            fresh
+        });
+        self.cottage_order.truncate(MAX_COLONY_CREATURES);
     }
 
     pub fn is_active(&self) -> bool {
         self.active_since_utc.is_some()
+    }
+
+    /// The spot of this kind, if one has been put down.
+    pub fn hangout(&self, kind: HangoutKind) -> Option<HangoutSpot> {
+        self.hangouts.iter().copied().find(|spot| spot.kind == kind)
+    }
+
+    /// The patch of this kind, if one has been planted.
+    pub fn garden(&self, kind: GardenKind) -> Option<GardenPatch> {
+        self.gardens
+            .iter()
+            .copied()
+            .find(|patch| patch.kind == kind)
+    }
+
+    /// Whether anything has been put down or planted on the village ground.
+    pub fn has_ground_items(&self) -> bool {
+        !self.hangouts.is_empty() || !self.gardens.is_empty()
+    }
+
+    /// Put a spot down, move it, or with `None` pick it up again. A fraction outside the ground
+    /// is brought back onto it; one that is not a number is refused.
+    pub fn set_hangout(&mut self, kind: HangoutKind, along: Option<f32>) -> bool {
+        match along {
+            Some(along) if !along.is_finite() => false,
+            Some(along) => {
+                let along = along.clamp(0.0, 1.0);
+                match self.hangouts.iter_mut().find(|spot| spot.kind == kind) {
+                    Some(spot) => spot.along = along,
+                    None => self.hangouts.push(HangoutSpot { kind, along }),
+                }
+                self.normalize_hangouts();
+                true
+            }
+            None => {
+                self.hangouts.retain(|spot| spot.kind != kind);
+                true
+            }
+        }
+    }
+
+    /// One spot of each kind at most, each somewhere on the ground, in a stable order.
+    pub fn normalize_hangouts(&mut self) {
+        let mut seen = Vec::new();
+        self.hangouts.retain(|spot| {
+            let fresh = spot.along.is_finite() && !seen.contains(&spot.kind);
+            seen.push(spot.kind);
+            fresh
+        });
+        for spot in &mut self.hangouts {
+            spot.along = spot.along.clamp(0.0, 1.0);
+        }
+        self.hangouts.sort_by_key(|spot| spot.kind.index());
+        self.hangouts.truncate(MAX_HANGOUTS);
     }
 }
 
@@ -1526,6 +1912,32 @@ pub enum WorldEvent {
     ShelterDecorationAdded {
         kind: ShelterDecorationKind,
     },
+    /// A companion picked up a little habit of its own.
+    HabitLearned {
+        creature_id: CreatureId,
+        habit: crate::Habit,
+    },
+}
+
+impl WorldEvent {
+    /// How soon this event needs the colony written to disk. Arrivals, the houses coming and going,
+    /// rituals, new belongings and a newly picked-up habit are kept at once; a creature starting an
+    /// action or stepping onto another surface is everyday movement, gathered into the next
+    /// routine checkpoint.
+    pub fn save_urgency(&self) -> crate::SaveUrgency {
+        match self {
+            Self::CreatureSpawned { .. }
+            | Self::HomeAppeared
+            | Self::HomeDisappeared { .. }
+            | Self::RitualStarted { .. }
+            | Self::RitualInterrupted { .. }
+            | Self::ColonyObjectAdded { .. }
+            | Self::ShelterDecorationAdded { .. }
+            | Self::HabitLearned { .. } => crate::SaveUrgency::Prompt,
+            Self::ActionStarted { .. } | Self::SurfaceChanged { .. } => crate::SaveUrgency::Routine,
+            _ => crate::SaveUrgency::None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1554,6 +1966,14 @@ pub enum WorldCommand {
     },
     /// Call the whole colony home now, exactly as the ordinary home visit would.
     SendHome,
+    /// Ask the village to share a moment while the houses are out. The companion the menu was
+    /// opened on is the one asking; everyone who is home decides for themselves.
+    InviteVillageMoment {
+        creature_id: CreatureId,
+        moment: VillageMoment,
+    },
+    /// Bring the moment under way to an end.
+    StopVillageMoment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1615,6 +2035,7 @@ mod tests {
             viewed_profile_revision: u16::MAX,
             milestone_cooldown_active_seconds: u32::MAX,
             milestone_bubble_shown: true,
+            habits: vec![crate::Habit::CirclesBeforeNaps, crate::Habit::LooksFoodOver],
         };
         let routines = RoutineTable {
             slots: [RoutineSlot {
@@ -1662,7 +2083,7 @@ mod tests {
         assert!(fields.contains_key("last_kind"));
         assert!(fields.contains_key("ordinal"));
         assert!(fields.contains_key("hatch_day_acknowledged_year"));
-        assert_eq!(RitualKind::ALL.len(), 9);
+        assert_eq!(RitualKind::ALL.len(), 10);
     }
 
     #[test]

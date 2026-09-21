@@ -2,6 +2,7 @@ use crate::SaveFile;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PersistenceError {
@@ -11,6 +12,37 @@ pub enum PersistenceError {
     Json(#[from] serde_json::Error),
     #[error("unsupported save version {0}")]
     UnsupportedVersion(u32),
+}
+
+/// How soon something needs the colony written to disk.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SaveUrgency {
+    /// Nothing is waiting; the periodic save still runs.
+    #[default]
+    None,
+    /// Everyday movement, written with the next routine checkpoint.
+    Routine,
+    /// A change worth keeping at once.
+    Prompt,
+}
+
+/// Routine changes are written together at most this often. It is also the most everyday
+/// progress — who was doing what, and where — that a crash can cost.
+pub const ROUTINE_CHECKPOINT: Duration = Duration::from_secs(15);
+
+/// A colony with nothing waiting is still written this often, since drives, positions, and learned
+/// tendencies change without raising any event of their own.
+pub const PERIODIC_SAVE: Duration = Duration::from_secs(30);
+
+/// Whether the colony should be written now, given the most urgent thing waiting since the last
+/// write and how long ago that write was. A busy colony starts dozens of actions a minute; writing
+/// the whole file for each one used to rewrite it more than once a second.
+pub fn save_due(waiting: SaveUrgency, since_last_save: Duration) -> bool {
+    match waiting {
+        SaveUrgency::Prompt => true,
+        SaveUrgency::Routine => since_last_save >= ROUTINE_CHECKPOINT,
+        SaveUrgency::None => since_last_save >= PERIODIC_SAVE,
+    }
 }
 
 pub struct SaveStore {
@@ -139,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=15 => migrate_legacy(value, version),
+            1..=16 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -205,6 +237,10 @@ fn migrate_legacy(
     {
         root.remove("visitors");
     }
+    // v17 adds classic parts to recipes, favorite visitors, and roaming leanings. Nothing is
+    // migrated: a recipe without classic parts is a plain modular one, which is what every earlier
+    // recipe is; an older colony has kept no favorites; and a missing leaning is `Anywhere`. The version moved so an older build refuses a colony whose
+    // additions it would quietly drop.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -567,12 +603,13 @@ mod tests {
     use crate::{ArrivalState, Settings};
     use time::macros::datetime;
 
-    /// Every field name a version-15 colony file is allowed to use, gathered from a colony that
+    /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 220] = [
+    const SAVED_FIELDS: [&str; 233] = [
         "Decoration",
         "Friendship",
+        "Habit",
         "MacBundleId",
         "Object",
         "Preference",
@@ -587,6 +624,7 @@ mod tests {
         "active_since_utc",
         "activity",
         "activity_variant",
+        "along",
         "affinity",
         "appearance",
         "application",
@@ -609,6 +647,7 @@ mod tests {
         "brow_style",
         "cell",
         "cheek_style",
+        "classic",
         "climbing",
         "coat",
         "colony_order",
@@ -617,9 +656,11 @@ mod tests {
         "companion",
         "confidence",
         "corner",
+        "cottage_order",
         "created_at_utc",
         "creature",
         "creatures",
+        "crown",
         "curiosity",
         "curiosity_satisfaction",
         "cursor_cooldown",
@@ -654,6 +695,7 @@ mod tests {
         "familiarity",
         "family",
         "favorite_display",
+        "favorites",
         "finder",
         "finder_name",
         "first_at",
@@ -662,10 +704,13 @@ mod tests {
         "fullscreen_app_occlusion",
         "gait_bob",
         "gatherings",
+        "gardens",
         "generation",
         "guest",
         "guest_book",
         "habitat",
+        "habits",
+        "hangouts",
         "hatch_day_acknowledged_year",
         "head",
         "head_appendages",
@@ -679,16 +724,19 @@ mod tests {
         "id",
         "journal",
         "kept",
+        "kept_at_utc",
         "key",
         "kind",
         "last_disappeared_utc",
         "last_kind",
         "launch_at_login",
+        "leaning",
         "ledge_seconds",
         "leg_length",
         "legs",
         "len",
         "length",
+        "limbs",
         "logical_size",
         "longest_sleep_seconds",
         "marking",
@@ -714,6 +762,7 @@ mod tests {
         "ordinal",
         "origin",
         "overridden",
+        "palette",
         "palette_index",
         "parent_id",
         "pattern",
@@ -794,7 +843,7 @@ mod tests {
     ];
 
     /// The vocabulary of watching a desktop and of a scene under way. None of it belongs in a file.
-    const RUNTIME_ONLY_FIELDS: [&str; 39] = [
+    const RUNTIME_ONLY_FIELDS: [&str; 41] = [
         "answers",
         "attention",
         "beat",
@@ -804,6 +853,7 @@ mod tests {
         "doorway",
         "elapsed",
         "emotion",
+        "flourish",
         "hanging",
         "holder",
         "hop",
@@ -832,6 +882,7 @@ mod tests {
         "session",
         "setbacks",
         "signals",
+        "started_at",
         "trail",
         "z_order",
     ];
@@ -861,6 +912,13 @@ mod tests {
         }
         for absent in RUNTIME_ONLY_FIELDS {
             assert!(!names.contains(absent), "the file names {absent:?}");
+        }
+        // The sweep reaches what the person at the desk arranged, not only what the colony did.
+        for arranged in ["habits", "hangouts", "cottage_order", "palette", "gardens"] {
+            assert!(
+                names.contains(arranged),
+                "the file should hold {arranged:?}"
+            );
         }
 
         // The only rectangle a colony keeps is a habitat zone the user drew, in fractions of a
@@ -1186,6 +1244,8 @@ mod tests {
         world.save.home.active_since_utc = None;
         world.save.home.last_disappeared_utc = Some(now);
         world.save.ritual.next_at_utc = now + time::Duration::days(1);
+        // A companion its owner would rather keep on the floor.
+        world.save.creatures[0].leaning = crate::RoamingLeaning::FloorDweller;
         world.save.settings.habitat = crate::HabitatPolicy {
             preset: crate::HabitatPreset::Custom,
             zones: vec![crate::HabitatZone {
@@ -1286,6 +1346,40 @@ mod tests {
                 && geometry.signals().next().is_some()
                 && cursor.cue().is_some()
             {
+                // A companion with two little habits of its own, one of them in the journal,
+                // and another in the middle of doing one.
+                world.save.creatures[0].memory.habits =
+                    vec![crate::Habit::StretchesBeforeNaps, crate::Habit::WavesHello];
+                let first = world.save.creatures[0].id;
+                world.save.companion.remember(
+                    Some(first),
+                    crate::JournalMoment::Habit(crate::Habit::WavesHello),
+                    now,
+                );
+                // Two spots put down on the village ground.
+                world
+                    .save
+                    .home
+                    .set_hangout(crate::HangoutKind::Blanket, Some(0.3125));
+                world
+                    .save
+                    .home
+                    .set_hangout(crate::HangoutKind::Lookout, Some(0.8125));
+                // A village arranged by hand: the cottage order written down when there were more
+                // cottages to order, painted in a named palette, with a herb box planted.
+                world.save.home.cottage_order =
+                    crate::house_owners(&world.save.creatures, &[]).as_slice()[1..].to_vec();
+                world.save.home.palette = Some(crate::VillagePalette::Harbour);
+                world
+                    .save
+                    .home
+                    .set_garden(crate::GardenKind::Herbs, Some(0.5625));
+                let last = world.save.creatures.last_mut().expect("a colony");
+                last.state.flourish = Some(crate::Flourish {
+                    habit: crate::Habit::LooksFoodOver,
+                    action: last.state.action,
+                    started_at: Some(0.25),
+                });
                 return (world, step);
             }
         }
@@ -1545,6 +1639,94 @@ mod tests {
     }
 
     #[test]
+    fn routine_movement_waits_for_a_checkpoint_and_everything_else_is_kept_at_once() {
+        let seconds = Duration::from_secs;
+        assert!(save_due(SaveUrgency::Prompt, Duration::ZERO));
+        assert!(!save_due(SaveUrgency::Routine, seconds(14)));
+        assert!(save_due(SaveUrgency::Routine, ROUTINE_CHECKPOINT));
+        assert!(!save_due(SaveUrgency::None, seconds(29)));
+        assert!(save_due(SaveUrgency::None, PERIODIC_SAVE));
+        assert!(ROUTINE_CHECKPOINT < PERIODIC_SAVE);
+        let id = 7;
+        for (event, urgency) in [
+            (
+                crate::WorldEvent::CreatureSpawned { creature_id: id },
+                SaveUrgency::Prompt,
+            ),
+            (crate::WorldEvent::HomeAppeared, SaveUrgency::Prompt),
+            (
+                crate::WorldEvent::HomeDisappeared { interrupted: false },
+                SaveUrgency::Prompt,
+            ),
+            (
+                crate::WorldEvent::ActionStarted {
+                    creature_id: id,
+                    action: crate::ActionKind::Traverse,
+                },
+                SaveUrgency::Routine,
+            ),
+            (
+                crate::WorldEvent::SurfaceChanged {
+                    creature_id: id,
+                    kind: crate::SurfaceKind::WindowLedge,
+                },
+                SaveUrgency::Routine,
+            ),
+            (
+                crate::WorldEvent::CreaturePetted { creature_id: id },
+                SaveUrgency::None,
+            ),
+        ] {
+            assert_eq!(event.save_urgency(), urgency, "{event:?}");
+        }
+        // The most urgent thing waiting decides.
+        assert_eq!(
+            SaveUrgency::Routine.max(SaveUrgency::Prompt),
+            SaveUrgency::Prompt
+        );
+    }
+
+    /// A version-16 colony opens unchanged: its recipes gain no classic parts, and the one
+    /// companion from before recipes keeps having none.
+    #[test]
+    fn v16_migration_keeps_every_recipe_exactly_as_it_was() {
+        let desktop = crate::DesktopSnapshot::default();
+        let now = datetime!(2026-09-21 12:00 UTC);
+        let mut world = crate::World::new([67; 32], now, &desktop);
+        world.tick(now + time::Duration::days(8), 0.05, &desktop);
+        for creature in &mut world.save.creatures {
+            let design = creature
+                .appearance
+                .design
+                .map(|design| crate::CreatureDesign {
+                    classic: crate::ClassicParts::default(),
+                    ..design
+                });
+            crate::apply_creature_design(creature, design);
+        }
+        crate::apply_creature_design(&mut world.save.creatures[0], None);
+        let save = world.save.clone();
+        let mut value = serde_json::to_value(&save).unwrap();
+        assert!(
+            !value.to_string().contains("classic"),
+            "a v16 file has none"
+        );
+        value["save_version"] = 16.into();
+        let migrated = migrate_legacy(value, 16).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.creatures, save.creatures);
+        assert_eq!(migrated.creatures[0].appearance.design, None);
+        assert!(migrated.creatures.len() > 1);
+        assert!(
+            migrated
+                .creatures
+                .iter()
+                .filter_map(|creature| creature.appearance.design)
+                .all(|design| design.classic.is_modular())
+        );
+    }
+
+    #[test]
     fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
         let desktop = crate::DesktopSnapshot::default();
         let now = datetime!(2026-09-14 12:00 UTC);
@@ -1568,6 +1750,19 @@ mod tests {
                     crate::VisitorSource::Invited
                 },
             });
+        }
+        // Favorites kept to invite again, up to the limit.
+        for index in 0..crate::MAX_FAVORITE_VISITORS as u8 {
+            let origin = crate::CreatureOrigin {
+                design: None,
+                source_colony_seed: [100 + index; 32],
+                source_generation: index % 4,
+            };
+            world
+                .save
+                .visitors
+                .keep_favorite(&format!("Friend {index}"), origin, now)
+                .unwrap();
         }
         let guest = world
             .save

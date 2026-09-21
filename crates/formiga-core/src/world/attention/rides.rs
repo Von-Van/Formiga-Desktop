@@ -790,6 +790,64 @@ mod tests {
         }
     }
 
+    /// Rides are felt by whoever is on the window, not by the first four in the colony: with only
+    /// the last two of a full colony aboard, both are carried, feel the motion, and react to it.
+    #[test]
+    fn the_last_two_of_a_full_colony_feel_and_react_to_their_ride() {
+        let (mut world, mut desktop, now) = scene();
+        super::super::tests::fill_colony(&mut world, &desktop, now);
+        for (index, c) in world.save.creatures.iter_mut().enumerate() {
+            if index < 4 {
+                c.state.surface = SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id: 1,
+                    window_key: None,
+                    relative_x: 0.5,
+                };
+                c.state.position = Point {
+                    x: 900.0 + index as f32 * 90.0,
+                    y: 846.0,
+                };
+            } else {
+                let seat = (index - 4) as f32;
+                c.state.surface = SurfaceAttachment {
+                    kind: SurfaceKind::WindowLedge,
+                    monitor_id: 1,
+                    window_key: Some(701),
+                    relative_x: 0.2 + seat * 0.4,
+                };
+                c.state.position = Point {
+                    x: 320.0 + seat * 240.0,
+                    y: 600.0,
+                };
+                c.personality.boldness = 1.0;
+                c.personality.window_tolerance = 1.0;
+                c.personality.curiosity = 1.0;
+            }
+            c.state.action = ActionKind::Idle;
+            c.state.action_duration = 100.0;
+        }
+        let riders = [world.save.creatures[4].id, world.save.creatures[5].id];
+        let (mut felt, mut reacted) = ([false; 2], [false; 2]);
+        for i in 1..40 {
+            desktop.windows[0].bounds.x += 12.0;
+            step(&mut world, &mut desktop, now, i * 50);
+            for (index, id) in riders.into_iter().enumerate() {
+                felt[index] |= world.ride_memory.riding(id);
+                reacted[index] |= world
+                    .attention
+                    .plans
+                    .get(&id)
+                    .is_some_and(|p| matches!(p.role, Role::Actor { .. }));
+            }
+            for c in &world.save.creatures[4..] {
+                assert_eq!(c.state.surface.window_key, Some(701));
+                assert_eq!(c.state.position.y, desktop.windows[0].bounds.y);
+            }
+        }
+        assert_eq!((felt, reacted), ([true; 2], [true; 2]));
+    }
+
     #[test]
     fn two_riders_on_one_window_watch_each_other_and_show_off_when_it_is_steady() {
         let (mut world, mut desktop, now) = scene();

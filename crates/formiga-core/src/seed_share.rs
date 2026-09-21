@@ -55,12 +55,15 @@ pub enum SeedCodeError {
     Design,
 }
 
+/// Version 1 carries a seed alone, version 2 a seed and a modular recipe, and version 3 a recipe
+/// with classic parts in the four bytes version 2 keeps at zero. A recipe without classic parts is
+/// still written as version 2, so every version since v0.55.0 can import it.
 pub fn encode_creature_seed(origin: CreatureOrigin) -> String {
     debug_assert!(origin.source_generation <= 3);
-    let version = if origin.design.is_some() {
-        2
-    } else {
-        FORMAT_VERSION
+    let version = match origin.design {
+        Some(design) if !design.classic.is_modular() => 3,
+        Some(_) => 2,
+        None => FORMAT_VERSION,
     };
     let mut payload = vec![
         0_u8;
@@ -73,7 +76,7 @@ pub fn encode_creature_seed(origin: CreatureOrigin) -> String {
     payload[0] = (version << 4) | origin.source_generation.min(3);
     payload[1..33].copy_from_slice(&origin.source_colony_seed);
     if let Some(design) = origin.design {
-        payload[33..49].copy_from_slice(&design.to_bytes());
+        payload[33..53].copy_from_slice(&design.to_bytes());
     }
     let checksum_start = payload.len() - 4;
     let digest = checksum(&payload[..checksum_start]);
@@ -110,7 +113,7 @@ pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeEr
     }
     let payload = decode_base32(&encoded)?;
     let version = payload[0] >> 4;
-    if ![FORMAT_VERSION, 2].contains(&version) {
+    if ![FORMAT_VERSION, 2, 3].contains(&version) {
         return Err(SeedCodeError::Version);
     }
     if payload.len() != if version == 1 { PAYLOAD_BYTES } else { 57 } {
@@ -124,13 +127,15 @@ pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeEr
     if checksum(&payload[..checksum_start]) != payload[checksum_start..] {
         return Err(SeedCodeError::Checksum);
     }
-    let design = if version == 2 {
-        if payload[49..53] != [0; 4] {
+    let design = if version == 1 {
+        None
+    } else {
+        let design = CreatureDesign::from_bytes(&payload[33..53]).ok_or(SeedCodeError::Design)?;
+        // Version 2 reserves the classic bytes, and version 3 exists only to fill them.
+        if design.classic.is_modular() != (version == 2) {
             return Err(SeedCodeError::Design);
         }
-        Some(CreatureDesign::from_bytes(&payload[33..49]).ok_or(SeedCodeError::Design)?)
-    } else {
-        None
+        Some(design)
     };
     let mut source_colony_seed = [0_u8; 32];
     source_colony_seed.copy_from_slice(&payload[1..33]);
@@ -147,7 +152,14 @@ pub fn derive_imported_colony_seed(shared: SharedCreatureSeed) -> [u8; 32] {
     hash.update(shared.source_colony_seed);
     hash.update([shared.source_generation]);
     if let Some(design) = shared.design {
-        hash.update(design.to_bytes());
+        // A modular recipe hashes its sixteen bytes alone, as it did before classic parts, so
+        // an imported colony keeps the lineage it was always going to have.
+        let bytes = design.to_bytes();
+        hash.update(if design.classic.is_modular() {
+            &bytes[..16]
+        } else {
+            &bytes[..]
+        });
     }
     let mut derived: [u8; 32] = hash.finalize().into();
     if derived == shared.source_colony_seed {
@@ -237,6 +249,82 @@ mod tests {
                 derive_imported_colony_seed(other)
             );
         }
+    }
+
+    /// A modular recipe is written exactly as v0.58.9 wrote it, so every version since v0.55.0
+    /// keeps importing it, and an imported colony keeps the lineage it always had.
+    #[test]
+    fn a_modular_recipe_keeps_its_version_2_code_and_lineage() {
+        let design = CreatureDesign::modular([13; 32], 0, None);
+        let shared = SharedCreatureSeed {
+            design: Some(design),
+            source_colony_seed: [13; 32],
+            source_generation: 1,
+        };
+        assert_eq!(
+            encode_creature_seed(shared.into()),
+            "FORMIGA-446G-T38D-1M6G-T38D-1M6G-T38D-1M6G-T38D-1M6G-T38D-1M6G-T38D-1M6G-T004-084G-\
+             M206-0C0G-3M4K-VFKS-DV80-0000-01CM-GTZ0"
+        );
+        assert_eq!(
+            derive_imported_colony_seed(shared),
+            [
+                91, 144, 170, 53, 118, 207, 73, 252, 185, 240, 135, 18, 130, 52, 246, 130, 41, 195,
+                188, 57, 48, 247, 243, 191, 164, 252, 80, 108, 27, 124, 63, 150
+            ]
+        );
+    }
+
+    #[test]
+    fn classic_parts_travel_in_a_version_3_code_and_nowhere_else() {
+        let mut design = CreatureDesign::generated([13; 32], 0, None);
+        design.classic = crate::ClassicParts {
+            coat: 1,
+            face: 2,
+            limbs: 2,
+            crown: 1,
+            pattern: 3,
+            tail: 1,
+        };
+        let shared = SharedCreatureSeed {
+            design: Some(design),
+            source_colony_seed: [13; 32],
+            source_generation: 1,
+        };
+        let code = encode_creature_seed(shared.into());
+        assert_eq!(code.split('-').skip(1).count(), 23);
+        assert_eq!(decode_creature_seed(&code), Ok(shared));
+        let encoded = code.strip_prefix("FORMIGA-").unwrap().replace('-', "");
+        let payload = decode_base32(&encoded).unwrap();
+        assert_eq!(payload[0] >> 4, 3);
+        assert_ne!(payload[49..53], [0; 4]);
+        // The same recipe without its classic parts is not a version 3 code, and a version 2 code
+        // cannot smuggle them in.
+        let reversion = |payload: &mut Vec<u8>, version: u8| {
+            payload[0] = (version << 4) | (payload[0] & 0x0f);
+            let digest = checksum(&payload[..53]);
+            payload[53..].copy_from_slice(&digest);
+        };
+        let mut as_version_2 = payload.clone();
+        reversion(&mut as_version_2, 2);
+        assert_eq!(
+            decode_creature_seed(&group_payload(&as_version_2)),
+            Err(SeedCodeError::Design)
+        );
+        let mut empty_version_3 = payload;
+        empty_version_3[49..53].copy_from_slice(&[0; 4]);
+        reversion(&mut empty_version_3, 3);
+        assert_eq!(
+            decode_creature_seed(&group_payload(&empty_version_3)),
+            Err(SeedCodeError::Design)
+        );
+        // Classic parts are part of the lineage an imported colony grows from.
+        let mut modular = shared;
+        modular.design.as_mut().unwrap().classic = crate::ClassicParts::default();
+        assert_ne!(
+            derive_imported_colony_seed(shared),
+            derive_imported_colony_seed(modular)
+        );
     }
 
     #[test]
@@ -332,7 +420,7 @@ mod tests {
 
         let encoded = valid.strip_prefix("FORMIGA-").unwrap().replace('-', "");
         let mut payload = decode_base32(&encoded).unwrap();
-        payload[0] = 3 << 4;
+        payload[0] = 4 << 4;
         let digest = checksum(&payload[..33]);
         payload[33..].copy_from_slice(&digest);
         assert_eq!(

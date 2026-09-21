@@ -1,6 +1,6 @@
 use crate::{
     ActionChoice, ActionKind, Creature, CreatureId, CreatureRelationship, DesktopSnapshot,
-    LearnedTendencies, Point, SurfaceKind, routine_key,
+    LearnedTendencies, Point, RoamingLeaning, SurfaceKind, routine_key,
 };
 use rand::Rng;
 
@@ -17,6 +17,9 @@ pub struct BehaviorContext {
     pub window_changed_nearby: bool,
     pub objects: ObjectUtility,
     pub hour_utc: u8,
+    /// Where the colony house stands on this creature's display, when it is on the display the
+    /// home belongs to: where a homebody wanders back towards.
+    pub home_point: Option<Point>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -205,7 +208,8 @@ pub fn choose_action<R: Rng + ?Sized>(
         } else {
             0.0
         };
-        scored.push((action, score + learned + commitment));
+        let leaning = leaning_bias(creature.leaning, action, &context);
+        scored.push((action, score + learned + commitment + leaning));
     }
 
     let action = softmax_sample(&scored, p.decision_temperature.max(0.08), rng);
@@ -229,6 +233,14 @@ pub fn choose_action<R: Rng + ?Sized>(
             .unwrap_or((None, None)),
         ActionKind::InvestigateCursor if desktop.cursor.available => {
             (None, Some(desktop.cursor.position))
+        }
+        // A homebody that sets out usually sets out for home.
+        ActionKind::Traverse
+            if creature.leaning == RoamingLeaning::Homebody
+                && context.home_point.is_some()
+                && rng.random_bool(0.7) =>
+        {
+            (None, context.home_point)
         }
         ActionKind::Traverse => (
             None,
@@ -274,6 +286,28 @@ fn sleep_companion_score(context: BehaviorContext) -> f32 {
                 + relationship_unit(bond.relationship.familiarity) * 0.12
                 - relationship_unit(bond.relationship.avoidance) * 0.24
         })
+}
+
+/// How far a companion's leaning tips one choice, on the same scale as what it has learned. It
+/// never forbids anything: a floor-dweller with nothing better to do can still climb, and a
+/// climber still sleeps and eats.
+fn leaning_bias(leaning: RoamingLeaning, action: ActionKind, context: &BehaviorContext) -> f32 {
+    let up_high = context.on_window_ledge;
+    match (leaning, action) {
+        (RoamingLeaning::Anywhere, _) => 0.0,
+        // Going up, and staying up once there.
+        (RoamingLeaning::Climber, ActionKind::Perch) => 0.45,
+        (RoamingLeaning::Climber, ActionKind::RideWindow) => 0.2,
+        // Rarely going up, and sooner down again.
+        (RoamingLeaning::FloorDweller, ActionKind::Perch) if up_high => -0.4,
+        (RoamingLeaning::FloorDweller, ActionKind::Perch) => -0.8,
+        (RoamingLeaning::FloorDweller, ActionKind::RideWindow) => -0.3,
+        // Settled close to home rather than off exploring.
+        (RoamingLeaning::Homebody, ActionKind::Perch) => -0.35,
+        (RoamingLeaning::Homebody, ActionKind::Sprint) => -0.15,
+        (RoamingLeaning::Homebody, ActionKind::Idle) => 0.1,
+        _ => 0.0,
+    }
 }
 
 fn preferred_region_target(creature: &Creature, desktop: &DesktopSnapshot) -> Option<Point> {
@@ -436,6 +470,7 @@ mod tests {
             window_changed_nearby: false,
             objects: ObjectUtility::default(),
             hour_utc: 12,
+            home_point: None,
         };
         (creature, desktop, context)
     }
@@ -510,6 +545,71 @@ mod tests {
             "{low} < {neutral} < {high}"
         );
         assert_eq!(low, reversed);
+    }
+
+    /// A leaning tips a companion's own choices without taking any away: a climber goes up more
+    /// than one that roams anywhere, a homebody less, a floor-dweller least, and each still goes
+    /// up sometimes. A floor-dweller already on a ledge also comes down sooner, and a homebody that
+    /// sets out usually sets out for home.
+    #[test]
+    fn a_roaming_leaning_tips_climbing_without_forbidding_it() {
+        let (mut creature, desktop, mut context) = fixture();
+        context.reachable_window_ledge = true;
+        creature.personality.decision_temperature = 0.5;
+        let perches = |creature: &Creature, context: BehaviorContext| {
+            selection_count_large(creature, &desktop, context, ActionKind::Perch)
+        };
+        let mut counts = Vec::new();
+        for leaning in RoamingLeaning::ALL {
+            creature.leaning = leaning;
+            counts.push((leaning, perches(&creature, context)));
+        }
+        let count = |wanted| counts.iter().find(|(l, _)| *l == wanted).unwrap().1;
+        let (anywhere, homebody, floor, climber) = (
+            count(RoamingLeaning::Anywhere),
+            count(RoamingLeaning::Homebody),
+            count(RoamingLeaning::FloorDweller),
+            count(RoamingLeaning::Climber),
+        );
+        assert!(
+            climber > anywhere && anywhere > homebody && homebody > floor,
+            "{counts:?}"
+        );
+        assert!(floor > 0, "a floor-dweller still climbs now and then");
+        // Up on a ledge, staying there is less likely for a floor-dweller than for anyone else.
+        let mut up = context;
+        up.reachable_window_ledge = false;
+        up.on_window_ledge = true;
+        creature.leaning = RoamingLeaning::Anywhere;
+        let stays = perches(&creature, up);
+        creature.leaning = RoamingLeaning::FloorDweller;
+        assert!(perches(&creature, up) < stays);
+        // Setting out, a homebody heads for home most of the time; nobody else is sent there.
+        let home = Point { x: 180.0, y: 846.0 };
+        let mut near_home = context;
+        near_home.home_point = Some(home);
+        creature.personality.activity = 1.0;
+        creature.state.drives.boredom = 1.0;
+        let homeward = |creature: &Creature| {
+            let mut rng = ChaCha12Rng::from_seed([29; 32]);
+            let (mut outings, mut home_bound) = (0, 0);
+            for _ in 0..2_048 {
+                let choice = choose_action(creature, &desktop, near_home, &mut rng);
+                if choice.action == ActionKind::Traverse {
+                    outings += 1;
+                    home_bound += usize::from(choice.target_point == Some(home));
+                }
+            }
+            (outings, home_bound)
+        };
+        creature.leaning = RoamingLeaning::Homebody;
+        let (outings, home_bound) = homeward(&creature);
+        assert!(
+            outings > 50 && home_bound * 2 > outings,
+            "{home_bound}/{outings}"
+        );
+        creature.leaning = RoamingLeaning::Climber;
+        assert_eq!(homeward(&creature).1, 0);
     }
 
     #[test]

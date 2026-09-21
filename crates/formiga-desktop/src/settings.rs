@@ -37,6 +37,20 @@ pub struct SettingsOutcome {
     pub home_display: Option<formiga_core::DisplayKey>,
     pub hidden_decorations: Option<u8>,
     pub move_object: Option<(usize, usize)>,
+    /// Put a hangout spot down at a fraction along the village ground, move it, or with `None`
+    /// pick it up again.
+    pub set_hangout: Option<(formiga_core::HangoutKind, Option<f32>)>,
+    /// The cottages in a new order, as the companions who keep them.
+    pub cottage_order: Option<Vec<CreatureId>>,
+    /// A named palette for the village, or `Some(None)` for its own colours again.
+    pub village_palette: Option<Option<formiga_core::VillagePalette>>,
+    /// Plant a garden patch at a fraction along the village ground, move it, or with `None` dig
+    /// it up.
+    pub set_garden: Option<(formiga_core::GardenKind, Option<f32>)>,
+    /// The cottages, colours and gardens put back as the village grew.
+    pub reset_village: bool,
+    /// Take back the last change made to the colony.
+    pub undo_last_edit: bool,
     pub save_mode: Option<(usize, formiga_core::BehaviorPreset)>,
     pub export_colony: bool,
     pub restore_colony: bool,
@@ -58,6 +72,8 @@ pub struct SettingsOutcome {
     pub export_creature_card: Option<CreatureId>,
     pub export_creature_sticker: Option<(CreatureId, formiga_art::StickerClip, u32)>,
     pub export_colony_card: bool,
+    /// A postcard of the colony in this scene, with this caption, which may be empty.
+    pub export_postcard: Option<(formiga_art::PostcardScene, String)>,
     pub set_creature_kept: Option<(CreatureId, bool)>,
     pub remove_creature: Option<CreatureId>,
     pub request_random_creature: bool,
@@ -67,6 +83,11 @@ pub struct SettingsOutcome {
     pub invite_visitor: Option<SharedCreatureSeed>,
     /// Whoever is visiting right now, asked to stay for good.
     pub ask_visitor_to_stay: bool,
+    /// A visitor kept to invite again: the name it went by and the origin that recreates it.
+    pub keep_favorite_visitor: Option<(String, formiga_core::CreatureOrigin)>,
+    /// Where one companion's owner would like it to roam.
+    pub set_roaming_leaning: Option<(CreatureId, formiga_core::RoamingLeaning)>,
+    pub forget_favorite_visitor: Option<formiga_core::CreatureOrigin>,
     pub regenerate_unkept: bool,
     pub appearance: Option<AppearancePreferences>,
     pub schedule: Option<formiga_core::RoutineSchedule>,
@@ -801,6 +822,13 @@ fn draw_settings(
                     clubhouse.feedback = None;
                 }
             }
+            // The last change to who lives here or how the village is laid out, while it can
+            // still be taken back: on every page, since a change on one page shows on another.
+            if let Some(change) = clubhouse.last_edit.clone()
+                && ui.button(format!("Undo {change}")).clicked()
+            {
+                outcome.undo_last_edit = true;
+            }
             let adoption_footer =
                 *tab == SettingsTab::Studio && clubhouse.adoption_footer(ui, save, outcome);
             if !adoption_footer || settings != saved {
@@ -1021,6 +1049,8 @@ fn colony_tab(
                         });
                 }
             });
+            // Its own little ways: how it celebrates, and the habits it has picked up here.
+            ui.small(little_ways(creature));
         });
     });
     ui.add_space(18.0);
@@ -1094,6 +1124,27 @@ fn colony_tab(
                     Err(message) => *error = Some(message.to_string()),
                 }
             }
+        });
+        // Where they like to be: a leaning, not a rule. The habitat, pausing, and hiding still
+        // decide where they can go.
+        ui.horizontal(|ui| {
+            ui.label("Likes to be");
+            egui::ComboBox::from_id_salt(("roaming-leaning", creature.id))
+                .selected_text(creature.leaning.label())
+                .show_ui(ui, |ui| {
+                    for leaning in formiga_core::RoamingLeaning::ALL {
+                        let chosen = creature.leaning == leaning;
+                        if ui
+                            .selectable_label(chosen, leaning.label())
+                            .on_hover_text(leaning.description())
+                            .clicked()
+                            && !chosen
+                        {
+                            outcome.set_roaming_leaning = Some((creature.id, leaning));
+                        }
+                    }
+                });
+            ui.small(creature.leaning.description());
         });
     });
 
@@ -1205,8 +1256,18 @@ fn colony_tab(
             *bulk_confirmation = false;
         }
     });
+    // The whole colony after the one companion: everyone's friendships, playmates and tensions.
+    ui.add_space(18.0);
+    colony_standings_card(ui, creatures, relationships, selected_creature);
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_secs(1));
+}
+
+/// How a companion celebrates and the habits it has picked up, in the order it picked them up.
+fn little_ways(creature: &Creature) -> String {
+    let mut ways = vec![formiga_core::Celebration::for_creature(creature).label()];
+    ways.extend(creature.memory.habits.iter().map(|habit| habit.label()));
+    ways.join(" · ")
 }
 
 fn activity_label(action: ActionKind) -> String {
@@ -1217,6 +1278,143 @@ fn activity_label(action: ActionKind) -> String {
         ActionKind::PetReaction => "enjoying your company".into(),
         _ => clubhouse::words(&format!("{action:?}")).to_lowercase(),
     }
+}
+
+/// How two companions get along, read from nothing but their shared record, in the order the
+/// colony page lists them: a pair keeping its distance first, since that is the thing worth
+/// noticing, then close friends, then playmates, then everyone still getting acquainted. The
+/// thresholds are the ones `bond_label` and `play_label` already describe a bond with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Standing {
+    Distant,
+    Close,
+    Playmates,
+    Acquainting,
+}
+
+impl Standing {
+    fn of(relationship: &formiga_core::CreatureRelationship) -> Self {
+        if relationship.avoidance >= 160 {
+            Self::Distant
+        } else if relationship.affinity >= 112 {
+            Self::Close
+        } else if relationship.playfulness >= 72 {
+            Self::Playmates
+        } else {
+            Self::Acquainting
+        }
+    }
+
+    fn heading(self) -> &'static str {
+        match self {
+            Self::Distant => "Keeping their distance",
+            Self::Close => "Close friends",
+            Self::Playmates => "Playmates",
+            Self::Acquainting => "Still getting to know each other",
+        }
+    }
+}
+
+/// Two companions, named in colony order, and how they get along.
+#[derive(Clone, Copy, Debug)]
+struct PairStanding {
+    standing: Standing,
+    a: CreatureId,
+    b: CreatureId,
+    relationship: formiga_core::CreatureRelationship,
+}
+
+/// Every pair in the colony once, grouped by how they get along and closest first within each
+/// group. A pair with no shared record yet has simply not spent time together, and reads as
+/// getting acquainted; nothing is inferred beyond the four scores the colony keeps.
+fn colony_standings(
+    creatures: &[Creature],
+    relationships: &[formiga_core::CreatureRelationship],
+) -> Vec<PairStanding> {
+    let mut pairs = Vec::new();
+    for (index, a) in creatures.iter().enumerate() {
+        for b in &creatures[index + 1..] {
+            let relationship = relationship_between(relationships, a.id, b.id)
+                .copied()
+                .unwrap_or_default();
+            pairs.push(PairStanding {
+                standing: Standing::of(&relationship),
+                a: a.id,
+                b: b.id,
+                relationship,
+            });
+        }
+    }
+    pairs.sort_by_key(|pair| {
+        (
+            pair.standing,
+            std::cmp::Reverse(if pair.standing == Standing::Distant {
+                i16::from(pair.relationship.avoidance)
+            } else {
+                pair.relationship.closeness()
+            }),
+        )
+    });
+    pairs
+}
+
+/// The whole colony's friendships, playmates, and tensions on one card, so the social life that
+/// plays out on the desktop is easy to notice here too. A name opens that companion's profile.
+fn colony_standings_card(
+    ui: &mut egui::Ui,
+    creatures: &[Creature],
+    relationships: &[formiga_core::CreatureRelationship],
+    selected_creature: &mut Option<CreatureId>,
+) {
+    if creatures.len() < 2 {
+        return;
+    }
+    let name = |id: CreatureId| {
+        creatures
+            .iter()
+            .find(|creature| creature.id == id)
+            .map_or("A companion", |creature| creature.name.as_str())
+    };
+    clubhouse::card(ui, |ui| {
+        ui.strong("How everyone gets along");
+        let mut heading = None;
+        for PairStanding {
+            standing,
+            a,
+            b,
+            relationship,
+        } in colony_standings(creatures, relationships)
+        {
+            if heading != Some(standing) {
+                heading = Some(standing);
+                ui.add_space(6.0);
+                ui.small(egui::RichText::new(standing.heading()).color(forest()));
+            }
+            let involves_selected = *selected_creature == Some(a) || *selected_creature == Some(b);
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                for (index, id) in [a, b].into_iter().enumerate() {
+                    if index == 1 {
+                        ui.label("&");
+                    }
+                    let text = egui::RichText::new(name(id));
+                    let text = if involves_selected {
+                        text.strong()
+                    } else {
+                        text
+                    };
+                    if ui.link(text).clicked() {
+                        *selected_creature = Some(id);
+                    }
+                }
+                ui.label(format!(
+                    "· {} · {}",
+                    bond_label(relationship.affinity, relationship.avoidance),
+                    play_label(relationship.playfulness)
+                ));
+            });
+        }
+    });
 }
 
 fn bond_label(affinity: u8, avoidance: u8) -> &'static str {

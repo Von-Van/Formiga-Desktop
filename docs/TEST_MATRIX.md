@@ -46,10 +46,29 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Card save cancellation before rendering, Unicode-safe filenames, and PNG extension normalization | CI | CI |
 | PNG/JPEG local decode limits, fixed 512-candidate matching, determinism, and full-size preview output | CI | CI |
 | Modular recipes: bounded parts, 16-byte layout, all body/ear combinations, related minis | CI | CI |
+| Classic parts: four-byte packing and range checks, a quarter modular and a quarter classic with every part reachable, minis keeping coat, face and limbs, and the v0.58.9 recipes, code and lineage byte for byte | CI | CI |
+| Every classic body combination connected with a reserved face at extreme sizes, through every action and gesture, inside the frame and spacing boxes, with one limb per side | CI | CI |
+| Both eyes readable in every classic face arrangement and expression, and candy colours keeping a dark face on any coat | CI | CI |
+| A companion without a recipe has minis drawn from its own genes, replayed exactly by a version 1 code | CI | CI |
+| A roaming leaning tips climbing without forbidding it, sends a homebody home, and over half an hour keeps floor-dwellers mostly off ledges and homebodies lower than the rest, saved only once chosen | CI | CI |
+| Habits: at most two, one per kind of moment, kept once had and announced once; picked up at the measured pace; never taught at the door; hidden by reduced motion; done standing still, after any walk the action begins with, and ended by whatever replaces the action | CI | CI |
+| Celebrations spread across hop, dance and twirl and fixed per creature; a cheer drawn as the creature's own; each habit drawn only while it is being done, with its own face; the stretch inside the frame and distinct on every body | CI | CI |
+| A companion's profile lists its celebration and habits in order, and the journal names each habit picked up | CI | CI |
+| Village moments: offered only while the houses are out, in sight, unpaused and with two companions free, rechecked when chosen; a picnic lines everyone up face-clear on the commons facing the middle, eats and drinks by turns, and hands them back with a journal line and a bond per pair | CI | CI |
+| A dance poses every dancer and ends with each one's own celebration; reduced motion offers no dance and shares a moment in place; too few willing means no moment, and a sleeper stays asleep | CI | CI |
+| Stopping, hiding or pausing ends a moment with no journal line and no bond; the houses wait for a moment under way; a pet leaves it going, something held out on the way takes one companion out and mid-moment is turned down, and a pick-up sends the houses and the moment away; the dance is never scheduled | CI | CI |
+| Houses: every house a cell of its own by day and after dark plus the tree in one 256x256 atlas, the daylit half exactly its top; a resident's curtain only in its doorway; after dark only lamplight changes; each house carries its keeper's mark and a mini adds none; doorways, footprints and decoration anchors held for every style, span, curtain and night | CI | CI |
+| Hangout spots: one of each kind on the ground, normalized when the colony opens, kept with the village only once put down; placed on the standing span and never on one another; a cushion draws naps without taking over the afternoon, a lookout is looked out of toward the open desktop, and an invited picnic gathers at the blanket; the Home page puts one down and picks it up | CI | CI |
+| Village arrangement: the founder stays in the colony house whatever order is asked, cottages stand in the order arranged with the rest in arrival order, minis follow their big version's house, everyone walks home to the house now theirs, and an arrival-order arrangement writes nothing; a replacement keeps the cottage and a departure leaves the order; a named palette changes only the two palette indices and repaints every house and tree without reshaping a pixel; one garden patch of each kind, sharing the ground with the spots without touching; the reset puts back order, palette and gardens and leaves the spots; each kept with the village only once chosen; the Home page moves a cottage, plants a patch, picks a palette, and resets only when asked twice | CI | CI |
+| Home becomes Moment in the same cell; the moments strip opens beside the menu without moving it, on the right or at the display's edge on the left, answers hover and clicks, shares one click area, and draws a plain tray with its label level with the menu's | CI | CI |
+| Today's recap reads only today's recorded moments and finds, newest first, and admits when a full journal has rolled some of today's out | CI | CI |
+| The colony view lists every pair once, under how they get along, closest first, with an unrecorded pair still getting acquainted | CI | CI |
+| A favorite visitor outlasts the guest book, is never kept twice, waits for room when eight are kept, and comes back exactly as it was kept | CI | CI |
+| The fifth and sixth companions of a full colony feel their ride, keep favourite places, find a playmate, and are carried back from a removed display into places of their own | CI | CI |
 | Connected modular silhouettes and reserved faces at minimum/maximum proportions | CI | CI |
 | Wing styles: all three reachable, stable per recipe, and visibly textured | CI | CI |
 | Image aspect/alpha handling, dominant/accent colors, blank and extreme references | CI | CI |
-| v11 save preservation, v1/v2 code validation, exact design add/replace/save/share | CI | CI |
+| v11 save preservation, v1/v2/v3 code validation, exact design add/replace/save/share, and a v16 colony opening unchanged in v17 | CI | CI |
 | Mirrored village layout: separated lots, shared ground line, scale changes, missing/narrow displays, and a narrow corner giving up a tree before a house | CI | CI |
 | Village atlas cells match their own dwelling and never bleed into a neighbour; both trees come from the fourth cell, the inward one mirrored | CI | CI |
 | Companion houses per colony member, with matching half-size cottages for minis | CI | CI |
@@ -106,6 +125,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | The watching pose and window gaze: a geometry cue raising `Watch`, the near edge at mid-height rather than the creature's own feet, and a lean drawn on every body | CI | CI |
 | Stickers: every clip and scale, byte-deterministic GIFs, the creature's own cadence in the frame delays, an infinite loop, and no comment/application/plain-text blocks | CI | CI |
 | Colony portrait: deterministic 960×600 opaque pixels that stay identical with memories, tendencies, and relationships maxed out, and no PNG text chunks | CI | CI |
+| Undo: a removed companion comes back with its id, place, memories, bonds, minis and cottage while everyone else keeps what they did since; a replaced one comes back and its replacement leaves no creature or bond behind; a welcomed one goes and a natural arrival stays; a full colony refuses and keeps the change; a layout change puts back only its own fields, keepsakes found since after the rest; failed and empty changes keep the earlier one; the footer offers the change on every page only while there is one | CI | CI |
+| Postcards: every scene deterministic, opaque, and different from the others for a colony of one and of six; everyone in the picture, in order, inside the frame; a caption changes only the lines under the picture and is written without control characters, folded and cut to sixty characters; a cancelled export writes nothing, a sent one has no text chunks, names, or caption bytes, and a filename naming only the scene; the Home page picks a scene and a caption and uploads nothing | CI | CI |
 | Universal app / x64 package | CI | CI |
 
 ## Companion interface checks (0.57.0)
@@ -240,7 +261,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Ask to stay and Copy code from both the menu and the Journal page, including a full colony refusing a stay | pending | pending | pending | pending |
 | Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once | pending | pending | pending | pending |
 | The village on a real desktop: both trees bookending the houses, keepsakes filling the branches as they are found, the belongings scattered in the two yards, and the whole corner on screen at every scale in both corners | pending | pending | pending | pending |
-| Sticker and colony-portrait export dialogs: save, cancel, Unicode names, and reopening both files in a native viewer | pending | pending | pending | pending |
+| Sticker, colony-portrait, and postcard export dialogs: save, cancel, Unicode names and captions, and reopening every file in a native viewer | pending | pending | pending | pending |
 | Package install, relaunch, v16 round trip, and representative v1–v15 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |

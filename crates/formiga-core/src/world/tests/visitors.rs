@@ -1143,3 +1143,94 @@ fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
     run(&mut again, now, 60.0, &desktop);
     assert_eq!(tour_of(&again), first);
 }
+
+/// A favorite is kept apart from the guest book: it outlasts the book moving on, it is never the
+/// same visitor twice, a full list waits for one to be forgotten, and inviting it again brings back
+/// exactly the visitor it was kept from.
+#[test]
+fn a_favorite_visitor_outlasts_the_guest_book_and_comes_back_exactly_as_it_was() {
+    let desktop = desktop();
+    let created = datetime!(2026-04-02 9:00 UTC);
+    let mut world = colony_of_two([31; 32], created);
+    run(&mut world, created, 5.0, &desktop);
+    let friend = SharedCreatureSeed {
+        source_colony_seed: [77; 32],
+        source_generation: 1,
+        design: Some(CreatureDesign::generated([77; 32], 1, None)),
+    };
+    assert_eq!(world.invite_visitor(friend, created, &desktop), Ok(()));
+    let visitor = world.save.visitors.guest.clone().expect("a friend came");
+    let origin = visitor.creature.origin;
+    let visitors = &mut world.save.visitors;
+    assert!(!visitors.is_favorite(&origin));
+    assert_eq!(
+        visitors.keep_favorite(&visitor.creature.name, origin, created),
+        Ok(())
+    );
+    assert!(visitors.is_favorite(&origin));
+    assert_eq!(
+        visitors.keep_favorite("Someone else", origin, created),
+        Err(FavoriteError::AlreadyKept)
+    );
+    // The book moves on past the visit the favorite came from; the favorite stays.
+    for index in 0..(MAX_GUEST_BOOK_ENTRIES as u8 + 6) {
+        visitors.sign(GuestBookEntry {
+            visited_at_utc: created,
+            name: format!("Passer-by {index}"),
+            origin: CreatureOrigin {
+                design: None,
+                source_colony_seed: [index; 32],
+                source_generation: 0,
+            },
+            source: VisitorSource::Wanderer,
+        });
+    }
+    assert_eq!(visitors.guest_book.len(), MAX_GUEST_BOOK_ENTRIES);
+    assert!(visitors.is_favorite(&origin));
+    // A full list keeps what it has until one is forgotten.
+    for index in 1..MAX_FAVORITE_VISITORS as u8 {
+        let other = CreatureOrigin {
+            design: None,
+            source_colony_seed: [200 + index; 32],
+            source_generation: 0,
+        };
+        assert_eq!(visitors.keep_favorite("Friend", other, created), Ok(()));
+    }
+    let one_more = CreatureOrigin {
+        design: None,
+        source_colony_seed: [250; 32],
+        source_generation: 0,
+    };
+    assert_eq!(
+        visitors.keep_favorite("One more", one_more, created),
+        Err(FavoriteError::Full)
+    );
+    assert_eq!(visitors.favorites.len(), MAX_FAVORITE_VISITORS);
+    assert!(visitors.is_favorite(&origin));
+    // Kept through a save, and never twice even if a file says so.
+    let mut saved: VisitorState =
+        serde_json::from_value(serde_json::to_value(&*visitors).unwrap()).unwrap();
+    saved.favorites.push(saved.favorites[0].clone());
+    saved.normalize();
+    assert_eq!(saved.favorites, visitors.favorites);
+    // Invited again, it is the same visitor it was kept from.
+    world.save.visitors.guest = None;
+    let favorite = world.save.visitors.favorites[0].clone();
+    assert_eq!(
+        world.invite_visitor(SharedCreatureSeed::from(favorite.origin), created, &desktop),
+        Ok(())
+    );
+    let again = world
+        .save
+        .visitors
+        .guest
+        .clone()
+        .expect("the favorite came back");
+    assert_eq!(again.creature.appearance, visitor.creature.appearance);
+    assert_eq!(again.creature.personality, visitor.creature.personality);
+    assert_eq!(again.creature.name, favorite.name);
+    // Forgetting a favorite while it visits leaves the visit alone.
+    assert!(world.save.visitors.forget_favorite(&origin));
+    assert!(!world.save.visitors.forget_favorite(&origin));
+    assert!(world.save.visitors.guest.is_some());
+}

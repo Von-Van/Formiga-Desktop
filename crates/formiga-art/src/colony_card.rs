@@ -12,11 +12,11 @@ use crate::card::{
 use crate::{
     COLONY_OBJECT_SIZE, Canvas, ColonyObjectRenderer, CreatureRenderer, ExpressionKind, EyelidPose,
     FRAME_SIZE, FaceRenderState, GazeDirection, PALETTES, Palette, Rgba, SHELTER_SIZE,
-    ShelterRenderer,
+    ShelterRenderer, VillageCell,
 };
 use formiga_core::{
-    ActionKind, ColonyObjectKind, Creature, CreatureRole, DesktopRect, DisplayKey, DwellingKind,
-    HabitatPolicy, MonitorInfo, SaveFile, TreeEnd,
+    ActionKind, ColonyObjectKind, Creature, CreatureRole, DesktopRect, DisplayKey, HabitatPolicy,
+    MonitorInfo, SaveFile, TreeEnd,
 };
 
 pub const COLONY_CARD_WIDTH: u32 = 960;
@@ -109,9 +109,10 @@ impl ColonyCardRenderer {
 }
 
 /// The colony's own colours: the home it shares, not any one creature's coat.
-fn colony_palette(save: &SaveFile) -> Palette {
-    let base = PALETTES[save.home.shelter.palette_index as usize % PALETTES.len()];
-    let accent = PALETTES[save.home.shelter.accent_index as usize % PALETTES.len()];
+pub(crate) fn colony_palette(save: &SaveFile) -> Palette {
+    let shelter = save.home.drawn_shelter();
+    let base = PALETTES[shelter.palette_index as usize % PALETTES.len()];
+    let accent = PALETTES[shelter.accent_index as usize % PALETTES.len()];
     Palette {
         accent: accent.accent,
         highlight: accent.highlight,
@@ -209,36 +210,42 @@ fn draw_floor(canvas: &mut Canvas, palette: Palette) {
 
 /// What one piece of the village strip is drawn from.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum LotArt {
-    /// A dwelling quadrant of the village atlas.
-    Dwelling(DwellingKind),
+pub(crate) enum LotArt {
+    /// A house's own cell of the village atlas, by its slot in the village.
+    Dwelling { slot: usize },
     /// The village atlas's tree cell. The inward bookend samples it mirrored, exactly as the
     /// desktop does, so the card's two trees are not one drawing twice.
     Tree { mirrored: bool },
     /// One cell of the colony object sheet.
     Object(ColonyObjectKind),
+    /// A hangout spot or garden patch put down on the ground, from the same sheet; the lookout
+    /// turned out over the rest of the display, as the desktop turns it.
+    Ground {
+        item: formiga_core::GroundItem,
+        mirrored: bool,
+    },
 }
 
 /// One piece of the village strip, and where the desktop puts it.
-struct Lot {
-    art: LotArt,
+pub(crate) struct Lot {
+    pub(crate) art: LotArt,
     /// Centre and ground line, in the desktop's own coordinates.
-    center_x: f32,
-    ground_y: f32,
+    pub(crate) center_x: f32,
+    pub(crate) ground_y: f32,
 }
 
 impl Lot {
     /// Side of the square art cell this piece is sampled from, in desktop units.
-    fn cell(&self) -> f32 {
+    pub(crate) fn cell(&self) -> f32 {
         match self.art {
-            LotArt::Dwelling(_) | LotArt::Tree { .. } => SHELTER_SIZE as f32,
-            LotArt::Object(_) => COLONY_OBJECT_SIZE as f32,
+            LotArt::Dwelling { .. } | LotArt::Tree { .. } => SHELTER_SIZE as f32,
+            LotArt::Object(_) | LotArt::Ground { .. } => COLONY_OBJECT_SIZE as f32,
         }
     }
 
     /// Whether this piece is drawn in front of the houses rather than among them.
-    fn in_front(&self) -> bool {
-        matches!(self.art, LotArt::Object(_))
+    pub(crate) fn in_front(&self) -> bool {
+        matches!(self.art, LotArt::Object(_) | LotArt::Ground { .. })
     }
 }
 
@@ -252,7 +259,7 @@ impl Lot {
 /// card must carry no screen information, and a habitat too narrow for the whole strip would
 /// otherwise drop cottages out of the colony's own portrait. Only the home corner, which is the
 /// colony's own choice, decides which way the village runs.
-fn village_lots(save: &SaveFile) -> Vec<Lot> {
+pub(crate) fn village_lots(save: &SaveFile) -> Vec<Lot> {
     let cottages = formiga_core::colony_cottages(&save.creatures);
     let objects = save
         .objects
@@ -274,11 +281,7 @@ fn village_lots(save: &SaveFile) -> Vec<Lot> {
             continue;
         };
         lots.push(Lot {
-            art: LotArt::Dwelling(if slot == 0 {
-                DwellingKind::Main
-            } else {
-                cottages[slot - 1]
-            }),
+            art: LotArt::Dwelling { slot },
             center_x: point.x,
             ground_y: point.y,
         });
@@ -315,6 +318,23 @@ fn village_lots(save: &SaveFile) -> Vec<Lot> {
         };
         lots.push(Lot {
             art: LotArt::Object(save.objects.objects[slot].kind),
+            center_x: point.x,
+            ground_y: point.y,
+        });
+    }
+    let middle = monitors[0].usable_bounds.x + monitors[0].usable_bounds.width / 2.0;
+    for (item, _, point) in formiga_core::home_ground_positions(
+        &save.home,
+        &cottages,
+        &monitors,
+        &policy,
+        NOTIONAL_DISPLAY_SCALE,
+    ) {
+        lots.push(Lot {
+            art: LotArt::Ground {
+                item,
+                mirrored: ColonyObjectRenderer::ground_mirrored(item, point.x, middle),
+            },
             center_x: point.x,
             ground_y: point.y,
         });
@@ -357,7 +377,12 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
         .copied()
         .filter(|kind| save.home.hidden_decorations & (1 << kind.index()) == 0)
         .collect();
-    let village = ShelterRenderer::render_village(&save.home.shelter, &decorations);
+    let village = ShelterRenderer::render_village(
+        &save.home.drawn_shelter(),
+        &decorations,
+        &crate::ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
+        false,
+    );
     let objects = ColonyObjectRenderer::render_atlas(save.colony_seed);
 
     let left = lots
@@ -396,17 +421,14 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
         let y = VILLAGE_GROUND - (lot.cell() * scale as f32).round() as i32
             + ((lot.ground_y - base_ground) * scale as f32).round() as i32;
         match lot.art {
-            // The same quadrants the desktop samples from the same atlas.
-            LotArt::Dwelling(kind) => {
-                let (u, v) = match kind {
-                    DwellingKind::Main => (0, 0),
-                    DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
-                };
+            // The same cells the desktop samples from the same atlas, by day.
+            LotArt::Dwelling { slot } => {
+                let (u, v) = ShelterRenderer::village_cell(VillageCell::House { slot, lit: false });
                 blit_cell(
                     canvas,
                     &village,
-                    u,
-                    v,
+                    u as i32,
+                    v as i32,
                     SHELTER_SIZE as i32,
                     SHELTER_SIZE as i32,
                     x,
@@ -415,18 +437,21 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
                     false,
                 );
             }
-            LotArt::Tree { mirrored } => blit_cell(
-                canvas,
-                &village,
-                SHELTER_SIZE as i32,
-                SHELTER_SIZE as i32,
-                SHELTER_SIZE as i32,
-                SHELTER_SIZE as i32,
-                x,
-                y,
-                scale,
-                mirrored,
-            ),
+            LotArt::Tree { mirrored } => {
+                let (u, v) = ShelterRenderer::village_cell(VillageCell::Tree);
+                blit_cell(
+                    canvas,
+                    &village,
+                    u as i32,
+                    v as i32,
+                    SHELTER_SIZE as i32,
+                    SHELTER_SIZE as i32,
+                    x,
+                    y,
+                    scale,
+                    mirrored,
+                )
+            }
             LotArt::Object(kind) => blit_cell(
                 canvas,
                 &objects,
@@ -439,12 +464,24 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
                 scale,
                 false,
             ),
+            LotArt::Ground { item, mirrored } => blit_cell(
+                canvas,
+                &objects,
+                ColonyObjectRenderer::ground_cell(item) as i32 * COLONY_OBJECT_SIZE as i32,
+                0,
+                COLONY_OBJECT_SIZE as i32,
+                COLONY_OBJECT_SIZE as i32,
+                x,
+                y,
+                scale,
+                mirrored,
+            ),
         }
     }
 }
 
 /// How tall one atlas cell's art actually is, as opposed to the cell it is drawn in.
-fn cell_height(atlas: &Canvas, x: i32, y: i32, size: i32) -> Option<i32> {
+pub(crate) fn cell_height(atlas: &Canvas, x: i32, y: i32, size: i32) -> Option<i32> {
     let mut bounds: Option<(i32, i32)> = None;
     for row in 0..size {
         for column in 0..size {
@@ -471,7 +508,7 @@ fn aim_house_at_a_gap(
 ) -> i32 {
     let Some(house) = lots
         .iter()
-        .find(|lot| lot.art == LotArt::Dwelling(DwellingKind::Main))
+        .find(|lot| lot.art == LotArt::Dwelling { slot: 0 })
     else {
         return centred;
     };
@@ -836,6 +873,7 @@ fn spelled(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use formiga_core::DwellingKind;
     use formiga_core::{
         ColonyObject, CreatureRelationship, DesktopSnapshot, HabitatPreset, HabitatZone,
         HabitatZoneKind, ShelterDecorationKind, World, encode_creature_seed,

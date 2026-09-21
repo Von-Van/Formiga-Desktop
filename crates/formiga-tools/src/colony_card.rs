@@ -7,9 +7,21 @@ use formiga_core::*;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
+pub fn run(path: PathBuf) -> Result<()> {
+    let card = ColonyCardRenderer::render(&sample_colony());
+    write_png(
+        &path,
+        COLONY_CARD_WIDTH,
+        COLONY_CARD_HEIGHT,
+        &card.rgba_bytes(),
+    )?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
 /// A colony grown the way a real one grows: seeded, then left to live for a season so it has
 /// companions, a decorated house, and belongings on the ground line.
-pub fn run(path: PathBuf) -> Result<()> {
+pub fn sample_colony() -> SaveFile {
     let mut seed = [0_u8; 32];
     seed.copy_from_slice(&Sha256::digest(b"formiga-colony-card-preview"));
     let desktop = fixture_desktop();
@@ -45,14 +57,5 @@ pub fn run(path: PathBuf) -> Result<()> {
         ..Default::default()
     })
     .collect();
-
-    let card = ColonyCardRenderer::render(&world.save);
-    write_png(
-        &path,
-        COLONY_CARD_WIDTH,
-        COLONY_CARD_HEIGHT,
-        &card.rgba_bytes(),
-    )?;
-    println!("wrote {}", path.display());
-    Ok(())
+    world.save
 }
