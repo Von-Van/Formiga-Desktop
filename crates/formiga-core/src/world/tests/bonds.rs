@@ -1,13 +1,16 @@
 use super::*;
 
 #[test]
-fn four_creatures_have_exactly_six_canonical_bond_records() {
+fn a_full_colony_has_exactly_one_canonical_bond_record_for_every_pair() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = World::new([54; 32], created, &desktop);
-    world.tick(created + Duration::days(31), 0.05, &desktop);
+    // Long enough for the colony to fill: every arrival the calendar offers has come by now.
+    for day in 1..=120 {
+        world.tick(created + Duration::days(day), 0.05, &desktop);
+    }
 
-    assert_eq!(world.save.creatures.len(), 4);
+    assert_eq!(world.save.creatures.len(), MAX_COLONY_CREATURES);
     assert_eq!(world.save.relationships.len(), MAX_RELATIONSHIPS);
     let pairs: BTreeSet<_> = world
         .save
@@ -23,7 +26,7 @@ fn four_creatures_have_exactly_six_canonical_bond_records() {
                 .iter()
                 .filter(|(a, b)| *a == creature.id || *b == creature.id)
                 .count(),
-            3
+            MAX_COLONY_CREATURES - 1
         );
     }
 }

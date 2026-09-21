@@ -54,6 +54,9 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Village atlas cells match their own dwelling and never bleed into a neighbour; both trees come from the fourth cell, the inward one mirrored | CI | CI |
 | Companion houses per colony member, with matching half-size cottages for minis | CI | CI |
 | Two trees bookending the houses: the widest village inside its 448-pixel span limit at the tightest scale and on a real display, both corners identical, and each tree's whole lot clear of the screen edge | CI | CI |
+| Six companions with a house for every full-size one, a mini coming home to its big version's, and the widest village still inside its span limit | CI | CI |
+| Companions roam the commons between the trees: on it, spaced, out of the yards, and still where a hidden or reduced-motion colony left them | CI | CI |
+| Topping out a climb hauls straight up and then steps in, with no sideways drift | CI | CI |
 | A visitor's tour: every stop inside the region, clear of each doorway, of every resting resident and of every belonging; the guest stands in as many places as it planned, goes over to each resident in turn, and a narrowed display replans the ring | CI | CI |
 | Nobody turns round more than six times in a second with a companion near, across seeded colonies on a busy desktop | CI | CI |
 | A keepsake is drawn square whatever the shape of the sheet it is cut from | CI | CI |

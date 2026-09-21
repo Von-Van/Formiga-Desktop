@@ -256,9 +256,12 @@ fn a_visit_arrives_after_the_colony_settles_says_hello_once_and_leaves_before_th
                 .iter()
                 .find(|creature| creature.id == *id)
                 .expect("the colony is whole");
+            // Residents walk their own commons while a guest is here — what they must not do is
+            // leave the village to follow it about.
             assert!(
-                resident.state.position.distance(*spot) <= 1.0,
-                "{} left its place at {seconds}s",
+                (resident.state.position.x - spot.x).abs() <= VILLAGE_SPAN_LIMIT * 4.0
+                    && (resident.state.position.y - spot.y).abs() <= 1.0,
+                "{} left the village at {seconds}s",
                 resident.name
             );
         }
@@ -929,9 +932,11 @@ fn every_stop_is_somewhere_a_guest_may_stand(world: &World, desktop: &DesktopSna
                     "{stop:?} stands over house {slot}'s doorway"
                 );
             }
+            let residents = world.save.creatures.len().max(1);
             if let Some((_, resting)) = home_resting_position(
                 &world.save.home,
                 slot,
+                residents,
                 &cottages,
                 &desktop.monitors,
                 policy,
@@ -1079,8 +1084,9 @@ fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
                 .find(|creature| creature.id == *creature_id)
                 .expect("the colony is whole");
             assert!(
-                resident.state.position.distance(*door) <= 1.0,
-                "{} left its door at {seconds}s",
+                (resident.state.position.x - door.x).abs() <= VILLAGE_SPAN_LIMIT * 4.0
+                    && (resident.state.position.y - door.y).abs() <= 1.0,
+                "{} left the village at {seconds}s",
                 resident.name
             );
         }

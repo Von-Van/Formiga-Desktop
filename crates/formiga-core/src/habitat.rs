@@ -76,8 +76,6 @@ pub enum DwellingKind {
     /// anybody has moved into it, which is why it is the default.
     #[default]
     Cottage,
-    /// A matching smaller house for a mini.
-    MiniCottage,
 }
 
 impl DwellingKind {
@@ -90,7 +88,6 @@ impl DwellingKind {
         match self {
             Self::Main => 60.0,
             Self::Cottage => 46.0,
-            Self::MiniCottage => 36.0,
         }
     }
 }
@@ -160,8 +157,6 @@ pub enum VillageLot {
     /// porch.
     Tree(TreeEnd),
     Dwelling(usize),
-    /// The standing spot beside dwelling `n`'s door, where its resident waits out a home visit.
-    Porch(usize),
 }
 
 /// The air between two lots that are not part of the same thing. Three shelter pixels is a
@@ -187,10 +182,11 @@ pub const TREE_WIDTH: f32 = 56.0;
 /// waiting at its door never stands in front of one.
 pub const REST_WALL_SLIVER: f32 = 9.0;
 
-/// A porch claims less ground than the frame standing on it: the overhang is the sliver of wall
-/// beside the door on one side, and the gap and whatever is set down past it on the other. The
-/// face-clear rule, not this width, is what keeps two residents out of each other's faces.
-pub const PORCH_WIDTH: f32 = CREATURE_FRAME_WIDTH - REST_WALL_SLIVER * 2.0;
+/// The ground a companion standing on the commons claims for itself. Less than the frame it
+/// draws, because the outermost pixels either side are a wall's edge or empty air that a
+/// neighbour's frame may reach over. The face-clear rule, not this width, is what keeps two
+/// companions out of each other's faces.
+pub const RESTING_WIDTH: f32 = CREATURE_FRAME_WIDTH - REST_WALL_SLIVER * 2.0;
 
 /// How far the colony house's centre stands from the edge of the display it is tucked into. The
 /// outward tree stands on the far side of the house from the cottages, so the corner has to leave
@@ -199,16 +195,15 @@ pub const PORCH_WIDTH: f32 = CREATURE_FRAME_WIDTH - REST_WALL_SLIVER * 2.0;
 /// inward end simply does not show it.
 const HOME_EDGE_MARGIN: f32 = DwellingKind::Main.width() / 2.0 + VILLAGE_GAP + TREE_WIDTH;
 
-/// What the whole village is allowed to measure end to end, in shelter pixels, with four
-/// companions, eight belongings and both trees. 0.58.0 ran to 523 of them — near a thousand
-/// logical points at 4x on a 2x display, two thirds of a laptop screen.
+/// What the whole village is allowed to measure end to end, in shelter pixels: a tree at either
+/// end and a house for every one of six full-size companions. It is the ground a *full* colony
+/// takes, not the ground every colony takes — a village lays out only the houses it has, so a
+/// founder on its own is a third of this and grows toward it a house at a time.
 ///
-/// Two trees cost ground, so the yards paid for them: splitting the belongings four and four
-/// between the two of them means neither yard reaches past its own tree's branches, and a yard is
-/// down from eighty-two shelter pixels to fifty-six. The houses in between are unchanged and are
-/// the floor the whole thing rests on: four footprints come to 198 of it, and each of the four
-/// residents needs the better part of thirty pixels of ground beside its own door that it can
-/// only borrow `REST_WALL_SLIVER` of back from the wall.
+/// The figure itself is inherited rather than chosen: 0.58.5's four-companion village measured
+/// 445 with a house and a standing place for each of them, and six houses fit inside the same
+/// ground once the standing places came out of the strip. The companions did not lose anything —
+/// the whole run of ground in front of the houses is theirs to walk now, instead of a parcel each.
 pub const VILLAGE_SPAN_LIMIT: f32 = 448.0;
 
 /// Where the outward tree's lot sits on the walk, counting outward from the colony house: one gap
@@ -224,8 +219,7 @@ fn lot_width(lot: VillageLot, cottages: &[DwellingKind]) -> f32 {
         VillageLot::Dwelling(0) => DwellingKind::Main.width(),
         VillageLot::Dwelling(index) => cottages
             .get(index - 1)
-            .map_or(DwellingKind::MiniCottage.width(), |kind| kind.width()),
-        VillageLot::Porch(_) => PORCH_WIDTH,
+            .map_or(DwellingKind::Cottage.width(), |kind| kind.width()),
     }
 }
 
@@ -233,12 +227,11 @@ fn lot_width(lot: VillageLot, cottages: &[DwellingKind]) -> f32 {
 fn lot_height(lot: VillageLot) -> f32 {
     match lot {
         VillageLot::Tree(_) | VillageLot::Dwelling(_) => DWELLING_CELL,
-        VillageLot::Porch(_) => CREATURE_FRAME_WIDTH,
     }
 }
 
-/// The most lots a village can ever lay out: two trees, and a house and a porch for each member.
-const MAX_VILLAGE_LOTS: usize = 2 + crate::MAX_COLONY_CREATURES * 2;
+/// The most lots a village can ever lay out: two trees and a house for every full-size member.
+const MAX_VILLAGE_LOTS: usize = 2 + crate::MAX_COLONY_CREATURES;
 
 /// One ground-line walk outward from the colony house, bookended by a tree at each end. It is the
 /// same handful of lots every time, so it is built on the stack: the simulation asks for it
@@ -279,18 +272,13 @@ fn village_walk(cottages: &[DwellingKind]) -> VillageWalk {
     };
     push(VillageLot::Dwelling(0), 0.0);
     let mut edge = DwellingKind::Main.width() / 2.0;
-    for member in 0..=cottages.len().min(crate::MAX_COLONY_CREATURES - 1) {
-        if member > 0 {
-            // Houses keep their elbow room from whatever stood before them.
-            edge += VILLAGE_GAP;
-            let width = lot_width(VillageLot::Dwelling(member), cottages);
-            push(VillageLot::Dwelling(member), edge + width / 2.0);
-            edge += width;
-        }
-        // A porch belongs to its own house: the two share a lot line, so a resident waits at its
-        // own door rather than a step down the lane.
-        push(VillageLot::Porch(member), edge + PORCH_WIDTH / 2.0);
-        edge += PORCH_WIDTH;
+    for house in 1..=cottages.len().min(crate::MAX_COLONY_CREATURES - 1) {
+        // Houses stand a seam apart, and nothing else is laid between them. The ground in front
+        // of the whole row is the colony's own, walked rather than parcelled out.
+        edge += VILLAGE_GAP;
+        let width = lot_width(VillageLot::Dwelling(house), cottages);
+        push(VillageLot::Dwelling(house), edge + width / 2.0);
+        edge += width;
     }
     // The far wall: the second tree closes the strip off past the last porch.
     push(
@@ -496,70 +484,149 @@ const GUEST_HALF_WIDTH: f32 = CREATURE_FRAME_WIDTH / 2.0;
 /// for that gives up on porches entirely and lines the whole colony up along the ground from the
 /// far edge inward, which can put somebody in front of a wall: keeping the colony on the display
 /// and out of one another's faces matters more than a clear view of a house nobody can see
-/// properly on a display that narrow anyway.
+/// The run of ground the colony has to itself while it is home: from the outward tree's outer
+/// edge to the inward one's, along the village's own ground line. The houses stand at the back of
+/// it and the trees close it at either end, so this is what a companion may walk without leaving
+/// the village — and what it roams when it has nothing else to do.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HomeCommons {
+    pub monitor_id: u64,
+    /// The ground line every companion and every house stands on.
+    pub ground_y: f32,
+    /// The ends of the walk, in ascending screen order whichever corner the village is in.
+    pub low_x: f32,
+    pub high_x: f32,
+    /// The part of it a companion may stand on: the same walk without the two trees' yards,
+    /// which are full of the colony's own belongings.
+    pub stand_low_x: f32,
+    pub stand_high_x: f32,
+    /// Shelter pixels to desktop points here, so callers can measure in the village's own units.
+    pub scale: f32,
+}
+
+impl HomeCommons {
+    /// How wide the walk is, in points.
+    pub fn width(&self) -> f32 {
+        (self.high_x - self.low_x).max(0.0)
+    }
+
+    /// A point a companion may stand on, given as a fraction from one end of the walk to the
+    /// other. Kept out of the trees' yards, and off the very ends, so a companion standing there
+    /// is inside the village and not in its belongings.
+    pub fn along(&self, fraction: f32) -> Point {
+        let half = RESTING_WIDTH / 2.0 * self.scale;
+        let (mut low, mut high) = (self.stand_low_x + half, self.stand_high_x - half);
+        if high < low {
+            // A village too cramped to keep its yards clear: the whole walk is fair ground.
+            low = self.low_x + half;
+            high = (self.high_x - half).max(low);
+        }
+        Point {
+            x: low + (high - low) * fraction.clamp(0.0, 1.0),
+            y: self.ground_y,
+        }
+    }
+}
+
+/// The colony's own ground: the whole strip between the two trees, whatever of it this corner
+/// can show. A village with no room for even one companion to stand has no commons.
+pub fn home_commons(
+    home: &ColonyHome,
+    cottages: &[DwellingKind],
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Option<HomeCommons> {
+    let ground = VillageGround::resolve(home, monitors, policy, display_scale)?;
+    let region = ground.region()?;
+    let (mut low, mut high) = (f32::MAX, f32::MIN);
+    for (lot, centre) in village_walk(cottages).iter() {
+        let Some(point) = ground.place(lot, centre, cottages) else {
+            continue;
+        };
+        let half = lot_width(lot, cottages) / 2.0 * ground.scale;
+        low = low.min(point.x - half);
+        high = high.max(point.x + half);
+    }
+    if low > high {
+        return None;
+    }
+    let low = low.max(region.x);
+    let high = high.min(region.right());
+    // The frontage: the ground in front of the houses themselves. The yards at either end
+    // belong to the trees and to the belongings scattered under them, so a companion standing
+    // still keeps off them — while roaming it may walk the whole thing.
+    let (mut front_low, mut front_high) = (f32::MAX, f32::MIN);
+    for (lot, centre) in village_walk(cottages).iter() {
+        let VillageLot::Dwelling(_) = lot else {
+            continue;
+        };
+        let Some(point) = ground.place(lot, centre, cottages) else {
+            continue;
+        };
+        let half = lot_width(lot, cottages) / 2.0 * ground.scale;
+        front_low = front_low.min(point.x - half);
+        front_high = front_high.max(point.x + half);
+    }
+    (high - low >= RESTING_WIDTH * ground.scale).then_some(HomeCommons {
+        monitor_id: ground.monitor.id,
+        ground_y: ground.anchor.y,
+        low_x: low,
+        high_x: high,
+        stand_low_x: front_low.clamp(low, high),
+        stand_high_x: front_high.clamp(low, high),
+        scale: ground.scale,
+    })
+}
+
+/// Where the `slot`-th of `of` companions settles when the colony is home and nobody is walking
+/// anywhere: spread evenly along the commons, far enough apart that no face is behind anybody.
+///
+/// These are resting places on shared ground, not addresses. A companion is free to wander off
+/// one and come back to another, and with a full village of six there is no arrangement that
+/// leaves every doorway clear — the colony lives in front of its houses, which is what a village
+/// looks like.
 pub fn home_resting_position(
     home: &ColonyHome,
     slot: usize,
+    of: usize,
     cottages: &[DwellingKind],
     monitors: &[MonitorInfo],
     policy: &HabitatPolicy,
     display_scale: u8,
 ) -> Option<(u64, Point)> {
-    if slot > cottages.len() {
+    let commons = home_commons(home, cottages, monitors, policy, display_scale)?;
+    let of = of.max(1);
+    if slot >= of {
         return None;
     }
-    let ground = VillageGround::resolve(home, monitors, policy, display_scale)?;
-    let members = cottages.len() + 1;
-    let mut edge: f32 = 0.0;
-    let mut porches = [None; crate::MAX_COLONY_CREATURES];
-    for (lot, centre) in village_walk(cottages).iter() {
-        let Some(point) = ground.place(lot, centre, cottages) else {
-            continue;
-        };
-        edge = edge.max(centre + lot_width(lot, cottages) / 2.0);
-        if let VillageLot::Porch(member) = lot
-            && let Some(spot) = porches.get_mut(member)
-        {
-            *spot = Some(point);
-        }
-    }
-    let region = ground.region()?;
-    let step = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * ground.scale;
-    let half = GUEST_HALF_WIDTH * ground.scale;
-    // How far the region runs from the colony house, counting outward along the strip.
-    let region_out = (if ground.direction > 0.0 {
-        region.right()
+    let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * commons.scale;
+    let half = RESTING_WIDTH / 2.0 * commons.scale;
+    let wanted = (of as f32 - 1.0) * clear;
+    // The frontage first — the ground in front of the houses, which leaves the yards to the
+    // trees and to what the colony keeps under them. A colony too big to stand there face-clear
+    // spills onto the whole walk instead, yards and all; that is what the yards are for.
+    let frontage = commons.stand_high_x - commons.stand_low_x - half * 2.0;
+    let (low, high) = if frontage >= wanted {
+        (commons.stand_low_x, commons.stand_high_x)
     } else {
-        region.x
-    } - ground.anchor.x)
-        * ground.direction;
-    let missing = (0..members).filter(|member| porches[*member].is_none());
-    let missing_count = missing.clone().count();
-    // The free ground line beside the village: past the outermost lot that did fit.
-    let free = (edge + VILLAGE_GAP + GUEST_HALF_WIDTH) * ground.scale;
-    let spread = (missing_count as f32 - 1.0).max(0.0) * step;
-    let crowded = missing_count > 0 && free + spread + half > region_out;
-
-    if !crowded && let Some(point) = porches[slot] {
-        return Some((ground.monitor.id, point));
-    }
-    let out = if crowded {
-        // Not even the free ground will take them. The colony gives up on its porches and lines
-        // up along the ground instead, packed in from the far edge: standing in front of a wall
-        // is a poor look, and standing on one another is a worse one.
-        region_out - half - (members as f32 - 1.0 - slot as f32) * step
-    } else {
-        let rank = missing
-            .clone()
-            .position(|member| member == slot)
-            .unwrap_or(0) as f32;
-        free + rank * step
+        (commons.low_x, commons.high_x)
     };
+    let usable = (high - low - half * 2.0).max(0.0);
+    // Even spacing, never wider than face-clear and never so tight that two companions share a
+    // spot: a commons with no room left still gives everybody a place of their own on it.
+    let step = if of > 1 {
+        (usable / (of as f32 - 1.0)).min(clear)
+    } else {
+        0.0
+    };
+    let spread = step * (of as f32 - 1.0);
+    let first = low + half + (usable - spread).max(0.0) / 2.0;
     Some((
-        ground.monitor.id,
+        commons.monitor_id,
         Point {
-            x: ground.anchor.x + ground.direction * out,
-            y: ground.anchor.y,
+            x: first + slot as f32 * step,
+            y: commons.ground_y,
         },
     ))
 }
@@ -592,10 +659,21 @@ pub fn home_guest_position(
         let reach = point.x + ground.direction * lot_width(lot, cottages) / 2.0 * ground.scale;
         outer = ground.outward_max(outer, reach);
     }
+    // A guest keeps clear of a full colony's worth of resting places, whether or not every one
+    // of them is taken: where the village *could* seat somebody is not ground for a visitor.
     let mut resting = [None; crate::MAX_COLONY_CREATURES];
-    for (slot, spot) in resting.iter_mut().enumerate().take(cottages.len() + 1) {
-        *spot = home_resting_position(home, slot, cottages, monitors, policy, display_scale)
-            .map(|(_, point)| point);
+    let residents = crate::MAX_COLONY_CREATURES;
+    for (slot, spot) in resting.iter_mut().enumerate() {
+        *spot = home_resting_position(
+            home,
+            slot,
+            residents,
+            cottages,
+            monitors,
+            policy,
+            display_scale,
+        )
+        .map(|(_, point)| point);
         if let Some(point) = spot {
             outer = ground.outward_max(outer, point.x + ground.direction * half);
         }
@@ -636,7 +714,8 @@ impl Cottages {
 pub fn colony_cottage_list(creatures: &[Creature]) -> Cottages {
     let mut cottages = Cottages::default();
     let mut taken: Option<(u8, crate::CreatureId)> = None;
-    for index in 0..crate::MAX_COLONY_CREATURES {
+    let mut houses = 0;
+    for _ in 0..crate::MAX_COLONY_CREATURES {
         let Some(next) = creatures
             .iter()
             .filter(|creature| taken.is_none_or(|last| (creature.colony_order, creature.id) > last))
@@ -645,16 +724,54 @@ pub fn colony_cottage_list(creatures: &[Creature]) -> Cottages {
             break;
         };
         taken = Some((next.colony_order, next.id));
-        // The founder shares the colony house; everyone after it gets one of its own.
-        if index > 0 {
-            cottages.kinds[index - 1] = match next.role {
-                CreatureRole::Mini { .. } => DwellingKind::MiniCottage,
-                CreatureRole::Adult => DwellingKind::Cottage,
-            };
-            cottages.len = index;
+        // A house belongs to whoever arrived full-size. A mini has no house of its own: it lives
+        // in the one its big version already keeps, which is why the village grows a house at a
+        // time rather than one per companion.
+        if !next.role.is_adult() {
+            continue;
         }
+        // The founder shares the colony house; every later full-size arrival gets one of its own.
+        if houses > 0 {
+            cottages.kinds[houses - 1] = DwellingKind::Cottage;
+            cottages.len = houses;
+        }
+        houses += 1;
     }
     cottages
+}
+
+/// Which house a companion belongs to, counting the colony house as slot zero. A mini takes its
+/// big version's, and keeps it if it ever grows into a full-size companion of its own: the house
+/// a creature comes home to is settled when it arrives and does not move afterwards.
+pub fn house_slot_for(creature: &Creature, creatures: &[Creature]) -> usize {
+    let of_interest = match creature.role {
+        CreatureRole::Mini { parent_id } => creatures
+            .iter()
+            .find(|candidate| candidate.id == parent_id)
+            .unwrap_or(creature),
+        CreatureRole::Adult => creature,
+    };
+    let mut slot = 0;
+    let mut taken: Option<(u8, crate::CreatureId)> = None;
+    for _ in 0..crate::MAX_COLONY_CREATURES {
+        let Some(next) = creatures
+            .iter()
+            .filter(|candidate| {
+                taken.is_none_or(|last| (candidate.colony_order, candidate.id) > last)
+            })
+            .min_by_key(|candidate| (candidate.colony_order, candidate.id))
+        else {
+            break;
+        };
+        taken = Some((next.colony_order, next.id));
+        if next.id == of_interest.id {
+            return slot;
+        }
+        if next.role.is_adult() {
+            slot += 1;
+        }
+    }
+    0
 }
 
 /// The same houses as `colony_cottage_list`, for callers that want them owned.
@@ -973,33 +1090,19 @@ mod tests {
     /// The widest village there is: four adults, every house at its full footprint. Every rule
     /// about ground and clearance is tightest here, so this is the colony the layout is checked
     /// against rather than every shape it can take.
+    /// The village at its widest: a house for every one of six full-size companions.
     fn widest_colony() -> Vec<DwellingKind> {
-        vec![
-            DwellingKind::Cottage,
-            DwellingKind::Cottage,
-            DwellingKind::Cottage,
-        ]
+        vec![DwellingKind::Cottage; crate::MAX_COLONY_CREATURES - 1]
     }
 
-    /// The colony whose houses are narrowest, which is what puts a resting frame closest to a
-    /// doorway: a mini's cottage has the least wall either side of its own door.
-    fn mini_colony() -> Vec<DwellingKind> {
-        vec![
-            DwellingKind::Cottage,
-            DwellingKind::MiniCottage,
-            DwellingKind::MiniCottage,
-        ]
+    /// A colony part-way there, which should take correspondingly less ground.
+    fn small_colony() -> Vec<DwellingKind> {
+        vec![DwellingKind::Cottage; 2]
     }
 
     /// The tightest drawing the overlay does: the largest scale on the display that magnifies it
     /// least, so one shelter pixel is four desktop points and every clearance is at its coarsest.
     const TIGHTEST_SCALE: u8 = 4;
-
-    /// Half the widest doorway any dwelling draws, in shelter pixels: the colony house's own,
-    /// counting the dark frame around it. A mini's is five. Mirrors `formiga_art`'s
-    /// `draw_dwelling`, which is checked against this by
-    /// `formiga_art::shelter::tests::no_dwelling_draws_a_doorway_wider_than_the_village_expects`.
-    const WIDEST_DOOR_HALF: f32 = 7.0;
 
     /// Every lot the village lays out, as `(lot, centre, half width)` in desktop points measured
     /// outward from the colony house, so both corners can be compared as one set of numbers.
@@ -1033,14 +1136,6 @@ mod tests {
                         &policy,
                         display_scale,
                     ),
-                    VillageLot::Porch(slot) => home_resting_position(
-                        home,
-                        slot,
-                        cottages,
-                        monitors,
-                        &policy,
-                        display_scale,
-                    ),
                 }?
                 .1;
                 assert!(
@@ -1056,11 +1151,10 @@ mod tests {
             .collect()
     }
 
-    /// Houses, the porches beside them and both trees all come out of one walk, so no two of them
-    /// may ever claim the same ground — and the two corners have to be the same village, measured
-    /// from the colony house outward.
+    /// The houses and both trees come out of one walk, so no two of them may ever claim the same
+    /// ground — and the two corners have to be the same village, measured from the house outward.
     #[test]
-    fn houses_porches_and_the_trees_share_one_walk_and_mirror_in_both_corners() {
+    fn the_houses_and_the_trees_share_one_walk_and_mirror_in_both_corners() {
         let monitor = wide_monitor(2.0);
         let cottages = widest_colony();
         let mut mirrored: Option<Vec<(VillageLot, f32, f32)>> = None;
@@ -1069,8 +1163,8 @@ mod tests {
             let lots = placed_lots(&home, &cottages, &monitor, TIGHTEST_SCALE);
             assert_eq!(
                 lots.len(),
-                4 + cottages.len() * 2,
-                "two trees, a house and a porch each, should all fit a display this size"
+                3 + cottages.len(),
+                "two trees and a house each should all fit a display this size"
             );
             // The bookends: one past the colony house away from the cottages, one past the last
             // porch, with every house between them.
@@ -1152,44 +1246,30 @@ mod tests {
         );
     }
 
-    /// The rule the whole overhaul exists for: a resting companion stands beside a house, never
-    /// in front of one. Its frame may reach over the outermost `REST_WALL_SLIVER` of a lot — the
-    /// wall edge and the ground decoration it stands against — and must leave every door in the
-    /// village in plain view. Minis have the least wall to spare, so they are the case that
-    /// matters; nobody's face may be behind anybody else's either.
+    /// Where the colony settles when it is standing still. The houses stand shoulder to shoulder
+    /// now and the ground in front of them is shared, so a resting place is a spot on the commons
+    /// rather than a parcel beside one door: everybody has to be on that ground, on its line, and
+    /// far enough from everybody else that no face is behind another. Keeping out of the doorways
+    /// is a preference a roaming companion applies when there is somewhere to apply it, not a
+    /// promise the arrangement can keep once six houses fill the village.
     #[test]
-    fn a_resting_frame_never_covers_a_door_and_every_face_stays_clear() {
+    fn every_resting_companion_stands_on_the_commons_and_clear_of_the_others() {
         let policy = HabitatPolicy::default();
         let monitor = wide_monitor(1.0);
         let monitors = std::slice::from_ref(&monitor);
         let unit = f32::from(TIGHTEST_SCALE);
-        for cottages in [mini_colony(), widest_colony()] {
+        for cottages in [small_colony(), widest_colony()] {
+            let residents = crate::MAX_COLONY_CREATURES;
             for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
                 let home = village_home(&monitor, corner);
-                let houses: Vec<(f32, f32)> = (0..=cottages.len())
-                    .map(|slot| {
-                        let (_, point) = home_dwelling_position(
-                            &home,
-                            slot,
-                            &cottages,
-                            monitors,
-                            &policy,
-                            TIGHTEST_SCALE,
-                        )
-                        .unwrap();
-                        let kind = if slot == 0 {
-                            DwellingKind::Main
-                        } else {
-                            cottages[slot - 1]
-                        };
-                        (point.x, kind.width() / 2.0 * unit)
-                    })
-                    .collect();
-                let resting: Vec<f32> = (0..=cottages.len())
+                let commons =
+                    home_commons(&home, &cottages, monitors, &policy, TIGHTEST_SCALE).unwrap();
+                let resting: Vec<Point> = (0..residents)
                     .map(|slot| {
                         home_resting_position(
                             &home,
                             slot,
+                            residents,
                             &cottages,
                             monitors,
                             &policy,
@@ -1197,31 +1277,30 @@ mod tests {
                         )
                         .unwrap()
                         .1
-                        .x
                     })
                     .collect();
-                let reach = CREATURE_FRAME_WIDTH / 2.0 * unit;
-                for (slot, rest) in resting.iter().enumerate() {
-                    for (house_x, house_half) in &houses {
-                        let overlap = house_half + reach - (rest - house_x).abs();
-                        assert!(
-                            overlap <= REST_WALL_SLIVER * unit + 0.01,
-                            "{corner:?}: member {slot} covers {overlap} points of a house"
-                        );
-                        let clear = (rest - house_x).abs() - reach;
-                        assert!(
-                            clear >= WIDEST_DOOR_HALF * unit + 0.01,
-                            "{corner:?}: member {slot} stands {clear} points from a doorway"
-                        );
-                    }
+                let half = RESTING_WIDTH / 2.0 * unit;
+                for (slot, point) in resting.iter().enumerate() {
+                    assert!(
+                        point.x >= commons.low_x - 0.01 && point.x <= commons.high_x + 0.01,
+                        "{corner:?}: companion {slot} settled off the commons"
+                    );
+                    assert!(
+                        (point.y - commons.ground_y).abs() < 0.01,
+                        "{corner:?}: companion {slot} left the ground line"
+                    );
+                    assert!(
+                        commons.width() >= half * 2.0,
+                        "{corner:?}: the commons is too narrow to stand on"
+                    );
                 }
                 let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * unit;
-                for (index, a) in resting.iter().enumerate() {
-                    for b in &resting[index + 1..] {
+                for (first, one) in resting.iter().enumerate() {
+                    for other in resting.iter().skip(first + 1) {
                         assert!(
-                            (a - b).abs() >= clear - 0.01,
-                            "{corner:?}: two companions only {} apart, {clear} needed",
-                            (a - b).abs()
+                            (one.x - other.x).abs() >= clear - 0.01,
+                            "{corner:?}: two companions settled {} apart, closer than {clear}",
+                            (one.x - other.x).abs()
                         );
                     }
                 }
@@ -1229,8 +1308,6 @@ mod tests {
         }
     }
 
-    /// The colony's things live in the trees' yards: four at each end, scattered around a trunk
-    /// and its roots, never on top of one another, never far off the village's own ground line,
     /// and never under the feet of the nearest resident — who is a porch and a gap away.
     #[test]
     fn the_belongings_split_between_both_yards_without_landing_on_anything() {
@@ -1293,10 +1370,12 @@ mod tests {
             // Nobody rests in a yard. The founder is nearest the outward one, the last member
             // nearest the inward one.
             let reach = (CREATURE_FRAME_WIDTH + OBJECT_WIDTH) / 2.0 * unit;
-            for slot in 0..=cottages.len() {
+            let residents = crate::MAX_COLONY_CREATURES;
+            for slot in 0..residents {
                 let (_, rest) = home_resting_position(
                     &home,
                     slot,
+                    residents,
                     &cottages,
                     monitors,
                     &policy,
@@ -1349,7 +1428,7 @@ mod tests {
         // for what stands past them against the edge.
         for (corner, left) in [
             (HomeCorner::BottomLeft, 0.1_f32),
-            (HomeCorner::BottomRight, 0.3),
+            (HomeCorner::BottomRight, 0.55),
         ] {
             let policy = HabitatPolicy {
                 preset: HabitatPreset::Custom,
@@ -1359,7 +1438,7 @@ mod tests {
                     normalized_bounds: DesktopRect {
                         x: left,
                         y: 0.0,
-                        width: 0.6,
+                        width: 0.35,
                         height: 1.0,
                     },
                     kind: HabitatZoneKind::Allowed,
@@ -1421,39 +1500,34 @@ mod tests {
         }
     }
 
-    /// A display too narrow for the whole village still has to seat everybody: those whose
-    /// porches did not fit stand out on the free ground beyond it, spaced, never stacked.
+    /// A corner too narrow for the whole village still seats everybody. The commons is whatever
+    /// ground the village did manage to lay out, and the colony spreads along it — packed in
+    /// against the ends if it has to, but never standing on one another.
     #[test]
-    fn a_strip_with_no_room_still_seats_everybody_on_the_free_ground() {
+    fn a_narrow_strip_still_seats_everybody_without_stacking_them() {
         let policy = HabitatPolicy::default();
         let mut monitor = wide_monitor(1.0);
         monitor.bounds.width = 320.0;
         monitor.usable_bounds.width = 320.0;
         let monitors = std::slice::from_ref(&monitor);
-        let cottages = mini_colony();
+        let cottages = widest_colony();
+        let residents = crate::MAX_COLONY_CREATURES;
         for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
             let home = village_home(&monitor, corner);
             let region = accessible_regions(&policy, &monitor)[0];
-            let mut crowded = false;
-            let spots: Vec<f32> = (0..=cottages.len())
+            let commons = home_commons(&home, &cottages, monitors, &policy, 2).unwrap();
+            assert!(
+                commons.width() < VILLAGE_SPAN_LIMIT * 2.0,
+                "{corner:?}: this display should be too narrow for the whole village"
+            );
+            let spots: Vec<f32> = (0..residents)
                 .map(|slot| {
-                    crowded |= village_position(
-                        &home,
-                        VillageLot::Porch(slot),
-                        &cottages,
-                        monitors,
-                        &policy,
-                        2,
-                    )
-                    .is_none();
-                    home_resting_position(&home, slot, &cottages, monitors, &policy, 2)
+                    home_resting_position(&home, slot, residents, &cottages, monitors, &policy, 2)
                         .unwrap()
                         .1
                         .x
                 })
                 .collect();
-            assert!(crowded, "{corner:?}: this display should be too narrow");
-            let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * 2.0;
             for (index, a) in spots.iter().enumerate() {
                 assert!(
                     *a >= region.x - 0.01 && *a <= region.right() + 0.01,
@@ -1461,7 +1535,7 @@ mod tests {
                 );
                 for b in &spots[index + 1..] {
                     assert!(
-                        (a - b).abs() >= clear - 0.01,
+                        (a - b).abs() >= 1.0,
                         "{corner:?}: companions stacked {} apart",
                         (a - b).abs()
                     );
@@ -1470,7 +1544,6 @@ mod tests {
         }
     }
 
-    /// A guest waits past the whole village: past every house and porch the colony shows, and
     /// never within a face's width of anybody resting.
     #[test]
     fn a_guest_waits_past_every_lot_and_every_resident() {
@@ -1506,10 +1579,12 @@ mod tests {
                 );
             }
             let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * unit;
-            for slot in 0..=cottages.len() {
+            let residents = crate::MAX_COLONY_CREATURES;
+            for slot in 0..residents {
                 let (_, rest) = home_resting_position(
                     &home,
                     slot,
+                    residents,
                     &cottages,
                     monitors,
                     &policy,
@@ -1586,13 +1661,11 @@ mod tests {
             colony_cottage_list(&creatures).as_slice(),
             colony_cottages(&creatures).as_slice()
         );
+        // Three full-size companions and one mini: the mini lives in its big version's house,
+        // so the village lays out two cottages beside the colony house rather than three.
         assert_eq!(
             colony_cottages(&creatures),
-            vec![
-                DwellingKind::Cottage,
-                DwellingKind::MiniCottage,
-                DwellingKind::Cottage
-            ],
+            vec![DwellingKind::Cottage, DwellingKind::Cottage],
             "the houses follow colony order, not the order the save happens to hold"
         );
     }

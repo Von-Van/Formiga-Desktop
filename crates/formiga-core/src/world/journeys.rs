@@ -4,6 +4,10 @@ use super::*;
 const INSPECTION_RADIUS: f32 = 12.0;
 pub(super) const MANTLE_LIFT_POINTS: f32 = 10.0;
 
+/// How much of the pull-up is spent hauling straight up, before the step in onto the ledge. The
+/// haul is the longer half: it is the effort, and the step is the arrival.
+const HAUL_SHARE: f32 = 0.62;
+
 #[derive(Clone)]
 pub(super) struct HopJourney {
     pub(super) start: Point,
@@ -266,20 +270,34 @@ impl WindowJourney {
                         complete: false,
                     }
                 } else {
-                    let progress = ((journey.elapsed - climb_end)
-                        / journey.mantle_duration.max(0.001))
-                    .clamp(0.0, 1.0);
-                    JourneyStep {
-                        position: lerp_point(
-                            journey.climb_end,
-                            journey.target,
-                            smoothstep(progress),
-                        ),
-                        // Keep the climbing pose attached through the whole pull-up. Switching to
-                        // the landing pose at the start of this short segment made the body appear
-                        // to pause and then snap above the ledge before settling.
-                        action: ActionKind::ClimbWindow,
-                        complete: journey.elapsed >= total,
+                    // Topping out is two beats, not one drift. Hauling and stepping in used to
+                    // happen together, so a creature crossed the last stretch diagonally — rising
+                    // and sliding sideways at the same time, which reads as the body clipping
+                    // along the edge rather than climbing onto it. Now it pulls itself straight
+                    // up where its hands are, and then steps in onto the ledge.
+                    let mantle = (journey.elapsed - climb_end).max(0.0);
+                    let haul = journey.mantle_duration * HAUL_SHARE;
+                    let over = Point {
+                        x: journey.climb_end.x,
+                        y: journey.target.y,
+                    };
+                    if mantle < haul {
+                        let progress = (mantle / haul.max(0.001)).clamp(0.0, 1.0);
+                        JourneyStep {
+                            position: lerp_point(journey.climb_end, over, smoothstep(progress)),
+                            action: ActionKind::ClimbWindow,
+                            complete: false,
+                        }
+                    } else {
+                        let step = (journey.mantle_duration - haul).max(0.001);
+                        let progress = ((mantle - haul) / step).clamp(0.0, 1.0);
+                        JourneyStep {
+                            position: lerp_point(over, journey.target, smoothstep(progress)),
+                            // Up and over: the landing clip is the one that settles a creature
+                            // onto a surface, which is exactly what this step is.
+                            action: ActionKind::Landing,
+                            complete: journey.elapsed >= total,
+                        }
                     }
                 }
             }

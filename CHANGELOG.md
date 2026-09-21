@@ -2,6 +2,38 @@
 
 All notable changes are documented here.
 
+## [0.58.7] - 2026-09-20
+
+### Added
+
+- A colony can grow to six companions, and every full-size one has a house of its own — so the
+  village can run to six houses where it used to stop at four. A mini has no house: it lives in
+  its big version's, comes home to that door, and keeps it if it ever grows full-size. Each
+  full-size companion can also raise one more little one than before.
+- The ground in front of the houses belongs to the whole colony, and they walk it. A companion
+  home for the afternoon goes somewhere, stays a while, and then wanders somewhere else, anywhere
+  between the two trees — it keeps its distance from whoever is already standing there and prefers
+  not to plant itself square in a doorway. The first place it goes when the houses appear is still
+  its own door. A hidden colony and one with reduced motion stay where they are, as before.
+- Anything held out to a companion is taken where it stands. A snack or a toy offered to somebody
+  mid-stroll stops it there rather than being turned down for bad timing.
+
+### Changed
+
+- The village is tighter again. The standing places that used to be parcelled out between the
+  houses are gone — the houses now stand a seam apart, and the ground in front of them is shared —
+  so six houses take less room than four did with their doorsteps: 423 shelter pixels against 445,
+  and a colony that has not filled up takes proportionally less. A founder on its own is 178.
+- The save format moves to version 16. A colony of up to six needs more room for who-knows-whom,
+  and an older build would quietly drop the sixth companion rather than admit it could not read
+  the file; every colony from version 1 onward still opens here, with nothing to do.
+
+### Fixed
+
+- Climbing onto a window ended with the creature sliding diagonally along the ledge, which read as
+  the body clipping across it. Topping out is two beats now: it hauls itself straight up where its
+  hands are, and then steps in onto the ledge.
+
 ## [0.58.5] - 2026-09-20
 
 ### Added

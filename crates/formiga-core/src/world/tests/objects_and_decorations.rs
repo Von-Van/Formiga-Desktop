@@ -157,8 +157,8 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
         vec![DwellingKind::Cottage],
         vec![
             DwellingKind::Cottage,
-            DwellingKind::MiniCottage,
-            DwellingKind::MiniCottage,
+            DwellingKind::Cottage,
+            DwellingKind::Cottage,
         ],
     ];
     for cottages in &villages {
@@ -199,10 +199,11 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                     };
                     push(p.x, kind.width(), &mut spans);
 
-                    // Its resident's porch is a lot of the same walk, beside the door.
+                    // The commons in front of the houses is where its resident settles.
                     let (rest_id, rest) = home_resting_position(
                         &home,
                         slot,
+                        cottages.len() + 1,
                         cottages,
                         &desktop.monitors,
                         &policy,
@@ -211,17 +212,9 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                     .unwrap();
                     assert_eq!(rest_id, monitor.id);
                     assert!((rest.y - anchor.y).abs() < 0.01);
-                    assert!(
-                        (rest.x - anchor.x)
-                            * if corner == HomeCorner::BottomLeft {
-                                1.0
-                            } else {
-                                -1.0
-                            }
-                            > (p.x - anchor.x).abs(),
-                        "a resident stands further out than its own house"
-                    );
-                    push(rest.x, PORCH_WIDTH, &mut spans);
+                    // A companion stands on the ground in front of the houses rather than on a
+                    // lot of its own, so its place is not compared with the lots on the strip —
+                    // only with the other companions', which the caller checks.
                 }
                 // The colony's belongings are not lots on the strip: they are scattered over the
                 // roots of the two trees that bookend it, four at each end.
@@ -309,11 +302,7 @@ fn every_colony_member_after_the_first_gets_a_matching_house() {
     }
     assert_eq!(
         colony_cottages(&world.save.creatures),
-        vec![
-            DwellingKind::Cottage,
-            DwellingKind::MiniCottage,
-            DwellingKind::MiniCottage
-        ],
-        "adults get a full cottage and minis a matching smaller one"
+        vec![DwellingKind::Cottage],
+        "a house belongs to a full-size companion; a mini lives in its big version's"
     );
 }

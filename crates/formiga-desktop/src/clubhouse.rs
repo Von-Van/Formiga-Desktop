@@ -883,7 +883,6 @@ impl Clubhouse {
             let (u, v) = match kind {
                 formiga_core::DwellingKind::Main => (0.0, 0.0),
                 formiga_core::DwellingKind::Cottage => (0.5, 0.0),
-                formiga_core::DwellingKind::MiniCottage => (0.0, 0.5),
             };
             let size = SHELTER_SIZE as f32;
             lots.push((

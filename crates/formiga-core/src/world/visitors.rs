@@ -728,10 +728,12 @@ impl World {
             *house = Some((point, reach));
         }
         let mut resting = [None; MAX_COLONY_CREATURES];
-        for (slot, spot) in resting.iter_mut().enumerate() {
+        let residents = self.save.creatures.len().max(1);
+        for (slot, spot) in resting.iter_mut().enumerate().take(residents) {
             *spot = home_resting_position(
                 &self.save.home,
                 slot,
+                residents,
                 &cottages,
                 &desktop.monitors,
                 policy,

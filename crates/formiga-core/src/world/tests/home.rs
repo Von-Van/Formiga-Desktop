@@ -44,11 +44,11 @@ fn house_spawn_preserves_position_then_walks_and_settles_at_both_corners() {
             world.save.settings.reduce_motion = reduce_motion;
             let start = Point { x: 720.0, y: 846.0 };
             world.save.creatures[0].state.position = start;
-            // The founder shares the colony house and waits out the visit on its porch, beside
-            // the door rather than in front of it.
+            // The founder shares the colony house and waits out the visit on the commons.
             let (_, target) = home_resting_position(
                 &world.save.home,
                 0,
+                1,
                 &[],
                 &desktop.monitors,
                 &world.save.settings.habitat,
@@ -62,9 +62,14 @@ fn house_spawn_preserves_position_then_walks_and_settles_at_both_corners() {
                 &world.save.settings.habitat,
             )
             .unwrap();
+            // The founder settles on the ground in front of its own house, on the village's own
+            // line. Which part of that ground it is standing on at any moment is roaming's
+            // business, not the layout's.
             assert!(
-                (target.x - anchor.x).abs() > DwellingKind::Main.width() / 2.0,
-                "{corner:?}: a resident should stand past the colony house, not on it",
+                (target.x - anchor.x).abs()
+                    <= DwellingKind::Main.width() / 2.0
+                        * f32::from(world.save.settings.display_scale),
+                "{corner:?}: a resident settled away from its own frontage",
             );
             assert_eq!(target.y, anchor.y);
 
@@ -272,10 +277,12 @@ fn village_strip(world: &World, desktop: &DesktopSnapshot) -> (f32, f32) {
         span.0 = span.0.min(x);
         span.1 = span.1.max(x);
     };
-    for slot in 0..=cottages.len() {
+    let residents = world.save.creatures.len().max(1);
+    for slot in 0..residents {
         let (_, point) = home_resting_position(
             &world.save.home,
             slot,
+            residents,
             &cottages,
             &desktop.monitors,
             policy,
@@ -352,10 +359,12 @@ fn every_member_rests_beside_its_own_door_with_a_clear_face() {
                 .map(|creature| (creature.colony_order, creature.id))
                 .collect();
             order.sort_unstable();
+            let residents = order.len().max(1);
             for (slot, (_, creature_id)) in order.iter().enumerate() {
                 let (_, spot) = home_resting_position(
                     &world.save.home,
                     slot,
+                    residents,
                     &cottages,
                     &desktop.monitors,
                     &world.save.settings.habitat,
@@ -584,11 +593,20 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
     scatter_belongings(&mut world, &desktop);
     let strip = village_strip(&world, &desktop);
     let ground = world.save.creatures[0].state.position.y;
-    let spots: BTreeMap<CreatureId, Point> = world
+    // The commons is what a settled companion may stand on, rather than one spot each.
+    let walk = home_commons(
+        &world.save.home,
+        colony_cottages(&world.save.creatures).as_slice(),
+        &desktop.monitors,
+        &world.save.settings.habitat,
+        world.save.settings.display_scale,
+    )
+    .unwrap();
+    let spots: BTreeMap<CreatureId, (f32, f32)> = world
         .save
         .creatures
         .iter()
-        .map(|creature| (creature.id, creature.state.position))
+        .map(|creature| (creature.id, (walk.low_x, walk.high_x)))
         .collect();
 
     let mut seen: Vec<ActionKind> = Vec::new();
@@ -596,12 +614,7 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
     let mut holding: BTreeMap<CreatureId, u32> = BTreeMap::new();
     for _ in 0..12_000 {
         world.tick(created, 0.05, &desktop);
-        let busy = world
-            .save
-            .creatures
-            .iter()
-            .filter(|creature| creature.state.action != ActionKind::Homebound)
-            .count();
+        let busy = world.home_moments.len();
         busiest = busiest.max(busy);
         for creature in &world.save.creatures {
             if !seen.contains(&creature.state.action) {
@@ -620,9 +633,12 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
             let run = holding.entry(creature.id).or_default();
             if creature.state.action == ActionKind::Homebound {
                 *run = 0;
-                assert_eq!(
-                    creature.state.position, spots[&creature.id],
-                    "a resident settled somewhere other than its own door"
+                let commons = spots[&creature.id];
+                assert!(
+                    creature.state.position.x >= commons.0 - 0.01
+                        && creature.state.position.x <= commons.1 + 0.01,
+                    "a resident settled off the commons at {}",
+                    creature.state.position.x
                 );
             } else {
                 *run += 1;
@@ -918,7 +934,8 @@ fn an_offered_moment_is_taken_where_the_resident_rests_and_ends_there() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
 
-    // Refused while the colony is still on its way home.
+    // Taken where a companion stands, even mid-stroll: the walk between two places on the
+    // commons is most of an afternoon, and an offer is not refused for bad timing.
     let mut walking = World::new([61; 32], created, &desktop);
     walking.save.creatures[0].state.position = Point {
         x: 1200.0,
@@ -927,7 +944,24 @@ fn an_offered_moment_is_taken_where_the_resident_rests_and_ends_there() {
     walking.tick(created, 0.05, &desktop);
     let walker = walking.save.creatures[0].id;
     assert_eq!(walking.save.creatures[0].state.action, ActionKind::Traverse);
-    assert!(!walking.begin_home_moment(walker, ActionKind::Eat, 6.0));
+    assert!(walking.begin_home_moment(walker, ActionKind::Eat, 6.0));
+    let caught = walking.save.creatures[0].state.position;
+    walking.tick(created, 0.05, &desktop);
+    assert_eq!(walking.save.creatures[0].state.action, ActionKind::Eat);
+    assert_eq!(
+        walking.save.creatures[0].state.position, caught,
+        "a companion stops where it was asked rather than finishing its walk first"
+    );
+
+    // Refused while it is still climbing down to the village.
+    let mut descending = World::new([61; 32], created, &desktop);
+    descending.save.creatures[0].state.position = Point {
+        x: 1200.0,
+        y: 400.0,
+    };
+    descending.tick(created, 0.05, &desktop);
+    let climber = descending.save.creatures[0].id;
+    assert!(!descending.begin_home_moment(climber, ActionKind::Eat, 6.0));
 
     let mut world = settled_colony([61; 32], 2, created, &desktop);
     let creature_id = world.save.creatures[0].id;
@@ -945,7 +979,10 @@ fn an_offered_moment_is_taken_where_the_resident_rests_and_ends_there() {
         world.tick(created, 0.05, &desktop);
     }
     assert_eq!(world.save.creatures[0].state.action, ActionKind::Homebound);
-    assert_eq!(world.save.creatures[0].state.position, spot);
+    assert!(
+        (world.save.creatures[0].state.position.x - spot.x).abs() < 4.0,
+        "a moment ended somewhere other than where it was taken"
+    );
 
     // The house going away takes the moment with it, and afterwards there is nothing to offer.
     assert!(world.begin_home_moment(creature_id, ActionKind::Drink, 30.0));

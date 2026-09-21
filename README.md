@@ -1,4 +1,4 @@
-# Formiga · v0.58.5
+# Formiga · v0.58.7
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.58.5-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.58.7-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,18 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.58.7
+
+A colony can grow to six now. Every full-size companion gets a house of its own, and the little
+ones live with their big versions rather than in cottages of their own — so the corner is a row of
+real houses rather than a row of doorsteps. It also takes up less of your desktop than the
+four-companion village did, because the standing places between the houses are gone.
+
+They are not standing places any more because the whole strip of ground between the two trees
+belongs to the colony. A companion at home wanders it: somewhere to stand, a while there, then
+somewhere else, keeping out of everybody's way and mostly out of the doorways. Hand it a snack
+while it is walking and it stops where it is and takes it.
 
 ## New in 0.58.5
 

@@ -25,12 +25,13 @@ pub use companion::*;
 pub use design::{BodyPlan, CreatureDesign, EarStyle, apply_creature_design};
 pub use habitat::{
     BELONGING_CLEARANCE, BELONGING_DEPTH, CREATURE_FRAME_WIDTH, Cottages, DWELLING_CELL,
-    DwellingKind, MAX_HABITAT_ZONES, OBJECT_WIDTH, PORCH_WIDTH, REST_CLEAR_RATIO, REST_WALL_SLIVER,
-    TREE_WIDTH, TRINKETS_PER_TREE, TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot, accessible_regions,
-    colony_cottage_list, colony_cottages, habitat_contains, home_anchor, home_dwelling_position,
-    home_guest_position, home_object_position, home_object_positions, home_resting_position,
-    home_tree_position, nearest_habitat_point, resolved_colony_object_position,
-    resolved_home_anchor, validate_habitat, village_span,
+    DwellingKind, HomeCommons, MAX_HABITAT_ZONES, OBJECT_WIDTH, REST_CLEAR_RATIO, REST_WALL_SLIVER,
+    RESTING_WIDTH, TREE_WIDTH, TRINKETS_PER_TREE, TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot,
+    accessible_regions, colony_cottage_list, colony_cottages, habitat_contains, home_anchor,
+    home_commons, home_dwelling_position, home_guest_position, home_object_position,
+    home_object_positions, home_resting_position, home_tree_position, house_slot_for,
+    nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, validate_habitat,
+    village_span,
 };
 pub use model::*;
 pub use persistence::{PersistenceError, SaveStore};
@@ -52,4 +53,4 @@ pub use visitor::{
 };
 pub use world::{BubbleGrowth, ThoughtBubble, World};
 
-pub const SAVE_VERSION: u32 = 15;
+pub const SAVE_VERSION: u32 = 16;

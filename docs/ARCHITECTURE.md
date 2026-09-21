@@ -391,7 +391,7 @@ from the current maximum-seen UTC value.
 
 Object positions resolve on the village ground line whenever the world ticks. Since 0.58.5 a
 belonging is not a lot on the strip at all: one pure layout function walks outward from the house
-placing dwellings, porches, and a keepsake tree at each end, and every belonging is scattered
+placing dwellings and a keepsake tree at each end, and every belonging is scattered
 inside one of the two trees' yards. The same walk drives rendering and nearby utility using the
 home's corner, display, scale, and accessible region. Lots without room remain stored but hidden;
 all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
@@ -427,37 +427,44 @@ draw call. Decorations have no world position, action, editor, animation, physic
 
 ## The village yard
 
-A dwelling's ground footprint, in shelter pixels, is 60 for the colony house, 46 for a companion
-cottage, and 36 for a mini's. The cottages grew in 0.58.0 and are unchanged; the atlas is still one
-128×128 texture and a dwelling is still one quad. What moved in 0.58.5 is everything around them.
+A dwelling's ground footprint, in shelter pixels, is 60 for the colony house and 46 for a
+companion's. There is no mini's cottage: a house belongs to a full-size companion, and a mini
+lives in its big version's — `house_slot_for` answers which house any companion comes home to,
+and a mini keeps that answer if it ever grows full-size. The atlas is still one 128×128 texture
+with a dwelling still one quad; the cell the mini's cottage used is simply empty now.
 
-One walk lays out the whole strip: `Tree(Outward)`, `Dwelling(0)`, `Porch(0)`, then `Dwelling(i)`,
-`Porch(i)` for every later member, and `Tree(Inward)` past the last porch. `VillageLot::Object` is
-gone — belongings are not lots any more, they live in the two trees' yards — so the walk is at most
-`MAX_VILLAGE_LOTS` = 10 entries and is built in a fixed-capacity stack array rather than a `Vec`,
-because the simulation asks for it several times a tick. A porch shares a lot line with its own
-house, so its resident waits at its own door rather than a step down the lane. Lots that cannot fit
+One walk lays out the whole strip: `Tree(Outward)`, `Dwelling(0)` through `Dwelling(n)` a
+`VILLAGE_GAP` apart, and `Tree(Inward)`. Neither belongings nor standing places are lots any more
+— belongings live in the two trees' yards, and the ground in front of the houses is shared — so
+the walk is at most `MAX_VILLAGE_LOTS` = 8 entries and is built in a fixed-capacity stack array
+rather than a `Vec`, because the simulation asks for it several times a tick. Lots that cannot fit
 the house's accessible region stay stored but hidden rather than spilling elsewhere, and because
 the trees are the outermost lots at both ends, a corner that runs out of ground gives up a tree
 before a house.
 
-The strip is tighter than 0.58.0's at every seam. `VILLAGE_GAP` is 3 shelter pixels rather than 5
-— a visible seam at every scale the overlay draws at, and no more; the old 5 came to fifty-five
-pixels of empty lane once the strip was laid end to end. `PORCH_WIDTH` is
-`CREATURE_FRAME_WIDTH − 2 × REST_WALL_SLIVER` = 30 rather than 38, and is no longer tied to the gap.
-`REST_WALL_SLIVER` is 9: the outermost pixels of a wall or an eave and the ground decoration
-standing against it, which a resting frame may reach across and inside which no doorway ever sits
-— a mini's cottage, the narrowest, has eighteen pixels between its door's middle and the edge of
-its lot and a doorway five wide. `OBJECT_WIDTH` is 10 rather than 16: the drawn width of a
-belonging, not the quad it is cut from. `REST_CLEAR_RATIO` is unchanged and still const-asserted
-equal to `world::spacing::FACE_CLEAR_RATIO`.
+`HomeCommons` is that shared ground: the run from the outward tree's outer edge to the inward
+one's, with the part in front of the houses — `stand_low_x` to `stand_high_x` — marked off as
+where a companion standing still belongs, since the ends are the yards and the yards are full of
+the colony's own belongings. `home_resting_position(slot, of, …)` spreads `of` companions along
+the frontage at `REST_CLEAR_RATIO` of a frame apart, falls back to the whole walk when the
+frontage cannot seat them face-clear, and packs them evenly rather than stacking them when even
+that runs out. It is a resting place on shared ground, not an address: with six houses there is no
+arrangement that leaves every doorway clear, and a colony living in front of its houses is what a
+village looks like.
 
-The widest village — four adults, eight belongings, both trees — measures 445 shelter pixels end to
-end, against a `VILLAGE_SPAN_LIMIT` of 448. 0.58.0's strip ran to 523, so this is 15% narrower
-while gaining two trees. The houses and doorsteps between the trees account for 327 of the 445,
-and four dwelling footprints are 198 of that: the buildings are the floor the whole thing rests
-on, and everything saved came out of the air between them and out of the belongings, which cost
-the strip nothing at all now.
+`VILLAGE_GAP` is 3 shelter pixels — a visible seam at every scale the overlay draws at, and no
+more. `RESTING_WIDTH` is `CREATURE_FRAME_WIDTH − 2 × REST_WALL_SLIVER` = 30: the ground a settled
+companion claims, less than the frame it draws, because the outermost pixels either side are a
+wall's edge or air a neighbour may reach over. `REST_WALL_SLIVER` is 9, `OBJECT_WIDTH` is 10 (the
+drawn width of a belonging, not the quad it is cut from), and `REST_CLEAR_RATIO` is unchanged and
+still const-asserted equal to `world::spacing::FACE_CLEAR_RATIO`.
+
+The widest village — six houses, eight belongings, both trees — measures 423 shelter pixels end to
+end, against a `VILLAGE_SPAN_LIMIT` of 448 inherited from the four-companion village that used to
+take 445. Six houses now fit in less ground than four did with a doorstep each, and a village lays
+out only the houses it has: a founder on its own is 178, and three houses are 276. The 305 between
+the trees is dwelling footprint and seam, and nothing else — everything the strip used to spend on
+standing room and belongings it no longer spends at all.
 
 A keepsake tree stands at each end of the walk, claiming `TREE_WIDTH` = 56 shelter pixels of lot.
 The art reaches ±27 from the trunk across all nine lean-and-tilt combinations, so the lot is a
@@ -493,26 +500,31 @@ the same without ever bringing two items within `BELONGING_CLEARANCE` = 6. No re
 stands on a belonging: the tightest case is the inward yard's outermost item, 31 shelter pixels
 from the last resident, where half a frame plus half a belonging is 29.
 
-`home_resting_position(home, slot, cottages, monitors, policy, display_scale)` places each member
-beside its own door. No resting frame covers a door, or overlaps any house by more than a gap's
-worth. When a porch does not fit — a narrow display, a habitat cut to a sliver — the member stands
-on the free ground past the outermost lot that did fit, spaced by the face-clear ratio; when even
-that fails, the whole colony is lined up from the region's far edge inward. Staying on the display
-and out of one another's faces wins over a clear view of a house that display cannot show properly
-anyway. `home_guest_position` stands a visitor past the outermost *visible* lot and past every
+Staying on the display and out of one another's faces wins over a clear view of a house that
+display cannot show properly anyway. `home_guest_position` stands a visitor past the outermost *visible* lot and past every
 resting spot, plus a gap and half a frame, and returns `None` when it cannot keep face-clear
 distance from the residents.
 
+While the colony is home, a resident does not stay on its resting place: `roam_target` in
+`world/home.rs` hands it somewhere on the commons, it walks there, stays `ROAM_DWELL` seconds, and
+is handed somewhere else. It considers `ROAM_TRIES` places and takes the first that is face-clear
+of everybody's position and of everybody else's destination and not square in a doorway, falling
+back to its resting place when the commons has nothing to offer. The first place it goes when the
+houses appear is its own doorstep — beside the door, not across it — which for a mini is its big
+version's. A quiet moment owns the creature's feet while it lasts, so a companion doing its small
+thing is not also walking somewhere. A hidden colony and one under reduced motion do not roam at
+all. The roaming state is runtime-only: a relaunch simply sends everybody wandering again.
+
 A visit is a tour rather than a stand. `plan_tour` asks the same layout functions where everything
-is, turns each house, porch, resting resident and belonging into a span of ground the guest may not
+is, turns each house, resting resident and belonging into a span of ground the guest may not
 stand on, merges those spans, and keeps the free gaps between them; the arrival spot is always the
 first place on the ring, and at most `MAX_TOUR_STOPS` are kept. Every candidate is then re-checked
 against the four rules it has to pass — inside the accessible region, clear of each house by the
-same arithmetic that puts a porch where it is, at least the face-clear distance from every resting
+same arithmetic that keeps a resident off a doorway, at least the face-clear distance from every resting
 resident, and clear of every belonging the colony keeps — and dropped rather than shaved if it does
-not plainly pass. A full four-house strip has no legal ground between the houses at all, since two
-bodies need more than the porches leave and what remains sits in a doorway, so the ring there is the
-arrival spot and the trees' yards; a smaller colony threads the gaps as well. The guest walks the
+not plainly pass. A full strip has no legal ground between the houses at all — they stand a seam
+apart — so the ring there is the arrival spot and the trees' yards; a smaller colony threads the
+gaps as well. The guest walks the
 ring repeatedly, spending a stay at each place: the first seconds are one small thing — going over
 to whichever resident it has not met yet, looking up at the house beside it, stooping to a
 belonging, or resting — and the remainder is the calm rotation a visit already had. It returns to
@@ -545,7 +557,7 @@ a tick to 1, and `tick_homebound_creatures` from roughly 76 to 8.
 
 `home-yard-sheet.png` shows eight cases at both corners: four shelter styles with a grown colony
 and the trees filling up as the scrapbook does — nothing found, five, eleven, all sixteen — then
-colonies of one to four with their residents on their porches, ending on the widest village there
+colonies of one to six with their residents on the commons, ending on the widest village there
 is. `shelter-sheet.png` gives each style a lane — plain house, decorated house, cottage, mini, and
 a creature at the same scale.
 
@@ -959,7 +971,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–15: version 15 is read directly, versions 1 through 14 are
+Persistence accepts save versions 1–16: version 16 is read directly, versions 1 through 15 are
 migrated on load, and anything else is refused. A missing primary can load its backup; a corrupt
 primary is preserved before repair, without rotating over a valid backup. If both files fail, the
 host disables writes and presents recovery choices. Explicit restores and resets preserve uniquely named copies;

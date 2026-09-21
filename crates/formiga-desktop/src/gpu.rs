@@ -194,7 +194,6 @@ fn village_cell(kind: Option<formiga_core::DwellingKind>) -> (f32, f32) {
     match kind {
         Some(formiga_core::DwellingKind::Main) => (0.0, 0.0),
         Some(formiga_core::DwellingKind::Cottage) => (0.5, 0.0),
-        Some(formiga_core::DwellingKind::MiniCottage) => (0.0, 0.5),
         None => (0.5, 0.5),
     }
 }
@@ -2958,7 +2957,6 @@ mod tests {
         let cells = [
             village_cell(Some(formiga_core::DwellingKind::Main)),
             village_cell(Some(formiga_core::DwellingKind::Cottage)),
-            village_cell(Some(formiga_core::DwellingKind::MiniCottage)),
             village_cell(None),
         ];
         let mut seen = std::collections::BTreeSet::new();
@@ -2966,7 +2964,9 @@ mod tests {
             assert!((0.0..=0.5).contains(&u) && (0.0..=0.5).contains(&v));
             assert!(seen.insert(((u * 2.0) as u8, (v * 2.0) as u8)));
         }
-        assert_eq!(seen.len(), 4);
+        // Three cells carry art: the colony house, a companion's house, and the tree the two
+        // ends of the village share. The fourth is deliberately empty.
+        assert_eq!(seen.len(), 3);
         assert_eq!(
             village_cell(None),
             (0.5, 0.5),

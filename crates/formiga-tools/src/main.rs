@@ -195,8 +195,8 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
     // row: four adults, eight belongings split between the yards, and two bare trees.
     let full = vec![
         DwellingKind::Cottage,
-        DwellingKind::MiniCottage,
-        DwellingKind::MiniCottage,
+        DwellingKind::Cottage,
+        DwellingKind::Cottage,
     ];
     let mut panels: Vec<YardPanel> = (0..4)
         .map(|style| YardPanel {
@@ -405,7 +405,6 @@ fn draw_yard_panel(
         let (cell_x, cell_y) = match kind {
             DwellingKind::Main => (0, 0),
             DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
-            DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
         };
         let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
         for y in 0..SHELTER_SIZE as i32 {
@@ -439,8 +438,15 @@ fn draw_yard_panel(
     // The residents themselves, each on the porch beside its own door and facing the strip.
     let facing = corner == HomeCorner::BottomLeft;
     for slot in 0..=cottages.len() {
-        let Some((_, p)) = home_resting_position(&home, slot, cottages, monitors, &policy, 1)
-        else {
+        let Some((_, p)) = home_resting_position(
+            &home,
+            slot,
+            cottages.len() + 1,
+            cottages,
+            monitors,
+            &policy,
+            1,
+        ) else {
             continue;
         };
         let member = World::preview_adult(
@@ -1199,7 +1205,7 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
         DwellingKind::Main.width() as u32,
         DwellingKind::Main.width() as u32,
         DwellingKind::Cottage.width() as u32,
-        DwellingKind::MiniCottage.width() as u32,
+        DwellingKind::Cottage.width() as u32,
         TREE_WIDTH as u32,
         FRAME_SIZE,
     ];

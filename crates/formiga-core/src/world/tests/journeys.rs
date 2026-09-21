@@ -287,7 +287,15 @@ fn upward_window_routes_stage_traverse_climb_mantle_and_perch() {
         }
     }
     assert!(last.complete);
-    assert_eq!(stages, vec![ActionKind::Traverse, ActionKind::ClimbWindow]);
+    // Walk to the track, climb it, haul straight up, then step in onto the ledge.
+    assert_eq!(
+        stages,
+        vec![
+            ActionKind::Traverse,
+            ActionKind::ClimbWindow,
+            ActionKind::Landing
+        ]
+    );
     assert_eq!(last.position.y, bounds.y);
     assert!(last.position.x == bounds.x + 18.0 || last.position.x == bounds.right() - 18.0);
 }
@@ -452,4 +460,78 @@ fn a_window_too_narrow_to_stand_on_is_no_landing_at_all() {
         Some(SurfaceKind::ScreenFloor),
         "a swept arc only catches where it actually crosses"
     );
+}
+
+/// The last stretch of a climb used to happen all at once — rising and sliding inward together —
+/// so a creature crossed onto the ledge diagonally and read as clipping along its edge. It pulls
+/// itself straight up where its hands are first, and only then steps in.
+#[test]
+fn topping_out_hauls_straight_up_before_stepping_onto_the_ledge() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    desktop.windows.push(DesktopWindow {
+        key: 95,
+        bounds: DesktopRect {
+            x: 400.0,
+            y: 500.0,
+            width: 360.0,
+            height: 220.0,
+        },
+        z_order: 0,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    });
+    let bounds = desktop.windows[desktop.windows.len() - 1].bounds;
+    let world = World::new([77; 32], created, &desktop);
+    let mut creature = world.save.creatures[0].clone();
+    creature.state.position = Point {
+        x: bounds.x + 4.0,
+        y: 846.0,
+    };
+    let mut journey = build_window_journey(
+        &creature,
+        Point {
+            x: bounds.x + 18.0,
+            y: bounds.y,
+        },
+        SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id: 1,
+            window_key: Some(95),
+            relative_x: 0.1,
+        },
+        &desktop,
+    );
+    let mut rising = Vec::new();
+    let mut stepping = Vec::new();
+    for _ in 0..400 {
+        let step = journey.advance(0.05);
+        match step.action {
+            ActionKind::ClimbWindow => rising.push(step.position),
+            ActionKind::Landing => stepping.push(step.position),
+            _ => {}
+        }
+        if step.complete {
+            break;
+        }
+    }
+    let haul = rising.split_off(rising.len().saturating_sub(6));
+    assert!(haul.len() >= 2 && !stepping.is_empty());
+    for pair in haul.windows(2) {
+        assert!(
+            (pair[1].x - pair[0].x).abs() < 0.01,
+            "the haul drifted sideways by {}",
+            (pair[1].x - pair[0].x).abs()
+        );
+    }
+    for pair in stepping.windows(2) {
+        assert!(
+            (pair[1].y - pair[0].y).abs() < 0.01,
+            "the step onto the ledge rose by {}",
+            (pair[1].y - pair[0].y).abs()
+        );
+    }
+    assert_eq!(stepping.last().unwrap().y, bounds.y);
 }

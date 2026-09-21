@@ -94,8 +94,10 @@ fn shared_adoption_refuses_full_colony_without_mutation() {
     let now = datetime!(2026-09-14 12:00 UTC);
     let desktop = desktop();
     let mut world = World::new([7; 32], now, &desktop);
-    world.tick(now + Duration::days(40), 0.05, &desktop);
-    assert_eq!(world.save.creatures.len(), 4);
+    for day in 1..=120 {
+        world.tick(now + Duration::days(day), 0.05, &desktop);
+    }
+    assert_eq!(world.save.creatures.len(), MAX_COLONY_CREATURES);
     let before = world.save.clone();
     let shared = SharedCreatureSeed {
         source_colony_seed: [81; 32],
@@ -114,16 +116,15 @@ fn generated_colonies_enforce_total_adult_and_mini_caps() {
     let now = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = World::new([120; 32], now, &desktop);
-    world
-        .add_designed_adult([121; 32], None, now, &desktop)
-        .unwrap();
-    world
-        .add_designed_adult([122; 32], None, now, &desktop)
-        .unwrap();
+    for seed in 1..MAX_ADULT_CREATURES as u8 {
+        world
+            .add_designed_adult([120 + seed; 32], None, now, &desktop)
+            .unwrap();
+    }
     assert_eq!(adult_count(&world.save.creatures), MAX_ADULT_CREATURES);
     assert_eq!(
-        world.add_designed_adult([123; 32], None, now, &desktop),
-        Err(ColonyManagementError::AdultLimit)
+        world.add_designed_adult([200; 32], None, now, &desktop),
+        Err(ColonyManagementError::ColonyFull)
     );
     world.tick(now + Duration::hours(1), 0.05, &desktop);
     assert_eq!(world.save.creatures.len(), MAX_COLONY_CREATURES);
@@ -132,7 +133,8 @@ fn generated_colonies_enforce_total_adult_and_mini_caps() {
             .save
             .creatures
             .iter()
-            .any(|creature| { !creature.role.is_adult() && creature.display_scale_percent < 100 })
+            .all(|creature| creature.role.is_adult()),
+        "a colony filled with full-size companions has no minis in it"
     );
     assert_eq!(
         world.add_designed_adult([124; 32], None, now, &desktop),

@@ -139,7 +139,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=14 => migrate_legacy(value, version),
+            1..=15 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }

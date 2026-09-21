@@ -534,7 +534,17 @@ fn studio_clicks_preview_before_adoption_and_protect_replacement() {
             summary: "Exact shared companion".into(),
         },
     );
-    // Four companions: adopting cannot replace the colony or silently remove an individual.
+    // A full colony: adopting cannot replace it or silently remove an individual.
+    while h.save.creatures.len() < formiga_core::MAX_COLONY_CREATURES {
+        let extra = h.save.creatures[0].clone();
+        let order = h.save.creatures.len() as u8;
+        h.save.creatures.push(Creature {
+            id: 700 + u64::from(order),
+            colony_order: order,
+            role: formiga_core::CreatureRole::Adult,
+            ..extra
+        });
+    }
     assert!(
         h.click("Adopt into colony")
             .accept_creature_preview

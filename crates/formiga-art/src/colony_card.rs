@@ -401,7 +401,6 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
                 let (u, v) = match kind {
                     DwellingKind::Main => (0, 0),
                     DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
-                    DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
                 };
                 blit_cell(
                     canvas,
@@ -1001,24 +1000,21 @@ mod tests {
             .unwrap();
             assert_eq!((lot.center_x, lot.ground_y), (point.x, point.y));
         }
-        // Spacing is the shared walk's, so a wider cottage really does move its neighbour.
-        let gap = |cottages: &[DwellingKind]| {
-            let at = |slot| {
-                formiga_core::home_dwelling_position(
-                    &save.home,
-                    slot,
-                    cottages,
-                    &expected_monitors,
-                    &HabitatPolicy::default(),
-                    NOTIONAL_DISPLAY_SCALE,
-                )
-                .unwrap()
-                .1
-                .x
-            };
-            (at(1) - at(0)).abs()
+        // Spacing is the shared walk's: two houses stand one seam apart, whatever else changes.
+        let at = |slot| {
+            formiga_core::home_dwelling_position(
+                &save.home,
+                slot,
+                &[DwellingKind::Cottage, DwellingKind::Cottage],
+                &expected_monitors,
+                &HabitatPolicy::default(),
+                NOTIONAL_DISPLAY_SCALE,
+            )
+            .unwrap()
+            .1
+            .x
         };
-        assert!(gap(&[DwellingKind::Cottage]) > gap(&[DwellingKind::MiniCottage]));
+        assert!((at(1) - at(0)).abs() > (at(2) - at(1)).abs() - 0.01);
     }
 
     #[test]

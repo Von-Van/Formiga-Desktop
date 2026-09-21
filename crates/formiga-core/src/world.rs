@@ -75,6 +75,10 @@ pub struct World {
     /// Seconds until each resident's next passive moment, staggered per creature.
     home_moment_timers: BTreeMap<CreatureId, f32>,
     home_moment_rng: ChaCha12Rng,
+    /// Where each resident is strolling to while the colony is home, and its own seeded stream
+    /// for choosing. Runtime-only: a relaunch simply sends everybody wandering again.
+    home_roam: BTreeMap<CreatureId, home::RoamStep>,
+    home_roam_rng: ChaCha12Rng,
     colony_plan: Option<ColonyPlan>,
     topology: DesktopTopology,
     geometry_observer: crate::attention::GeometryObserver,
@@ -301,6 +305,8 @@ impl World {
             home_moments: BTreeMap::new(),
             home_moment_timers: BTreeMap::new(),
             home_moment_rng: streams.rng("home-moments", 0),
+            home_roam: BTreeMap::new(),
+            home_roam_rng: streams.rng("home-roaming", 0),
             colony_plan: None,
             creature_views: Vec::new(),
             relationship_views: Vec::new(),

@@ -566,7 +566,6 @@ mod tests {
                     for (span, kind) in [
                         (MAIN_SPAN, DwellingKind::Main),
                         (COTTAGE_SPAN, DwellingKind::Cottage),
-                        (MINI_COTTAGE_SPAN, DwellingKind::MiniCottage),
                     ] {
                         let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
                         draw_dwelling(&mut tile, &genome, &[], 32, 61, span);

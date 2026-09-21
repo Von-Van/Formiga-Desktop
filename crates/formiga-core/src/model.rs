@@ -521,7 +521,7 @@ pub struct CreatureState {
     pub arrival_delay_secs: f32,
 }
 
-pub const MAX_RELATIONSHIPS: usize = 6;
+pub const MAX_RELATIONSHIPS: usize = MAX_COLONY_CREATURES * (MAX_COLONY_CREATURES - 1) / 2;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreatureRelationship {
@@ -723,9 +723,9 @@ pub struct CreatureOrigin {
     pub source_generation: u8,
 }
 
-pub const MAX_COLONY_CREATURES: usize = 4;
-pub const MAX_ADULT_CREATURES: usize = 3;
-pub const MAX_MINIS_PER_ADULT: usize = 2;
+pub const MAX_COLONY_CREATURES: usize = 6;
+pub const MAX_ADULT_CREATURES: usize = 6;
+pub const MAX_MINIS_PER_ADULT: usize = 3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

@@ -46,7 +46,8 @@ privileges, or elevated process access.
 
 The versioned JSON save contains the colony seed, resolved genomes, personality values, creature
 names and birth timestamps, current drives and positions, compact counters, bounded learned
-tendencies, twelve numeric routine slots, at most six unordered relationship records, arrival state,
+tendencies, twelve numeric routine slots, one unordered relationship record for each pair of
+companions — fifteen once a colony of six is full — arrival state,
 adult/mini roles, mini parent IDs, Keep preferences, and bounded per-adult mini-arrival bits,
 the next ritual timestamp, last ritual kind, ritual ordinal, hatch-day acknowledgement, habitat
 zones, application rules, settings, and at most eight colony objects. Each object stores only a
@@ -109,6 +110,11 @@ village, resolved on a notional 1:1 desktop so no screen geometry reaches it. Ne
 seed, a share code, memories, learned tendencies, relationship scores, the journal, the guest book,
 display keys, habitat zones, device data, source paths, or hidden text metadata. The save dialog
 runs first, cancellation renders nothing, and the buffers are released afterwards.
+
+Save version 16 accepts and deterministically migrates every v1–v15 colony. It adds no field of
+its own: the version moved only because a colony may now hold six companions and the fifteen
+bond records six of them make, and an older build reading such a file would quietly drop what it
+could not hold rather than say so. A v15 colony opens unchanged.
 
 Save version 15 accepts and deterministically migrates every v1–v14 colony. A v14 colony receives an
 empty visitor state — no guest, no gatherings counted, an empty book — and nothing else about it is

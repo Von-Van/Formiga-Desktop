@@ -28,6 +28,108 @@ pub(super) enum MomentPhase {
     Back,
 }
 
+/// Where a resident is strolling to while the colony is home, and how long it means to stay once
+/// it arrives. Runtime-only, like every other thing a village does: a corner that moves underneath
+/// the colony simply hands out new places.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct RoamStep {
+    target: Point,
+    dwell: f32,
+}
+
+/// How long a companion stays somewhere before wandering off again.
+const ROAM_DWELL: std::ops::Range<f32> = 11.0..34.0;
+
+/// How many places a companion considers before settling for the best of a bad lot. Six is
+/// enough that a busy commons still finds somewhere, and few enough to be free.
+const ROAM_TRIES: usize = 6;
+
+/// Where a resident strolls next. The whole run of ground between the two trees is the colony's,
+/// so a companion with nothing to do walks it rather than standing on one spot all afternoon: it
+/// picks somewhere, stays a while, and picks again. It keeps its distance from whoever is already
+/// there, and prefers not to stand square in a doorway — though with a full village there is not
+/// always such a place, and living in front of the houses is what a village looks like.
+#[allow(clippy::too_many_arguments)]
+fn roam_target(
+    roam: &mut BTreeMap<CreatureId, RoamStep>,
+    rng: &mut ChaCha12Rng,
+    creature: &Creature,
+    commons: HomeCommons,
+    house: Option<(Point, f32)>,
+    occupied: &[(CreatureId, Point)],
+    doorways: &[(f32, f32)],
+    settled: Point,
+    dt: f32,
+) -> Point {
+    let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * commons.scale;
+    if let Some(step) = roam.get_mut(&creature.id) {
+        // Still on the way there, or still enjoying it.
+        if creature.state.position != step.target || step.dwell > 0.0 {
+            if creature.state.position == step.target {
+                step.dwell -= dt;
+            }
+            return step.target;
+        }
+    } else {
+        // The first place a companion goes when the houses appear is its own doorstep — or its
+        // big version's, for a mini, which has no house of its own. Beside the door rather than
+        // across it: the walk home ends where somebody lives, not in front of where they live.
+        let first = house.map_or(settled, |(point, half)| {
+            let toward = if commons.high_x - point.x >= point.x - commons.low_x {
+                1.0
+            } else {
+                -1.0
+            };
+            let beside = point.x + toward * (half + RESTING_WIDTH / 2.0 * commons.scale);
+            Point {
+                x: beside.clamp(commons.low_x, commons.high_x),
+                y: commons.ground_y,
+            }
+        });
+        roam.insert(
+            creature.id,
+            RoamStep {
+                target: first,
+                dwell: rng.random_range(ROAM_DWELL),
+            },
+        );
+        return first;
+    }
+
+    let mut best: Option<(Point, u8)> = None;
+    for _ in 0..ROAM_TRIES {
+        let candidate = commons.along(rng.random_range(0.0..1.0));
+        let crowded = occupied
+            .iter()
+            .any(|(id, point)| *id != creature.id && (point.x - candidate.x).abs() < clear);
+        let taken = roam
+            .iter()
+            .any(|(id, step)| *id != creature.id && (step.target.x - candidate.x).abs() < clear);
+        if crowded || taken {
+            continue;
+        }
+        let in_a_doorway = doorways
+            .iter()
+            .any(|(x, reach)| (x - candidate.x).abs() < *reach);
+        let score = u8::from(!in_a_doorway);
+        if best.is_none_or(|(_, previous)| score > previous) {
+            best = Some((candidate, score));
+            if score == 1 {
+                break;
+            }
+        }
+    }
+    let target = best.map_or(settled, |(point, _)| point);
+    roam.insert(
+        creature.id,
+        RoamStep {
+            target,
+            dwell: rng.random_range(ROAM_DWELL),
+        },
+    );
+    target
+}
+
 /// A short, quiet thing a resident does at its own door while the home is out. It is a clip and
 /// nothing else: no moment emits an `ActionCompleted`, so none of them teaches the creature a
 /// tendency, fills a counter, moves a bond or writes a line in the journal.
@@ -107,7 +209,7 @@ fn choose_home_moment(
     rng: &mut ChaCha12Rng,
     creature: &mut Creature,
     rest: Point,
-    house: Option<Point>,
+    house: Option<(Point, f32)>,
     neighbour: Option<(CreatureId, Point)>,
     belongings: &[Point],
     frame: f32,
@@ -165,7 +267,7 @@ fn choose_home_moment(
             }
         }
         ActionKind::InspectScreen => {
-            if let Some(point) = house {
+            if let Some((point, _)) = house {
                 creature.state.facing_right = point.x >= rest.x;
             }
         }
@@ -315,10 +417,41 @@ impl World {
             HomeCorner::BottomLeft => 1.0,
             HomeCorner::BottomRight => -1.0,
         };
-        // Everyone waits out a visit beside its own door, laid out by the same walk that places
-        // the houses and the belongings, so nobody stands in front of a wall and no two faces
-        // end up behind one another.
+        // Where the colony settles when it is standing still, laid out by the same walk that
+        // places the houses and the belongings, so no two faces end up behind one another.
         let (resting, houses) = self.village_places(desktop);
+        // The ground between the two trees, and the doorways on it worth not standing in.
+        let cottage_list = colony_cottage_list(&self.save.creatures);
+        let commons = home_commons(
+            &self.save.home,
+            cottage_list.as_slice(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
+        let mut doorways = Vec::with_capacity(cottage_list.as_slice().len() + 1);
+        if let Some(commons) = commons {
+            for slot in 0..=cottage_list.as_slice().len() {
+                let Some((_, point)) = home_dwelling_position(
+                    &self.save.home,
+                    slot,
+                    cottage_list.as_slice(),
+                    &desktop.monitors,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                ) else {
+                    continue;
+                };
+                // Standing this close to a house's middle puts a frame across its door.
+                doorways.push((point.x, CREATURE_FRAME_WIDTH / 2.0 * commons.scale));
+            }
+        }
+        let standing: Vec<(CreatureId, Point)> = self
+            .save
+            .creatures
+            .iter()
+            .map(|creature| (creature.id, creature.state.position))
+            .collect();
         let belongings = self.village_belongings(desktop);
         let frame = spacing::frame_width(self.save.settings.display_scale, monitor.scale_factor);
         // Passive moments are decoration. They stop for a still desktop and for a hidden one.
@@ -366,7 +499,30 @@ impl World {
                 self.home_moments.remove(&creature.id);
                 continue;
             }
-            let target = resting.get(&creature.id).copied().unwrap_or(anchor);
+            let anchored = resting.get(&creature.id).copied().unwrap_or(anchor);
+            // Reduced motion keeps the colony where it stands, and so does a hidden one — there
+            // is no sense walking a village nobody can see. Otherwise everyone has the run of the
+            // ground between the two trees.
+            // A moment in progress owns the creature's feet: it is doing its small thing where it
+            // was asked, not on the way to somewhere else.
+            let target = if let Some(moment) = self.home_moments.get(&creature.id) {
+                moment.rest
+            } else {
+                match commons.filter(|_| !quiet) {
+                    Some(commons) => roam_target(
+                        &mut self.home_roam,
+                        &mut self.home_roam_rng,
+                        creature,
+                        commons,
+                        houses.get(&creature.id).copied(),
+                        &standing,
+                        &doorways,
+                        anchored,
+                        dt,
+                    ),
+                    None => anchored,
+                }
+            };
 
             // A quiet moment in progress holds the creature where it is, or walks the two or
             // three steps of an errand. Anything that moves the village ends it at once.
@@ -615,9 +771,18 @@ impl World {
     fn village_places(
         &self,
         desktop: &DesktopSnapshot,
-    ) -> (BTreeMap<CreatureId, Point>, BTreeMap<CreatureId, Point>) {
+    ) -> (
+        BTreeMap<CreatureId, Point>,
+        BTreeMap<CreatureId, (Point, f32)>,
+    ) {
         let cottages = colony_cottage_list(&self.save.creatures);
         let cottages = cottages.as_slice();
+        let scale_factor = desktop
+            .monitors
+            .iter()
+            .find(|monitor| Some(monitor.display_key) == self.save.home.display)
+            .or_else(|| desktop.monitors.first())
+            .map_or(1.0, |monitor| monitor.scale_factor.max(1.0));
         let mut order: Vec<_> = self
             .save
             .creatures
@@ -627,10 +792,12 @@ impl World {
         order.sort_unstable();
         let mut resting = BTreeMap::new();
         let mut houses = BTreeMap::new();
+        let residents = order.len().max(1);
         for (slot, (_, creature_id)) in order.into_iter().enumerate() {
             if let Some((_, point)) = home_resting_position(
                 &self.save.home,
                 slot,
+                residents,
                 cottages,
                 &desktop.monitors,
                 &self.save.settings.habitat,
@@ -638,15 +805,29 @@ impl World {
             ) {
                 resting.insert(creature_id, point);
             }
+            // A mini has no house of its own: the one it comes home to is its big version's.
+            let house = self
+                .save
+                .creatures
+                .iter()
+                .find(|creature| creature.id == creature_id)
+                .map(|creature| house_slot_for(creature, &self.save.creatures))
+                .unwrap_or(slot);
             if let Some((_, point)) = home_dwelling_position(
                 &self.save.home,
-                slot,
+                house,
                 cottages,
                 &desktop.monitors,
                 &self.save.settings.habitat,
                 self.save.settings.display_scale,
             ) {
-                houses.insert(creature_id, point);
+                let kind = if house == 0 {
+                    DwellingKind::Main
+                } else {
+                    DwellingKind::Cottage
+                };
+                let unit = f32::from(self.save.settings.display_scale) / scale_factor;
+                houses.insert(creature_id, (point, kind.width() / 2.0 * unit));
             }
         }
         (resting, houses)
@@ -696,9 +877,16 @@ impl World {
         else {
             return false;
         };
-        // Arrived and standing still: either already settled at its door, or mid-moment there.
+        // Home and on its own feet. A companion strolling the commons stops where it is and takes
+        // what is held out, rather than having to be caught standing still: the walk between two
+        // places is most of an afternoon now, and an offer refused because somebody was mid-stroll
+        // would read as the offer being broken.
         if creature.state.arrival_delay_secs > 0.0
-            || (resting.is_none() && creature.state.action != ActionKind::Homebound)
+            || self.window_journeys.contains_key(&creature_id)
+            || !matches!(
+                creature.state.action,
+                ActionKind::Homebound | ActionKind::Traverse | ActionKind::Idle
+            ) && resting.is_none()
         {
             return false;
         }
