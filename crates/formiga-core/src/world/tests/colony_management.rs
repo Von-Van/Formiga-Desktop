@@ -114,11 +114,15 @@ fn generated_colonies_enforce_total_adult_and_mini_caps() {
     let now = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = World::new([120; 32], now, &desktop);
-    world.add_generated_adult([121; 32], now, &desktop).unwrap();
-    world.add_generated_adult([122; 32], now, &desktop).unwrap();
+    world
+        .add_designed_adult([121; 32], None, now, &desktop)
+        .unwrap();
+    world
+        .add_designed_adult([122; 32], None, now, &desktop)
+        .unwrap();
     assert_eq!(adult_count(&world.save.creatures), MAX_ADULT_CREATURES);
     assert_eq!(
-        world.add_generated_adult([123; 32], now, &desktop),
+        world.add_designed_adult([123; 32], None, now, &desktop),
         Err(ColonyManagementError::AdultLimit)
     );
     world.tick(now + Duration::hours(1), 0.05, &desktop);
@@ -131,7 +135,7 @@ fn generated_colonies_enforce_total_adult_and_mini_caps() {
             .any(|creature| { !creature.role.is_adult() && creature.display_scale_percent < 100 })
     );
     assert_eq!(
-        world.add_generated_adult([124; 32], now, &desktop),
+        world.add_designed_adult([124; 32], None, now, &desktop),
         Err(ColonyManagementError::ColonyFull)
     );
     for adult in world
@@ -150,7 +154,7 @@ fn minis_are_balanced_across_two_adults_and_prefer_the_oldest_of_three() {
     let desktop = desktop();
     let mut two_adults = World::new([125; 32], now, &desktop);
     let second = two_adults
-        .add_generated_adult([126; 32], now + Duration::seconds(1), &desktop)
+        .add_designed_adult([126; 32], None, now + Duration::seconds(1), &desktop)
         .unwrap();
     let first = two_adults.save.creatures[0].id;
     two_adults.set_creature_kept(second, false).unwrap();
@@ -166,10 +170,10 @@ fn minis_are_balanced_across_two_adults_and_prefer_the_oldest_of_three() {
     let mut three_adults = World::new([127; 32], now, &desktop);
     let oldest = three_adults.save.creatures[0].id;
     three_adults
-        .add_generated_adult([128; 32], now + Duration::seconds(1), &desktop)
+        .add_designed_adult([128; 32], None, now + Duration::seconds(1), &desktop)
         .unwrap();
     three_adults
-        .add_generated_adult([129; 32], now + Duration::seconds(2), &desktop)
+        .add_designed_adult([129; 32], None, now + Duration::seconds(2), &desktop)
         .unwrap();
     three_adults.tick(now + Duration::hours(1), 0.05, &desktop);
     assert_eq!(three_adults.save.creatures.len(), 4);
@@ -189,7 +193,9 @@ fn keep_protects_replacement_and_bulk_regeneration_preserves_kept_creatures() {
         world.replace_creature_with_adult(protected, [132; 32], now, &desktop),
         Err(ColonyManagementError::CreatureKept)
     );
-    let replaceable = world.add_generated_adult([133; 32], now, &desktop).unwrap();
+    let replaceable = world
+        .add_designed_adult([133; 32], None, now, &desktop)
+        .unwrap();
     world.tick(now + Duration::hours(1), 0.05, &desktop);
     let removable_mini = world
         .save
@@ -218,6 +224,115 @@ fn keep_protects_replacement_and_bulk_regeneration_preserves_kept_creatures() {
     assert!(world.save.creatures.iter().all(|creature| creature.kept));
 }
 
+/// Running out of seeds costs the adults that had none left, and nothing else: a mini owes no
+/// seed to anybody, so it still goes. The count that comes back is what changed, which is what
+/// the app asks in order to decide whether the colony is worth writing down again.
+#[test]
+fn regenerating_with_too_few_seeds_still_lets_the_unkept_minis_go() {
+    let now = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([141; 32], now, &desktop);
+    let unkept_adult = world
+        .add_designed_adult([142; 32], None, now, &desktop)
+        .unwrap();
+    world.tick(now + Duration::hours(1), 0.05, &desktop);
+    let minis: Vec<_> = world
+        .save
+        .creatures
+        .iter()
+        .filter(|creature| !creature.role.is_adult())
+        .map(|creature| creature.id)
+        .collect();
+    assert!(!minis.is_empty());
+    world.set_creature_kept(unkept_adult, false).unwrap();
+    for mini in &minis {
+        world.set_creature_kept(*mini, false).unwrap();
+    }
+    // The unkept adult is listed before the minis, so a search that gave up at the first adult
+    // it could not reseed would never reach them.
+    assert_eq!(world.regenerate_unkept(&[], now, &desktop), minis.len());
+    assert!(
+        world
+            .save
+            .creatures
+            .iter()
+            .all(|creature| !minis.contains(&creature.id))
+    );
+    assert!(
+        world
+            .save
+            .creatures
+            .iter()
+            .any(|creature| creature.id == unkept_adult),
+        "an adult with no seed to draw from stays as it is"
+    );
+}
+
+/// Both ways of handing a creature's place to another leave the colony in the same arrangement,
+/// because that arrangement is the order it is drawn in and the order it is listed in.
+#[test]
+fn replacing_and_adopting_over_a_creature_leave_the_same_arrangement() {
+    let now = datetime!(2026-09-14 12:00 UTC);
+    let desktop = desktop();
+    let shared = SharedCreatureSeed {
+        source_colony_seed: [143; 32],
+        source_generation: 1,
+        design: None,
+    };
+    let colony = || {
+        let mut world = World::new([144; 32], now, &desktop);
+        world
+            .add_designed_adult([145; 32], None, now + Duration::seconds(1), &desktop)
+            .unwrap();
+        world
+            .add_designed_adult([146; 32], None, now + Duration::seconds(2), &desktop)
+            .unwrap();
+        let middle = world.save.creatures[1].id;
+        world.set_creature_kept(middle, false).unwrap();
+        (world, middle)
+    };
+    let arrangement = |world: &World, new_id: CreatureId| {
+        let order: Vec<_> = world
+            .save
+            .creatures
+            .iter()
+            .map(|creature| (creature.id, creature.colony_order))
+            .collect();
+        (
+            world.save.creatures.iter().position(|c| c.id == new_id),
+            order,
+        )
+    };
+
+    let (mut replaced, middle) = colony();
+    let before = replaced.save.creatures[1].colony_order;
+    let by_design = replaced
+        .replace_creature_with_design(middle, [147; 32], None, now, &desktop)
+        .unwrap();
+    let (slot, by_design_order) = arrangement(&replaced, by_design);
+    assert_eq!(slot, Some(1), "a replacement keeps the place it took over");
+    assert_eq!(by_design_order[1].1, before);
+
+    let (mut adopted, middle) = colony();
+    let by_adoption = adopted
+        .adopt_shared_creature(shared, Some(middle), now, &desktop)
+        .unwrap();
+    let (slot, by_adoption_order) = arrangement(&adopted, by_adoption);
+    assert_eq!(slot, Some(1), "and so does an adoption over the same place");
+    assert_eq!(
+        by_adoption_order
+            .iter()
+            .map(|(_, order)| *order)
+            .collect::<Vec<_>>(),
+        by_design_order
+            .iter()
+            .map(|(_, order)| *order)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(by_adoption_order[0].0, by_design_order[0].0);
+    assert_eq!(by_adoption_order[2].0, by_design_order[2].0);
+}
+
 #[test]
 fn removing_an_adult_reparents_minis_but_never_removes_the_last_adult() {
     let now = datetime!(2026-01-01 0:00 UTC);
@@ -229,7 +344,7 @@ fn removing_an_adult_reparents_minis_but_never_removes_the_last_adult() {
         Err(ColonyManagementError::LastAdult)
     );
     let second = world
-        .add_generated_adult([136; 32], now + Duration::seconds(1), &desktop)
+        .add_designed_adult([136; 32], None, now + Duration::seconds(1), &desktop)
         .unwrap();
     world.tick(
         now + Duration::hours(1) + Duration::seconds(1),

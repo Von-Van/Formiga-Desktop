@@ -699,13 +699,25 @@ fn the_home_preview_shows_the_real_village_and_never_calls_the_colony_home() {
     h.save.home.active_since_utc = before.0.active_since_utc;
     assert_eq!(h.save.creatures, before.1);
     assert_eq!(h.save.home, before.0);
-    // The village atlas and the object atlas carry the corner however large it grows: removing
-    // half the colony and its belongings costs and saves no textures at all.
+    // The village atlas, the object atlas and the colony's own trinket sheet carry the corner
+    // however large it grows: a tree with nothing on it, a tree with every keepsake the colony
+    // can find hung on it, and half the colony gone all cost the same three textures.
     h.save.home.active_since_utc = Some(h.save.created_at_utc);
     h.frame(Vec::new());
     let full = h.clubhouse.texture_ids().len();
+    h.save.companion.scrapbook = (0..TRINKET_VARIANTS)
+        .map(|variant| ScrapbookRecord {
+            variant,
+            first_at: h.save.created_at_utc,
+            finder: None,
+            finder_name: String::new(),
+        })
+        .collect();
+    h.frame(Vec::new());
+    assert_eq!(h.clubhouse.texture_ids().len(), full);
     h.save.creatures.truncate(1);
     h.save.objects.objects.clear();
+    h.save.companion.scrapbook.clear();
     h.frame(Vec::new());
     assert_eq!(h.clubhouse.texture_ids().len(), full);
 }

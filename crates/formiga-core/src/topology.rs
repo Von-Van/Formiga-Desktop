@@ -124,32 +124,58 @@ impl DesktopTopology {
         self.rebuild_count = self.rebuild_count.saturating_add(1);
         self.invitation_dwell = None;
         self.invitation = None;
-        self.windows = visible
-            .iter()
-            .filter_map(|window| {
-                let point = Point {
-                    x: window.bounds.x + window.bounds.width * 0.5,
-                    y: window.bounds.y,
-                };
-                let monitor_id = desktop
-                    .monitors
-                    .iter()
-                    .find(|monitor| monitor.bounds.contains(point))?
-                    .id;
-                Some(TopologyWindow {
-                    key: window.key,
-                    bounds: window.bounds,
-                    monitor_id,
-                })
+        // Both lists keep the storage they grew into on earlier rebuilds: a desktop whose windows
+        // are being dragged rebuilds on every tick, and the sizes here are already capped.
+        self.windows.clear();
+        self.windows.extend(visible.iter().filter_map(|window| {
+            let point = Point {
+                x: window.bounds.x + window.bounds.width * 0.5,
+                y: window.bounds.y,
+            };
+            let monitor_id = desktop
+                .monitors
+                .iter()
+                .find(|monitor| monitor.bounds.contains(point))?
+                .id;
+            Some(TopologyWindow {
+                key: window.key,
+                bounds: window.bounds,
+                monitor_id,
             })
-            .collect();
+        }));
 
-        let mut landmarks = Vec::with_capacity(MAX_TOPOLOGY_LANDMARKS);
-        for window in &self.windows {
-            let island = self.windows.iter().all(|other| {
-                other.key == window.key
-                    || !expanded(window.bounds, ISLAND_CLEARANCE).overlaps(other.bounds)
-            });
+        let mut landmarks = std::mem::take(&mut self.landmarks);
+        landmarks.clear();
+        for index in 0..self.windows.len() {
+            let window = self.windows[index];
+            let left = Point {
+                x: window.bounds.x + 12.0,
+                y: window.bounds.y,
+            };
+            let right = Point {
+                x: window.bounds.right() - 12.0,
+                y: window.bounds.y,
+            };
+            // Every other window answers all three questions about this one at once — whether it
+            // stands clear of its neighbours, and whether each top corner is uncovered — so the
+            // list is walked once per window rather than three times. The loop stops as soon as
+            // all three are settled.
+            let clearance = expanded(window.bounds, ISLAND_CLEARANCE);
+            let mut island = true;
+            let mut left_exposed = true;
+            let mut right_exposed = true;
+            for other in &self.windows {
+                if other.key == window.key {
+                    continue;
+                }
+                island = island && !clearance.overlaps(other.bounds);
+                left_exposed = left_exposed && !other.bounds.contains(left);
+                right_exposed = right_exposed && !other.bounds.contains(right);
+                if !island && !left_exposed && !right_exposed {
+                    break;
+                }
+            }
+
             if island {
                 push_landmark(
                     &mut landmarks,
@@ -163,12 +189,7 @@ impl DesktopTopology {
                     },
                 );
             }
-
-            let left = Point {
-                x: window.bounds.x + 12.0,
-                y: window.bounds.y,
-            };
-            if corner_exposed(window.key, left, &self.windows) {
+            if left_exposed {
                 push_landmark(
                     &mut landmarks,
                     TopologyLandmark {
@@ -178,11 +199,7 @@ impl DesktopTopology {
                     },
                 );
             }
-            let right = Point {
-                x: window.bounds.right() - 12.0,
-                y: window.bounds.y,
-            };
-            if corner_exposed(window.key, right, &self.windows) {
+            if right_exposed {
                 push_landmark(
                     &mut landmarks,
                     TopologyLandmark {
@@ -401,16 +418,15 @@ impl DesktopTopology {
 }
 
 fn bounded_visible_windows(desktop: &DesktopSnapshot) -> Vec<&crate::DesktopWindow> {
-    let mut visible: Vec<_> = desktop
-        .windows
-        .iter()
-        .filter(|window| {
-            window.visible
-                && !window.minimized
-                && window.bounds.width >= 32.0
-                && window.bounds.height >= 24.0
-        })
-        .collect();
+    // Room for every window up front: this runs on every tick, and collecting a filtered
+    // iterator instead grows the list a handful of times on the way to the same answer.
+    let mut visible = Vec::with_capacity(desktop.windows.len());
+    visible.extend(desktop.windows.iter().filter(|window| {
+        window.visible
+            && !window.minimized
+            && window.bounds.width >= 32.0
+            && window.bounds.height >= 24.0
+    }));
     visible.sort_by_key(|window| (window.z_order, window.key));
     visible.truncate(MAX_TOPOLOGY_WINDOWS);
     visible
@@ -438,12 +454,6 @@ fn push_landmark(landmarks: &mut Vec<TopologyLandmark>, landmark: TopologyLandma
     if landmarks.len() < MAX_TOPOLOGY_LANDMARKS {
         landmarks.push(landmark);
     }
-}
-
-fn corner_exposed(window_key: WindowKey, point: Point, windows: &[TopologyWindow]) -> bool {
-    windows
-        .iter()
-        .all(|other| other.key == window_key || !other.bounds.contains(point))
 }
 
 fn expanded(rect: DesktopRect, amount: f32) -> DesktopRect {

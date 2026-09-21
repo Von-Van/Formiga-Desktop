@@ -1,4 +1,4 @@
-# Modular creature generation · v0.58.0
+# Modular creature generation · v0.58.5
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -83,14 +83,18 @@ and whoever is holding it. A new variant is a new column, not a new texture per 
   reserved faces, 1,000 generated creatures across every action, legacy migration, and exact sharing.
 
 The village is independent of creature generation. `formiga-core::habitat` walks one ground line
-outward from the colony house, laying out companion cottages and loose objects together, so a
-belonging can never land on a house. The first colony member shares the colony house; each later
-one gets a cottage of its own, half-size for a mini. Lots outside the house's accessible region
-stay hidden, and an inactive house hides the whole village.
+outward from the colony house, laying out a keepsake tree, the colony house, and a cottage and a
+porch for every later member, and closing with a second tree. The first colony member shares the
+colony house; each later one gets a cottage of its own, half-size for a mini. Belongings are not
+lots at all: they are scattered in the two trees' yards, four to each, so one can never land on a
+house. Lots outside the house's accessible region stay hidden, and an inactive house hides the
+whole village.
 
-`ShelterRenderer::render_village` bakes the house and both cottage sizes into one 128×128 atlas of
-64px cells, each drawn into its own cell-sized tile first so nothing bleeds into a neighbour. Every
-dwelling is one quad sampling that single texture, so the village adds no texture, sampler, or bind
-group. Style details scale in thirds, which leaves the colony house byte-identical to the standalone
-shelter render. `home-yard-sheet` shows all four styles and both corners through the same layout
-function the renderer uses.
+`ShelterRenderer::render_village` bakes the house, both cottage sizes, and the keepsake tree into
+one 128×128 atlas of 64px cells, each drawn into its own cell-sized tile first so nothing bleeds
+into a neighbour. The tree shares the house's own style, palette, and baseline, so it belongs to
+the same yard. Every dwelling and every tree is one quad sampling that single texture — the inward
+tree samples the tree cell with its horizontal UVs swapped — so the village adds no texture,
+sampler, or bind group. Style details scale in thirds, which leaves the colony house
+byte-identical to the standalone shelter render. `home-yard-sheet` shows all four styles and both
+corners through the same layout function the renderer uses.

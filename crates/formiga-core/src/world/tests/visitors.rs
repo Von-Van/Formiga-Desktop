@@ -238,10 +238,9 @@ fn a_visit_arrives_after_the_colony_settles_says_hello_once_and_leaves_before_th
                 "the guest stepped outside the habitat at {seconds}s"
             );
             walked_in |= phase == VisitPhase::ArrivingWalk;
-            if matches!(
-                phase,
-                VisitPhase::Greeting | VisitPhase::Visiting | VisitPhase::Farewell
-            ) {
+            // The hello is said where the guest walked in to; the walk round the houses comes
+            // afterwards, and has a test of its own.
+            if phase == VisitPhase::Greeting {
                 assert_eq!(guest.state.position, guest_spot.1, "at {seconds}s");
                 standing = true;
             }
@@ -463,6 +462,16 @@ fn pausing_hiding_and_reduced_motion_each_leave_the_visit_somewhere_defined() {
     for step in 1..=17_600_i64 {
         world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
         world.drain_events().for_each(drop);
+        // No walk in, no walk out, and no walk around the houses either: a still visit is
+        // never given a tour to begin with.
+        assert!(
+            world
+                .save
+                .visitors
+                .guest
+                .as_ref()
+                .is_none_or(|guest| guest.visit.stops.is_empty())
+        );
         if let Some(guest) = world.save.visitors.on_stage() {
             assert_eq!(guest.state.position, spot, "a still guest stays put");
             assert!(
@@ -870,4 +879,261 @@ fn a_guest_can_be_petted_but_never_picked_up() {
             .action,
         ActionKind::PetReaction
     );
+}
+
+/// Every rule a stop on a guest's walk around the village has to keep, checked against the
+/// village exactly as it stands right now.
+fn every_stop_is_somewhere_a_guest_may_stand(world: &World, desktop: &DesktopSnapshot) {
+    let guest = world
+        .save
+        .visitors
+        .guest
+        .as_ref()
+        .expect("someone is visiting");
+    let cottages = colony_cottages(&world.save.creatures);
+    let policy = &world.save.settings.habitat;
+    let display_scale = world.save.settings.display_scale;
+    let monitor = &desktop.monitors[0];
+    let scale = f32::from(display_scale) / monitor.scale_factor.max(1.0);
+    let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * scale;
+    let places = home_object_positions(
+        &world.save.home,
+        &cottages,
+        &desktop.monitors,
+        policy,
+        display_scale,
+    );
+    for stop in &guest.visit.stops {
+        assert!(
+            habitat_contains(policy, monitor, stop.at),
+            "{stop:?} is outside the habitat"
+        );
+        for slot in 0..=cottages.len() {
+            if let Some((_, house)) = home_dwelling_position(
+                &world.save.home,
+                slot,
+                &cottages,
+                &desktop.monitors,
+                policy,
+                display_scale,
+            ) {
+                let kind = if slot == 0 {
+                    DwellingKind::Main
+                } else {
+                    cottages[slot - 1]
+                };
+                let reach =
+                    (kind.width() / 2.0 + CREATURE_FRAME_WIDTH / 2.0 - REST_WALL_SLIVER) * scale;
+                assert!(
+                    (stop.at.x - house.x).abs() >= reach,
+                    "{stop:?} stands over house {slot}'s doorway"
+                );
+            }
+            if let Some((_, resting)) = home_resting_position(
+                &world.save.home,
+                slot,
+                &cottages,
+                &desktop.monitors,
+                policy,
+                display_scale,
+            ) {
+                assert!(
+                    (stop.at.x - resting.x).abs() >= clear,
+                    "{stop:?} crowds the resident at door {slot}"
+                );
+            }
+        }
+        for (_, thing) in places[..world.save.objects.objects.len()].iter().flatten() {
+            assert!(
+                (stop.at.x - thing.x).abs() >= OBJECT_WIDTH / 2.0 * scale,
+                "{stop:?} stands on a belonging"
+            );
+        }
+    }
+}
+
+/// The stops a guest is touring right now, once it has any.
+fn tour_of(world: &World) -> Vec<TourStop> {
+    world
+        .save
+        .visitors
+        .guest
+        .as_ref()
+        .map(|guest| guest.visit.stops.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
+    let desktop = desktop();
+    // The same display, narrower: a village that moves underneath a guest halfway through.
+    let mut moved = desktop.clone();
+    moved.monitors[0].bounds.width = 1300.0;
+    moved.monitors[0].usable_bounds.width = 1300.0;
+
+    let created = datetime!(2026-04-02 9:00 UTC);
+    let mut world = colony_of_two(seed_expecting_a_visitor(), created);
+    let now = run(&mut world, created, 40.0, &desktop);
+    world.save.visitors.gatherings = 0;
+    // One playful companion and one timid one, so both kinds of answer are on show.
+    world.save.creatures[0].personality.playfulness = 0.95;
+    world.save.creatures[0].personality.sociability = 0.95;
+    world.save.creatures[1].personality.playfulness = 0.1;
+    world.save.creatures[1].personality.boldness = 0.1;
+    gather(&mut world, now, &desktop);
+    let mut doors: Vec<_> = world
+        .save
+        .creatures
+        .iter()
+        .map(|creature| (creature.id, creature.state.position))
+        .collect();
+
+    let mut first = Vec::new();
+    let mut after_the_move = Vec::new();
+    let mut stood = BTreeSet::new();
+    let mut greeted = BTreeSet::new();
+    let mut answered = BTreeSet::new();
+    let mut gestures = Vec::new();
+    let mut rounds = 0;
+    let mut walked = false;
+    let mut left_at = None;
+    for step in 1..=17_600_i64 {
+        let seconds = step as f32 * 0.05;
+        let desktop = if seconds < 300.0 { &desktop } else { &moved };
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, desktop);
+        world.drain_events().for_each(drop);
+        let guest = world
+            .save
+            .visitors
+            .guest
+            .as_ref()
+            .expect("the guest stays until it has gone");
+        if guest.visit.phase == VisitPhase::Gone {
+            left_at = Some(seconds);
+            break;
+        }
+        if guest.visit.phase == VisitPhase::Visiting {
+            // The stops always belong to the village as it stands right now.
+            let spot = home_guest_position(
+                &world.save.home,
+                &colony_cottages(&world.save.creatures),
+                world.save.objects.objects.len(),
+                &desktop.monitors,
+                &world.save.settings.habitat,
+                world.save.settings.display_scale,
+            )
+            .expect("the village has room for a guest");
+            assert_eq!(
+                guest.visit.planned,
+                Some(spot.1),
+                "the tour was not worked out again at {seconds}s"
+            );
+            assert!(guest.visit.stops.len() <= MAX_TOUR_STOPS);
+            assert!(guest.visit.met.len() <= MAX_COLONY_CREATURES);
+            assert!(guest.visit.answers.len() <= 2 * MAX_COLONY_CREATURES);
+            if let TourMoment::Greeting(creature_id) = guest.visit.moment {
+                greeted.insert(creature_id);
+                // That resident answers the hello said at this stop, in its own time.
+                if let Some(pose) = world
+                    .save
+                    .creatures
+                    .iter()
+                    .find(|creature| creature.id == creature_id)
+                    .and_then(|creature| creature.state.attention)
+                {
+                    answered.insert(creature_id);
+                    gestures.push(pose.gesture);
+                }
+            }
+            rounds = rounds.max(guest.visit.answers.len());
+            walked |= guest.creature.state.action == ActionKind::Traverse;
+            if guest.creature.state.action != ActionKind::Traverse {
+                stood.insert(guest.creature.state.position.x as i32);
+            }
+            every_stop_is_somewhere_a_guest_may_stand(&world, desktop);
+            if seconds < 300.0 {
+                if first.is_empty() {
+                    first = tour_of(&world);
+                }
+            } else if after_the_move.is_empty() {
+                after_the_move = tour_of(&world);
+            }
+        }
+        // A narrower display moves everybody's door, and the colony walks to its new one. Once
+        // it has settled the doors are noted again; either side of that nobody budges,
+        // whatever the guest does.
+        if (300.0..320.0).contains(&seconds) {
+            doors = world
+                .save
+                .creatures
+                .iter()
+                .map(|creature| (creature.id, creature.state.position))
+                .collect();
+            continue;
+        }
+        for (creature_id, door) in &doors {
+            let resident = world
+                .save
+                .creatures
+                .iter()
+                .find(|creature| creature.id == *creature_id)
+                .expect("the colony is whole");
+            assert!(
+                resident.state.position.distance(*door) <= 1.0,
+                "{} left its door at {seconds}s",
+                resident.name
+            );
+        }
+    }
+
+    // The guest really does walk the housing area rather than standing to one side of it.
+    assert!(first.len() > 1, "the guest was given nowhere to go");
+    assert!(walked, "the guest never walked anywhere");
+    assert!(
+        stood.len() >= first.len(),
+        "the guest stood in {} places on a tour of {}",
+        stood.len(),
+        first.len()
+    );
+    // The village moved out from under it, and the walk was worked out again around it.
+    assert!(
+        !after_the_move.is_empty(),
+        "the tour survived a narrower display"
+    );
+    assert_ne!(first, after_the_move, "a moved village kept the old walk");
+    // And the guest goes over to each resident in turn rather than talking to one of them.
+    assert_eq!(greeted.len(), 2, "the guest went over to {greeted:?}");
+    assert_eq!(answered.len(), 2, "a resident never answered");
+    // Two answers for the hello itself and one more each for being gone over to.
+    assert_eq!(rounds, 4, "the colony answered {rounds} times in all");
+    // Each in its own temperament: the playful one bounces, the timid one only looks.
+    assert!(gestures.contains(&Some(Gesture::Bop)));
+    assert!(gestures.contains(&None));
+
+    let left_at = left_at.expect("the guest leaves");
+    assert!(
+        (700.0..900.0).contains(&left_at),
+        "the guest left at {left_at}s"
+    );
+    assert!(world.save.home.is_active(), "the houses outlast the guest");
+    // One visit, written down once, however far the guest walked while it was here.
+    assert_eq!(world.save.visitors.guest_book.len(), 1);
+    assert_eq!(
+        world
+            .save
+            .companion
+            .journal
+            .iter()
+            .filter(|entry| matches!(entry.moment, JournalMoment::Visit(_)))
+            .count(),
+        1
+    );
+
+    // The same colony meets the same guest, and it tours the village the same way.
+    let mut again = colony_of_two(seed_expecting_a_visitor(), created);
+    let now = run(&mut again, created, 40.0, &desktop);
+    again.save.visitors.gatherings = 0;
+    gather(&mut again, now, &desktop);
+    run(&mut again, now, 60.0, &desktop);
+    assert_eq!(tour_of(&again), first);
 }

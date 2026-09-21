@@ -88,6 +88,12 @@ pub struct World {
     /// clip it is still enjoying. Runtime-only, and never wider than whoever is actually here.
     offers: BTreeMap<CreatureId, offers::OfferMemory>,
     overlaps: spacing::OverlapWatch,
+    /// The colony exactly as it stood when the current tick began. Each creature answers for
+    /// itself against the same picture of the others, rather than against neighbours the same
+    /// loop has already moved, and the borrow checker will not lend out the colony twice. The
+    /// two lists are kept between ticks so that taking the picture reuses their storage.
+    creature_views: Vec<Creature>,
+    relationship_views: Vec<CreatureRelationship>,
 }
 
 #[derive(Clone, Copy)]
@@ -296,6 +302,8 @@ impl World {
             home_moment_timers: BTreeMap::new(),
             home_moment_rng: streams.rng("home-moments", 0),
             colony_plan: None,
+            creature_views: Vec::new(),
+            relationship_views: Vec::new(),
             topology: DesktopTopology::default(),
             geometry_observer: crate::attention::GeometryObserver::default(),
             attention: AttentionRuntime::default(),
@@ -320,7 +328,6 @@ impl World {
         }
         self.apply_routine_schedule(now);
         self.process_arrivals(timeline_now, desktop);
-        self.process_adult_mini_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
         self.process_shelter_decorations(timeline_now);
         self.reconcile_colony_objects(desktop);
@@ -480,7 +487,7 @@ impl World {
         {
             self.interrupt_colony_plan(timeline_now);
         }
-        self.advance_colony_plan(timeline_now, dt, desktop);
+        self.advance_colony_plan(timeline_now, dt);
         let at_selection_boundary = self.save.creatures.iter().any(|creature| {
             creature.state.arrival_delay_secs <= 0.0
                 && creature.state.action_elapsed + dt >= creature.state.action_duration
@@ -496,8 +503,13 @@ impl World {
         self.surface_memory
             .update(&self.save.creatures, desktop, dt, observations_ready);
         self.advance_attention(desktop, dt, observations_ready);
-        let creature_views = self.save.creatures.clone();
-        let relationship_views = self.save.relationships.clone();
+        self.creature_views.clear();
+        self.creature_views.extend_from_slice(&self.save.creatures);
+        self.relationship_views.clear();
+        self.relationship_views
+            .extend_from_slice(&self.save.relationships);
+        let creature_views = &self.creature_views;
+        let relationship_views = &self.relationship_views;
         self.reacted_to_toss.retain(|(_, target)| {
             creature_views.iter().any(|creature| {
                 creature.id == *target && creature.state.action == ActionKind::Tossed
@@ -623,7 +635,7 @@ impl World {
                             step.position,
                             desktop,
                             &self.save.settings,
-                            &creature_views,
+                            creature_views,
                         )
                     });
                 if !route_point_valid || !gap_step_valid {
@@ -748,21 +760,12 @@ impl World {
                 nearest_creature_distance: nearest.map(|item| item.0),
                 nearest_creature_position: nearest.map(|item| item.1),
                 nearest_creature_id: nearest.map(|item| item.2),
-                bond: preferred_bond_context(creature, &creature_views, &relationship_views),
+                bond: preferred_bond_context(creature, creature_views, relationship_views),
                 on_window_ledge: creature.state.surface.kind == SurfaceKind::WindowLedge,
-                // A ledge is a destination, not a one-time upgrade from the desktop floor.
-                // Continuing to search while perched lets creatures climb between stacked
-                // application windows and later descend when the desktop arrangement changes.
-                // Turning window ledges off is a request to stay on the floor, so a ledge simply
-                // stops being somewhere a creature can think of going.
-                reachable_window_ledge: self.save.settings.window_ledges
-                    && find_nearby_ledge(
-                        creature,
-                        desktop,
-                        &self.save.settings.habitat,
-                        &self.topology,
-                    )
-                    .is_some(),
+                // Filled in where the action is chosen, which is this field's only reader.
+                // Searching the desktop for a ledge is the most expensive question in this
+                // context, and an action already under way must not pay for it every tick.
+                reachable_window_ledge: false,
                 // Geometry attention owns interruptions and cooldowns; ordinary utility choices
                 // must not independently restart the same event on every window scan.
                 window_changed_nearby: false,
@@ -858,7 +861,7 @@ impl World {
                     if plan.approaching && old == ActionKind::Follow {
                         if let Some(target_point) = bond_target_point(
                             creature,
-                            &creature_views,
+                            creature_views,
                             plan.target,
                             plan.final_action,
                             frame_width,
@@ -916,7 +919,7 @@ impl World {
                     && bond.relationship.avoidance < 160
                     && bond_target_point(
                         creature,
-                        &creature_views,
+                        creature_views,
                         bond.target_creature,
                         ActionKind::Greet,
                         frame_width,
@@ -1014,8 +1017,8 @@ impl World {
                             &self.save.settings,
                             &self.ride_memory,
                             discovery::ColonyView {
-                                creatures: &creature_views,
-                                relationships: &relationship_views,
+                                creatures: creature_views,
+                                relationships: relationship_views,
                             },
                         ),
                         &self.save.companion.scrapbook,
@@ -1081,6 +1084,22 @@ impl World {
                     if old != ActionKind::PresentDiscovery {
                         creature.state.activity_variant = 0;
                     }
+                    // A ledge is a destination, not a one-time upgrade from the desktop floor.
+                    // Continuing to search while perched lets creatures climb between stacked
+                    // application windows and later descend when the desktop arrangement changes.
+                    // Turning window ledges off is a request to stay on the floor, so a ledge
+                    // simply stops being somewhere a creature can think of going.
+                    let context = BehaviorContext {
+                        reachable_window_ledge: self.save.settings.window_ledges
+                            && find_nearby_ledge(
+                                creature,
+                                desktop,
+                                &self.save.settings.habitat,
+                                &self.topology,
+                            )
+                            .is_some(),
+                        ..context
+                    };
                     selected_choice = Some(choose_action(creature, desktop, context, rng));
                 }
                 let mut choice = selected_choice.expect("an action is always selected");
@@ -1092,7 +1111,7 @@ impl World {
                 {
                     let target_point = bond_target_point(
                         creature,
-                        &creature_views,
+                        creature_views,
                         target,
                         choice.action,
                         frame_width,
@@ -1240,8 +1259,7 @@ impl World {
                 .get(&creature.id)
                 .and_then(|choice| choice.target_creature.map(|target| (choice.action, target)))
                 .is_some_and(|(action, target)| {
-                    match bond_target_point(creature, &creature_views, target, action, frame_width)
-                    {
+                    match bond_target_point(creature, creature_views, target, action, frame_width) {
                         Some(point) => {
                             if let Some(choice) = self.action_choices.get_mut(&creature.id) {
                                 choice.target_point = Some(point);
@@ -1293,7 +1311,19 @@ impl World {
                 .get(&creature.id)
                 .and_then(|choice| choice.target_point);
             execute_action(creature, desktop, context, dt, nearest, target_point);
-            constrain_to_surface(creature, desktop, &self.save.settings.habitat);
+            // Walking into the end of a ledge, or of the ground a creature is allowed on, is
+            // arriving: the constraint turns it round, and letting go of the target it cannot
+            // reach is what stops it stepping straight back out and being put back every tick.
+            // Without this a creature spends the rest of its walk shivering against the wall.
+            if constrain_to_surface(creature, desktop, &self.save.settings.habitat)
+                && matches!(
+                    creature.state.action,
+                    ActionKind::Traverse | ActionKind::Sprint
+                )
+                && let Some(choice) = self.action_choices.get_mut(&creature.id)
+            {
+                choice.target_point = None;
+            }
             let inspect_ready = self.colony_plan.is_none()
                 && self.save.settings.visible
                 && creature.state.action == ActionKind::Traverse

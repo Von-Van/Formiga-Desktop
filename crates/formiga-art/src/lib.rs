@@ -7,6 +7,7 @@ mod palette;
 mod renderer;
 mod shelter;
 mod sticker;
+mod tree;
 mod trinkets;
 mod ui_atlas;
 
@@ -28,6 +29,10 @@ pub use renderer::{
 pub use shelter::{SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_SIZE};
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
+};
+pub use tree::{
+    ANCHOR_CLEARANCE, KeepsakeTreeRenderer, TREE_CELL, TRINKET_ANCHORS, TrinketAnchor,
+    trinket_place,
 };
 pub use trinkets::{
     TRINKET_ATLAS_BYTES, TRINKET_ATLAS_COLUMNS, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_ROWS,

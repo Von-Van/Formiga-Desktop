@@ -55,7 +55,7 @@ pub(super) fn execute_action(
     }
     let speed = 24.0 + creature.personality.activity * 34.0;
     let mut target_x = None;
-    let mut target_stop_distance = 0.0;
+    let mut target_stop_distance = 0.0_f32;
     let mut target_speed_multiplier = 1.0;
     match creature.state.action {
         ActionKind::Traverse if selected_target.is_some() => {
@@ -162,12 +162,31 @@ pub(super) fn execute_action(
     }
     if let Some(target) = target_x {
         let dx = target - creature.state.position.x;
-        creature.state.facing_right = dx >= 0.0;
-        creature.state.velocity.x = if dx.abs() <= target_stop_distance {
-            0.0
+        // Arriving means landing on the mark, not stepping over it. A walk covers one to three
+        // points per tick, so a creature aimed at a spot with no room around it would overshoot,
+        // turn, overshoot coming back, and shiver there for the rest of the action — close to a
+        // companion, where the marks are, that reads as a creature having a fit. A step is never
+        // longer than what is left of the walk, and a creature that has arrived stands still.
+        let step = speed * target_speed_multiplier * dt;
+        if dx.abs() <= target_stop_distance.max(step) {
+            if target_stop_distance <= 0.0 {
+                creature.state.position.x = target;
+            }
+            creature.state.velocity.x = 0.0;
+            // Standing on its mark, a creature keeps the way it was walking rather than turning
+            // on the last fraction of a point. Beside a companion it turns to face them, which
+            // is what it walked over for.
+            if matches!(
+                creature.state.action,
+                ActionKind::Follow | ActionKind::Greet | ActionKind::SocialPlay
+            ) && let Some((_, companion, _)) = nearest
+            {
+                creature.state.facing_right = companion.x >= creature.state.position.x;
+            }
         } else {
-            dx.signum() * speed * target_speed_multiplier
-        };
+            creature.state.facing_right = dx >= 0.0;
+            creature.state.velocity.x = dx.signum() * speed * target_speed_multiplier;
+        }
     }
     creature.state.position.x += creature.state.velocity.x * dt;
     if !context.on_window_ledge && creature.state.action == ActionKind::Perch {

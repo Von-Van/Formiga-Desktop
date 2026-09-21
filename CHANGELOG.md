@@ -2,6 +2,107 @@
 
 All notable changes are documented here.
 
+## [0.58.5] - 2026-09-20
+
+### Added
+
+- A tree stands at each end of the village, with the houses gathered between them, so the corner
+  reads as one small place rather than a row of buildings. Every keepsake the colony has found
+  hangs in the branches on a cord of its own, in the same spot every time: the eight everyday
+  finds in the tree beside the colony house, and the eight that only ever turn up in a particular
+  circumstance in the tree at the far end. A keepsake never moves once it has turned up, and the
+  trees fill in exactly as the scrapbook does.
+- The colony's belongings have left the lane between the houses and are scattered around the two
+  trunks instead — four in each yard, some tucked in behind a trunk, some sitting out in front of
+  the roots, and arranged a little differently for every colony. Which yard a belonging keeps to
+  never changes, so nothing shuffles along when a new one turns up. The colony portrait draws both
+  trees and both yards, so a picture of the village is the village.
+- A visitor walks the village instead of standing at one end of it. After it has walked over and
+  said hello it goes from place to place — between the houses where there is room, out to a tree's
+  yard where there is not — stopping a few times on the way round, and at each stop going over to
+  whichever companion it has not met yet. It looks up at a house it is standing beside, stoops to
+  a belonging, or simply rests a moment, and it makes its way back to where it came in before it
+  waves goodbye. Over a visit it gets to everybody rather than keeping one creature company, and
+  nobody leaves their own doorstep to answer: they turn, they hold the look for as long as their
+  temperament asks, and they go back to their afternoon.
+
+### Changed
+
+- The village takes much less of your desktop. A full colony of four with all eight belongings ran
+  to 523 shelter pixels in 0.58.0; the same colony measures 445 now, with a tree at each end as
+  well — 15% narrower while gaining two trees. The seam between one lot and the next is three
+  pixels rather than five, a doorstep is narrower, and the belongings cost the strip nothing at
+  all now that they live in the trees' yards. The houses themselves are exactly as big as they
+  were.
+- The save format is unchanged. It is still version 15, there is no migration, and a colony
+  coming from 0.58.0 keeps everything it had and needs nothing done to it: the trees are drawn
+  from the colony's own seed and the scrapbook it already keeps, and 0.58.5 adds no saved field.
+- The simulation costs less per tick, for exactly the same behaviour. A tick on a busy desktop
+  with the cursor moving is about a quarter cheaper than it was, and a tick with the colony at
+  home about three fifths. Each window's neighbours are walked once to answer all
+  three questions about the desktop's shape instead of once per question, the windows really on
+  screen are gathered once and sorted front to back so the search for whatever covers one stops as
+  soon as it can, the most expensive question an
+  action asks — whether there is a ledge it could reach — is asked where the action is chosen
+  instead of on every tick of one already under way, and the picture of the colony each creature
+  answers against reuses its storage rather than being built again every tick. That the behaviour
+  is unchanged was proved rather than assumed: six seeds across thirteen scenarios, 40,000 ticks
+  each, driven through both builds and compared on the save, the events, the bubbles, every
+  creature's pose and every interaction flag — seventy-eight identical results.
+- Three separate answers to what lies below a point, three ways of settling the colony down, two
+  ways of replacing a creature and two ways of welcoming one became one of each. Nothing about it
+  is visible from the desk.
+- The roadmap file is gone, and the performance document no longer carries forty-seven rows that
+  never held a measurement. The changelog records every release, the architecture document
+  describes what exists, and the performance document states plainly what has not been measured.
+- Continuous integration builds and tests on `main` and on pull requests rather than on every
+  branch push. Tagged releases are packaged exactly as before.
+
+### Fixed
+
+- A window narrower than 24 points could crash the simulation. Working out where a falling
+  creature would land asks each window for the standable part of its top edge, which for a window
+  that narrow is nothing at all, and the search then tried to hold a position between a minimum
+  above its own maximum. A surface too narrow to stand on is no landing now, rather than an
+  impossible one.
+- **Gather Creatures** stood everyone down on the floor with room around them, then left whatever
+  they had stopped to watch running over the top of them. Gathering now settles every plan the
+  colony is part-way through, the same way going home already did. A quiet spell settles the same
+  way too: it had been leaving a throw still in the air, and a scene creatures had gathered to
+  watch still running under it.
+- Regenerating a colony stopped at the first unkept adult it had no seed for and left everybody
+  after it exactly as they were — including unkept minis, which owe nothing to a seed and should
+  simply have gone. Running out of seeds now costs only the adults that had none left.
+- A creature adopted over another one quietly moved to the back of the group. It was removed and
+  added on the end rather than put into the place it was taking over, so it lost that creature's
+  spot in the colony list and in the order the overlay draws. Adopting and replacing with a design
+  both hand over the place in the colony now, and two creatures arriving in the same moment take
+  their turn instead of appearing on top of one another.
+- Living at the houses had begun to make friends of neighbours. The tighter village seats every
+  resident a step from the one next door, which put every pair inside the distance that reads as
+  two creatures choosing to be near each other, and a pair would have gained a calm-company moment
+  for every five minutes the colony spent at home — enough to swamp every other way a friendship
+  forms. Living next door is not the same as choosing somebody's company, so proximity no longer
+  counts while the home is out. The village says where a creature lives, not who it likes. A pair
+  keeps the calm minutes it had already gathered rather than losing them to an afternoon indoors.
+- Keepsakes in the scrapbook were drawn squashed flat. The page cuts one square out of a sheet of
+  sixteen laid side by side, and the drawing was being measured against the whole sheet rather
+  than the square being shown, so it was letterboxed into a sliver an eighth of its proper height.
+  Every keepsake is square again, on the page and in the village.
+- Companions near one another would shiver on the spot, flicking left and right several times a
+  second. Three separate things could cause it, and all three look the same from the desk. A walk
+  covers one to three points in a tick and had nothing telling it to stop, so a creature that
+  reached the spot it was walking to stepped over it, turned, stepped over it coming back, and
+  carried on like that for the rest of the walk — which is why it happened beside a companion,
+  since a spot beside a friend is a spot a creature actually arrives at. A walk now stops when it
+  arrives, and the creature turns to face the companion it walked over for. A game worked out
+  where its players should be going afresh every tick and would send a runner with no room ahead
+  back past whoever was chasing it, then away again the tick after; a player now keeps the way it
+  is going until it gets there, while a chaser still follows a lead that keeps running. And the
+  rule that keeps faces from being hidden would pull a creature away from a spot its own walk was
+  still carrying it toward, the two moving it a pixel at a time in opposite directions; a creature
+  on its way somewhere is left to arrive, and asked to move once it has.
+
 ## [0.58.0] - 2026-09-18
 
 ### Added

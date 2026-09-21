@@ -7,8 +7,8 @@ use formiga_art::{
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, MenuIcon, MenuLayout,
     MilestoneBubbleRenderer, MotionSignature, PixelPoint, PropAnchor, Rgba, SHELTER_SIZE,
     ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL,
-    TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH,
-    UiAtlasRenderer, VILLAGE_ATLAS_SIZE,
+    TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
+    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_SIZE,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
@@ -37,8 +37,9 @@ struct ZoneVertex {
 }
 
 const MAX_OCCLUSION_RECTS: usize = 64;
-// Four creatures, a full village of four dwellings, one bubble, and eight objects.
-const INITIAL_VERTEX_CAPACITY: usize = 150;
+// Four creatures, a village of four dwellings and the two trees that bookend them, sixteen
+// keepsakes hung between the pair, one bubble, and eight belongings.
+const INITIAL_VERTEX_CAPACITY: usize = 258;
 const SURFACE_RECOVERY_STALLS: u8 = 3;
 
 #[repr(C)]
@@ -171,6 +172,66 @@ struct ObjectVertexCacheKey {
     display_scale: u8,
 }
 
+/// What the keepsakes hung in the two trees depend on: which kinds the colony has found, and the
+/// geometry that decides where the trees themselves stand. Nothing here changes frame to frame,
+/// so the quads are built once and reused exactly as the colony's belongings are.
+#[derive(Clone, Debug, PartialEq)]
+struct TreeVertexCacheKey {
+    found: Vec<u8>,
+    cottages: Vec<formiga_core::DwellingKind>,
+    home: formiga_core::ColonyHome,
+    habitat: HabitatPolicy,
+    monitor_bounds: DesktopRect,
+    monitor_usable_bounds: DesktopRect,
+    monitor_scale_factor: f32,
+    display_scale: u8,
+}
+
+/// Which quadrant of the 128x128 village atlas a lot samples: a dwelling's own cell, or — with no
+/// dwelling — the keepsake tree in the fourth. Both of the village's trees come from that one
+/// cell; the inward one is drawn from it mirrored.
+fn village_cell(kind: Option<formiga_core::DwellingKind>) -> (f32, f32) {
+    match kind {
+        Some(formiga_core::DwellingKind::Main) => (0.0, 0.0),
+        Some(formiga_core::DwellingKind::Cottage) => (0.5, 0.0),
+        Some(formiga_core::DwellingKind::MiniCottage) => (0.0, 0.5),
+        None => (0.5, 0.5),
+    }
+}
+
+/// Whether a tree at this end of the village samples its cell mirrored. The inward bookend does,
+/// so the pair reads as two trees rather than one drawn twice; the anchors come in mirrored
+/// pairs, so every keepsake still lands on a cord.
+fn tree_is_mirrored(end: formiga_core::TreeEnd) -> bool {
+    end == formiga_core::TreeEnd::Inward
+}
+
+/// Where one keepsake's 16x16 quad is centred, in this display's own pixels, given where the tree
+/// it hangs on stands. `scale` is how many display pixels one shelter pixel covers. The anchor is
+/// the one `trinket_place` reports, already mirrored if it belongs to the mirrored tree.
+fn hung_trinket_centre(tree_x: f32, tree_y: f32, anchor: TrinketAnchor, scale: f32) -> (f32, f32) {
+    let cell = SHELTER_SIZE as f32;
+    (
+        tree_x + (anchor.x as f32 - cell / 2.0) * scale,
+        tree_y - (cell - anchor.y as f32) * scale,
+    )
+}
+
+/// Every kind the colony has found, once each, in catalogue order. A save can hold a variant this
+/// build's catalogue does not have; it keeps its place in the save and simply has no tree slot.
+fn found_trinkets(save: &SaveFile) -> Vec<u8> {
+    let mut found: Vec<u8> = save
+        .companion
+        .scrapbook
+        .iter()
+        .map(|record| record.variant)
+        .filter(|variant| formiga_art::trinket_place(*variant).is_some())
+        .collect();
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
 const ATLAS_COLUMNS: u32 = 10;
 // There are exactly 27 eyelid/gaze combinations per expression. Keeping one expression per row
 // avoids padding slots and leaves enough texture budget for additional pre-baked body actions.
@@ -204,6 +265,8 @@ pub struct OverlayRenderer {
     ui_atlas_idle: u32,
     colony_objects: Option<ColonyObjectsGpu>,
     trinkets: Option<TrinketAtlasGpu>,
+    tree_vertex_cache_key: Option<TreeVertexCacheKey>,
+    tree_vertices: Vec<Vertex>,
     object_vertex_cache_key: Option<ObjectVertexCacheKey>,
     object_vertices: Vec<Vertex>,
     last_occlusion: Option<OcclusionUniform>,
@@ -472,6 +535,8 @@ impl OverlayRenderer {
             ui_atlas_idle: 0,
             colony_objects: None,
             trinkets: None,
+            tree_vertex_cache_key: None,
+            tree_vertices: Vec::new(),
             object_vertex_cache_key: None,
             object_vertices: Vec::new(),
             last_occlusion: None,
@@ -556,6 +621,7 @@ impl OverlayRenderer {
         // Occlusion is measured in drawable pixels, and cached belongings are snapped to the grid.
         self.last_occlusion = None;
         self.object_vertex_cache_key = None;
+        self.tree_vertex_cache_key = None;
     }
 
     /// Round a physical-pixel position onto the drawable's own pixel grid, so every sprite edge
@@ -622,9 +688,13 @@ impl OverlayRenderer {
         } else {
             self.bubble = None;
         }
-        if visible
-            .iter()
-            .any(|creature| creature.state.action == ActionKind::PresentDiscovery)
+        // The colony sheet is wanted when somebody is holding a find, and when either tree has
+        // any of them hung in it. One texture serves both.
+        let tree_keepsakes = shelter_visible && !save.companion.scrapbook.is_empty();
+        if tree_keepsakes
+            || visible
+                .iter()
+                .any(|creature| creature.state.action == ActionKind::PresentDiscovery)
         {
             self.ensure_trinket_atlas(save);
         }
@@ -639,17 +709,29 @@ impl OverlayRenderer {
         } else {
             Vec::new()
         };
+        let tree_vertices = if tree_keepsakes {
+            self.cached_tree_vertices(save).to_vec()
+        } else {
+            Vec::new()
+        };
         let mut vertices = Vec::with_capacity(
             object_vertices.len()
                 + visible.len() * 18
                 + village_vertices.len()
+                + tree_vertices.len()
                 + usize::from(bubble_creature.is_some()) * 6,
         );
         let mut creature_draws = Vec::with_capacity(visible.len());
-        vertices.extend_from_slice(&object_vertices);
-        let object_vertex_count = object_vertices.len();
+        // The village first, then what the colony keeps in the two yards over the top of it:
+        // belongings stand on the ground in front of a trunk rather than behind it.
         vertices.extend_from_slice(&village_vertices);
         let shelter_vertex_count = village_vertices.len();
+        let object_vertex_start = vertices.len();
+        vertices.extend_from_slice(&object_vertices);
+        let object_vertex_count = object_vertices.len();
+        let tree_vertex_start = vertices.len();
+        vertices.extend_from_slice(&tree_vertices);
+        let tree_vertex_count = tree_vertices.len();
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state(
@@ -758,26 +840,33 @@ impl OverlayRenderer {
             }
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.occlusion_bind_group, &[]);
-            if object_vertex_count > 0
-                && let Some(objects) = &self.colony_objects
-            {
-                pass.set_bind_group(1, &objects.bind_group, &[]);
-                pass.set_vertex_buffer(
-                    0,
-                    self.vertex_buffer
-                        .slice(..(object_vertex_count * std::mem::size_of::<Vertex>()) as u64),
-                );
-                pass.draw(0..object_vertex_count as u32, 0..1);
-            }
             if shelter_vertex_count > 0
                 && let Some(shelter) = &self.shelter
             {
-                let shelter_start = (object_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                let shelter_end =
-                    shelter_start + (shelter_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                let shelter_end = (shelter_vertex_count * std::mem::size_of::<Vertex>()) as u64;
                 pass.set_bind_group(1, &shelter.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(shelter_start..shelter_end));
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(..shelter_end));
                 pass.draw(0..shelter_vertex_count as u32, 0..1);
+            }
+            if object_vertex_count > 0
+                && let Some(objects) = &self.colony_objects
+            {
+                let start = (object_vertex_start * std::mem::size_of::<Vertex>()) as u64;
+                let end = start + (object_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                pass.set_bind_group(1, &objects.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
+                pass.draw(0..object_vertex_count as u32, 0..1);
+            }
+            // Whatever the colony has found, over the tree each one hangs in: one more bind
+            // group at most, and the same sheet a companion holding a keepsake samples from.
+            if tree_vertex_count > 0
+                && let Some(trinkets) = &self.trinkets
+            {
+                let start = (tree_vertex_start * std::mem::size_of::<Vertex>()) as u64;
+                let end = start + (tree_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                pass.set_bind_group(1, &trinkets.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
+                pass.draw(0..tree_vertex_count as u32, 0..1);
             }
             for (creature_id, start, has_trinket) in creature_draws {
                 if let Some(sprite) = self.sprites.get(&creature_id) {
@@ -877,19 +966,18 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
-        let cottages = formiga_core::colony_cottages(&save.creatures);
+        let cottages = formiga_core::colony_cottage_list(&save.creatures);
         let object_visible = shelter_visible
-            && save.objects.objects.iter().enumerate().any(|(slot, _)| {
-                formiga_core::home_object_position(
-                    &save.home,
-                    slot,
-                    &cottages,
-                    std::slice::from_ref(&self.monitor),
-                    &save.settings.habitat,
-                    save.settings.display_scale,
-                )
-                .is_some()
-            });
+            && !save.objects.objects.is_empty()
+            && formiga_core::home_object_positions(
+                &save.home,
+                cottages.as_slice(),
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                save.settings.display_scale,
+            )
+            .iter()
+            .any(Option::is_some);
         creature_visible || shelter_visible || object_visible
     }
 
@@ -1347,26 +1435,28 @@ impl OverlayRenderer {
             return &self.object_vertices;
         }
         self.object_vertices.clear();
-        for (slot, object) in save
+        let places = formiga_core::home_object_positions(
+            &save.home,
+            &cottages,
+            std::slice::from_ref(&self.monitor),
+            &save.settings.habitat,
+            save.settings.display_scale,
+        );
+        // A yard is scattered in depth as well as sideways, so the things standing further back
+        // are laid down first and whatever is nearest the front of a trunk covers them.
+        let mut yard: Vec<(&ColonyObject, formiga_core::Point)> = save
             .objects
             .objects
             .iter()
             .take(formiga_core::MAX_COLONY_OBJECTS)
             .enumerate()
-        {
-            let Some((monitor_id, point)) = formiga_core::home_object_position(
-                &save.home,
-                slot,
-                &cottages,
-                std::slice::from_ref(&self.monitor),
-                &save.settings.habitat,
-                save.settings.display_scale,
-            ) else {
-                continue;
-            };
-            if monitor_id != self.monitor.id {
-                continue;
-            }
+            .filter_map(|(slot, object)| {
+                let (monitor_id, point) = places[slot]?;
+                (monitor_id == self.monitor.id).then_some((object, point))
+            })
+            .collect();
+        yard.sort_by(|a, b| a.1.y.total_cmp(&b.1.y));
+        for (object, point) in yard {
             self.object_vertices
                 .extend_from_slice(&self.object_vertices_for(
                     object,
@@ -1478,11 +1568,30 @@ impl OverlayRenderer {
         });
     }
 
-    /// Every dwelling in the village, sampled from its own cell of the shared atlas. The
-    /// colony house is always first; companion cottages follow along the same ground line.
+    /// Every dwelling in the village and the two keepsake trees that bookend it, sampled from
+    /// their own cells of the shared atlas. The colony house is always first; companion cottages
+    /// follow along the same ground line, and a tree closes each end of it.
     fn village_vertices(&self, save: &SaveFile) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
-        let mut vertices = Vec::with_capacity((cottages.len() + 1) * 6);
+        let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
+        for end in formiga_core::TreeEnd::BOTH {
+            if let Some((monitor_id, point)) = formiga_core::home_tree_position(
+                &save.home,
+                end,
+                &cottages,
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                save.settings.display_scale,
+            ) && monitor_id == self.monitor.id
+            {
+                vertices.extend_from_slice(&self.village_cell_vertices(
+                    point,
+                    village_cell(None),
+                    tree_is_mirrored(end),
+                    save.settings.display_scale,
+                ));
+            }
+        }
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
                 &save.home,
@@ -1517,6 +1626,19 @@ impl OverlayRenderer {
         kind: formiga_core::DwellingKind,
         display_scale: u8,
     ) -> [Vertex; 6] {
+        self.village_cell_vertices(anchor, village_cell(Some(kind)), false, display_scale)
+    }
+
+    /// One quadrant of the village atlas, standing on the ground line at `anchor`. `mirror` swaps
+    /// the cell's own left and right edges, which is how the inward tree is drawn from the same
+    /// cell as the outward one without a second texture.
+    fn village_cell_vertices(
+        &self,
+        anchor: formiga_core::Point,
+        (u, v): (f32, f32),
+        mirror: bool,
+        display_scale: u8,
+    ) -> [Vertex; 6] {
         let size = SHELTER_SIZE as f32 * f32::from(display_scale);
         let local_x = self.snap((anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor);
         let local_y = self.snap((anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor);
@@ -1524,23 +1646,117 @@ impl OverlayRenderer {
         let right = (local_x + size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let top = 1.0 - (local_y - size) / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - local_y / self.layout.height as f32 * 2.0;
-        let (u, v) = match kind {
-            formiga_core::DwellingKind::Main => (0.0, 0.0),
-            formiga_core::DwellingKind::Cottage => (0.5, 0.0),
-            formiga_core::DwellingKind::MiniCottage => (0.0, 0.5),
-        };
+        let (u_left, u_right) = if mirror { (u + 0.5, u) } else { (u, u + 0.5) };
         let vertex = |position, uv| Vertex {
             position,
             uv,
             occlusion_enabled: 1.0,
         };
         [
-            vertex([left, top], [u, v]),
-            vertex([right, top], [u + 0.5, v]),
-            vertex([right, bottom], [u + 0.5, v + 0.5]),
-            vertex([left, top], [u, v]),
-            vertex([right, bottom], [u + 0.5, v + 0.5]),
-            vertex([left, bottom], [u, v + 0.5]),
+            vertex([left, top], [u_left, v]),
+            vertex([right, top], [u_right, v]),
+            vertex([right, bottom], [u_right, v + 0.5]),
+            vertex([left, top], [u_left, v]),
+            vertex([right, bottom], [u_right, v + 0.5]),
+            vertex([left, bottom], [u_left, v + 0.5]),
+        ]
+    }
+
+    /// Every keepsake the colony has found, one 16x16 quad each on the anchors of whichever tree
+    /// it hangs in. Built only when the scrapbook, the colony's houses, the home, the habitat,
+    /// this display's geometry or the drawing scale change — the same caching the colony's
+    /// belongings use — and never touched again from frame to frame. Both trees are resolved
+    /// once here rather than once per keepsake.
+    fn cached_tree_vertices(&mut self, save: &SaveFile) -> &[Vertex] {
+        let cottages = formiga_core::colony_cottages(&save.creatures);
+        let key = TreeVertexCacheKey {
+            found: found_trinkets(save),
+            cottages: cottages.clone(),
+            home: save.home.clone(),
+            habitat: save.settings.habitat.clone(),
+            monitor_bounds: self.monitor.bounds,
+            monitor_usable_bounds: self.monitor.usable_bounds,
+            monitor_scale_factor: self.monitor.scale_factor,
+            display_scale: save.settings.display_scale,
+        };
+        if self.tree_vertex_cache_key.as_ref() == Some(&key) {
+            return &self.tree_vertices;
+        }
+        self.tree_vertices.clear();
+        let mut trees = [None; formiga_core::TreeEnd::BOTH.len()];
+        for (slot, end) in formiga_core::TreeEnd::BOTH.into_iter().enumerate() {
+            trees[slot] = formiga_core::home_tree_position(
+                &save.home,
+                end,
+                &cottages,
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                save.settings.display_scale,
+            )
+            .filter(|(monitor_id, _)| *monitor_id == self.monitor.id)
+            .map(|(_, point)| point);
+        }
+        for variant in &key.found {
+            let Some((end, anchor)) = formiga_art::trinket_place(*variant) else {
+                continue;
+            };
+            let slot = formiga_core::TreeEnd::BOTH
+                .iter()
+                .position(|candidate| *candidate == end)
+                .unwrap_or(0);
+            let Some(tree) = trees[slot] else {
+                continue;
+            };
+            self.tree_vertices
+                .extend_from_slice(&self.hung_trinket_vertices(
+                    tree,
+                    *variant,
+                    anchor,
+                    save.settings.display_scale,
+                ));
+        }
+        self.tree_vertex_cache_key = Some(key);
+        &self.tree_vertices
+    }
+
+    /// One found keepsake, drawn at the anchor for its own catalogue slot, so a thing the colony
+    /// has already got used to seeing on one branch of one tree stays on that branch.
+    fn hung_trinket_vertices(
+        &self,
+        tree: formiga_core::Point,
+        variant: u8,
+        anchor: TrinketAnchor,
+        display_scale: u8,
+    ) -> [Vertex; 6] {
+        let unit = f32::from(display_scale);
+        let size = TRINKET_CELL as f32 * unit;
+        let (local_x, local_y) = hung_trinket_centre(
+            self.snap((tree.x - self.monitor.bounds.x) * self.monitor.scale_factor),
+            self.snap((tree.y - self.monitor.bounds.y) * self.monitor.scale_factor),
+            anchor,
+            unit,
+        );
+        let left = (local_x - size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (local_x + size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - (local_y - size / 2.0) / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - (local_y + size / 2.0) / self.layout.height as f32 * 2.0;
+        let (x, y, width, height) = TrinketAtlasRenderer::cell_rect(variant, TRINKET_FRAME_REST);
+        let u0 = x as f32 / TRINKET_ATLAS_WIDTH as f32;
+        let u1 = (x + width) as f32 / TRINKET_ATLAS_WIDTH as f32;
+        let v0 = y as f32 / TRINKET_ATLAS_HEIGHT as f32;
+        let v1 = (y + height) as f32 / TRINKET_ATLAS_HEIGHT as f32;
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        [
+            vertex([left, top], [u0, v0]),
+            vertex([right, top], [u1, v0]),
+            vertex([right, bottom], [u1, v1]),
+            vertex([left, top], [u0, v0]),
+            vertex([right, bottom], [u1, v1]),
+            vertex([left, bottom], [u0, v1]),
         ]
     }
 
@@ -2452,14 +2668,19 @@ mod tests {
 
     #[test]
     fn multi_creature_presentation_capacity_and_stall_recovery_are_bounded() {
-        assert_eq!(INITIAL_VERTEX_CAPACITY, 4 * 18 + 4 * 6 + 6 + 8 * 6);
+        // Four creatures, four dwellings and the two trees that bookend them, every keepsake
+        // hung between the pair, one bubble, and the colony's eight belongings.
+        assert_eq!(
+            INITIAL_VERTEX_CAPACITY,
+            4 * 18 + 6 * 6 + usize::from(formiga_core::TRINKET_VARIANTS) * 6 + 6 + 8 * 6
+        );
         assert_eq!(
             expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY),
             None
         );
         assert_eq!(
             expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY + 1),
-            Some(256)
+            Some(512)
         );
         assert!(!surface_stalls_require_recovery(2));
         assert!(surface_stalls_require_recovery(3));
@@ -2728,6 +2949,106 @@ mod tests {
         assert_eq!(trinket_frame(1), formiga_art::TRINKET_FRAME_REST);
         assert_eq!(trinket_frame(2), formiga_art::TRINKET_FRAME_GLINT);
         assert_eq!(trinket_frame(3), formiga_art::TRINKET_FRAME_GLINT);
+    }
+
+    /// The village atlas is one texture with four cells in it, and both trees come from the
+    /// fourth. No two lots may sample the same quadrant, and none may sample off the sheet.
+    #[test]
+    fn every_village_cell_including_the_tree_has_its_own_quadrant_of_the_one_atlas() {
+        let cells = [
+            village_cell(Some(formiga_core::DwellingKind::Main)),
+            village_cell(Some(formiga_core::DwellingKind::Cottage)),
+            village_cell(Some(formiga_core::DwellingKind::MiniCottage)),
+            village_cell(None),
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        for (u, v) in cells {
+            assert!((0.0..=0.5).contains(&u) && (0.0..=0.5).contains(&v));
+            assert!(seen.insert(((u * 2.0) as u8, (v * 2.0) as u8)));
+        }
+        assert_eq!(seen.len(), 4);
+        assert_eq!(
+            village_cell(None),
+            (0.5, 0.5),
+            "the trees share the last cell"
+        );
+        assert!(
+            tree_is_mirrored(formiga_core::TreeEnd::Inward)
+                && !tree_is_mirrored(formiga_core::TreeEnd::Outward),
+            "the inward bookend is the outward one read the other way round"
+        );
+        assert_eq!(
+            formiga_art::VILLAGE_ATLAS_SIZE,
+            SHELTER_SIZE * 2,
+            "four cells, one 128x128 texture"
+        );
+    }
+
+    /// A colony draws exactly the keepsakes it has found, once each, split between the two trees,
+    /// and every one of them lands inside its own tree's cell — never beside it, never twice.
+    #[test]
+    fn the_trees_draw_one_quad_for_each_found_keepsake_and_keep_it_on_their_own_branches() {
+        let mut world = ui_world();
+        for found in [0_u8, 1, 8, formiga_core::TRINKET_VARIANTS] {
+            world.save.companion.scrapbook = (0..found)
+                .map(|variant| formiga_core::ScrapbookRecord {
+                    variant,
+                    first_at: world.save.created_at_utc,
+                    finder: None,
+                    finder_name: String::new(),
+                })
+                .collect();
+            // The same find recorded twice is still one thing on one branch.
+            if found > 0 {
+                let repeat = world.save.companion.scrapbook[0].clone();
+                world.save.companion.scrapbook.push(repeat);
+            }
+            let drawn = found_trinkets(&world.save);
+            assert_eq!(
+                drawn.len(),
+                usize::from(found),
+                "{found} found should hang {found} keepsakes"
+            );
+            let mut per_tree = std::collections::BTreeMap::new();
+            for scale in [2.0_f32, 3.0, 4.0] {
+                let half = TRINKET_CELL as f32 * scale / 2.0;
+                for variant in &drawn {
+                    let (end, anchor) =
+                        formiga_art::trinket_place(*variant).expect("a found keepsake has a place");
+                    *per_tree.entry(end).or_insert(0_usize) += 1;
+                    let (x, y) = hung_trinket_centre(500.0, 400.0, anchor, scale);
+                    // The tree's own cell, measured from its contact point at (500, 400).
+                    let cell = SHELTER_SIZE as f32 * scale;
+                    assert!(
+                        x - half >= 500.0 - cell / 2.0 && x + half <= 500.0 + cell / 2.0,
+                        "variant {variant} at {scale}x hangs off the side of its tree"
+                    );
+                    assert!(
+                        y - half >= 400.0 - cell && y + half <= 400.0,
+                        "variant {variant} at {scale}x hangs off the top or foot of its tree"
+                    );
+                }
+            }
+            // The everyday finds fill the outward tree first; the conditional ones only ever go
+            // on the inward one, so neither can be asked to carry more than its eight anchors.
+            let hung = |end| per_tree.get(&end).copied().unwrap_or(0) / 3;
+            assert_eq!(
+                hung(formiga_core::TreeEnd::Outward),
+                usize::from(found.min(formiga_core::TRINKETS_PER_TREE)),
+            );
+            assert_eq!(
+                hung(formiga_core::TreeEnd::Inward),
+                usize::from(found.saturating_sub(formiga_core::TRINKETS_PER_TREE)),
+            );
+        }
+        // A save from a catalogue this build does not have keeps its record and hangs nothing.
+        world.save.companion.scrapbook = vec![formiga_core::ScrapbookRecord {
+            variant: 200,
+            first_at: world.save.created_at_utc,
+            finder: None,
+            finder_name: String::new(),
+        }];
+        assert!(found_trinkets(&world.save).is_empty());
     }
 
     #[test]

@@ -416,12 +416,7 @@ impl World {
         true
     }
 
-    pub(super) fn advance_colony_plan(
-        &mut self,
-        now: OffsetDateTime,
-        dt: f32,
-        _desktop: &DesktopSnapshot,
-    ) {
+    pub(super) fn advance_colony_plan(&mut self, now: OffsetDateTime, dt: f32) {
         let Some(plan) = &mut self.colony_plan else {
             return;
         };

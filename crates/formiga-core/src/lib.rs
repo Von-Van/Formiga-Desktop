@@ -24,11 +24,13 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use companion::*;
 pub use design::{BodyPlan, CreatureDesign, EarStyle, apply_creature_design};
 pub use habitat::{
-    CREATURE_FRAME_WIDTH, DWELLING_CELL, DwellingKind, MAX_HABITAT_ZONES, PORCH_WIDTH,
-    REST_CLEAR_RATIO, VillageLot, accessible_regions, colony_cottages, habitat_contains,
-    home_anchor, home_dwelling_position, home_guest_position, home_object_position,
-    home_resting_position, nearest_habitat_point, resolved_colony_object_position,
-    resolved_home_anchor, validate_habitat,
+    BELONGING_CLEARANCE, BELONGING_DEPTH, CREATURE_FRAME_WIDTH, Cottages, DWELLING_CELL,
+    DwellingKind, MAX_HABITAT_ZONES, OBJECT_WIDTH, PORCH_WIDTH, REST_CLEAR_RATIO, REST_WALL_SLIVER,
+    TREE_WIDTH, TRINKETS_PER_TREE, TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot, accessible_regions,
+    colony_cottage_list, colony_cottages, habitat_contains, home_anchor, home_dwelling_position,
+    home_guest_position, home_object_position, home_object_positions, home_resting_position,
+    home_tree_position, nearest_habitat_point, resolved_colony_object_position,
+    resolved_home_anchor, validate_habitat, village_span,
 };
 pub use model::*;
 pub use persistence::{PersistenceError, SaveStore};
@@ -44,8 +46,9 @@ pub use topology::{
 };
 pub use trinkets::{TrinketCondition, TrinketInfo, all_trinkets, trinket_info, trinkets_for};
 pub use visitor::{
-    GuestBookEntry, MAX_GUEST_BOOK_ENTRIES, ResidentAnswer, VisitPhase, VisitProgress, Visitor,
-    VisitorError, VisitorSource, VisitorState,
+    GuestBookEntry, MAX_GUEST_BOOK_ENTRIES, MAX_TOUR_STOPS, ResidentAnswer, TourInterest,
+    TourMoment, TourStop, VisitPhase, VisitProgress, Visitor, VisitorError, VisitorSource,
+    VisitorState,
 };
 pub use world::{BubbleGrowth, ThoughtBubble, World};
 

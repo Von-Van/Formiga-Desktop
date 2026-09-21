@@ -1,3 +1,4 @@
+use super::surfaces::supports_on;
 use super::*;
 
 const TOSS_SPEED_THRESHOLD: f32 = 220.0;
@@ -23,6 +24,8 @@ pub(super) struct InteractionSession {
     pub(super) original_position: Point,
     pub(super) original_surface: SurfaceAttachment,
     pub(super) original_action: ActionKind,
+    /// The last three cursor speeds, oldest overwritten first, and where the next one goes.
+    /// The cursor is wrapped as it is advanced, so it always names a slot that exists.
     pub(super) velocity_samples: [Point; 3],
     pub(super) velocity_sample_count: u8,
     pub(super) next_velocity_sample: u8,
@@ -30,7 +33,7 @@ pub(super) struct InteractionSession {
 
 impl InteractionSession {
     pub(super) fn record_velocity(&mut self, velocity: Point) {
-        let index = usize::from(self.next_velocity_sample % 3);
+        let index = usize::from(self.next_velocity_sample);
         self.velocity_samples[index] = velocity;
         self.next_velocity_sample = (self.next_velocity_sample + 1) % 3;
         self.velocity_sample_count = self.velocity_sample_count.saturating_add(1).min(3);
@@ -510,11 +513,9 @@ impl World {
     }
 
     fn gather_creatures(&mut self, desktop: &DesktopSnapshot) {
-        self.window_journeys.clear();
-        self.window_routes.clear();
-        self.tosses.clear();
-        self.action_choices.clear();
-        self.bond_plans.clear();
+        self.clear_runtime_plans();
+        // Everyone is about to be stood side by side on the floor, so there is no homecoming
+        // left to greet anybody about.
         self.pending_home_greetings.clear();
         let policy = self.save.settings.habitat.clone();
         let display_scale = self.save.settings.display_scale;
@@ -646,6 +647,12 @@ pub(super) fn settle_toss(
     Some((surface, toss.bounces > 0))
 }
 
+/// What catches a creature thrown from `previous` to `next` this frame.
+///
+/// A toss is swept along an arc, so a surface only counts where the path actually crosses it —
+/// no sliding sideways onto a corner — and the first one crossed wins however far away it is.
+/// The throw can carry across displays, so every monitor is searched, and a landing belongs to
+/// whichever monitor's habitat holds the point it lands on.
 pub(super) fn find_swept_support(
     previous: Point,
     next: Point,
@@ -657,65 +664,27 @@ pub(super) fn find_swept_support(
     if dy <= 0.0 {
         return None;
     }
+    let windows = if window_ledges {
+        desktop.windows.as_slice()
+    } else {
+        &[]
+    };
     let mut candidates = Vec::new();
-    for window in desktop
-        .windows
-        .iter()
-        .filter(|window| window_ledges && window.visible && !window.minimized)
-    {
-        let t = (window.bounds.y - previous.y) / dy;
-        if !(0.0..=1.0).contains(&t) {
-            continue;
-        }
-        let x = lerp(previous.x, next.x, t);
-        if x < window.bounds.x + 12.0 || x > window.bounds.right() - 12.0 {
-            continue;
-        }
-        let point = Point {
-            x,
-            y: window.bounds.y,
-        };
-        let Some(monitor) = desktop
-            .monitors
-            .iter()
-            .find(|monitor| monitor.bounds.contains(point))
-        else {
-            continue;
-        };
-        if habitat_contains(policy, monitor, point) {
-            candidates.push((
-                t,
-                point,
-                SurfaceAttachment {
-                    kind: SurfaceKind::WindowLedge,
-                    monitor_id: monitor.id,
-                    window_key: Some(window.key),
-                    relative_x: ((x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95),
-                },
-            ));
-        }
-    }
     for monitor in &desktop.monitors {
-        for region in accessible_regions(policy, monitor) {
-            let floor_y = region.bottom() - 4.0;
-            let t = (floor_y - previous.y) / dy;
-            if !(0.0..=1.0).contains(&t) {
+        let regions = accessible_regions(policy, monitor);
+        for span in supports_on(windows, &regions, monitor.id) {
+            let crossed = (span.y - previous.y) / dy;
+            if !(0.0..=1.0).contains(&crossed) {
                 continue;
             }
-            let x = lerp(previous.x, next.x, t);
-            if x < region.x + 8.0 || x > region.right() - 8.0 {
+            let x = lerp(previous.x, next.x, crossed);
+            if !span.holds(x) {
                 continue;
             }
-            candidates.push((
-                t,
-                Point { x, y: floor_y },
-                SurfaceAttachment {
-                    kind: SurfaceKind::ScreenFloor,
-                    monitor_id: monitor.id,
-                    window_key: None,
-                    relative_x: ((x - region.x) / region.width).clamp(0.0, 1.0),
-                },
-            ));
+            let (point, surface) = span.place(x);
+            if regions.iter().any(|region| region.contains(point)) {
+                candidates.push((crossed, point, surface));
+            }
         }
     }
     candidates

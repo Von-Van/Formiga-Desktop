@@ -1592,6 +1592,17 @@ mod tests {
                 hold: 2.0,
                 gesture: Some(crate::Gesture::Bop),
             }],
+            // The walk round the village is a scene too, and is no more saved than the rest.
+            stops: vec![crate::TourStop {
+                at: crate::Point { x: 700.0, y: 846.0 },
+                look: crate::Point { x: 712.0, y: 846.0 },
+                interest: crate::TourInterest::Keepsake,
+            }],
+            stop: 1,
+            moment: crate::TourMoment::Greeting(7),
+            stay: 4.5,
+            planned: Some(crate::Point { x: 660.0, y: 846.0 }),
+            met: vec![7],
         };
         let expected = world.save.visitors.guest.clone().expect("a friend is here");
         world

@@ -5,6 +5,11 @@ use time::OffsetDateTime;
 /// How many past visitors the guest book remembers.
 pub const MAX_GUEST_BOOK_ENTRIES: usize = 24;
 
+/// How many places a guest's walk around the village stops at, counting the spot it walked in
+/// to. Three to five is a tour; more would be pacing, and a village laid out for four rarely
+/// has the spare ground for more anyway.
+pub const MAX_TOUR_STOPS: usize = 5;
+
 /// Why an invitation was turned down. A code that will not decode at all is refused before it
 /// ever reaches the colony, by the seed code itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
@@ -47,6 +52,42 @@ pub enum VisitPhase {
     Gone,
 }
 
+/// What a guest has walked over to look at, once it has stopped.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TourInterest {
+    /// A house: the guest stands beside it, as close as the wall sliver allows, and looks up.
+    House,
+    /// Something the colony keeps: a belonging in the tree's yard, or a keepsake above it.
+    Keepsake,
+    /// Nothing in particular. The spot the guest walked in to, and comes back to.
+    #[default]
+    Ground,
+}
+
+/// One place on a guest's walk around the village: somewhere a creature may legitimately stand,
+/// and what it turns to look at when it gets there. Worked out from the village's own layout, so
+/// a tour follows wherever the houses, the porches and the tree's yard have ended up.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TourStop {
+    pub at: Point,
+    pub look: Point,
+    pub interest: TourInterest,
+}
+
+/// What the guest is doing this moment of its tour.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TourMoment {
+    /// On its way to the next stop.
+    #[default]
+    Walking,
+    /// Saying hello to one resident it has not been over to yet.
+    Greeting(CreatureId),
+    /// Looking at whatever this stop came over for.
+    Looking,
+    /// A moment's rest, and then on.
+    Resting,
+}
+
 /// One resident's answer to the hello: when it turns, how long it holds, and what its
 /// temperament makes of the moment. A timid companion only looks; a playful one bounces.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -77,8 +118,25 @@ pub struct VisitProgress {
     /// Which calm moment is being shown, and how much of it is left.
     pub beat: u8,
     pub beat_remaining: f32,
-    /// How the colony answered the hello, decided once when the hello is said.
+    /// How the colony answered the hello, and how it answers a hello said at a stop since. One
+    /// entry per resident for the hello itself and at most one more each for the walk round, so
+    /// this is never longer than twice a colony.
     pub answers: Vec<ResidentAnswer>,
+    /// The guest's walk around the village: everywhere it stops, which stop it is standing at or
+    /// heading for, what it is doing there, and how long that has left. The first stop is always
+    /// the spot the guest walked in to, so the ring runs out along the houses and back again.
+    /// Never more than [`MAX_TOUR_STOPS`] of them.
+    pub stops: Vec<TourStop>,
+    pub stop: u8,
+    pub moment: TourMoment,
+    pub stay: f32,
+    /// The spot the stops were worked out from. A village that moves underneath the guest — a
+    /// display going away, a habitat redrawn around it — is toured again from where it has
+    /// ended up rather than walked as it used to be.
+    pub planned: Option<Point>,
+    /// The residents this guest has already been over to greet, so it meets somebody new each
+    /// time it stops. At most one entry per colony member.
+    pub met: Vec<CreatureId>,
 }
 
 /// A guest at the colony houses. A visitor is a whole creature so it draws, animates, and reads

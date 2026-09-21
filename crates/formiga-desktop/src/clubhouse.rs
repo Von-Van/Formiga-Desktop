@@ -4,7 +4,7 @@ use egui::{Color32, RichText, TextureHandle, Ui};
 use formiga_art::{
     COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, Canvas, ColonyObjectRenderer, CreatureRenderer,
     SHELTER_SIZE, ShelterRenderer, StickerClip, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH,
-    TRINKET_FRAME_REST, TrinketAtlasRenderer,
+    TRINKET_CELL, TRINKET_FRAME_REST, TrinketAtlasRenderer,
 };
 use formiga_core::*;
 use std::collections::BTreeMap;
@@ -666,7 +666,7 @@ impl Clubhouse {
         }
         ui.add_space(16.0);
         ui.strong("Keepsake arrangement");
-        ui.small("Slots run outward from the home, between cottages. Moving a keepsake changes where its influence is felt.");
+        ui.small("The colony keeps its things in the two trees' yards, one end then the other. Slots run outward from a trunk; moving one changes where its influence is felt.");
         if save.objects.objects.is_empty() {
             ui.label("The first keepsake will find its way here in a few days.");
         }
@@ -723,6 +723,16 @@ impl Clubhouse {
         self.scrapbook(ui, save);
     }
 }
+/// What the village preview draws each lot from, and in what order it lays them down: the houses
+/// and the two trees, then the keepsakes hanging in their branches, then the belongings standing
+/// on the ground in front of the trunks.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum VillageLayer {
+    Dwelling,
+    Trinket,
+    Belonging,
+}
+
 impl Clubhouse {
     /// The colony's sheet of found things, uploaded once. It comes from the colony's own seed and
     /// the colours of whoever lives here, so the book always shows the keepsake the desktop would
@@ -745,6 +755,21 @@ impl Clubhouse {
         self.trinket_atlas.as_ref().unwrap().1.clone()
     }
 
+    /// One keepsake, drawn square. A keepsake is a 16x16 cell of a sheet sixteen cells wide, and
+    /// egui measures an image by its whole texture rather than by the part being shown: left to
+    /// keep the sheet's shape it would letterbox a 256x32 atlas into a 48x6 sliver and squash the
+    /// keepsake into it. Telling it to fill the box is what makes the cell square again.
+    fn trinket_image<'a>(
+        atlas: &'a egui::TextureHandle,
+        variant: u8,
+        size: f32,
+    ) -> egui::Image<'a> {
+        egui::Image::new(atlas)
+            .uv(Self::trinket_uv(variant))
+            .maintain_aspect_ratio(false)
+            .fit_to_exact_size(egui::vec2(size, size))
+    }
+
     /// Where one keepsake lives on that sheet, in the 0..1 coordinates egui samples with.
     fn trinket_uv(variant: u8) -> egui::Rect {
         let (x, y, width, height) = TrinketAtlasRenderer::cell_rect(variant, TRINKET_FRAME_REST);
@@ -760,11 +785,13 @@ impl Clubhouse {
         )
     }
 
-    /// The corner as it actually is: the colony house with the decorations it has earned, one
-    /// cottage per companion in colony order, and the loose belongings along the same ground
-    /// line, all placed by the very functions the desktop places them with. Looking at it never
-    /// calls the colony home or changes what any creature is doing.
+    /// The corner as it actually is: the two keepsake trees that bookend the houses with
+    /// everything the scrapbook holds hung between them, the colony house with the decorations it
+    /// has earned, one cottage per companion in colony order, and the loose belongings scattered
+    /// in the two yards, all placed by the very functions the desktop places them with. Looking
+    /// at it never calls the colony home or changes what any creature is doing.
     fn village_preview(&mut self, ui: &mut Ui, save: &SaveFile, monitors: &[MonitorInfo]) {
+        let trinkets = self.trinket_atlas(ui, save);
         let (Some((_, _, village)), Some((_, objects_texture))) =
             (&self.home_texture, &self.object_texture)
         else {
@@ -774,9 +801,64 @@ impl Clubhouse {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let objects = save.objects.objects.len().min(MAX_COLONY_OBJECTS);
         let scale = save.settings.display_scale;
-        // Every lot, in the desktop's own coordinates, on the display the home belongs to.
-        let mut lots: Vec<(egui::Rect, egui::Rect, bool)> = Vec::new();
+        // Every lot, in the desktop's own coordinates, on the display the home belongs to, with
+        // the sheet it is drawn from. Houses and trees go behind, then the keepsakes hung in the
+        // branches, then the belongings in front, exactly as the overlay layers them.
+        let mut lots: Vec<(egui::Rect, egui::Rect, VillageLayer)> = Vec::new();
         let mut home_monitor = None;
+        let mut found: Vec<u8> = save
+            .companion
+            .scrapbook
+            .iter()
+            .map(|record| record.variant)
+            .filter(|variant| formiga_art::trinket_place(*variant).is_some())
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        for end in formiga_core::TreeEnd::BOTH {
+            let Some((monitor_id, point)) = formiga_core::home_tree_position(
+                &save.home,
+                end,
+                &cottages,
+                monitors,
+                &save.settings.habitat,
+                scale,
+            ) else {
+                continue;
+            };
+            home_monitor.get_or_insert(monitor_id);
+            let size = SHELTER_SIZE as f32;
+            let corner = egui::pos2(point.x - size / 2.0, point.y - size);
+            // The inward tree is the same atlas cell sampled the other way round, so the two
+            // bookends are not the same drawing twice.
+            let (u_left, u_right) = if end == formiga_core::TreeEnd::Inward {
+                (1.0, 0.5)
+            } else {
+                (0.5, 1.0)
+            };
+            lots.push((
+                egui::Rect::from_min_size(corner, egui::vec2(size, size)),
+                egui::Rect::from_min_max(egui::pos2(u_left, 0.5), egui::pos2(u_right, 1.0)),
+                VillageLayer::Dwelling,
+            ));
+            let half = TRINKET_CELL as f32 / 2.0;
+            for variant in found.iter().copied() {
+                let Some((hangs_in, anchor)) = formiga_art::trinket_place(variant) else {
+                    continue;
+                };
+                if hangs_in != end {
+                    continue;
+                }
+                lots.push((
+                    egui::Rect::from_min_size(
+                        corner + egui::vec2(anchor.x as f32 - half, anchor.y as f32 - half),
+                        egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32),
+                    ),
+                    Self::trinket_uv(variant),
+                    VillageLayer::Trinket,
+                ));
+            }
+        }
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
                 &save.home,
@@ -810,21 +892,21 @@ impl Clubhouse {
                     egui::vec2(size, size),
                 ),
                 egui::Rect::from_min_size(egui::pos2(u, v), egui::vec2(0.5, 0.5)),
-                true,
+                VillageLayer::Dwelling,
             ));
         }
-        for slot in 0..objects {
-            let Some((monitor_id, point)) = formiga_core::home_object_position(
-                &save.home,
-                slot,
-                &cottages,
-                monitors,
-                &save.settings.habitat,
-                scale,
-            ) else {
+        let yard = formiga_core::home_object_positions(
+            &save.home,
+            &cottages,
+            monitors,
+            &save.settings.habitat,
+            scale,
+        );
+        for (slot, place) in yard.iter().enumerate().take(objects) {
+            let Some((monitor_id, point)) = place else {
                 continue;
             };
-            if home_monitor != Some(monitor_id) {
+            if home_monitor != Some(*monitor_id) {
                 continue;
             }
             let kind = save.objects.objects[slot].kind;
@@ -839,7 +921,7 @@ impl Clubhouse {
                     egui::pos2(f32::from(kind.index()) * cell, 0.0),
                     egui::vec2(cell, 1.0),
                 ),
-                false,
+                VillageLayer::Belonging,
             ));
         }
         let frame = egui::vec2(200.0, 160.0);
@@ -868,18 +950,19 @@ impl Clubhouse {
             .min(area.height() / village_bounds.height().max(1.0))
             .clamp(0.25, 2.0);
         let origin = area.center() - village_bounds.size() * fit / 2.0;
-        // Houses behind, belongings in front, exactly as the desktop layers them.
-        lots.sort_by_key(|(_, _, dwelling)| !*dwelling);
-        for (rect, uv, dwelling) in lots {
+        // Houses and both trees behind, then what is hung in them, then the belongings in front,
+        // exactly as the desktop layers them.
+        lots.sort_by_key(|(_, _, layer)| *layer);
+        for (rect, uv, layer) in lots {
             let placed = egui::Rect::from_min_size(
                 origin + (rect.min - village_bounds.min) * fit,
                 rect.size() * fit,
             );
             painter.image(
-                if dwelling {
-                    village.id()
-                } else {
-                    objects_texture.id()
+                match layer {
+                    VillageLayer::Dwelling => village.id(),
+                    VillageLayer::Trinket => trinkets.id(),
+                    VillageLayer::Belonging => objects_texture.id(),
                 },
                 placed,
                 uv,
@@ -923,12 +1006,7 @@ impl Clubhouse {
                     } else {
                         Color32::from_rgba_unmultiplied(255, 255, 255, 40)
                     };
-                    ui.add(
-                        egui::Image::new(&atlas)
-                            .uv(Self::trinket_uv(info.variant))
-                            .fit_to_exact_size([48.0, 48.0].into())
-                            .tint(tint),
-                    );
+                    ui.add(Self::trinket_image(&atlas, info.variant, 48.0).tint(tint));
                     ui.vertical(|ui| match record {
                         Some(record) => {
                             ui.strong(info.name);
@@ -1552,4 +1630,43 @@ pub fn habitat_map(ui: &mut Ui, policy: &HabitatPolicy, monitors: &[MonitorInfo]
     }
     ui.small("Mint: allowed · Clay: excluded · Gray: outside the habitat");
     ui.add_space(14.0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A keepsake is one cell of a sheet sixteen cells wide. egui measures an image by its whole
+    /// texture and not by the part a uv shows, so an image left to keep that sheet's shape is
+    /// letterboxed into a sliver and the keepsake inside it is squashed flat. Every keepsake the
+    /// scrapbook draws has to come out square.
+    #[test]
+    fn a_keepsake_is_drawn_square_however_wide_the_sheet_it_is_cut_from() {
+        let sheet = egui::vec2(TRINKET_ATLAS_WIDTH as f32, TRINKET_ATLAS_HEIGHT as f32);
+        assert!(
+            sheet.x > sheet.y * 4.0,
+            "the sheet has to be far wider than it is tall for this to be worth pinning"
+        );
+        let context = egui::Context::default();
+        let atlas = context.load_texture(
+            "colony-trinkets",
+            egui::ColorImage::filled(
+                [TRINKET_ATLAS_WIDTH as usize, TRINKET_ATLAS_HEIGHT as usize],
+                egui::Color32::WHITE,
+            ),
+            egui::TextureOptions::NEAREST,
+        );
+        let plenty = egui::vec2(512.0, 512.0);
+        for size in [24.0_f32, 48.0, 96.0] {
+            for variant in [0, 7, 15] {
+                let image = Clubhouse::trinket_image(&atlas, variant, size);
+                let drawn = image.calc_size(plenty, image.size());
+                assert_eq!(
+                    drawn,
+                    egui::vec2(size, size),
+                    "keepsake {variant} asked for at {size} came out {drawn:?}"
+                );
+            }
+        }
+    }
 }

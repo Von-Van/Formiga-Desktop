@@ -46,6 +46,32 @@ Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bon
 `world/tests/mod.rs`. The split is behaviour-preserving: a differential harness ran five seeds for
 18,000 ticks each against 0.57.1 and compared the event streams and serialized saves byte for byte.
 
+Four questions that several modules had each answered in their own way are now answered once.
+
+`SupportSpan` in `world/surfaces.rs` is the one primitive for what lies below a point: the
+clearances, the surface kind, and the `relative_x` clamp live there, applied once, so a surface too
+narrow to stand on yields no span at all rather than a backwards one. The three searches over it
+keep their own question — a drop slides sideways and ranks by straight-line distance, a toss only
+counts where its arc crosses and ranks by crossing order, a hangout looks down one column and ranks
+by height — and `find_drop_support`, `find_swept_support`, `support_below`, and `drop_below` keep
+their signatures.
+
+`World::clear_runtime_plans` is the one "settle everything": window journeys and the routes they
+belonged to, a throw still in the air, chosen actions, visits to another creature, and every
+attention scene along with whoever had stopped to watch it. Creatures are left standing where they
+are and nothing saved is touched; the caller decides where they go next. The village appearing, a
+quiet spell starting, and **Gather Creatures** asked for at the desk are the same moment told three
+ways, so all three call it rather than each clearing whichever plans its author thought of.
+
+`replace_creature_at` is shared by adoption and by replacing a creature with a design. Both replace
+in place, so the newcomer keeps the slot in `save.creatures` that the departing creature held —
+which is both the draw order and the order the colony is listed in — along with its position, its
+surface, and the minis that called it a parent.
+
+`welcome_arrival` is the shared tail of both arrival passes, and both stagger through one counter,
+so a calendar arrival and a mini due in the same tick take their turn rather than revealing on top
+of one another.
+
 ## Procedural identity and animation
 
 A 256-bit colony seed derives named ChaCha streams for appearance, personality, markings, animation
@@ -148,8 +174,12 @@ both directions without changing either creature's innate genome.
 
 The existing 60-active-second observation pass also accumulates calm proximity in runtime-only
 pair timers. Each completed five-minute interval emits one compact bond experience and discards the
-exposure detail. Completed targeted actions emit the other bond experiences. No encounter list,
-target route, object ownership, or social history is serialized.
+exposure detail. Proximity does not count while the home is out. The village seats every resident a
+step from the one next door, so who is near whom there says where the village put them rather than
+whose company they chose; the pair timers are left untouched rather than cleared, so an afternoon at
+home neither builds a bond nor spends the calm minutes a pair had already gathered. Completed
+targeted actions emit the other bond experiences. No encounter list, target route, object
+ownership, or social history is serialized.
 
 At action boundaries, utility selection receives the preferred pair as a `BondContext`. A
 runtime-only `BondPlan` can approach through `Follow` and then execute an existing targeted action.
@@ -323,8 +353,11 @@ dedicated update loop is created.
 `DesktopTopology` is a runtime-only projection of the same privacy-safe window rectangles already
 collected by the platform adapter. It sorts and truncates visible windows to 64, hashes their keys,
 bounds, and z-order, and rebuilds only when that hash changes. A rebuild derives at most 96 isolated
-island, exposed-corner, and slow-platform landmarks. Negative virtual-desktop coordinates and DPI
-scales remain logical geometry; no raster content or title enters the projection.
+island, exposed-corner, and slow-platform landmarks, and asks each window's neighbours all three of
+those questions in one walk rather than walking them once per question. The window and landmark
+lists keep the storage they have grown into between rebuilds. Negative virtual-desktop
+coordinates and DPI scales remain logical geometry; no raster content or title enters the
+projection.
 
 A global bounded dwell record recognizes a cursor invitation only while the pointer remains within
 24 logical points of a ledge for 1.5 seconds below 25 points per second. Hiding or pausing clears it.
@@ -356,22 +389,24 @@ key, normalized position, and semantic role. A named seed stream selects one of 
 three to seven days; overdue processing creates at most one object and schedules the next timestamp
 from the current maximum-seen UTC value.
 
-Object positions resolve on the village ground line whenever the world ticks. One pure layout
-function walks outward from the house, interleaving companion cottages and loose objects so the two
-can never occupy the same lot, and the same walk drives rendering and nearby utility using the
+Object positions resolve on the village ground line whenever the world ticks. Since 0.58.5 a
+belonging is not a lot on the strip at all: one pure layout function walks outward from the house
+placing dwellings, porches, and a keepsake tree at each end, and every belonging is scattered
+inside one of the two trees' yards. The same walk drives rendering and nearby utility using the
 home's corner, display, scale, and accessible region. Lots without room remain stored but hidden;
 all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
 village. The renderer builds one 128×16 seed-derived atlas, retains at most eight quads, and
 rebuilds those vertices only when object state, cottages, home state, habitat, display geometry, or
 scale changes.
 
-Dwellings come from one 128×128 village atlas: a two-by-two grid of 64-pixel cells, three of which
-carry art — the decorated colony house, a companion cottage, and a mini's cottage. Each is drawn
-into its own cell-sized tile so art that would overrun a cell is clipped exactly as it is for a lone
-shelter, and the fourth cell is deliberately left empty. The first colony member shares the
-colony house and each later one adds a single quad sampling its cell, so a full village is four
-quads against one texture and bind group. Shelter decorations resolve their attachment points from
-the style's own silhouette — peak, eaves, wall, and ground line — so a banner hangs from the real
+Dwellings and trees come from one 128×128 village atlas: a two-by-two grid of 64-pixel cells, all
+four of which now carry art — the decorated colony house, a companion cottage, a mini's cottage,
+and, since 0.58.5, the keepsake tree in the cell that used to be left empty. Each is drawn into its
+own cell-sized tile so art that would overrun a cell is clipped exactly as it is for a lone
+shelter. The first colony member shares the colony house and each later one adds a single quad
+sampling its cell, and the two trees add one quad each, so a full village is six quads against one
+texture and bind group. Shelter decorations resolve their attachment points from the style's own
+silhouette — peak, eaves, wall, and ground line — so a banner hangs from the real
 roof rather than a shared canvas height.
 Nearby semantic roles add a bounded `+0.25` to existing action utility at ordinary selection
 boundaries; objects have no physics body, interaction proxy, action state, or update loop.
@@ -393,17 +428,70 @@ draw call. Decorations have no world position, action, editor, animation, physic
 ## The village yard
 
 A dwelling's ground footprint, in shelter pixels, is 60 for the colony house, 46 for a companion
-cottage, and 36 for a mini's. The cottages grew in 0.58.0; the atlas is still one 128×128 texture
-and a dwelling is still one quad.
+cottage, and 36 for a mini's. The cottages grew in 0.58.0 and are unchanged; the atlas is still one
+128×128 texture and a dwelling is still one quad. What moved in 0.58.5 is everything around them.
 
-One walk lays out the whole strip: `Dwelling(0)`, `Porch(0)`, then `Object`, `Dwelling(i)`,
-`Porch(i)` for every later member, then whatever belonging lots are left. All eight belonging lots
-are reserved whether or not the colony has collected them yet. That reservation is also a fix: house
-positions used to be computed against the live belonging count while belonging positions always
-assumed eight, so the two walks disagreed and a cottage and a keepsake could be placed on the same
-spot. A porch is `CREATURE_FRAME_WIDTH − 2 × VILLAGE_GAP` = 38 pixels wide, shares a lot line with
-its own house so its resident waits at its own door, and keeps the ordinary 5-pixel village gap from
-everything else.
+One walk lays out the whole strip: `Tree(Outward)`, `Dwelling(0)`, `Porch(0)`, then `Dwelling(i)`,
+`Porch(i)` for every later member, and `Tree(Inward)` past the last porch. `VillageLot::Object` is
+gone — belongings are not lots any more, they live in the two trees' yards — so the walk is at most
+`MAX_VILLAGE_LOTS` = 10 entries and is built in a fixed-capacity stack array rather than a `Vec`,
+because the simulation asks for it several times a tick. A porch shares a lot line with its own
+house, so its resident waits at its own door rather than a step down the lane. Lots that cannot fit
+the house's accessible region stay stored but hidden rather than spilling elsewhere, and because
+the trees are the outermost lots at both ends, a corner that runs out of ground gives up a tree
+before a house.
+
+The strip is tighter than 0.58.0's at every seam. `VILLAGE_GAP` is 3 shelter pixels rather than 5
+— a visible seam at every scale the overlay draws at, and no more; the old 5 came to fifty-five
+pixels of empty lane once the strip was laid end to end. `PORCH_WIDTH` is
+`CREATURE_FRAME_WIDTH − 2 × REST_WALL_SLIVER` = 30 rather than 38, and is no longer tied to the gap.
+`REST_WALL_SLIVER` is 9: the outermost pixels of a wall or an eave and the ground decoration
+standing against it, which a resting frame may reach across and inside which no doorway ever sits
+— a mini's cottage, the narrowest, has eighteen pixels between its door's middle and the edge of
+its lot and a doorway five wide. `OBJECT_WIDTH` is 10 rather than 16: the drawn width of a
+belonging, not the quad it is cut from. `REST_CLEAR_RATIO` is unchanged and still const-asserted
+equal to `world::spacing::FACE_CLEAR_RATIO`.
+
+The widest village — four adults, eight belongings, both trees — measures 445 shelter pixels end to
+end, against a `VILLAGE_SPAN_LIMIT` of 448. 0.58.0's strip ran to 523, so this is 15% narrower
+while gaining two trees. The houses and doorsteps between the trees account for 327 of the 445,
+and four dwelling footprints are 198 of that: the buildings are the floor the whole thing rests
+on, and everything saved came out of the air between them and out of the belongings, which cost
+the strip nothing at all now.
+
+A keepsake tree stands at each end of the walk, claiming `TREE_WIDTH` = 56 shelter pixels of lot.
+The art reaches ±27 from the trunk across all nine lean-and-tilt combinations, so the lot is a
+pixel of air past the widest thing in it. `HOME_EDGE_MARGIN` keeps its formula —
+`DwellingKind::Main.width() / 2 + VILLAGE_GAP + TREE_WIDTH` — and so reserves the outward tree's
+whole lot against the edge of the display. The inward tree needs no margin of its own: the strip
+runs away from the edge, and a region that cannot take the inward end simply does not show it.
+
+`TreeEnd::of_trinket(variant)` splits the catalogue in half: the eight `TrinketCondition::Anywhere`
+finds, variants 0–7, hang in the outward tree by the colony house, and the eight conditional ones,
+variants 8–15, in the inward tree at the far end. `TRINKETS_PER_TREE` is `TRINKET_VARIANTS / 2` = 8,
+which is also the length of `formiga_art::TRINKET_ANCHORS` — four pairs mirrored about the middle
+of the cell, highest and most central filled first — so neither tree can overflow, and a keepsake
+depends on its variant alone, so it never moves once found and never changes ends when the village
+mirrors into the other corner. `formiga_art::trinket_place(variant)` answers with the end and the
+anchor as it is actually drawn there. Because the anchor set is mirror-symmetric, the inward tree
+is the same atlas cell sampled with its horizontal UVs swapped: still one 128×128 texture and one
+extra bind group, and every keepsake still meets the cord drawn down to it. The overlay draws one
+16×16 quad per found keepsake from the colony's own trinket atlas, so the trees fill in exactly as
+the scrapbook does. `colony_card.rs` draws both trees the same way, the inward one mirrored, so a
+portrait is not left with orphaned clusters at each end.
+
+Belongings alternate by slot — even slots to the outward yard, odd to the inward — four each, so a
+colony with three things has two at one end and one at the other rather than a full yard and an
+empty one. Slot to end is a pure function of the slot, so nothing hops ends when the next
+belonging arrives. `BELONGING_SPOTS` is written once as `(end, toward, forward)` in shelter pixels
+from the tree's own middle, positive `toward` being a step toward the houses, and the inward yard
+mirrors it so a spot means the same thing at both ends. A yard scatters across about 40 shelter
+pixels, well inside its tree's own 56, which is why the yards cost the strip no ground of their
+own. `BELONGING_DEPTH` is 7, so some items sit behind the trunk and some a pixel in front of the
+ground line, and a per-colony deterministic drift of a pixel either way keeps no two yards reading
+the same without ever bringing two items within `BELONGING_CLEARANCE` = 6. No resting resident
+stands on a belonging: the tightest case is the inward yard's outermost item, 31 shelter pixels
+from the last resident, where half a frame plus half a belonging is 29.
 
 `home_resting_position(home, slot, cottages, monitors, policy, display_scale)` places each member
 beside its own door. No resting frame covers a door, or overlaps any house by more than a gap's
@@ -414,6 +502,26 @@ and out of one another's faces wins over a clear view of a house that display ca
 anyway. `home_guest_position` stands a visitor past the outermost *visible* lot and past every
 resting spot, plus a gap and half a frame, and returns `None` when it cannot keep face-clear
 distance from the residents.
+
+A visit is a tour rather than a stand. `plan_tour` asks the same layout functions where everything
+is, turns each house, porch, resting resident and belonging into a span of ground the guest may not
+stand on, merges those spans, and keeps the free gaps between them; the arrival spot is always the
+first place on the ring, and at most `MAX_TOUR_STOPS` are kept. Every candidate is then re-checked
+against the four rules it has to pass — inside the accessible region, clear of each house by the
+same arithmetic that puts a porch where it is, at least the face-clear distance from every resting
+resident, and clear of every belonging the colony keeps — and dropped rather than shaved if it does
+not plainly pass. A full four-house strip has no legal ground between the houses at all, since two
+bodies need more than the porches leave and what remains sits in a doorway, so the ring there is the
+arrival spot and the trees' yards; a smaller colony threads the gaps as well. The guest walks the
+ring repeatedly, spending a stay at each place: the first seconds are one small thing — going over
+to whichever resident it has not met yet, looking up at the house beside it, stooping to a
+belonging, or resting — and the remainder is the calm rotation a visit already had. It returns to
+the arrival spot before the departure lead, so the goodbye and the walk out happen from where it
+came in. A greeting at a stop prompts that resident to answer through the same `ResidentAnswer`
+machinery the hello uses, timed off one clock, so a resident turns, holds, and goes back to its
+afternoon without leaving its door. The tour is replanned whenever the village moves underneath it,
+and a visit still writes no bond, tendency, memory counter or journal line beyond the single visit
+moment.
 
 While the colony is home, each member has passive doorstep moments, drawn from the seeded
 `home-moments` stream and held only in memory. The first comes 12–80 seconds into a visit and the
@@ -427,11 +535,19 @@ scale. They are cosmetic by construction: a moment emits only `ActionStarted`, s
 counter, bond, or journal line moves, and petting a dozing resident at home costs it no sleep
 security.
 
-With porches and the larger cottages, a full colony with all eight belongings reaches roughly 505
-shelter pixels along the strip from the house anchor. `home-yard-sheet.png` shows eight cases at
-both corners, including residents on their porches for colonies of one to four, and
-`shelter-sheet.png` gives each style a lane — plain house, decorated house, cottage, mini, and a
-creature at the same scale.
+The layout allocates next to nothing, because the simulation walks it several times a tick.
+`village_walk` is the fixed-capacity stack array above, `colony_cottage_list` picks the members in
+place, `home_resting_position` and `home_guest_position` allocate nothing at all,
+`VillageGround::resolve` lists the habitat's accessible regions once and keeps the one the anchor
+landed in rather than listing them again for every lot, and `home_object_positions` resolves the
+village once for all eight belongings. `reconcile_colony_objects` went from roughly 34 allocations
+a tick to 1, and `tick_homebound_creatures` from roughly 76 to 8.
+
+`home-yard-sheet.png` shows eight cases at both corners: four shelter styles with a grown colony
+and the trees filling up as the scrapbook does — nothing found, five, eleven, all sixteen — then
+colonies of one to four with their residents on their porches, ending on the widest village there
+is. `shelter-sheet.png` gives each style a lane — plain house, decorated house, cottage, mini, and
+a creature at the same scale.
 
 ## Visiting creatures
 
@@ -529,7 +645,23 @@ sleepers and ritual participants get a quiet position-only shuffle that emits no
 clears every face and the situation has lasted five times the grace period, the creature leaves the
 ledge through the existing descent journey. No event is emitted for a sidestep. A user drag or toss,
 an airborne creature, a climbing or hanging one, and a play scene inside its own bounded deadline
-(at most 21 seconds) are exempt.
+(at most 21 seconds) are exempt. So is a creature still walking to a spot it chose for itself: the
+resolver would drag it off the mark while its own walk pushed back, the two moving it a pixel at a
+time in opposite directions, and once it arrives it is standing still and can be asked properly.
+
+Nothing that moves a creature may step past what it was aiming at. A walk covers one to three
+points in a tick, so a target with no stop distance around it is overshot, turned toward, overshot
+coming back, and the creature shivers there for the rest of the action — which shows up beside a
+companion, because a mark beside a friend is a spot a creature actually reaches. `execute_action`
+never steps further than the distance that is left, stands still once it is within a step or the
+action's own stop distance, and turns a companion-seeking creature to face the companion rather
+than flickering with the last fraction of a point. `motion::step` already clamped the same way. The
+third source of the same picture was a play scene working its goals out afresh every tick: a runner
+with no room ahead was sent back past its chaser and away again the tick after, so `steer_play` now
+keeps the way a player is going until it gets there and refuses only a reversal, which leaves a
+chaser free to track a lead that keeps running. `nobody_shivers_on_the_spot_when_a_companion_is_near`
+pins the result at no more than six turns in any one second, and fails on each of the three causes
+on its own.
 
 The acceptance test runs four seeded four-creature colonies, minis included, on a synthetic desktop
 whose three windows slide and resize continuously, for 1,400 ticks each, sampled every tick. It
@@ -692,18 +824,24 @@ remain minis.
 - Presentation: 20 Hz for movement and each authored clip's native 2–12 Hz for pose-only activity.
 - Full-screen or empty monitor overlays stop presenting until they become visible or dirty again.
 - Window geometry: 4 Hz while active, 1 Hz at rest.
-- Behavior selection: action boundaries, capped at 2 Hz.
+- Behavior selection: action boundaries, capped at 2 Hz. The most expensive question an action
+  asks — whether there is a window ledge within reach — is answered there, at the boundary that
+  reads it, rather than for every creature on every tick of an action already under way.
+- The colony picture each creature answers against — the creature and relationship views — is two
+  buffers reused between ticks rather than two clones of the whole colony made afresh each tick.
 - Ambient countdowns: inspection 2–4 minutes per creature, dangling 4–8 minutes per perched
   creature, and discovery 10–20 minutes per colony; countdowns stop while paused or hidden.
 - Experience observations: one summary per creature per 60 active visible seconds; no new loop.
 - Calm proximity: accumulated from those same summaries and projected once per five active minutes;
-  no separate pair polling loop.
+  no separate pair polling loop. It does not accumulate at all while the home is out, and the
+  timers a pair had already filled are left as they are.
 - Ritual eligibility: checked only at existing action-selection boundaries after one persisted
   12–48-hour timestamp becomes due; at most one runtime plan exists.
 - Desktop topology: rebuilds only after the existing bounded window-geometry input changes; cursor
   invitation dwell advances on ordinary visible, unpaused simulation ticks.
 - Colony objects: one persisted three-to-seven-day timestamp evaluated during the existing world
-  tick; static vertices rebuild only after object, habitat, display, or scale changes.
+  tick; static vertices rebuild only after object, habitat, display, or scale changes. Resolving
+  where the eight belongings stand resolves the village once, not once per belonging.
 - Shelter decorations: one persisted four-to-nine-day timestamp evaluated in the same world tick;
   the existing 64×64 texture is regenerated only when the bounded decoration state changes.
 - Seed sharing: encoding, validation, and import run only on an explicit settings action; there is
@@ -732,8 +870,10 @@ remain minis.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
 Version 15 adds only `visitors`; a v14 colony receives an empty `VisitorState` and nothing else is
-touched. The chain below it is unchanged: migration
-migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
+touched. 0.58.5 adds no saved field and needs no migration: the version is still 15, and the two
+keepsake trees, where every find hangs, and where every belonging lies are all derived at runtime
+from the colony seed and the scrapbook the save already holds. The chain below it is unchanged:
+migration migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
 assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
 v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
 canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
@@ -762,9 +902,10 @@ window and presentation. Four static portraits, four eight-frame candidate strip
 and two expressions each), the village atlas, one object strip, and the one colony trinket sheet
 that carries all sixteen trinkets fit within 432 KiB of artwork textures — raised from 416 KiB
 because that sheet replaced eight separate 16×16 drawings with 24 KiB more pixels in a single
-texture, and nothing else on any page grew. The home preview draws the whole corner from the
-village and object atlases the desktop already samples, positioned by the very layout functions
-the overlay uses, so a complete village costs the same two textures whatever its size and nothing
+texture, and nothing else on any page grew. The home preview draws the whole corner — houses, both
+trees, the keepsakes hung in them, and the belongings in the yards — from the village, trinket,
+and object atlases the desktop already samples, positioned by the very layout functions the
+overlay uses, so a complete village costs the same three textures whatever its size and nothing
 about looking at it calls the colony home or moves a creature.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
@@ -811,7 +952,8 @@ at once. Visibility, pause, and the separate quiet expiry are never a schedule's
 
 Decoration visibility is six bits on the home. The village texture is rebuilt only when
 its visible decoration set changes. Object order is the existing object vector: changing its order
-moves keepsakes between the same bounded village slots and existing nearby-utility influences.
+moves belongings between the same eight fixed spots in the two yards and existing nearby-utility
+influences.
 
 Shared adoption reconstructs the exact source generation before assigning a local colony slot and
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
@@ -827,8 +969,13 @@ snapshot imports validate bounded input before confirmation and replacement.
 ### Geometry attention and local approaches
 
 `GeometryObserver` compares actual native scan timestamps and at most 64 window rectangles, with
-16 coalesced, expiring signals. A change counts as movement only when both opposing edges travel
-together, so dragging one edge reads as a resize and a snap moves by its smaller edge displacement.
+16 coalesced, expiring signals. It matches each window to the last scan and counts it in one pass
+rather than two, and asks whether a window moved before counting its neighbours. Its storage is
+reserved once and is asserted at or below 9 KiB, measured with every capped list — the last two
+scans, the frames the display preferences are sampled from, and the signals in flight — filled to
+its cap rather than as it happened to be filled. A change counts as movement only when both
+opposing edges travel together, so dragging one edge reads as a resize and a snap moves by its
+smaller edge displacement.
 When a native identifier changes while a frame stays identical, and the pairing is one-to-one, it is
 the same surface: no appearance/disappearance pair, and `update_surface_attachments` transfers the
 creatures standing on it. Cached simulation snapshots do not count as fresh evidence.
@@ -868,8 +1015,12 @@ not a new general-purpose route planner. Reduced motion uses stationary gaze.
 
 `AmbienceTracker` estimates exposed overlapping window tiers and free desktop area per display,
 with at most eight display records. Geometry targets recompute on changed scans and ease over
-several seconds. Small utility bonuses encourage available exploration; empty-space roaming does
-not compete with a reachable ledge. No new persisted action codes or schema fields are required.
+several seconds. Whether the scan changed at all is a signature mixed the same cheap FNV-1a way
+the topology's own geometry hash is, and a scan that did change gathers the visible windows once
+into a reused list and sorts it front to back, so the search for whatever covers a window's top
+edge stops at the frames it has already passed instead of reading the whole list again per window.
+Small utility bonuses encourage available exploration; empty-space roaming does not compete with a
+reachable ledge. No new persisted action codes or schema fields are required.
 
 ### Watching, and where a creature looks
 

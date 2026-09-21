@@ -28,8 +28,9 @@ proxy behavior still requires the manual OS matrix in `TEST_MATRIX.md`.
 Windows cannot be fully checked from a Mac. `cargo check --target x86_64-pc-windows-gnu` compiles
 the core and art crates, but the desktop crate stops in the `ring` dependency, whose build script
 needs a MinGW or Windows SDK C toolchain that macOS does not have. The `build-and-test` workflow
-runs formatting, Clippy, and the tests on Windows, so push a commit and let it pass before tagging
-a release; a published tag is awkward to take back.
+runs formatting, Clippy, and the tests on Windows for every push to `main` and every pull request,
+so get the change onto one of those and let it pass before tagging a release; a published tag is
+awkward to take back. A branch pushed on its own is not built.
 
 ## Performance tools
 

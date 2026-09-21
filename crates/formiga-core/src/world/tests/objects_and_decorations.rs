@@ -223,6 +223,28 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                     );
                     push(rest.x, PORCH_WIDTH, &mut spans);
                 }
+                // The colony's belongings are not lots on the strip: they are scattered over the
+                // roots of the two trees that bookend it, four at each end.
+                let mut trees = Vec::new();
+                for end in TreeEnd::BOTH {
+                    let (tree_id, tree) =
+                        home_tree_position(&home, end, cottages, &desktop.monitors, &policy, scale)
+                            .unwrap();
+                    assert_eq!(tree_id, monitor.id);
+                    assert!((tree.y - anchor.y).abs() < 0.01);
+                    push(tree.x, TREE_WIDTH, &mut spans);
+                    trees.push(tree);
+                }
+                // The outward tree is the one nearest the corner; the inward one is past
+                // everything else on the strip.
+                let outward = (trees[0].x - anchor.x)
+                    * if corner == HomeCorner::BottomLeft {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                assert!(outward < 0.0, "the outward tree left the corner");
+                let mut counted = [0; 2];
                 for slot in 0..MAX_COLONY_OBJECTS {
                     let (id, p) = home_object_position(
                         &home,
@@ -234,15 +256,21 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                     )
                     .unwrap();
                     assert_eq!(id, monitor.id);
-                    // Belongings rest on the ground rather than stacking upward.
-                    assert!((p.y - anchor.y).abs() <= 1.0 * unit + 0.01);
-                    assert!(if corner == HomeCorner::BottomLeft {
-                        p.x > anchor.x
-                    } else {
-                        p.x < anchor.x
-                    });
-                    push(p.x, 16.0, &mut spans);
+                    // Scattered around one tree's own ground, in depth as well as sideways.
+                    let (yard, tree) = trees
+                        .iter()
+                        .enumerate()
+                        .min_by(|a, b| (a.1.x - p.x).abs().total_cmp(&(b.1.x - p.x).abs()))
+                        .unwrap();
+                    assert!((p.y - tree.y).abs() <= BELONGING_DEPTH * unit + 0.01);
+                    assert!((p.x - tree.x).abs() <= TREE_WIDTH / 2.0 * unit);
+                    counted[yard] += 1;
                 }
+                assert_eq!(
+                    counted,
+                    [MAX_COLONY_OBJECTS / 2; 2],
+                    "the colony's things did not split evenly between the two yards"
+                );
             }
         }
     }

@@ -392,6 +392,123 @@ fn every_member_rests_beside_its_own_door_with_a_clear_face() {
     }
 }
 
+/// What the tightening is for. A grown colony with everything it owns, on the laptop display the
+/// complaint came from: the whole village — tree, houses, porches and keepsakes — has to leave
+/// most of the screen alone at every scale it can be drawn at, and the tree has to be on the far
+/// side of the colony house from the cottages in either corner.
+#[test]
+fn a_grown_village_leaves_most_of_a_laptop_display_alone() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let monitor = &desktop.monitors[0];
+    for display_scale in [2_u8, 3, 4] {
+        for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+            let mut world = World::new([61; 32], created, &desktop);
+            world.save.settings.display_scale = display_scale;
+            world.save.home.corner = corner;
+            while world.save.creatures.len() < 4 {
+                let generation = world.save.creatures.len() as u8;
+                let mut grown = world.save.creatures[0].clone();
+                grown.generation = generation;
+                grown.colony_order = generation;
+                grown.id = u64::from(generation) + 100;
+                world.save.creatures.push(grown);
+            }
+            for slot in 0..MAX_COLONY_OBJECTS {
+                world.save.objects.objects.push(ColonyObject {
+                    id: 600 + slot as u64,
+                    kind: ColonyObjectKind::ALL[slot % ColonyObjectKind::ALL.len()],
+                    display: monitor.display_key,
+                    normalized_position: Point { x: 0.1, y: 0.95 },
+                    role: ColonyObjectRole::Curiosity,
+                });
+            }
+            world.tick(created, 0.05, &desktop);
+            assert!(world.save.home.is_active());
+            let cottages = colony_cottages(&world.save.creatures);
+            let policy = &world.save.settings.habitat;
+            let unit = f32::from(display_scale) / monitor.scale_factor.max(1.0);
+            let span = village_span(&cottages) * unit;
+            assert!(
+                span <= monitor.usable_bounds.width * 0.7,
+                "scale {display_scale} {corner:?}: the village covers {span} of a \
+                 {}-point display",
+                monitor.usable_bounds.width
+            );
+            let tree = |end| {
+                home_tree_position(
+                    &world.save.home,
+                    end,
+                    &cottages,
+                    &desktop.monitors,
+                    policy,
+                    4,
+                )
+                .expect("a laptop display has room for both trees")
+                .1
+            };
+            let (outward, inward) = (tree(TreeEnd::Outward), tree(TreeEnd::Inward));
+            let (_, house) = home_dwelling_position(
+                &world.save.home,
+                0,
+                &cottages,
+                &desktop.monitors,
+                policy,
+                4,
+            )
+            .unwrap();
+            let (_, cottage) = home_dwelling_position(
+                &world.save.home,
+                1,
+                &cottages,
+                &desktop.monitors,
+                policy,
+                4,
+            )
+            .unwrap();
+            // The trees bookend the houses: one past the colony house away from the cottages, one
+            // past the last of them, and the last cottage between the two.
+            assert_ne!(
+                (outward.x - house.x).signum(),
+                (cottage.x - house.x).signum(),
+                "{corner:?}: the outward tree stood among the cottages"
+            );
+            assert!(
+                (inward.x - house.x).abs() > (cottage.x - house.x).abs(),
+                "{corner:?}: the inward tree stood short of the cottages"
+            );
+            assert_eq!(
+                (inward.x - house.x).signum(),
+                (cottage.x - house.x).signum(),
+                "{corner:?}: the inward tree left the cottages' end"
+            );
+            assert_eq!(
+                (outward.y, inward.y),
+                (house.y, house.y),
+                "both trees stand on the village ground line"
+            );
+            // Every belonging is in one yard or the other, and both yards are lived in.
+            let places = crate::home_object_positions(
+                &world.save.home,
+                &cottages,
+                &desktop.monitors,
+                policy,
+                4,
+            );
+            let far = places
+                .iter()
+                .flatten()
+                .filter(|(_, point)| (point.x - outward.x).abs() > (point.x - inward.x).abs())
+                .count();
+            assert_eq!(
+                (places.iter().flatten().count(), far),
+                (MAX_COLONY_OBJECTS, MAX_COLONY_OBJECTS / 2),
+                "{corner:?}: the colony's things did not split between the two yards"
+            );
+        }
+    }
+}
+
 #[test]
 fn dragging_a_homebound_creature_dismisses_the_shelter_and_starts_cooldown() {
     let created = datetime!(2026-01-01 0:00 UTC);
@@ -837,4 +954,35 @@ fn an_offered_moment_is_taken_where_the_resident_rests_and_ends_there() {
     world.dismiss_home(created, true);
     assert_ne!(world.save.creatures[0].state.action, ActionKind::Drink);
     assert!(!world.begin_home_moment(creature_id, ActionKind::Drink, 30.0));
+}
+
+/// Living next door is not the same as choosing someone's company: the village seats everyone a
+/// step apart, so an afternoon at home must not quietly turn every pair into close friends.
+#[test]
+fn an_afternoon_at_home_builds_no_bonds_and_spends_none_of_the_calm_minutes_already_gathered() {
+    let desktop = desktop();
+    let created = datetime!(2026-09-20 11:00 UTC);
+    let mut world = two_creature_world([21; 32], created);
+    let pair = canonical_creature_pair(world.save.creatures[0].id, world.save.creatures[1].id)
+        .expect("two companions");
+    // Four calm minutes gathered out on the desktop, a minute short of a bond.
+    world.calm_proximity_seconds.insert(pair, 4 * 60);
+
+    assert!(world.handle_command(WorldCommand::SendHome, &desktop));
+    finish_home_approach(&mut world, created, &desktop);
+    world.drain_events().for_each(drop);
+    for _ in 0..12_000 {
+        world.tick(created, 0.05, &desktop);
+        assert!(
+            !world
+                .drain_events()
+                .any(|event| matches!(event, WorldEvent::BondInteraction { .. })),
+            "a home visit grew a bond out of where the houses stand"
+        );
+    }
+    assert_eq!(
+        world.calm_proximity_seconds.get(&pair).copied(),
+        Some(4 * 60),
+        "the minutes a pair had already spent together were spent or forgotten at home"
+    );
 }

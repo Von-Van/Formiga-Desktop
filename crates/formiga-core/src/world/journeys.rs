@@ -1,3 +1,4 @@
+use super::surfaces::supports_on;
 use super::*;
 
 const INSPECTION_RADIUS: f32 = 12.0;
@@ -707,7 +708,7 @@ pub(super) fn constrain_to_surface(
     creature: &mut Creature,
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
-) {
+) -> bool {
     if let Some(key) = creature.state.surface.window_key
         && let Some(window) = desktop.windows.iter().find(|window| window.key == key)
     {
@@ -716,7 +717,7 @@ pub(super) fn constrain_to_surface(
             .iter()
             .find(|monitor| monitor.id == creature.state.surface.monitor_id)
         else {
-            return;
+            return false;
         };
         let intervals: Vec<_> = accessible_regions(policy, monitor)
             .into_iter()
@@ -731,19 +732,29 @@ pub(super) fn constrain_to_surface(
             distance_to_interval(creature.state.position.x, *a)
                 .total_cmp(&distance_to_interval(creature.state.position.x, *b))
         }) else {
-            return;
+            return false;
         };
+        // A creature held against either end of its ledge has gone as far as this surface goes.
+        // Turning it round is not enough on its own: left still walking outward it would step
+        // over the edge and be put back on every tick, which reads as a shiver rather than as a
+        // creature meeting a wall. Whoever called us decides what it does instead.
+        let mut held = false;
         if creature.state.position.x <= min_x {
             creature.state.position.x = min_x;
             creature.state.facing_right = true;
+            held = true;
         } else if creature.state.position.x >= max_x {
             creature.state.position.x = max_x;
             creature.state.facing_right = false;
+            held = true;
+        }
+        if held {
+            creature.state.velocity.x = 0.0;
         }
         creature.state.position.y = window.bounds.y;
         creature.state.surface.relative_x =
             ((creature.state.position.x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95);
-        return;
+        return held;
     }
     if creature.state.surface.kind == SurfaceKind::ScreenFloor
         && let Some(monitor) = desktop
@@ -757,18 +768,31 @@ pub(super) fn constrain_to_surface(
                 &distance_to_interval(creature.state.position.x, (b.x + 8.0, b.right() - 8.0)),
             )
         }) {
-            creature.state.position.x = creature
-                .state
-                .position
-                .x
-                .clamp(region.x + 8.0, region.right() - 8.0);
+            // The same rule on the floor: the ends of the ground a creature is allowed on are
+            // walls, and walking into one is arriving, not a reason to keep pushing.
+            let (low, high) = (region.x + 8.0, region.right() - 8.0);
+            let held = creature.state.position.x <= low || creature.state.position.x >= high;
+            if held {
+                creature.state.facing_right = creature.state.position.x <= low;
+                creature.state.velocity.x = 0.0;
+            }
+            creature.state.position.x = creature.state.position.x.clamp(low, high);
             creature.state.position.y = region.bottom() - 4.0;
             creature.state.surface.relative_x =
                 ((creature.state.position.x - region.x) / region.width).clamp(0.0, 1.0);
+            return held;
         }
     }
+    false
 }
 
+/// Where a creature let go at `cursor` comes to rest: the nearest ledge or habitat floor at or
+/// below it, measured as the crow flies.
+///
+/// A drop is a straight fall, but not a narrow one: a creature released just past the end of a
+/// ledge slides onto its corner rather than carrying on to the ground, so the whole monitor is
+/// in play and plain distance decides. The monitor is the one under the cursor, because that is
+/// the desk the person is pointing at.
 pub(super) fn find_drop_support(
     cursor: Point,
     desktop: &DesktopSnapshot,
@@ -782,52 +806,14 @@ pub(super) fn find_drop_support(
         .or_else(|| desktop.monitors.iter().find(|monitor| monitor.primary))
         .or_else(|| desktop.monitors.first())?;
     let regions = accessible_regions(policy, monitor);
-    let mut candidates = Vec::new();
-    for window in desktop
-        .windows
-        .iter()
-        .filter(|window| window_ledges && window.visible && !window.minimized)
-    {
-        let x = cursor
-            .x
-            .clamp(window.bounds.x + 12.0, window.bounds.right() - 12.0);
-        let point = Point {
-            x,
-            y: window.bounds.y,
-        };
-        if point.y >= cursor.y && regions.iter().any(|region| region.contains(point)) {
-            candidates.push((
-                cursor.distance(point),
-                point,
-                SurfaceAttachment {
-                    kind: SurfaceKind::WindowLedge,
-                    monitor_id: monitor.id,
-                    window_key: Some(window.key),
-                    relative_x: ((x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95),
-                },
-            ));
-        }
-    }
-    for region in regions {
-        let point = Point {
-            x: cursor.x.clamp(region.x + 8.0, region.right() - 8.0),
-            y: region.bottom() - 4.0,
-        };
-        if point.y >= cursor.y {
-            candidates.push((
-                cursor.distance(point),
-                point,
-                SurfaceAttachment {
-                    kind: SurfaceKind::ScreenFloor,
-                    monitor_id: monitor.id,
-                    window_key: None,
-                    relative_x: ((point.x - region.x) / region.width).clamp(0.0, 1.0),
-                },
-            ));
-        }
-    }
-    candidates
-        .into_iter()
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, point, surface)| (point, surface))
+    let windows = if window_ledges {
+        desktop.windows.as_slice()
+    } else {
+        &[]
+    };
+    supports_on(windows, &regions, monitor.id)
+        .filter(|span| span.y >= cursor.y)
+        .map(|span| span.place(span.nearest_x(cursor.x)))
+        .filter(|(point, _)| regions.iter().any(|region| region.contains(*point)))
+        .min_by(|a, b| cursor.distance(a.0).total_cmp(&cursor.distance(b.0)))
 }

@@ -235,11 +235,7 @@ impl World {
         self.save.home.active_since_utc = Some(now);
         self.home_moments.clear();
         self.home_moment_timers.clear();
-        self.window_journeys.clear();
-        self.window_routes.clear();
-        self.tosses.clear();
-        self.action_choices.clear();
-        self.bond_plans.clear();
+        self.clear_runtime_plans();
         Self::emit(&mut self.events, WorldEvent::HomeAppeared);
         self.visitor_home_appeared(now);
     }
@@ -620,7 +616,8 @@ impl World {
         &self,
         desktop: &DesktopSnapshot,
     ) -> (BTreeMap<CreatureId, Point>, BTreeMap<CreatureId, Point>) {
-        let cottages = colony_cottages(&self.save.creatures);
+        let cottages = colony_cottage_list(&self.save.creatures);
+        let cottages = cottages.as_slice();
         let mut order: Vec<_> = self
             .save
             .creatures
@@ -634,7 +631,7 @@ impl World {
             if let Some((_, point)) = home_resting_position(
                 &self.save.home,
                 slot,
-                &cottages,
+                cottages,
                 &desktop.monitors,
                 &self.save.settings.habitat,
                 self.save.settings.display_scale,
@@ -644,7 +641,7 @@ impl World {
             if let Some((_, point)) = home_dwelling_position(
                 &self.save.home,
                 slot,
-                &cottages,
+                cottages,
                 &desktop.monitors,
                 &self.save.settings.habitat,
                 self.save.settings.display_scale,
@@ -657,19 +654,19 @@ impl World {
 
     /// The belongings that are actually on the strip right now, for a two-step errand.
     fn village_belongings(&self, desktop: &DesktopSnapshot) -> Vec<Point> {
-        let cottages = colony_cottages(&self.save.creatures);
-        (0..self.save.objects.objects.len().min(MAX_COLONY_OBJECTS))
-            .filter_map(|slot| {
-                home_object_position(
-                    &self.save.home,
-                    slot,
-                    &cottages,
-                    &desktop.monitors,
-                    &self.save.settings.habitat,
-                    self.save.settings.display_scale,
-                )
-                .map(|(_, point)| point)
-            })
+        let cottages = colony_cottage_list(&self.save.creatures);
+        let places = home_object_positions(
+            &self.save.home,
+            cottages.as_slice(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
+        places
+            .into_iter()
+            .take(self.save.objects.objects.len().min(MAX_COLONY_OBJECTS))
+            .flatten()
+            .map(|(_, point)| point)
             .collect()
     }
 

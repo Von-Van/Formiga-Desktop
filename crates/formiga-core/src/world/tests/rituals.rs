@@ -97,8 +97,8 @@ fn overdue_downtime_runs_at_most_one_ritual_and_schedules_from_now() {
     assert_eq!(world.save.ritual.ordinal, 1);
     assert!(world.colony_plan.is_some());
     assert!(world.save.ritual.next_at_utc >= now + Duration::hours(12));
-    world.advance_colony_plan(now, RITUAL_APPROACH_SECS + 0.1, &desktop);
-    world.advance_colony_plan(now, 60.0, &desktop);
+    world.advance_colony_plan(now, RITUAL_APPROACH_SECS + 0.1);
+    world.advance_colony_plan(now, 60.0);
     assert!(world.colony_plan.is_none());
     world.tick(now, 0.05, &desktop);
     assert_eq!(

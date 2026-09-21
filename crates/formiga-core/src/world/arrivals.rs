@@ -34,9 +34,55 @@ pub(super) fn add_calendar_months_utc(value: OffsetDateTime, months: u8) -> Offs
     PrimitiveDateTime::new(date, value.time()).assume_utc()
 }
 
+/// Two creatures that fall due together do not appear together: each waits this much longer
+/// than the one before it, so the desk gets one arrival at a time to notice.
+const ARRIVAL_STAGGER_SECS: f32 = 15.0;
+
 impl World {
+    /// Everyone owed an arrival right now, calendar milestones first and then the minis the
+    /// colony's own adults are due. One queue runs through both, so an adult's mini turning up
+    /// in the same tick as a calendar arrival waits its turn instead of landing on top of it.
     pub(super) fn process_arrivals(&mut self, now: OffsetDateTime, desktop: &DesktopSnapshot) {
-        let mut arrivals_this_tick = 0_u8;
+        let mut queued = 0_u8;
+        self.process_calendar_arrivals(now, desktop, &mut queued);
+        self.process_adult_mini_arrivals(now, desktop, &mut queued);
+    }
+
+    /// Take one newly generated creature into the colony: give it its place in this tick's queue
+    /// of arrivals, start its runtime, introduce it to everyone already here, and add it.
+    fn welcome_arrival(&mut self, mut creature: Creature, queued: &mut u8) {
+        creature.state.arrival_delay_secs = f32::from(*queued) * ARRIVAL_STAGGER_SECS;
+        let id = creature.id;
+        let parent_id = creature.role.parent_id();
+        let is_adult = creature.role.is_adult();
+        self.register_creature_runtime(&creature);
+        // Anyone still waiting their turn is announced when the wait runs out, not now.
+        if creature.state.arrival_delay_secs == 0.0 {
+            Self::emit(
+                &mut self.events,
+                WorldEvent::CreatureSpawned { creature_id: id },
+            );
+        }
+        add_arrival_relationships(
+            &mut self.save.relationships,
+            &self.save.creatures,
+            id,
+            parent_id,
+        );
+        self.save.creatures.push(creature);
+        // Only a new adult changes which adult each of the colony's minis belongs to.
+        if is_adult {
+            rebalance_minis(&mut self.save.creatures);
+        }
+        *queued = queued.saturating_add(1);
+    }
+
+    fn process_calendar_arrivals(
+        &mut self,
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        queued: &mut u8,
+    ) {
         for (index, milestone) in ARRIVAL_MILESTONES.into_iter().enumerate() {
             let due = arrival_due_at(self.save.created_at_utc, milestone);
             if !self.save.arrival_state.arrived[index] && self.save.maximum_seen_utc >= due {
@@ -87,7 +133,7 @@ impl World {
                         desktop,
                     )
                 };
-                let Some(mut creature) = creature else {
+                let Some(creature) = creature else {
                     continue;
                 };
                 if self
@@ -99,42 +145,21 @@ impl World {
                     self.save.arrival_state.arrived[index] = true;
                     continue;
                 }
-                creature.state.arrival_delay_secs = f32::from(arrivals_this_tick) * 15.0;
-                let id = creature.id;
-                let parent_id = creature.role.parent_id();
-                self.register_creature_runtime(&creature);
-                if creature.state.arrival_delay_secs == 0.0 {
-                    Self::emit(
-                        &mut self.events,
-                        WorldEvent::CreatureSpawned { creature_id: id },
-                    );
-                }
-                add_arrival_relationships(
-                    &mut self.save.relationships,
-                    &self.save.creatures,
-                    id,
-                    parent_id,
-                );
-                let is_adult = creature.role.is_adult();
-                self.save.creatures.push(creature);
-                if is_adult {
-                    rebalance_minis(&mut self.save.creatures);
-                }
+                self.welcome_arrival(creature, queued);
                 self.save.arrival_state.arrived[index] = true;
-                arrivals_this_tick += 1;
             }
         }
     }
 
-    pub(super) fn process_adult_mini_arrivals(
+    fn process_adult_mini_arrivals(
         &mut self,
         now: OffsetDateTime,
         desktop: &DesktopSnapshot,
+        queued: &mut u8,
     ) {
         if self.save.creatures.len() >= MAX_COLONY_CREATURES {
             return;
         }
-        let mut arrivals = 0_u8;
         loop {
             if self.save.creatures.len() >= MAX_COLONY_CREATURES {
                 break;
@@ -181,7 +206,7 @@ impl World {
                 break;
             };
             let child_number = mini_count_for_parent(&self.save.creatures, parent_id) as u8 + 1;
-            let Some(mut mini) = generate_mini_for_parent(
+            let Some(mini) = generate_mini_for_parent(
                 &self.save.creatures,
                 self.save.colony_seed,
                 parent_id,
@@ -207,23 +232,7 @@ impl World {
             {
                 continue;
             }
-            mini.state.arrival_delay_secs = f32::from(arrivals) * 15.0;
-            let id = mini.id;
-            self.register_creature_runtime(&mini);
-            if mini.state.arrival_delay_secs == 0.0 {
-                Self::emit(
-                    &mut self.events,
-                    WorldEvent::CreatureSpawned { creature_id: id },
-                );
-            }
-            add_arrival_relationships(
-                &mut self.save.relationships,
-                &self.save.creatures,
-                id,
-                Some(parent_id),
-            );
-            self.save.creatures.push(mini);
-            arrivals += 1;
+            self.welcome_arrival(mini, queued);
         }
     }
 }

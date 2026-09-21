@@ -461,6 +461,88 @@ fn swept_toss_lands_on_ledges_bounces_once_and_settles() {
     );
 }
 
+/// A colony with something in flight to interrupt: a restless desktop, ticked until somebody
+/// stops what they are doing to watch it, plus a throw still in the air.
+fn colony_mid_scene(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
+    let created = datetime!(2026-05-01 0:00 UTC);
+    let mut desktop = desktop();
+    desktop.window_sample = Some(WindowSample {
+        monotonic_millis: 0,
+        reliable: true,
+    });
+    for index in 0..4 {
+        desktop.windows.push(DesktopWindow {
+            key: 950 + index,
+            bounds: DesktopRect {
+                x: 120.0 + index as f32 * 300.0,
+                y: 560.0 + (index % 2) as f32 * 60.0,
+                width: 260.0,
+                height: 240.0,
+            },
+            z_order: index as u32,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+    }
+    let mut world = two_creature_world(seed, created);
+    let start = created + Duration::hours(1);
+    for step in 1..=4_000 {
+        if step % 10 == 0 {
+            let index = (step / 10 % 4) as usize;
+            desktop.windows[index].bounds.x += if step % 20 == 0 { 24.0 } else { -24.0 };
+        }
+        desktop.window_sample.as_mut().unwrap().monotonic_millis = step as u64 * 50;
+        let now = start + Duration::milliseconds(step * 50);
+        world.tick(now, 0.05, &desktop);
+        if world.attention.held().0 > 0 {
+            let creature = &world.save.creatures[0];
+            world.tosses.insert(
+                creature.id,
+                TossState {
+                    elapsed: 0.0,
+                    bounces: 0,
+                    last_safe_position: creature.state.position,
+                    last_safe_surface: creature.state.surface.clone(),
+                },
+            );
+            return (world, desktop, now);
+        }
+    }
+    panic!("nobody ever stopped to watch the desktop");
+}
+
+/// Telling the colony to settle means the same thing however it is asked for: the houses
+/// appearing, a quiet spell, and a gather asked for at the desk all let go of everything in
+/// flight, rather than each dropping whichever plans its own author remembered.
+#[test]
+fn every_way_of_settling_the_colony_lets_go_of_a_scene_and_a_throw() {
+    for settle in ["gather", "quiet", "home"] {
+        let (mut world, desktop, now) = colony_mid_scene([71; 32]);
+        assert!(world.attention.held().0 > 0 && !world.tosses.is_empty());
+        match settle {
+            "gather" => {
+                assert!(world.handle_command(WorldCommand::GatherCreatures, &desktop));
+            }
+            "quiet" => world.set_quiet_mode(30, now),
+            _ => assert!(world.handle_command(WorldCommand::SendHome, &desktop)),
+        }
+        assert_eq!(world.attention.held().0, 0, "{settle} left a plan behind");
+        assert!(
+            world
+                .save
+                .creatures
+                .iter()
+                .all(|creature| creature.state.attention.is_none()),
+            "{settle} left somebody holding a pose"
+        );
+        assert!(world.tosses.is_empty(), "{settle} left a throw in the air");
+        assert!(world.window_journeys.is_empty() && world.window_routes.is_empty());
+        assert!(world.action_choices.is_empty() && world.bond_plans.is_empty());
+    }
+}
+
 #[test]
 fn grabbing_a_toss_in_flight_cancels_back_to_its_last_safe_state() {
     let created = datetime!(2026-01-01 0:00 UTC);

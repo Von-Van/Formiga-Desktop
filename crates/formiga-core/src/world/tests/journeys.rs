@@ -405,3 +405,51 @@ fn climb_cancels_when_its_path_leaves_the_habitat() {
         world.save.creatures[0].state.position,
     ));
 }
+
+/// A window narrower than the clearance a ledge keeps from its own corners leaves nowhere to
+/// stand. The window scanners never report one today, so only the searches themselves can keep
+/// the simulation from being handed an impossible landing.
+#[test]
+fn a_window_too_narrow_to_stand_on_is_no_landing_at_all() {
+    let policy = HabitatPolicy::default();
+    let mut desktop = desktop();
+    desktop.windows.push(DesktopWindow {
+        key: 77,
+        bounds: DesktopRect {
+            x: 400.0,
+            y: 500.0,
+            width: 18.0,
+            height: 300.0,
+        },
+        z_order: 0,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    });
+    let above = Point { x: 409.0, y: 100.0 };
+    let (point, surface) = find_drop_support(above, &desktop, &policy, true)
+        .expect("the habitat floor still catches a drop");
+    assert_eq!(surface.kind, SurfaceKind::ScreenFloor);
+    assert!(point.y > 500.0, "the sliver of a window caught nobody");
+    assert_eq!(
+        find_swept_support(above, Point { x: 409.0, y: 900.0 }, &desktop, &policy, true)
+            .map(|(_, surface)| surface.kind),
+        Some(SurfaceKind::ScreenFloor),
+        "and a toss passes straight through it too"
+    );
+
+    // Exactly wide enough for the clearance and it holds a creature again — on the single point
+    // it has room for. A drop slides sideways onto that point; a toss falling past it does not.
+    desktop.windows[0].bounds.width = 24.0;
+    let (point, surface) =
+        find_drop_support(above, &desktop, &policy, true).expect("the ledge is standable now");
+    assert_eq!(surface.kind, SurfaceKind::WindowLedge);
+    assert_eq!(point, Point { x: 412.0, y: 500.0 });
+    assert_eq!(
+        find_swept_support(above, Point { x: 409.0, y: 900.0 }, &desktop, &policy, true)
+            .map(|(_, surface)| surface.kind),
+        Some(SurfaceKind::ScreenFloor),
+        "a swept arc only catches where it actually crosses"
+    );
+}

@@ -397,8 +397,16 @@ fn shelter_return_reuses_greeting_actions_and_adds_no_body_clip() {
             ActionKind::Greet | ActionKind::Follow
         )
     }));
-    assert_eq!(ActionKind::ALL.len(), 25);
-    assert_eq!(ActionKind::BODY_CLIPS.len(), 22);
+    // Coming home costs the atlas nothing: every pose it asks for is one that already has a
+    // body clip baked for it.
+    assert!(
+        world
+            .bond_plans
+            .values()
+            .map(|plan| plan.final_action)
+            .chain(world.save.creatures.iter().map(|c| c.state.action))
+            .all(|action| ActionKind::BODY_CLIPS.contains(&action))
+    );
 }
 
 #[test]

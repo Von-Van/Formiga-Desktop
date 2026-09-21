@@ -69,6 +69,36 @@ fn overdue_arrivals_are_present_but_revealed_fifteen_seconds_apart() {
     assert!(world.save.creatures[3].state.arrival_delay_secs > 14.0);
 }
 
+/// A calendar arrival and an adult's own mini can fall due in the same tick. They queue up
+/// behind one another like any other pair of arrivals, instead of both revealing at once on
+/// top of each other.
+#[test]
+fn a_calendar_arrival_and_an_adult_mini_due_together_still_queue_up() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([137; 32], created, &desktop);
+    world
+        .add_designed_adult([138; 32], None, created, &desktop)
+        .unwrap();
+    assert_eq!(world.save.creatures.len(), 2);
+    world.drain_events().for_each(drop);
+    world.tick(created + Duration::hours(1), 0.05, &desktop);
+    assert_eq!(world.save.creatures.len(), 4, "both arrivals came due");
+    assert_eq!(world.save.creatures[2].state.arrival_delay_secs, 0.0);
+    assert!(
+        world.save.creatures[3].state.arrival_delay_secs > 14.0,
+        "the second one waits its turn"
+    );
+    assert_eq!(
+        world
+            .drain_events()
+            .filter(|event| matches!(event, WorldEvent::CreatureSpawned { .. }))
+            .count(),
+        1,
+        "only the one that is actually here is announced"
+    );
+}
+
 #[test]
 fn mini_is_related_but_not_identical() {
     let created = datetime!(2026-01-01 0:00 UTC);

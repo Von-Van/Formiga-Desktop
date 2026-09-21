@@ -50,6 +50,14 @@ impl World {
             );
         }
 
+        // A home visit seats every companion a step from a neighbour, so who is near whom there
+        // says where the village put them rather than who they choose to be beside. The pair
+        // timers are left untouched rather than cleared, so an afternoon at home neither builds a
+        // bond nor spends the calm minutes a pair had already gathered.
+        if self.save.home.is_active() {
+            return;
+        }
+
         let mut calm_pairs = BTreeSet::new();
         for (index, first) in views.iter().enumerate() {
             for second in views.iter().skip(index + 1) {

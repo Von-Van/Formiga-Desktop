@@ -23,6 +23,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | 60-active-second observation projection and hidden/paused suspension | CI | CI |
 | Six-pair relationship maximum, canonical IDs, four score bytes, saturation, and deterministic round trip | CI | CI |
 | Five calm minutes, bounded bond utility, contrary avoidance reduction, and score projection | CI | CI |
+| An afternoon at home builds no bond and spends none of the calm minutes a pair had already gathered | CI | CI |
 | Targeted follow, shared sleep, gift, play/steal, greet, climb-watch, toss-concern, and squabble action reuse with stable side spacing | CI | CI |
 | Bond target refresh/cancellation for moved, missing, sleeping, homebound, tossed, cross-surface, and removed companions | CI | CI |
 | Deterministic 12–48-hour ritual scheduling, all nine kinds, safe eligibility, and no downtime catch-up flood | CI | CI |
@@ -49,9 +50,14 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Wing styles: all three reachable, stable per recipe, and visibly textured | CI | CI |
 | Image aspect/alpha handling, dominant/accent colors, blank and extreme references | CI | CI |
 | v11 save preservation, v1/v2 code validation, exact design add/replace/save/share | CI | CI |
-| Mirrored village layout: separated lots, shared ground line, scale changes, missing/narrow displays and lot cap | CI | CI |
-| Village atlas cells match their own dwelling and never bleed into a neighbour | CI | CI |
+| Mirrored village layout: separated lots, shared ground line, scale changes, missing/narrow displays, and a narrow corner giving up a tree before a house | CI | CI |
+| Village atlas cells match their own dwelling and never bleed into a neighbour; both trees come from the fourth cell, the inward one mirrored | CI | CI |
 | Companion houses per colony member, with matching half-size cottages for minis | CI | CI |
+| Two trees bookending the houses: the widest village inside its 448-pixel span limit at the tightest scale and on a real display, both corners identical, and each tree's whole lot clear of the screen edge | CI | CI |
+| A visitor's tour: every stop inside the region, clear of each doorway, of every resting resident and of every belonging; the guest stands in as many places as it planned, goes over to each resident in turn, and a narrowed display replans the ring | CI | CI |
+| Nobody turns round more than six times in a second with a companion near, across seeded colonies on a busy desktop | CI | CI |
+| A keepsake is drawn square whatever the shape of the sheet it is cut from | CI | CI |
+| Keepsakes and belongings in the yards: eight anchors a tree with the catalogue split by condition, every found keepsake drawn once inside its own tree's cell, four belongings to each yard fixed by slot, `BELONGING_CLEARANCE` held after the per-colony drift, and no resident standing on one | CI | CI |
 | Belonging colors stay distinct from every creature palette they are carried against | CI | CI |
 | Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
 | Keep replacement guard, bulk regeneration, final-adult protection, reparenting, and relationship normalization | CI | CI |
@@ -83,10 +89,11 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | UI atlas: every bubble, frame, icon, and label tab inside one 256×80 texture, built on demand and released when idle | CI | CI |
 | Visitors: one wanderer per block of four gatherings, the full visit timeline, residents answering without changing a bond, tendency, or counter, and every interruption path | CI | CI |
 | Invitations: a duplicate or already-present code refused, a 24-hour stay attended at every gathering, one guest-book signature per visit, the 24-entry cap, and staying through the ordinary adoption path | CI | CI |
-| Village layout: reserved belonging lots, a porch sharing its own house's lot line, everyone resting beside its own door, both narrow-display fallbacks, and a guest spot clear of every resident | CI | CI |
+| Village layout: a porch sharing its own house's lot line, everyone resting beside its own door, both narrow-display fallbacks, and a guest spot clear of every resident | CI | CI |
 | Doorstep moments: pacing bounds, one resident busy at a time, cancellation by pet, pick-up, dismissal, pause, hide, or changed geometry, and no tendency, counter, bond, or journal line moving | CI | CI |
 | Spacing: the face and body boxes hold for every body plan at four sizes across every baked clip, frame, expression, and facing; source-site spacing for bonds, rituals, races, attention, and held formations; Gather Creatures leaving room | CI | CI |
 | Overlap resolution: grace periods, per-pair cooldown and clearance margin, who moves and who never does, silent sleeper shuffles, the descent fallback, and a continuously moving synthetic desktop | CI | CI |
+| An 18-point window is no landing rather than a panic; Gather Creatures settles every runtime plan, attention scenes included; regenerating past an unkept adult with no seed still lets the unkept minis go | CI | CI |
 | Conditional discovery: each circumstance's boundary, one ambient draw on every path, an everyday sequence bit-identical to 0.57 across all sixteen circumstance masks, and game playthings staying everyday | CI | CI |
 | Colony trinket atlas: sixteen variants × rest and glint cells inside one 256×32 sheet, coloured clear of every member's coat | CI | CI |
 | The watching pose and window gaze: a geometry cue raising `Watch`, the near edge at mid-height rather than the creature's own feet, and a lean drawn on every body | CI | CI |
@@ -221,6 +228,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | A full visit on a real desktop: arrival, greeting, residents answering, the calm beats, the farewell, and departure before the houses close | pending | pending | pending | pending |
 | Ask to stay and Copy code from both the menu and the Journal page, including a full colony refusing a stay | pending | pending | pending | pending |
 | Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once | pending | pending | pending | pending |
+| The village on a real desktop: both trees bookending the houses, keepsakes filling the branches as they are found, the belongings scattered in the two yards, and the whole corner on screen at every scale in both corners | pending | pending | pending | pending |
 | Sticker and colony-portrait export dialogs: save, cancel, Unicode names, and reopening both files in a native viewer | pending | pending | pending | pending |
 | Package install, relaunch, v15 round trip, and representative v1–v14 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |

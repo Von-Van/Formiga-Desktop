@@ -623,3 +623,55 @@ fn the_face_clear_distance_tracks_how_wide_a_creature_draws() {
     assert!((FULL_CLEAR_RATIO - 46.0 / 48.0).abs() < 0.01);
     const { assert!(FULL_CLEAR_RATIO > FACE_CLEAR_RATIO) };
 }
+
+/// The complaint this exists for: companions near each other would "start spazzing out, moving
+/// left and right very rapidly". Three separate things could set a creature shivering on the
+/// spot — a walk that stepped over its mark and back, a play goal recomputed from scratch every
+/// tick and flipped whenever the way ahead was blocked, and the overlap resolver dragging a
+/// creature away from a spot its own walk was still carrying it toward. All three read the same
+/// way on screen, so one measurement covers them: nobody turns round more than a few times a
+/// second. A creature genuinely changing its mind turns once or twice; twenty times is a fit.
+#[test]
+fn nobody_shivers_on_the_spot_when_a_companion_is_near() {
+    const WORST_TURNS_A_SECOND: usize = 6;
+    for seed_byte in [3_u8, 11, 29] {
+        let (mut world, desktop, now) =
+            super::topology_and_attention::eager_colony([seed_byte; 32]);
+        let mut previous: BTreeMap<CreatureId, f32> = BTreeMap::new();
+        let mut recent: BTreeMap<CreatureId, VecDeque<i8>> = BTreeMap::new();
+        for step in 0..6_000_i64 {
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            world.drain_events().for_each(drop);
+            for creature in &world.save.creatures {
+                let x = creature.state.position.x;
+                let was = *previous.get(&creature.id).unwrap_or(&x);
+                previous.insert(creature.id, x);
+                let direction = if (x - was).abs() < 0.01 {
+                    0
+                } else if x > was {
+                    1i8
+                } else {
+                    -1
+                };
+                let ticks = recent.entry(creature.id).or_default();
+                ticks.push_back(direction);
+                // One second of the twenty-a-second simulation.
+                if ticks.len() > 20 {
+                    ticks.pop_front();
+                }
+                let turns = ticks
+                    .iter()
+                    .filter(|step| **step != 0)
+                    .zip(ticks.iter().filter(|step| **step != 0).skip(1))
+                    .filter(|(before, after)| before != after)
+                    .count();
+                assert!(
+                    turns <= WORST_TURNS_A_SECOND,
+                    "seed {seed_byte}: a companion turned round {turns} times in one second \
+                     at tick {step}, {:?} at x{x:.1}",
+                    creature.state.action
+                );
+            }
+        }
+    }
+}

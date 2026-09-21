@@ -203,31 +203,28 @@ impl GeometryObserver {
         // desktop the creatures are looking at. The order is stable, so a window only leaves the
         // observed set when something genuinely moves in front of it — and the wholesale-change
         // guard below still keeps a large reshuffle from reading as dozens of closures.
-        let mut visible: Vec<_> = desktop
-            .windows
-            .iter()
-            .filter(|w| w.visible && !w.minimized)
-            .collect();
+        //
+        // Room for every window up front, as in the topology: collecting a filtered iterator
+        // instead grows the list a handful of times on the way to the same answer.
+        let mut visible = Vec::with_capacity(desktop.windows.len());
+        visible.extend(desktop.windows.iter().filter(|w| w.visible && !w.minimized));
         visible.sort_by_key(|w| (w.z_order, w.key));
         visible.truncate(MAX_TOPOLOGY_WINDOWS);
+        // One search of the last scan per window answers both questions asked about it: what it
+        // was doing then, and whether it was there at all, which is what the wholesale-change
+        // guard below counts.
         self.current.clear();
-        self.current.extend(visible.into_iter().map(|w| {
-            WindowShape {
-                key: w.key,
-                bounds: w.bounds,
-                moved_at: self
-                    .previous
-                    .iter()
-                    .find(|old| old.key == w.key)
-                    .and_then(|old| old.moved_at),
-            }
-        }));
+        let mut common = 0;
+        for window in visible {
+            let previous = self.previous.iter().find(|old| old.key == window.key);
+            common += usize::from(previous.is_some());
+            self.current.push(WindowShape {
+                key: window.key,
+                bounds: window.bounds,
+                moved_at: previous.and_then(|old| old.moved_at),
+            });
+        }
         let elapsed = self.sample_at.map_or(0.0, |previous| at - previous);
-        let common = self
-            .current
-            .iter()
-            .filter(|w| self.previous.iter().any(|old| old.key == w.key))
-            .count();
         let wholesale_change = self.previous.len().max(self.current.len()) >= 4
             && common * 2 < self.previous.len().max(self.current.len());
         let baseline = !self.initialized
@@ -308,6 +305,11 @@ impl GeometryObserver {
             // A long drag of one window never counts as desktop rearrangement.
             for index in 0..self.current.len() {
                 let anchor = self.current[index];
+                // Only a window that itself just moved can be the middle of a rearrangement, and
+                // that is one field to read, so nothing counts its neighbours until it has.
+                if !anchor.moved_at.is_some_and(|moved| at - moved <= 2.0) {
+                    continue;
+                }
                 let center = Point {
                     x: anchor.bounds.x + anchor.bounds.width * 0.5,
                     y: anchor.bounds.y + anchor.bounds.height * 0.5,
@@ -323,7 +325,7 @@ impl GeometryObserver {
                         }) <= 360.0
                     })
                     .count();
-                if recent >= 3 && anchor.moved_at.is_some_and(|moved| at - moved <= 2.0) {
+                if recent >= 3 {
                     self.push(anchor, GeometryChange::Rearranged, 0.8);
                     break;
                 }
@@ -584,13 +586,20 @@ pub(crate) mod tests {
         observer.update(&snapshot(0, 250), 0.25, true);
         observer.update(&snapshot(1, 500), 0.25, true);
         assert_eq!(observer.signals().count(), 0);
-        // Observer storage is reserved once; no unbounded geometry or event allocation.
+        // Observer storage is reserved once; no unbounded geometry or event allocation. The
+        // budget covers three capped window lists — the last two scans, and the frames the
+        // display preferences are sampled from — plus the signals in flight. A desktop at the
+        // window cap fills all of them, so what is measured is the most the observer can ask
+        // for rather than the least. It takes two scans: the first is a wholesale change and
+        // rebaselines, and only the second reads the display preferences off those windows.
+        observer.update(&snapshot(MAX_TOPOLOGY_WINDOWS, 750), 0.25, true);
+        observer.update(&snapshot(MAX_TOPOLOGY_WINDOWS, 1_000), 0.25, true);
         let bytes = std::mem::size_of::<GeometryObserver>()
             + observer.ambience.reserved_bytes()
             + (observer.current.capacity() + observer.previous.capacity())
                 * std::mem::size_of::<WindowShape>()
             + observer.signals.capacity() * std::mem::size_of::<GeometrySignal>();
-        assert!(bytes <= 8 * 1024, "geometry observation uses {bytes} bytes");
+        assert!(bytes <= 9 * 1024, "geometry observation uses {bytes} bytes");
     }
     /// Minimising a window and hiding one look the same from here, and the same as closing it:
     /// the surface is simply not available any more. Nothing claims to know which of the three

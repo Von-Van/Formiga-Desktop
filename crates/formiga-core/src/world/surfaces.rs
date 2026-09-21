@@ -180,6 +180,144 @@ impl SurfaceMemory {
     }
 }
 
+/// A landing keeps clear of the corners of whatever holds it: this much of a window's own
+/// edges, and this much of a habitat region's. A creature on the ground stands this far above
+/// the region's bottom line.
+const LEDGE_CLEARANCE: f32 = 12.0;
+const FLOOR_CLEARANCE: f32 = 8.0;
+const FLOOR_STANDING_LIFT: f32 = 4.0;
+
+/// One surface a creature could come to rest on: the top edge of a window, or the floor of a
+/// single habitat region.
+///
+/// Three searches ask what lies below a point and none of them ask it the same way — a toss is
+/// swept along its arc, a drop falls straight down, and a hangout only wants to know how far the
+/// ground is. This type is what they share: the geometry of a landing, and nothing about which
+/// landing wins. Each search keeps its own rule for what counts and what it prefers.
+///
+/// The clearances above are applied once, here, so a surface too narrow to stand on yields no
+/// span at all rather than a backwards one. That is why [`SupportSpan::nearest_x`] can clamp
+/// without ever being handed a minimum above its maximum.
+pub(super) struct SupportSpan {
+    /// Where a creature's feet end up once this surface holds it.
+    pub(super) y: f32,
+    /// The window this is the top of, or `None` for habitat floor.
+    pub(super) window: Option<WindowKey>,
+    monitor_id: MonitorId,
+    rect_x: f32,
+    rect_width: f32,
+    min_x: f32,
+    max_x: f32,
+}
+
+impl SupportSpan {
+    /// The standable part of a window's top edge, or nothing when the window is too narrow.
+    fn ledge(window: &DesktopWindow, monitor_id: MonitorId) -> Option<Self> {
+        Self::new(
+            window.bounds.y,
+            window.bounds,
+            LEDGE_CLEARANCE,
+            Some(window.key),
+            monitor_id,
+        )
+    }
+
+    /// The standable part of one accessible habitat region's floor.
+    fn floor(region: DesktopRect, monitor_id: MonitorId) -> Option<Self> {
+        Self::new(
+            region.bottom() - FLOOR_STANDING_LIFT,
+            region,
+            FLOOR_CLEARANCE,
+            None,
+            monitor_id,
+        )
+    }
+
+    fn new(
+        y: f32,
+        rect: DesktopRect,
+        clearance: f32,
+        window: Option<WindowKey>,
+        monitor_id: MonitorId,
+    ) -> Option<Self> {
+        let min_x = rect.x + clearance;
+        let max_x = rect.right() - clearance;
+        (min_x <= max_x).then_some(Self {
+            y,
+            window,
+            monitor_id,
+            rect_x: rect.x,
+            rect_width: rect.width,
+            min_x,
+            max_x,
+        })
+    }
+
+    /// `x` brought onto the span: a fall that misses a ledge sideways catches its corner.
+    pub(super) fn nearest_x(&self, x: f32) -> f32 {
+        x.clamp(self.min_x, self.max_x)
+    }
+
+    /// Whether a creature could stand at `x` on this surface.
+    pub(super) fn holds(&self, x: f32) -> bool {
+        (self.min_x..=self.max_x).contains(&x)
+    }
+
+    /// Whether the surface reaches under `x` at all, corners included. Measuring a drop is not
+    /// the same question as finding somewhere to stand: the last few points of ground before the
+    /// screen edge are still ground, and a creature peering over should read a short fall there
+    /// rather than an empty one.
+    pub(super) fn covers(&self, x: f32) -> bool {
+        (self.rect_x..=self.rect_x + self.rect_width).contains(&x)
+    }
+
+    /// Standing at `x` on this surface: the exact point, and what the creature is attached to.
+    pub(super) fn place(&self, x: f32) -> (Point, SurfaceAttachment) {
+        let relative = (x - self.rect_x) / self.rect_width;
+        (
+            Point { x, y: self.y },
+            SurfaceAttachment {
+                kind: if self.window.is_some() {
+                    SurfaceKind::WindowLedge
+                } else {
+                    SurfaceKind::ScreenFloor
+                },
+                monitor_id: self.monitor_id,
+                window_key: self.window,
+                // A ledge never claims a creature is standing on its very corner.
+                relative_x: if self.window.is_some() {
+                    relative.clamp(0.05, 0.95)
+                } else {
+                    relative.clamp(0.0, 1.0)
+                },
+            },
+        )
+    }
+}
+
+/// Everything on one monitor that could hold a creature: the given windows first, in their own
+/// order, and then the monitor's habitat floor. Ledges come first so that a search settling a
+/// tie by taking the first answer lands on the ledge rather than the ground beneath it.
+///
+/// The caller passes only the windows its own question allows to catch anything — an empty slice
+/// when the user has turned window ledges off — and the regions it has already worked out, so
+/// that it can test its own candidates against them without asking for them twice.
+pub(super) fn supports_on<'a>(
+    windows: &'a [DesktopWindow],
+    regions: &'a [DesktopRect],
+    monitor_id: MonitorId,
+) -> impl Iterator<Item = SupportSpan> + 'a {
+    windows
+        .iter()
+        .filter(|window| window.visible && !window.minimized)
+        .filter_map(move |window| SupportSpan::ledge(window, monitor_id))
+        .chain(
+            regions
+                .iter()
+                .filter_map(move |region| SupportSpan::floor(*region, monitor_id)),
+        )
+}
+
 /// Distance below an exposed edge to the next usable support, in logical desktop points.
 /// Absolute monitor origins never enter the risk score.
 pub(super) fn drop_below(
@@ -194,6 +332,11 @@ pub(super) fn drop_below(
 }
 
 /// The nearest exposed ledge or habitat floor directly below `x`, never the current support.
+///
+/// This one only wants relative height, so it looks straight down a single column on the
+/// creature's own monitor and the highest surface under it wins. It sees no further into the
+/// window list than the topology does, because a creature cannot fall onto something the rest
+/// of the simulation has already stopped looking at.
 pub(super) fn support_below(
     creature: &Creature,
     x: f32,
@@ -205,56 +348,29 @@ pub(super) fn support_below(
         .monitors
         .iter()
         .find(|m| m.id == creature.state.surface.monitor_id)?;
-    let floor = accessible_regions(&settings.habitat, monitor)
-        .into_iter()
-        .filter(|r| x >= r.x && x <= r.right() && r.bottom() > y)
-        .map(|r| {
-            (
-                Point {
-                    x,
-                    y: r.bottom() - 4.0,
-                },
-                SurfaceAttachment {
-                    kind: SurfaceKind::ScreenFloor,
-                    monitor_id: monitor.id,
-                    window_key: None,
-                    relative_x: ((x - r.x) / r.width).clamp(0.0, 1.0),
-                },
-            )
-        });
-    desktop
-        .windows
-        .iter()
-        .take(MAX_TOPOLOGY_WINDOWS)
-        .filter(|w| {
-            settings.window_ledges
-                && w.visible
-                && !w.minimized
-                && Some(w.key) != creature.state.surface.window_key
-                && w.bounds.y > y + 1.0
-                && x >= w.bounds.x + 12.0
-                && x <= w.bounds.right() - 12.0
+    let regions = accessible_regions(&settings.habitat, monitor);
+    let windows = if settings.window_ledges {
+        &desktop.windows[..desktop.windows.len().min(MAX_TOPOLOGY_WINDOWS)]
+    } else {
+        &[]
+    };
+    supports_on(windows, &regions, monitor.id)
+        .filter(|span| match span.window {
+            // Nobody falls onto the ledge they are already standing on, and a ledge buried
+            // under another window is not somewhere to land: the creature cannot see it.
+            Some(key) => {
+                let above = Point { x, y: span.y - 1.0 };
+                Some(key) != creature.state.surface.window_key
+                    && span.y > y + 1.0
+                    && span.holds(x)
+                    && habitat_contains(&settings.habitat, monitor, above)
+                    && super::attention::point_exposed(above, Some(key), desktop)
+            }
+            // The floor a creature is already standing on still counts, so that standing on the
+            // ground reads as no drop at all rather than as whatever lies further down.
+            None => span.y > y - FLOOR_STANDING_LIFT && span.covers(x),
         })
-        .filter(|w| {
-            let point = Point {
-                x,
-                y: w.bounds.y - 1.0,
-            };
-            habitat_contains(&settings.habitat, monitor, point)
-                && super::attention::point_exposed(point, Some(w.key), desktop)
-        })
-        .map(|w| {
-            (
-                Point { x, y: w.bounds.y },
-                SurfaceAttachment {
-                    kind: SurfaceKind::WindowLedge,
-                    monitor_id: monitor.id,
-                    window_key: Some(w.key),
-                    relative_x: ((x - w.bounds.x) / w.bounds.width).clamp(0.05, 0.95),
-                },
-            )
-        })
-        .chain(floor)
+        .map(|span| span.place(x))
         .min_by(|a, b| a.0.y.total_cmp(&b.0.y))
 }
 

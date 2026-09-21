@@ -61,21 +61,21 @@ impl World {
             .save
             .creatures
             .remove(0);
-        let old = if let Some(id) = replace {
-            let old = self
+        let replaced = if let Some(id) = replace {
+            let index = self
                 .save
                 .creatures
                 .iter()
-                .find(|c| c.id == id)
-                .ok_or(ColonyManagementError::CreatureNotFound)?
-                .clone();
+                .position(|c| c.id == id)
+                .ok_or(ColonyManagementError::CreatureNotFound)?;
+            let old = &self.save.creatures[index];
             if old.kept {
                 return Err(ColonyManagementError::CreatureKept);
             }
             if !old.role.is_adult() && adult_count(&self.save.creatures) >= MAX_ADULT_CREATURES {
                 return Err(ColonyManagementError::AdultLimit);
             }
-            Some(old)
+            Some((index, old.colony_order))
         } else {
             if self.save.creatures.len() >= MAX_COLONY_CREATURES {
                 return Err(ColonyManagementError::ColonyFull);
@@ -93,9 +93,9 @@ impl World {
         {
             return Err(ColonyManagementError::DuplicateIdentity);
         }
-        incoming.colony_order = old.as_ref().map_or_else(
+        incoming.colony_order = replaced.map_or_else(
             || next_colony_order(&self.save.creatures),
-            |c| c.colony_order,
+            |(_, colony_order)| colony_order,
         );
         if self
             .save
@@ -110,16 +110,8 @@ impl World {
             );
         }
         let id = incoming.id;
-        if let Some(old) = old {
-            incoming.state.position = old.state.position;
-            incoming.state.surface = old.state.surface;
-            self.remove_creature_runtime(old.id);
-            for c in &mut self.save.creatures {
-                if c.role.parent_id() == Some(old.id) {
-                    c.role = CreatureRole::Mini { parent_id: id };
-                }
-            }
-            self.save.creatures.retain(|c| c.id != old.id);
+        if let Some((index, _)) = replaced {
+            return Ok(self.replace_creature_at(index, incoming));
         }
         self.register_creature_runtime(&incoming);
         self.save.creatures.push(incoming);
@@ -138,15 +130,6 @@ impl World {
         desktop: &DesktopSnapshot,
     ) -> Creature {
         generated_adult(source_seed, now, desktop, 0, &[], true)
-    }
-
-    pub fn add_generated_adult(
-        &mut self,
-        source_seed: [u8; 32],
-        now: OffsetDateTime,
-        desktop: &DesktopSnapshot,
-    ) -> Result<CreatureId, ColonyManagementError> {
-        self.add_designed_adult(source_seed, None, now, desktop)
     }
 
     pub fn add_designed_adult(
@@ -220,7 +203,8 @@ impl World {
         if self.save.creatures[index].kept {
             return Err(ColonyManagementError::CreatureKept);
         }
-        let old = self.save.creatures[index].clone();
+        let old = &self.save.creatures[index];
+        let colony_order = old.colony_order;
         if !old.role.is_adult() && adult_count(&self.save.creatures) >= MAX_ADULT_CREATURES {
             return Err(ColonyManagementError::AdultLimit);
         }
@@ -235,7 +219,7 @@ impl World {
             source_seed,
             now,
             desktop,
-            old.colony_order,
+            colony_order,
             &existing_names,
             true,
         );
@@ -250,26 +234,7 @@ impl World {
         {
             return Err(ColonyManagementError::DuplicateIdentity);
         }
-        replacement.state.position = old.state.position;
-        replacement.state.surface = old.state.surface.clone();
-        let new_id = replacement.id;
-        for creature in &mut self.save.creatures {
-            if creature.role.parent_id() == Some(creature_id) {
-                creature.role = CreatureRole::Mini { parent_id: new_id };
-            }
-        }
-        self.remove_creature_runtime(creature_id);
-        self.register_creature_runtime(&replacement);
-        self.save.creatures[index] = replacement;
-        rebalance_minis(&mut self.save.creatures);
-        normalize_relationships(&mut self.save);
-        Self::emit(
-            &mut self.events,
-            WorldEvent::CreatureSpawned {
-                creature_id: new_id,
-            },
-        );
-        Ok(new_id)
+        Ok(self.replace_creature_at(index, replacement))
     }
 
     pub fn remove_colony_creature(
@@ -292,6 +257,13 @@ impl World {
         Ok(())
     }
 
+    /// Start the unkept members of the colony over: every unkept adult is replaced by a fresh
+    /// one drawn from `source_seeds`, and every unkept mini simply leaves.
+    ///
+    /// Returns how many creatures the colony gained, lost or swapped, which is what the caller
+    /// needs in order to decide whether anything is worth writing down and redrawing. Running
+    /// out of seeds only costs the adults that had none left: the minis owe nothing to a seed
+    /// and still go.
     pub fn regenerate_unkept(
         &mut self,
         source_seeds: &[[u8; 32]],
@@ -305,25 +277,75 @@ impl World {
             .filter(|creature| !creature.kept)
             .map(|creature| (creature.id, creature.role.is_adult()))
             .collect();
-        let mut replaced = 0;
+        let mut changed = 0;
         let mut seed_index = 0;
         for (creature_id, is_adult) in targets {
             if is_adult {
                 let Some(seed) = source_seeds.get(seed_index).copied() else {
-                    break;
+                    continue;
                 };
                 seed_index += 1;
                 if self
                     .replace_creature_with_adult(creature_id, seed, now, desktop)
                     .is_ok()
                 {
-                    replaced += 1;
+                    changed += 1;
                 }
             } else if self.remove_colony_creature(creature_id).is_ok() {
-                replaced += 1;
+                changed += 1;
             }
         }
-        replaced
+        changed
+    }
+
+    /// Hand a creature's place in the colony to `replacement`: the same slot in `creatures`,
+    /// which is both draw order and the order the colony is listed in, the same spot on screen,
+    /// and the same minis calling it a parent. A swap that removed and appended instead would
+    /// quietly send the creature to the back of the group every time it was redesigned.
+    ///
+    /// Everything the departing creature was part-way through is dropped and the newcomer gets
+    /// its own runtime, so no plan survives pointing at a creature that no longer exists.
+    fn replace_creature_at(&mut self, index: usize, mut replacement: Creature) -> CreatureId {
+        let old = &self.save.creatures[index];
+        let old_id = old.id;
+        let new_id = replacement.id;
+        replacement.state.position = old.state.position;
+        replacement.state.surface = old.state.surface.clone();
+        for creature in &mut self.save.creatures {
+            if creature.role.parent_id() == Some(old_id) {
+                creature.role = CreatureRole::Mini { parent_id: new_id };
+            }
+        }
+        self.remove_creature_runtime(old_id);
+        self.register_creature_runtime(&replacement);
+        self.save.creatures[index] = replacement;
+        rebalance_minis(&mut self.save.creatures);
+        normalize_relationships(&mut self.save);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::CreatureSpawned {
+                creature_id: new_id,
+            },
+        );
+        new_id
+    }
+
+    /// Settle everything: release every plan the colony is part-way through that lives only in
+    /// memory — a journey between windows and the route it belonged to, a throw still in the
+    /// air, a chosen action, a visit to another creature, and any attention scene along with
+    /// whoever had stopped to watch it. Creatures are left standing exactly where they are; the
+    /// caller decides where they go next, and nothing saved is touched.
+    ///
+    /// The village appearing, a quiet spell starting and a gather asked for at the desk are the
+    /// same moment told three ways, so they all end up here rather than each clearing whichever
+    /// plans its author happened to think of.
+    pub(super) fn clear_runtime_plans(&mut self) {
+        self.window_journeys.clear();
+        self.window_routes.clear();
+        self.tosses.clear();
+        self.action_choices.clear();
+        self.bond_plans.clear();
+        self.clear_attention();
     }
 
     pub(super) fn register_creature_runtime(&mut self, creature: &Creature) {

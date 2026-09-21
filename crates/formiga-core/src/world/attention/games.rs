@@ -24,6 +24,11 @@ const PARADE_LOST: f32 = 220.0;
 /// After being tagged, a creature cannot tag straight back for this long.
 const TAG_IMMUNITY: f32 = 1.2;
 
+/// How close to its goal a player counts as having arrived, for the purpose of being allowed to
+/// change its mind about which way to go. Wider than the two points a stride covers, so the last
+/// fraction of a walk cannot read as still being under way.
+const COMMITTED_WALK: f32 = 4.0;
+
 impl World {
     pub(super) fn play_unit(&self, id: CreatureId, desktop: &DesktopSnapshot) -> f32 {
         self.save
@@ -49,6 +54,7 @@ impl World {
         destination: Option<Point>,
         gesture: ActionKind,
     ) {
+        let here = self.play_position(id).map(|point| point.x);
         let Some(plan) = self.attention.plans.get_mut(&id) else {
             return;
         };
@@ -60,6 +66,19 @@ impl World {
         {
             *current = gesture;
             *pose = None;
+        }
+        // A player commits to the way it is going until it gets there. Every scene works out its
+        // goals afresh each tick, and a runner with no room ahead is sent back past its chaser,
+        // then away again the moment that opens up: alternating twice a second is a decision,
+        // twenty times a second is a creature having a fit. Only a reversal is refused — a
+        // chaser steering at a lead that keeps running the same way still tracks it every tick,
+        // and a goal that turns out to be unreachable clears the walk and frees the next one.
+        if let (Some(here), Some(new), Some(current)) = (here, destination, plan.walk) {
+            let under_way = (current.destination.x - here).abs() > COMMITTED_WALK;
+            let reversing = (new.x - here).signum() != (current.destination.x - here).signum();
+            if under_way && reversing {
+                return;
+            }
         }
         plan.walk = destination.map(ShortWalk::playing);
     }

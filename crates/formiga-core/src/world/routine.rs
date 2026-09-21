@@ -60,10 +60,7 @@ impl World {
         self.save.companion.quiet_until =
             Some(now + Duration::minutes(i64::from(minutes.min(120))));
         self.save.home.active_since_utc = Some(now);
-        self.window_journeys.clear();
-        self.window_routes.clear();
-        self.bond_plans.clear();
-        self.action_choices.clear();
+        self.clear_runtime_plans();
     }
 }
 

@@ -82,11 +82,19 @@ temperament — and nothing about the person who shared it, their computer, or t
 `Visit` moment is added to the existing journal.
 
 What a visit does *not* save is the visit itself: the scene's progress is `#[serde(skip)]`, so its
-phase, beat, elapsed time, doorway, and the residents' answers exist only while the program is
-running. The same is true of every other interaction added in 0.58.0 — thought bubbles, the open
+phase, beat, elapsed time, doorway, the places a guest tours, whom it has already gone over to,
+and the residents' answers exist only while the program is running. The same is true of every other interaction added in 0.58.0 — thought bubbles, the open
 menu, offer cooldowns, the overlap timers and per-pair cooldowns, and doorstep moments at the
 houses. The circumstances a trinket was found in are not saved either: the scrapbook records what,
 when, and who, exactly as it did before, and never why a particular keepsake qualified.
+
+0.58.5 adds no field to the save and observes nothing new. The two keepsake trees, which of them
+each find hangs in, where it hangs, and where each belonging lies in a yard are all worked out
+while the program runs, from the colony's own seed and the scrapbook the save already holds: a
+tree is a drawing of records you already had, not a record of its own. The save version is still 15, a
+colony written by 0.58.0 opens unchanged, and there is no migration to run. Where the village
+stands on the screen comes from the same monitor rectangles and habitat zones as before, and the
+village being narrower reads nothing more about your desktop than the wider one did.
 
 Opening the menu with Control-click on macOS reads the modifier flags from the same combined-session
 event source Formiga already samples for the cursor and idle time. It is not a keyboard hook, adds

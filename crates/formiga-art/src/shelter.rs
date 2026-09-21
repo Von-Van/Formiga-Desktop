@@ -3,7 +3,8 @@ use formiga_core::{ShelterDecorationKind, ShelterGenome, ShelterStyle};
 
 pub const SHELTER_SIZE: u32 = 64;
 
-/// Two-by-two grid of shelter cells: the colony house, a cottage, and a mini's cottage.
+/// Two-by-two grid of shelter cells: the colony house, a cottage, a mini's cottage, and the
+/// keepsake tree.
 pub const VILLAGE_ATLAS_SIZE: u32 = SHELTER_SIZE * 2;
 
 /// How large each dwelling draws, in twelfths of the colony house. A companion cottage is only
@@ -30,15 +31,16 @@ impl ShelterRenderer {
         canvas
     }
 
-    /// The colony house and its companion cottages in one cached texture. Cells share the
-    /// house's own style, palette, and baseline, so a mini's home matches the one it grew up
-    /// beside. Three cells of the existing shelter size: no new texture, sampler, or bind group.
+    /// The colony house, its companion cottages, and the keepsake tree in one cached texture.
+    /// Cells share the house's own style, palette, and baseline, so a mini's home matches the one
+    /// it grew up beside and the tree belongs to the same yard. Four cells of the existing
+    /// shelter size: no new texture, sampler, or bind group.
     pub fn render_village(genome: &ShelterGenome, decorations: &[ShelterDecorationKind]) -> Canvas {
         let mut canvas = Canvas::new(VILLAGE_ATLAS_SIZE, VILLAGE_ATLAS_SIZE);
         let cell = SHELTER_SIZE as i32;
-        // Each dwelling is drawn into its own cell-sized tile first. Art that would run past
-        // a cell is clipped exactly as it is for a lone shelter, never bleeding into the
-        // neighbour below. Only the colony house carries the decorations it earned over time.
+        // Each cell is drawn into its own cell-sized tile first. Art that would run past a cell
+        // is clipped exactly as it is for a lone shelter, never bleeding into the neighbour
+        // below. Only the colony house carries the decorations it earned over time.
         for (span, decorations, origin_x, origin_y) in [
             (MAIN_SPAN, decorations, 0, 0),
             (COTTAGE_SPAN, &[][..], cell, 0),
@@ -46,16 +48,24 @@ impl ShelterRenderer {
         ] {
             let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
             draw_dwelling(&mut tile, genome, decorations, 32, 61, span);
-            for y in 0..cell {
-                for x in 0..cell {
-                    let pixel = tile.get(x, y);
-                    if pixel.a > 0 {
-                        canvas.set(origin_x + x, origin_y + y, pixel);
-                    }
-                }
+            blit_cell(&mut canvas, &tile, origin_x, origin_y);
+        }
+        let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+        crate::tree::draw_tree(&mut tile, genome, 32, 61);
+        blit_cell(&mut canvas, &tile, cell, cell);
+        canvas
+    }
+}
+
+/// Copies one cell-sized tile into the atlas, leaving whatever is already under its empty pixels.
+fn blit_cell(canvas: &mut Canvas, tile: &Canvas, origin_x: i32, origin_y: i32) {
+    for y in 0..SHELTER_SIZE as i32 {
+        for x in 0..SHELTER_SIZE as i32 {
+            let pixel = tile.get(x, y);
+            if pixel.a > 0 {
+                canvas.set(origin_x + x, origin_y + y, pixel);
             }
         }
-        canvas
     }
 }
 
@@ -479,6 +489,8 @@ mod tests {
                 detail_seed: 0xfeed_face_1234_5678,
             };
             let village = ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL);
+            // One 128x128 texture, four cells, however much the village grows.
+            assert_eq!(VILLAGE_ATLAS_SIZE, 128);
             assert_eq!(village.width(), VILLAGE_ATLAS_SIZE);
             assert_eq!(village.height(), VILLAGE_ATLAS_SIZE);
             let cell = SHELTER_SIZE as i32;
@@ -511,10 +523,17 @@ mod tests {
                     assert_eq!(village.get(x, y), alone.get(x, y));
                 }
             }
-            // The unused fourth cell stays empty, so nothing has spilled sideways or down.
-            for y in cell..cell * 2 {
-                for x in cell..cell * 2 {
-                    assert_eq!(village.get(x, y).a, 0, "{style:?} bled into the spare cell");
+            // The fourth cell holds the keepsake tree, and nothing else has spilled into it.
+            let mut tree = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+            crate::tree::draw_tree(&mut tree, &genome, 32, 61);
+            assert!(tree.alpha_bounds().is_some(), "{style:?} draws no tree");
+            for y in 0..cell {
+                for x in 0..cell {
+                    assert_eq!(
+                        village.get(cell + x, cell + y),
+                        tree.get(x, y),
+                        "{style:?} differs from the tree at ({x}, {y})"
+                    );
                 }
             }
         }
@@ -565,6 +584,52 @@ mod tests {
                              dwelling above it"
                         );
                         previous = drawn;
+                    }
+                }
+            }
+        }
+    }
+
+    /// The village keeps resting companions off every doorway by a fixed number of pixels, which
+    /// only works if no genome can draw a doorway wider than that number assumes. Seven pixels
+    /// either side of a dwelling's middle is what `habitat::tests::WIDEST_DOOR_HALF` promises.
+    #[test]
+    fn no_dwelling_draws_a_doorway_wider_than_the_village_expects() {
+        const WIDEST_DOOR_HALF: i32 = 7;
+        for style in [
+            ShelterStyle::LeafTent,
+            ShelterStyle::MushroomHut,
+            ShelterStyle::CushionDen,
+            ShelterStyle::PaperHouse,
+        ] {
+            for width in 34..=42_u8 {
+                for height in 27..=36_u8 {
+                    for span in [MAIN_SPAN, COTTAGE_SPAN, MINI_COTTAGE_SPAN] {
+                        let genome = ShelterGenome {
+                            style,
+                            palette_index: 1,
+                            accent_index: 4,
+                            width,
+                            height,
+                            detail_seed: 0x0bad_f00d_dead_beef,
+                        };
+                        // The doorway is the one hole every style punches in the same fixed
+                        // near-black, so its own pixels say exactly how wide it is. The dark
+                        // frame drawn around it adds two more either side.
+                        let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                        draw_dwelling(&mut tile, &genome, &[], 32, 61, span);
+                        let doorway = Rgba::new(25, 23, 31, 255);
+                        let open = |x: i32| (55..=60).any(|y| tile.get(x, y) == doorway);
+                        let reach = (0..=WIDEST_DOOR_HALF + 6)
+                            .filter(|offset| open(32 + offset) || open(32 - offset))
+                            .max()
+                            .unwrap_or(0);
+                        assert!(
+                            reach + 2 <= WIDEST_DOOR_HALF,
+                            "{style:?} {width}x{height} span {span} opens a doorway {reach} \
+                             pixels from its middle, {} with its frame",
+                            reach + 2
+                        );
                     }
                 }
             }

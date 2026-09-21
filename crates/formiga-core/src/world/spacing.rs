@@ -38,6 +38,10 @@ const BODY_BAND_RATIO: f32 = 0.92;
 /// or a hand-off reads as contact rather than a mistake; short enough to be over in a moment.
 const COVER_GRACE_SECONDS: f32 = 1.25;
 
+/// How close to its chosen spot a creature counts as having arrived. Wider than one stride, so
+/// the last fraction of a walk does not read as still being on the way.
+const ARRIVED_SLACK: f32 = 6.0;
+
 /// Two companions merely standing too close have longer, because nothing is hidden and the one
 /// walking past is about to solve it by walking on.
 const CROWD_GRACE_SECONDS: f32 = 2.0;
@@ -380,6 +384,17 @@ impl World {
             || self.tosses.contains_key(&id)
             || self.window_journeys.contains_key(&id)
             || self.attention.airborne(id)
+        {
+            return true;
+        }
+        // Still walking to a spot it chose for itself. Shuffling it now would drag it away from
+        // the mark while its own walk pushes back, and the two would fight over it a pixel at a
+        // time; once it arrives, it is standing still and can be asked properly.
+        if self
+            .action_choices
+            .get(&id)
+            .and_then(|choice| choice.target_point)
+            .is_some_and(|target| (target.x - creature.state.position.x).abs() > ARRIVED_SLACK)
         {
             return true;
         }

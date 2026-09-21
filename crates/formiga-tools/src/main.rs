@@ -170,11 +170,15 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
 }
 
 /// One stretch of village ground, drawn exactly where the layout functions put everything: the
-/// colony house, one cottage per later member, the belongings along the same line, and every
-/// resident standing on the porch beside its own door.
+/// two keepsake trees bookending the strip with whatever the scrapbook holds hung between them,
+/// the colony house, one cottage per later member, the belongings in the yard at each trunk, and
+/// every resident standing on the porch beside its own door.
 struct YardPanel {
     cottages: Vec<DwellingKind>,
     objects: usize,
+    /// How many of the sixteen trinkets this colony has found, so the trees can be judged bare,
+    /// part-filled and full.
+    found: usize,
     style_seed: u8,
 }
 
@@ -184,8 +188,11 @@ const YARD_HEIGHT: u32 = 88;
 const YARD_SCALE: u32 = 2;
 
 fn home_yard_sheet(path: PathBuf) -> Result<()> {
-    // Four shelter styles with a grown colony, then a colony of one, two, three and four, so the
-    // rule that nobody stands in front of a house can be checked at every size and both corners.
+    // Four shelter styles with a grown colony and the two trees filling up as the scrapbook does
+    // — the outward one takes the first eight finds, the inward one the rest — then a colony of
+    // one, two, three and four, so the rule that nobody stands in front of a house can be checked
+    // at every size and both corners, and so can the widest village there is, which is the last
+    // row: four adults, eight belongings split between the yards, and two bare trees.
     let full = vec![
         DwellingKind::Cottage,
         DwellingKind::MiniCottage,
@@ -195,13 +202,23 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
         .map(|style| YardPanel {
             cottages: full.clone(),
             objects: MAX_COLONY_OBJECTS,
+            found: [0, 5, 11, 16][style as usize],
             style_seed: style,
         })
         .collect();
     for members in 1..=4_usize {
         panels.push(YardPanel {
-            cottages: full[..members - 1].to_vec(),
+            cottages: if members == 4 {
+                vec![
+                    DwellingKind::Cottage,
+                    DwellingKind::Cottage,
+                    DwellingKind::Cottage,
+                ]
+            } else {
+                full[..members - 1].to_vec()
+            },
             objects: MAX_COLONY_OBJECTS,
+            found: [16, 8, 3, 0][members - 1],
             style_seed: 3,
         });
     }
@@ -287,9 +304,9 @@ fn draw_yard_panel(
     let cottages = &panel.cottages;
     let village = ShelterRenderer::render_village(&home.shelter, &ShelterDecorationKind::ALL);
 
-    let mut place = |canvas: &formiga_art::Canvas, size: u32, point: Point| {
-        let x = point.x.round() as i32 - size as i32 / 2;
-        let y = point.y.round() as i32 - size as i32;
+    // Everything is blitted by the top-left of its own square, so a quad hung in a tree lands
+    // by its anchor and a house lands by its footprint's middle on the ground line.
+    let mut corner_of = |canvas: &formiga_art::Canvas, size: u32, x: i32, y: i32| {
         if x < 0 || y < 0 {
             return;
         }
@@ -303,6 +320,77 @@ fn draw_yard_panel(
             YARD_SCALE,
         );
     };
+    let standing = |size: u32, point: Point| {
+        (
+            point.x.round() as i32 - size as i32 / 2,
+            point.y.round() as i32 - size as i32,
+        )
+    };
+
+    // The two trees first, and then whatever the scrapbook holds hung between them: one 16x16
+    // quad from the colony's own trinket sheet at the anchor for its slot, exactly as the overlay
+    // draws them. The inward tree is the same atlas cell read the other way round.
+    let members: Vec<formiga_art::Palette> = (0..=cottages.len())
+        .map(|slot| {
+            formiga_art::palette_for(
+                &World::preview_adult(
+                    SeedStream::new(seed).bytes("yard-resident", slot as u64),
+                    OffsetDateTime::UNIX_EPOCH,
+                    &fixture_desktop(),
+                )
+                .appearance,
+            )
+        })
+        .collect();
+    let sheet = formiga_art::TrinketAtlasRenderer::render(seed, &members);
+    for end in TreeEnd::BOTH {
+        let Some((_, tree)) = home_tree_position(&home, end, cottages, monitors, &policy, 1) else {
+            continue;
+        };
+        let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+        for y in 0..SHELTER_SIZE as i32 {
+            for x in 0..SHELTER_SIZE as i32 {
+                let read = if end == TreeEnd::Inward {
+                    SHELTER_SIZE as i32 - 1 - x
+                } else {
+                    x
+                };
+                cell.set(
+                    x,
+                    y,
+                    village.get(SHELTER_SIZE as i32 + read, SHELTER_SIZE as i32 + y),
+                );
+            }
+        }
+        let (left, top) = standing(SHELTER_SIZE, tree);
+        corner_of(&cell, SHELTER_SIZE, left, top);
+        for variant in 0..panel.found as u8 {
+            let Some((hangs_in, anchor)) = formiga_art::trinket_place(variant) else {
+                continue;
+            };
+            if hangs_in != end {
+                continue;
+            }
+            let (sx, sy, _, _) = formiga_art::TrinketAtlasRenderer::cell_rect(
+                variant,
+                formiga_art::TRINKET_FRAME_REST,
+            );
+            let mut quad =
+                formiga_art::Canvas::new(formiga_art::TRINKET_CELL, formiga_art::TRINKET_CELL);
+            for y in 0..formiga_art::TRINKET_CELL as i32 {
+                for x in 0..formiga_art::TRINKET_CELL as i32 {
+                    quad.set(x, y, sheet.get(sx as i32 + x, sy as i32 + y));
+                }
+            }
+            let half = formiga_art::TRINKET_CELL as i32 / 2;
+            corner_of(
+                &quad,
+                formiga_art::TRINKET_CELL,
+                left + anchor.x - half,
+                top + anchor.y - half,
+            );
+        }
+    }
 
     for slot in 0..=cottages.len() {
         let Some((_, p)) = home_dwelling_position(&home, slot, cottages, monitors, &policy, 1)
@@ -325,21 +413,27 @@ fn draw_yard_panel(
                 cell.set(x, y, village.get(cell_x + x, cell_y + y));
             }
         }
-        place(&cell, SHELTER_SIZE, p);
+        let (x, y) = standing(SHELTER_SIZE, p);
+        corner_of(&cell, SHELTER_SIZE, x, y);
     }
 
+    // The colony's belongings, four over each tree's roots. They are drawn after the trees, so
+    // they stand in front of a trunk, and back to front so a yard reads as having depth.
     let atlas = formiga_art::ColonyObjectRenderer::render_atlas(seed);
-    for slot in 0..panel.objects {
-        let Some((_, p)) = home_object_position(&home, slot, cottages, monitors, &policy, 1) else {
-            continue;
-        };
+    let places = home_object_positions(&home, cottages, monitors, &policy, 1);
+    let mut yard: Vec<(usize, Point)> = (0..panel.objects)
+        .filter_map(|slot| places[slot].map(|(_, point)| (slot, point)))
+        .collect();
+    yard.sort_by(|a, b| a.1.y.total_cmp(&b.1.y));
+    for (slot, p) in yard {
         let mut tile = formiga_art::Canvas::new(16, 16);
         for y in 0..16 {
             for x in 0..16 {
                 tile.set(x, y, atlas.get(slot as i32 * 16 + x, y));
             }
         }
-        place(&tile, 16, p);
+        let (x, y) = standing(16, p);
+        corner_of(&tile, 16, x, y);
     }
 
     // The residents themselves, each on the porch beside its own door and facing the strip.
@@ -356,7 +450,8 @@ fn draw_yard_panel(
         );
         let frame =
             CreatureRenderer::render_frame(&member.appearance, ActionKind::Homebound, 0, facing);
-        place(&frame, FRAME_SIZE, p);
+        let (x, y) = standing(FRAME_SIZE, p);
+        corner_of(&frame, FRAME_SIZE, x, y);
     }
 }
 
@@ -1096,14 +1191,16 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
     const MARGIN: u32 = 8;
     const LANE_GAP: u32 = 10;
     // One row per style, all on one ground line: the colony house plain, the same house carrying
-    // every decoration it can earn, a companion's cottage, a mini's, and a creature drawn at the
-    // very same scale — so both the decoration anchors and the way a cottage reads beside the
-    // thing that lives in it stay reviewable in one glance.
+    // every decoration it can earn, a companion's cottage, a mini's, the keepsake tree the colony
+    // hangs its finds on, and a creature drawn at the very same scale — so the decoration anchors,
+    // the way a cottage reads beside the thing that lives in it, and every cell of the one village
+    // atlas stay reviewable in one glance.
     let footprints = [
         DwellingKind::Main.width() as u32,
         DwellingKind::Main.width() as u32,
         DwellingKind::Cottage.width() as u32,
         DwellingKind::MiniCottage.width() as u32,
+        TREE_WIDTH as u32,
         FRAME_SIZE,
     ];
     let lane: u32 = footprints.iter().sum::<u32>() + LANE_GAP * (footprints.len() as u32 - 1);
@@ -1149,6 +1246,7 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
             ),
             (cell(SHELTER_SIZE, 0), SHELTER_SIZE),
             (cell(0, SHELTER_SIZE), SHELTER_SIZE),
+            (cell(SHELTER_SIZE, SHELTER_SIZE), SHELTER_SIZE),
             (
                 CreatureRenderer::render_frame(
                     &resident.appearance,

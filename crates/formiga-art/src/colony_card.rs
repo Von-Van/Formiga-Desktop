@@ -16,7 +16,7 @@ use crate::{
 };
 use formiga_core::{
     ActionKind, ColonyObjectKind, Creature, CreatureRole, DesktopRect, DisplayKey, DwellingKind,
-    HabitatPolicy, MonitorInfo, SaveFile,
+    HabitatPolicy, MonitorInfo, SaveFile, TreeEnd,
 };
 
 pub const COLONY_CARD_WIDTH: u32 = 960;
@@ -207,11 +207,21 @@ fn draw_floor(canvas: &mut Canvas, palette: Palette) {
     canvas.fill_rect(SCENE_LEFT, NAME_PLAQUE_TOP, width, 4, palette.accent);
 }
 
+/// What one piece of the village strip is drawn from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LotArt {
+    /// A dwelling quadrant of the village atlas.
+    Dwelling(DwellingKind),
+    /// The village atlas's tree cell. The inward bookend samples it mirrored, exactly as the
+    /// desktop does, so the card's two trees are not one drawing twice.
+    Tree { mirrored: bool },
+    /// One cell of the colony object sheet.
+    Object(ColonyObjectKind),
+}
+
 /// One piece of the village strip, and where the desktop puts it.
 struct Lot {
-    /// Atlas source: a dwelling quadrant, or one colony object cell.
-    dwelling: Option<DwellingKind>,
-    object: Option<ColonyObjectKind>,
+    art: LotArt,
     /// Centre and ground line, in the desktop's own coordinates.
     center_x: f32,
     ground_y: f32,
@@ -220,19 +230,23 @@ struct Lot {
 impl Lot {
     /// Side of the square art cell this piece is sampled from, in desktop units.
     fn cell(&self) -> f32 {
-        if self.dwelling.is_some() {
-            SHELTER_SIZE as f32
-        } else {
-            COLONY_OBJECT_SIZE as f32
+        match self.art {
+            LotArt::Dwelling(_) | LotArt::Tree { .. } => SHELTER_SIZE as f32,
+            LotArt::Object(_) => COLONY_OBJECT_SIZE as f32,
         }
+    }
+
+    /// Whether this piece is drawn in front of the houses rather than among them.
+    fn in_front(&self) -> bool {
+        matches!(self.art, LotArt::Object(_))
     }
 }
 
 /// The village exactly as the colony has built it: the colony house with the decorations it has
-/// earned, a cottage per companion in colony order, and the loose belongings on the same ground
-/// line. Every position comes from the shared placement functions rather than from numbers written
-/// down here, so the strip on the card keeps matching the strip on the desktop when cottages grow
-/// or the walk changes.
+/// earned, a cottage per companion in colony order, the two trees bookending them, and the loose
+/// belongings scattered in the yards at their feet. Every position comes from the shared
+/// placement functions rather than from numbers written down here, so the strip on the card keeps
+/// matching the strip on the desktop when cottages grow or the walk changes.
 ///
 /// The layout is resolved on a notional desktop rather than the reader's own, for two reasons: a
 /// card must carry no screen information, and a habitat too narrow for the whole strip would
@@ -247,7 +261,7 @@ fn village_lots(save: &SaveFile) -> Vec<Lot> {
         .min(formiga_core::MAX_COLONY_OBJECTS);
     let monitors = [notional_monitor()];
     let policy = HabitatPolicy::default();
-    let mut lots = Vec::with_capacity(1 + cottages.len() + objects);
+    let mut lots = Vec::with_capacity(3 + cottages.len() + objects);
     for slot in 0..=cottages.len() {
         let Some((_, point)) = formiga_core::home_dwelling_position(
             &save.home,
@@ -260,12 +274,30 @@ fn village_lots(save: &SaveFile) -> Vec<Lot> {
             continue;
         };
         lots.push(Lot {
-            dwelling: Some(if slot == 0 {
+            art: LotArt::Dwelling(if slot == 0 {
                 DwellingKind::Main
             } else {
                 cottages[slot - 1]
             }),
-            object: None,
+            center_x: point.x,
+            ground_y: point.y,
+        });
+    }
+    for end in TreeEnd::BOTH {
+        let Some((_, point)) = formiga_core::home_tree_position(
+            &save.home,
+            end,
+            &cottages,
+            &monitors,
+            &policy,
+            NOTIONAL_DISPLAY_SCALE,
+        ) else {
+            continue;
+        };
+        lots.push(Lot {
+            art: LotArt::Tree {
+                mirrored: end == TreeEnd::Inward,
+            },
             center_x: point.x,
             ground_y: point.y,
         });
@@ -282,8 +314,7 @@ fn village_lots(save: &SaveFile) -> Vec<Lot> {
             continue;
         };
         lots.push(Lot {
-            dwelling: None,
-            object: Some(save.objects.objects[slot].kind),
+            art: LotArt::Object(save.objects.objects[slot].kind),
             center_x: point.x,
             ground_y: point.y,
         });
@@ -357,33 +388,47 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
     let origin_x = aim_house_at_a_gap(&lots, centred, left, scale, drawn, gaps);
     // Every lot shares the village's own ground line; only a belonging lifts off it.
     let base_ground = lots.iter().map(|lot| lot.ground_y).fold(f32::MIN, f32::max);
-    // Houses behind, belongings in front, exactly as the desktop layers them.
+    // Houses and trees behind, belongings in front, exactly as the desktop layers them.
     let mut ordered: Vec<&Lot> = lots.iter().collect();
-    ordered.sort_by_key(|lot| lot.object.is_some());
+    ordered.sort_by_key(|lot| lot.in_front());
     for lot in ordered {
         let x = origin_x + ((lot.center_x - lot.cell() / 2.0 - left) * scale as f32).round() as i32;
         let y = VILLAGE_GROUND - (lot.cell() * scale as f32).round() as i32
             + ((lot.ground_y - base_ground) * scale as f32).round() as i32;
-        if let Some(kind) = lot.dwelling {
+        match lot.art {
             // The same quadrants the desktop samples from the same atlas.
-            let (u, v) = match kind {
-                DwellingKind::Main => (0, 0),
-                DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
-                DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
-            };
-            blit_cell(
+            LotArt::Dwelling(kind) => {
+                let (u, v) = match kind {
+                    DwellingKind::Main => (0, 0),
+                    DwellingKind::Cottage => (SHELTER_SIZE as i32, 0),
+                    DwellingKind::MiniCottage => (0, SHELTER_SIZE as i32),
+                };
+                blit_cell(
+                    canvas,
+                    &village,
+                    u,
+                    v,
+                    SHELTER_SIZE as i32,
+                    SHELTER_SIZE as i32,
+                    x,
+                    y,
+                    scale,
+                    false,
+                );
+            }
+            LotArt::Tree { mirrored } => blit_cell(
                 canvas,
                 &village,
-                u,
-                v,
+                SHELTER_SIZE as i32,
+                SHELTER_SIZE as i32,
                 SHELTER_SIZE as i32,
                 SHELTER_SIZE as i32,
                 x,
                 y,
                 scale,
-            );
-        } else if let Some(kind) = lot.object {
-            blit_cell(
+                mirrored,
+            ),
+            LotArt::Object(kind) => blit_cell(
                 canvas,
                 &objects,
                 i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32,
@@ -393,7 +438,8 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
                 x,
                 y,
                 scale,
-            );
+                false,
+            ),
         }
     }
 }
@@ -426,7 +472,7 @@ fn aim_house_at_a_gap(
 ) -> i32 {
     let Some(house) = lots
         .iter()
-        .find(|lot| lot.dwelling == Some(DwellingKind::Main))
+        .find(|lot| lot.art == LotArt::Dwelling(DwellingKind::Main))
     else {
         return centred;
     };
@@ -460,11 +506,13 @@ fn blit_cell(
     x: i32,
     y: i32,
     scale: i32,
+    mirrored: bool,
 ) {
     const HAZE: Rgba = Rgba::new(33, 71, 67, 255);
     for row in 0..height {
         for column in 0..width {
-            let pixel = atlas.get(source_x + column, source_y + row);
+            let read = if mirrored { width - 1 - column } else { column };
+            let pixel = atlas.get(source_x + read, source_y + row);
             if pixel.a == 0 {
                 continue;
             }
@@ -925,6 +973,7 @@ mod tests {
             }];
             let expected = 1
                 + formiga_core::colony_cottages(&save.creatures).len()
+                + formiga_core::TreeEnd::BOTH.len()
                 + save
                     .objects
                     .objects

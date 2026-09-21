@@ -125,16 +125,18 @@ impl World {
     }
 
     pub(super) fn reconcile_colony_objects(&mut self, desktop: &DesktopSnapshot) {
-        let cottages = colony_cottages(&self.save.creatures);
+        // This runs on every tick whether or not anything has moved, so it resolves the village
+        // once and reads every belonging's place out of that rather than asking eight times.
+        let cottages = colony_cottage_list(&self.save.creatures);
+        let places = home_object_positions(
+            &self.save.home,
+            cottages.as_slice(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
         for (slot, object) in self.save.objects.objects.iter_mut().enumerate() {
-            let Some((monitor_id, point)) = home_object_position(
-                &self.save.home,
-                slot,
-                &cottages,
-                &desktop.monitors,
-                &self.save.settings.habitat,
-                self.save.settings.display_scale,
-            ) else {
+            let Some((monitor_id, point)) = places.get(slot).copied().flatten() else {
                 continue;
             };
             let Some(monitor) = desktop
@@ -168,15 +170,10 @@ pub(super) fn nearby_object_utility(
     if !home.is_active() {
         return utility;
     }
+    // One village resolve for the whole yard, rather than one per belonging per creature.
+    let places = home_object_positions(home, cottages, &desktop.monitors, policy, display_scale);
     for (slot, object) in objects.iter().take(MAX_COLONY_OBJECTS).enumerate() {
-        let Some((monitor_id, point)) = home_object_position(
-            home,
-            slot,
-            cottages,
-            &desktop.monitors,
-            policy,
-            display_scale,
-        ) else {
+        let Some((monitor_id, point)) = places[slot] else {
             continue;
         };
         if monitor_id != creature.state.surface.monitor_id {

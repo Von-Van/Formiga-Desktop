@@ -29,68 +29,22 @@ and that CPU settles close to zero once the colony is paused. Measurements come 
 statistics and synthetic desktops only; never record, capture, or describe the real desktop being
 used to take them.
 
-Rows recorded before 0.57.0 use the older six-column shape and were never filled in; they are kept
-as a record of when a build was due to be measured, not of any measurement.
-
-| Build | Machine | State | CPU avg | Memory | Status |
-|---|---|---|---:|---:|---|
-| v0.41.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.41.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.41.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.41.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.42.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.42.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.42.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.42.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.43.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.43.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.43.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.43.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.44.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.44.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.44.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.44.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.45.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.45.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.45.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.45.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.46.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.46.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.46.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.46.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.47.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.47.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.47.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.47.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.51.0 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.51.0 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.51.0 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.51.0 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.51.5 preview | local macOS test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.51.5 preview | local macOS test machine | four moving, after 5-minute warm-up | — | — | pending |
-| v0.51.5 preview | Windows 10/11 test machine | resting, after 5-minute warm-up | — | — | pending |
-| v0.51.5 preview | Windows 10/11 test machine | four moving, after 5-minute warm-up | — | — | pending |
-
-## 0.57.0 measurements
+## Measurements
 
 | Build | Machine | State | Colony | CPU avg | CPU peak | RSS | Energy | Status | Notes |
 |---|---|---|---:|---:|---:|---:|---:|---|---|
 | v0.55.6 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display | uncontrolled, long-running session | 3 | 5.91% | 8.17% | 30.8 MB | 5.12 | reference only | 4× scale, not 3×; menu and occlusion state unknown; footprint 208 MB; 1.38% of one core averaged over its whole 2 d 12 h run. Not a gate result. |
-| v0.57.0 preview | local macOS test machine | one creature, resting | 1 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | one creature, moving | 1 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | four resting | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | four moving | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | busy desktop | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | spectatorship and comedy | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | menu open | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | menu closed | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | occluded by a full-screen app | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | local macOS test machine | paused | 4 | — | — | — | — | pending | |
-| v0.57.0 preview | Windows 10/11 test machine | the same ten states | — | — | — | — | — | pending | no Windows machine has been available |
 
-The one reference row is a read-only sample of a session that happened to be running; it is above
-the four-moving budget, but the scale, colony size and menu state were all wrong for a gate, so it
+The one row above is a read-only sample of a session that happened to be running; it is above the
+four-moving budget, but the scale, colony size and menu state were all wrong for a gate, so it
 tells us where to start looking rather than whether the budget is met.
+
+Nothing else has been measured under the procedure above. The states it asks for — one creature
+resting and moving, four resting and moving, a busy desktop, spectatorship, the menu open and
+closed, occluded by a full-screen app, and paused — remain unmeasured on a release machine for
+0.57.0 and later, and no Windows machine has been available at all. The figures in the rest of
+this document are storage and per-tick costs, which are asserted by tests or measured with
+`formiga-tools tick-bench`; they are not measurements of what the application costs a desktop.
 
 ### What the simulation itself costs
 
@@ -382,3 +336,83 @@ No native CPU, memory, or energy measurement has been taken for this release. Th
 storage and resource assertions, not measurements of whole-process cost, and the release-machine
 protocol at the top of this document remains the only thing that can answer whether the budgets are
 met.
+## 0.58.5
+
+`World::tick` costs less on a busy desktop, for behaviour that is byte-identical to 0.58.0.
+Measured with
+
+```sh
+cargo run --release -p formiga-tools -- tick-bench --ticks 40000 --warmup 4000
+```
+
+on an Apple M5, macOS 26.5.1, release profile: 40,000 ticks after a 4,000-tick warm-up,
+interleaving a binary built from 0.58.0 with one built from this tree, three rounds, medians.
+Microseconds of wall time per `World::tick`:
+
+| Scenario | 0.58.0 | 0.58.5 |
+|---|---:|---:|
+| one creature, quiet desktop | 1.14 | 1.12 |
+| four creatures, quiet desktop | 3.67 | 3.68 |
+| one creature, busy desktop with cursor | 5.87 | 4.10 |
+| four creatures, busy desktop with cursor | 9.40 | 6.97 |
+| four creatures, homebound | 3.50 | 3.53 |
+| four creatures, paused, busy desktop | 2.64 | 2.16 |
+
+A busy desktop is between a quarter and a third cheaper. The window-free scenarios are unchanged
+because nothing that changed runs without windows; the small wobble there is round-to-round
+spread, not a result.
+
+What changed. The topology answers island, left-corner, and right-corner in one walk per window
+instead of three. The ambience sampler mixes its change signature the way the topology's geometry
+hash already does, gathers the visible windows once into a reused list, and sorts that list front
+to back so a cover test stops at the frames it has already passed. The ledge search that fills
+`reachable_window_ledge` moved from every creature every tick to the action boundary that actually
+reads it. The geometry observer matches and counts windows in one pass and asks whether a window
+moved before counting its neighbours. The bounded window lists reserve once instead of growing five
+or six times a tick, and the per-tick clones of every creature and relationship became two reused
+buffers.
+
+Behaviour was proved unchanged rather than assumed. A throwaway differential harness driving only
+the public API ran six seeds across thirteen scenarios, 40,000 ticks each, against both builds, and
+hashed the save, the event stream, the bubbles, each creature's attention pose, and the interaction
+flags: 78 identical digests, with coverage counters printed beside each so that an identical digest
+could not mean neither build had done anything.
+
+### What the village costs a tick
+
+The village layout was measured separately, with the same tool over 4,000 ticks, comparing the
+village work before and after its own allocation pass — not 0.58.0 against 0.58.5. The absolute
+numbers are therefore comparable with each other and not with the table above. Microseconds per
+`World::tick`:
+
+| Scenario | before | after |
+|---|---:|---:|
+| four creatures, homebound | 4.56 | 1.77 |
+| four creatures, quiet desktop | 2.31 | 1.69 |
+| four creatures, busy desktop | unchanged | unchanged |
+
+`reconcile_colony_objects` went from roughly 34 allocations a tick to 1, and
+`tick_homebound_creatures` from roughly 76 to 8. `village_walk` is a fixed-capacity stack array,
+`colony_cottage_list` picks the members in place, `home_resting_position` and `home_guest_position`
+allocate nothing, `VillageGround::resolve` lists the habitat's regions once rather than three
+times, and `home_object_positions` resolves the village once for all eight belongings.
+
+### Storage
+
+The geometry observer's asserted storage bound moves from 8 KiB to 9 KiB, and the measurement
+behind it is stricter than it was: 8,312 bytes with every capped list at its cap, where the old
+test measured 6,264 as the lists happened to be filled. The budget covers three capped window
+lists — the last two scans, and the frames the display preferences are now sampled from — plus the
+per-display records and the signals in flight. The frame list is the only thing that grew, and it
+is the reused list that removed the ambience sampler's per-window work.
+
+The save is unchanged: version 15, no new field, no migration. Both keepsake trees, every keepsake
+hanging in them, and every belonging in their yards are derived at runtime from the colony seed and
+the scrapbook the save already holds, so none of it costs a byte on disk. The village atlas is
+still one 128×128 texture and one bind group; the two trees share its fourth cell, the inward one
+sampling it with its horizontal UVs swapped, and add one quad each to a full village's six.
+
+No native CPU, memory, or energy measurement has been taken for this release. The figures above are
+per-tick costs and storage assertions, not measurements of whole-process cost, and the
+release-machine protocol at the top of this document remains the only thing that can answer whether
+the budgets are met.

@@ -1,4 +1,4 @@
-# Formiga · v0.58.0
+# Formiga · v0.58.5
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.58.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.58.5-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,30 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.58.5
+
+The colony corner has trees now — one at each end, with the houses gathered between them, so it
+reads as one small place rather than a row of buildings. Every keepsake your creatures have found
+hangs in the branches on a cord of its own: the everyday finds in the tree beside the colony
+house, the ones that only turn up in a particular circumstance in the tree at the far end. Each
+keepsake keeps its spot for good, so a tree fills in over the months exactly as the scrapbook
+does. The colony's belongings have moved out of the lane between the houses and lie scattered
+around the two trunks instead, a few behind each tree and a few out in front of its roots.
+
+A visitor arriving at the houses walks the village now instead of standing at one end of it. It
+goes from place to place, stopping a few times, and at each stop it goes over to whichever
+companion it has not met yet — so a visit means meeting everybody rather than keeping one
+creature company. Companions near one another have also stopped shivering on the spot: a walk
+now stops when it arrives somewhere rather than stepping over the spot and back.
+
+For all that, the village takes up less of your desktop than it did — about 15% narrower, with
+two trees in it that were not there before. Formiga also does less work to keep the colony
+going: on a busy desktop with the cursor moving it costs roughly a quarter less than it used to,
+and a colony at home about three fifths less, with not a single creature behaving differently.
+
+Nothing about your colony needs doing. The save file is unchanged, so 0.58.5 opens what 0.58.0
+wrote and the trees simply appear, drawn from the seed and the scrapbook your colony already has.
 
 ## New in 0.58.0
 
@@ -186,11 +210,13 @@ already holds, so it can never say something that did not happen. Alongside it, 
 scrapbook records the first time each of the sixteen kinds of trinket was found, with a drawing of
 it, the date, and who found it — still named even if that companion has since left. Eight of those
 kinds turn up on any ordinary day; the other eight only in a particular circumstance, and until one
-has been found its slot shows a dim silhouette and a hint about where to look. The Journal page also
+has been found its slot shows a dim silhouette and a hint about where to look. Every find hangs in
+the village too, in its own place in one of the two trees. The Journal page also
 keeps a guest book: the last two dozen creatures who came by the houses, when each one visited, and
 a code that recreates it. The Home page shows
 the corner as it really is: the colony house with the decorations it has earned, a cottage for each
-companion, and the belongings along the same ground line. Looking at it never calls anyone home.
+companion, a keepsake tree at either end with everything the colony has found hanging in it, and
+the belongings scattered in the two yards. Looking at it never calls anyone home.
 
 ![Climbing, dangling, inspection, presentation poses, and the eight everyday discovery trinkets](docs/assets/ambient-sheet.png)
 

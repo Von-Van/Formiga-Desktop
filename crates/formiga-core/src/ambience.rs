@@ -1,8 +1,17 @@
 //! Coarse, transient exploration preferences derived from exposed desktop geometry.
-use crate::{DesktopSnapshot, MAX_TOPOLOGY_WINDOWS, MonitorId, Point};
-use std::hash::{Hash, Hasher};
+use crate::{DesktopRect, DesktopSnapshot, MAX_TOPOLOGY_WINDOWS, MonitorId, Point, WindowKey};
 
 const MAX_AMBIENCE_DISPLAYS: usize = 8;
+
+/// One window as the sampling below sees it. The desktop's own window record carries an
+/// application name and other things none of this cares about; the geometry sampling walks the
+/// same list once per sample point, so it walks this compact copy instead.
+#[derive(Clone, Copy, Default)]
+struct Frame {
+    key: WindowKey,
+    z_order: u32,
+    bounds: DesktopRect,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DesktopAmbience {
@@ -20,6 +29,11 @@ struct DisplayAmbience {
 pub(crate) struct AmbienceTracker {
     displays: Vec<DisplayAmbience>,
     signature: Option<u64>,
+    /// The windows the last sampling looked at, kept so that re-reading a display costs no
+    /// allocation. It is capped at `MAX_TOPOLOGY_WINDOWS` like every other geometry list here,
+    /// and grows to what a desktop actually shows, so a desktop with no windows never asks for
+    /// any of it.
+    frames: Vec<Frame>,
 }
 
 impl Default for AmbienceTracker {
@@ -27,6 +41,7 @@ impl Default for AmbienceTracker {
         Self {
             displays: Vec::with_capacity(MAX_AMBIENCE_DISPLAYS),
             signature: None,
+            frames: Vec::new(),
         }
     }
 }
@@ -45,106 +60,9 @@ impl AmbienceTracker {
     }
 
     pub fn update(&mut self, desktop: &DesktopSnapshot, elapsed: f32) {
-        let mut hash = std::collections::hash_map::DefaultHasher::new();
-        for window in desktop.windows.iter().take(MAX_TOPOLOGY_WINDOWS) {
-            window.key.hash(&mut hash);
-            window.z_order.hash(&mut hash);
-            window.visible.hash(&mut hash);
-            window.minimized.hash(&mut hash);
-            for value in [
-                window.bounds.x,
-                window.bounds.y,
-                window.bounds.width,
-                window.bounds.height,
-            ] {
-                value.to_bits().hash(&mut hash);
-            }
-        }
-        let signature = hash.finish();
+        let signature = geometry_signature(desktop);
         if self.signature != Some(signature) {
-            self.displays
-                .retain(|d| desktop.monitors.iter().any(|m| m.id == d.monitor));
-            for monitor in desktop.monitors.iter().take(MAX_AMBIENCE_DISPLAYS) {
-                let mut exposed_tops = 0_usize;
-                let mut overlapping_tops = 0_usize;
-                for window in desktop
-                    .windows
-                    .iter()
-                    .take(MAX_TOPOLOGY_WINDOWS)
-                    .filter(|w| w.visible && !w.minimized)
-                {
-                    let Some(visible_bounds) = window.bounds.intersection(monitor.usable_bounds)
-                    else {
-                        continue;
-                    };
-                    if window.bounds.y < monitor.usable_bounds.y {
-                        continue;
-                    }
-                    let exposed = [0.05, 0.5, 0.95].into_iter().any(|fraction| {
-                        let top = Point {
-                            x: visible_bounds.x + visible_bounds.width * fraction,
-                            y: window.bounds.y,
-                        };
-                        !desktop
-                            .windows
-                            .iter()
-                            .take(MAX_TOPOLOGY_WINDOWS)
-                            .any(|other| {
-                                other.visible
-                                    && !other.minimized
-                                    && other.z_order < window.z_order
-                                    && other.bounds.contains(top)
-                            })
-                    });
-                    if exposed {
-                        exposed_tops += 1;
-                        if desktop
-                            .windows
-                            .iter()
-                            .take(MAX_TOPOLOGY_WINDOWS)
-                            .any(|other| {
-                                other.key != window.key
-                                    && other.visible
-                                    && !other.minimized
-                                    && other.bounds.intersection(window.bounds).is_some()
-                            })
-                        {
-                            overlapping_tops += 1;
-                        }
-                    }
-                }
-                // Fifteen geometry samples estimate free space; no desktop pixels are read.
-                let open_cells = (0..15)
-                    .filter(|index| {
-                        let point = Point {
-                            x: monitor.usable_bounds.x
-                                + monitor.usable_bounds.width * ((index % 5) as f32 + 0.5) / 5.0,
-                            y: monitor.usable_bounds.y
-                                + monitor.usable_bounds.height * ((index / 5) as f32 + 0.5) / 3.0,
-                        };
-                        !desktop
-                            .windows
-                            .iter()
-                            .take(MAX_TOPOLOGY_WINDOWS)
-                            .any(|w| w.visible && !w.minimized && w.bounds.contains(point))
-                    })
-                    .count();
-                let desired = DesktopAmbience {
-                    roaming: open_cells as f32 / 15.0
-                        * (1.0 - exposed_tops.saturating_sub(1) as f32 / 3.0).clamp(0.0, 1.0),
-                    climbing: (exposed_tops.saturating_sub(1) as f32 / 3.0).clamp(0.0, 1.0)
-                        * (overlapping_tops as f32 / 2.0).min(1.0),
-                };
-                if let Some(display) = self.displays.iter_mut().find(|d| d.monitor == monitor.id) {
-                    display.desired = desired;
-                } else if self.displays.len() < MAX_AMBIENCE_DISPLAYS {
-                    self.displays.push(DisplayAmbience {
-                        monitor: monitor.id,
-                        current: DesktopAmbience::default(),
-                        desired,
-                    });
-                }
-            }
+            self.resample(desktop);
             self.signature = Some(signature);
         }
         let blend = (elapsed / 5.0).clamp(0.0, 1.0);
@@ -155,10 +73,121 @@ impl AmbienceTracker {
         }
     }
 
+    /// Read what each display now offers. Only called when the geometry actually changed.
+    fn resample(&mut self, desktop: &DesktopSnapshot) {
+        self.displays
+            .retain(|d| desktop.monitors.iter().any(|m| m.id == d.monitor));
+
+        // Every sample point below asks the same question of the same windows, so the ones that
+        // are really on screen are gathered once rather than re-filtered out of the snapshot on
+        // each of the hundreds of tests that follow.
+        //
+        // Front to back: a window's top edge can only be covered by one that sits in front of it,
+        // which after the sort is one of the frames already passed, so the search for a cover
+        // stops at the window itself instead of running to the back of the desktop every time.
+        // Windows that share a z-order cover nothing, which the test below still says.
+        self.frames.clear();
+        self.frames.extend(
+            desktop
+                .windows
+                .iter()
+                .take(MAX_TOPOLOGY_WINDOWS)
+                .filter(|window| window.visible && !window.minimized)
+                .map(|window| Frame {
+                    key: window.key,
+                    z_order: window.z_order,
+                    bounds: window.bounds,
+                }),
+        );
+        self.frames.sort_unstable_by_key(|frame| frame.z_order);
+        let frames = &self.frames;
+
+        for monitor in desktop.monitors.iter().take(MAX_AMBIENCE_DISPLAYS) {
+            let mut exposed_tops = 0_usize;
+            let mut overlapping_tops = 0_usize;
+            for (index, window) in frames.iter().enumerate() {
+                let Some(visible_bounds) = window.bounds.intersection(monitor.usable_bounds) else {
+                    continue;
+                };
+                if window.bounds.y < monitor.usable_bounds.y {
+                    continue;
+                }
+                let exposed = [0.05, 0.5, 0.95].into_iter().any(|fraction| {
+                    let top = Point {
+                        x: visible_bounds.x + visible_bounds.width * fraction,
+                        y: window.bounds.y,
+                    };
+                    !frames[..index]
+                        .iter()
+                        .any(|other| other.z_order < window.z_order && other.bounds.contains(top))
+                });
+                if exposed {
+                    exposed_tops += 1;
+                    if frames.iter().any(|other| {
+                        other.key != window.key
+                            && other.bounds.intersection(window.bounds).is_some()
+                    }) {
+                        overlapping_tops += 1;
+                    }
+                }
+            }
+            // Fifteen geometry samples estimate free space; no desktop pixels are read.
+            let open_cells = (0..15)
+                .filter(|index| {
+                    let point = Point {
+                        x: monitor.usable_bounds.x
+                            + monitor.usable_bounds.width * ((index % 5) as f32 + 0.5) / 5.0,
+                        y: monitor.usable_bounds.y
+                            + monitor.usable_bounds.height * ((index / 5) as f32 + 0.5) / 3.0,
+                    };
+                    !frames.iter().any(|w| w.bounds.contains(point))
+                })
+                .count();
+            let desired = DesktopAmbience {
+                roaming: open_cells as f32 / 15.0
+                    * (1.0 - exposed_tops.saturating_sub(1) as f32 / 3.0).clamp(0.0, 1.0),
+                climbing: (exposed_tops.saturating_sub(1) as f32 / 3.0).clamp(0.0, 1.0)
+                    * (overlapping_tops as f32 / 2.0).min(1.0),
+            };
+            if let Some(display) = self.displays.iter_mut().find(|d| d.monitor == monitor.id) {
+                display.desired = desired;
+            } else if self.displays.len() < MAX_AMBIENCE_DISPLAYS {
+                self.displays.push(DisplayAmbience {
+                    monitor: monitor.id,
+                    current: DesktopAmbience::default(),
+                    desired,
+                });
+            }
+        }
+    }
+
     #[cfg(test)]
     pub fn reserved_bytes(&self) -> usize {
         self.displays.capacity() * std::mem::size_of::<DisplayAmbience>()
+            + self.frames.capacity() * std::mem::size_of::<Frame>()
     }
+}
+
+/// A value that changes exactly when the visible window geometry does. It is only ever compared
+/// with the previous one, so it uses the same cheap FNV-1a mixing as the topology's own hash
+/// rather than a general-purpose hasher.
+fn geometry_signature(desktop: &DesktopSnapshot) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for window in desktop.windows.iter().take(MAX_TOPOLOGY_WINDOWS) {
+        for value in [
+            window.key,
+            u64::from(window.z_order),
+            u64::from(window.visible) | (u64::from(window.minimized) << 1),
+            u64::from(window.bounds.x.to_bits()),
+            u64::from(window.bounds.y.to_bits()),
+            u64::from(window.bounds.width.to_bits()),
+            u64::from(window.bounds.height.to_bits()),
+        ] {
+            hash ^= value;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    hash
 }
 
 #[cfg(test)]
