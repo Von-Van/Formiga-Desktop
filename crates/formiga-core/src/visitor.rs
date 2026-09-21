@@ -66,7 +66,7 @@ pub enum TourInterest {
 
 /// One place on a guest's walk around the village: somewhere a creature may legitimately stand,
 /// and what it turns to look at when it gets there. Worked out from the village's own layout, so
-/// a tour follows wherever the houses, the porches and the tree's yard have ended up.
+/// a tour follows wherever the houses, the shared ground and the trees' yards have ended up.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TourStop {
     pub at: Point,

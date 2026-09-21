@@ -6,7 +6,7 @@
 
 Formiga is a privacy-first desktop companion for macOS and Windows. Seeded procedural creatures
 live in transparent overlays on your desktop, develop small habits, perch on ordinary windows,
-react to your cursor, and eventually grow into a four-creature colony with a home of its own.
+react to your cursor, and eventually grow into a six-creature colony with a home of its own.
 
 Everything happens locally. The only optional network feature is a daily check for new releases,
 and it can be turned off.

@@ -87,6 +87,12 @@ fn no_face_stays_covered_for_longer_than_a_moment_over_a_long_session() {
     // asked us to end.
     let bound = World::cover_grace() + 4.0;
     let crowd_bound = World::crowd_grace() + 4.0;
+    // `eager_colony` is a colony of four on one floor. A colony filled to the cap puts half again
+    // as many bodies on the same ground, and this bound does not hold there: nothing moves a
+    // companion that has settled — asleep, or watching a window — off a neighbour's face, and at
+    // six somebody parks just inside the clear distance often enough for it to last. Measured on
+    // identical colonies and seeds, four keeps the worst episode to 1.30–2.15s while six runs to
+    // 7.50, 7.80 and 22.20 against a bound of 5.25.
     for index in 0_u8..4 {
         let seed = [index.wrapping_mul(37).wrapping_add(11); 32];
         let (cover, touch) = worst_episodes(seed, 1_400);

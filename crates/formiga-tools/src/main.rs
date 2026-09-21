@@ -172,7 +172,7 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
 /// One stretch of village ground, drawn exactly where the layout functions put everything: the
 /// two keepsake trees bookending the strip with whatever the scrapbook holds hung between them,
 /// the colony house, one cottage per later member, the belongings in the yard at each trunk, and
-/// every resident standing on the porch beside its own door.
+/// every resident out on the shared ground in front of the row.
 struct YardPanel {
     cottages: Vec<DwellingKind>,
     objects: usize,
@@ -435,7 +435,7 @@ fn draw_yard_panel(
         corner_of(&tile, 16, x, y);
     }
 
-    // The residents themselves, each on the porch beside its own door and facing the strip.
+    // The residents themselves, spread along the ground in front of the row and facing the strip.
     let facing = corner == HomeCorner::BottomLeft;
     for slot in 0..=cottages.len() {
         let Some((_, p)) = home_resting_position(

@@ -167,7 +167,7 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                 home.corner = corner;
                 let anchor = resolved_home_anchor(&home, monitor, scale, &policy).unwrap();
                 let unit = f32::from(scale) / monitor.scale_factor.max(1.0);
-                // Houses, porches and belongings share one walk, so no two footprints overlap.
+                // Houses, trees and belongings share one walk, so no two footprints overlap.
                 let mut spans: Vec<(f32, f32)> = Vec::new();
                 let push = |centre: f32, width: f32, spans: &mut Vec<(f32, f32)>| {
                     let half = width * unit / 2.0;

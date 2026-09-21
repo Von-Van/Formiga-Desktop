@@ -111,8 +111,13 @@ fn shared_adoption_refuses_full_colony_without_mutation() {
     assert_eq!(world.save, before);
 }
 
+/// The colony cap and the full-size cap are the same number now that every full-size companion
+/// has a house of its own, so a colony with room left in it always has room for an adult and it
+/// is `ColonyFull` that answers, never `AdultLimit`. What is worth holding here is that the total
+/// holds against a colony made entirely of full-size companions, and that the per-parent mini cap
+/// holds underneath it.
 #[test]
-fn generated_colonies_enforce_total_adult_and_mini_caps() {
+fn a_colony_of_full_size_companions_fills_to_the_cap_and_no_further() {
     let now = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = World::new([120; 32], now, &desktop);

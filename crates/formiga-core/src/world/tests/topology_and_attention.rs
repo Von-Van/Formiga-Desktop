@@ -38,6 +38,9 @@ pub(super) fn eager_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDat
     world.save.ritual.next_at_utc = now + Duration::days(30);
     // One art pixel per desktop point, so the gap and spacing numbers below read directly.
     world.save.settings.display_scale = 2;
+    // Four, because one tick across forty days stages only the arrivals that tick earns. The
+    // colony cap is higher, so the spacing bounds these colonies are held to are bounds for four
+    // bodies on one floor rather than for a full village out on the desktop.
     assert_eq!(world.save.creatures.len(), 4);
     for (index, creature) in world.save.creatures.iter_mut().enumerate() {
         creature.state.arrival_delay_secs = 0.0;

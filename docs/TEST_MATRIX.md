@@ -12,7 +12,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
 | Raised cat tail and visible rabbit puff for every tail style | CI | CI |
 | Resting cats plant all four paws on the same contact row as walking; gesture paws cap long generated reaches | CI | CI |
-| v1–v14→v15 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
+| v1–v15→v16 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | A v14 colony migrates to an empty visitor state; the saved-field allowlist and runtime-only field denylist both hold | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
@@ -228,7 +228,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
 | Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
 | Sleep/wake and lock/unlock | pending | pending | pending | pending |
-| Two- and four-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
+| Two- and six-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
 | Right-click and, on macOS, Control-click open the strip without stealing activation or focus; icon clicks act while the border and gaps do nothing | pending | pending | pending | pending |
 | The notch, label tab, and everything around the strip stay click-through; on Windows the region clips to the strip body and WM_RBUTTONDOWN reaches the no-activate tool window without a taskbar flash | pending | pending | pending | pending |
 | The menu survives a Space switch, hides under a full-screen application, sizes correctly on mixed DPI (100/125/150/200%), and closes when the creature is dragged between displays | pending | pending | pending | pending |
@@ -238,7 +238,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once | pending | pending | pending | pending |
 | The village on a real desktop: both trees bookending the houses, keepsakes filling the branches as they are found, the belongings scattered in the two yards, and the whole corner on screen at every scale in both corners | pending | pending | pending | pending |
 | Sticker and colony-portrait export dialogs: save, cancel, Unicode names, and reopening both files in a native viewer | pending | pending | pending | pending |
-| Package install, relaunch, v15 round trip, and representative v1–v14 migration without creature loss | pending | pending | pending | pending |
+| Package install, relaunch, v16 round trip, and representative v1–v15 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

@@ -227,7 +227,7 @@ impl World {
         }
         interaction.dragging = true;
         let creature_id = interaction.creature_id;
-        // A doze on the village porch is a passive moment, not a night's sleep: interrupting one
+        // A doze at home is a passive moment, not a night's sleep: interrupting one
         // is not something the creature should learn from.
         let interrupted_sleep =
             interaction.original_action == ActionKind::Sleep && !self.save.home.is_active();

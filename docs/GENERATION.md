@@ -76,7 +76,7 @@ and whoever is holding it. A new variant is a new column, not a new texture per 
 - Keep reduced-motion behavior, mirrored rendering, miniature proportions, and gesture poses. A new
   pose moves the limb a side already has; it never draws a second one beside it.
 - Update code versioning before changing the byte layout or meaning of a serialized choice.
-- Preserve atlas dimensions, clip counts, and the four-creature limit unless a separate resource
+- Preserve atlas dimensions, clip counts, and the colony creature limit unless a separate resource
   budget change is intended. Generation must not introduce an idle worker or retain source pixels.
 - Run workspace tests and review `generation-sheet`, `contact-sheet`, and `animation-preview`.
   Automated coverage includes all body/ear/tail combinations at extreme sizes, connected silhouettes,

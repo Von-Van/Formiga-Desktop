@@ -113,7 +113,7 @@ pub enum TreeEnd {
     /// The tree nearest the screen corner, on the far side of the colony house from the cottages.
     /// The one `HOME_EDGE_MARGIN` reserves ground for against the edge of the display.
     Outward,
-    /// The tree past the last porch, at the inward end of the strip.
+    /// The tree past the last house, at the inward end of the strip.
     Inward,
 }
 
@@ -148,13 +148,14 @@ impl TreeEnd {
 /// `formiga_art::TRINKET_ANCHORS` holds.
 pub const TRINKETS_PER_TREE: u8 = crate::TRINKET_VARIANTS / 2;
 
-/// A lot on the strip: a dwelling, the porch beside one, or one of the two keepsake trees and its
-/// yard. The colony's belongings are not lots of their own — they are scattered inside the trees'.
+/// A lot on the strip: a dwelling, or one of the two keepsake trees and its yard. The ground in
+/// front of the houses is no lot at all — the colony shares it and walks it — and the colony's
+/// belongings are scattered inside the trees' yards rather than holding lots of their own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VillageLot {
     /// A tree the colony hangs its finds in and keeps its things under. There is one at each end
     /// of the walk: the outward one sits at a negative position, the inward one past the last
-    /// porch.
+    /// house.
     Tree(TreeEnd),
     Dwelling(usize),
 }
@@ -253,9 +254,9 @@ impl VillageWalk {
     }
 }
 
-/// The walk: a tree, then the colony house and its resident's porch, then a cottage and a porch
-/// for every later member, then the second tree. Houses and the porches beside them are laid out
-/// together, so nobody can stand in front of a door. Lots which cannot fit the house's accessible
+/// The walk: a tree, then the colony house, then a cottage for every later member, then the
+/// second tree. Nothing is laid between the houses — they stand a seam apart and the ground in
+/// front of the whole row belongs to the colony. Lots which cannot fit the house's accessible
 /// region stay stored but hidden, rather than spilling elsewhere — and because the trees are the
 /// outermost lots at both ends, a corner that runs out of ground gives up a tree before a house.
 ///
@@ -280,7 +281,7 @@ fn village_walk(cottages: &[DwellingKind]) -> VillageWalk {
         push(VillageLot::Dwelling(house), edge + width / 2.0);
         edge += width;
     }
-    // The far wall: the second tree closes the strip off past the last porch.
+    // The far wall: the second tree closes the strip off past the last house.
     push(
         VillageLot::Tree(TreeEnd::Inward),
         edge + VILLAGE_GAP + TREE_WIDTH / 2.0,
@@ -474,16 +475,6 @@ fn village_monitor<'a>(home: &ColonyHome, monitors: &'a [MonitorInfo]) -> Option
 /// Half the width a standing creature takes up, in shelter pixels.
 const GUEST_HALF_WIDTH: f32 = CREATURE_FRAME_WIDTH / 2.0;
 
-/// Where a member of the colony waits out a home visit: the porch beside its own door, so every
-/// wall and doorway behind the row stays in view. `slot` is the member's place in colony order —
-/// slot 0 shares the colony house, and every later slot has the cottage of the same number.
-///
-/// When the strip runs out of room for a porch — a narrow display, a habitat cut down to a
-/// sliver — that member stands on the free ground just past whatever the village does manage to
-/// show, spaced from everyone else by `REST_CLEAR_RATIO` of a frame. A region with no room even
-/// for that gives up on porches entirely and lines the whole colony up along the ground from the
-/// far edge inward, which can put somebody in front of a wall: keeping the colony on the display
-/// and out of one another's faces matters more than a clear view of a house nobody can see
 /// The run of ground the colony has to itself while it is home: from the outward tree's outer
 /// edge to the inward one's, along the village's own ground line. The houses stand at the back of
 /// it and the trees close it at either end, so this is what a companion may walk without leaving
@@ -632,7 +623,7 @@ pub fn home_resting_position(
 }
 
 /// Where a visitor stands: on the village ground line just past everything the colony actually
-/// shows — the outermost house, porch or belonging that fits here, and any resident who had to
+/// shows — the outermost house, tree or belonging that fits here, and any resident who had to
 /// stand past the strip — so a guest is beside the village rather than in front of it or on top
 /// of somebody. A corner with no room left for a guest to keep its distance has no guest spot.
 pub fn home_guest_position(
@@ -803,7 +794,7 @@ pub fn home_dwelling_position(
 
 /// Where one of the two keepsake trees stands. The outward one is on the side of the colony house
 /// away from the cottages — left of the houses in a bottom-left village, and mirrored to their
-/// right in a bottom-right one; the inward one closes the strip off past the last porch. A region
+/// right in a bottom-right one; the inward one closes the strip off past the last house. A region
 /// with no room for a tree shows no tree at that end; the houses never move aside to make room
 /// for one, and a corner that can take only one of them still reads as a village.
 pub fn home_tree_position(
@@ -1167,7 +1158,7 @@ mod tests {
                 "two trees and a house each should all fit a display this size"
             );
             // The bookends: one past the colony house away from the cottages, one past the last
-            // porch, with every house between them.
+            // cottage, with every house between them.
             let tree_of = |end| {
                 lots.iter()
                     .find(|(lot, _, _)| *lot == VillageLot::Tree(end))
@@ -1226,7 +1217,7 @@ mod tests {
         );
         assert!(
             village_span(&[]) < span,
-            "a colony of one should not take more ground than a colony of four"
+            "a founder on its own should not take more ground than a village of six"
         );
         // And on a real display, at the scale that magnifies it most.
         let monitor = wide_monitor(1.0);
@@ -1308,7 +1299,9 @@ mod tests {
         }
     }
 
-    /// and never under the feet of the nearest resident — who is a porch and a gap away.
+    /// Everything the colony owns lies in one of the two trees' yards, split between the ends:
+    /// never on a house, never on the tree itself, and never under the feet of the nearest
+    /// resident, who is standing out on the shared ground in front of the row.
     #[test]
     fn the_belongings_split_between_both_yards_without_landing_on_anything() {
         let policy = HabitatPolicy::default();
@@ -1465,7 +1458,7 @@ mod tests {
             }
         }
         // Given the room, both are back: one on the far side of the house from the cottages, one
-        // past the last porch, and each inside the display it belongs to.
+        // past the last cottage, and each inside the display it belongs to.
         let policy = HabitatPolicy::default();
         let monitor = wide_monitor(1.0);
         let monitors = std::slice::from_ref(&monitor);

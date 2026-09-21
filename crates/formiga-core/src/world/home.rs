@@ -3,7 +3,7 @@ use super::*;
 pub(super) const HOME_DURATION: time::Duration = time::Duration::minutes(15);
 const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
 
-/// The village lays its porches out with its own copy of the colony-wide spacing rule, because
+/// The village spaces its residents with its own copy of the colony-wide spacing rule, because
 /// `habitat` is below `world` and cannot see into it. The two must never drift apart.
 const _: () = assert!(crate::REST_CLEAR_RATIO == spacing::FACE_CLEAR_RATIO);
 

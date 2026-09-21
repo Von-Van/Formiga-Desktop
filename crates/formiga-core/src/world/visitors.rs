@@ -660,7 +660,8 @@ impl World {
     /// Where a guest's walk around the village stops.
     ///
     /// Every measurement here is asked of the village's own layout rather than written down
-    /// again, so a tour follows whatever the houses, the porches and the tree's yard do. The
+    /// again, so a tour follows whatever the houses, the shared ground and the trees' yards do.
+    /// The
     /// first stop is always the spot the guest walked in to; the rest are found by walking the
     /// ground line from there inward past the houses, taking the first place a body may
     /// legitimately stand and then the next one a clear frame beyond it.
@@ -722,7 +723,7 @@ impl World {
             };
             // As close to a house as a body may come without standing over its door: the
             // outermost sliver of wall a resting frame is allowed to reach across, and no more.
-            // It is the same arithmetic that puts a resident's own porch where it is.
+            // It is the same arithmetic that keeps a resting resident off its own door.
             let reach =
                 (kind.width() / 2.0 + CREATURE_FRAME_WIDTH / 2.0 - REST_WALL_SLIVER) * scale;
             *house = Some((point, reach));

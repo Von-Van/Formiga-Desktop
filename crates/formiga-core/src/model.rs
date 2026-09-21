@@ -724,7 +724,10 @@ pub struct CreatureOrigin {
 }
 
 pub const MAX_COLONY_CREATURES: usize = 6;
-pub const MAX_ADULT_CREATURES: usize = 6;
+/// Every full-size companion has a house of its own and the village has room for six, so this is
+/// the colony cap rather than a smaller one inside it. `AdultLimit` therefore cannot be the limit
+/// that fires while the two agree: a colony with room left over has room for an adult.
+pub const MAX_ADULT_CREATURES: usize = MAX_COLONY_CREATURES;
 pub const MAX_MINIS_PER_ADULT: usize = 3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -946,9 +949,9 @@ pub enum CreatureNameError {
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ColonyManagementError {
-    #[error("the colony already has four creatures")]
+    #[error("the colony already has {} creatures", MAX_COLONY_CREATURES)]
     ColonyFull,
-    #[error("the colony already has three full-size creatures")]
+    #[error("the colony already has {} full-size creatures", MAX_ADULT_CREATURES)]
     AdultLimit,
     #[error("creature not found")]
     CreatureNotFound,

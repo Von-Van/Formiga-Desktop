@@ -350,7 +350,8 @@ fn every_member_rests_beside_its_own_door_with_a_clear_face() {
             assert!(world.save.home.is_active());
             finish_home_approach_still(&mut world, created, &desktop);
 
-            // Everybody is on the porch the layout reserved for its place in colony order.
+            // Everybody is on the resting place the layout spreads out for its place in colony
+            // order.
             let cottages = colony_cottages(&world.save.creatures);
             let mut order: Vec<_> = world
                 .save
@@ -402,7 +403,7 @@ fn every_member_rests_beside_its_own_door_with_a_clear_face() {
 }
 
 /// What the tightening is for. A grown colony with everything it owns, on the laptop display the
-/// complaint came from: the whole village — tree, houses, porches and keepsakes — has to leave
+/// complaint came from: the whole village — trees, houses, belongings and keepsakes — has to leave
 /// most of the screen alone at every scale it can be drawn at, and the tree has to be on the far
 /// side of the colony house from the cottages in either corner.
 #[test]
@@ -921,11 +922,11 @@ fn petting_a_dozing_resident_is_not_a_night_of_sleep_cut_short() {
         !world
             .drain_events()
             .any(|event| matches!(event, WorldEvent::SleepInterrupted { .. })),
-        "a doze on the porch counted as a broken sleep"
+        "a doze at home counted as a broken sleep"
     );
     assert_eq!(
         world.save.creatures[0].tendencies.sleep_security, before,
-        "the creature learned to distrust its own porch"
+        "the creature learned to distrust its own doorstep"
     );
 }
 

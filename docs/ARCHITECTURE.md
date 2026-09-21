@@ -166,8 +166,8 @@ an ordinary `Traverse` target through `ActionChoice`; it does not add a pathfind
 
 ## Creature-bond projection
 
-The save owns at most six canonical unordered `CreatureRelationship` records, one for each possible
-pair in a four-creature colony. Each record has two stable IDs and four `u8` scores: affinity,
+The save owns at most fifteen canonical unordered `CreatureRelationship` records, one for each
+possible pair in a six-creature colony. Each record has two stable IDs and four `u8` scores: affinity,
 familiarity, playfulness, and avoidance. The scores themselves therefore consume exactly four raw
 bytes per pair. Pair values saturate in `0..=255`; positive and contrary contact can move them in
 both directions without changing either creature's innate genome.
@@ -233,7 +233,7 @@ creature opts out per vertex.
 The overlay treats repeated surface timeouts or compositor-occluded acquisition as recoverable. It
 reconfigures the existing surface after three consecutive stalls, invalidates cached presentation
 state, and requests another frame. Its creature vertex buffer also grows to the next bounded power
-of two if a valid colony frame exceeds the initial four-creature allocation. Simulation positions
+of two if a valid colony frame exceeds the initial colony allocation. Simulation positions
 are reconciled to current native monitor IDs before rendering, so display sleep or hot-plug changes
 cannot strand a living creature outside every overlay.
 
