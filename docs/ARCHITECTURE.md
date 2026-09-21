@@ -208,6 +208,23 @@ Habitat policies are the union of allowed rectangles (or a preset) minus exclude
 Rectangles are normalized against privacy-safe display identities, so DPI and resolution changes do
 not invalidate them. Window-ledges are clipped to the same reachable habitat.
 
+The ground a policy is measured against is `colony_bounds`: the display inside the menu bar at the
+top and clear of `platform::BOTTOM_RESERVED` at the bottom — the strip the system keeps for the
+Dock at its factory size on macOS, or the taskbar on Windows. The colony is founded on the floor
+of that, so the houses stand on top of the Dock rather than behind it.
+
+While the desktop habitat editor is open, every overlay is hit-testable across its whole display
+so a press anywhere draws a region. `habitat_editor_claims` limits what the editor takes to
+`CursorMoved` and `MouseInput`: everything else, `RedrawRequested` above all, still belongs to the
+overlay it was addressed to, so the editor draws what is being dragged instead of freezing the
+colony on its last frame. Because those overlays cover the display and sit at the same window
+level as the settings window, `platform::raise_above_overlays` holds the settings window above
+them for the length of the edit — macOS by window level, Windows by re-asserting topmost after
+each gesture — so Apply, Cancel and Reset never end up behind a window that swallows every click.
+Interaction proxies are ordered out for the duration through `InteractionProxy::hide`, which keeps
+the proxy's own visibility bookkeeping honest; `sync` only touches a window on a change, so a
+proxy hidden behind its own record of itself would never be ordered back in.
+
 Selected applications are represented by bundle ID, AUMID, or a SHA-256 executable-path digest. The
 renderer subtracts higher windows from each selected window's visible rectangles and sends up to 64
 monitor-local rectangles to a fragment-shader uniform. Covered pixels are discarded; a dragged

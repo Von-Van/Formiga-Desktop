@@ -12,7 +12,10 @@ use core_graphics::geometry::CGRect;
 use formiga_core::{
     ApplicationKey, CursorSnapshot, DesktopRect, DesktopWindow, DisplayKey, MonitorInfo, Point,
 };
-use objc2_app_kit::{NSRunningApplication, NSView, NSWindowCollectionBehavior};
+use objc2_app_kit::{
+    NSNormalWindowLevel, NSRunningApplication, NSStatusWindowLevel, NSView,
+    NSWindowCollectionBehavior,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
@@ -120,6 +123,31 @@ pub fn use_nearest_overlay_filter(window: &Window) {
             let _: () = objc2::msg_send![layer, setMagnificationFilter: &*nearest];
         }
     }
+}
+
+/// The strip along the bottom of a display that belongs to the system. The Dock at its factory
+/// size stands about this tall: forty-eight point tiles inside a panel with its own padding, and
+/// a margin between that panel and the screen edge. Ground kept this far up is ground the Dock
+/// never covers, whether it is on show or sliding up under the cursor.
+pub const BOTTOM_RESERVED: f32 = 76.0;
+
+/// Lift a window clear of the desktop overlays, or let it back down among them.
+///
+/// The overlays sit at the floating level, and so does anything winit calls always-on-top, so
+/// which of them is in front is decided by whichever was clicked last. While the habitat editor
+/// is open the overlays take the mouse across the whole display, and the first press on the
+/// desktop ordered one of them in front of the settings window — burying the only Apply and
+/// Cancel buttons there are under a full-screen window that swallows every click. The status
+/// level is above every overlay and still below the menu bar.
+pub fn raise_above_overlays(window: &Window, raised: bool) {
+    let Some(ns_window) = app_kit_window(window) else {
+        return;
+    };
+    ns_window.setLevel(if raised {
+        NSStatusWindowLevel
+    } else {
+        NSNormalWindowLevel
+    });
 }
 
 pub fn set_overlay_hittest(window: &Window, enabled: bool) {

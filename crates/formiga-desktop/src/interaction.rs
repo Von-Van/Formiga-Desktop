@@ -26,7 +26,10 @@ struct MaskArtworkSignature {
 }
 
 pub struct InteractionProxy {
-    pub window: Arc<Window>,
+    /// Private on purpose. Visibility is bookkeeping the proxy keeps for itself, so hiding one of
+    /// these goes through `hide` and showing one through `sync`; reaching past them to the window
+    /// leaves the two disagreeing and the proxy never comes back.
+    window: Arc<Window>,
     pub creature_id: CreatureId,
     monitor_id: u64,
     logical_bounds: DesktopRect,
@@ -238,6 +241,21 @@ impl InteractionProxy {
                 self.applied_signature = None;
             }
         }
+    }
+
+    /// Order the proxy out without losing track of it.
+    ///
+    /// Everything that hides one of these has to come through here. `sync` only touches the
+    /// window when the visibility it wants differs from the one it last set, so a proxy hidden
+    /// behind its own bookkeeping is never ordered back in: the creature stays there on screen
+    /// with nothing underneath it to click, unpettable and with no menu, until the application is
+    /// restarted.
+    pub fn hide(&mut self) {
+        if !self.visible {
+            return;
+        }
+        self.window.set_visible(false);
+        self.visible = false;
     }
 
     pub fn hit_test(&self, desktop_x: f32, desktop_y: f32) -> bool {

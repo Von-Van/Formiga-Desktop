@@ -60,6 +60,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | A visitor's tour: every stop inside the region, clear of each doorway, of every resting resident and of every belonging; the guest stands in as many places as it planned, goes over to each resident in turn, and a narrowed display replans the ring | CI | CI |
 | Nobody turns round more than six times in a second with a companion near, across seeded colonies on a busy desktop | CI | CI |
 | A keepsake is drawn square whatever the shape of the sheet it is cut from | CI | CI |
+| The open habitat editor takes the pointer and leaves the overlay every other event, its redraw above all | CI | CI |
+| The ground the colony is founded on clears a Dock or taskbar at its factory size | CI | CI |
 | Keepsakes and belongings in the yards: eight anchors a tree with the catalogue split by condition, every found keepsake drawn once inside its own tree's cell, four belongings to each yard fixed by slot, `BELONGING_CLEARANCE` held after the per-colony drift, and no resident standing on one | CI | CI |
 | Belonging colors stay distinct from every creature palette they are carried against | CI | CI |
 | Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
@@ -207,6 +209,9 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Ritual interruption by hide, pause, drag, toss, geometry change, and reduced-motion substitution | pending | pending | pending | pending |
 | Chase, procession, dance, pile, leapfrog, keep-away, tug, tag, gap turns, copied route, ledge contest, window race, the-floor-is-lava, and hide-and-seek playback | pending | pending | pending | pending |
 | Habitat create/move/resize/toggle/delete | pending | pending | pending | pending |
+| The desktop editor draws the region under the cursor, the settings window stays in front of it throughout, and Apply, Cancel and Reset all remain clickable | pending | pending | pending | pending |
+| Creature menus, petting and dragging all still work after an edit is applied and after one is cancelled | pending | pending | pending | pending |
+| The village and a creature resting at the foot of the screen stand clear of the Dock, shown and auto-hidden, and of the taskbar | pending | pending | pending | pending |
 | Invalid habitat cannot replace valid policy | pending | pending | pending | pending |
 | Selected app occlusion and rule removal | pending | pending | pending | pending |
 | Window ordering/minimize/close | pending | pending | pending | pending |

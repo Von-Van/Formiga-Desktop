@@ -52,6 +52,34 @@ pub const OVERLAY_HALF_RESOLUTION: bool = false;
 
 pub fn use_nearest_overlay_filter(_window: &Window) {}
 
+/// The strip along the bottom of a display that belongs to the system: the taskbar, which stands
+/// forty-eight points tall at its default size on Windows 11 and shorter on Windows 10.
+pub const BOTTOM_RESERVED: f32 = 48.0;
+
+/// Lift a window clear of the desktop overlays. Windows keeps every topmost window in one band
+/// and offers nothing above it, so this re-asserts the settings window's place at the front of
+/// that band without taking focus. The caller asks again after every habitat-editor gesture,
+/// because a press on an overlay puts that overlay back in front.
+pub fn raise_above_overlays(window: &Window, raised: bool) {
+    if !raised {
+        return;
+    }
+    let Some(hwnd) = window_hwnd(window) else {
+        return;
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
 pub fn configure_native_overlay(window: &Window, hittest_enabled: bool) {
     set_overlay_hittest(window, hittest_enabled);
 }

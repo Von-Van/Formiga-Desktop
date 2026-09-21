@@ -2,6 +2,29 @@
 
 All notable changes are documented here.
 
+## [0.58.8] - 2026-09-20
+
+### Fixed
+
+- Setting a region for your companions on the desktop left the application unusable. The open
+  editor claimed every event the overlay was sent, including its redraw, so the colony froze on
+  its last frame and not one of the regions being dragged out was ever drawn; and because the
+  editor's overlays take the mouse across the whole display, the first press on the desktop
+  ordered one of them in front of the settings window, putting Apply and Cancel behind a
+  full-screen window that swallows every click. Nothing but the tray menu answered after that, and
+  only restarting cleared it. The editor now takes the pointer and leaves the overlay everything
+  else, and the settings window is kept above the overlays for as long as the edit lasts.
+- Using the desktop editor cost you every creature menu for the rest of the session. The windows
+  that carry each companion's clickable silhouette were hidden behind their own bookkeeping while
+  the editor was open, so nothing ordered them back in afterwards: right-clicking a companion,
+  petting one and picking one up all stayed dead until Formiga was restarted.
+
+### Changed
+
+- The village stands on top of the Dock rather than behind it. The ground the colony is founded on
+  was forty points above the bottom of the display, inside a Dock at its factory size; it now
+  clears the strip the system keeps for itself, on Windows as well as macOS.
+
 ## [0.58.7] - 2026-09-20
 
 ### Added

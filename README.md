@@ -1,4 +1,4 @@
-# Formiga · v0.58.7
+# Formiga · v0.58.8
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.58.7-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.58.8-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,22 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.58.8
+
+Choosing where your companions live no longer leaves the desktop unusable. Opening the desktop
+region editor used to freeze the colony on its last frame and draw none of the regions you dragged
+out, and the first press on the desktop put a full-screen window in front of the settings panel —
+so Apply and Cancel were both behind something that swallowed every click, and the only thing left
+that answered the mouse was the tray icon. The editor now draws what you are drawing, and the
+settings panel stays on top of it. Using the editor also used to cost you the creature menus for
+the rest of the session: right-clicking a companion, petting one, and picking one up all stopped
+working until Formiga was restarted. They come back now.
+
+The village has also moved up off the Dock. The colony used to be founded forty points above the
+bottom of the screen, which is inside a Dock at its factory size, so the houses spent their lives
+behind it. They stand just clear of it now — and clear of the Windows taskbar, which gets the same
+treatment.
 
 ## New in 0.58.7
 

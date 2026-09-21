@@ -214,18 +214,11 @@ impl FormigaApp {
                 size.height,
                 scale,
             );
-            let top_inset = 24.0;
-            let bottom_inset = 40.0;
             let info = MonitorInfo {
                 id,
                 display_key: platform::display_key(&monitor),
                 bounds,
-                usable_bounds: DesktopRect {
-                    x: bounds.x,
-                    y: bounds.y + top_inset,
-                    width: bounds.width,
-                    height: (bounds.height - top_inset - bottom_inset).max(100.0),
-                },
+                usable_bounds: colony_bounds(bounds),
                 scale_factor: scale,
                 primary: primary_monitor,
             };
@@ -648,8 +641,8 @@ impl FormigaApp {
 
     fn sync_interaction_proxies(&mut self, event_loop: &ActiveEventLoop) {
         if self.habitat_editor.is_some() {
-            for proxy in self.interaction_proxies.values() {
-                proxy.window.set_visible(false);
+            for proxy in self.interaction_proxies.values_mut() {
+                proxy.hide();
             }
             return;
         }
@@ -825,8 +818,8 @@ impl FormigaApp {
                 let _ = self.save();
             }
             WindowEvent::CloseRequested => {
-                if let Some(proxy) = self.interaction_proxies.get(&window_id) {
-                    proxy.window.set_visible(false);
+                if let Some(proxy) = self.interaction_proxies.get_mut(&window_id) {
+                    proxy.hide();
                 }
             }
             _ => {}
@@ -1759,6 +1752,7 @@ impl FormigaApp {
             window.window.set_window_level(WindowLevel::AlwaysOnTop);
             window.window.focus_window();
         }
+        self.raise_settings_above_overlays();
     }
 
     fn finish_habitat_editor(&mut self, apply: bool) {
@@ -1787,6 +1781,7 @@ impl FormigaApp {
             window.set_habitat(habitat);
             window.window.focus_window();
         }
+        self.raise_settings_above_overlays();
         if accepted {
             let desktop = self.snapshot();
             if let Some(world) = &mut self.world {
@@ -1807,6 +1802,9 @@ impl FormigaApp {
         else {
             return false;
         };
+        if !habitat_editor_claims(event) {
+            return false;
+        }
 
         if let WindowEvent::CursorMoved { position, .. } = event {
             self.current_cursor = CursorSnapshot {
@@ -1837,14 +1835,30 @@ impl FormigaApp {
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,
-                button: MouseButton::Left | MouseButton::Right,
+                button,
                 ..
             } => {
-                self.end_habitat_editor_drag(&monitor);
+                if matches!(button, MouseButton::Left | MouseButton::Right) {
+                    self.end_habitat_editor_drag(&monitor);
+                }
+                // The press that began this gesture ordered a full-screen overlay in front of the
+                // settings window, and Apply and Cancel live there and nowhere else. Hand it back
+                // its place now the gesture is over, rather than leaving a desktop that answers
+                // nothing but the tray.
+                self.raise_settings_above_overlays();
             }
             _ => {}
         }
         true
+    }
+
+    /// Keep the settings window above the editor's overlays for as long as the edit lasts, and
+    /// put it back among them afterwards.
+    fn raise_settings_above_overlays(&mut self) {
+        let raised = self.habitat_editor.is_some();
+        if let Some(window) = &self.settings_window {
+            platform::raise_above_overlays(&window.window, raised);
+        }
     }
 
     fn start_habitat_editor_drag(&mut self, monitor: &MonitorInfo, button: MouseButton) {
@@ -2338,6 +2352,33 @@ fn monitor_id(
     hasher.finish()
 }
 
+/// The part of a display the colony may use: below the menu bar, and clear of the strip the
+/// system keeps along the bottom for the Dock or the taskbar. The village stands on the floor of
+/// this, so whatever is reserved here is what the houses sit on top of rather than behind.
+fn colony_bounds(bounds: DesktopRect) -> DesktopRect {
+    let top_inset = 24.0;
+    DesktopRect {
+        x: bounds.x,
+        y: bounds.y + top_inset,
+        width: bounds.width,
+        height: (bounds.height - top_inset - platform::BOTTOM_RESERVED).max(100.0),
+    }
+}
+
+/// What an open habitat editor takes for itself: the pointer, and nothing else.
+///
+/// While it is open a press on the desktop draws a region rather than reaching the colony, so the
+/// editor answers the mouse before anybody else does. Every other event still belongs to the
+/// overlay it was sent to — a redraw above all. An editor that claimed those too left the colony
+/// frozen on its last frame and never drew one of the regions it was asked for, which is exactly
+/// what an application that has crashed looks like.
+fn habitat_editor_claims(event: &WindowEvent) -> bool {
+    matches!(
+        event,
+        WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
+    )
+}
+
 fn normalized_drag_rect(bounds: DesktopRect, a: Point, b: Point) -> DesktopRect {
     let left = a.x.min(b.x).clamp(bounds.x, bounds.right());
     let top = a.y.min(b.y).clamp(bounds.y, bounds.bottom());
@@ -2569,9 +2610,81 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_press_target, world_redraw_interval};
+    use super::{
+        colony_bounds, habitat_editor_claims, resolve_press_target, world_redraw_interval,
+    };
     use formiga_core::*;
     use std::time::Duration;
+    use winit::event::WindowEvent;
+
+    /// A press on the desktop belongs to the open editor, which draws a region with it instead of
+    /// letting it reach the colony. A redraw never does: the editor claimed one for a while, and
+    /// the overlay it was addressed to then stopped painting for as long as the editor was open,
+    /// so the colony sat frozen on its last frame and not one of the regions being dragged out
+    /// was ever drawn.
+    #[test]
+    fn the_habitat_editor_takes_the_pointer_and_leaves_the_overlay_its_redraw() {
+        let device_id = winit::event::DeviceId::dummy();
+        assert!(habitat_editor_claims(&WindowEvent::MouseInput {
+            device_id,
+            state: winit::event::ElementState::Pressed,
+            button: winit::event::MouseButton::Left,
+        }));
+        assert!(habitat_editor_claims(&WindowEvent::CursorMoved {
+            device_id,
+            position: winit::dpi::PhysicalPosition::new(4.0, 4.0),
+        }));
+        for event in [
+            WindowEvent::RedrawRequested,
+            WindowEvent::Resized(winit::dpi::PhysicalSize::new(800, 600)),
+            WindowEvent::CloseRequested,
+        ] {
+            assert!(
+                !habitat_editor_claims(&event),
+                "the editor swallowed {event:?}, which the overlay needs"
+            );
+        }
+    }
+
+    /// How tall the strip along the bottom of the screen really is when the owner has never
+    /// touched it: the Dock with its factory forty-eight point tiles inside a panel of its own,
+    /// or the Windows 11 taskbar.
+    #[cfg(target_os = "macos")]
+    const FACTORY_SYSTEM_STRIP: f32 = 75.0;
+    #[cfg(target_os = "windows")]
+    const FACTORY_SYSTEM_STRIP: f32 = 48.0;
+
+    /// The colony stands on the floor of the ground it is given, so that floor has to clear the
+    /// strip the system keeps for itself along the bottom of the display. It stood forty points
+    /// up, well inside a Dock at its factory size, and the village lived behind one.
+    #[test]
+    fn the_village_stands_on_top_of_the_dock_rather_than_behind_it() {
+        for screen in [
+            DesktopRect {
+                x: 0.0,
+                y: 0.0,
+                width: 1512.0,
+                height: 982.0,
+            },
+            DesktopRect {
+                x: -1920.0,
+                y: 120.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+        ] {
+            let usable = colony_bounds(screen);
+            // Where the houses are founded and where everybody's feet meet the ground.
+            let ground = usable.bottom() - 4.0;
+            assert!(
+                screen.bottom() - ground >= FACTORY_SYSTEM_STRIP,
+                "the village stands {} points up, inside a strip {FACTORY_SYSTEM_STRIP} tall",
+                screen.bottom() - ground
+            );
+            assert_eq!(usable.x, screen.x);
+            assert_eq!(usable.width, screen.width);
+        }
+    }
 
     #[test]
     fn a_gesture_is_presented_at_its_own_frame_rate_rather_than_the_action_beneath_it() {
