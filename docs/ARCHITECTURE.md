@@ -226,6 +226,13 @@ bytes it already carries, so two companions resting side by side are not in step
 stored to say so. The first frame is the plain settle, and it is the only frame reduced motion
 draws.
 
+Every standing clip puts the feet on one row, and nothing a body folds against itself or drops
+goes below the lowest row its feet reach. A folded wing, a head over a body squashed flat by a
+crouch, and crumbs all stop there; that row is one below the floor for the classic feet and two for
+the rounder modular ones, and `PropHold::ground` carries it to the props. A cup is the exception. It
+is held below the mouth, so a body that sits low holds it below its feet, because lifting it clear
+of the ground would put it across the face.
+
 Passive toys, snacks, and drinkware are deterministically derived from genes already stored in the
 appearance genome. Their colors, shape variants, motion phases, and hand targets are baked into the
 same action atlas as the creature. Eating and drinking therefore add no runtime asset lookup or

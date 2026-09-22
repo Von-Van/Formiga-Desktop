@@ -192,7 +192,11 @@ pub(super) fn draw(
         if !long && limb == Limb::Rest {
             let at = shoulder(side);
             if d.body == BodyPlan::Winged {
-                draw_wing(c, p, wing_style(d), at.x, at.y, side);
+                // A folded wing hangs from the shoulder and its outline reaches six rows below
+                // it, so a body settling onto its legs, as a sleeper does with each breath, would
+                // carry the tip down past the feet. The wing comes to rest on the ground instead.
+                let lowest = feet_reach(d, floor) - 6;
+                draw_wing(c, p, wing_style(d), at.x, at.y.min(lowest), side);
             } else if k.limbs > 0 {
                 classic_nub(c, p, at, side);
             } else {
@@ -423,6 +427,7 @@ pub(super) fn prop_hold(design: CreatureDesign, pose: Pose, size: f32) -> PropHo
             y: body.hy + 5,
         },
         floor: body.floor,
+        ground: feet_reach(d, body.floor),
         forward: 1,
     }
 }
@@ -502,6 +507,10 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     }
     .max(18);
     let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
+    // A head larger than a body that a crouch has squashed flat would reach past the feet, since
+    // it hangs from the body's centre. Like everything else, it stops at the ground; its outline
+    // reaches `head` rows below its centre.
+    let hy = hy.min(feet_reach(d, floor) - head);
     Body {
         x,
         y,
@@ -512,6 +521,12 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         head,
         floor,
     }
+}
+
+/// The lowest row a body's feet reach: one below the floor for the classic feet, and two for the
+/// rounder modular ones. Nothing a body folds against itself goes lower.
+fn feet_reach(d: CreatureDesign, floor: i32) -> i32 {
+    floor + if d.classic.limbs > 0 { 1 } else { 2 }
 }
 
 /// Where a side's paw or wing sits folded against the body, and where it is carried out from.

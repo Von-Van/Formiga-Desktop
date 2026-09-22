@@ -134,6 +134,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Bubbles on transitions: a music note over every companion that joins a game and over none of its watchers; a Z over a companion as it drops off, by any route into a nap, and over nobody still standing | CI | CI |
 | Updates folder: installers for the running version or an earlier one, and part-finished downloads untouched for a day, are cleared at start; later installers, other files, and names that are not Formiga's own are kept | CI | CI |
 | Stroll cadence: every stroll a companion can take stays at or under `MAX_STROLL_SPEED` and every walk well over it, the briskest stroll still ticks and draws at 10 Hz, a walk home at 20, and a resting colony is redrawn three times a second | CI | CI |
+| Nothing below the feet: sleeping, eating, and crouching frames of the three classic families and 64 modular seeds, with every snack and both motion settings, stay on or above the row the feet reach | CI | CI |
 | Universal app / x64 package | CI | CI |
 
 ## Companion interface checks (0.57.0)

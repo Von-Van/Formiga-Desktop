@@ -2604,6 +2604,8 @@ pub(crate) struct PropHold {
     pub(crate) hands: PixelPoint,
     pub(crate) mouth: PixelPoint,
     pub(crate) floor: i32,
+    /// The lowest row this body's feet reach. Nothing it drops lands below it.
+    pub(crate) ground: i32,
     /// Which way is away from this body's own face: `1` for a body whose paws are in front of its
     /// head, `-1` for one whose head leads and whose chest trails behind it.
     pub(crate) forward: i32,
@@ -2621,6 +2623,12 @@ fn prop_hold(genome: &AppearanceGenome, pose: Pose, face: PixelPoint) -> PropHol
         // A soft quadruped's head is the anchor and its chest is behind it.
         BodyFamily::SoftQuadruped => (-12, 7),
     };
+    // A blob's mass is pinned to row 38 and its feet hang two rows below it; the legged families
+    // stand on a ground of their own at row 45.
+    let ground = match genome.family {
+        BodyFamily::Blob => 40,
+        BodyFamily::Hopper | BodyFamily::SoftQuadruped => 45,
+    };
     PropHold {
         hands: PixelPoint {
             x: face.x + dx,
@@ -2631,6 +2639,7 @@ fn prop_hold(genome: &AppearanceGenome, pose: Pose, face: PixelPoint) -> PropHol
             y: face.y + 5,
         },
         floor: 42,
+        ground,
         forward: dx.signum(),
     }
 }
@@ -2680,8 +2689,17 @@ fn draw_activity_prop(
             draw_generated_snack(canvas, palette, snack, x, y, phase);
             if phase == 3 {
                 // Crumbs, so the last frame is the end of a mouthful rather than an empty hand.
-                canvas.set(hold.mouth.x - 2, hold.mouth.y + 5, palette.shadow);
-                canvas.set(hold.mouth.x + 1, hold.mouth.y + 6, palette.highlight);
+                // They fall no further than the ground.
+                canvas.set(
+                    hold.mouth.x - 2,
+                    (hold.mouth.y + 5).min(hold.ground),
+                    palette.shadow,
+                );
+                canvas.set(
+                    hold.mouth.x + 1,
+                    (hold.mouth.y + 6).min(hold.ground),
+                    palette.highlight,
+                );
             }
         }
         ActionKind::Drink => {
@@ -5098,10 +5116,9 @@ mod tests {
     /// back down. Hoppers and quadrupeds always drew it this way; blobs and every modular plan
     /// used to carry the ground along with the bob.
     ///
-    /// Sleeping is left out on purpose. A pose whose art overflows the top of the frame is nudged
-    /// back inside it by `keep_atlas_margin`, which moves the feet along with everything else —
-    /// a separate pixel, from a different cause, on the three seeds in sixty-four whose sleeping
-    /// shape is tall enough to touch the edge.
+    /// Sleeping, crouching, eating and drinking are not standing clips, so they are held to a
+    /// looser rule in `nothing_held_or_folded_sinks_below_the_feet`: whatever they draw stays on
+    /// or above this same row.
     #[test]
     fn standing_clips_share_one_ground_line() {
         const STANDING: [ActionKind; 6] = [
@@ -5148,5 +5165,77 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Nothing a companion folds against itself, and no crumb it drops, sinks below its own feet.
+    /// A folded wing hangs from the shoulder, so a sleeper settling with each breath, or a crouch,
+    /// used to carry the wingtip a pixel below the ground on some winged bodies; a large head on
+    /// a body a crouch had squashed flat did the same; and a blob's last mouthful dropped a crumb
+    /// a row under its feet. All three now stop at the ground.
+    ///
+    /// Drinking is left out. A cup is held below the mouth, so a body that sits low holds it below
+    /// its feet, and lifting it clear of the ground would put it across the face instead.
+    #[test]
+    fn nothing_held_or_folded_sinks_below_the_feet() {
+        const LOW: [BodyClip; 3] = [
+            BodyClip::Action(ActionKind::Sleep),
+            BodyClip::Action(ActionKind::Eat),
+            BodyClip::Gesture(formiga_core::Gesture::Crouch),
+        ];
+        let mut cases: Vec<(String, AppearanceGenome)> = Vec::new();
+        for family in [
+            BodyFamily::Blob,
+            BodyFamily::Hopper,
+            BodyFamily::SoftQuadruped,
+        ] {
+            cases.push((format!("classic {family:?}"), genome(family)));
+        }
+        for seed in 0..64u8 {
+            let mut modular = genome(BodyFamily::Blob);
+            modular.design = Some(formiga_core::CreatureDesign::generated([seed; 32], 0, None));
+            cases.push((format!("modular seed {seed}"), modular));
+        }
+        let mut snacks = std::collections::BTreeSet::new();
+        for (label, base) in cases {
+            // Each body with every kind of snack, since the snacks are different sizes.
+            for kind in 0..SNACK_KINDS {
+                let mut appearance = base.clone();
+                appearance.marking_seed = (0..)
+                    .find(|&seed| {
+                        appearance.marking_seed = seed;
+                        prop_variants(&appearance).1 == kind
+                    })
+                    .expect("every snack is somebody's");
+                snacks.insert(prop_variants(&appearance).1);
+                for reduce_motion in [false, true] {
+                    let ground = FRAME_SIZE
+                        - 1
+                        - CreatureRenderer::resting_baseline(&appearance, reduce_motion);
+                    for clip in LOW {
+                        for frame in 0..AnimationSpec::for_clip(clip).frames {
+                            let (_, _, _, max_y) = CreatureRenderer::render_body_frame(
+                                &appearance,
+                                clip,
+                                frame,
+                                reduce_motion,
+                            )
+                            .canvas
+                            .alpha_bounds()
+                            .expect("the clip draws a body");
+                            assert!(
+                                max_y <= ground,
+                                "{label} snack {kind} {clip:?} frame {frame} reaches row {max_y}, \
+                                 below the ground at {ground}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            snacks.len(),
+            usize::from(SNACK_KINDS),
+            "every kind of snack was tried"
+        );
     }
 }

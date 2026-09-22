@@ -12,6 +12,17 @@ All notable changes are documented here.
   settings-window review tests pass unchanged, and `cargo audit` finds no vulnerability. Its three
   remaining warnings are for crates that are only built on Linux.
 
+### Fixed
+
+- Nothing a companion folds against itself sinks below its own feet any more. A folded wing hangs
+  from the shoulder, so on some winged bodies a sleeper's breath or a crouch carried the wingtip a
+  pixel into the ground. A large head on a body a crouch had squashed flat did the same, and a
+  blob's last mouthful dropped a crumb a row beneath its feet. Each now stops at the ground. Of
+  20,280 frames rendered for 67 test bodies and the owner's colony, exactly 17 changed, and every
+  one of them was a frame where something had gone below the feet. A test now holds sleeping,
+  eating, and crouching to the ground for every body. A cup held by a body that sits low still
+  hangs below its feet, because lifting it clear of the ground puts it across the face.
+
 ## [0.59.5] - 2026-09-22
 
 ### Added
