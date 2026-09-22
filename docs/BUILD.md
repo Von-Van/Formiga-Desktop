@@ -1,6 +1,8 @@
 # Building Formiga
 
-Rust 1.97.1 is pinned by `rust-toolchain.toml`.
+Rust 1.97.1 is pinned by `rust-toolchain.toml`, together with rustfmt and Clippy, so `rustup`
+installs everything the checks below need on first use. The macOS app also needs the Xcode Command
+Line Tools, and Windows needs the Visual Studio C++ build tools.
 
 ## Development checks
 
@@ -51,23 +53,48 @@ Time'` for CPU and `Get-Process formiga | Select WorkingSet64` for resident memo
 
 ## Review sheets and documentation images
 
-`formiga-tools` draws every reference image in the repository, each subcommand writing to a default
-path when `--output` is omitted:
+`formiga-tools` draws every reference image in the repository. These commands regenerate all of
+them, in place:
 
 ```sh
-cargo run -p formiga-tools -- ui-sheet          # docs/assets/ui-sheet.png
-cargo run -p formiga-tools -- prop-sheet        # docs/assets/prop-sheet.png
-cargo run -p formiga-tools -- sticker           # docs/assets/sticker-wave.gif
-cargo run -p formiga-tools -- colony-card       # docs/assets/colony-card.png
-cargo run -p formiga-tools -- social-preview    # docs/assets/social-preview.png
-cargo run -p formiga-tools -- itch-cover        # packaging/itch/cover.png
+cargo run -p formiga-tools -- hero-image
+cargo run -p formiga-tools -- demo-animation
+cargo run -p formiga-tools -- contact-sheet --output docs/assets/contact-sheet.png
+cargo run -p formiga-tools -- generation-sheet
+cargo run -p formiga-tools -- classic-sheet
+cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/animation-preview.png
+cargo run -p formiga-tools -- expression-sheet
+cargo run -p formiga-tools -- gesture-sheet
+cargo run -p formiga-tools -- habit-sheet
+cargo run -p formiga-tools -- activity-sheet
+cargo run -p formiga-tools -- ambient-sheet
+cargo run -p formiga-tools -- shelter-sheet
+cargo run -p formiga-tools -- village-palette-sheet
+cargo run -p formiga-tools -- home-yard-sheet
+cargo run -p formiga-tools -- prop-sheet
+cargo run -p formiga-tools -- ui-sheet
+cargo run -p formiga-tools -- creature-card
+cargo run -p formiga-tools -- colony-card
+cargo run -p formiga-tools -- postcard-sheet
+cargo run -p formiga-tools -- sticker --clip wave --scale 8
+cargo run -p formiga-tools -- social-preview
+cargo run -p formiga-tools -- itch-cover
+cargo run -p formiga-tools -- app-icon
 ```
 
-`ui-sheet` draws the whole interface atlas — every thought bubble, menu frame, icon state, and label
-tab. `prop-sheet` draws the eight toys, four snacks, and three kinds of drinkware in the paws and
-mouths that hold them. `sticker` takes `--clip walk|wave|cheer|play|snack|sleep|dance`,
-`--scale 4|8`, and `--seed NUMBER`; `colony-card` renders a whole colony's portrait. `social-preview`
-is a 1280×640 link-preview image and `itch-cover` a 630×500 store cover. Run the tools without a
+Without `--output`, each subcommand writes to its own file under `docs/assets/`, except
+`itch-cover` (`packaging/itch/cover.png`) and `app-icon` (the icons in `packaging/shared/`).
+`contact-sheet` and `animation-preview` are the exceptions: they default to a scratch file in the
+repository root, which Git ignores, so pass `--output` to replace the documentation copy. Every
+image is deterministic, so regenerating one that nothing has changed gives back identical pixels.
+
+Some of the sheets are review tools first and illustrations second. `ui-sheet` draws the whole
+interface atlas: every thought bubble, menu frame, icon state, and label tab. `prop-sheet` draws
+the eight toys, four snacks, and three kinds of drinkware in the paws and mouths that hold them,
+and `gesture-sheet` and `habit-sheet` show every pose on every body. `sticker` takes
+`--clip walk|wave|cheer|play|snack|sleep|dance`, `--scale 4|8`, and `--seed NUMBER`. `postcard`
+draws a single postcard (`--scene nap|picnic|play|dusk`, `--caption TEXT`). `social-preview` is a
+1280×640 link-preview image, and `itch-cover` is a 630×500 store cover. Run the tools without a
 subcommand for the full list.
 
 ## Distribution kit
@@ -103,6 +130,31 @@ bundle and Windows MSI, and publishes the exact updater-compatible names
 `Formiga-0.36.6-macOS-universal.dmg` and `Formiga-0.36.6-windows-x64.msi`. Do not rename these two
 assets after publishing. Their companion `.sha256` files are the fallback verification source when
 GitHub release metadata does not provide a digest.
+
+## Cutting a release
+
+A release is one commit on `main` titled `Release X.Y.Z with …`, followed by an annotated tag
+`vX.Y.Z` whose message is that title. The version number appears in:
+
+- the workspace `Cargo.toml`, which every crate inherits, and `Cargo.lock`;
+- the README's title, its example download name, and its "New in X.Y.Z" section, which is also
+  added to the top of `docs/RELEASE_NOTES.md`;
+- the `docs/GENERATION.md` title and the CHANGELOG heading, `## [X.Y.Z] - YYYY-MM-DD`;
+- the default version in `scripts/package-macos.sh` and `scripts/package-windows.ps1`;
+- the examples in `packaging/itch/page.md`, `packaging/windows/winget/README.md`, and
+  `scripts/winget-manifest.sh`.
+
+Then:
+
+1. Regenerate the documentation images if anything they draw has changed, and run the full check.
+2. Push the release commit to `main` and wait for `build-and-test` to pass on macOS **and**
+   Windows. That run is the only Windows build a change gets before it ships.
+3. Tag the commit and push the tag. `release.yml` packages both platforms and publishes an
+   unsigned prerelease with eight files: the DMG, the MSI, two portable ZIPs, and a `.sha256` for
+   each. The in-app updater sees it from then on.
+4. Check that all eight files are on the release and that the DMG matches its checksum. A large
+   upload can fail after the others succeed. `gh run rerun <run-id> --failed` repeats only the
+   publish job, which is how the 0.57.1 release was completed when its DMG upload failed.
 
 ## macOS universal preview
 

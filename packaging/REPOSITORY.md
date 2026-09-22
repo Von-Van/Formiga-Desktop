@@ -1,14 +1,15 @@
 # Repository metadata suggestions
 
-The repository currently has no description, no topics, and no homepage set. These are cheap,
-reversible wins for discovery - GitHub topics feed search and the "explore" pages, and a good
-description is what shows up in search results and link previews. Nothing in this file changes
+The repository's description is currently a single line ("Companion on your desktop!"), and it has
+no topics and no homepage set. These are cheap, reversible wins for discovery - GitHub topics feed
+search and the "explore" pages, and a good description is what shows up in search results and link
+previews. Nothing in this file changes
 anything by itself; it is copy and a command for the owner to review and run.
 
-## Suggested description (278 of 350 characters allowed)
+## Suggested description (297 of 350 characters allowed)
 
 ```
-A privacy-first desktop companion for macOS and Windows: seeded procedural pixel creatures live in transparent overlays, perch on your real windows, react to your cursor, and grow into a four-creature colony. Open source (MIT); everything runs locally, no accounts or analytics.
+A privacy-first desktop companion for macOS and Windows: seeded procedural pixel creatures live in transparent overlays, perch on your real windows, react to your cursor, and grow into a colony of six with a village of its own. Open source (MIT); everything runs locally, no accounts or analytics.
 ```
 
 ## Suggested topics (14)
@@ -39,7 +40,7 @@ taste, and run it with an account that has admin access to the repository:
 
 ```sh
 gh repo edit Von-Van/Formiga-Desktop \
-  --description "A privacy-first desktop companion for macOS and Windows: seeded procedural pixel creatures live in transparent overlays, perch on your real windows, react to your cursor, and grow into a four-creature colony. Open source (MIT); everything runs locally, no accounts or analytics." \
+  --description "A privacy-first desktop companion for macOS and Windows: seeded procedural pixel creatures live in transparent overlays, perch on your real windows, react to your cursor, and grow into a colony of six with a village of its own. Open source (MIT); everything runs locally, no accounts or analytics." \
   --add-topic desktop-pet,desktop-companion,virtual-pet,rust,wgpu,egui,pixel-art,procedural-generation,generative-art,simulation,macos,windows,privacy,offline-first
 ```
 

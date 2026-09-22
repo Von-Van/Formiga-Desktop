@@ -39,12 +39,15 @@ The one row above is a read-only sample of a session that happened to be running
 four-moving budget, but the scale, colony size and menu state were all wrong for a gate, so it
 tells us where to start looking rather than whether the budget is met.
 
-Nothing else has been measured under the procedure above. The states it asks for — one creature
-resting and moving, four resting and moving, a busy desktop, spectatorship, the menu open and
-closed, occluded by a full-screen app, and paused — remain unmeasured on a release machine for
-0.57.0 and later, and no Windows machine has been available at all. The figures in the rest of
-this document are storage and per-tick costs, which are asserted by tests or measured with
-`formiga-tools tick-bench`; they are not measurements of what the application costs a desktop.
+Nothing else has been measured under the full procedure above. The states it asks for — one
+creature resting and moving, four resting and moving, a busy desktop, spectatorship, the menu open
+and closed, occluded by a full-screen app, and paused — have not been put through it on a release
+machine for 0.57.0 or later, and no Windows machine has been available at all. From 0.59.0 on,
+releases that change what the application costs have been measured as a whole process on the
+development Mac instead, in shorter comparisons against the previous release made in the same
+sitting; those tables are in the release sections below. The remaining figures are storage and
+per-tick costs, which are asserted by tests or measured with `formiga-tools tick-bench`; they are
+not measurements of what the application costs a desktop.
 
 ### What the simulation itself costs
 
@@ -611,3 +614,78 @@ the overlay, drawn with one extra call while a tow is under way; its geometry is
 Tows happen a few seconds an hour. Every kind of house is baked into the same 256×256 village
 atlas as before, so mixing them adds no texture, and a new choice redraws the atlas once. A walk to
 bed is drawn with frames every creature already has.
+
+## 0.59.5
+
+### What a strolling village costs
+
+A village that strolls cost 2.59% of one core in 0.59.2 against 0.98% for the still village of
+0.59.0. Almost all of the difference was frames: a colony with anything moving is ticked and drawn
+every tick, and the rule that recognises a stroll — slow enough that ten frames a second carry it —
+tested movement against a round 24 points a second. A stroll runs at 45% of a companion's own walk,
+which reaches 26.1 points a second for the briskest, so a colony with one lively member never
+qualified: it held the whole village at twenty frames a second. The threshold is now the stroll's
+own ceiling, `MAX_STROLL_SPEED`, derived from the walk speed the village itself uses.
+
+Measured on the desktop it was written on — an Apple M5, the owner's own five-companion colony
+copied into a scratch data directory with `FORMIGA_DATA_DIR` and the houses set out, a minute to
+settle and two minutes measured, each build on a fresh copy of the colony in the same sitting:
+
+| | average CPU | physical footprint |
+|---|---:|---:|
+| 0.59.2 | 2.44% | 111 MB |
+| 0.59.5 | 1.32% | 110 MB |
+
+An instrumented build of each, timed from the process's own CPU clock on the same colony, says
+where it went. These two are comparable with each other, not with the table above, because the
+instrumentation costs a little of its own:
+
+| | 0.59.2 | 0.59.5 |
+|---|---:|---:|
+| frames presented | 11.5 a second | 7.1 |
+| world ticks | 14.7 a second | 9.9 |
+| ticks with something moving | 10.7 | 6.1 |
+| of those, recognised as a stroll | 117 of 1,284 | 737 of 737 |
+| process CPU | 1.97% | 1.59% |
+| on the main thread | 1.04% | 0.91% |
+| on the Metal and Core Animation threads | 0.93% | 0.68% |
+
+A frame, not the simulation, is the unit of cost. One presented frame costs about two milliseconds
+of the process's own CPU: roughly 0.55 ms on the main thread — building the frame 150 µs, of which
+the vertex upload is 118 µs; encoding the pass 186 µs; submitting it 112 µs; acquiring the drawable
+67 µs; presenting 34 µs — and about 0.95 ms on the Metal and Core Animation threads, which is the
+kernel submit of the command buffer and the drawable handed to the window server. `World::tick`
+costs 39 µs in the running application at the houses. The application runs at background quality of
+service on efficiency cores, so every figure here is several times what `tick-bench` reports for the
+same work in the foreground; the two are not comparable.
+
+Three other things were measured and left alone, because the measurements said there was nothing
+there:
+
+- **Skipping frames that changed nothing.** One frame in 1,381 was byte-identical to the one before
+  it, and one in 857 after the change. While anything strolls, every frame differs.
+- **The village layout the overlay rebuilds each frame.** Placing all eight lots — both trees and
+  every house — costs 0.26 µs, and the cache keys the belongings and keepsakes compare against
+  0.13 µs. There is nothing to cache.
+- **The native interaction proxies.** Over two minutes of a strolling colony they made no native
+  calls at all: no window moved, no shape was reapplied, no hit region was switched. The parking
+  rule from 0.57.0 already keeps them still while the cursor is elsewhere; the whole per-tick pass
+  over them costs 15 µs.
+
+One change was made to the frame itself: the pass binds the vertex buffer once and each draw names
+its own stretch of it, rather than binding a fresh slice per draw. A headless benchmark of the same
+thirteen draws puts that at 48.4 µs against 41.8 µs per pass on this machine; against the live
+application it is inside the spread between runs.
+
+What is left is the price of presenting: about two milliseconds a frame, seven frames a second, and
+a run loop that wakes about four times per tick. A recycled staging buffer would take most of the
+118 µs vertex upload, worth about 0.08 points of a core at this frame rate.
+
+### Resting
+
+The rest loop that replaced the one-pixel bob costs no texture: its six frames took the two spare
+slots left in the thirteenth row of the creature atlas, so a creature's textures are still 1,529,856
+bytes and a full colony's 9,179,136. A colony at rest is drawn at the frame rate of the clip it is
+resting in, and the loop runs at three frames a second where the bob ran at four, so a resting
+colony is redrawn once a second less often than it was. The two new thought bubbles use icons the
+interface atlas already had.

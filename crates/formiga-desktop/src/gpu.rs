@@ -920,70 +920,67 @@ impl OverlayRenderer {
             }
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.occlusion_bind_group, &[]);
+            // Every quad this frame lives in the one buffer, so it is bound once and each draw
+            // names its own stretch of it. Handing the pass a fresh slice per draw asked the
+            // driver to rebind the same buffer a dozen times a frame for nothing.
+            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            let draw = |pass: &mut wgpu::RenderPass<'_>,
+                        bind_group: &wgpu::BindGroup,
+                        start: usize,
+                        count: usize| {
+                pass.set_bind_group(1, bind_group, &[]);
+                pass.draw(start as u32..(start + count) as u32, 0..1);
+            };
             if shelter_vertex_count > 0
                 && let Some(shelter) = &self.shelter
             {
-                let shelter_end = (shelter_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                pass.set_bind_group(1, &shelter.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(..shelter_end));
-                pass.draw(0..shelter_vertex_count as u32, 0..1);
+                draw(&mut pass, &shelter.bind_group, 0, shelter_vertex_count);
             }
             if object_vertex_count > 0
                 && let Some(objects) = &self.colony_objects
             {
-                let start = (object_vertex_start * std::mem::size_of::<Vertex>()) as u64;
-                let end = start + (object_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                pass.set_bind_group(1, &objects.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
-                pass.draw(0..object_vertex_count as u32, 0..1);
+                draw(
+                    &mut pass,
+                    &objects.bind_group,
+                    object_vertex_start,
+                    object_vertex_count,
+                );
             }
             // Whatever the colony has found, over the tree each one hangs in: one more bind
             // group at most, and the same sheet a companion holding a keepsake samples from.
             if tree_vertex_count > 0
                 && let Some(trinkets) = &self.trinkets
             {
-                let start = (tree_vertex_start * std::mem::size_of::<Vertex>()) as u64;
-                let end = start + (tree_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                pass.set_bind_group(1, &trinkets.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
-                pass.draw(0..tree_vertex_count as u32, 0..1);
+                draw(
+                    &mut pass,
+                    &trinkets.bind_group,
+                    tree_vertex_start,
+                    tree_vertex_count,
+                );
             }
             if rope_vertex_count > 0
                 && let Some(rope) = &self.rope
             {
-                let start = (rope_start * std::mem::size_of::<Vertex>()) as u64;
-                let end = start + (rope_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                pass.set_bind_group(1, &rope.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
-                pass.draw(0..rope_vertex_count as u32, 0..1);
+                draw(&mut pass, &rope.bind_group, rope_start, rope_vertex_count);
             }
             for (creature_id, start, has_trinket) in creature_draws {
                 if let Some(sprite) = self.sprites.get(&creature_id) {
-                    let body_start = (start * std::mem::size_of::<Vertex>()) as u64;
-                    let body_end = body_start + (6 * std::mem::size_of::<Vertex>()) as u64;
-                    pass.set_bind_group(1, &sprite.body_bind_group, &[]);
-                    pass.set_vertex_buffer(0, self.vertex_buffer.slice(body_start..body_end));
-                    pass.draw(0..6, 0..1);
-                    let face_end = body_end + (6 * std::mem::size_of::<Vertex>()) as u64;
-                    pass.set_bind_group(1, &sprite.face_bind_group, &[]);
-                    pass.set_vertex_buffer(0, self.vertex_buffer.slice(body_end..face_end));
-                    pass.draw(0..6, 0..1);
+                    draw(&mut pass, &sprite.body_bind_group, start, 6);
+                    draw(&mut pass, &sprite.face_bind_group, start + 6, 6);
                     if has_trinket && let Some(trinkets) = &self.trinkets {
-                        let trinket_end = face_end + (6 * std::mem::size_of::<Vertex>()) as u64;
-                        pass.set_bind_group(1, &trinkets.bind_group, &[]);
-                        pass.set_vertex_buffer(0, self.vertex_buffer.slice(face_end..trinket_end));
-                        pass.draw(0..6, 0..1);
+                        draw(&mut pass, &trinkets.bind_group, start + 12, 6);
                     }
                 }
             }
             if bubble_vertex_count > 0
                 && let Some(bubble) = &self.bubble
             {
-                let start = (bubble_start * std::mem::size_of::<Vertex>()) as u64;
-                let end = start + (bubble_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                pass.set_bind_group(1, &bubble.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
-                pass.draw(0..bubble_vertex_count as u32, 0..1);
+                draw(
+                    &mut pass,
+                    &bubble.bind_group,
+                    bubble_start,
+                    bubble_vertex_count,
+                );
             }
             // Every icon bubble and every part of the open menu comes out of one texture, so the
             // whole on-desktop UI is a single extra bind group and a single extra draw, last and
@@ -991,11 +988,7 @@ impl OverlayRenderer {
             if ui_vertex_count > 0
                 && let Some(atlas) = &self.ui_atlas
             {
-                let start = (ui_start * std::mem::size_of::<Vertex>()) as u64;
-                let end = start + (ui_vertex_count * std::mem::size_of::<Vertex>()) as u64;
-                pass.set_bind_group(1, &atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
-                pass.draw(0..ui_vertex_count as u32, 0..1);
+                draw(&mut pass, &atlas.bind_group, ui_start, ui_vertex_count);
             }
         }
         self.queue.submit(Some(encoder.finish()));
@@ -3359,11 +3352,13 @@ mod tests {
         let bake_time = started.elapsed();
         let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
         eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-        // 90 action frames and 38 gesture frames: ten columns by thirteen rows of 48px bodies,
+        // 92 action frames and 38 gesture frames: ten columns by thirteen rows of 48px bodies,
         // plus the unchanged face atlas. Raised deliberately from 1,437,696 bytes in 0.57.1,
         // where the twelfth row was already full. The habits' stretch took four of the six
-        // spare slots in the thirteenth row in 0.59.0, so it cost no bytes.
-        assert_eq!(total_animation_frames(), 128);
+        // spare slots in the thirteenth row in 0.59.0, and the two the rest loop grew into in
+        // 0.59.5 were the last of them, so neither cost any bytes. The row is now full: the
+        // next clip to want a frame has to find it in one that is already baked.
+        assert_eq!(total_animation_frames(), 130);
         assert_eq!(total_bytes, 1_529_856);
         // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
         // stops a creature costing more than a creature should, not what stops it having poses.
@@ -3410,7 +3405,7 @@ mod tests {
             atlas_slot(ActionKind::Traverse, 2)
         );
         // Gestures follow the action clips, and every baked frame owns exactly one slot.
-        assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 90);
+        assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 92);
         let mut slots = BTreeSet::new();
         for clip in BodyClip::baked() {
             for frame in 0..AnimationSpec::for_clip(clip).frames {

@@ -5,13 +5,17 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use time::OffsetDateTime;
 
 const RELEASES_URL: &str =
     "https://api.github.com/repos/Von-Van/Formiga-Desktop/releases?per_page=10";
 const MAX_INSTALLER_BYTES: u64 = 250 * 1024 * 1024;
 const CHECK_INTERVAL_SECONDS: i64 = 24 * 60 * 60;
+/// What an installer Formiga downloaded is called, after the version in the middle of the name.
+const INSTALLER_SUFFIXES: [&str; 2] = ["-macOS-universal.dmg", "-windows-x64.msi"];
+/// How long a part-finished download sits untouched before it counts as abandoned.
+const ABANDONED_DOWNLOAD_SECONDS: u64 = 24 * 60 * 60;
 
 pub const APP_VERSION: &str = match option_env!("FORMIGA_BUILD_VERSION") {
     Some(version) => version,
@@ -86,11 +90,28 @@ impl UpdateController {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        Self {
+        let controller = Self {
             preferences_path,
             download_dir: data_dir.join("updates"),
             preferences,
             status: UpdateStatus::Idle,
+        };
+        controller.clear_used_downloads();
+        controller
+    }
+
+    /// Clear out the installers that have done their job, so the updates folder does not end up
+    /// holding a copy of every version the colony has ever run. Done once, as Formiga starts.
+    fn clear_used_downloads(&self) {
+        if running_from_a_mounted_image() {
+            return;
+        }
+        let Ok(current) = parse_version(APP_VERSION) else {
+            return;
+        };
+        let cleared = clear_used_installers(&self.download_dir, &current, SystemTime::now());
+        if !cleared.is_empty() {
+            tracing::info!(count = cleared.len(), "cleared installers already used");
         }
     }
 
@@ -368,6 +389,78 @@ pub fn download_update(release: UpdateRelease, directory: PathBuf) -> Result<Dow
     })
 }
 
+/// The version an installer would install, for the names Formiga's own downloads carry and no
+/// others. Anything else in the folder belongs to whoever put it there.
+fn installer_version(name: &str) -> Option<Version> {
+    let rest = name.strip_prefix("Formiga-")?;
+    let version = INSTALLER_SUFFIXES
+        .iter()
+        .find_map(|suffix| rest.strip_suffix(suffix))?;
+    Version::parse(version).ok()
+}
+
+/// Whether a part-finished download has sat unfinished long enough to count as abandoned.
+fn abandoned_part(entry: &fs::DirEntry, name: &str, now: SystemTime) -> bool {
+    let Some(installer) = name.strip_suffix(".part") else {
+        return false;
+    };
+    installer_version(installer).is_some()
+        && entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age.as_secs() >= ABANDONED_DOWNLOAD_SECONDS)
+}
+
+/// Remove the installers in `directory` that are finished with: any that would install the running
+/// version or an older one, and any part-finished download left for a day or more. An installer for
+/// a later version stays, since it may not have been installed yet, and so does every file that is
+/// not one of Formiga's own downloads.
+///
+/// This is housekeeping rather than a step that has to succeed: whatever cannot be removed is left
+/// where it is. Returns the names it cleared.
+fn clear_used_installers(directory: &Path, current: &Version, now: SystemTime) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut cleared = Vec::new();
+    for entry in entries.flatten() {
+        // A symlink is somebody else's business, whatever it is called.
+        if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        let finished_with = match installer_version(name) {
+            Some(version) => version <= *current,
+            None => abandoned_part(&entry, name, now),
+        };
+        if !finished_with {
+            continue;
+        }
+        match fs::remove_file(entry.path()) {
+            Ok(()) => cleared.push(name.to_owned()),
+            Err(error) => tracing::debug!(%error, name, "could not clear a used installer"),
+        }
+    }
+    cleared
+}
+
+/// Whether Formiga is running from a mounted disk image or another volume it does not own, in
+/// which case the installer it came from is still holding the app that is running and is left be.
+#[cfg(target_os = "macos")]
+fn running_from_a_mounted_image() -> bool {
+    std::env::current_exe().is_ok_and(|path| path.starts_with("/Volumes/"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn running_from_a_mounted_image() -> bool {
+    false
+}
+
 fn fetch_checksum(url: &str) -> Result<String> {
     let agent = http_agent(Duration::from_secs(15));
     let body = agent
@@ -461,6 +554,97 @@ mod tests {
         fn sha256_for_test(&self) -> String {
             self.asset.sha256.clone().unwrap()
         }
+    }
+
+    /// An empty folder of its own, named for the test using it.
+    fn scratch(label: &str) -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("formiga-updater-{label}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    /// Put a file's last-changed time back, as if it had been sitting there.
+    fn age(path: &Path, by: Duration) {
+        let when = SystemTime::now() - by;
+        let file = File::options().write(true).open(path).unwrap();
+        file.set_times(fs::FileTimes::new().set_accessed(when).set_modified(when))
+            .unwrap();
+    }
+
+    #[test]
+    fn only_formigas_own_installer_names_are_recognized() {
+        assert_eq!(
+            installer_version("Formiga-0.59.2-macOS-universal.dmg"),
+            Some(Version::new(0, 59, 2))
+        );
+        assert_eq!(
+            installer_version("Formiga-1.0.0-rc.1-windows-x64.msi"),
+            Version::parse("1.0.0-rc.1").ok()
+        );
+        for name in [
+            "Formiga--macOS-universal.dmg",
+            "Formiga-0.59.2-macOS-universal.zip",
+            "../Formiga-0.59.2-macOS-universal.dmg",
+            "holiday.dmg",
+        ] {
+            assert!(installer_version(name).is_none(), "{name} is not ours");
+        }
+    }
+
+    #[test]
+    fn installers_already_used_are_cleared_and_later_ones_kept() {
+        let directory = scratch("used");
+        let kept = [
+            "Formiga-0.60.1-macOS-universal.dmg",
+            "Formiga-0.58.9-macOS-universal.zip",
+            "colony-backup.dmg",
+            "notes.txt",
+        ];
+        let used = [
+            "Formiga-0.58.9-macOS-universal.dmg",
+            "Formiga-0.59.2-windows-x64.msi",
+            "Formiga-0.60.0-macOS-universal.dmg",
+        ];
+        for name in kept.iter().chain(used.iter()) {
+            fs::write(directory.join(name), b"installer").unwrap();
+        }
+
+        let mut cleared =
+            clear_used_installers(&directory, &Version::new(0, 60, 0), SystemTime::now());
+        cleared.sort();
+
+        assert_eq!(cleared, used);
+        for name in kept {
+            assert!(
+                directory.join(name).exists(),
+                "{name} should have been left"
+            );
+        }
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn an_abandoned_part_download_is_cleared_and_one_still_going_is_kept() {
+        let directory = scratch("part");
+        let abandoned = "Formiga-0.60.1-macOS-universal.dmg.part";
+        let going = "Formiga-0.61.0-macOS-universal.dmg.part";
+        let stranger = "somebody-elses.part";
+        for name in [abandoned, going, stranger] {
+            fs::write(directory.join(name), b"half a download").unwrap();
+        }
+        age(
+            &directory.join(abandoned),
+            Duration::from_secs(2 * 24 * 60 * 60),
+        );
+
+        let cleared = clear_used_installers(&directory, &Version::new(0, 60, 0), SystemTime::now());
+
+        assert_eq!(cleared, vec![abandoned]);
+        assert!(directory.join(going).exists());
+        assert!(directory.join(stranger).exists());
+        fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]

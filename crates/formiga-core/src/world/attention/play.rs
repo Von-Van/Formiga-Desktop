@@ -657,6 +657,7 @@ impl World {
         };
         for (index, id) in members.iter().copied().enumerate() {
             self.join_play(id, e.pair[1 - index.min(1)], origin, desktop);
+            self.signal_playing(id);
         }
         self.recruit_attention_observers(e.pair[0], origin, desktop);
         for p in self.attention.plans.values_mut() {
@@ -704,6 +705,16 @@ impl World {
             goal: None,
         });
         self.attention.colony_cooldown = 15.0;
+    }
+
+    /// A companion that has just joined a game says so, so that a pair breaking off from what
+    /// they were doing reads as the start of something rather than two more creatures wandering
+    /// about. Only the players are asked for it — the ones who stop to watch are watching — and
+    /// only when somebody joins, never when a player who stepped out to cross a gap comes back.
+    pub(super) fn signal_playing(&mut self, id: CreatureId) {
+        if self.save.settings.visible {
+            self.show_bubble(id, BubbleIcon::Music);
+        }
     }
 
     pub(super) fn join_play(
@@ -827,6 +838,7 @@ impl World {
             });
             if let Some(id) = candidate {
                 self.join_play(id, previous, s.origin, desktop);
+                self.signal_playing(id);
                 s.members[s.count] = Some(id);
                 s.turn = s.count;
                 s.count += 1;
@@ -1246,6 +1258,35 @@ pub(super) mod tests {
                 .plans
                 .values()
                 .any(|p| matches!(p.role, Role::Play { .. } | Role::Observer { .. }))
+    }
+
+    /// A game says so over the heads of the players, so a pair breaking off from whatever they
+    /// were doing reads as the start of something rather than two more companions wandering
+    /// about. Everyone who joins says it once, as they join; the ones who stop to watch stay
+    /// quiet, because they are watching rather than playing.
+    #[test]
+    fn joining_a_game_says_so_over_the_players_and_not_the_watchers() {
+        let (mut w, mut d, now) = scene(true);
+        let mut players = BTreeSet::new();
+        let mut said = BTreeSet::new();
+        let mut started = false;
+        for step in 1..180 {
+            tick(&mut w, &mut d, now, step);
+            for bubble in w.thought_bubbles() {
+                if bubble.icon == BubbleIcon::Music {
+                    said.insert(bubble.creature_id);
+                }
+            }
+            if let Some(s) = w.attention.play.session {
+                started = true;
+                players.extend(s.members.iter().flatten().copied());
+            } else if started {
+                break;
+            }
+        }
+        assert!(started, "a scene never got going");
+        assert!(!players.is_empty());
+        assert_eq!(said, players, "every player says it, and only the players");
     }
 
     #[test]

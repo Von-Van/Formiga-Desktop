@@ -126,7 +126,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -739,11 +739,16 @@ fn source_argument(args: &[String]) -> PathBuf {
 }
 
 fn animation_preview(path: PathBuf, seed_number: u64) -> Result<()> {
-    const COLS: u32 = 6;
     const SCALE: u32 = 3;
+    // One column per frame of the longest clip, so a clip that grows stays on its own row.
+    let cols = ActionKind::ALL
+        .into_iter()
+        .map(|action| u32::from(formiga_art::AnimationSpec::for_action(action).frames))
+        .max()
+        .unwrap_or(1);
     let rows = ActionKind::ALL.len() as u32;
     let cell = FRAME_SIZE * SCALE;
-    let width = COLS * cell;
+    let width = cols * cell;
     let height = rows * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     let mut seed = [0_u8; 32];

@@ -17,7 +17,45 @@ If you publish a version of your own, please:
 
 ## Working on your version
 
-Before sharing a build, run:
+### Setting up
+
+- Install [rustup](https://rustup.rs). The pinned toolchain, Rust 1.97.1 with rustfmt and Clippy,
+  installs itself from `rust-toolchain.toml` the first time you run `cargo`.
+- On macOS 14 or later, install the Xcode Command Line Tools (`xcode-select --install`). On Windows
+  10 or 11, install the Visual Studio C++ build tools. Those are the only supported platforms.
+- Packaging needs more than this (WiX 4 on Windows, for example); [docs/BUILD.md](docs/BUILD.md)
+  has the details, and you will not need it to work on the code.
+
+Run the app against a scratch colony while you work:
+
+```sh
+FORMIGA_DATA_DIR=/tmp/formiga-dev cargo run -p formiga-desktop
+```
+
+`FORMIGA_DATA_DIR` replaces the application-data directory outright. The colony, its backup, the
+logs, and the update preferences all go there, so an experiment, a migration, or a reset cannot
+touch a colony you actually live with. Without it, a development build uses the same colony as an
+installed copy. The log is `logs/formiga.log` in whichever directory is in use.
+
+### Finding your way around
+
+Start with [the orientation at the top of ARCHITECTURE.md](docs/ARCHITECTURE.md#start-here). It
+covers the four crates, how the app starts, the main loop, where state lives, and the order in
+which a feature usually touches the layers. The short version:
+
+- `formiga-core`: the simulation, colony, and save format. No GUI or GPU code, and no view of
+  the desktop beyond the snapshot it is handed.
+- `formiga-art`: generation and rasterisation of everything drawn.
+- `formiga-desktop`: the app, meaning the event loop, overlays, input, settings, tray, updater, and
+  OS adapters.
+- `formiga-tools`: a command-line companion. Run `cargo run -p formiga-tools` with no arguments
+  for its subcommands: review sheets, documentation images, `simulate` for an accelerated-time
+  colony, and `tick-bench` for the simulation's own cost.
+
+### Checks
+
+Before sharing a build, run the same gate CI runs on macOS and Windows for every push to `main`
+and every pull request:
 
 ```sh
 cargo fmt --all --check
@@ -25,10 +63,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Platform integration changes should be checked against the relevant cases in
-`docs/TEST_MATRIX.md`. Procedural-art changes should regenerate the contact sheet and pass the
-1,000-genome render test. Persistence changes should include an explicit migration and round-trip
-test.
+Windows cannot be fully checked from a Mac; see [docs/BUILD.md](docs/BUILD.md) for why and what
+to do instead.
+
+### Changing things safely
+
+- **Persistence.** A new saved field needs a `SAVE_VERSION` bump, an explicit migration, and
+  migration and round-trip tests. Every save an earlier release wrote must still load.
+- **Generation.** Keep it append-only, so that existing seeds, recipes, and seed codes resolve
+  exactly as before. [docs/GENERATION.md](docs/GENERATION.md#extending-safely) has the rules.
+  Regenerate the contact sheet and keep the 1,000-genome render test passing.
+- **Art and animation.** Look at the relevant review sheet rather than trusting the numbers, and
+  keep the atlas inside the texture budget its test enforces.
+- **Platform integration.** Check against the relevant cases in `docs/TEST_MATRIX.md`.
+- **Performance.** Compare `tick-bench` before and after in one sitting, with a build of the
+  previous commit alongside; timings drift between sittings. For whole-process numbers, follow
+  [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+- **Privacy.** Nothing may read beyond the boundary in [docs/PRIVACY.md](docs/PRIVACY.md). If what
+  is stored changes, that document changes with it.
+- **Documentation.** Add or update the section of `docs/ARCHITECTURE.md` your change belongs to,
+  and add a CHANGELOG entry.
 
 ### Writing behavior scenarios
 

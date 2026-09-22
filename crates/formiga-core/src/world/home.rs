@@ -79,6 +79,19 @@ pub(super) const MAX_STROLLING: usize = 3;
 /// the feet keep up with the ground rather than skating over it.
 pub(super) const STROLL_PACE: f32 = 0.45;
 
+/// How fast a companion crosses the village on its own feet, in points a second: this steady pace
+/// for the least active, half as fast again for the briskest.
+pub(super) const WALK_SPEED: f32 = 24.0;
+pub(super) const WALK_SPEED_PER_ACTIVITY: f32 = 34.0;
+
+/// The fastest anything at home can move while it is only strolling: the briskest walk a
+/// companion could have, at a stroll's pace. A walk home is at least `WALK_SPEED` and in practice
+/// over thirty points a second, so a plain speed sits either side of this with nothing in between
+/// — which is how the overlay tells a village that is strolling from one that is walking, and
+/// draws the first at half the rate. Nothing that moves at home goes faster than this unless it
+/// has broken into a walk.
+pub const MAX_STROLL_SPEED: f32 = (WALK_SPEED + WALK_SPEED_PER_ACTIVITY) * STROLL_PACE;
+
 /// How far a stroll goes at the least, in creature widths: far enough to read as going somewhere.
 const STROLL_REACH_FRAMES: f32 = 1.5;
 
@@ -860,7 +873,8 @@ impl World {
                 ActionKind::Landing
             } else {
                 let distance = previous.distance(target);
-                let speed = (24.0 + creature.personality.activity * 34.0) * pace;
+                let speed =
+                    (WALK_SPEED + creature.personality.activity * WALK_SPEED_PER_ACTIVITY) * pace;
                 if distance > 0.0 {
                     creature.state.facing_right = target.x >= previous.x;
                     creature.state.position =

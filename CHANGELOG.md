@@ -2,6 +2,100 @@
 
 All notable changes are documented here.
 
+## [0.59.5] - 2026-09-22
+
+### Added
+
+- A music note over each companion as it joins a game: the pair that start one, and anyone
+  recruited once it is under way. The ones who stop to watch stay quiet, and a player who steps
+  out to cross a gap and comes back does not say it twice.
+- A Z over a companion as it drops off to sleep, however it got there: a quiet moment at its own
+  door, the nap cushion, or an ordinary sleep out on the desktop. Every way into a nap ends in the
+  same event, so one pass over each tick's events catches them all. Both bubbles use icons the
+  interface atlas already had, so neither adds any art.
+- Formiga clears out the installers it has finished with. Each time it starts, it removes from its
+  `updates` folder every installer it downloaded for the version now running or an earlier one,
+  and any part-finished download left untouched for a day. An installer for a later version stays,
+  since it may not have been installed yet. Files that are not named as Formiga's own downloads
+  are never touched, and nothing is cleared while Formiga is running from a mounted disk image.
+
+### Changed
+
+- A companion with nothing to do now sits like it has something on its mind. Resting was four
+  frames of a one-pixel bob, held square and facing the screen for as long as there was nothing
+  else to do. It is now a six-frame loop at three frames a second: it settles, shifts its weight
+  onto one foot with the other scuffing in and its shoulders dropping, tips its head and pricks
+  its ears toward that side to look at something, and settles back. Which side it settles onto,
+  and whether it slumps into the shift or keeps its legs under it, are read from bytes the
+  creature's appearance already carries, so a colony sitting about is not a row of companions
+  doing the same nothing in step, and nothing new is stored to say so. The plain square settle is
+  still the first frame of the loop, and it is the only frame reduced motion draws.
+- The liveliest companions now stroll at ten frames a second like everyone else, a step of about
+  two and a half points with the walk cycle at four and a half frames a second. Their strolls ran
+  just over the old threshold and were drawn at twenty. A walk home, and anything out on the
+  desktop, still gets twenty.
+
+### Fixed
+
+- Standing companions keep to one ground line. For blobs and every modular body plan, a bob or a
+  lift moved the floor along with the body. The resting pose therefore set the ground, and every
+  other standing clip was drawn a pixel or two above it, so a companion rose as it set off walking
+  and dropped back when it stopped. That was most noticeable in the village. The floor is now the
+  same row in every standing clip, and the body settles over feet that stay planted; a blob, which
+  has no legs to fold, squashes against the ground instead. A test holds every standing clip of the
+  three classic families and 64 modular seeds to one row, with and without reduced motion.
+
+### Security
+
+- `rustls` is updated from 0.23.43 to 0.23.45 for RUSTSEC-2026-0285, a TLS 1.3 handshake flaw
+  rated medium. It is the TLS library behind the update check and update downloads.
+
+### Performance
+
+- A strolling village costs about half what it did. With the houses out, the owner's colony of five
+  averaged 1.32% CPU against 2.44% for 0.59.2 in the same sitting, and 1.30% against 2.47% in a
+  second, independent pair of runs; the footprint is 110 MB against 111. Almost all of the cost was
+  frames. The rule that lets a stroll tick and draw at ten frames a second tested movement against
+  a round 24 points a second, but a stroll reaches 26.1 for the briskest companion, so a colony
+  with one lively member held the whole village at twenty. The threshold is now the stroll's own
+  ceiling, `MAX_STROLL_SPEED`, derived from the walk speed the village itself uses, and a test
+  holds strolls under it and walks well over it. Frames presented at home fell from 11.5 a second
+  to 7.1.
+- The overlay binds its vertex buffer once per frame and each draw names its own range, rather
+  than binding a new slice for every draw. That is 48.4 µs against 41.8 µs per pass in a headless
+  benchmark; in the running app it is inside the spread between runs.
+- Measured and left alone: skipping frames that changed nothing (one frame in 1,381 was unchanged),
+  caching the village layout (0.26 µs a frame), and the interaction proxies (no native calls at all
+  over two minutes of strolling). [PERFORMANCE.md](docs/PERFORMANCE.md) has the numbers.
+- The longer rest costs nothing and saves a little. Its six frames are exactly the two spare slots
+  left in the creature atlas's thirteenth row, so a creature's textures are the same 1,529,856
+  bytes they were and a full colony of six the same 9,179,136. A still colony is drawn at the
+  frame rate of whatever it is resting in, so resting at three frames a second is one redraw a
+  second fewer than the four it used to be.
+
+### Documentation
+
+- The README is rewritten around what Formiga is, why it exists, its design priorities, what it
+  does, its status (what is stable, what is still preview, and what has not been verified), how to
+  build it, how it works, and how it is built with AI assistance under human direction. The
+  feature tour it used to carry is now [docs/GUIDE.md](docs/GUIDE.md), and every earlier "New in"
+  section is in [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md), both moved word for word.
+- ARCHITECTURE.md opens with an orientation for someone new to the code: the crates and where to
+  start reading, how the app starts, the main loop, where state lives, how a feature usually
+  touches each layer, and the design constraints and why they hold. CONTRIBUTING.md gains setup,
+  a map of the code, the checks, and what to watch when changing persistence, generation, art,
+  performance, or privacy. BUILD.md gains the full list of image commands and how a release is cut.
+  The case study gains four sections on how the codebase has grown without breaking colonies.
+- Out-of-date documentation is corrected. The architecture notes, case study, and test matrix
+  described save versions 15 to 17 where the code is at 18, and the privacy notes had no entry for
+  version 18. The performance notes said nothing had been measured since 0.57.0, the suggested
+  repository description still said the colony tops out at four, and the architecture notes' lists
+  of simulation modules and test files were out of date.
+- `rust-toolchain.toml` pins rustfmt and Clippy along with Rust 1.97.1. The minimal profile it
+  asked for has neither, so the documented checks failed on a fresh clone until they were added by
+  hand. `formiga-tools`' usage text now lists `home-yard-sheet`, and `formiga-art` no longer names
+  `time` as both a dependency and a dev-dependency.
+
 ## [0.59.2] - 2026-09-22
 
 ### Added

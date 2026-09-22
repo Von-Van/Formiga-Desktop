@@ -12,7 +12,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
 | Raised cat tail and visible rabbit puff for every tail style | CI | CI |
 | Resting cats plant all four paws on the same contact row as walking; gesture paws cap long generated reaches | CI | CI |
-| v1–v15→v16 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
+| v1–v17→v18 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | A v14 colony migrates to an empty visitor state; the saved-field allowlist and runtime-only field denylist both hold | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
@@ -129,6 +129,11 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Sleep and strolls: a companion walking to bed is drawn walking, heavy-lidded, and lies down when it stops; a sleeper that has to make room is towed by a free friend at an unhurried pace without waking anyone, the rope let go at the end; with nobody free it wriggles over, and a tow cut short by a pick-up ends at once; the rope reaches from hand to sleeper without a gap and sags; residents stroll out and back with at most three out at once, and every visit starts with the walk home; a stroll at home ticks and draws at 10 Hz and anything brisker at 20 | CI | CI |
 | Undo: a removed companion comes back with its id, place, memories, bonds, minis and cottage while everyone else keeps what they did since; a replaced one comes back and its replacement leaves no creature or bond behind; a welcomed one goes and a natural arrival stays; a full colony refuses and keeps the change; a layout change puts back only its own fields, keepsakes found since after the rest; failed and empty changes keep the earlier one; the footer offers the change on every page only while there is one | CI | CI |
 | Postcards: every scene deterministic, opaque, and different from the others for a colony of one and of six; everyone in the picture, in order, inside the frame; a caption changes only the lines under the picture and is written without control characters, folded and cut to sixty characters; a cancelled export writes nothing, a sent one has no text chunks, names, or caption bytes, and a filename naming only the scene; the Home page picks a scene and a caption and uploads nothing | CI | CI |
+| Resting: a six-frame loop with at least four postures on every body plan, the settle alone under reduced motion, both sides and both manners reached by generated companions, and no faster than the clip it replaced | CI | CI |
+| Ground line: every standing clip stands on one row, for the classic families and 64 modular seeds, with and without reduced motion | CI | CI |
+| Bubbles on transitions: a music note over every companion that joins a game and over none of its watchers; a Z over a companion as it drops off, by any route into a nap, and over nobody still standing | CI | CI |
+| Updates folder: installers for the running version or an earlier one, and part-finished downloads untouched for a day, are cleared at start; later installers, other files, and names that are not Formiga's own are kept | CI | CI |
+| Stroll cadence: every stroll a companion can take stays at or under `MAX_STROLL_SPEED` and every walk well over it, the briskest stroll still ticks and draws at 10 Hz, a walk home at 20, and a resting colony is redrawn three times a second | CI | CI |
 | Universal app / x64 package | CI | CI |
 
 ## Companion interface checks (0.57.0)
@@ -264,7 +269,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once | pending | pending | pending | pending |
 | The village on a real desktop: both trees bookending the houses, keepsakes filling the branches as they are found, the belongings scattered in the two yards, and the whole corner on screen at every scale in both corners | pending | pending | pending | pending |
 | Sticker, colony-portrait, and postcard export dialogs: save, cancel, Unicode names and captions, and reopening every file in a native viewer | pending | pending | pending | pending |
-| Package install, relaunch, v16 round trip, and representative v1–v15 migration without creature loss | pending | pending | pending | pending |
+| Package install, relaunch, v18 round trip, and representative v1–v17 migration without creature loss | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

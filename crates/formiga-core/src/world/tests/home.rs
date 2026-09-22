@@ -1024,3 +1024,66 @@ fn an_afternoon_at_home_builds_no_bonds_and_spends_none_of_the_calm_minutes_alre
         "the minutes a pair had already spent together were spent or forgotten at home"
     );
 }
+
+/// A village is either strolling or walking, with nothing in between, and `MAX_STROLL_SPEED` is
+/// the line between them. The overlay has only a plain speed to go on when it decides whether ten
+/// frames a second will carry what is on screen, so a stroll that could pass the ceiling — or a
+/// walk that could fall under it — would have it draw the village at the wrong rate.
+#[test]
+fn a_settled_village_either_strolls_under_the_ceiling_or_walks_well_over_it() {
+    use crate::world::home::{STROLL_PACE, WALK_SPEED, WALK_SPEED_PER_ACTIVITY};
+
+    // The ceiling covers the briskest stroll any companion could take, whatever its spirits.
+    for step in 0..=100 {
+        let activity = step as f32 / 100.0;
+        let stroll = (WALK_SPEED + activity * WALK_SPEED_PER_ACTIVITY) * STROLL_PACE;
+        assert!(
+            stroll <= MAX_STROLL_SPEED,
+            "a companion of activity {activity} strolls at {stroll}, past the ceiling"
+        );
+    }
+
+    // And a colony of the highest spirits, left to itself at the houses, keeps to either side of
+    // it: a stroll at or under the ceiling, a walk at its own full pace.
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([88; 32], 4, created, &desktop);
+    for creature in &mut world.save.creatures {
+        creature.personality.activity = 1.0;
+    }
+    let walk = WALK_SPEED + WALK_SPEED_PER_ACTIVITY;
+    // Velocity is measured from the step a companion actually took, so the briskest stroll lands
+    // on the ceiling with a rounding error either side of it rather than under it. That is why
+    // the overlay's own threshold carries a whisker of slack.
+    let rounding = 0.01;
+    let mut clock = created;
+    let mut strolled = 0;
+    let mut fastest_stroll = 0.0_f32;
+    for _ in 0..6_000 {
+        world.save.home.active_since_utc = Some(clock - time::Duration::minutes(5));
+        world.save.home.last_disappeared_utc = None;
+        world.tick(clock, 0.05, &desktop);
+        let _ = world.drain_events().count();
+        clock += time::Duration::seconds_f64(0.05);
+        for creature in &world.save.creatures {
+            let speed = creature.state.velocity.x.abs();
+            if speed <= 0.1 {
+                continue;
+            }
+            assert!(
+                speed <= MAX_STROLL_SPEED + rounding || speed >= walk - 0.5,
+                "{} moved at {speed} points a second, between a stroll and a walk",
+                creature.name
+            );
+            if speed <= MAX_STROLL_SPEED + rounding {
+                strolled += 1;
+                fastest_stroll = fastest_stroll.max(speed);
+            }
+        }
+    }
+    assert!(strolled > 0, "nobody strolled, so nothing was checked");
+    assert!(
+        fastest_stroll > MAX_STROLL_SPEED - 1.0,
+        "the liveliest colony only reached {fastest_stroll}, so the ceiling was never approached"
+    );
+}

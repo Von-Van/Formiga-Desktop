@@ -23,7 +23,10 @@ version, capped at 250 MB, checked against GitHub's advertised size, and SHA-256
 installer can be opened. Formiga does not silently install an update. Windows launches the verified
 MSI and exits; macOS opens the verified DMG for the user to replace the app manually. Update
 preferences, the last-check timestamp, and any downloaded installer are stored in the normal local
-application-data directory.
+application-data directory. An installer is kept only until it has done its job: as Formiga starts
+it clears from that folder every installer for the version now running or an earlier one, along with
+any part-finished download left untouched for a day. An installer for a later version stays, since
+it may not have been installed yet, and nothing else in the folder is touched.
 
 The desktop adapters read only:
 
@@ -120,6 +123,12 @@ nothing, and the buffers are released afterwards. A caption is never saved; it l
 settings window until the postcard is exported and is gone when the window closes. The colony as
 it stood before your last change, kept so the change can be undone, lives in memory only: it is
 never written to the colony file and is gone when the app quits.
+
+Save version 18 accepts and deterministically migrates every v1–v17 colony. The one thing it adds
+is the kind a house is built as, described below: the id of the companion who keeps the house and
+the kind's name, written only once a kind is chosen. The version moved so an older build refuses
+the file instead of quietly dropping that choice. A v17 colony opens unchanged, every house its
+own kind.
 
 Save version 17 accepts and deterministically migrates every v1–v16 colony. It adds the classic
 parts of a recipe — six small numbers choosing a coat, face, limbs, crown, pattern, and tail — which

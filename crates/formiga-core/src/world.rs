@@ -36,6 +36,7 @@ pub use bubbles::{BubbleGrowth, ThoughtBubble};
 use colony::*;
 use generation::*;
 use habits::*;
+pub use home::MAX_STROLL_SPEED;
 use interaction::*;
 use journeys::*;
 use movement::*;
@@ -347,6 +348,9 @@ impl World {
             self.save.maximum_seen_utc = now;
         }
         let timeline_now = self.save.maximum_seen_utc;
+        // Where this tick's own events start, so the pass at the end of it can tell what happened
+        // just now from whatever the desk has not collected yet.
+        let events_before = self.events.len();
         if self
             .save
             .companion
@@ -489,6 +493,7 @@ impl World {
                 .iter()
                 .map(|window| (window.key, window.bounds))
                 .collect();
+            self.signal_dropping_off(events_before);
             self.project_events(timeline_now);
             return;
         }
@@ -1482,7 +1487,32 @@ impl World {
             .map(|window| (window.key, window.bounds))
             .collect();
         self.sample_observations(dt, desktop);
+        self.signal_dropping_off(events_before);
         self.project_events(timeline_now);
+    }
+
+    /// A companion that has just dropped off says so, once, with the same bubble it uses to turn
+    /// down a snack it is too sleepy for. Every way into a nap ends in one `ActionStarted`, so
+    /// reading this tick's own events catches the lot — the quiet moment at a village door, the
+    /// cushion somebody put down, and an ordinary sleep out on the desktop — without each of
+    /// those paths having to remember to say it.
+    fn signal_dropping_off(&mut self, events_before: usize) {
+        if !self.save.settings.visible {
+            return;
+        }
+        let sleepers: Vec<CreatureId> = self.events[events_before..]
+            .iter()
+            .filter_map(|event| match event {
+                WorldEvent::ActionStarted {
+                    creature_id,
+                    action: ActionKind::Sleep,
+                } => Some(*creature_id),
+                _ => None,
+            })
+            .collect();
+        for creature_id in sleepers {
+            self.show_bubble(creature_id, BubbleIcon::Sleepy);
+        }
     }
 
     /// Moves every habit being done along: a waiting one starts once its companion has stopped,

@@ -2718,7 +2718,14 @@ fn world_has_spatial_motion(world: &World) -> bool {
 /// Below this, in points a second, movement at home is a stroll round the village. A stroll
 /// steps under two and a half points a tick even at 10 Hz, and its walk cycle runs at less than
 /// half speed to match, so the colony is ticked and drawn at 10 Hz while nothing moves faster.
-const STROLL_TICK_SPEED: f32 = 24.0;
+///
+/// It is the stroll's own ceiling — the briskest walk any companion could have, at a stroll's
+/// pace — plus a whisker of slack, because velocity is measured from the step a companion
+/// actually took and the briskest stroll therefore lands on the ceiling rather than under it. A
+/// round number here quietly excluded the liveliest companions: at 24 points a second, a colony
+/// with one member of high spirits strolled at 24.8 and the whole village was drawn twice as
+/// often as it needed to be, which is most of what a strolling village cost.
+const STROLL_TICK_SPEED: f32 = MAX_STROLL_SPEED + 0.5;
 
 /// The colony is at home and everyone moving is only strolling round the commons.
 fn world_moves_only_at_a_stroll(world: &World) -> bool {
@@ -3027,6 +3034,41 @@ mod tests {
         );
     }
 
+    /// A colony that is only resting is the commonest thing on the screen, so what it costs to
+    /// draw is close to what Formiga costs. The rest loop is presented at its own three frames a
+    /// second, which is one redraw a second fewer than the four-frame rest it grew out of: the
+    /// longer loop is also the cheaper one, and only sleeping and walking home are quieter.
+    #[test]
+    fn a_resting_colony_is_drawn_three_times_a_second() {
+        let mut world = World::new(
+            [5; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        for creature in &mut world.save.creatures {
+            creature.state.action = ActionKind::Idle;
+            creature.state.arrival_delay_secs = 0.0;
+            creature.state.velocity = Point::default();
+            creature.state.attention = None;
+            creature.state.flourish = None;
+        }
+        assert_eq!(
+            world_redraw_interval(&world),
+            Duration::from_secs_f32(1.0 / 3.0)
+        );
+        let resting = formiga_art::AnimationSpec::for_action(ActionKind::Idle);
+        assert!(
+            resting.fps < 4,
+            "a colony at rest is redrawn as often as it was before the rest loop grew"
+        );
+        for action in [ActionKind::Sleep, ActionKind::Homebound] {
+            assert!(
+                formiga_art::AnimationSpec::for_action(action).fps < resting.fps,
+                "{action:?} should be quieter still than resting"
+            );
+        }
+    }
+
     /// A stroll round the village at home is ticked and drawn at 10 Hz; the walk home, anything
     /// brisker, and any movement out on the desktop keep the full 20.
     #[test]
@@ -3044,6 +3086,16 @@ mod tests {
         }
         assert_eq!(world_tick_interval(&world), Duration::from_millis(100));
         assert_eq!(world_redraw_interval(&world), Duration::from_millis(100));
+        // The briskest stroll a colony can have counts as a stroll. A companion of high spirits
+        // strolls at nearly twenty-six points a second, and one of them used to hold the whole
+        // village at twenty frames a second.
+        world.save.creatures[0].state.velocity.x = MAX_STROLL_SPEED;
+        assert_eq!(world_tick_interval(&world), Duration::from_millis(100));
+        assert_eq!(world_redraw_interval(&world), Duration::from_millis(100));
+        // A walk home is a different thing: the slowest walk any companion has is over thirty
+        // points a second, and the village is drawn every tick while one is crossing it.
+        world.save.creatures[0].state.velocity.x = 30.8;
+        assert_eq!(world_tick_interval(&world), Duration::from_millis(50));
         world.save.creatures[0].state.velocity.x = 36.0;
         assert_eq!(world_tick_interval(&world), Duration::from_millis(50));
         world.save.creatures[0].state.velocity.x = 16.0;

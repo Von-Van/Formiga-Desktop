@@ -189,9 +189,13 @@ impl AnimationSpec {
             ActionKind::Sprint => (6, 12, PlaybackMode::Loop),
             ActionKind::Eat | ActionKind::Drink => (4, 6, PlaybackMode::Loop),
             ActionKind::Sleep => (2, 2, PlaybackMode::Loop),
-            ActionKind::Idle | ActionKind::Perch | ActionKind::RideWindow => {
-                (4, 4, PlaybackMode::Loop)
-            }
+            // Resting is the longest clip a companion plays, because it is the one it plays
+            // most: six frames at three a second is a two-second loop, room enough to settle,
+            // shift its weight, look off at something and settle back without any of those four
+            // reading as hurried. Six is also what was left — the two spare slots in the atlas's
+            // last row — so the longer rest costs a creature no texture at all.
+            ActionKind::Idle => (6, 3, PlaybackMode::Loop),
+            ActionKind::Perch | ActionKind::RideWindow => (4, 4, PlaybackMode::Loop),
             ActionKind::Homebound => (2, 2, PlaybackMode::Loop),
             ActionKind::ClimbWindow => (4, 6, PlaybackMode::Loop),
             ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
@@ -951,6 +955,8 @@ impl Pose {
                 tail_sway: i32::from(frame >= 2),
                 ..Self::default()
             },
+            // Resting keeps a loop of its own rather than the shared bob: see [`Self::resting`].
+            ActionKind::Idle => Self::resting(genome, frame),
             _ => Self {
                 bob: frame as i32 % 2,
                 squash_x: 0,
@@ -967,6 +973,56 @@ impl Pose {
             pose.calm();
         }
         pose
+    }
+
+    /// The rest a companion holds when it has nothing else to do: settle, shift its weight, look
+    /// off at something, settle back.
+    ///
+    /// The plain square screen-facing settle is still in here — it is the first beat, and the one
+    /// reduced motion draws on its own — so nothing a companion used to do has been taken away.
+    /// The other beats are what it does between one settle and the next. Every move is a pixel or
+    /// two, because a resting creature that moves more than that reads as fidgeting rather than
+    /// resting, and the beats are three frames a second, slow enough that each one is a posture
+    /// held rather than a twitch passed through.
+    ///
+    /// Which side the weight goes onto, and whether the creature slumps into the shift or keeps
+    /// its legs under it, come from [`resting_manner`], so a colony sitting about is not a row of
+    /// companions doing the same nothing in step.
+    fn resting(genome: &AppearanceGenome, frame: u8) -> Self {
+        let beat = usize::from(frame % 6);
+        let (side, slouch) = resting_manner(genome);
+        // The weight goes onto one foot and the other goes light, scuffing in a pixel: both feet
+        // moving at once lifts the creature, and a lifted resting creature is hopping.
+        let scuff = [0, 1, 1, 1, 0, 0][beat];
+        let (step_a, step_b) = if side > 0 { (scuff, 0) } else { (0, -scuff) };
+        // A long body has its head out in front rather than over its feet, so the look is a neck
+        // craned forward; every other plan tips its head toward the side it settled onto.
+        let look = [0, 0, 1, 2, 2, 1][beat];
+        Self {
+            // A settle onto the shifted foot, no deeper than the single pixel resting has always
+            // bobbed, so where a companion is seated is exactly where it was.
+            bob: [0, 0, 1, 0, 0, 0][beat],
+            // Breathing out wide and flat under the shift, and drawn up narrow for the look.
+            squash_x: [0, 1, 1, 0, -1, 0][beat],
+            squash_y: [0, -1, -1, 0, 1, 0][beat],
+            step_a,
+            step_b,
+            play_lift: 0,
+            // Shoulders drop into the shift and come back up with the look.
+            appendage_lift: [0, -1, -1, 0, 1, 0][beat],
+            // The tail drifts across the whole loop instead of ticking every other frame.
+            tail_sway: side * [0, 1, 1, 0, -1, -1][beat],
+            lean: if stretches_long(genome) {
+                look
+            } else {
+                side * look
+            },
+            // A sloucher sinks onto its haunches while its weight is over to one side; everyone
+            // else keeps its legs under it and only leans.
+            crouch: i32::from(slouch) * [0, 1, 1, 0, 0, 0][beat],
+            // Ears up for the look and down again, which is what tells a look from a sway.
+            ear_perk: [0, 0, 1, 2, 1, 0][beat],
+        }
     }
 
     /// The body half of each gesture: squash, lift, lean and footing. The limbs are placed by
@@ -1163,9 +1219,16 @@ fn draw_blob(
 ) -> PixelPoint {
     let s = scale(genome);
     let rx = ((genome.body_width as f32 * s / 2.0).round() as i32 + pose.squash_x).clamp(6, 16);
-    let ry = ((genome.body_height as f32 * s / 2.0).round() as i32 + pose.squash_y).clamp(5, 14);
+    // A blob carries its feet on the underside of the one mass it is, so it has no legs to fold
+    // and a bob that moved the mass would carry the ground with it. It squashes instead: the
+    // bottom of the silhouette stays on the same row in every clip, and a settle or a step reads
+    // as the blob pressing down and springing back rather than hopping off the floor.
+    let ry = ((genome.body_height as f32 * s / 2.0).round() as i32 + pose.squash_y
+        - pose.bob.clamp(-2, 2)
+        + pose.play_lift.clamp(0, 3))
+    .clamp(5, 14);
     let cx = 26;
-    let cy = 38 - ry + pose.bob - pose.play_lift;
+    let cy = 38 - ry;
     // A blob is one mass with its face on it, so leaning carries the face and the ears together.
     let lean = pose.lean.clamp(-2, 2);
     draw_tail(canvas, genome, palette, cx - rx + 1, cy, s, pose);
@@ -2189,6 +2252,18 @@ fn gesture_limb_targets(
             offset_pair(left, right, ((2, 3 - curl), (-1, 2 - curl)))
         }
     }
+}
+
+/// How a companion settles when it has nothing to do: which side its weight goes onto, and
+/// whether it slumps into the shift or keeps its legs under it.
+///
+/// Both are read from appearance bytes the creature already carries, so a companion rests the
+/// same way for its whole life, two companions side by side rest differently, and no save has to
+/// remember any of it.
+fn resting_manner(genome: &AppearanceGenome) -> (i32, bool) {
+    let mixed =
+        genome.marking_seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ u64::from(genome.face_signature);
+    (if mixed & 1 == 0 { -1 } else { 1 }, mixed & 2 == 0)
 }
 
 /// Whether a creature stretches on all fours rather than standing up to do it: the original
@@ -4664,6 +4739,119 @@ mod tests {
         }
     }
 
+    /// Resting is the clip a companion plays more than any other, so it carries more than a bob.
+    /// The loop settles, shifts its weight onto one foot, looks off to the side with its ears up,
+    /// and settles back; which side it settles onto and whether it slumps into the shift are read
+    /// from the creature's own appearance, so a colony sitting about is not a row of companions
+    /// doing the same nothing in step.
+    ///
+    /// The plain square screen-facing settle a companion always held is still the first frame of
+    /// the loop, and it is the only frame reduced motion draws, so nothing was taken away to make
+    /// room for the rest of it.
+    #[test]
+    fn resting_moves_through_its_own_postures_and_no_two_companions_rest_alike() {
+        let spec = AnimationSpec::for_action(ActionKind::Idle);
+        assert_eq!(spec.playback, PlaybackMode::Loop);
+        // Six is what the creature atlas had left in its last row, so the loop the rest grew
+        // into costs no texture; `layered_atlas_matches_the_baked_budget_per_creature` is where
+        // that is held to.
+        assert_eq!(spec.frames, 6);
+        // A still colony presents at the frame rate of whatever it is resting in, so a longer
+        // rest must not also be a faster one than the four-a-second clip it replaced.
+        assert!(
+            spec.fps <= 4,
+            "a longer rest redraws more often than it did"
+        );
+
+        let preview = World::preview_adult(
+            [29; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        let mut bodies: Vec<(String, AppearanceGenome)> = [
+            BodyFamily::Blob,
+            BodyFamily::Hopper,
+            BodyFamily::SoftQuadruped,
+        ]
+        .into_iter()
+        .map(|family| (format!("{family:?}"), genome(family)))
+        .collect();
+        for plan in formiga_core::BodyPlan::ALL {
+            let mut appearance = preview.appearance.clone();
+            let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+            design.body = plan;
+            appearance.design = Some(design);
+            bodies.push((format!("{plan:?}"), appearance));
+        }
+
+        for (body, appearance) in &bodies {
+            let frames: Vec<_> = (0..spec.frames)
+                .map(|frame| {
+                    CreatureRenderer::render_body_frame(appearance, ActionKind::Idle, frame, false)
+                })
+                .collect();
+            let mut postures: Vec<&Canvas> = Vec::new();
+            for rendered in &frames {
+                if !postures.iter().any(|drawn| **drawn == rendered.canvas) {
+                    postures.push(&rendered.canvas);
+                }
+            }
+            assert!(
+                postures.len() >= 4,
+                "{body} rests in {} pictures, which is a bob rather than a loop of postures",
+                postures.len()
+            );
+            let still = CreatureRenderer::render_body_frame(appearance, ActionKind::Idle, 0, true);
+            for frame in 1..spec.frames {
+                assert_eq!(
+                    CreatureRenderer::render_body_frame(appearance, ActionKind::Idle, frame, true)
+                        .canvas,
+                    still.canvas,
+                    "{body} moves while resting under reduced motion"
+                );
+            }
+        }
+
+        // The two appearance bytes a rest is read from, set so one companion settles to each side.
+        let mut settles_left = bodies[0].1.clone();
+        settles_left.marking_seed = 0;
+        settles_left.face_signature = 0;
+        let mut settles_right = settles_left.clone();
+        settles_right.face_signature = 1;
+        assert_eq!(resting_manner(&settles_left).0, -1);
+        assert_eq!(resting_manner(&settles_right).0, 1);
+        let drawn = |appearance: &AppearanceGenome, frame: u8| {
+            CreatureRenderer::render_body_frame(appearance, ActionKind::Idle, frame, false).canvas
+        };
+        assert_eq!(
+            drawn(&settles_left, 0),
+            drawn(&settles_right, 0),
+            "a settled companion is a settled companion, whichever way it rests"
+        );
+        assert!(
+            (1..spec.frames)
+                .any(|frame| drawn(&settles_left, frame) != drawn(&settles_right, frame)),
+            "two companions come out of the settle the same way"
+        );
+
+        // Every way of settling is reached by companions a colony actually generates.
+        let manners: std::collections::BTreeSet<_> = (0..32_u8)
+            .map(|seed| {
+                let creature = World::preview_adult(
+                    [seed; 32],
+                    time::OffsetDateTime::UNIX_EPOCH,
+                    &DesktopSnapshot::default(),
+                );
+                resting_manner(&creature.appearance)
+            })
+            .collect();
+        assert_eq!(
+            manners.len(),
+            4,
+            "a way of settling nobody is ever born with"
+        );
+    }
+
     #[test]
     fn a_body_shows_a_gesture_only_while_its_attention_carries_one() {
         let mut creature = World::preview_adult(
@@ -4902,5 +5090,63 @@ mod tests {
         let face =
             CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
         assert_eq!(face.eyelids, EyelidPose::Closed);
+    }
+
+    /// Every clip a companion stands in puts its feet on the same row. A bob belongs to the body
+    /// and the floor under it is a constant, so setting off across the village does not lift a
+    /// resident a pixel or two off the ground it was standing on and stopping does not drop it
+    /// back down. Hoppers and quadrupeds always drew it this way; blobs and every modular plan
+    /// used to carry the ground along with the bob.
+    ///
+    /// Sleeping is left out on purpose. A pose whose art overflows the top of the frame is nudged
+    /// back inside it by `keep_atlas_margin`, which moves the feet along with everything else —
+    /// a separate pixel, from a different cause, on the three seeds in sixty-four whose sleeping
+    /// shape is tall enough to touch the edge.
+    #[test]
+    fn standing_clips_share_one_ground_line() {
+        const STANDING: [ActionKind; 6] = [
+            ActionKind::Idle,
+            ActionKind::Perch,
+            ActionKind::Homebound,
+            ActionKind::Traverse,
+            ActionKind::Greet,
+            ActionKind::InspectScreen,
+        ];
+        let mut cases: Vec<(String, AppearanceGenome)> = Vec::new();
+        for family in [
+            BodyFamily::Blob,
+            BodyFamily::Hopper,
+            BodyFamily::SoftQuadruped,
+        ] {
+            cases.push((format!("classic {family:?}"), genome(family)));
+        }
+        for seed in 0..64u8 {
+            let mut modular = genome(BodyFamily::Blob);
+            modular.design = Some(formiga_core::CreatureDesign::generated([seed; 32], 0, None));
+            cases.push((format!("modular seed {seed}"), modular));
+        }
+        for (label, appearance) in cases {
+            for reduce_motion in [false, true] {
+                let ground =
+                    FRAME_SIZE - 1 - CreatureRenderer::resting_baseline(&appearance, reduce_motion);
+                for action in STANDING {
+                    for frame in 0..AnimationSpec::for_action(action).frames {
+                        let (_, _, _, max_y) = CreatureRenderer::render_body_frame(
+                            &appearance,
+                            action,
+                            frame,
+                            reduce_motion,
+                        )
+                        .canvas
+                        .alpha_bounds()
+                        .expect("a standing clip draws a body");
+                        assert_eq!(
+                            max_y, ground,
+                            "{label} {action:?} frame {frame} stands on row {max_y}, not {ground}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

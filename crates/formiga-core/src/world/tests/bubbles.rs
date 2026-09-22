@@ -94,3 +94,45 @@ fn bubbles_are_bounded_skip_the_growing_under_reduced_motion_and_vanish_with_the
         "a hidden colony shows nothing"
     );
 }
+
+/// A companion dropping off says so. Whichever way it got there — the quiet moment a resident
+/// picks for itself at its own door, a cushion somebody put down, or an ordinary sleep out on
+/// the desktop — falling asleep is one `ActionStarted`, and the bubble follows it, so a resident
+/// standing still because it is asleep is not mistaken for one standing still with nothing to do.
+#[test]
+fn dropping_off_says_so_over_the_one_who_fell_asleep() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = super::home::settled_colony([11; 32], 4, created, &desktop);
+    assert!(world.send_home(&desktop));
+    for _ in 0..4_000 {
+        world.tick(created, 0.05, &desktop);
+        let Some(sleeper) = world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.state.action == ActionKind::Sleep)
+        else {
+            continue;
+        };
+        let sleeper = sleeper.id;
+        let bubbles: Vec<_> = world
+            .thought_bubbles()
+            .iter()
+            .map(|bubble| (bubble.creature_id, bubble.icon))
+            .collect();
+        assert!(
+            bubbles.contains(&(sleeper, BubbleIcon::Sleepy)),
+            "the one who fell asleep says so: {bubbles:?}"
+        );
+        assert!(
+            world.save.creatures.iter().all(|creature| {
+                creature.state.action == ActionKind::Sleep
+                    || !bubbles.contains(&(creature.id, BubbleIcon::Sleepy))
+            }),
+            "nobody still on their feet is saying it: {bubbles:?}"
+        );
+        return;
+    }
+    panic!("nobody in the village ever napped");
+}

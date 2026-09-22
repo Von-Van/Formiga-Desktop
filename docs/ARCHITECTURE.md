@@ -28,23 +28,154 @@ metadata. User-approved downloads run on a second short-lived worker, stream int
 enforce size limits, and become launchable only after SHA-256 verification. Completion returns to the
 main event loop through `UserEvent`; no async runtime, updater daemon, or render-loop polling is added.
 
+## Start here
+
+This section is a map for a first visit to the code. Everything after it is the detailed reference,
+one feature at a time, and assumes you know where things are.
+
+### The crates and where to start reading
+
+Dependencies run one way: `formiga-art` depends on `formiga-core`, and `formiga-desktop` and
+`formiga-tools` depend on both. Nothing depends on the desktop crate.
+
+| Crate | Start with | Then |
+|---|---|---|
+| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for the save file and migrations; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/modular.rs` for the modular body plans; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `gpu.rs` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` and `clubhouse.rs` for the settings window; `tray.rs`; `updater.rs`; `platform/` for the macOS and Windows adapters |
+| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark |
+
+### How the app starts
+
+1. `main.rs` opens the log (`logs/formiga.log` in the data directory, rotated at 1 MB), builds a
+   winit event loop that carries `UserEvent`s — tray-menu clicks and updater results — and hands it
+   a `FormigaApp`.
+2. `FormigaApp::new` resolves the data directory, loads the update preferences, and clears
+   installers that have already been used.
+3. When winit calls `resumed`, `initialize` opens one transparent, click-through, always-on-top
+   overlay per display and takes a first `DesktopSnapshot`. It then loads the colony:
+   `World::from_save` for an existing save, or `World::new` with a fresh random seed on first
+   launch. If the save cannot be read, the unreadable files are kept, a fresh colony stands in, and
+   Settings offers recovery choices. Last, it creates the tray icon and writes the save. On a first
+   launch it opens Settings, and if a check is due it starts the daily update check on a worker
+   thread.
+
+### The loop
+
+Nothing in Formiga runs on a timer of its own. Each time winit is about to wait, `about_to_wait`:
+
+1. rescans the displays if two seconds have passed, adding or dropping overlays;
+2. runs `FormigaApp::tick` if a tick is due. That takes a snapshot through the platform adapter
+   (cursor, idle time, window rectangles), passes an ongoing drag to the world as `WorldCommand`s,
+   and calls `World::tick(now, dt, &snapshot)`. It then drains the `WorldEvent`s, which decide how
+   soon the save must be written, and writes it once that is due;
+3. moves each creature's hit-test proxy window onto its current sprite;
+4. sets `ControlFlow::WaitUntil` for when the next tick is due. That is every 50 ms while
+   anything moves or is being handled, and 100 ms while the only movement is a stroll at home or a
+   still creature has to stay quick to pick up. It is 200 ms for a colony that is otherwise still,
+   and 250 ms while the colony is hidden, paused, or covered by a full-screen app. A still colony
+   is redrawn only as often as the animations on show need.
+
+Drawing happens in `window_event` on `RedrawRequested`. Each display's `OverlayRenderer` reads the
+creatures, bubbles, and village from `World` and draws them from atlases that were baked once, when
+each creature loaded. The settings window, the creature menu, and the tray act on the colony by
+calling `World` methods: `handle_command` for handling a creature, and `edit` for a colony change
+that the settings window can undo. The world never calls back into the desktop crate. Everything it
+has to say goes out as `WorldEvent`s or as state the renderer reads.
+
+### Where state lives
+
+| State | Kept in | Lifetime |
+|---|---|---|
+| The colony: creatures, genomes, memories, bonds, village, journal, settings | `SaveFile` (`formiga-core` `model.rs`), held as `World::save` | Written to `colony.json`, with `colony.json.bak` beside it |
+| Plans in flight: journeys, attention scenes, games, visits, bubbles | Other fields of `World` | Runtime only. A test keeps runtime-only fields out of the save |
+| Displays, overlay windows, GPU atlases, proxies, open menus | `FormigaApp` and each `OverlayRenderer` | The life of the process |
+| Update preferences and the last check | `updates.json` | Written when changed |
+| Downloaded installers | `updates/` | Until the version they install is running |
+| Logs | `logs/formiga.log` and `formiga.previous.log` | Rotated at 1 MB |
+
+All of it lives in one data directory. That is `FORMIGA_DATA_DIR` when it is set, and otherwise
+`~/Library/Application Support/com.Formiga.Formiga` on macOS and `%APPDATA%\Formiga\Formiga\data`
+on Windows.
+
+### Adding a feature
+
+Most features touch the layers in the same order.
+
+1. **Behaviour, in `formiga-core`.** Find the `world/<theme>.rs` module the feature belongs to, or
+   add one: a child module adds methods to `World` rather than owning state. Runtime state goes on
+   `World`. Anything that must survive a relaunch goes in the save, and then needs a
+   `SAVE_VERSION` bump, a migration in `persistence.rs`, and a migration test. A new thing a
+   creature can do is usually an `ActionKind`, and one the desktop can trigger is a `WorldCommand`.
+2. **Art, in `formiga-art`.** A new pose or clip is authored against the rig in `renderer.rs` and
+   baked into the atlas with everything else, so drawing it costs nothing extra at runtime. The
+   atlas budget test fails if the new frames no longer fit the texture budget.
+3. **Presentation, in `formiga-desktop`.** Often nothing is needed: the overlay draws whichever
+   clip `BodyPresentation::for_creature` chooses. A new control in Settings or the creature menu
+   calls a `World` method; it does not change world state directly.
+4. **Tests.** Behaviour scenarios go in `world/tests/<theme>.rs`, driving `World::tick` over
+   synthetic desktops with the fixtures in `world/tests/mod.rs`.
+   [CONTRIBUTING.md](../CONTRIBUTING.md) lists the ways a scenario can quietly test the wrong thing.
+5. **Look at it.** Only the review sheets (`formiga-tools gesture-sheet`, `habit-sheet`, and the
+   rest) show whether a pose reads. [TEST_MATRIX.md](TEST_MATRIX.md) explains how to generate and
+   read them.
+6. **Write it down.** Add or update the section of this document the feature belongs to, and add a
+   CHANGELOG entry.
+
+### Design constraints
+
+These constraints are deliberate. Each one closes off an easier design, and the reasons are what
+keep them in place.
+
+- **The core has no GUI or GPU code, and neither it nor the art crate can read the desktop.** All
+  the simulation sees is a `DesktopSnapshot`, so the same seed and the same inputs give the same
+  colony on any machine. That is what lets CI run hundreds of behaviour scenarios on synthetic
+  desktops, and lets a differential harness compare whole sessions byte for byte. The cost is that
+  anything the platform knows has to be carried into the snapshot explicitly.
+- **No global input hooks and no special permissions.** Direct manipulation comes from a passive,
+  click-through overlay plus a tiny non-activating proxy window over each creature, shaped by the
+  sprite's alpha, so only opaque creature pixels can take a click. The proxies must follow their
+  sprites every tick, and anything that needs system-wide input (keyboard shortcuts, clicks
+  elsewhere on the desktop) is out of reach by design.
+- **Geometry, never content.** Windows are rectangles and nothing more. Hiding creatures behind
+  chosen apps is done by computing visible regions and discarding covered pixels in the shader,
+  never by capturing the screen or reading titles. Formiga therefore cannot see what is drawn
+  inside a window. [PRIVACY.md](PRIVACY.md) is the full boundary.
+- **Everything bounded.** The save has fixed caps: six creatures, eight colony objects, 32 habitat
+  zones, bounded journals and routines. Tests hold per-creature growth under 2 KiB, so a colony
+  that runs for years does not grow without limit. New features have to fit inside a cap or add
+  one.
+- **Generation is append-only.** A creature is recomputed from its seed and recipe every time it
+  loads, so changing what an existing seed produces would change creatures people already have.
+  New options are added so that existing seeds, recipes, and seed codes resolve exactly as before,
+  and codes that carry new parts are refused by older builds rather than misread.
+- **One event loop, no async runtime.** Rendering, simulation, and input share winit's loop. Work
+  that could block, such as the update check and downloads, runs on short-lived threads that
+  report back through `UserEvent`. There is no daemon and no polling loop to keep awake.
+- **At most twenty ticks a second, and frames only when needed.** Animation is authored at low
+  frame rates and baked into atlases, so the cost of a still or slow colony is a few quads a few
+  times a second. The price is that motion has to read at those rates.
+- **Updates are never silent.** The updater verifies SHA-256 and hands the installer to the OS;
+  Formiga never replaces itself.
+
 ## How the simulation is laid out
 
 `world.rs` holds `World` itself: its fields, `new`, `from_save`, `tick`, and the small helpers that
 belong to none of the themes. Everything else lives in a child module named after what it is about —
 `world/arrivals.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`, `discovery.rs`, `experience.rs`,
-`generation.rs`, `home.rs`, `interaction.rs`, `journeys.rs`, `movement.rs`, `objects.rs`,
-`offers.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `visitors.rs`, alongside the existing
-`rides.rs`, `surfaces.rs`, and the `attention/` family. Each module adds methods to the one `World`
-type rather than owning state of its own, so there is still a single simulation object and a single
-tick.
+`generation.rs`, `habits.rs`, `home.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`,
+`movement.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`,
+`surfaces.rs`, `tows.rs`, `undo.rs`, `visitors.rs`, and the `attention/` family. Each module adds
+methods to the one `World` type rather than owning state of its own, so there is still a single
+simulation object and a single tick.
 
 Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bonds`, `bubbles`,
-`colony_management`, `companion`, `discovery`, `experience`, `home`, `interaction`, `journeys`,
-`misc`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
-`topology_and_attention`, `visitors` — with the shared desktop fixtures and colony builders in
-`world/tests/mod.rs`. The split is behaviour-preserving: a differential harness ran five seeds for
-18,000 ticks each against 0.57.1 and compared the event streams and serialized saves byte for byte.
+`colony_management`, `companion`, `discovery`, `experience`, `habits`, `hangouts`, `home`,
+`interaction`, `journeys`, `misc`, `moments`, `objects_and_decorations`, `offers`, `perches`,
+`rituals`, `spacing`, `topology_and_attention`, `tows`, `undo`, `village`, `visitors` — with the
+shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
+behaviour-preserving: a differential harness ran five seeds for 18,000 ticks each against 0.57.1
+and compared the event streams and serialized saves byte for byte.
 
 Four questions that several modules had each answered in their own way are now answered once.
 
@@ -87,6 +218,14 @@ Authored clips manipulate those anchors, squash,
 planted contacts, limb gestures, and secondary tail/head-appendage motion. Markings and temporary
 activity effects remain body-local and are rasterized at integer coordinates.
 
+Resting is the clip a companion holds longest, so it is authored as a six-frame loop at three
+frames a second rather than a bob: it settles square and screen-facing, shifts its weight onto one
+foot, tips its head and pricks its ears toward that side, and settles back. Which side, and
+whether the creature slumps into the shift or keeps its legs under it, are read from appearance
+bytes it already carries, so two companions resting side by side are not in step and nothing is
+stored to say so. The first frame is the plain settle, and it is the only frame reduced motion
+draws.
+
 Passive toys, snacks, and drinkware are deterministically derived from genes already stored in the
 appearance genome. Their colors, shape variants, motion phases, and hand targets are baked into the
 same action atlas as the creature. Eating and drinking therefore add no runtime asset lookup or
@@ -110,13 +249,14 @@ The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face 
 The face texture contains eleven expressions, nine gaze directions, three eyelid states, and one
 eight-slot trinket row. That row is still baked, at the same size and in the same place, but nothing
 samples it any more: the overlay's discovery quad and the settings scrapbook both read the colony
-trinket atlas instead. The body atlas holds exactly 124 unique frames: 90 for actions, because
-`Tossed` reuses the dragged body clip, and 34 for ten gesture poses, laid out as ten columns by
-thirteen rows. Runtime work normally selects two slots and draws two nearest-filtered quads;
-discovery alone adds one temporary quad. The combined textures are exactly 1,529,856 bytes per
-creature — 9,179,136 for a full colony of six — and are enforced below a 4,500,000-byte test limit,
-raised deliberately from 1.5 MB so the pose vocabulary has room to grow without the budget moving
-each time.
+trinket atlas instead. The body atlas holds exactly 130 unique frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 38 for eleven gesture poses, laid out as ten columns by
+thirteen rows. That thirteenth row is now full: the two slots the rest loop grew into were the last
+spare ones, so the next clip that wants a frame has to find it in one already baked. Runtime work
+normally selects two slots and draws two nearest-filtered quads; discovery alone adds one temporary
+quad. The combined textures are exactly 1,529,856 bytes per creature — 9,179,136 for a full colony
+of six — and are enforced below a 4,500,000-byte test limit, raised deliberately from 1.5 MB so the
+pose vocabulary has room to grow without the budget moving each time.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch — are a runtime-only
 `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
@@ -1161,24 +1301,26 @@ remain minis.
   seconds regardless.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
-Version 17 adds the classic parts inside recipes, favorite visitors, each companion's roaming
-leaning, and the habits each has picked up, and migrates nothing; version 16 added no
-field and moved only so an older build would refuse a colony of six. Version 15 adds only `visitors`; a v14 colony receives an empty `VisitorState` and nothing else is
-touched. 0.58.5 adds no saved field and needs no migration: the version is still 15, and the two
-keepsake trees, where every find hangs, and where every belonging lies are all derived at runtime
-from the colony seed and the scrapbook the save already holds. The chain below it is unchanged:
-migration migrates v1 habitat settings, deterministically resolves v2 face/forelimb/effect genes,
-assigns v3 colonies a deterministic shelter, gives v4 creatures stable birth timestamps, upgrades
-v5 habits to the twelve strongest numeric routines, and converts v1–v6 relationship floats into
-canonical shared four-score records. A v7 colony keeps those canonical records byte-for-byte while
-receiving only its first deterministic ritual timestamp; v8 receives only its first deterministic
-colony-object timestamp, and v9 receives only its first deterministic shelter-decoration timestamp.
-v1–v10 creatures receive adult/mini role metadata, Keep protection, and disabled legacy mini
-schedules without replacement. Migration preserves creature IDs, resolved genomes, personality,
-and absent modular recipes; v11 colonies retain their legacy appearances. Loose object positions
-are reconciled to the house yard on the next tick. Migration also preserves
-custom names, birth times, memories, tendencies, routines, positions, and settings. Raw memory plus
-tendencies stay below 192 bytes per creature; their serialized incremental state stays below 2 KiB.
+Version 18 adds a house kind chosen by hand for any house, absent until one is chosen, and migrates
+nothing. Version 17 adds the classic parts inside recipes, favorite visitors, each companion's
+roaming leaning, and the habits each has picked up, and migrates nothing; version 16 added no field
+and moved only so an older build would refuse a colony of six. Version 15 adds only `visitors`; a
+v14 colony receives an empty `VisitorState` and nothing else is touched. 0.58.5 adds no saved field
+and needs no migration: the version is still 15, and the two keepsake trees, where every find hangs,
+and where every belonging lies are all derived at runtime from the colony seed and the scrapbook the
+save already holds. The chain below it is unchanged: migration migrates v1 habitat settings,
+deterministically resolves v2 face/forelimb/effect genes, assigns v3 colonies a deterministic
+shelter, gives v4 creatures stable birth timestamps, upgrades v5 habits to the twelve strongest
+numeric routines, and converts v1–v6 relationship floats into canonical shared four-score records. A
+v7 colony keeps those canonical records byte-for-byte while receiving only its first deterministic
+ritual timestamp; v8 receives only its first deterministic colony-object timestamp, and v9 receives
+only its first deterministic shelter-decoration timestamp. v1–v10 creatures receive adult/mini role
+metadata, Keep protection, and disabled legacy mini schedules without replacement. Migration
+preserves creature IDs, resolved genomes, personality, and absent modular recipes; v11 colonies
+retain their legacy appearances. Loose object positions are reconciled to the house yard on the next
+tick. Migration also preserves custom names, birth times, memories, tendencies, routines, positions,
+and settings. Raw memory plus tendencies stay below 192 bytes per creature; their serialized
+incremental state stays below 2 KiB.
 
 Additional minis are earned after one hour and one week; a full-size adult is earned after one
 calendar month when an adult slot exists. End-of-month dates clamp in UTC, overdue reveals remain 15
@@ -1279,13 +1421,15 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–17: version 17 is read directly, versions 1 through 16 are
+Persistence accepts save versions 1–18: version 18 is read directly, versions 1 through 17 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
-refuses the colony rather than quietly dropping the parts. A missing primary can load its backup; a corrupt
-primary is preserved before repair, without rotating over a valid backup. If both files fail, the
-host disables writes and presents recovery choices. Explicit restores and resets preserve uniquely named copies;
-snapshot imports validate bounded input before confirmation and replacement.
+refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
+that an older build refuses a village with a house kind chosen by hand. A missing primary can load
+its backup; a corrupt primary is preserved before repair, without rotating over a valid backup. If
+both files fail, the host disables writes and presents recovery choices. Explicit restores and
+resets preserve uniquely named copies; snapshot imports validate bounded input before confirmation
+and replacement.
 
 
 ### Geometry attention and local approaches

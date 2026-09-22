@@ -461,7 +461,11 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         ry = (ry + 2).clamp(7, 11);
     }
     let x = if long { 22 } else { 24 };
-    let floor = 40 + pose.bob.clamp(-2, 2) - pose.play_lift.clamp(0, 3);
+    // The floor is the same row in every clip. A bob or a lift moves the body over feet that
+    // stay on it, the way a crouch already does, so a companion that sets off walking keeps the
+    // ground it was standing on instead of rising a pixel or two above it for the length of the
+    // walk and dropping back when it stops.
+    let floor = 40;
     // Blobs settle onto stubby feet rather than standing on visible legs, and stick legs lift
     // every body higher, a blob most of all, since it otherwise barely shows a leg.
     let stilts = d.classic.limbs == 2;
@@ -475,7 +479,10 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         };
     // A crouch folds the legs rather than sinking the feet, so contact with the surface holds.
     let stance = (stance.round() as i32 - pose.crouch.clamp(0, 4)).max(0);
-    let y = floor - stance - ry;
+    // A settle can only fold the legs it has: a plan that already stands low sinks less rather
+    // than pressing its body down through the floor it is standing on.
+    let sink = pose.bob.clamp(-2, 2).min(stance);
+    let y = floor - stance - ry + sink - pose.play_lift.clamp(0, 3);
     let hx = if long {
         x + (8.0 * size).round() as i32
     } else {

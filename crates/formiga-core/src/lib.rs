@@ -59,6 +59,6 @@ pub use visitor::{
     MAX_TOUR_STOPS, ResidentAnswer, TourInterest, TourMoment, TourStop, VisitPhase, VisitProgress,
     Visitor, VisitorError, VisitorSource, VisitorState,
 };
-pub use world::{BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, World};
+pub use world::{BubbleGrowth, ColonyEdit, MAX_STROLL_SPEED, ThoughtBubble, UndoError, World};
 
 pub const SAVE_VERSION: u32 = 18;

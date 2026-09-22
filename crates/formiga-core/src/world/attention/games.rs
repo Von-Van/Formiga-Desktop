@@ -216,6 +216,7 @@ impl World {
         });
         if let Some(id) = candidate {
             self.join_play(id, anchor, s.origin, desktop);
+            self.signal_playing(id);
             s.members[s.count] = Some(id);
             s.roles[s.count] = role;
             s.count += 1;
