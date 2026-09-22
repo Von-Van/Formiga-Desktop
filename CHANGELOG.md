@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Dependencies are brought up to their latest compatible versions: egui and its companion crates
+  from 0.36.1 to 0.36.2, ureq from 3.4.0 to 3.4.2, and the crates beneath them, 55 packages in
+  all. Nothing drawn changes: every documentation image regenerates byte for byte, the
+  settings-window review tests pass unchanged, and `cargo audit` finds no vulnerability. Its three
+  remaining warnings are for crates that are only built on Linux.
+
 ## [0.59.5] - 2026-09-22
 
 ### Added
