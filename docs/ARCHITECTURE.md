@@ -40,9 +40,9 @@ Dependencies run one way: `formiga-art` depends on `formiga-core`, and `formiga-
 
 | Crate | Start with | Then |
 |---|---|---|
-| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for the save file and migrations; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature |
-| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/modular.rs` for the modular body plans; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus |
-| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `gpu.rs` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` and `clubhouse.rs` for the settings window; `tray.rs`; `updater.rs`; `platform/` for the macOS and Windows adapters |
+| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for the save file and migrations; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` and `clubhouse.rs` for the settings window; `tray.rs`; `updater.rs`; `platform/` for the macOS and Windows adapters |
 | `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark |
 
 ### How the app starts

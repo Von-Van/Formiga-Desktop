@@ -11,6 +11,15 @@ All notable changes are documented here.
   all. Nothing drawn changes: every documentation image regenerates byte for byte, the
   settings-window review tests pass unchanged, and `cargo audit` finds no vulnerability. Its three
   remaining warnings are for crates that are only built on Linux.
+- The four largest source files are split into themed modules, the way the simulation was in
+  0.58.0. `renderer.rs` goes from 5,241 lines to 798: pose, classic bodies, face, props, effects,
+  and tests. `gpu.rs` goes from 3,996 to 1,196: atlas baking, occlusion, village geometry, GPU
+  resources, the on-desktop interface, and tests. `app.rs` goes from 3,134 to 1,124: cadence, the
+  region editor, the creature menu, the settings window, updates, and tests.
+  `world/attention.rs` goes from 3,051 to 1,212: scene presentation and tests. Nothing behaves
+  differently. All 20,280 rendered frames are identical pixel for pixel, face anchors included.
+  Five seeded four-companion sessions produce identical event streams and saves, the same 676
+  tests pass, and the app runs on a copy of a real colony.
 
 ### Fixed
 
