@@ -2,6 +2,55 @@
 
 All notable changes are documented here.
 
+## [0.59.2] - 2026-09-22
+
+### Added
+
+- Four kinds of house, each built from a shape of its own: a tent pitched from triangles of
+  canvas with a triangle door, a pennant and guy ropes; a mushroom of circles; a pillow house of
+  two plump cushions, one for the walls and a flatter one lying across the top for a roof, with
+  tufted buttons and tassels; and a leaf house, the old paper house roofed in rows of overlapping
+  leaves with a sprout on the ridge and a vine up the side. A village now mixes them: the colony
+  house keeps the colony's own type, every cottage is built as the type its keeper would build,
+  and the Home page can build any house as any type or give it back its own. Putting the village
+  back as it grew returns every house to its own type, and the last change can be undone.
+- A sleeper that has to make room is towed clear on a little rope. A nearby friend who is awake
+  and doing nothing much walks over, takes up the rope, pulls the sleeper aside at an unhurried
+  pace, lets go, and carries on; with nobody free, the sleeper wriggles over in its sleep instead.
+  Nobody wakes, and the rope is drawn behind the pair so each end disappears into whoever holds it.
+- `village-palette-sheet` and `home-yard-sheet` show every kind of house, and the yard sheet shows
+  villages that mix them.
+
+### Changed
+
+- Companions stroll the village while the houses are out. Before, a resident walked home to its
+  place and, in a colony of three or more, almost never left it: the ground between the trees
+  was too short for the room each stroll kept clear, so 99.6% of strolls were called off. Now a
+  resident strolls out from its own place to somewhere along the ground, looks about, and strolls
+  back, at a little under half its walking pace with its walk slowed to match, and at most three
+  are out at once. Residents stroll about a fifth of their time instead of under one percent, and
+  a colony of six has one or two out most of the time.
+- A companion on its way to bed walks there, heavy-lidded, and lies down when it arrives. It used
+  to be drawn asleep for the whole walk, so a colony of four spent about 400 seconds an hour
+  gliding across the floor in its sleep, some 16,000 points of it.
+
+### Compatibility
+
+- Save version 18 adds a house type chosen by hand for any house, absent until one is chosen, and
+  migrates nothing. The four kinds keep the names colony files have always used for them, so every
+  colony opens with the same houses it had, drawn anew.
+
+### Performance
+
+- Strolls cost drawing time. With the houses out, the finished build averaged 2.59% CPU over two
+  minutes on the owner's colony against 0.98% for 0.59.0 on the same colony, with the same 112 MB
+  footprint: something is nearly always moving now, and a moving village is drawn every tick where
+  a still one was drawn a few times a second. Strolls at home tick and draw at 10 Hz rather than
+  20, which is all a stroll needs and trims that by about a tenth. The simulation itself costs
+  what it did, and the colony is written about four times a minute at home instead of three.
+- A tow's rope is one two-texel texture, made the first time a rope is drawn, and one extra draw
+  call while a tow is under way; a pillow house or a tent costs the same as any other house.
+
 ## [0.59.0] - 2026-09-21
 
 ### Added

@@ -52,7 +52,7 @@ pub fn run(path: PathBuf) -> Result<()> {
         for (column, palette) in palettes.iter().enumerate() {
             home.palette = *palette;
             let village =
-                ShelterRenderer::render_village(&home.drawn_shelter(), &[], &marks, false);
+                ShelterRenderer::render_village(&home.drawn_shelter(), &[], &marks, &[], false);
             let left = GAP + column as u32 * (VILLAGE_WIDTH + GAP);
             let top = GAP + style * row_height;
             for (offset, cell) in [

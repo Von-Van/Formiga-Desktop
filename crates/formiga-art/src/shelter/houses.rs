@@ -5,7 +5,6 @@
 
 use crate::{Canvas, Palette, Rgba};
 use formiga_core::ShelterStyle;
-use std::f32::consts::PI;
 
 /// The doorway every style opens into the same near-black, so the village can measure exactly
 /// how wide a door is from its pixels.
@@ -67,35 +66,37 @@ impl Materials {
         let ink = palette.outline;
         let tone = |base| Tone::of(base, ink);
         match style {
-            // Leaves tinted toward the colony's colour, bark supports, twine trim.
-            ShelterStyle::LeafTent => Self {
+            // Canvas in the colony's colour, bark poles and pegs, a pennant in the accent, and a
+            // straw floor inside.
+            ShelterStyle::Tent => Self {
                 outline: ink,
-                roof: tone(mix(LEAF, palette.coat, 0.15)),
+                roof: tone(palette.coat),
                 wall: tone(BARK),
                 trim: tone(accent.coat),
                 second: tone(STRAW),
             },
             // A cap in the colony's colour on a cream stem.
-            ShelterStyle::MushroomHut => Self {
+            ShelterStyle::Mushroom => Self {
                 outline: ink,
                 roof: tone(palette.coat),
                 wall: tone(CREAM),
                 trim: tone(accent.coat),
                 second: tone(STONE),
             },
-            // Two coordinated fabrics: the canopy and the cushions.
-            ShelterStyle::CushionDen => Self {
+            // Two coordinated fabrics: the blanket in the colony's colour and the cushions in
+            // the accent, with pale piping.
+            ShelterStyle::PillowFort => Self {
                 outline: ink,
                 roof: tone(palette.coat),
-                wall: tone(BARK),
-                trim: tone(mix(palette.highlight, WHITE, 0.3)),
+                wall: tone(mix(palette.coat, WHITE, 0.5)),
+                trim: tone(mix(palette.highlight, WHITE, 0.45)),
                 second: tone(accent.coat),
             },
-            // Warm card walls under a roof folded from the accent colour it has always had, and a
-            // mat at the door in the colony's own.
-            ShelterStyle::PaperHouse => Self {
+            // Warm card walls under a roof thatched with leaves in the accent colour the roof has
+            // always had, touched with green, and a mat at the door in the colony's own.
+            ShelterStyle::LeafHouse => Self {
                 outline: ink,
-                roof: tone(accent.coat),
+                roof: tone(mix(accent.coat, LEAF, 0.22)),
                 wall: tone(mix(PAPER, palette.coat, 0.08)),
                 trim: tone(palette.coat),
                 second: tone(accent.highlight),
@@ -156,10 +157,10 @@ impl House {
 
 pub(super) fn draw_house(canvas: &mut Canvas, house: House, m: Materials) {
     match house.style {
-        ShelterStyle::LeafTent => leaf_tent(canvas, house, m),
-        ShelterStyle::MushroomHut => mushroom_hut(canvas, house, m),
-        ShelterStyle::CushionDen => cushion_den(canvas, house, m),
-        ShelterStyle::PaperHouse => paper_house(canvas, house, m),
+        ShelterStyle::Tent => tent(canvas, house, m),
+        ShelterStyle::Mushroom => mushroom_hut(canvas, house, m),
+        ShelterStyle::PillowFort => pillow_fort(canvas, house, m),
+        ShelterStyle::LeafHouse => leaf_house(canvas, house, m),
     }
 }
 
@@ -179,52 +180,6 @@ fn fill_rows(
     for y in top..=bottom {
         let (left, right) = edges(y);
         canvas.fill_rect(left, y, right - left + 1, 1, fill);
-    }
-}
-
-/// A leaf standing on its stalk end: pointed at `apex`, as wide as `base_left..=base_right` at
-/// `base_y`, swelling out past the straight line on each side by up to `bulge`.
-#[allow(clippy::too_many_arguments)]
-fn leaf(
-    canvas: &mut Canvas,
-    apex: (i32, i32),
-    base_left: i32,
-    base_right: i32,
-    base_y: i32,
-    bulge: (f32, f32),
-    fill: Tone,
-    lit_left: bool,
-    outline: Rgba,
-) {
-    let height = (base_y - apex.1).max(1) as f32;
-    let edges = |y: i32| {
-        let t = ((y - apex.1) as f32 / height).clamp(0.0, 1.0);
-        let swell = (t * PI * 0.9).sin();
-        let left = apex.0 as f32 + (base_left - apex.0) as f32 * t - bulge.0 * swell;
-        let right = apex.0 as f32 + (base_right - apex.0) as f32 * t + bulge.1 * swell;
-        (left.round() as i32, right.round() as i32)
-    };
-    fill_rows(canvas, apex.1, base_y, edges, fill.base, outline);
-    // The side facing the light, and the side turned away from it.
-    for y in apex.1 + 1..=base_y {
-        let (left, right) = edges(y);
-        if lit_left {
-            canvas.set(left, y, fill.light);
-        } else {
-            canvas.set(right, y, fill.shade);
-            canvas.set(right - 1, y, fill.shade);
-        }
-    }
-    // The vein down the middle, and a few ribs off it.
-    let foot = ((base_left + base_right) / 2, base_y - 1);
-    let vein = if lit_left { fill.light } else { fill.base };
-    canvas.line(apex.0, apex.1 + 2, foot.0, foot.1, 1, vein);
-    for step in 1..=3 {
-        let t = step as f32 / 4.0;
-        let x = (apex.0 as f32 + (foot.0 - apex.0) as f32 * t).round() as i32;
-        let y = (apex.1 as f32 + (foot.1 - apex.1) as f32 * t).round() as i32;
-        canvas.line(x, y, x - 2, y + 2, 1, vein);
-        canvas.line(x, y, x + 2, y + 2, 1, vein);
     }
 }
 
@@ -320,107 +275,120 @@ fn round_window(canvas: &mut Canvas, x: i32, y: i32, size: i32, frame: Rgba, lit
     }
 }
 
-/// Two or three overlapping leaves on crossed twigs, tied at the top, the near leaf lifted at
-/// the door and a little planter set down beside it.
-fn leaf_tent(canvas: &mut Canvas, house: House, m: Materials) {
+/// A tent pitched from triangles: a canvas cut into triangular panels meeting at the peak, lit on
+/// the left and shaded on the right, a triangular door with its flap tied back, a triangle of a
+/// pennant flying from the pole, and guy ropes out to pegs either side.
+fn tent(canvas: &mut Canvas, house: House, m: Materials) {
     let (top, left, right, bottom) = (house.top(), house.left(), house.right(), house.bottom);
-    let base = bottom - 2;
     let u = |value| house.unit(value);
-    // Crossed twigs holding the leaves up, poking out above them where they are tied.
-    for (from, to) in [
-        ((house.cx - u(4), top - u(3)), (house.cx + u(3), top + u(6))),
-        ((house.cx + u(4), top - u(3)), (house.cx - u(3), top + u(6))),
-    ] {
-        canvas.line(from.0, from.1, to.0, to.1, 2, m.outline);
-        canvas.line(from.0, from.1, to.0, to.1, 1, m.wall.base);
-    }
-    // Three big leaves leaned together: the one at the back tallest and in shadow, one on the
-    // right half-shaded, and the near one on the left catching the light, each with its own tip.
-    let back = Tone {
-        base: m.roof.shade,
-        shade: mix(m.roof.shade, m.outline, 0.3),
-        light: m.roof.base,
+    let base = bottom - 1;
+    let apex = (house.cx, top + u(3));
+    let (foot_left, foot_right) = (left - u(1), right + u(1));
+    let height = (base - apex.1).max(1) as f32;
+    let across = move |y: i32, foot: i32| {
+        let t = ((y - apex.1) as f32 / height).clamp(0.0, 1.0);
+        (apex.0 as f32 + (foot - apex.0) as f32 * t).round() as i32
     };
-    leaf(
-        canvas,
-        (house.cx + u(1), top),
-        house.cx - u(6),
-        house.cx + u(8),
-        base,
-        (1.5, 1.5),
-        back,
-        false,
-        m.outline,
-    );
-    leaf(
-        canvas,
-        (house.cx + u(4), top + u(4)),
-        house.cx - u(1),
-        right + u(1),
-        base,
-        (0.0, 2.5),
-        m.roof,
-        false,
-        m.outline,
-    );
-    leaf(
-        canvas,
-        (house.cx - u(3), top + u(3)),
-        left - u(1),
-        house.cx + u(3),
-        base,
-        (2.5, 0.0),
-        m.roof,
-        true,
-        m.outline,
-    );
-    // Curled tips at the foot of each leaf.
-    for (x, out) in [(left - u(1), -1), (right + u(1), 1)] {
-        canvas.set(x + out, base - 1, m.roof.light);
-        canvas.set(x + out * 2, base - 2, m.roof.light);
-        canvas.set(x + out * 2, base - 1, m.outline);
+    // Guy ropes, drawn first so the canvas sits over their knots: from halfway down each side out
+    // to a peg in the ground.
+    let middle = apex.1 + (base - apex.1) / 2;
+    for (side, foot) in [(-1, foot_left), (1, foot_right)] {
+        let knot = (across(middle, foot), middle);
+        let peg = (foot + side * u(4), bottom - 1);
+        canvas.line(knot.0, knot.1, peg.0, peg.1, 1, m.wall.light);
+        canvas.fill_rect(peg.0 - 1, peg.1 - 2, 2, 3, m.outline);
+        canvas.set(peg.0 - 1 + i32::from(side < 0), peg.1 - 2, m.wall.base);
     }
-    // The twine where the twigs cross.
-    canvas.fill_rect(house.cx - 1, top + u(1), 3, 2, m.trim.base);
-    canvas.set(house.cx - 1, top + u(1), m.trim.light);
-    // The door, on a straw floor, with the near leaf's corner folded back beside it.
-    doorway(canvas, house, m.outline, m.second.base);
-    let (door_width, door_height) = house.door();
+    // The canvas: one triangle, cut into four panels by seams running down from the peak.
+    fill_rows(
+        canvas,
+        apex.1,
+        base,
+        move |y| (across(y, foot_left), across(y, foot_right)),
+        m.roof.base,
+        m.outline,
+    );
+    let seams = [
+        foot_left + (foot_right - foot_left) / 4,
+        house.cx,
+        foot_left + (foot_right - foot_left) * 3 / 4,
+    ];
+    for y in apex.1 + 1..=base {
+        let (row_left, row_right) = (across(y, foot_left), across(y, foot_right));
+        let cuts = seams.map(|foot| across(y, foot));
+        for x in row_left..=row_right {
+            let panel = cuts.iter().filter(|cut| x > **cut).count();
+            let tone = match panel {
+                0 => m.roof.light,
+                1 => m.roof.base,
+                2 => mix(m.roof.base, m.roof.shade, 0.45),
+                _ => m.roof.shade,
+            };
+            canvas.set(x, y, tone);
+        }
+        for cut in cuts {
+            if cut > row_left && cut < row_right {
+                canvas.set(cut, y, mix(m.roof.shade, m.outline, 0.3));
+            }
+        }
+    }
+    // A hem of the lit colour along the foot.
     canvas.fill_rect(
-        house.cx - door_width / 2 + 1,
-        bottom - 3,
-        door_width - 2,
-        2,
-        m.second.shade,
-    );
-    let flap = house.cx + door_width / 2 + 1;
-    let flap_top = bottom - door_height;
-    for row in 0..door_height / 2 {
-        canvas.fill_rect(
-            flap,
-            flap_top + row,
-            (row / 2 + 1).min(u(4)),
-            1,
-            m.roof.light,
-        );
-    }
-    canvas.line(
-        flap,
-        flap_top,
-        flap + u(3),
-        flap_top + door_height / 2,
+        across(base, foot_left) + 1,
+        base,
+        (across(base, foot_right) - across(base, foot_left) - 1).max(1),
         1,
-        m.outline,
+        m.roof.shade,
     );
-    // A cup of an acorn, planted with a sprout, by the door.
-    let pot = house.cx - door_width / 2 - u(5);
-    if house.span >= super::COTTAGE_SPAN {
-        canvas.fill_rect(pot - 2, bottom - 3, 5, 3, m.outline);
-        canvas.fill_rect(pot - 1, bottom - 3, 3, 2, m.wall.base);
-        canvas.set(pot - 1, bottom - 3, m.wall.light);
-        canvas.line(pot, bottom - 4, pot, bottom - 6, 1, LEAF);
-        canvas.set(pot - 1, bottom - 6, mix(LEAF, WHITE, 0.3));
-        canvas.set(pot + 1, bottom - 5, mix(LEAF, WHITE, 0.3));
+    // The pole through the peak, and a pennant flying from it.
+    canvas.line(apex.0, apex.1, apex.0, apex.1 - u(3), 1, m.outline);
+    let flag_top = apex.1 - u(3);
+    for row in 0..u(3).max(2) {
+        let reach = (u(3).max(2) - row).max(1);
+        canvas.fill_rect(apex.0 + 1, flag_top + row, reach, 1, m.trim.base);
+    }
+    canvas.set(apex.0 + 1, flag_top, m.trim.light);
+    triangle_doorway(canvas, house, m);
+}
+
+/// A tent's door: a triangle opening at the middle of the foot, as wide at the bottom as any other
+/// door, the flap folded back beside it and tied, and a straw floor across the threshold.
+fn triangle_doorway(canvas: &mut Canvas, house: House, m: Materials) {
+    let (door_width, door_height) = house.door();
+    let (cx, bottom) = (house.cx, house.bottom);
+    let half = door_width / 2;
+    let top = bottom - door_height;
+    let edge = move |y: i32| {
+        let t = ((y - top) as f32 / door_height.max(1) as f32).clamp(0.0, 1.0);
+        (half as f32 * t).round() as i32
+    };
+    // The rim first, then the dark inside, then lamplight after dark.
+    for y in top - 1..bottom {
+        let reach = edge(y.max(top)) + 1;
+        canvas.fill_rect(cx - reach, y, reach * 2 + 1, 1, m.outline);
+    }
+    for y in top..bottom - 1 {
+        let reach = edge(y);
+        canvas.fill_rect(cx - reach, y, reach * 2 + 1, 1, DOORWAY);
+        if house.lit && y > top + 1 {
+            let inner = (reach - 1).max(0);
+            canvas.fill_rect(cx - inner, y, inner * 2 + 1, 1, GLOW);
+            if y > bottom - door_height / 2 {
+                canvas.fill_rect(cx - inner / 2, y, inner + 1, 1, GLOW_CORE);
+            }
+        }
+    }
+    // The flap, folded back to the right side of the door and tied there.
+    let flap_x = cx + half + 1;
+    for row in 0..door_height - 1 {
+        let reach = ((door_height - 1 - row) / 3).clamp(0, house.unit(3));
+        canvas.fill_rect(flap_x, top + row, reach + 1, 1, m.trim.base);
+        canvas.set(flap_x, top + row, m.trim.light);
+    }
+    canvas.set(flap_x + 1, top + door_height / 2, m.outline);
+    canvas.fill_rect(cx - half - 1, bottom - 1, door_width + 2, 1, m.second.base);
+    if let Some(mark) = house.mark {
+        curtain(canvas, house, mark);
     }
 }
 
@@ -522,141 +490,217 @@ fn mushroom_hut(canvas: &mut Canvas, house: House, m: Materials) {
     );
 }
 
-/// A pillow fort: two stacks of cushions for walls, a gingham blanket thrown over them for a roof
-/// and hanging in scallops over the door, a patch sewn on it, a pillow glimpsed inside and a
-/// cushion on the doorstep.
-fn cushion_den(canvas: &mut Canvas, house: House, m: Materials) {
-    let (top, left, right, bottom) = (house.top(), house.left(), house.right(), house.bottom);
+/// A house made of pillows: one big plump cushion standing on the ground for the walls, its sides
+/// bowed out and its corners pinched to soft points, piped round its edge and buttoned with the
+/// fabric drawn in round each button; and a flatter pillow lying across the top for a roof, wider
+/// than the walls, with a tassel at each corner. The doorway is let into the front of the big one.
+fn pillow_fort(canvas: &mut Canvas, house: House, m: Materials) {
+    let (top, bottom) = (house.top(), house.bottom);
     let u = |value| house.unit(value);
-    let (door_width, door_height) = house.door();
-    let roof_bottom = bottom - door_height - u(2);
-    // Two stacks of cushions either side of the door, buttoned, the left stack lit and the right
-    // one in shade.
-    let stack_width = ((house.width - door_width) / 2 - u(1)).max(u(4));
-    let cushion_height = ((bottom - roof_bottom + u(3)) / 2).max(u(3));
-    for (index, x) in [left + u(1), right - u(1) - stack_width]
-        .into_iter()
-        .enumerate()
-    {
-        let lit = index == 0;
-        for level in 0..2 {
-            let y = bottom - cushion_height * (level + 1);
-            canvas.fill_rect(x, y + 1, stack_width, cushion_height - 1, m.outline);
-            canvas.fill_rect(x + 1, y, stack_width - 2, cushion_height + 1, m.outline);
-            let fill = if lit { m.second.base } else { m.second.shade };
-            canvas.fill_rect(x + 1, y + 1, stack_width - 2, cushion_height - 1, fill);
-            canvas.fill_rect(
-                x + 2,
-                y + 1,
-                stack_width - 4,
-                1,
-                if lit { m.second.light } else { m.second.base },
-            );
-            canvas.set(x + stack_width / 2, y + cushion_height / 2 + 1, m.outline);
-        }
+    let half = house.width / 2;
+    // The roof pillow takes the top third or so; the wall pillow the rest, down to the ground.
+    let roof_bottom = top + house.height * 3 / 10 + u(1);
+    let body_top = roof_bottom - u(2);
+    // The wall pillow: sides bowing out towards the middle, its top edge puffed up in the middle
+    // and dipping to a point at each corner, flat where it sits on the ground.
+    let body = move |y: i32| {
+        let t = ((y - body_top) as f32 / (bottom - 1 - body_top).max(1) as f32).clamp(0.0, 1.0);
+        let bulge = ((t * std::f32::consts::PI).sin() * 2.2).round() as i32;
+        (house.cx - half - bulge, house.cx + half + bulge)
+    };
+    let body_top_at = move |x: i32| {
+        let s = ((x - (house.cx - half)) as f32 / (half * 2).max(1) as f32).clamp(0.0, 1.0);
+        body_top - ((s * std::f32::consts::PI).sin() * 1.5).round() as i32
+    };
+    pillow(
+        canvas,
+        body,
+        body_top_at,
+        body_top - 2,
+        bottom - 1,
+        m.second,
+        m.trim,
+        m.outline,
+    );
+    // Two buttons across the upper half of the wall, the fabric drawn in round each.
+    let button_y = body_top + (bottom - body_top) / 3;
+    for x in [house.cx - half / 2 - 1, house.cx + half / 2 + 1] {
+        tuft(canvas, x, button_y, m.second, m.outline);
     }
-    // The blanket: a soft arch thrown over both stacks, overhanging them, gingham woven through
-    // it, lit on the left.
+    // The roof pillow: flatter and wider than the walls, lying across them.
     let overhang = u(3);
-    let (roof_left, roof_right) = (left - overhang, right + overhang);
-    let half = ((roof_right - roof_left) / 2).max(1) as f32;
-    let crown = move |x: i32| {
-        let dx = (x - house.cx) as f32 / half;
-        (top as f32 + (dx * dx) * (roof_bottom - top) as f32 * 0.55).round() as i32
+    let roof_half = half + overhang;
+    let roof_top = top;
+    let roof = move |y: i32| {
+        let t = ((y - roof_top) as f32 / (roof_bottom - roof_top).max(1) as f32).clamp(0.0, 1.0);
+        let bulge = ((t * std::f32::consts::PI).sin() * 2.0).round() as i32;
+        (house.cx - roof_half - bulge, house.cx + roof_half + bulge)
     };
-    // The blanket's corners fall lower than its middle, draped down over the cushions.
-    let hang = move |x: i32| {
-        let from_edge = (x - roof_left).min(roof_right - x);
-        roof_bottom + (u(5) - from_edge).clamp(0, u(5))
+    let roof_top_at = move |x: i32| {
+        let s =
+            ((x - (house.cx - roof_half)) as f32 / (roof_half * 2).max(1) as f32).clamp(0.0, 1.0);
+        roof_top - ((s * std::f32::consts::PI).sin() * 2.5).round() as i32
     };
-    for x in roof_left - 1..=roof_right + 1 {
-        let clamped = x.clamp(roof_left, roof_right);
-        let y0 = crown(clamped);
-        canvas.fill_rect(x, y0 - 1, 1, hang(clamped) - y0 + 3, m.outline);
+    pillow(
+        canvas,
+        roof,
+        roof_top_at,
+        roof_top - 3,
+        roof_bottom,
+        m.roof,
+        m.trim,
+        m.outline,
+    );
+    tuft(
+        canvas,
+        house.cx,
+        (roof_top + roof_bottom) / 2,
+        m.roof,
+        m.outline,
+    );
+    // A tassel hanging from each corner of the roof pillow.
+    for (x, lean) in [
+        (house.cx - roof_half - 1, -1),
+        (house.cx + roof_half + 1, 1),
+    ] {
+        canvas.set(x, roof_bottom, m.outline);
+        canvas.set(x + lean, roof_bottom + 1, m.trim.base);
+        canvas.set(x + lean, roof_bottom + 2, m.trim.shade);
     }
-    for x in roof_left..=roof_right {
-        for y in crown(x)..=hang(x) {
-            // Gingham: bands two pixels wide crossing every four, darker where they cross.
-            let (across, down) = ((x - left).rem_euclid(4) < 2, (y - top).rem_euclid(4) < 2);
-            let color = match (across, down) {
-                (true, true) => m.roof.shade,
-                (true, false) | (false, true) => m.roof.base,
-                _ => m.roof.light,
-            };
-            canvas.set(x, y, color);
-        }
-        canvas.set(
-            x,
-            crown(x),
-            if x < house.cx {
-                m.roof.light
-            } else {
-                m.roof.base
-            },
-        );
-    }
-    // Folds where the draped corners hang, in shadow on the right.
-    for x in [roof_left + u(2), roof_right - u(2)] {
-        for y in roof_bottom - u(3)..=hang(x) {
-            canvas.set(x, y, m.roof.shade);
-        }
-    }
-    // Scallops along the front edge, hanging over the door.
-    let mut x = roof_left + u(5);
-    while x <= roof_right - u(5) {
-        canvas.set(x, roof_bottom + 1, m.roof.base);
-        canvas.set(x + 1, roof_bottom + 1, m.roof.shade);
-        canvas.set(x + 1, roof_bottom + 2, m.outline);
-        canvas.set(x, roof_bottom + 2, m.outline);
-        canvas.set(x + 2, roof_bottom + 1, m.outline);
-        x += 3;
-    }
-    // A patch sewn on the blanket in the cushions' fabric, its stitches running round it.
-    if house.span >= super::COTTAGE_SPAN {
-        let (px, py) = (
-            house.cx + house.width / 8,
-            crown(house.cx + house.width / 8) + u(3),
-        );
-        let (pw, ph) = (u(6), u(5));
-        canvas.fill_rect(px, py, pw, ph, m.second.base);
-        canvas.fill_rect(px, py, pw, 1, m.second.light);
-        for step in 0..(pw + ph) * 2 {
-            if step % 2 == 1 {
-                continue;
-            }
-            let (x, y) = match step {
-                s if s < pw => (px + s, py - 1),
-                s if s < pw + ph => (px + pw, py + s - pw),
-                s if s < pw * 2 + ph => (px + pw * 2 + ph - 1 - s, py + ph),
-                s => (px - 1, py + (pw + ph) * 2 - 1 - s),
-            };
-            canvas.set(x, y, m.trim.base);
-        }
+    // A round window let into the wall on the left of the door, and the door itself.
+    let (door_width, door_height) = house.door();
+    let size = if house.span >= super::MAIN_SPAN { 4 } else { 3 };
+    let window_x = house.cx - door_width / 2 - u(3) - size;
+    let window_y = bottom - door_height - u(1);
+    if window_x - 1 > house.cx - half + 1 && window_y > button_y + u(2) {
+        round_window(canvas, window_x, window_y, size, m.outline, house.lit);
     }
     doorway(canvas, house, m.outline, m.second.shade);
-    // A pillow glimpsed inside, on the floor at the back.
+    // A pillow glimpsed on the floor inside.
     let rx = door_width / 2;
-    canvas.fill_rect(house.cx - rx, bottom - u(4), rx + u(1), u(3), m.outline);
-    canvas.fill_rect(
-        house.cx - rx + 1,
-        bottom - u(4) + 1,
-        (rx - 1).max(1),
-        (u(3) - 2).max(1),
-        CREAM,
-    );
-    // A floor cushion on the doorstep, in the blanket's colour, buttoned in its middle.
+    canvas.fill_rect(house.cx - rx + 1, bottom - u(3), rx, u(2), CREAM);
+    // A little square cushion on the doorstep, in the roof's fabric.
     if house.span >= super::COTTAGE_SPAN {
-        let x = house.cx + door_width / 2 + u(4);
-        canvas.fill_ellipse(x, bottom - 1, u(4), u(2), m.outline);
-        canvas.fill_ellipse(x, bottom - 2, u(3), u(1), m.roof.base);
-        canvas.set(x - 1, bottom - 3, m.roof.light);
-        canvas.set(x, bottom - 2, m.outline);
+        let cushion = u(4);
+        let x = house.cx + door_width / 2 + u(2);
+        if x + cushion <= house.cx + half + 1 {
+            square_cushion(
+                canvas,
+                x,
+                bottom - cushion + 1,
+                cushion,
+                m.roof,
+                m.trim,
+                m.outline,
+            );
+        }
     }
 }
 
-/// Folded card: a front wall and a side wall turned away from the light, a roof folded along its
-/// ridge and overlapping the walls, a strip of tape, a cut-out window and a mat at the door.
-fn paper_house(canvas: &mut Canvas, house: House, m: Materials) {
+/// One plump pillow, filled row by row between `edges` from its puffed top (`top_at`, no higher
+/// than `ceiling`) down to `floor`, outlined, lit along the top and left and shaded down the
+/// right and along the bottom, with piping running just inside its top edge.
+#[allow(clippy::too_many_arguments)]
+fn pillow(
+    canvas: &mut Canvas,
+    edges: impl Fn(i32) -> (i32, i32),
+    top_at: impl Fn(i32) -> i32,
+    ceiling: i32,
+    floor: i32,
+    fabric: Tone,
+    piping: Tone,
+    outline: Rgba,
+) {
+    let (widest_left, widest_right) = (ceiling..=floor)
+        .map(&edges)
+        .fold((i32::MAX, i32::MIN), |(l, r), (a, b)| (l.min(a), r.max(b)));
+    for x in widest_left - 1..=widest_right + 1 {
+        let top = top_at(x.clamp(widest_left, widest_right));
+        for y in (top - 1).max(ceiling)..=floor + 1 {
+            let (left, right) = edges(y.clamp(top, floor));
+            if x >= left - 1 && x <= right + 1 {
+                canvas.set(x, y, outline);
+            }
+        }
+    }
+    for y in ceiling..=floor {
+        let (left, right) = edges(y);
+        for x in left..=right {
+            if y < top_at(x) {
+                continue;
+            }
+            let from_top = y - top_at(x);
+            let color = if x >= right - 1 || y >= floor - 1 {
+                fabric.shade
+            } else if x <= left + 1 || from_top <= 1 {
+                fabric.light
+            } else {
+                fabric.base
+            };
+            canvas.set(x, y, color);
+        }
+    }
+    // The piping, one row in from the top edge and stopping short of the corners.
+    for x in widest_left + 3..=widest_right - 3 {
+        let y = top_at(x) + 2;
+        if y <= floor - 2 {
+            canvas.set(x, y, piping.base);
+        }
+    }
+    // A soft sheen where it swells nearest the light, up and to the left.
+    let sheen_x = widest_left + (widest_right - widest_left) / 4;
+    let sheen_y = top_at(sheen_x) + 4;
+    if sheen_y + 1 < floor - 2 {
+        for (dx, dy) in [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1)] {
+            canvas.set(sheen_x + dx, sheen_y + dy, fabric.light);
+        }
+    }
+}
+
+/// A button sewn through a cushion, the fabric drawn in round it in four little creases.
+fn tuft(canvas: &mut Canvas, x: i32, y: i32, fabric: Tone, outline: Rgba) {
+    for (dx, dy) in [(-2, -1), (2, -1), (-2, 1), (2, 1)] {
+        canvas.set(x + dx, y + dy, fabric.shade);
+    }
+    canvas.set(x - 1, y, fabric.shade);
+    canvas.set(x + 1, y, fabric.shade);
+    canvas.set(x, y, outline);
+    canvas.set(x, y - 1, fabric.light);
+}
+
+/// One square cushion, plumped: rounded off at the corners, lit along its top and left edges and
+/// shaded along its bottom and right, piped across the top, and buttoned in its middle with the
+/// fabric drawn in round the button.
+fn square_cushion(
+    canvas: &mut Canvas,
+    x: i32,
+    y: i32,
+    size: i32,
+    fabric: Tone,
+    piping: Tone,
+    outline: Rgba,
+) {
+    let size = size.max(4);
+    canvas.fill_rect(x, y + 1, size, size - 2, outline);
+    canvas.fill_rect(x + 1, y, size - 2, size, outline);
+    canvas.fill_rect(x + 1, y + 1, size - 2, size - 2, fabric.base);
+    canvas.fill_rect(x + 1, y + 1, size - 2, 1, piping.base);
+    canvas.fill_rect(x + 1, y + 2, 1, size - 4, fabric.light);
+    canvas.fill_rect(x + 2, y + size - 2, size - 3, 1, fabric.shade);
+    canvas.fill_rect(x + size - 2, y + 2, 1, size - 4, fabric.shade);
+    let (bx, by) = (x + size / 2, y + size / 2);
+    canvas.set(bx, by, outline);
+    if size >= 7 {
+        canvas.set(bx - 1, by - 1, fabric.shade);
+        canvas.set(bx + 1, by + 1, fabric.light);
+    }
+}
+
+/// A cottage roofed in leaves: a card front wall and a side wall folded back into shade, under a
+/// steep roof thatched with rows of overlapping leaves, each hanging point-down like a shingle and
+/// veined down its middle, their tips scalloping the eave. A sprout curls up off the ridge, a vine
+/// climbs the fold between the walls, and a window and a mat sit by the door.
+fn leaf_house(canvas: &mut Canvas, house: House, m: Materials) {
     let (top, left, right, bottom) = (house.top(), house.left(), house.right(), house.bottom);
     let u = |value| house.unit(value);
     let eave = top + u(12);
@@ -691,7 +735,6 @@ fn paper_house(canvas: &mut Canvas, house: House, m: Materials) {
         bottom - eave - 1,
         m.wall.shade,
     );
-    // The fold between the two walls.
     canvas.line(
         right - side,
         eave,
@@ -700,24 +743,93 @@ fn paper_house(canvas: &mut Canvas, house: House, m: Materials) {
         1,
         m.wall.shade,
     );
-    // The roof: folded along its ridge, light on the near slope and shaded on the far one, its
-    // edge overhanging both walls and casting a shadow under it.
+    // The roof: its outline and the shadow between the leaves first, then the leaves in rows
+    // from the eave up, so each row overlaps the tops of the row below and leaves its tips
+    // showing, the near slope lit and the far one in shade.
     let peak = (house.cx - u(1), top);
     let slope = move |y: i32| {
         let t = ((y - peak.1) as f32 / (eave - peak.1).max(1) as f32).clamp(0.0, 1.0);
         let reach = (t * (house.width as f32 / 2.0 + 3.0)).round() as i32;
         (peak.0 - reach, peak.0 + reach)
     };
-    fill_rows(canvas, peak.1, eave, slope, m.roof.base, m.outline);
-    for y in peak.1 + 1..=eave {
-        let (l, _) = slope(y);
-        let width = (peak.0 - l).max(0);
-        canvas.fill_rect(l, y, width, 1, m.roof.light);
-        canvas.set(peak.0, y, m.roof.shade);
+    fill_rows(canvas, peak.1, eave, slope, m.roof.shade, m.outline);
+    let size = u(7).max(5) | 1;
+    let step = (size - 3).max(2);
+    let mut rows = Vec::new();
+    let mut y = eave - size + 2;
+    while y > peak.1 {
+        rows.push(y);
+        y -= step;
+    }
+    for (index, row) in rows.iter().enumerate() {
+        let offset = if index % 2 == 0 { 0 } else { size / 2 };
+        let (row_left, row_right) = slope(*row + size / 2);
+        let mut x = peak.0 - offset - size * ((peak.0 - row_left) / size + 1);
+        while x <= row_right {
+            // Lit on the near slope and shaded on the far one, and no two neighbours quite the
+            // same, so every leaf reads on its own.
+            let lit = x + size / 2 < peak.0;
+            let turn = ((x - peak.0).div_euclid(size) + index as i32) % 2 == 0;
+            let (fill, vein) = match (lit, turn) {
+                (true, true) => (m.roof.light, m.roof.base),
+                (true, false) => (mix(m.roof.light, m.roof.base, 0.5), m.roof.base),
+                (false, true) => (m.roof.base, m.roof.shade),
+                (false, false) => (mix(m.roof.base, m.roof.shade, 0.4), m.roof.shade),
+            };
+            shingle(
+                canvas,
+                x,
+                *row,
+                size,
+                fill,
+                vein,
+                mix(m.roof.shade, m.outline, 0.35),
+                slope,
+                row_left,
+                row_right,
+                eave,
+            );
+            x += size;
+        }
+    }
+    // The ridge, where the two slopes meet.
+    for y in peak.1 + 1..eave - size / 2 {
+        if canvas.get(peak.0, y) != m.outline {
+            canvas.set(peak.0, y, mix(m.roof.base, m.roof.shade, 0.5));
+        }
     }
     canvas.fill_rect(left + 1, eave + 2, house.width - side - 1, 1, m.wall.shade);
-    // A strip of tape holding the roof to the front wall.
-    canvas.fill_rect(left + u(3), eave, u(3), u(3), mix(STRAW, WHITE, 0.45));
+    // A sprout curling up off the ridge.
+    canvas.line(
+        peak.0,
+        peak.1 - 1,
+        peak.0,
+        peak.1 - u(2),
+        1,
+        mix(LEAF, m.outline, 0.35),
+    );
+    canvas.set(peak.0 - 1, peak.1 - u(2), LEAF);
+    canvas.set(peak.0 + 1, peak.1 - u(2) - 1, mix(LEAF, WHITE, 0.3));
+    canvas.set(peak.0 + 2, peak.1 - u(2), LEAF);
+    // A vine climbing the fold between the two walls.
+    let vine = right - side;
+    let mut y = bottom - 2;
+    let mut turn = 0;
+    while y > eave + u(3) {
+        let leaf = if turn % 2 == 0 { vine - 1 } else { vine + 1 };
+        canvas.set(vine, y, mix(LEAF, m.outline, 0.35));
+        canvas.set(
+            leaf,
+            y - 1,
+            if turn % 2 == 0 {
+                LEAF
+            } else {
+                mix(LEAF, WHITE, 0.3)
+            },
+        );
+        y -= 2;
+        turn += 1;
+    }
     // A cut-out window with its panes drawn in.
     let (door_width, door_height) = house.door();
     let window_x = left + (house.cx - door_width / 2 - left) / 2 - u(2);
@@ -757,5 +869,63 @@ fn paper_house(canvas: &mut Canvas, house: House, m: Materials) {
     canvas.fill_rect(house.cx - mat / 2, bottom, mat, 1, m.trim.base);
     for x in (house.cx - mat / 2..house.cx + mat / 2).step_by(2) {
         canvas.set(x, bottom, m.trim.light);
+    }
+}
+
+/// One leaf of a leaf roof, hanging point-down from `(x, y)`: round-shouldered at the top,
+/// narrowing to a point, veined down the middle and edged in shadow where it tapers, and kept
+/// inside the roof except where the lowest row's tips hang over the eave.
+#[allow(clippy::too_many_arguments)]
+fn shingle(
+    canvas: &mut Canvas,
+    x: i32,
+    y: i32,
+    size: i32,
+    fill: Rgba,
+    vein: Rgba,
+    edge: Rgba,
+    slope: impl Fn(i32) -> (i32, i32),
+    row_left: i32,
+    row_right: i32,
+    eave: i32,
+) {
+    let half = size / 2;
+    let middle = x + half;
+    for row in 0..size {
+        let reach = match row {
+            0 => (half - 1).max(0),
+            r if r < size - 3 => half,
+            r if r == size - 3 => (half * 2 / 3).max(1),
+            r if r == size - 2 => (half / 3).max(1),
+            _ => 0,
+        };
+        let py = y + row;
+        let (inside_left, inside_right) = if py <= eave {
+            let (l, r) = slope(py);
+            (l + 1, r - 1)
+        } else {
+            (row_left + 1, row_right - 1)
+        };
+        let paint = |canvas: &mut Canvas, px: i32, color: Rgba| {
+            if px >= inside_left && px <= inside_right {
+                canvas.set(px, py, color);
+            }
+        };
+        for px in middle - reach..=middle + reach {
+            let color = if px == middle && row > 0 && row < size - 1 {
+                vein
+            } else {
+                fill
+            };
+            paint(canvas, px, color);
+        }
+        // The taper, edged so each point reads against the leaf behind it.
+        if row >= size - 3 {
+            paint(canvas, middle - reach - 1, edge);
+            paint(canvas, middle + reach + 1, edge);
+        }
+        if row == size - 1 {
+            paint(canvas, middle, edge);
+        }
     }
 }

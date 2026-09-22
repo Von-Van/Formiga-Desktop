@@ -244,7 +244,7 @@ mod tests {
 
     fn genome(seed: u64) -> ShelterGenome {
         ShelterGenome {
-            style: ShelterStyle::PaperHouse,
+            style: ShelterStyle::LeafHouse,
             palette_index: 2,
             accent_index: 5,
             width: 38,

@@ -27,6 +27,7 @@ mod rituals;
 mod routine;
 mod spacing;
 mod surfaces;
+mod tows;
 mod undo;
 mod visitors;
 use attention::{AttentionRuntime, DisplayAttention};
@@ -94,6 +95,8 @@ pub struct World {
     /// The last change made to the colony from the settings window, kept so it can be taken
     /// back. Never saved: it lasts as long as the app runs.
     last_edit: Option<undo::UndoPoint>,
+    /// Sleepers being towed out of somebody's way by a friend on a little rope.
+    tows: tows::TowTable,
     colony_plan: Option<ColonyPlan>,
     topology: DesktopTopology,
     geometry_observer: crate::attention::GeometryObserver,
@@ -326,6 +329,7 @@ impl World {
             habit_rng: streams.rng("habits", 0),
             village_moment: None,
             last_edit: None,
+            tows: tows::TowTable::default(),
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             creature_views: Vec::new(),
@@ -623,6 +627,10 @@ impl World {
                 if !self.attention.crosses_displays(creature.id) {
                     constrain_to_surface(creature, desktop, &self.save.settings.habitat);
                 }
+                continue;
+            }
+            // A friend towing a sleeper is walked by the tow until it lets go.
+            if self.tows.towing(creature.id) {
                 continue;
             }
 

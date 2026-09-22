@@ -14,7 +14,8 @@ use formiga_art::{
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
     DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, Point, SaveFile,
-    ShelterDecorationKind, ShelterGenome, ThoughtBubble, accessible_regions, resolved_home_anchor,
+    ShelterDecorationKind, ShelterGenome, ShelterStyle, SleepNudge, ThoughtBubble,
+    accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -75,6 +76,7 @@ struct ShelterGpu {
     genome: ShelterGenome,
     decorations: Vec<ShelterDecorationKind>,
     marks: [Option<ResidentMark>; VILLAGE_HOUSES],
+    styles: [ShelterStyle; VILLAGE_HOUSES],
 }
 
 struct BubbleGpu {
@@ -143,6 +145,48 @@ struct TrinketAtlasGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     key: TrinketAtlasKey,
+}
+
+/// The rope a friend tows a sleeper on: two texels, the rope itself and the shade under it,
+/// made the first time one is drawn and kept for the life of the overlay.
+struct RopeGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+}
+
+/// The rope's colour and the darker line under it, which reads as its round underside.
+const ROPE: [u8; 4] = [196, 152, 98, 255];
+const ROPE_SHADE: [u8; 4] = [104, 72, 50, 255];
+
+/// Where to sample each of the rope texture's two texels.
+const ROPE_UV: [f32; 2] = [0.25, 0.5];
+const ROPE_SHADE_UV: [f32; 2] = [0.75, 0.5];
+
+/// The rope between a friend's hand and the sleeper it is towing, as the art pixels it covers, in
+/// the overlay's own pixels: sagging a little between its ends, one art pixel thick, with the
+/// shade under every pixel of it. `px` is one art pixel's size. Shade comes first, so the rope is
+/// laid over it wherever the two meet on a slope.
+fn rope_pixels(from: (f32, f32), to: (f32, f32), px: f32) -> Vec<((f32, f32), bool)> {
+    let px = px.max(1.0);
+    let reach = (to.0 - from.0).abs().max((to.1 - from.1).abs());
+    let steps = (reach / px).ceil().max(1.0) as usize * 2;
+    let sag = (to.0 - from.0).abs() * 0.18;
+    let mut cells: Vec<(i32, i32)> = Vec::with_capacity(steps + 1);
+    for step in 0..=steps {
+        let t = step as f32 / steps as f32;
+        let x = from.0 + (to.0 - from.0) * t;
+        let y = from.1 + (to.1 - from.1) * t + sag * 4.0 * t * (1.0 - t);
+        let cell = ((x / px).floor() as i32, (y / px).floor() as i32);
+        if cells.last() != Some(&cell) {
+            cells.push(cell);
+        }
+    }
+    let at = |(column, row): (i32, i32)| (column as f32 * px, row as f32 * px);
+    cells
+        .iter()
+        .map(|&(column, row)| (at((column, row + 1)), true))
+        .chain(cells.iter().map(|&cell| (at(cell), false)))
+        .collect()
 }
 
 /// What the sheet depends on: the colony seed it is derived from, and the colours of everyone it
@@ -278,6 +322,7 @@ pub struct OverlayRenderer {
     ui_atlas_idle: u32,
     colony_objects: Option<ColonyObjectsGpu>,
     trinkets: Option<TrinketAtlasGpu>,
+    rope: Option<RopeGpu>,
     tree_vertex_cache_key: Option<TreeVertexCacheKey>,
     tree_vertices: Vec<Vertex>,
     object_vertex_cache_key: Option<ObjectVertexCacheKey>,
@@ -548,6 +593,7 @@ impl OverlayRenderer {
             ui_atlas_idle: 0,
             colony_objects: None,
             trinkets: None,
+            rope: None,
             tree_vertex_cache_key: None,
             tree_vertices: Vec::new(),
             object_vertex_cache_key: None,
@@ -690,6 +736,7 @@ impl OverlayRenderer {
                 save.home.drawn_shelter(),
                 &visible_decorations[..count],
                 ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
+                save.home.house_style_list(&save.creatures),
             );
         }
         self.sprites
@@ -751,6 +798,20 @@ impl OverlayRenderer {
         let tree_vertex_start = vertices.len();
         vertices.extend_from_slice(&tree_vertices);
         let tree_vertex_count = tree_vertices.len();
+        // A rope for every sleeper a friend is towing, behind the two of them so each end
+        // disappears into whoever is holding it.
+        let rope_start = vertices.len();
+        for creature in &visible {
+            if let Some(SleepNudge::Towed { by }) = creature.state.nudge
+                && let Some(tower) = visible.iter().find(|other| other.id == by)
+            {
+                vertices.extend(self.rope_vertices(tower, creature, save.settings.display_scale));
+            }
+        }
+        let rope_vertex_count = vertices.len() - rope_start;
+        if rope_vertex_count > 0 {
+            self.ensure_rope();
+        }
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state(
@@ -886,6 +947,15 @@ impl OverlayRenderer {
                 pass.set_bind_group(1, &trinkets.bind_group, &[]);
                 pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
                 pass.draw(0..tree_vertex_count as u32, 0..1);
+            }
+            if rope_vertex_count > 0
+                && let Some(rope) = &self.rope
+            {
+                let start = (rope_start * std::mem::size_of::<Vertex>()) as u64;
+                let end = start + (rope_vertex_count * std::mem::size_of::<Vertex>()) as u64;
+                pass.set_bind_group(1, &rope.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(start..end));
+                pass.draw(0..rope_vertex_count as u32, 0..1);
             }
             for (creature_id, start, has_trinket) in creature_draws {
                 if let Some(sprite) = self.sprites.get(&creature_id) {
@@ -1238,9 +1308,13 @@ impl OverlayRenderer {
         genome: ShelterGenome,
         decorations: &[ShelterDecorationKind],
         marks: [Option<ResidentMark>; VILLAGE_HOUSES],
+        styles: [ShelterStyle; VILLAGE_HOUSES],
     ) {
         if self.shelter.as_ref().is_some_and(|shelter| {
-            shelter.genome == genome && shelter.decorations == decorations && shelter.marks == marks
+            shelter.genome == genome
+                && shelter.decorations == decorations
+                && shelter.marks == marks
+                && shelter.styles == styles
         }) {
             return;
         }
@@ -1249,8 +1323,8 @@ impl OverlayRenderer {
             .copied()
             .take(formiga_core::MAX_SHELTER_DECORATIONS)
             .collect();
-        let pixels =
-            ShelterRenderer::render_village(&genome, &decorations, &marks, true).rgba_bytes();
+        let pixels = ShelterRenderer::render_village(&genome, &decorations, &marks, &styles, true)
+            .rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("procedural colony village"),
             size: wgpu::Extent3d {
@@ -1305,6 +1379,7 @@ impl OverlayRenderer {
             genome,
             decorations,
             marks,
+            styles,
         });
     }
 
@@ -1374,6 +1449,113 @@ impl OverlayRenderer {
 
     /// One sheet per colony, rebuilt only when the colony seed or a member's colours change —
     /// the same caching the colony-object atlas uses.
+    /// The rope between a friend's hand, held behind it as it pulls, and the side of the sleeper
+    /// it is towing, as quads in clip space.
+    fn rope_vertices(
+        &self,
+        tower: &Creature,
+        sleeper: &Creature,
+        display_scale: u8,
+    ) -> Vec<Vertex> {
+        let px = f32::from(display_scale.max(1));
+        let frame = formiga_art::FRAME_SIZE as f32 * px;
+        let local = |point: formiga_core::Point| {
+            (
+                (point.x - self.monitor.bounds.x) * self.monitor.scale_factor,
+                (point.y - self.monitor.bounds.y) * self.monitor.scale_factor,
+            )
+        };
+        let (tower_x, tower_y) = local(tower.state.position);
+        let (sleeper_x, sleeper_y) = local(sleeper.state.position);
+        let ahead = if tower.state.position.x >= sleeper.state.position.x {
+            1.0
+        } else {
+            -1.0
+        };
+        let hand = (tower_x - ahead * frame * 0.12, tower_y - frame * 0.34);
+        let tied = (sleeper_x + ahead * frame * 0.18, sleeper_y - frame * 0.2);
+        let (width, height) = (self.layout.width as f32, self.layout.height as f32);
+        let mut vertices = Vec::new();
+        for ((x, y), shade) in rope_pixels(hand, tied, px) {
+            let uv = if shade { ROPE_SHADE_UV } else { ROPE_UV };
+            let (left, right) = (x / width * 2.0 - 1.0, (x + px) / width * 2.0 - 1.0);
+            let (top, bottom) = (1.0 - y / height * 2.0, 1.0 - (y + px) / height * 2.0);
+            let vertex = |position| Vertex {
+                position,
+                uv,
+                occlusion_enabled: 1.0,
+            };
+            vertices.extend_from_slice(&[
+                vertex([left, top]),
+                vertex([right, top]),
+                vertex([right, bottom]),
+                vertex([left, top]),
+                vertex([right, bottom]),
+                vertex([left, bottom]),
+            ]);
+        }
+        vertices
+    }
+
+    fn ensure_rope(&mut self) {
+        if self.rope.is_some() {
+            return;
+        }
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("tow rope"),
+            size: wgpu::Extent3d {
+                width: 2,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let texels: Vec<u8> = ROPE.iter().chain(ROPE_SHADE.iter()).copied().collect();
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &texels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(8),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 2,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("tow rope bindings"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.rope = Some(RopeGpu {
+            _texture: texture,
+            bind_group,
+        });
+    }
+
     fn ensure_trinket_atlas(&mut self, save: &SaveFile) {
         let key = TrinketAtlasKey::of(save);
         if self
@@ -3767,5 +3949,53 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![guest_id]
         );
+    }
+
+    /// The rope a friend tows a sleeper on reaches from the hand to the sleeper without a gap,
+    /// hangs a little below the straight line between them, sits on the art-pixel grid, and has
+    /// its shade under every pixel of it.
+    #[test]
+    fn a_tow_rope_hangs_between_its_ends_without_a_gap() {
+        let px = 2.0;
+        for (from, to) in [
+            ((400.0, 700.0), (310.0, 730.0)),
+            ((100.0, 500.0), (190.0, 510.0)),
+            ((50.0, 50.0), (51.0, 52.0)),
+        ] {
+            let pixels = super::rope_pixels(from, to, px);
+            let rope: Vec<(f32, f32)> = pixels
+                .iter()
+                .filter(|(_, shade)| !shade)
+                .map(|(at, _)| *at)
+                .collect();
+            let shade: Vec<(f32, f32)> = pixels
+                .iter()
+                .filter(|(_, shade)| *shade)
+                .map(|(at, _)| *at)
+                .collect();
+            assert_eq!(rope.len(), shade.len());
+            for ((x, y), under) in rope.iter().zip(&shade) {
+                assert_eq!(*under, (*x, y + px), "the shade sits under the rope");
+                assert_eq!((x % px, y % px), (0.0, 0.0), "off the pixel grid");
+            }
+            let cell = |(x, y): (f32, f32)| ((x / px) as i32, (y / px) as i32);
+            let covers = |point: (f32, f32)| {
+                let target = ((point.0 / px).floor() as i32, (point.1 / px).floor() as i32);
+                rope.iter().any(|at| cell(*at) == target)
+            };
+            assert!(covers(from) && covers(to), "the rope stops short of an end");
+            for pair in rope.windows(2) {
+                let (a, b) = (cell(pair[0]), cell(pair[1]));
+                assert!(
+                    (a.0 - b.0).abs() <= 1 && (a.1 - b.1).abs() <= 1,
+                    "a gap in the rope between {a:?} and {b:?}"
+                );
+            }
+            if (to.0 - from.0).abs() > 20.0 {
+                let middle = rope[rope.len() / 2];
+                let straight = (from.1 + to.1) / 2.0;
+                assert!(middle.1 > straight, "the rope does not sag");
+            }
+        }
     }
 }

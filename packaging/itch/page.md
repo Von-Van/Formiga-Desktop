@@ -101,7 +101,7 @@ developer the first time you open one - that's expected, not a sign anything is 
 - **Windows 10/11 (64-bit):** download the `.msi` and run it - it adds normal Desktop and
   Start-menu shortcuts. If SmartScreen appears, choose *More info -> Run anyway*.
 
-Every download is named after its release (for example `Formiga-0.59.0-macOS-universal.dmg`) and
+Every download is named after its release (for example `Formiga-0.59.2-macOS-universal.dmg`) and
 ships with a matching `.sha256` file if you'd like to verify it yourself.
 
 **System requirements**
@@ -127,16 +127,16 @@ typed into a terminal or committed anywhere).
 
 ```sh
 # macOS - the universal .dmg is the artifact the README already recommends to users.
-butler push Formiga-0.59.0-macOS-universal.dmg <itch-user>/formiga:mac-universal --userversion 0.59.0
+butler push Formiga-0.59.2-macOS-universal.dmg <itch-user>/formiga:mac-universal --userversion 0.59.2
 
 # Windows - the .msi, for the same reason (adds Desktop/Start-menu shortcuts).
-butler push Formiga-0.59.0-windows-x64.msi <itch-user>/formiga:windows-x64 --userversion 0.59.0
+butler push Formiga-0.59.2-windows-x64.msi <itch-user>/formiga:windows-x64 --userversion 0.59.2
 ```
 
 Bump `--userversion` (and the filenames) for every new release; itch keeps each channel's
 version history and lets installed copies auto-update through the itch app.
 
 Optional: the release also publishes portable `.zip` builds for both platforms
-(`Formiga-0.59.0-macOS-universal.zip`, `Formiga-0.59.0-windows-x64.zip`). They are not required,
+(`Formiga-0.59.2-macOS-universal.zip`, `Formiga-0.59.2-windows-x64.zip`). They are not required,
 but can be uploaded as extra files on the same page (via itch's web dashboard rather than
 butler) for people who would rather not run an installer.

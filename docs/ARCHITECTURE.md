@@ -139,8 +139,8 @@ globally, and the GPU texture and CPU pixels are dropped at expiry, so there is 
 resource. It is unrelated to the [thought bubbles](#thought-bubbles) that answer direct
 interaction, which come from the shared UI atlas.
 
-The colony seed also resolves a bottom-corner preference and a compact shelter genome. Leaf tents,
-mushroom huts, cushion dens, and paper houses are rasterized once to a static 64×64 texture. A
+The colony seed also resolves a bottom-corner preference and a compact shelter genome. Tents,
+mushrooms, pillow houses, and leaf houses are rasterized once to a static 64×64 texture. A
 persisted home lifecycle alternates a maximum 15-minute visit with a minimum 15-minute cooldown.
 While active, creatures use a calm `Homebound` pose at the resolved habitat-safe corner. A click can
 pet them in place; only crossing the six-logical-point drag threshold dismisses the shelter and
@@ -535,16 +535,30 @@ roof rather than a shared canvas height.
 Each style is drawn in the creatures' own pixel-art language, from `shelter/houses.rs`: separate
 materials for the roof or canopy, the walls or supports, and the trim, each with a base, a shade
 and a light, lit from the upper left; a recessed doorway in the same fixed near-black, with a
-threshold; and one or two signs that someone lives there. The leaf tent is three big leaves
-leaned together on crossed twigs tied with twine, its near leaf lit and folded back at the door,
-over a straw floor, with a planter by the door. The mushroom hut is a domed cap with its gills in
-shadow and a few spots, on a cream stem with a round window and a stepping stone. The cushion den
-is a pillow fort: stacks of buttoned cushions for walls, a gingham blanket thrown over them,
-hanging in scallops over the door with a patch sewn on, a pillow glimpsed inside and a floor
-cushion outside. The paper house is folded card: a lit front wall and a side wall folded back into
-shade, a roof folded along its ridge and taped on, a cut-out window and a striped mat. The colony's
-shelter palette dyes the roof, cap, leaves or fabric; bark, straw, cream stems, stone and card are
-fixed materials. `ResidentMark` reads each full-size companion's own colours for the curtain in its
+threshold; and one or two signs that someone lives there. Each kind is built from a shape of its
+own. The tent is triangles: one canvas cut into four triangular panels meeting at the peak, lit on
+the left and shaded on the right, a triangle doorway with its flap tied back over a straw floor, a
+triangle pennant on the pole, and guy ropes out to pegs. The mushroom is circles: a domed cap with
+its gills in shadow and round spots, on a cream stem with a round window and a stepping stone. The
+pillow house is soft squares: one plump cushion standing on the ground for the walls, its sides
+bowed out, piped along the top and buttoned with the fabric drawn in round each button, with a
+flatter pillow lying across it for a roof, tasselled at the corners, a round window, and a pillow
+glimpsed inside. The leaf house is leaves: a lit card front wall and a side wall folded back into
+shade under a steep roof thatched in rows of overlapping leaves, each hanging point-down and veined,
+no two neighbours quite the same tone, their tips scalloping the eave, with a sprout on the ridge,
+a vine up the fold, a cut-out window and a striped mat. The colony's shelter palette dyes the
+canvas, cap, pillows or leaves; bark, straw, cream stems, stone and card are fixed materials. The
+four keep the names colony files have always stored them by — `LeafTent`, `MushroomHut`,
+`CushionDen`, `PaperHouse` — so an existing colony's houses open as the same kind, drawn anew.
+
+A village mixes them. `ColonyHome::house_style_list` gives every house slot its kind: one chosen
+on the Home page if there is one, kept in `house_styles` by the companion who keeps the house,
+else the colony's own kind for the colony house and `ShelterStyle::for_keeper` — the kind the
+keeper's own seed would build — for a cottage. The village atlas bakes each slot as its own kind,
+and its texture on the overlay and the Home page is keyed on the list alongside the curtains, so a
+new choice redraws it once. A replaced companion's choice passes to its replacement, one that
+leaves takes its choice with it, putting the village back clears them, and the last change can be
+undone. `ResidentMark` reads each full-size companion's own colours for the curtain in its
 doorway, tied back to a side its seed chooses, so a house keeps its resident's look wherever the
 village moves it, and a mini shares its big version's. Customizing the village changes the house
 itself; the curtain always stays the resident's. After dark — seven in the evening until seven in
@@ -649,15 +663,25 @@ display cannot show properly anyway. `home_guest_position` stands a visitor past
 resting spot, plus a gap and half a frame, and returns `None` when it cannot keep face-clear
 distance from the residents.
 
-While the colony is home, a resident does not stay on its resting place: `roam_target` in
-`world/home.rs` hands it somewhere on the commons, it walks there, stays `ROAM_DWELL` seconds, and
-is handed somewhere else. It considers `ROAM_TRIES` places and takes the first that is face-clear
-of everybody's position and of everybody else's destination and not square in a doorway, falling
-back to its resting place when the commons has nothing to offer. The first place it goes when the
-houses appear is its own doorstep — beside the door, not across it — which for a mini is its big
-version's. A quiet moment owns the creature's feet while it lasts, so a companion doing its small
-thing is not also walking somewhere. A hidden colony and one under reduced motion do not roam at
-all. The roaming state is runtime-only: a relaunch simply sends everybody wandering again.
+While the colony is home, residents stroll. The first place a resident goes when the houses appear
+is its own doorstep — beside the door, not across it — which for a mini is its big version's, and
+then its own resting place. From there `roam_target` in `world/home.rs` sends it on strolls: out to
+somewhere along the commons at least a step and a half from home, a look about for
+`STROLL_PAUSE`, back to its own place, and a rest of `STROLL_REST` before the next. Its place is
+kept for it while it is out, so the village always has somewhere clear to come back to, and only
+the far end of a stroll is chosen: `stroll_to` considers `ROAM_TRIES` places, preferring one clear
+of everybody standing or headed there and not square in a doorway, and where none is clear it is
+only a place to turn round, with a pause short enough never to stand on anybody's face. At most
+`MAX_STROLLING` residents are out at once; the rest wait their turn. A stroll goes at
+`STROLL_PACE` of the companion's walk, and its walk cycle is slowed to match so its feet keep up
+with the ground; the walk home stays at full pace. Until 0.59.2 every destination had to be clear
+of every other resident's position and destination, which a commons of three or more could not
+offer, so 99.6% of strolls were called off and residents stood still. Strolling is a fifth of a
+resident's time now. A quiet moment owns the creature's feet while it lasts, so a companion doing
+its small thing is not also walking somewhere. A hidden colony and one under reduced motion do not
+stroll at all. Stroll state is runtime-only and cleared each time the houses go or come, so every
+visit starts with the walk home. While the only thing moving at home is a stroll, the app ticks
+and draws at 10 Hz instead of 20.
 
 A visit is a tour rather than a stand. `plan_tour` asks the same layout functions where everything
 is, turns each house, resting resident and belonging into a span of ground the guest may not
@@ -845,8 +869,25 @@ hanging, homebound, or owned by a scene; +8 for being asleep and up to 4 more th
 slept, so the lighter sleeper moves; +7 for a ritual participant, +6 for a pile anchor, +5 for
 holding a prop, +2 for a bond plan; ties by id. An awake creature takes an ordinary short `Traverse`
 to the nearest spot that clears everybody, respecting habitat, ledge extent, and reservations;
-sleepers and ritual participants get a quiet position-only shuffle that emits no `SleepInterrupted`,
-`CreatureWoke`, or `CreatureRested`, and under reduced motion a sleeper is simply placed. If no spot
+ritual participants get a quiet position-only shuffle, and a sleeper is towed: `world/tows.rs`
+finds a friend on the same surface within six widths who is awake, standing about or walking, and
+wanted by nothing else — the closest friend first, then the nearest — which walks over, takes up
+the rope a little under a width ahead of the sleeper, pulls it clear at `TOW_SPEED`, lets go, and
+goes back to standing about. The tow walks the friend itself, so its own choices wait until it
+lets go. The sleeper's runtime `SleepNudge::Towed` tells the overlay to draw a sagging rope, one
+art pixel thick with a shaded underside, from the friend's hand to the sleeper, behind both, from
+a two-texel texture made the first time a rope is needed. With no friend free, or a rope that would
+take either off its surface, the sleeper wriggles over by itself at `WRIGGLE_SPEED`, its breaths
+coming four times as fast; and a tow cut short — either of the two picked up, tossed, climbing, or
+wanted by a scene, or the sleeper waking — lets go at once and the sleeper wriggles the rest of the
+way. None of it emits `SleepInterrupted`, `CreatureWoke`, or `CreatureRested`, and under reduced
+motion a sleeper is simply placed.
+
+A nap starts with a walk to wherever it is taken: a pillow, a friend, or a place in a line. Until
+0.59.2 the whole walk was drawn in the sleep pose, so a colony of four spent about 400 seconds an
+hour gliding across the floor asleep. `CreatureState::walking_to_sleep` is true while a sleeper is
+still moving under its own steam, and `BodyPresentation` walks it there instead, eyes half shut,
+and lays it down when it stops. If no spot
 clears every face and the situation has lasted five times the grace period, the creature leaves the
 ledge through the existing descent journey. No event is emitted for a sidestep. A user drag or toss,
 an airborne creature, a climbing or hanging one, and a play scene inside its own bounded deadline

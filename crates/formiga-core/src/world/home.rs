@@ -35,20 +35,64 @@ pub(super) enum MomentPhase {
 pub(super) struct RoamStep {
     target: Point,
     dwell: f32,
+    leg: RoamLeg,
 }
 
-/// How long a companion stays somewhere before wandering off again.
-const ROAM_DWELL: std::ops::Range<f32> = 11.0..34.0;
+/// Which part of its afternoon a resident is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RoamLeg {
+    /// The walk home and the first stop, beside its own door.
+    Arriving,
+    /// At its own place on the commons, between strolls.
+    Resting,
+    /// Out on a stroll, or looking about at the far end of one.
+    Out,
+    /// Strolling back to its own place.
+    Back,
+}
+
+impl RoamStep {
+    /// Out on a stroll, there or back, rather than at home on its own place.
+    fn strolling(&self) -> bool {
+        matches!(self.leg, RoamLeg::Out | RoamLeg::Back)
+    }
+}
+
+/// How long a resident stays at its own place between strolls, and how long it looks about at the
+/// far end of one before heading back.
+const STROLL_REST: std::ops::Range<f32> = 9.0..26.0;
+const STROLL_PAUSE: std::ops::Range<f32> = 1.5..5.0;
+
+/// The pause at the far end of a stroll that ends in front of somebody: long enough to turn round,
+/// not long enough to stand on anybody's face.
+const STROLL_PASSING_PAUSE: std::ops::Range<f32> = 0.4..1.0;
+
+/// How long a resident waits before asking again when the commons already has its fill of people
+/// out strolling.
+const STROLL_WAIT: std::ops::Range<f32> = 2.0..6.0;
+
+/// The most residents out strolling at once. The rest are at home on their own places, or doing
+/// one of the quiet things residents do there.
+pub(super) const MAX_STROLLING: usize = 3;
+
+/// How fast a stroll goes, against a companion's ordinary walk. The walk cycle slows to match, so
+/// the feet keep up with the ground rather than skating over it.
+pub(super) const STROLL_PACE: f32 = 0.45;
+
+/// How far a stroll goes at the least, in creature widths: far enough to read as going somewhere.
+const STROLL_REACH_FRAMES: f32 = 1.5;
 
 /// How many places a companion considers before settling for the best of a bad lot. Six is
 /// enough that a busy commons still finds somewhere, and few enough to be free.
 const ROAM_TRIES: usize = 6;
 
-/// Where a resident strolls next. The whole run of ground between the two trees is the colony's,
-/// so a companion with nothing to do walks it rather than standing on one spot all afternoon: it
-/// picks somewhere, stays a while, and picks again. It keeps its distance from whoever is already
-/// there, and prefers not to stand square in a doorway — though with a full village there is not
-/// always such a place, and living in front of the houses is what a village looks like.
+/// Where a resident goes next, and at what pace. The whole run of ground between the two trees is
+/// the colony's, and a companion with nothing to do strolls it: from its own place out to
+/// somewhere along it, a look about, and back again, then a rest before the next. Its own place is
+/// kept for it while it is out, so the village always has somewhere clear for everyone to come back
+/// to. At most `MAX_STROLLING` are out at once, and the rest wait their turn. The far end of a
+/// stroll keeps clear of doorways and of whoever is standing there if it can, and where it cannot
+/// it is only a place to turn round.
 #[allow(clippy::too_many_arguments)]
 fn roam_target(
     roam: &mut BTreeMap<CreatureId, RoamStep>,
@@ -60,17 +104,16 @@ fn roam_target(
     doorways: &[(f32, f32)],
     settled: Point,
     dt: f32,
-) -> Point {
+) -> (Point, f32) {
     let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * commons.scale;
-    if let Some(step) = roam.get_mut(&creature.id) {
-        // Still on the way there, or still enjoying it.
-        if creature.state.position != step.target || step.dwell > 0.0 {
-            if creature.state.position == step.target {
-                step.dwell -= dt;
-            }
-            return step.target;
+    let pace = |leg: RoamLeg| {
+        if matches!(leg, RoamLeg::Out | RoamLeg::Back) {
+            STROLL_PACE
+        } else {
+            1.0
         }
-    } else {
+    };
+    let Some(step) = roam.get(&creature.id).copied() else {
         // The first place a companion goes when the houses appear is its own doorstep — or its
         // big version's, for a mini, which has no house of its own. Beside the door rather than
         // across it: the walk home ends where somebody lives, not in front of where they live.
@@ -90,44 +133,111 @@ fn roam_target(
             creature.id,
             RoamStep {
                 target: first,
-                dwell: rng.random_range(ROAM_DWELL),
+                dwell: rng.random_range(STROLL_REST),
+                leg: RoamLeg::Arriving,
             },
         );
-        return first;
+        return (first, 1.0);
+    };
+    // Still on the way there, or still where it meant to be for a while.
+    if creature.state.position != step.target || step.dwell > 0.0 {
+        if creature.state.position == step.target
+            && let Some(step) = roam.get_mut(&creature.id)
+        {
+            step.dwell -= dt;
+        }
+        return (step.target, pace(step.leg));
     }
+    let next = match step.leg {
+        // Seen the far end: back to its own place, and a rest there.
+        RoamLeg::Out => RoamStep {
+            target: settled,
+            dwell: rng.random_range(STROLL_REST),
+            leg: RoamLeg::Back,
+        },
+        RoamLeg::Arriving | RoamLeg::Resting | RoamLeg::Back if step.target != settled => {
+            RoamStep {
+                target: settled,
+                dwell: rng.random_range(STROLL_REST),
+                leg: RoamLeg::Resting,
+            }
+        }
+        _ => {
+            let out = roam
+                .iter()
+                .filter(|(id, step)| **id != creature.id && step.strolling())
+                .count();
+            if out >= MAX_STROLLING {
+                RoamStep {
+                    target: settled,
+                    dwell: rng.random_range(STROLL_WAIT),
+                    leg: RoamLeg::Resting,
+                }
+            } else {
+                stroll_to(
+                    rng, creature, commons, occupied, roam, doorways, settled, clear,
+                )
+            }
+        }
+    };
+    roam.insert(creature.id, next);
+    (next.target, pace(next.leg))
+}
 
+/// Where the next stroll goes: somewhere along the commons at least a step or two from home,
+/// clear of doorways and of anybody standing or headed there if such a place can be found.
+#[allow(clippy::too_many_arguments)]
+fn stroll_to(
+    rng: &mut ChaCha12Rng,
+    creature: &Creature,
+    commons: HomeCommons,
+    occupied: &[(CreatureId, Point)],
+    roam: &BTreeMap<CreatureId, RoamStep>,
+    doorways: &[(f32, f32)],
+    settled: Point,
+    clear: f32,
+) -> RoamStep {
+    let reach = CREATURE_FRAME_WIDTH * STROLL_REACH_FRAMES * commons.scale;
     let mut best: Option<(Point, u8)> = None;
     for _ in 0..ROAM_TRIES {
         let candidate = commons.along(rng.random_range(0.0..1.0));
-        let crowded = occupied
-            .iter()
-            .any(|(id, point)| *id != creature.id && (point.x - candidate.x).abs() < clear);
-        let taken = roam
-            .iter()
-            .any(|(id, step)| *id != creature.id && (step.target.x - candidate.x).abs() < clear);
-        if crowded || taken {
+        if (candidate.x - settled.x).abs() < reach {
             continue;
         }
+        let crowded = occupied
+            .iter()
+            .any(|(id, point)| *id != creature.id && (point.x - candidate.x).abs() < clear)
+            || roam.iter().any(|(id, step)| {
+                *id != creature.id && (step.target.x - candidate.x).abs() < clear
+            });
         let in_a_doorway = doorways
             .iter()
             .any(|(x, reach)| (x - candidate.x).abs() < *reach);
-        let score = u8::from(!in_a_doorway);
+        let score = u8::from(!crowded) * 2 + u8::from(!in_a_doorway);
         if best.is_none_or(|(_, previous)| score > previous) {
             best = Some((candidate, score));
-            if score == 1 {
+            if score == 3 {
                 break;
             }
         }
     }
-    let target = best.map_or(settled, |(point, _)| point);
-    roam.insert(
-        creature.id,
-        RoamStep {
+    match best {
+        Some((target, score)) => RoamStep {
             target,
-            dwell: rng.random_range(ROAM_DWELL),
+            dwell: rng.random_range(if score >= 2 {
+                STROLL_PAUSE
+            } else {
+                STROLL_PASSING_PAUSE
+            }),
+            leg: RoamLeg::Out,
         },
-    );
-    target
+        // A commons too short to go anywhere on: stay home a while and ask again.
+        None => RoamStep {
+            target: settled,
+            dwell: rng.random_range(STROLL_WAIT),
+            leg: RoamLeg::Resting,
+        },
+    }
 }
 
 /// A short, quiet thing a resident does at its own door while the home is out. It is a clip and
@@ -443,6 +553,7 @@ impl World {
         self.save.home.active_since_utc = Some(now);
         self.home_moments.clear();
         self.home_moment_timers.clear();
+        self.home_roam.clear();
         self.clear_runtime_plans();
         Self::emit(&mut self.events, WorldEvent::HomeAppeared);
         self.visitor_home_appeared(now);
@@ -639,10 +750,10 @@ impl World {
             if shared.is_some() {
                 self.home_moments.remove(&creature.id);
             }
-            let target = if let Some(place) = shared {
-                place.spot
+            let (target, pace) = if let Some(place) = shared {
+                (place.spot, 1.0)
             } else if let Some(moment) = self.home_moments.get(&creature.id) {
-                moment.rest
+                (moment.rest, 1.0)
             } else {
                 match commons.filter(|_| !quiet) {
                     Some(commons) => roam_target(
@@ -656,7 +767,7 @@ impl World {
                         anchored,
                         dt,
                     ),
-                    None => anchored,
+                    None => (anchored, 1.0),
                 }
             };
 
@@ -749,11 +860,16 @@ impl World {
                 ActionKind::Landing
             } else {
                 let distance = previous.distance(target);
-                let speed = 24.0 + creature.personality.activity * 34.0;
+                let speed = (24.0 + creature.personality.activity * 34.0) * pace;
                 if distance > 0.0 {
                     creature.state.facing_right = target.x >= previous.x;
                     creature.state.position =
                         lerp_point(previous, target, (speed * dt / distance).clamp(0.0, 1.0));
+                    // A stroll's steps are slower as well as shorter, so its feet keep pace with
+                    // the ground: the walk cycle runs at the stroll's own pace.
+                    if pace < 1.0 && creature.state.action == ActionKind::Traverse {
+                        creature.state.action_elapsed -= dt * (1.0 - pace);
+                    }
                 }
                 if creature.state.position == target
                     && let Some(place) = shared
@@ -1142,6 +1258,9 @@ impl World {
         self.end_village_moment(false);
         self.cancel_home_moments();
         self.home_moment_timers.clear();
+        // Every visit starts with the walk home: nobody picks up a stroll where the last one left
+        // off.
+        self.home_roam.clear();
         self.visitor_home_disappeared(now);
         for creature in &mut self.save.creatures {
             if matches!(

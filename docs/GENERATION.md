@@ -1,4 +1,4 @@
-# Modular creature generation · v0.59.0
+# Modular creature generation · v0.59.2
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -150,6 +150,10 @@ texture — the inward tree samples the tree cell with its horizontal UVs swappe
 adds no texture, sampler, or bind group. Style details scale with the house, which leaves an
 unmarked colony house byte-identical to the standalone shelter render. `home-yard-sheet` shows all four styles and both
 corners through the same layout function the renderer uses.
+
+Each house is one of four kinds — a tent, a mushroom, a pillow house, or a leaf house. The colony
+house is the kind its seed chose, and every cottage is the kind its keeper's own seed chooses, so a
+village mixes them; the owner can build any house as any kind from the Home page.
 
 A village's colours come from its seed — two of the twelve creature palettes — until its owner
 chooses one of six named palettes, each a fixed pairing of two of those twelve. Only those two

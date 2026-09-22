@@ -63,8 +63,13 @@ const RETRY_SECONDS: f32 = 0.5;
 /// A sleeper shuffling over settles again within this long, or gives up and stays put.
 const SHUFFLE_SECONDS: f32 = 3.0;
 
-/// How fast a sleeper shuffles, in points per second. Slower than a walk: it never wakes up.
+/// How fast a place in a ceremony shuffles along, in points per second. Slower than a walk.
 const SHUFFLE_SPEED: f32 = 30.0;
+
+/// How fast a sleeper wriggles over in its sleep when nobody is free to tow it, in points per
+/// second, and how long it may take about it.
+const WRIGGLE_SPEED: f32 = 14.0;
+const WRIGGLE_SECONDS: f32 = 5.0;
 
 /// The shortest sideways move worth making, matching the shortest walk attention will set off on.
 const STEP_POINTS: f32 = 8.0;
@@ -125,6 +130,8 @@ struct Shuffle {
     remaining: f32,
     /// What the creature was doing when it set off. Anything else means something took it over.
     action: ActionKind,
+    /// Points per second: a ceremony's shuffle along, or a sleeper's slower wriggle.
+    speed: f32,
 }
 
 /// Bounded, runtime-only bookkeeping for overlap handling.
@@ -194,7 +201,13 @@ impl OverlapWatch {
             .any(|shuffle| shuffle.creature == creature)
     }
 
-    fn start_shuffle(&mut self, creature: CreatureId, target_x: f32, action: ActionKind) {
+    fn start_shuffle(
+        &mut self,
+        creature: CreatureId,
+        target_x: f32,
+        action: ActionKind,
+        wriggle: bool,
+    ) {
         let index = self
             .shuffles
             .iter()
@@ -204,8 +217,17 @@ impl OverlapWatch {
             self.shuffles[index] = Some(Shuffle {
                 creature,
                 target_x,
-                remaining: SHUFFLE_SECONDS,
+                remaining: if wriggle {
+                    WRIGGLE_SECONDS
+                } else {
+                    SHUFFLE_SECONDS
+                },
                 action,
+                speed: if wriggle {
+                    WRIGGLE_SPEED
+                } else {
+                    SHUFFLE_SPEED
+                },
             });
         }
     }
@@ -277,6 +299,7 @@ impl World {
     /// the end of every ordinary tick, after each creature has moved and been kept in its habitat.
     pub(super) fn resolve_overlaps(&mut self, dt: f32, desktop: &DesktopSnapshot) {
         self.advance_shuffles(dt, desktop);
+        self.advance_tows(dt, desktop);
         let present: Vec<_> = self.save.creatures.iter().map(|c| c.id).collect();
         self.overlaps.retain(&present);
         self.overlaps.age(dt);
@@ -404,7 +427,7 @@ impl World {
         // mark below, and is left to get there for the same reason: a shuffle is not registered as
         // a walk, so without this the sleeper would be asked again half way across and its partner
         // moved as well, when only one of the two ever needed to.
-        if self.overlaps.shuffling(id) {
+        if self.overlaps.shuffling(id) || self.tows.involves(id) {
             return true;
         }
         // Still walking to a spot it chose for itself. Shuffling it now would drag it away from
@@ -500,10 +523,15 @@ impl World {
             // the companion crowding it is usually passing through.
             return pressing && self.leave_the_surface(mover.id, desktop);
         };
-        // A pose that must survive the move — a sleep, or a place in a ceremony — is shuffled out
-        // of the way without being touched. Everybody else takes an ordinary walk.
-        if mover.asleep() || self.in_ritual(mover.id) {
+        // A pose that must survive the move is moved without being touched: a place in a
+        // ceremony shuffles along, and a sleeper is towed clear by a friend on a little rope, or
+        // wriggles over in its sleep with nobody free to. Everybody else takes an ordinary walk.
+        if self.in_ritual(mover.id) {
             self.shuffle_in_place(mover.id, target_x);
+        } else if mover.asleep() {
+            if !self.start_tow(mover.id, target_x, desktop) {
+                self.wriggle_over(mover.id, target_x);
+            }
         } else {
             self.walk_aside(mover.id, target_x);
         }
@@ -710,7 +738,21 @@ impl World {
         else {
             return;
         };
-        self.overlaps.start_shuffle(id, target_x, action);
+        self.overlaps.start_shuffle(id, target_x, action, false);
+    }
+
+    /// A sleeper with nobody free to tow it wriggles over by itself, slowly, still asleep.
+    pub(super) fn wriggle_over(&mut self, id: CreatureId, target_x: f32) {
+        let Some(creature) = creature_mut(&mut self.save.creatures, id) else {
+            return;
+        };
+        if self.save.settings.reduce_motion {
+            creature.state.position.x = target_x;
+            return;
+        }
+        let action = creature.state.action;
+        creature.state.nudge = Some(SleepNudge::Wriggling);
+        self.overlaps.start_shuffle(id, target_x, action, true);
     }
 
     fn advance_shuffles(&mut self, dt: f32, desktop: &DesktopSnapshot) {
@@ -731,13 +773,19 @@ impl World {
                 || self.tosses.contains_key(&shuffle.creature);
             if done {
                 self.overlaps.shuffles[index] = None;
+                if creature.state.nudge == Some(SleepNudge::Wriggling) {
+                    creature.state.nudge = None;
+                }
                 continue;
             }
             let dx = shuffle.target_x - creature.state.position.x;
-            let step = (SHUFFLE_SPEED * dt).min(dx.abs());
+            let step = (shuffle.speed * dt).min(dx.abs());
             creature.state.position.x += dx.signum() * step;
             if dx.abs() <= step + f32::EPSILON {
                 self.overlaps.shuffles[index] = None;
+                if creature.state.nudge == Some(SleepNudge::Wriggling) {
+                    creature.state.nudge = None;
+                }
             } else {
                 self.overlaps.shuffles[index] = Some(shuffle);
             }

@@ -290,6 +290,17 @@ fn a_layout_change_puts_back_what_it_changed() {
     assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::PaintedVillage));
     assert_eq!(world.save.home.palette, None);
 
+    let founder = world.save.creatures[0].id;
+    world.edit(ColonyEdit::HouseType, |world| {
+        world
+            .save
+            .home
+            .set_house_style(founder, Some(ShelterStyle::PillowFort));
+    });
+    assert_eq!(world.last_edit().unwrap().describe(), "changing a house");
+    assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::HouseType));
+    assert!(world.save.home.house_styles.is_empty());
+
     world.edit(ColonyEdit::Hangout(HangoutKind::Blanket), |world| {
         world.save.home.set_hangout(HangoutKind::Blanket, Some(0.4))
     });

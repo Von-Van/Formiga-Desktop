@@ -477,6 +477,7 @@ fn paint_village(
         &save.home.drawn_shelter(),
         &decorations,
         &crate::ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
+        &save.home.house_style_list(&save.creatures),
         after_dark,
     );
     let objects = ColonyObjectRenderer::render_atlas(save.colony_seed);
@@ -999,7 +1000,13 @@ fn draw_stamp(
     }
     let inner = blend(palette.highlight, paper, 60);
     canvas.fill_rect(x + 8, y + 8, width - 16, height - 16, inner);
-    let village = ShelterRenderer::render_village(&save.home.drawn_shelter(), &[], &[], false);
+    let village = ShelterRenderer::render_village(
+        &save.home.drawn_shelter(),
+        &[],
+        &[],
+        &save.home.house_style_list(&save.creatures)[..1],
+        false,
+    );
     let (u, v) = ShelterRenderer::village_cell(VillageCell::House {
         slot: 0,
         lit: false,

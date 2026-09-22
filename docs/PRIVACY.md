@@ -131,8 +131,10 @@ five, with a journal line for each, and nothing about when, where, or how often 
 share code carries no habits. How a companion celebrates is read from its seed and never stored.
 The hangout spots put down on the village ground are stored with the home as a kind and a
 fraction along the ground — never a screen position — and only once one is put down. The garden
-patches are stored the same way, the chosen palette by its name, and a cottage order as the ids of
-companions already in the colony, each only once it is chosen.
+patches are stored the same way, the chosen palette by its name, a cottage order as the ids of
+companions already in the colony, and a house built as another kind as the id of the companion who
+keeps it and the kind's name, each only once it is chosen. A sleeper being towed out of the way, and
+who is towing it, are runtime only and never written.
 A moment the village is asked to share while the houses are out is runtime only: who was asked,
 who answered what, and where anyone stood are never written, and one that runs its course leaves
 only the same shared-moment line in the journal a ritual leaves. A v16 colony opens unchanged, its recipes reading as plain modular ones

@@ -572,3 +572,42 @@ No native CPU, memory, or energy measurement has been taken for a full colony. T
 per-tick costs, save costs, and storage assertions, not measurements of whole-process cost; the
 release-machine protocol at the top of this document remains the only thing that can answer whether
 the budgets are met, and no Windows hardware has been available to run it there.
+
+## 0.59.2
+
+### Strolling at home
+
+The one change here that costs anything is the one asked for: companions stroll the village while
+the houses are out. Measured on the desktop it was built on — the same Apple M5, the owner's own
+five-companion colony copied into a scratch data directory with `FORMIGA_DATA_DIR` and the houses
+set out, a minute to settle and two minutes measured, each build on its own fresh copy in the same
+sitting:
+
+| | average CPU | physical footprint |
+|---|---:|---:|
+| 0.59.0, the houses out | 0.98% | 112 MB |
+| 0.59.2, strolls ticked at 20 Hz | 2.90% | 112 MB |
+| 0.59.2, as released | 2.59% | 112 MB |
+
+The simulation is not where it goes. `tick-bench` in the same session gives 2.0 µs a tick for
+four companions at home and 3.1 for six, against 2.0 and 3.1 for 0.59.0 in its own table; what
+changed is that something is nearly always moving. A village standing still is drawn a few times a
+second, at the rate of the slowest pose on show, and ticked at 10 Hz so a resting companion is
+ready to be picked up; a village with anybody walking is drawn every tick. Strolls keep someone on
+the move 65% of the time in a colony of four and 86% in a colony of six. A stroll is slow enough
+that 10 Hz is all it needs — under two and a half points a step, with its walk cycle slowed to
+match — so while the only thing moving at home is a stroll the app ticks and draws at 10 Hz, which
+is the difference between the last two rows; anything brisker, and all movement out on the
+desktop, keeps 20. What is left is the price of a village that moves, and the per-frame cost is
+where any further saving lies.
+
+Strolling also starts and stops actions, which the colony gathers into its routine checkpoints: at
+home it is written about 4 times a minute instead of 2.7 to 2.9.
+
+### Towing and house kinds
+
+A tow's rope is a two-texel texture, made the first time a rope is drawn and kept for the life of
+the overlay, drawn with one extra call while a tow is under way; its geometry is a few dozen quads.
+Tows happen a few seconds an hour. Every kind of house is baked into the same 256×256 village
+atlas as before, so mixing them adds no texture, and a new choice redraws the atlas once. A walk to
+bed is drawn with frames every creature already has.

@@ -241,3 +241,115 @@ fn an_arranged_village_is_kept_and_an_unarranged_one_writes_nothing() {
     let back: ColonyHome = serde_json::from_str(&serde_json::to_string(&home).unwrap()).unwrap();
     assert_eq!(back, home);
 }
+
+/// Every cottage is built as the type its keeper would build and the colony house as the colony's
+/// own, until a type is chosen by hand for either. A choice can be taken back, one companion never
+/// holds two, a replaced companion's house keeps what it was built as, a companion who leaves takes
+/// its choice with it, and putting the village back gives every house its own type again.
+#[test]
+fn each_house_is_its_keepers_own_type_until_another_is_chosen() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([75; 32], 4, created, &desktop);
+    for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+        creature.behavior_seed[13] = index as u8;
+        creature.behavior_seed[29] = 0;
+        creature.kept = false;
+    }
+    let creatures = world.save.creatures.clone();
+    let ids: Vec<CreatureId> = creatures.iter().map(|creature| creature.id).collect();
+    let styles = world.save.home.house_style_list(&creatures);
+    assert_eq!(styles[0], world.save.home.shelter.style);
+    for slot in 1..4 {
+        assert_eq!(styles[slot], ShelterStyle::for_keeper(&creatures[slot]));
+    }
+    let own: Vec<_> = styles[1..4].to_vec();
+    assert!(
+        own.windows(2).any(|pair| pair[0] != pair[1]),
+        "a village of different keepers is all one type: {own:?}"
+    );
+
+    world
+        .save
+        .home
+        .set_house_style(ids[2], Some(ShelterStyle::PillowFort));
+    world
+        .save
+        .home
+        .set_house_style(ids[0], Some(ShelterStyle::Mushroom));
+    let styles = world.save.home.house_style_list(&creatures);
+    assert_eq!(styles[0], ShelterStyle::Mushroom);
+    assert_eq!(styles[2], ShelterStyle::PillowFort);
+    world
+        .save
+        .home
+        .set_house_style(ids[2], Some(ShelterStyle::Tent));
+    assert_eq!(
+        world.save.home.house_styles.len(),
+        2,
+        "one choice per house"
+    );
+    world.save.home.set_house_style(ids[2], None);
+    assert_eq!(
+        world.save.home.house_style_list(&creatures)[2],
+        ShelterStyle::for_keeper(&creatures[2])
+    );
+
+    world
+        .save
+        .home
+        .set_house_style(ids[3], Some(ShelterStyle::LeafHouse));
+    let newcomer = world
+        .replace_creature_with_adult(ids[3], [79; 32], created, &desktop)
+        .unwrap();
+    assert_eq!(
+        world.save.home.house_style(newcomer),
+        Some(ShelterStyle::LeafHouse)
+    );
+    world.remove_colony_creature(ids[1]).unwrap();
+    world
+        .save
+        .home
+        .set_house_style(ids[2], Some(ShelterStyle::Tent));
+    assert!(world.save.home.house_style(ids[1]).is_none());
+    world.save.home.reset_arrangement();
+    assert!(world.save.home.house_styles.is_empty());
+}
+
+/// A companion's own house type comes from its seed: the same every time, and across many
+/// companions every type turns up about as often as any other.
+#[test]
+fn every_house_type_turns_up_among_keepers() {
+    let mut counts = [0_u32; 4];
+    for index in 0..400_u32 {
+        let creature = World::preview_adult(
+            SeedStream::new([91; 32]).bytes("keepers", u64::from(index)),
+            datetime!(2026-01-01 0:00 UTC),
+            &DesktopSnapshot::default(),
+        );
+        let style = ShelterStyle::for_keeper(&creature);
+        assert_eq!(style, ShelterStyle::for_keeper(&creature.clone()));
+        counts[ShelterStyle::ALL.iter().position(|s| *s == style).unwrap()] += 1;
+    }
+    for (style, count) in ShelterStyle::ALL.iter().zip(counts) {
+        assert!(
+            (60..=140).contains(&count),
+            "{style:?} turned up {count} times in 400: {counts:?}"
+        );
+    }
+}
+
+/// The four types keep the names colony files have always used for them, so every existing
+/// colony's houses open as the same houses.
+#[test]
+fn house_types_keep_their_saved_names() {
+    for (style, name) in [
+        (ShelterStyle::Tent, "\"LeafTent\""),
+        (ShelterStyle::Mushroom, "\"MushroomHut\""),
+        (ShelterStyle::PillowFort, "\"CushionDen\""),
+        (ShelterStyle::LeafHouse, "\"PaperHouse\""),
+    ] {
+        assert_eq!(serde_json::to_string(&style).unwrap(), name);
+        assert_eq!(serde_json::from_str::<ShelterStyle>(name).unwrap(), style);
+    }
+}

@@ -522,6 +522,28 @@ pub struct CreatureState {
     /// A habit being done at the start of the current action. Runtime only, like `attention`.
     #[serde(skip)]
     pub flourish: Option<crate::Flourish>,
+    /// Being moved over while asleep: towed on a rope by a friend, or wriggling over by itself.
+    /// Runtime only, like `attention`.
+    #[serde(skip)]
+    pub nudge: Option<SleepNudge>,
+}
+
+/// How a sleeper that has to make room is moved without being woken.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SleepNudge {
+    /// Pulled along on a little rope by the companion holding the other end.
+    Towed { by: CreatureId },
+    /// Wriggling over in its sleep, with nobody free to tow it.
+    Wriggling,
+}
+
+impl CreatureState {
+    /// Still on its way to where it is going to sleep. A nap begins with the walk to the pillow, a
+    /// friend, or the spot the colony gathers at, and until it gets there the companion is walking
+    /// to bed, drowsy, not already asleep and gliding across the floor.
+    pub fn walking_to_sleep(&self) -> bool {
+        self.action == ActionKind::Sleep && self.velocity.x.abs() > 1.0
+    }
 }
 
 pub const MAX_RELATIONSHIPS: usize = MAX_COLONY_CREATURES * (MAX_COLONY_CREATURES - 1) / 2;
@@ -1262,13 +1284,56 @@ pub enum HomeCorner {
     BottomRight,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The four kinds of house, each built from a shape of its own. A colony file keeps the names
+/// they had before they were drawn this way, so every existing colony keeps its houses.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ShelterStyle {
+    /// A tent pitched from triangles.
     #[default]
-    LeafTent,
-    MushroomHut,
-    CushionDen,
-    PaperHouse,
+    #[serde(rename = "LeafTent")]
+    Tent,
+    /// A mushroom made of circles.
+    #[serde(rename = "MushroomHut")]
+    Mushroom,
+    /// A pillow fort stacked from squares.
+    #[serde(rename = "CushionDen")]
+    PillowFort,
+    /// A cottage roofed and trimmed in leaves.
+    #[serde(rename = "PaperHouse")]
+    LeafHouse,
+}
+
+impl ShelterStyle {
+    pub const ALL: [Self; 4] = [
+        Self::Tent,
+        Self::Mushroom,
+        Self::PillowFort,
+        Self::LeafHouse,
+    ];
+
+    /// What the Home page calls it.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Tent => "Tent",
+            Self::Mushroom => "Mushroom",
+            Self::PillowFort => "Pillow fort",
+            Self::LeafHouse => "Leaf house",
+        }
+    }
+
+    /// The house a companion would build for itself, from its own seed: the same one every time,
+    /// and a different one from companion to companion often enough that a village mixes.
+    pub fn for_keeper(creature: &Creature) -> Self {
+        let pick = creature.behavior_seed[13] ^ creature.behavior_seed[29].rotate_left(3);
+        Self::ALL[usize::from(pick) % Self::ALL.len()]
+    }
+}
+
+/// A house type the person at the desk chose for one house, by the companion who keeps it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HouseStyleChoice {
+    pub keeper: CreatureId,
+    pub style: ShelterStyle,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1365,6 +1430,11 @@ pub struct ColonyHome {
     /// Little garden patches planted along the ground. Absent while there are none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gardens: Vec<GardenPatch>,
+    /// House types chosen by hand, one at most for each companion who keeps a house. A house
+    /// with none is the colony's own type for the colony house and its keeper's own for a
+    /// cottage. Absent while none has been chosen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub house_styles: Vec<HouseStyleChoice>,
 }
 
 /// A palette the village can be painted in: a hand-made pairing of a main colour for roofs,
@@ -1535,12 +1605,7 @@ impl ColonyHome {
                 HomeCorner::BottomRight
             },
             shelter: ShelterGenome {
-                style: match seed[1] % 4 {
-                    0 => ShelterStyle::LeafTent,
-                    1 => ShelterStyle::MushroomHut,
-                    2 => ShelterStyle::CushionDen,
-                    _ => ShelterStyle::PaperHouse,
-                },
+                style: ShelterStyle::ALL[usize::from(seed[1] % 4)],
                 palette_index: seed[2] % 12,
                 accent_index: seed[3] % 12,
                 width: 34 + seed[4] % 9,
@@ -1554,7 +1619,44 @@ impl ColonyHome {
             cottage_order: Vec::new(),
             palette: None,
             gardens: Vec::new(),
+            house_styles: Vec::new(),
         }
+    }
+
+    /// The type of every house in the village, in the order they stand: whatever was chosen for
+    /// it, or else the colony's own type for the colony house and the keeper's own for a
+    /// cottage. Slots past the last house are the colony's own type.
+    pub fn house_style_list(&self, creatures: &[Creature]) -> [ShelterStyle; MAX_COLONY_CREATURES] {
+        let mut styles = [self.shelter.style; MAX_COLONY_CREATURES];
+        let owners = crate::house_owners(creatures, &self.cottage_order);
+        for (slot, keeper) in owners.as_slice().iter().enumerate() {
+            styles[slot] = match self.house_style(*keeper) {
+                Some(chosen) => chosen,
+                None if slot == 0 => self.shelter.style,
+                None => creatures
+                    .iter()
+                    .find(|creature| creature.id == *keeper)
+                    .map_or(self.shelter.style, ShelterStyle::for_keeper),
+            };
+        }
+        styles
+    }
+
+    /// The house type chosen by hand for the house this companion keeps, if one was.
+    pub fn house_style(&self, keeper: CreatureId) -> Option<ShelterStyle> {
+        self.house_styles
+            .iter()
+            .find(|choice| choice.keeper == keeper)
+            .map(|choice| choice.style)
+    }
+
+    /// Choose a type for the house this companion keeps, or with `None` give it back its own.
+    pub fn set_house_style(&mut self, keeper: CreatureId, style: Option<ShelterStyle>) {
+        self.house_styles.retain(|choice| choice.keeper != keeper);
+        if let Some(style) = style {
+            self.house_styles.push(HouseStyleChoice { keeper, style });
+        }
+        self.normalize_village();
     }
 
     /// The shelter as it is drawn: the colony's own, repainted in the palette chosen for the
@@ -1610,6 +1712,7 @@ impl ColonyHome {
         self.cottage_order.clear();
         self.palette = None;
         self.gardens.clear();
+        self.house_styles.clear();
     }
 
     /// One patch of each kind at most, each somewhere on the ground, and hangout spots likewise.
@@ -1633,6 +1736,13 @@ impl ColonyHome {
             fresh
         });
         self.cottage_order.truncate(MAX_COLONY_CREATURES);
+        let mut seen = Vec::new();
+        self.house_styles.retain(|choice| {
+            let fresh = !seen.contains(&choice.keeper);
+            seen.push(choice.keeper);
+            fresh
+        });
+        self.house_styles.truncate(MAX_COLONY_CREATURES);
     }
 
     pub fn is_active(&self) -> bool {

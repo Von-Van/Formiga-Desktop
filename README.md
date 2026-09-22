@@ -1,4 +1,4 @@
-# Formiga · v0.59.0
+# Formiga · v0.59.2
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -22,7 +22,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.59.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.59.2-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -33,6 +33,20 @@ Settings open automatically the first time you launch. After that, the menu-bar 
 Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit.
 
 ![Procedural demonstration of generation, dragging, habitat zones, occlusion, and colony growth](docs/assets/formiga-demo.gif)
+
+## New in 0.59.2
+
+A village of all kinds of house. There are four now, each built from a shape of its own: a tent
+pitched from triangles of canvas, a mushroom of circles, a pillow house of two plump cushions, and
+a leaf house roofed in rows of overlapping leaves. The colony house keeps the colony's own kind,
+every cottage is built as the kind its keeper would build, and the Home page can build any house
+as any kind.
+
+The village is livelier while the houses are out. Companions stroll the ground between the trees
+now — out from their own place, a look about, and back — slowly, a few at a time, where before
+they mostly stood by their doors. And sleeping is sleeping: a companion on its way to bed walks
+there, heavy-lidded, instead of being drawn asleep and gliding across the floor, and a sleeper that
+has to make room is towed aside on a little rope by a friend.
 
 ## New in 0.59.0
 
@@ -213,18 +227,19 @@ Decorations the home earns over time now attach to the shelter they belong to: b
 actual roofline, lamps mount on the wall, ornaments sit on the real peak, and stones and flowers rest
 on the ground. Only the ground pieces still drift, and only by a pixel.
 
-Every house is built from its own materials — leaves on twigs, a spotted cap on a stem, a gingham
-blanket over cushions, folded card — shaded as the creatures are, with a sign that somebody lives
-there. Each companion's door is hung with a curtain in its own colours, and after dark the houses
-glow from inside.
+Every house is built from a shape of its own — a tent of canvas triangles, a mushroom of circles, a
+house of plump pillows, a cottage roofed in leaves — shaded as the creatures are, with a sign that
+somebody lives there, and a village mixes them. Each companion's door is hung with a curtain in its
+own colours, and after dark the houses glow from inside.
 
 ![Four shelter styles: plain, decorated, a cottage with its resident's curtain, and lit after dark](docs/assets/shelter-sheet.png)
 
 The village is yours to arrange from the Home page. Stand the cottages in whatever order you like —
-each curtain goes with its house, and everyone walks home to where theirs now stands — paint the
-village in Meadow, Blossom, Harbour, Autumn, Twilight, or Pebble instead of its own colours, and
-plant a flower bed, a vegetable patch, and a herb box along the ground. The colony house always
-stands first, and one button puts the order, the colours, and the gardens back as the village grew.
+each curtain goes with its house, and everyone walks home to where theirs now stands — build any
+house as a tent, a mushroom, a pillow house, or a leaf house, paint the village in Meadow,
+Blossom, Harbour, Autumn, Twilight, or Pebble instead of its own colours, and plant a flower bed, a
+vegetable patch, and a herb box along the ground. The colony house always stands first, and one
+button puts the order, the kinds, the colours, and the gardens back as the village grew.
 
 ![Every style of house in its own colours and in each of the six named palettes](docs/assets/village-palette-sheet.png)
 

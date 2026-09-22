@@ -1200,3 +1200,29 @@ fn the_last_change_is_offered_back_on_every_page() {
         assert!(h.save == before, "asking never changes the colony itself");
     }
 }
+
+/// Any house can be built as another type from the Home page, and given back its own: the colony
+/// house as well as a cottage. The page only asks.
+#[test]
+fn a_house_is_built_as_another_type_from_the_home_page() {
+    let mut h = Harness::new(SettingsTab::Home);
+    h.save.home.shelter.style = ShelterStyle::Tent;
+    for creature in &mut h.save.creatures {
+        creature.behavior_seed[13] = 2;
+        creature.behavior_seed[29] = 0;
+    }
+    let founder = house_owners(&h.save.creatures, &[]).as_slice()[0];
+    let before = h.save.clone();
+    h.click("Tent");
+    assert_eq!(
+        h.click("Mushroom").house_style,
+        Some((founder, Some(ShelterStyle::Mushroom)))
+    );
+    assert!(h.save == before, "asking never changes the colony itself");
+    h.save
+        .home
+        .set_house_style(founder, Some(ShelterStyle::Mushroom));
+    h.frame(Vec::new());
+    h.click("Mushroom");
+    assert_eq!(h.click("Its own · Tent").house_style, Some((founder, None)));
+}

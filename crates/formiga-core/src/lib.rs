@@ -61,4 +61,4 @@ pub use visitor::{
 };
 pub use world::{BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, World};
 
-pub const SAVE_VERSION: u32 = 17;
+pub const SAVE_VERSION: u32 = 18;

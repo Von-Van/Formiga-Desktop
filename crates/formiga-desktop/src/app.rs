@@ -1349,6 +1349,12 @@ impl FormigaApp {
                 });
                 companion_changed = true;
             }
+            if let Some((keeper, style)) = outcome.house_style {
+                world.edit(ColonyEdit::HouseType, |world| {
+                    world.save.home.set_house_style(keeper, style);
+                });
+                companion_changed = true;
+            }
             if let Some(palette) = outcome.village_palette {
                 world.edit(ColonyEdit::PaintedVillage, |world| {
                     world.save.home.palette = palette;
@@ -2709,6 +2715,30 @@ fn world_has_spatial_motion(world: &World) -> bool {
     })
 }
 
+/// Below this, in points a second, movement at home is a stroll round the village. A stroll
+/// steps under two and a half points a tick even at 10 Hz, and its walk cycle runs at less than
+/// half speed to match, so the colony is ticked and drawn at 10 Hz while nothing moves faster.
+const STROLL_TICK_SPEED: f32 = 24.0;
+
+/// The colony is at home and everyone moving is only strolling round the commons.
+fn world_moves_only_at_a_stroll(world: &World) -> bool {
+    world.save.home.is_active()
+        && world.save.creatures.iter().all(|creature| {
+            creature.state.velocity.x.abs() < STROLL_TICK_SPEED
+                && creature.state.velocity.y.abs() <= 0.1
+        })
+}
+
+/// How often a colony that is moving needs a tick and a frame: 20 Hz, or 10 while the only thing
+/// moving is a stroll at home.
+fn moving_interval(world: &World) -> Duration {
+    if world_moves_only_at_a_stroll(world) {
+        Duration::from_millis(100)
+    } else {
+        Duration::from_millis(50)
+    }
+}
+
 fn world_redraw_interval(world: &World) -> Duration {
     if world.is_interacting() {
         return Duration::from_millis(50);
@@ -2719,7 +2749,7 @@ fn world_redraw_interval(world: &World) -> Duration {
     // The simulation itself advances at 20 Hz, so presenting faster would only repeat identical
     // positions. Pose-only activities follow their authored atlas frame rate instead.
     if world_has_spatial_motion(world) {
-        return Duration::from_millis(50);
+        return moving_interval(world);
     }
     let fps = world
         .save
@@ -2741,7 +2771,7 @@ fn world_tick_interval(world: &World) -> Duration {
         return Duration::from_millis(250);
     }
     if world_has_spatial_motion(world) {
-        return Duration::from_millis(50);
+        return moving_interval(world);
     }
     let has_expressive_action = world.save.creatures.iter().any(|creature| {
         creature.state.arrival_delay_secs <= 0.0
@@ -2837,6 +2867,7 @@ fn creature_name(world: &World, creature_id: CreatureId) -> String {
 mod tests {
     use super::{
         colony_bounds, habitat_editor_claims, resolve_press_target, world_redraw_interval,
+        world_tick_interval,
     };
     use formiga_core::*;
     use std::time::Duration;
@@ -2994,6 +3025,31 @@ mod tests {
                 1.0 / f32::from(formiga_art::AnimationSpec::for_clip(celebration).fps)
             )
         );
+    }
+
+    /// A stroll round the village at home is ticked and drawn at 10 Hz; the walk home, anything
+    /// brisker, and any movement out on the desktop keep the full 20.
+    #[test]
+    fn a_stroll_at_home_ticks_at_ten_and_a_walk_at_twenty() {
+        let mut world = World::new(
+            [5; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &DesktopSnapshot::default(),
+        );
+        world.save.home.active_since_utc = Some(time::OffsetDateTime::UNIX_EPOCH);
+        for creature in &mut world.save.creatures {
+            creature.state.action = ActionKind::Traverse;
+            creature.state.arrival_delay_secs = 0.0;
+            creature.state.velocity = Point { x: 16.0, y: 0.0 };
+        }
+        assert_eq!(world_tick_interval(&world), Duration::from_millis(100));
+        assert_eq!(world_redraw_interval(&world), Duration::from_millis(100));
+        world.save.creatures[0].state.velocity.x = 36.0;
+        assert_eq!(world_tick_interval(&world), Duration::from_millis(50));
+        world.save.creatures[0].state.velocity.x = 16.0;
+        world.save.home.active_since_utc = None;
+        assert_eq!(world_tick_interval(&world), Duration::from_millis(50));
+        assert_eq!(world_redraw_interval(&world), Duration::from_millis(50));
     }
 
     #[test]

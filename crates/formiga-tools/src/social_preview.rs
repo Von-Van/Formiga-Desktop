@@ -282,7 +282,8 @@ fn draw_village(
     scale: i32,
 ) -> i32 {
     let genome = ColonyHome::from_seed([166; 32], None, None, None).shelter;
-    let atlas = ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL, &[], false);
+    let atlas =
+        ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL, &[], &[], false);
     let size = SHELTER_SIZE as i32;
     let gap = 4 * scale;
     let mut cursor = x;

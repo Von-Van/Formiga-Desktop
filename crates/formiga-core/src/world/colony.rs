@@ -266,6 +266,10 @@ impl World {
         }
         self.save.creatures.remove(index);
         self.save.home.cottage_order.retain(|id| *id != creature_id);
+        self.save
+            .home
+            .house_styles
+            .retain(|choice| choice.keeper != creature_id);
         self.remove_creature_runtime(creature_id);
         rebalance_minis(&mut self.save.creatures);
         normalize_relationships(&mut self.save);
@@ -331,10 +335,15 @@ impl World {
                 creature.role = CreatureRole::Mini { parent_id: new_id };
             }
         }
-        // The newcomer keeps the cottage where it stood.
+        // The newcomer keeps the cottage where it stood, and whatever it was built as.
         for id in &mut self.save.home.cottage_order {
             if *id == old_id {
                 *id = new_id;
+            }
+        }
+        for choice in &mut self.save.home.house_styles {
+            if choice.keeper == old_id {
+                choice.keeper = new_id;
             }
         }
         self.remove_creature_runtime(old_id);
@@ -361,6 +370,7 @@ impl World {
     /// same moment told three ways, so they all end up here rather than each clearing whichever
     /// plans its author happened to think of.
     pub(super) fn clear_runtime_plans(&mut self) {
+        self.drop_all_tows();
         self.window_journeys.clear();
         self.window_routes.clear();
         self.tosses.clear();
@@ -382,6 +392,7 @@ impl World {
     }
 
     pub(super) fn remove_creature_runtime(&mut self, creature_id: CreatureId) {
+        self.forget_tows_of(creature_id);
         self.cancel_creature_attention(creature_id);
         let mut interrupted: BTreeSet<_> = self
             .action_choices

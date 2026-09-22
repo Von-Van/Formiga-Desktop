@@ -130,6 +130,7 @@ struct HomeTexture {
     genome: ShelterGenome,
     decorations: Vec<ShelterDecorationKind>,
     marks: [Option<formiga_art::ResidentMark>; formiga_art::VILLAGE_HOUSES],
+    styles: [ShelterStyle; formiga_art::VILLAGE_HOUSES],
     texture: TextureHandle,
 }
 
@@ -595,17 +596,28 @@ impl Clubhouse {
         let marks =
             formiga_art::ResidentMark::for_village(&save.creatures, &save.home.cottage_order);
         let shelter = save.home.drawn_shelter();
+        let styles = save.home.house_style_list(&save.creatures);
         if self.home_texture.as_ref().is_none_or(|home| {
-            home.genome != shelter || home.decorations != decorations || home.marks != marks
+            home.genome != shelter
+                || home.decorations != decorations
+                || home.marks != marks
+                || home.styles != styles
         }) {
             self.home_texture = Some(HomeTexture {
                 genome: shelter,
                 decorations: decorations.clone(),
                 marks,
+                styles,
                 texture: upload(
                     ui.ctx(),
                     "home-preview",
-                    &ShelterRenderer::render_village(&shelter, &decorations, &marks, false),
+                    &ShelterRenderer::render_village(
+                        &shelter,
+                        &decorations,
+                        &marks,
+                        &styles,
+                        false,
+                    ),
                 ),
             });
         }
@@ -785,8 +797,9 @@ impl Clubhouse {
     fn village_arrangement(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
         ui.strong("Arrange the village");
         ui.small(
-            "Stand the cottages in the order you like, paint the village in a palette, and \
-             plant a garden or two. The colony house always stands first.",
+            "Stand the cottages in the order you like, build each house as a tent, a mushroom, a \
+             pillow fort or a leaf house, paint the village in a palette, and plant a garden or \
+             two. The colony house always stands first.",
         );
         let owners = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
         let owners = owners.as_slice();
@@ -800,10 +813,36 @@ impl Clubhouse {
                     swatch(ui, curtain.cloth, curtain.tie);
                     if slot == 0 {
                         ui.label(format!("Colony house · {}", keeper.name));
-                        return;
+                    } else {
+                        ui.label(format!("Cottage {slot} · {}", keeper.name));
                     }
-                    ui.label(format!("Cottage {slot} · {}", keeper.name));
-                    if owners.len() < 3 {
+                    // What it is built as: its own type unless another was chosen.
+                    let own = if slot == 0 {
+                        save.home.shelter.style
+                    } else {
+                        ShelterStyle::for_keeper(keeper)
+                    };
+                    let chosen = save.home.house_style(keeper.id);
+                    egui::ComboBox::from_id_salt(("house-type", keeper.id))
+                        .selected_text(chosen.unwrap_or(own).label())
+                        .show_ui(ui, |ui| {
+                            let own_label = format!("Its own · {}", own.label());
+                            if ui.selectable_label(chosen.is_none(), own_label).clicked()
+                                && chosen.is_some()
+                            {
+                                outcome.house_style = Some((keeper.id, None));
+                            }
+                            for style in ShelterStyle::ALL {
+                                if ui
+                                    .selectable_label(chosen == Some(style), style.label())
+                                    .clicked()
+                                    && chosen != Some(style)
+                                {
+                                    outcome.house_style = Some((keeper.id, Some(style)));
+                                }
+                            }
+                        });
+                    if slot == 0 || owners.len() < 3 {
                         return;
                     }
                     let mut order: Vec<CreatureId> = owners[1..].to_vec();
@@ -881,10 +920,11 @@ impl Clubhouse {
         }
         let arranged = !save.home.cottage_order.is_empty()
             || save.home.palette.is_some()
-            || !save.home.gardens.is_empty();
+            || !save.home.gardens.is_empty()
+            || !save.home.house_styles.is_empty();
         ui.horizontal(|ui| {
             if self.village_reset_asked && arranged {
-                ui.label("Put the cottages, colours and gardens back as they grew?");
+                ui.label("Put the houses, colours and gardens back as they grew?");
                 if ui.button("Put back").clicked() {
                     outcome.reset_village = true;
                     self.village_reset_asked = false;

@@ -381,6 +381,7 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
         &save.home.drawn_shelter(),
         &decorations,
         &crate::ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
+        &save.home.house_style_list(&save.creatures),
         false,
     );
     let objects = ColonyObjectRenderer::render_atlas(save.colony_seed);

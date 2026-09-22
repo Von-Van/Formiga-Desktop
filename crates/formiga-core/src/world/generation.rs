@@ -326,6 +326,7 @@ fn generate_creature(
             activity_variant: 0,
             arrival_delay_secs: 0.0,
             flourish: None,
+            nudge: None,
         },
     }
 }

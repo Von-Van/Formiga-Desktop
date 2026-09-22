@@ -30,6 +30,8 @@ pub enum ColonyEdit {
     PutVillageBack,
     /// A hangout spot put down, moved or picked up.
     Hangout(HangoutKind),
+    /// A house built as another type, or given back its own.
+    HouseType,
     /// The home moved to another corner or display.
     MovedHome,
     /// Earned decorations shown or hidden.
@@ -51,6 +53,7 @@ impl ColonyEdit {
             Self::Garden(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::PutVillageBack => "putting the village back".to_owned(),
             Self::Hangout(kind) => format!("changing the {}", kind.label().to_lowercase()),
+            Self::HouseType => "changing a house".to_owned(),
             Self::MovedHome => "moving the home".to_owned(),
             Self::Decorations => "showing or hiding decorations".to_owned(),
             Self::RearrangedKeepsakes => "rearranging the keepsakes".to_owned(),
@@ -150,6 +153,7 @@ impl World {
                 return Err(error);
             }
             self.save.home.cottage_order = point.home.cottage_order.clone();
+            self.save.home.house_styles = point.home.house_styles.clone();
         } else {
             let home = &mut self.save.home;
             home.corner = point.home.corner;
@@ -159,6 +163,7 @@ impl World {
             home.cottage_order = point.home.cottage_order.clone();
             home.palette = point.home.palette;
             home.gardens = point.home.gardens.clone();
+            home.house_styles = point.home.house_styles.clone();
             // The keepsakes in the order they stood, and anything found since after them.
             let mut objects: Vec<ColonyObject> = point
                 .objects

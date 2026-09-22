@@ -370,6 +370,19 @@ impl BodyPresentation {
             return body;
         }
         let Some((habit, action, into)) = flourish_shown(creature) else {
+            // Wriggling over in its sleep: the breaths come quicker, a squirm rather than a slide.
+            if state.action == ActionKind::Sleep
+                && state.nudge == Some(formiga_core::SleepNudge::Wriggling)
+            {
+                return shown(
+                    BodyClip::Action(ActionKind::Sleep),
+                    state.action_elapsed * WRIGGLE_RATE,
+                );
+            }
+            // On its way to bed it walks there, and lies down when it arrives.
+            if state.walking_to_sleep() {
+                return shown(BodyClip::Action(ActionKind::Traverse), state.action_elapsed);
+            }
             return shown(BodyClip::Action(state.action), state.action_elapsed);
         };
         match habit {
@@ -392,6 +405,9 @@ impl BodyPresentation {
         }
     }
 }
+
+/// How many times faster a sleeper's breaths come while it wriggles over in its sleep.
+const WRIGGLE_RATE: f32 = 4.0;
 
 /// The habit a creature is doing right now, the action it opens and how far into it the creature
 /// is. Anything its attention is on comes first, so a flourish never shows under a scene.
@@ -3325,7 +3341,10 @@ fn resolve_eyelids(creature: &Creature) -> EyelidPose {
     if flourish.is_some_and(|(habit, _, into)| habit == Habit::StretchesBeforeNaps && into >= 0.6) {
         return EyelidPose::Closed;
     }
-    // Not asleep yet while it is still getting ready to be.
+    // Heavy-lidded on the way to bed, and shut once it is there.
+    if creature.state.walking_to_sleep() && flourish.is_none() {
+        return EyelidPose::Half;
+    }
     if creature.state.action == ActionKind::Sleep && flourish.is_none() {
         return EyelidPose::Closed;
     }
@@ -4852,5 +4871,36 @@ mod tests {
             BodyPresentation::for_creature(&creature).clip,
             BodyClip::Action(ActionKind::SocialPlay)
         );
+    }
+
+    /// A companion on its way to bed walks there with its eyelids heavy, and lies down with its
+    /// eyes shut only once it has arrived, rather than being drawn asleep while it crosses the
+    /// floor.
+    #[test]
+    fn a_companion_walks_to_bed_and_lies_down_when_it_gets_there() {
+        let mut creature = formiga_core::World::preview_adult(
+            [23; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &formiga_core::DesktopSnapshot::default(),
+        );
+        creature.state.action = ActionKind::Sleep;
+        creature.state.action_elapsed = 1.5;
+        creature.state.attention = None;
+        creature.state.flourish = None;
+        creature.state.velocity = formiga_core::Point { x: 34.0, y: 0.0 };
+        let walking = BodyPresentation::for_creature(&creature);
+        assert_eq!(walking.clip, BodyClip::Action(ActionKind::Traverse));
+        let face =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        assert_eq!(face.eyelids, EyelidPose::Half);
+        assert_eq!(face.expression, ExpressionKind::Sleepy);
+        creature.state.velocity = formiga_core::Point::default();
+        assert_eq!(
+            BodyPresentation::for_creature(&creature).clip,
+            BodyClip::Action(ActionKind::Sleep)
+        );
+        let face =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        assert_eq!(face.eyelids, EyelidPose::Closed);
     }
 }

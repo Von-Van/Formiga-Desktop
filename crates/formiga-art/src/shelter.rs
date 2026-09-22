@@ -112,10 +112,14 @@ impl ShelterRenderer {
     /// with the decorations it has earned, a cottage in each later slot, each hung with its
     /// resident's curtain, and — with `after_dark` — the same houses lit from inside in the rows
     /// below. Without it the texture is only the daylit half.
+    /// Every house in the village by day, and lit after dark if asked for, with the keepsake
+    /// tree. `marks` hangs each house's resident's curtain and `styles` builds each house as its
+    /// own type, slot by slot; a slot either leaves out is the colony's own.
     pub fn render_village(
         genome: &ShelterGenome,
         decorations: &[ShelterDecorationKind],
         marks: &[Option<ResidentMark>],
+        styles: &[ShelterStyle],
         after_dark: bool,
     ) -> Canvas {
         let height = if after_dark {
@@ -138,8 +142,12 @@ impl ShelterRenderer {
                     (COTTAGE_SPAN, &[][..])
                 };
                 let mark = marks.get(slot).copied().flatten();
+                let house = ShelterGenome {
+                    style: styles.get(slot).copied().unwrap_or(genome.style),
+                    ..*genome
+                };
                 let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                draw_dwelling(&mut tile, genome, decorations, 32, 61, span, mark, lit);
+                draw_dwelling(&mut tile, &house, decorations, 32, 61, span, mark, lit);
                 let (x, y) = Self::village_cell(VillageCell::House { slot, lit });
                 blit_cell(&mut canvas, &tile, x as i32, y as i32);
             }
@@ -258,7 +266,7 @@ impl ShelterFrame {
         let half = width / 2;
         let unit = |value: i32| (value * span / MAIN_SPAN).max(1);
         match genome.style {
-            ShelterStyle::LeafTent => Self {
+            ShelterStyle::Tent => Self {
                 cx,
                 peak_y: top,
                 eave_y: top + height * 6 / 10,
@@ -268,7 +276,7 @@ impl ShelterFrame {
                 ground_y: bottom - unit(2),
                 ground_half: half + unit(2),
             },
-            ShelterStyle::MushroomHut => {
+            ShelterStyle::Mushroom => {
                 // Under the rim of the cap, across the front of the stem.
                 let cap_bottom = top + height * 11 / 20;
                 let stem_half = width * 7 / 20;
@@ -283,22 +291,22 @@ impl ShelterFrame {
                     ground_half: stem_half + unit(2),
                 }
             }
-            ShelterStyle::CushionDen => {
-                // Across the lower band of the blanket, and on the cushion stacks below it.
-                let door_height = (height / 3).clamp(6, height / 2);
-                let roof_bottom = bottom - door_height - unit(2);
+            ShelterStyle::PillowFort => {
+                // Along the lower edge of the roof pillow, and across the wall pillow below it:
+                // the same proportions `houses::pillow_fort` draws them in.
+                let roof_bottom = top + height * 3 / 10 + unit(1);
                 Self {
                     cx,
-                    peak_y: top,
-                    eave_y: roof_bottom - unit(4),
-                    eave_half: half - unit(2),
-                    wall_y: roof_bottom + unit(4),
-                    wall_half: half - unit(2),
+                    peak_y: top - unit(2),
+                    eave_y: roof_bottom,
+                    eave_half: half + unit(3),
+                    wall_y: (roof_bottom + bottom) / 2,
+                    wall_half: half,
                     ground_y: bottom - unit(1),
                     ground_half: half + unit(2),
                 }
             }
-            ShelterStyle::PaperHouse => {
+            ShelterStyle::LeafHouse => {
                 let eave = top + unit(12);
                 Self {
                     cx,
@@ -428,10 +436,10 @@ mod tests {
     #[test]
     fn every_shelter_style_is_deterministic_and_inside_the_canvas() {
         for (index, style) in [
-            ShelterStyle::LeafTent,
-            ShelterStyle::MushroomHut,
-            ShelterStyle::CushionDen,
-            ShelterStyle::PaperHouse,
+            ShelterStyle::Tent,
+            ShelterStyle::Mushroom,
+            ShelterStyle::PillowFort,
+            ShelterStyle::LeafHouse,
         ]
         .into_iter()
         .enumerate()
@@ -465,10 +473,10 @@ mod tests {
     #[test]
     fn village_cells_match_their_own_dwelling_and_never_bleed_into_a_neighbour() {
         for style in [
-            ShelterStyle::LeafTent,
-            ShelterStyle::MushroomHut,
-            ShelterStyle::CushionDen,
-            ShelterStyle::PaperHouse,
+            ShelterStyle::Tent,
+            ShelterStyle::Mushroom,
+            ShelterStyle::PillowFort,
+            ShelterStyle::LeafHouse,
         ] {
             let genome = ShelterGenome {
                 style,
@@ -482,8 +490,13 @@ mod tests {
             let marks: Vec<Option<ResidentMark>> = (0..VILLAGE_HOUSES as u8)
                 .map(|seed| Some(mark(seed)))
                 .collect();
-            let village =
-                ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL, &marks, true);
+            let village = ShelterRenderer::render_village(
+                &genome,
+                &ShelterDecorationKind::ALL,
+                &marks,
+                &[],
+                true,
+            );
             // One 256x256 texture however full the village: every house by day and after dark,
             // and the tree.
             assert_eq!(VILLAGE_ATLAS_SIZE, 256);
@@ -529,6 +542,7 @@ mod tests {
                 &genome,
                 &ShelterDecorationKind::ALL,
                 &marks,
+                &[],
                 false,
             );
             assert_eq!(day.height(), VILLAGE_DAY_HEIGHT);
@@ -538,8 +552,13 @@ mod tests {
                 }
             }
             // Without anyone's mark, the colony house cell is exactly the standalone shelter.
-            let unmarked =
-                ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL, &[], false);
+            let unmarked = ShelterRenderer::render_village(
+                &genome,
+                &ShelterDecorationKind::ALL,
+                &[],
+                &[],
+                false,
+            );
             let alone =
                 ShelterRenderer::render_with_decorations(&genome, &ShelterDecorationKind::ALL);
             for y in 0..SHELTER_SIZE as i32 {
@@ -555,10 +574,10 @@ mod tests {
     #[test]
     fn a_curtain_hangs_in_the_doorway_and_the_night_only_lights_what_is_lit() {
         for style in [
-            ShelterStyle::LeafTent,
-            ShelterStyle::MushroomHut,
-            ShelterStyle::CushionDen,
-            ShelterStyle::PaperHouse,
+            ShelterStyle::Tent,
+            ShelterStyle::Mushroom,
+            ShelterStyle::PillowFort,
+            ShelterStyle::LeafHouse,
         ] {
             for span in [MAIN_SPAN, COTTAGE_SPAN] {
                 let genome = ShelterGenome {
@@ -663,12 +682,12 @@ mod tests {
             let mut seed = [12_u8; 32];
             seed[1] = style;
             let mut home = formiga_core::ColonyHome::from_seed(seed, None, None, None);
-            let own = ShelterRenderer::render_village(&home.drawn_shelter(), &[], &[], true);
+            let own = ShelterRenderer::render_village(&home.drawn_shelter(), &[], &[], &[], true);
             let mut seen = vec![own.clone()];
             for palette in formiga_core::VillagePalette::ALL {
                 home.palette = Some(palette);
                 let painted =
-                    ShelterRenderer::render_village(&home.drawn_shelter(), &[], &[], true);
+                    ShelterRenderer::render_village(&home.drawn_shelter(), &[], &[], &[], true);
                 for y in 0..painted.height() as i32 {
                     for x in 0..painted.width() as i32 {
                         assert_eq!(
@@ -692,10 +711,10 @@ mod tests {
     fn every_dwelling_stays_inside_the_footprint_the_village_reserves_for_it() {
         use formiga_core::DwellingKind;
         for style in [
-            ShelterStyle::LeafTent,
-            ShelterStyle::MushroomHut,
-            ShelterStyle::CushionDen,
-            ShelterStyle::PaperHouse,
+            ShelterStyle::Tent,
+            ShelterStyle::Mushroom,
+            ShelterStyle::PillowFort,
+            ShelterStyle::LeafHouse,
         ] {
             for width in [34_u8, 38, 42] {
                 for height in [27_u8, 32, 36] {
@@ -741,10 +760,10 @@ mod tests {
     fn no_dwelling_draws_a_doorway_wider_than_the_village_expects() {
         const WIDEST_DOOR_HALF: i32 = 7;
         for style in [
-            ShelterStyle::LeafTent,
-            ShelterStyle::MushroomHut,
-            ShelterStyle::CushionDen,
-            ShelterStyle::PaperHouse,
+            ShelterStyle::Tent,
+            ShelterStyle::Mushroom,
+            ShelterStyle::PillowFort,
+            ShelterStyle::LeafHouse,
         ] {
             for width in 34..=42_u8 {
                 for height in 27..=36_u8 {
@@ -783,7 +802,7 @@ mod tests {
     #[test]
     fn all_six_decorations_are_baked_deterministically_into_one_shelter_canvas() {
         let genome = ShelterGenome {
-            style: ShelterStyle::PaperHouse,
+            style: ShelterStyle::LeafHouse,
             palette_index: 3,
             accent_index: 8,
             width: 38,

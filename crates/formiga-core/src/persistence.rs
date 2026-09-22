@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=16 => migrate_legacy(value, version),
+            1..=17 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -241,6 +241,8 @@ fn migrate_legacy(
     // migrated: a recipe without classic parts is a plain modular one, which is what every earlier
     // recipe is; an older colony has kept no favorites; and a missing leaning is `Anywhere`. The version moved so an older build refuses a colony whose
     // additions it would quietly drop.
+    // v18 adds a house type chosen by hand for any house. Nothing is migrated: an older colony
+    // has chosen none, so every house is its own. It moved for the same reason v17 did.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -606,7 +608,7 @@ mod tests {
     /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 233] = [
+    const SAVED_FIELDS: [&str; 235] = [
         "Decoration",
         "Friendship",
         "Habit",
@@ -721,8 +723,10 @@ mod tests {
         "home",
         "home_affinity",
         "home_visits",
+        "house_styles",
         "id",
         "journal",
+        "keeper",
         "kept",
         "kept_at_utc",
         "key",
@@ -843,7 +847,7 @@ mod tests {
     ];
 
     /// The vocabulary of watching a desktop and of a scene under way. None of it belongs in a file.
-    const RUNTIME_ONLY_FIELDS: [&str; 41] = [
+    const RUNTIME_ONLY_FIELDS: [&str; 42] = [
         "answers",
         "attention",
         "beat",
@@ -868,6 +872,7 @@ mod tests {
         "last_seen",
         "minimized",
         "monotonic_millis",
+        "nudge",
         "observer",
         "path",
         "plan",
@@ -914,7 +919,14 @@ mod tests {
             assert!(!names.contains(absent), "the file names {absent:?}");
         }
         // The sweep reaches what the person at the desk arranged, not only what the colony did.
-        for arranged in ["habits", "hangouts", "cottage_order", "palette", "gardens"] {
+        for arranged in [
+            "habits",
+            "hangouts",
+            "cottage_order",
+            "palette",
+            "gardens",
+            "house_styles",
+        ] {
             assert!(
                 names.contains(arranged),
                 "the file should hold {arranged:?}"
@@ -1374,6 +1386,16 @@ mod tests {
                     .save
                     .home
                     .set_garden(crate::GardenKind::Herbs, Some(0.5625));
+                // And the colony house built as a pillow fort.
+                let founder = world.save.creatures[0].id;
+                world
+                    .save
+                    .home
+                    .set_house_style(founder, Some(crate::ShelterStyle::PillowFort));
+                // Another being towed out of the way in its sleep.
+                world.save.creatures[0].state.nudge = Some(crate::SleepNudge::Towed {
+                    by: world.save.creatures[1].id,
+                });
                 let last = world.save.creatures.last_mut().expect("a colony");
                 last.state.flourish = Some(crate::Flourish {
                     habit: crate::Habit::LooksFoodOver,

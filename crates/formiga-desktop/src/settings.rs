@@ -42,6 +42,8 @@ pub struct SettingsOutcome {
     pub set_hangout: Option<(formiga_core::HangoutKind, Option<f32>)>,
     /// The cottages in a new order, as the companions who keep them.
     pub cottage_order: Option<Vec<CreatureId>>,
+    /// A house built as another type, by the companion who keeps it, or with `None` as its own.
+    pub house_style: Option<(CreatureId, Option<formiga_core::ShelterStyle>)>,
     /// A named palette for the village, or `Some(None)` for its own colours again.
     pub village_palette: Option<Option<formiga_core::VillagePalette>>,
     /// Plant a garden patch at a fraction along the village ground, move it, or with `None` dig

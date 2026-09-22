@@ -343,6 +343,8 @@ struct YardPanel {
     gardens: [Option<f32>; 3],
     /// The palette the village is painted in, if not its own colours.
     palette: Option<VillagePalette>,
+    /// The type each house is built as, slot by slot; empty for the colony's own type throughout.
+    styles: Vec<ShelterStyle>,
     /// After dark: the houses lit from inside, on a night sky.
     night: bool,
     /// How many of the sixteen trinkets this colony has found, so the trees can be judged bare,
@@ -388,6 +390,12 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
                 3 => Some(VillagePalette::Twilight),
                 _ => None,
             },
+            // A mixed village: each house a different type, starting from the colony's own.
+            styles: (0..MAX_COLONY_CREATURES)
+                .map(|slot| {
+                    ShelterStyle::ALL[(usize::from(style) + slot) % ShelterStyle::ALL.len()]
+                })
+                .collect(),
             found: [0, 5, 11, 16][style as usize],
             style_seed: style,
             night: false,
@@ -400,6 +408,7 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
             hangouts: [None; 3],
             gardens: [None; 3],
             palette: None,
+            styles: Vec::new(),
             found: [16, 12, 8, 5, 3, 0][members - 1],
             style_seed: 3,
             night: false,
@@ -420,6 +429,11 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
                 [None; 3]
             },
             palette: (style == 2).then_some(VillagePalette::Harbour),
+            styles: (0..MAX_COLONY_CREATURES)
+                .map(|slot| {
+                    ShelterStyle::ALL[(usize::from(style) + slot) % ShelterStyle::ALL.len()]
+                })
+                .collect(),
             found: 8,
             style_seed: style,
             night: true,
@@ -534,6 +548,7 @@ fn draw_yard_panel(
         &home.drawn_shelter(),
         &ShelterDecorationKind::ALL,
         &marks,
+        &panel.styles,
         true,
     );
 
@@ -1477,7 +1492,7 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
             &fixture_desktop(),
         );
         let marks = [None, Some(formiga_art::ResidentMark::of(&resident))];
-        let village = ShelterRenderer::render_village(&home.shelter, &[], &marks, true);
+        let village = ShelterRenderer::render_village(&home.shelter, &[], &marks, &[], true);
         let cell = |cell: formiga_art::VillageCell| {
             let (x, y) = ShelterRenderer::village_cell(cell);
             let mut tile = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
