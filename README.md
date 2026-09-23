@@ -1,4 +1,4 @@
-# Formiga · v0.60.0
+# Formiga · v0.60.1
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -92,7 +92,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.60.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.60.1-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -104,40 +104,20 @@ Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit. Formi
 update on its own: when one is available it verifies the download's SHA-256 and hands the installer
 to your operating system.
 
-## New in 0.60.0
+## New in 0.60.1
 
-The village comes to life while the houses are out. Companions water the gardens, crouch to look
-in on something just coming up, pick something ripe for a snack, and carry the best of it over to
-show a friend. They see to their own houses the way each kind of house asks — retying a tent's
-flap, plumping a pillow fort, patting a mushroom's cap, tidying a leaf house's leaves — and the
-house answers. They go indoors now and then: the curtain is drawn across the door, the window
-glows, and a Z drifts up if they are napping in there, but never so many at once that the village
-looks empty. They climb up and sit on their own roofs. Gardens grow through sprouts and leaves to
-flowers and fruit on their own, with no watering to keep up and nothing to wilt.
+Choosing what a companion wears no longer jumps about under the pointer. Pointing at something
+on a companion's profile put a line above the choices saying what was being tried on, and that
+pushed every choice down out from under the pointer, so the line went away again, the choices
+sprang back, and the menu shook faster than anything in it could be clicked. With the pointer high
+on a choice, the one above slid under it instead, and a click put that on. The line is there all
+the time now, with a word on what to do when nothing is being tried on, and a choice stays the same
+size when it is pointed at, so nothing in the menu moves while you choose.
 
-Little things go a little wrong, too. A leaf lands on somebody's face, a snack rolls away and has
-to be chased, someone sits down just beside the cushion and shuffles across onto it — and whoever
-is nearby stops to look. Yawns are catching: one companion yawns, the friend beside them looks
-over and yawns a moment later, and every so often it reaches a third, who holds out for a second
-before giving in.
-
-There are a hundred and sixty keepsakes to find now, many of them only in the right moment — at
-home, in the garden, on a roof, first thing in the morning, under a full moon. The Journal keeps
-what has been found, and the Your colony page has the whole Collection, with the ones still to find
-shown as shadows with a hint, and a choice of which sixteen hang in the trees. Finds become things
-to wear: a leaf hat, a flower crown, a scarf, a tiny satchel, or any find at all as a pin, one each,
-tried on in a few poses before it goes on.
-
-The Home page is arranged right in its picture of the village: drag a cottage along the row, drag a
-garden or a spot or an ornament along the ground, and click a house to choose its kind and what it
-wears in each of its six places. Every category of village thing starts with three, and something
-new arrives every day or two.
-
-And companions spend about half of their roaming time up on the windows, where before a desktop of
-ordinary windows had them all on the bottom row.
-
-Earlier releases are described in [the release notes](docs/RELEASE_NOTES.md), and every change is
-itemised in [the changelog](CHANGELOG.md).
+Everything 0.60.0 brought — the village's own life, a hundred and sixty keepsakes, things to wear,
+and arranging the village in its picture — is described with every earlier release in
+[the release notes](docs/RELEASE_NOTES.md), and every change is itemised in
+[the changelog](CHANGELOG.md).
 
 ## Status
 

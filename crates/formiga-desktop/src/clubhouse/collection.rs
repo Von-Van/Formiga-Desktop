@@ -73,6 +73,21 @@ fn toggled_in_trees(save: &SaveFile, variant: u8) -> Option<[Option<u8>; TREE_HO
     Some(hooks)
 }
 
+/// One choice among the things to wear, the same size whether or not it is pointed at. egui
+/// takes a frame's border back off its padding, but a choice that is not the one worn draws no
+/// frame until it is pointed at, so under this window's bordered style it would grow by a pixel
+/// all round when pointed at, and nudge every choice after it along the row, or over onto the
+/// next. Wrapped in a scope it would stop wrapping, so the border is set and put back instead.
+fn wear_choice(ui: &mut Ui, chosen: bool, enabled: bool, label: &str) -> egui::Response {
+    let border = ui.visuals().widgets.inactive.bg_stroke;
+    if !chosen {
+        ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
+    }
+    let response = ui.add_enabled(enabled, egui::Button::selectable(chosen, label));
+    ui.visuals_mut().widgets.inactive.bg_stroke = border;
+    response
+}
+
 impl Clubhouse {
     /// Every keepsake there is, as one page: the found ones in their colours and the rest as the
     /// shape of what belongs there, with a hint. A found one can be hung in the trees, sixteen at
@@ -338,15 +353,18 @@ impl Clubhouse {
                     });
                 }
             });
-            if trying != creature.accessory {
-                ui.small(format!(
-                    "Trying on {} · click to put it on",
-                    trying.map_or_else(|| "nothing".to_owned(), |accessory| accessory.label())
-                ));
-            }
+            // Always exactly one line, whatever is pointed at. A line that came and went with the
+            // pointer pushed every choice below it out from under the pointer, which took the
+            // line away again, over and over.
+            let note = match trying {
+                _ if trying == creature.accessory => "Point at something to try it on".to_owned(),
+                Some(accessory) => format!("Trying on {} · click to put it on", accessory.label()),
+                None => "Trying on nothing · click to take it off".to_owned(),
+            };
+            ui.add(egui::Label::new(RichText::new(note).small()).truncate());
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                let none = ui.selectable_label(creature.accessory.is_none(), "Nothing");
+                let none = wear_choice(ui, creature.accessory.is_none(), true, "Nothing");
                 if none.hovered() {
                     pointed = Some(None);
                 }
@@ -356,12 +374,11 @@ impl Clubhouse {
                 for kind in AccessoryKind::ALL {
                     let accessory = Accessory::Worn(kind);
                     let made = available.contains(&accessory);
-                    let chip = ui.add_enabled(
+                    let chip = wear_choice(
+                        ui,
+                        creature.accessory == Some(accessory),
                         made,
-                        egui::Button::selectable(
-                            creature.accessory == Some(accessory),
-                            kind.label(),
-                        ),
+                        kind.label(),
                     );
                     if !made {
                         chip.on_disabled_hover_text(

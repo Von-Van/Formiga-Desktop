@@ -410,6 +410,8 @@ struct Harness {
     remove: Option<CreatureId>,
     bulk: bool,
     labels: Vec<(String, egui::Rect)>,
+    /// Every filled or outlined rectangle drawn last frame, where it was drawn.
+    rects: Vec<egui::Rect>,
     textures: Textures,
     time: f64,
 }
@@ -430,6 +432,7 @@ impl Harness {
             remove: None,
             bulk: false,
             labels: Vec::new(),
+            rects: Vec::new(),
             textures: Textures::new(),
             time: 0.0,
         }
@@ -481,8 +484,10 @@ impl Harness {
             );
         });
         self.labels.clear();
+        self.rects.clear();
         for shape in &output.shapes {
             collect_labels(&shape.shape, &mut self.labels);
+            collect_rects(&shape.shape, &mut self.rects);
         }
         apply_textures(&mut self.textures, &output.textures_delta);
         output.textures_delta.clear();
@@ -556,6 +561,17 @@ impl Harness {
             pressed: false,
             modifiers: Default::default(),
         }])
+    }
+}
+fn collect_rects(shape: &egui::Shape, rects: &mut Vec<egui::Rect>) {
+    match shape {
+        egui::Shape::Vec(shapes) => {
+            for shape in shapes {
+                collect_rects(shape, rects);
+            }
+        }
+        egui::Shape::Rect(rect) => rects.push(rect.rect),
+        _ => {}
     }
 }
 fn collect_labels(shape: &egui::Shape, labels: &mut Vec<(String, egui::Rect)>) {
@@ -1322,4 +1338,88 @@ fn a_house_is_built_as_another_type_from_the_home_page() {
     h.frame(Vec::new());
     h.click("Mushroom");
     assert_eq!(h.click("Its own · Tent").house_style, Some((founder, None)));
+}
+
+#[test]
+fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    let mallow = h.save.creatures[0].id;
+    // Half of what there is to wear has been found, so the chips are a mix of ones that can be
+    // put on and ones still greyed out, and each find made into something can be worn as a pin.
+    let made: Vec<AccessoryKind> = AccessoryKind::ALL.into_iter().step_by(2).collect();
+    for kind in &made {
+        h.save.companion.scrapbook.push(ScrapbookRecord {
+            variant: kind.made_from(),
+            first_at: time::macros::datetime!(2026-09-10 12:00 UTC),
+            finder: Some(mallow),
+            finder_name: "Mallow".into(),
+        });
+    }
+    let pins: Vec<Accessory> = available_accessories(&h.save.companion.scrapbook)
+        .into_iter()
+        .filter(|accessory| matches!(accessory, Accessory::Pin(_)))
+        .collect();
+    h.click(&format!("Wear a find as a pin · {}", pins.len()));
+    h.frame(vec![egui::Event::PointerGone]);
+    h.frame(Vec::new());
+    // Where every choice is drawn with the pointer nowhere near: the chips by their labels, and
+    // the pins by their tiles, the only squares of their size on the page.
+    let chip_labels: Vec<&str> = std::iter::once("Nothing")
+        .chain(AccessoryKind::ALL.iter().map(|kind| kind.label()))
+        .collect();
+    let choices = |h: &Harness| {
+        let chips: Vec<(String, egui::Rect)> = h
+            .labels
+            .iter()
+            .filter(|(text, _)| chip_labels.contains(&text.as_str()))
+            .cloned()
+            .collect();
+        let mut tiles: Vec<egui::Rect> = h
+            .rects
+            .iter()
+            .filter(|rect| rect.size() == egui::vec2(32.0, 32.0))
+            .copied()
+            .collect();
+        // Each tile is filled and then outlined.
+        tiles.dedup();
+        (chips, tiles)
+    };
+    let resting = choices(&h);
+    assert_eq!(resting.0.len(), chip_labels.len(), "{:?}", resting.0);
+    assert_eq!(resting.1.len(), pins.len(), "{:?}", resting.1);
+    let chips = AccessoryKind::ALL.into_iter().map(|kind| {
+        let chip = resting.0.iter().find(|(text, _)| text == kind.label());
+        let point = chip.expect("every chip is drawn").1.center();
+        (Accessory::Worn(kind), made.contains(&kind), point)
+    });
+    let tiles = pins
+        .iter()
+        .zip(&resting.1)
+        .map(|(pin, tile)| (*pin, true, tile.center()));
+    for (accessory, wearable, point) in chips.chain(tiles) {
+        // The pointer rests on it for a few frames, the way a hand does before clicking.
+        h.frame(vec![egui::Event::PointerMoved(point)]);
+        for _ in 0..4 {
+            h.frame(Vec::new());
+            assert_eq!(
+                choices(&h),
+                resting,
+                "pointing at {} moved the choices",
+                accessory.label()
+            );
+        }
+        let note = if wearable {
+            format!("Trying on {} · click to put it on", accessory.label())
+        } else {
+            "Point at something to try it on".to_owned()
+        };
+        assert!(
+            h.labels.iter().any(|(text, _)| *text == note),
+            "{note:?} is not shown pointing at {}",
+            accessory.label()
+        );
+        let outcome = h.click_at(point);
+        let put_on = wearable.then_some((mallow, Some(accessory)));
+        assert_eq!(outcome.set_accessory, put_on, "{}", accessory.label());
+    }
 }

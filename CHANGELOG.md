@@ -2,6 +2,24 @@
 
 All notable changes are documented here.
 
+## [0.60.1] - 2026-09-23
+
+### Fixed
+
+- Choosing something to wear no longer shakes the menu out from under the pointer. Pointing at a
+  choice put a line above them all saying what was being tried on, which moved every choice down
+  twenty-two points. Unless the pointer was low on it, the choice pointed at left the pointer, so
+  the line went, the choices sprang back, and it went round again every frame, for every
+  companion. With the pointer high on a choice, the one above slid under it instead, and a click
+  put that on. The line is always there now, one line whatever it says, and when nothing is being
+  tried on it says to point at something; pointing at Nothing says it will take off what is worn.
+  A choice pointed at no longer grows by a point all round, either: one that is not being worn
+  draws no frame until it is pointed at, and egui takes a frame's border back off its padding, so
+  under the window's bordered style it came out two points wider and nudged every choice after it
+  along the row, or over onto the next. A settings-window test rests the pointer on every choice
+  and every pin, wearable or not, for several frames, and checks that nothing moves and that a
+  click puts on what was pointed at.
+
 ## [0.60.0] - 2026-09-23
 
 ### Added

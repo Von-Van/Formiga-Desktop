@@ -4,6 +4,16 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.60.1
+
+Choosing what a companion wears no longer jumps about under the pointer. Pointing at something
+on a companion's profile put a line above the choices saying what was being tried on, and that
+pushed every choice down out from under the pointer, so the line went away again, the choices
+sprang back, and the menu shook faster than anything in it could be clicked. With the pointer high
+on a choice, the one above slid under it instead, and a click put that on. The line is there all
+the time now, with a word on what to do when nothing is being tried on, and a choice stays the same
+size when it is pointed at, so nothing in the menu moves while you choose.
+
 ## New in 0.60.0
 
 The village comes to life while the houses are out. Companions water the gardens, crouch to look

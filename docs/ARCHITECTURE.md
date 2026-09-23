@@ -835,6 +835,12 @@ follows every pose at a mini's size as well as an adult's, in the inks the colon
 gives the find it is made from. The overlay rebakes a companion's atlas only when what it wears
 changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
 
+The wardrobe on the Your colony page, in `clubhouse/collection.rs`, shows the companion wearing
+whatever the pointer is over, a frame later. Nothing in it may change size with the pointer, or
+the choice pointed at moves out from under it and the menu shakes: the try-on line is always one
+truncated line, and `wear_choice` keeps a chip the same size whether or not it is pointed at.
+`pointing_at_something_to_wear_leaves_every_choice_where_it_was` holds both.
+
 ## Arranging the village
 
 The Home page's preview is drawn from the same layout functions the overlay uses, and in Arrange

@@ -35,28 +35,28 @@ into a `microsoft/winget-pkgs` pull request.
 
 1. Make sure the release is actually published with its Windows assets, e.g.:
    ```sh
-   gh release view v0.60.0 --json assets
+   gh release view v0.60.1 --json assets
    ```
 2. Generate the manifest:
    ```sh
-   scripts/winget-manifest.sh 0.60.0
+   scripts/winget-manifest.sh 0.60.1
    ```
    This downloads the released MSI to verify its SHA-256 against the published `.sha256` file
    (not just trusting the small checksum file blindly), then writes
-   `packaging/windows/winget/out/0.60.0/VonVan.Formiga*.yaml`.
+   `packaging/windows/winget/out/0.60.1/VonVan.Formiga*.yaml`.
 3. Validate the manifest shape (requires the `winget` client, i.e. run this on Windows):
    ```powershell
-   winget validate --manifest packaging\windows\winget\out\0.60.0
+   winget validate --manifest packaging\windows\winget\out\0.60.1
    ```
 4. Test an actual install from the manifest, ideally in a disposable VM since it downloads and
    runs the real installer:
    ```powershell
-   winget install --manifest packaging\windows\winget\out\0.60.0
+   winget install --manifest packaging\windows\winget\out\0.60.1
    ```
    Confirm: no elevation prompt (scope is per-user), SmartScreen's warning appears and "Run
    anyway" completes the install, and Start Menu/Desktop shortcuts land as expected.
 5. Fork `microsoft/winget-pkgs`, copy the three generated files into
-   `manifests/v/VonVan/Formiga/0.60.0/` in that fork (that path - lowercase first letter of the
+   `manifests/v/VonVan/Formiga/0.60.1/` in that fork (that path - lowercase first letter of the
    publisher, then `Publisher/Package/Version` - is winget-pkgs' required layout), commit, and
    open a pull request. `wingetcreate submit` can do the fork/branch/PR steps for you if
    preferred; see <https://github.com/microsoft/winget-create>.
