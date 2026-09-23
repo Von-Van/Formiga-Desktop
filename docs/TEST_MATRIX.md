@@ -94,6 +94,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | A full colony over sixteen seeded sessions leaves no face covered for something one could sit and watch; a colony of four still meets the tighter bound | CI | CI |
 | Keepsakes and belongings in the yards: sixteen hooks, one tree and one anchor each; the trees fill themselves until chosen, the first sixteen finds keeping their hooks; every hung keepsake drawn once inside its own tree's cell; four belongings to each yard fixed by slot, `BELONGING_CLEARANCE` held after the per-colony drift, and no resident standing on one | CI | CI |
 | Collection and scrapbook: the Journal lists only what has been found; the Your colony page shows all hundred and sixty in a wrapped grid, hangs one in the trees or takes it down, and lets the trees fill themselves again | CI | CI |
+| Every settings page, drawn whole 760 and 940 points wide at 100%, 125% and 150% text, leaves nothing drawn past the edge of the area that shows it, the navigation rail included | CI | CI |
 | Belonging colors stay distinct from every creature palette they are carried against | CI | CI |
 | Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
 | Keep replacement guard, bulk regeneration, final-adult protection, reparenting, and relationship normalization | CI | CI |

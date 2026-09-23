@@ -438,6 +438,12 @@ impl Clubhouse {
         ui.add_space(18.0);
         ui.horizontal_wrapped(|ui| {
             for (index, candidate) in self.candidates.iter().enumerate() {
+                let label = format!("Companion {}", index + 1);
+                // As wide as the picture or its label, whichever is wider, with room for the
+                // label's frame when it is pointed at or chosen.
+                let width = (text_width(ui, label.as_str()) + 2.0 * ui.spacing().button_padding.x)
+                    .max(84.0);
+                make_room(ui, width);
                 ui.vertical(|ui| {
                     let response = ui.add(
                         egui::Image::new(&candidate.texture)
@@ -450,12 +456,7 @@ impl Clubhouse {
                             .sense(egui::Sense::click()),
                     );
                     if response.clicked()
-                        || ui
-                            .selectable_label(
-                                self.selected == index,
-                                format!("Companion {}", index + 1),
-                            )
-                            .clicked()
+                        || ui.selectable_label(self.selected == index, label).clicked()
                     {
                         self.selected = index;
                         self.replace_confirmed = false;
@@ -653,7 +654,7 @@ impl Clubhouse {
         self.ground_catalogue(ui, save, outcome);
         ui.add_space(10.0);
         card(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.strong("Home corner");
                 let mut corner = save.home.corner;
                 ui.selectable_value(&mut corner, HomeCorner::BottomLeft, "Bottom left");
@@ -661,8 +662,10 @@ impl Clubhouse {
                 if corner != save.home.corner {
                     outcome.home_corner = Some(corner);
                 }
+                let choose = "Choose home display";
+                make_room(ui, combo_width(ui, choose));
                 egui::ComboBox::from_id_salt("home-display")
-                    .selected_text("Choose home display")
+                    .selected_text(choose)
                     .show_ui(ui, |ui| {
                         for (index, monitor) in monitors.iter().enumerate() {
                             if ui
@@ -722,7 +725,8 @@ impl Clubhouse {
         }
         for (index, object) in save.objects.objects.iter().enumerate() {
             card(ui, |ui| {
-                ui.horizontal(|ui| {
+                // Closer and Further go under the rest when there is no room beside it.
+                ui.horizontal_wrapped(|ui| {
                     if let Some((_, texture)) = &self.object_texture {
                         ui.add(
                             egui::Image::new(texture)
@@ -955,6 +959,53 @@ pub(crate) fn tile(
     );
     (response, rect)
 }
+
+/// How wide `text` is drawn on a single line in `ui`.
+pub(crate) fn text_width(ui: &Ui, text: impl Into<egui::WidgetText>) -> f32 {
+    text.into()
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        )
+        .size()
+        .x
+}
+
+/// Starts the next row of a wrapping layout if what is about to go in it, `width` wide, has no
+/// room left in this one. egui learns how big a frame, a column or a combo box is only once it
+/// has been placed, so one that did not fit ran on past the end of the row and took the page
+/// past the edge of the window with it, where the scroll area cut it off.
+pub(crate) fn make_room(ui: &mut Ui, width: f32) {
+    let row_begun = ui.cursor().min.x > ui.max_rect().min.x + 0.5;
+    if row_begun && ui.available_size_before_wrap().x < width {
+        ui.end_row();
+    }
+}
+
+/// How wide a combo box showing `selected` is drawn: its text and its arrow, and never less than
+/// egui's own width for one, inside the padding of a button.
+pub(crate) fn combo_width(ui: &Ui, selected: &str) -> f32 {
+    let spacing = ui.spacing();
+    let padding = 2.0 * spacing.button_padding.x;
+    let text = egui::WidgetText::from(selected)
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Button,
+        )
+        .size()
+        .x;
+    // A point to spare, so the text is never a hair too wide for the room it is given.
+    (text + spacing.icon_spacing + spacing.icon_width).max(spacing.combo_width - padding)
+        + padding
+        + 1.0
+}
+
+/// How much wider a [`card`] is than what is in it: its margin and its border, either side.
+pub(crate) const CARD_EDGES: f32 = 2.0 * (14.0 + 1.0);
 
 pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
     egui::Frame::new()

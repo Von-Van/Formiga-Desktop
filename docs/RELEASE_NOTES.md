@@ -14,6 +14,13 @@ on a choice, the one above slid under it instead, and a click put that on. The l
 the time now, with a word on what to do when nothing is being tried on, and a choice stays the same
 size when it is pointed at, so nothing in the menu moves while you choose.
 
+The settings pages also stay inside their window at larger text. At 125% and 150%, a few rows on
+the Your colony, Creature studio and Home pages were wider than a narrow window, and each took the
+rest of its page past the window's edge, where it was cut off: the far end of every row of things
+to wear, the last companion to choose from in the studio, and the choice of display to live on.
+Those rows now carry on onto the next line instead, so everything on every page can be seen and
+reached at every text size, down to the smallest window.
+
 ## New in 0.60.0
 
 The village comes to life while the houses are out. Companions water the gardens, crouch to look

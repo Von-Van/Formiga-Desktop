@@ -19,6 +19,22 @@ All notable changes are documented here.
   along the row, or over onto the next. A settings-window test rests the pointer on every choice
   and every pin, wearable or not, for several frames, and checks that nothing moves and that a
   click puts on what was pointed at.
+- The settings pages stay inside their window at larger text. At 125% and 150%, a few rows on
+  the Your colony, Creature studio and Home pages were wider than the narrowest window allows,
+  and egui widens a page to fit whatever is too wide for it, so each took the rest of its page
+  past the window's edge with it, where the scroll area cut it off: the right-hand end of every
+  row of things to wear, the last companion to choose from in the studio, and the choice of
+  display to live on. Even at 100% text, the fourth card under Life here ran off the edge of the
+  narrowest window. The description of where a companion likes to be now follows its choice onto
+  the next line when there is no room beside it, and so do a belonging's Closer and Further; the
+  cards under Life here, a companion's descriptors, the studio's candidates, the try-on poses and
+  the display chooser start a new row when the one they are in has no room left, which egui
+  cannot do for them, since it learns how big a frame, a column or a combo box is only once it
+  has placed it. The navigation rail stops growing at half as large again, but its buttons did
+  not, so at 150% text they were thirteen points too wide for it; they now stop where it does. A
+  settings-window test draws every page whole, at the
+  narrowest window and the default one and at 100%, 125% and 150% text, and fails on anything
+  drawn past the edge of what shows it: it found 434 things cut off, and now finds none.
 
 ## [0.60.0] - 2026-09-23
 

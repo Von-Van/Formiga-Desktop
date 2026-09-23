@@ -758,10 +758,12 @@ fn draw_settings(
     outcome: &mut SettingsOutcome,
 ) {
     // The rail grows with the text and scrolls if it still does not fit, so every page stays
-    // reachable at the smallest window the app allows and the largest text it offers.
-    let text_scale = root.text_style_height(&egui::TextStyle::Body) / 14.0;
+    // reachable at the smallest window the app allows and the largest text it offers. Its
+    // buttons grow with it and stop where it stops: a line is taller than its text, so the
+    // largest text scaled them past the rail's own limit and out beyond its edge.
+    let text_scale = (root.text_style_height(&egui::TextStyle::Body) / 14.0).clamp(1.0, 1.5);
     egui::Panel::left("colony-navigation")
-        .exact_size(176.0 * text_scale.clamp(1.0, 1.5))
+        .exact_size(176.0 * text_scale)
         .resizable(false)
         .frame(egui::Frame::new().fill(rail()).inner_margin(18))
         .show(root, |ui| {
@@ -1057,6 +1059,7 @@ fn colony_tab(
             }
             ui.horizontal_wrapped(|ui| {
                 for descriptor in descriptors {
+                    clubhouse::make_room(ui, clubhouse::text_width(ui, descriptor.label()) + 10.0);
                     egui::Frame::new()
                         .fill(mint())
                         .inner_margin(5)
@@ -1084,6 +1087,12 @@ fn colony_tab(
             ),
             (creature.memory.window_climbs.to_string(), "windows climbed"),
         ] {
+            // The number beside its label, and never narrower than 86.
+            let width = (clubhouse::text_width(ui, egui::RichText::new(&number).size(24.0))
+                + ui.spacing().item_spacing.x
+                + clubhouse::text_width(ui, egui::RichText::new(label).small()))
+            .max(86.0);
+            clubhouse::make_room(ui, width + clubhouse::CARD_EDGES);
             clubhouse::card(ui, |ui| {
                 ui.set_min_width(86.0);
                 ui.label(egui::RichText::new(number).size(24.0).color(forest()));
@@ -1143,7 +1152,7 @@ fn colony_tab(
         });
         // Where they like to be: a leaning, not a rule. The habitat, pausing, and hiding still
         // decide where they can go.
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Likes to be");
             egui::ComboBox::from_id_salt(("roaming-leaning", creature.id))
                 .selected_text(creature.leaning.label())

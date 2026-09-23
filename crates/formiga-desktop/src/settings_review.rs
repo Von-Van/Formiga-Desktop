@@ -1423,3 +1423,143 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
         assert_eq!(outcome.set_accessory, put_on, "{}", accessory.label());
     }
 }
+
+/// The first text in `shape`, to say what was cut off.
+fn first_text(shape: &egui::Shape) -> Option<String> {
+    match shape {
+        egui::Shape::Text(text) => Some(text.galley.text().chars().take(60).collect()),
+        egui::Shape::Vec(shapes) => shapes.iter().find_map(first_text),
+        _ => None,
+    }
+}
+
+/// Nothing on any page is drawn past the edge of the part of the window it is shown in, at the
+/// narrowest window the app allows and at its default width, at every size of text it offers.
+/// egui widens a page to fit whatever is too wide for it, so one line that would not wrap took
+/// the rest of the page past the window's edge with it, where the scroll area cut it off: at
+/// larger text the Your colony page lost the right-hand end of each row of things to wear.
+#[test]
+fn no_page_is_drawn_past_the_edge_of_its_window() {
+    let (mut save, monitors) = fixture();
+    let finder = save.creatures[0].id;
+    // Half of what there is to wear has been found, so the wardrobe has both kinds of chip.
+    for kind in AccessoryKind::ALL.into_iter().step_by(2) {
+        save.companion.scrapbook.push(ScrapbookRecord {
+            variant: kind.made_from(),
+            first_at: time::macros::datetime!(2026-09-10 12:00 UTC),
+            finder: Some(finder),
+            finder_name: "Mallow".into(),
+        });
+    }
+    let context = egui::Context::default();
+    let mut clubhouse = Clubhouse::default();
+    for index in 0..4 {
+        let seed = [index + 17; 32];
+        clubhouse.push_preview(
+            &context,
+            GenerationPreview {
+                shared: None,
+                creature: World::preview_adult(
+                    seed,
+                    save.maximum_seen_utc,
+                    &DesktopSnapshot::default(),
+                ),
+                source_seed: seed,
+                similarity: None,
+                summary: "A new companion with fresh memories.".into(),
+            },
+        );
+    }
+    let mut cut = Vec::new();
+    let mut time = 0.0;
+    for text_scale in [100, 125, 150] {
+        configure_style(
+            &context,
+            AppearancePreferences {
+                text_scale,
+                ..Default::default()
+            },
+        );
+        for width in [760.0, 940.0] {
+            for page in [
+                SettingsTab::Colony,
+                SettingsTab::Studio,
+                SettingsTab::Home,
+                SettingsTab::Journal,
+                SettingsTab::Habitat,
+                SettingsTab::General,
+                SettingsTab::Applications,
+                SettingsTab::About,
+            ] {
+                let mut settings = save.settings.clone();
+                let mut tab = page;
+                let mut names = BTreeMap::new();
+                let mut selected = None;
+                let mut error = None;
+                let mut confirmation = None;
+                let mut bulk = false;
+                for frame in 0..3 {
+                    time += 1.0;
+                    // Tall enough that every page is drawn whole, nothing left below the fold.
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 6000.0),
+                        )),
+                        time: Some(time),
+                        ..Default::default()
+                    };
+                    let mut outcome = SettingsOutcome::default();
+                    let mut output = context.run_ui(input, |ui| {
+                        draw_settings(
+                            ui,
+                            &mut settings,
+                            &mut tab,
+                            &mut error,
+                            &save.settings,
+                            "/example/colony.json",
+                            &monitors,
+                            &[],
+                            false,
+                            &UpdateStatus::Idle,
+                            false,
+                            &save.creatures,
+                            &save.relationships,
+                            &mut names,
+                            &mut selected,
+                            &mut clubhouse,
+                            &save,
+                            &mut confirmation,
+                            &mut bulk,
+                            &mut outcome,
+                        )
+                    });
+                    output.textures_delta.clear();
+                    if frame < 2 {
+                        continue;
+                    }
+                    for clipped in &output.shapes {
+                        let bounds = clipped.shape.visual_bounding_rect();
+                        let clip = clipped.clip_rect;
+                        if bounds.is_positive()
+                            && (bounds.right() > clip.right() + 0.5
+                                || bounds.left() < clip.left() - 0.5)
+                        {
+                            cut.push(format!(
+                                "{page:?}, {width} wide, text at {text_scale}%: {:?} at {:.0} \
+                                 spans {:.0}–{:.0}, shown only {:.0}–{:.0}",
+                                first_text(&clipped.shape).unwrap_or_default(),
+                                bounds.top(),
+                                bounds.left(),
+                                bounds.right(),
+                                clip.left(),
+                                clip.right()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(cut.is_empty(), "{} cut off: {cut:#?}", cut.len());
+}

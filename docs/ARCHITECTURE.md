@@ -1515,7 +1515,15 @@ ten times the keepsakes (128 KiB more, even holding only the resting half), an o
 every garden stage, spot, ornament and village prop (98 KiB more), and the try-on poses (36 KiB);
 the Home page's village shrank to the one row it draws and cost nothing more. Tiles in a wrapped
 row — the Collection, the pins, the shelves — are each allocated whole and painted into, because an
-egui `Frame` places itself before its row decides whether it still fits and so never wraps. The home preview draws the whole corner — houses, both
+egui `Frame` places itself before its row decides whether it still fits and so never wraps. A frame,
+a column or a combo box with text in it — the cards under Life here, a companion's descriptors, the
+studio's candidates, the try-on poses, the display chooser — is measured first and handed to
+`make_room`, which starts the next row when this one has no room left; a row of text that has to
+fit a narrow window is a `horizontal_wrapped`, so its text carries on onto the next line. egui
+widens a page to fit whatever is too wide for it, so one row that did not fit took the rest of the
+page past the window's edge with it. `no_page_is_drawn_past_the_edge_of_its_window` draws every
+page whole, 760 and 940 points wide at 100%, 125% and 150% text, and fails on anything drawn past
+the edge of the area that shows it. The home preview draws the whole corner — houses, both
 trees, the keepsakes hung in them, and the belongings in the yards — from the village, trinket,
 and object atlases the desktop already samples, positioned by the very layout functions the
 overlay uses, so a complete village costs the same three textures whatever its size and nothing
@@ -1540,6 +1548,8 @@ there is something to take back.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
+The navigation rail and its buttons grow together with the height of a line of body text, both
+capped at half as large again, so the buttons never outgrow the rail.
 Every colour the pages draw reads from one palette so a single switch moves the whole window
 between cream and charcoal, and keyboard focus is drawn in the accent rather than the platform's
 fainter default. The existing egui font atlas and window/GPU resources are separate. Artwork is regenerated

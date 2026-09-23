@@ -335,8 +335,11 @@ impl Clubhouse {
                     |accessory| accessory.label(),
                 ));
             });
-            ui.horizontal(|ui| {
+            // Where four poses do not fit beside one another, at the largest text in the
+            // smallest window, the last goes on to a row of its own.
+            ui.horizontal_wrapped(|ui| {
                 for (texture, (_, _, label)) in poses.iter().zip(TRY_ON_POSES) {
+                    make_room(ui, 96.0 + 2.0 * 4.0);
                     ui.vertical(|ui| {
                         // Twice the size it is drawn at, so every pixel stays square.
                         egui::Frame::new()
