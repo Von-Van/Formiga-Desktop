@@ -2,19 +2,19 @@ use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement, SidePlacement};
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, BodyPresentation,
+    AccessoryArt, AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, BodyPresentation,
     COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
     ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
     FramePlacement, MenuIcon, MenuLayout, MilestoneBubbleRenderer, PixelPoint, PropAnchor,
-    ResidentMark, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT,
+    PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT,
     TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor,
-    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_SIZE,
-    VILLAGE_HOUSES, VillageCell,
+    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT,
+    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook,
 };
 use formiga_core::{
-    ActionKind, ApplicationOcclusionRule, ColonyObject, Creature, CreatureId, CursorSnapshot,
-    DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, MonitorInfo, Point, SaveFile,
-    ShelterDecorationKind, ShelterGenome, ShelterStyle, SleepNudge, ThoughtBubble,
+    ActionKind, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature, CreatureId,
+    CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, HouseMotion,
+    HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble, VillageProp,
     accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,15 +77,14 @@ struct SpriteGpu {
     /// mini keeps its bubble as close to its head as an adult does.
     silhouette: Vec<(u8, u8)>,
     resting_baseline: u32,
+    /// What it was baked wearing, in the inks it was baked in.
+    dress: Option<AccessoryArt>,
 }
 
 struct ShelterGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
-    genome: ShelterGenome,
-    decorations: Vec<ShelterDecorationKind>,
-    marks: [Option<ResidentMark>; VILLAGE_HOUSES],
-    styles: [ShelterStyle; VILLAGE_HOUSES],
+    look: VillageLook,
 }
 
 struct BubbleGpu {
@@ -119,6 +118,20 @@ pub struct OverlayUi<'a> {
     pub night: bool,
     /// The open right-click menu, if it belongs to a creature on this monitor.
     pub menu: Option<MenuView<'a>>,
+    /// What the village is up to this frame.
+    pub village: VillageScene<'a>,
+}
+
+/// What the village is up to this frame beyond where everyone stands: the houses somebody is
+/// inside, the houses being seen to, and anything loose on the ground. All of it is runtime only.
+#[derive(Clone, Copy, Default)]
+pub struct VillageScene<'a> {
+    pub occupied: &'a [HouseOccupancy],
+    pub motions: &'a [HouseMotion],
+    pub loose: &'a [(VillageProp, Point)],
+    /// Seconds on the app's own clock, for the Zs drifting up out of a house somebody is asleep
+    /// in.
+    pub clock: f32,
 }
 
 /// One open creature menu, already placed by `creature_menu`.
@@ -576,11 +589,7 @@ impl OverlayRenderer {
         // and is evicted by the same `retain` below the moment it goes home.
         let visible = drawn_on_monitor(save, self.monitor.id, monitor_fully_occluded);
         for creature in &visible {
-            self.ensure_sprite(
-                creature,
-                save.settings.reduce_motion,
-                save.companion.appearance.sprite_outline,
-            );
+            self.ensure_sprite(creature, save);
         }
         let shelter_visible = !monitor_fully_occluded
             && save.home.is_active()
@@ -593,20 +602,7 @@ impl OverlayRenderer {
             )
             .is_some();
         if shelter_visible {
-            let mut visible_decorations = [ShelterDecorationKind::Leaf; 6];
-            let mut count = 0;
-            for kind in &save.home.decorations.decorations {
-                if save.home.hidden_decorations & (1 << kind.index()) == 0 {
-                    visible_decorations[count] = *kind;
-                    count += 1;
-                }
-            }
-            self.ensure_shelter(
-                save.home.drawn_shelter(),
-                &visible_decorations[..count],
-                ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
-                save.home.house_style_list(&save.creatures),
-            );
+            self.ensure_shelter(VillageLook::of(&save.home, &save.creatures));
         }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
@@ -640,7 +636,13 @@ impl OverlayRenderer {
             self.cached_colony_object_vertices(save).to_vec()
         };
         let village_vertices = if shelter_visible {
-            self.village_vertices(save, ui.night)
+            self.village_vertices(save, ui.night, ui.village)
+        } else {
+            Vec::new()
+        };
+        // What is loose about the village, and what is drifting up out of its houses.
+        let mut prop_vertices = if shelter_visible {
+            self.village_prop_vertices(save, ui.village)
         } else {
             Vec::new()
         };
@@ -689,14 +691,25 @@ impl OverlayRenderer {
                 save.settings.cursor_reactions,
             );
             let start = vertices.len();
-            let (body, face, trinket) =
+            let (body, face, trinket, held) =
                 self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
             vertices.extend_from_slice(&body);
             vertices.extend_from_slice(&face);
             if let Some(trinket) = trinket {
                 vertices.extend_from_slice(&trinket);
             }
+            for quad in held.into_iter().flatten() {
+                prop_vertices.extend_from_slice(&quad);
+            }
             creature_draws.push((creature.id, start, trinket.is_some()));
+        }
+        // Everything small the village holds or has loose, over the colony, from the same sheet
+        // as its belongings.
+        let prop_start = vertices.len();
+        vertices.extend_from_slice(&prop_vertices);
+        let prop_vertex_count = prop_vertices.len();
+        if prop_vertex_count > 0 {
+            self.ensure_colony_object_atlas(save.colony_seed);
         }
         let bubble_start = vertices.len();
         if let Some(creature) = bubble_creature
@@ -841,6 +854,16 @@ impl OverlayRenderer {
                     }
                 }
             }
+            if prop_vertex_count > 0
+                && let Some(objects) = &self.colony_objects
+            {
+                draw(
+                    &mut pass,
+                    &objects.bind_group,
+                    prop_start,
+                    prop_vertex_count,
+                );
+            }
             if bubble_vertex_count > 0
                 && let Some(bubble) = &self.bubble
             {
@@ -933,13 +956,19 @@ impl OverlayRenderer {
         creature_visible || shelter_visible || object_visible
     }
 
+    #[allow(clippy::type_complexity)]
     fn vertices_for(
         &self,
         creature: &Creature,
         display_scale: u8,
         sprite: &SpriteGpu,
         face_state: FaceRenderState,
-    ) -> ([Vertex; 6], [Vertex; 6], Option<[Vertex; 6]>) {
+    ) -> (
+        [Vertex; 6],
+        [Vertex; 6],
+        Option<[Vertex; 6]>,
+        [Option<[Vertex; 6]>; 2],
+    ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
         let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
@@ -1126,7 +1155,37 @@ impl OverlayRenderer {
                 },
             ]
         });
-        (body, face, trinket)
+        // Something the village has put in its hands — a watering can, something just picked —
+        // held where a keepsake is held, and the water running out of the can while it waters.
+        let mut held = [None, None];
+        if let Some(beat) = creature.state.beat
+            && let Some(prop) = beat.held
+        {
+            let anchor = PropAnchor::facing(facing_right);
+            let unit = display_scale as f32;
+            let centre = (
+                face_center_x + anchor.dx * unit,
+                face_center_y + anchor.dy * unit,
+            );
+            held[0] = Some(self.object_quad_at(
+                ColonyObjectRenderer::prop_cell(PropSprite::of(prop)),
+                centre,
+                !facing_right,
+                display_scale,
+                occlusion_enabled,
+            ));
+            if beat.kind == BeatKind::Watering && (0.15..0.9).contains(&beat.progress()) {
+                let ahead = if facing_right { 1.0 } else { -1.0 };
+                held[1] = Some(self.object_quad_at(
+                    ColonyObjectRenderer::prop_cell(PropSprite::Water),
+                    (centre.0 + ahead * 7.0 * unit, centre.1 + 7.0 * unit),
+                    !facing_right,
+                    display_scale,
+                    occlusion_enabled,
+                ));
+            }
+        }
+        (body, face, trinket, held)
     }
 }
 

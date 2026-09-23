@@ -84,6 +84,13 @@ pub(super) fn draw_eye(
     state: FaceRenderState,
 ) {
     let radius = face.eye_size as i32;
+    // A yawn screws the eyes up: two short slants meeting at the outside corner, whatever the
+    // eyelids would otherwise be doing.
+    if state.expression == ExpressionKind::Yawning {
+        canvas.line(x - radius, y - 1, x + radius, y, 1, palette.eye);
+        canvas.set(x - radius, y + 1, palette.eye);
+        return;
+    }
     if state.eyelids == EyelidPose::Closed {
         let curve = matches!(
             state.expression,
@@ -185,7 +192,7 @@ pub(super) fn draw_brows(
     };
     let (left_inner, right_inner) = match expression {
         ExpressionKind::Worried | ExpressionKind::Affectionate => (-1, -1),
-        ExpressionKind::Focused | ExpressionKind::Determined => (1, 1),
+        ExpressionKind::Focused | ExpressionKind::Determined | ExpressionKind::Yawning => (1, 1),
         ExpressionKind::Startled | ExpressionKind::Curious => (-1, 1),
         ExpressionKind::Bored | ExpressionKind::Sleepy => (1, 0),
         _ => (0, 0),
@@ -272,6 +279,12 @@ pub(super) fn draw_mouth(
         ExpressionKind::Bored => canvas.line(x - 1, y, x + 1, y, 1, palette.outline),
         ExpressionKind::Focused => canvas.line(x - 1, y, x + 1, y - 1, 1, palette.outline),
         ExpressionKind::Determined => canvas.line(x - 2, y, x + 2, y, 1, palette.outline),
+        // Wide open and tall: a dark mouth with the tongue showing at the bottom of it.
+        ExpressionKind::Yawning => {
+            canvas.fill_ellipse(x, y + 1, 2, 3, palette.outline);
+            canvas.fill_ellipse(x, y + 1, 1, 2, super::face::mouth_inside(palette));
+            canvas.set(x, y + 3, palette.accent);
+        }
         _ => match genome.face.mouth_style {
             MouthStyle::Tiny => canvas.set(x, y, palette.outline),
             MouthStyle::Smile => canvas.line(x - 1, y - 1, x + 1, y - 1, 1, palette.outline),
@@ -286,6 +299,16 @@ pub(super) fn draw_mouth(
             }
         },
     }
+}
+
+/// The inside of an open mouth: the creature's own outline warmed toward red.
+pub(super) fn mouth_inside(palette: Palette) -> Rgba {
+    Rgba::new(
+        ((u16::from(palette.outline.r) + 150) / 2) as u8,
+        ((u16::from(palette.outline.g) + 40) / 2) as u8,
+        ((u16::from(palette.outline.b) + 60) / 2) as u8,
+        255,
+    )
 }
 
 pub(super) fn expression_for_action(action: ActionKind) -> ExpressionKind {
@@ -327,6 +350,11 @@ pub(super) fn default_eyelids(action: ActionKind, frame: u8) -> EyelidPose {
 
 pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     let drives = &creature.state.drives;
+    if creature.state.attention.is_none()
+        && let Some(beat) = creature.state.beat
+    {
+        return super::beats::beat_expression(beat);
+    }
     if let Some((habit, ..)) = flourish_shown(creature) {
         return match habit {
             Habit::LooksFoodOver => ExpressionKind::Curious,
@@ -436,6 +464,11 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
 }
 
 pub(super) fn resolve_eyelids(creature: &Creature) -> EyelidPose {
+    if creature.state.attention.is_none()
+        && let Some(eyelids) = creature.state.beat.and_then(super::beats::beat_eyelids)
+    {
+        return eyelids;
+    }
     if creature.state.attention.is_some_and(|pose| {
         pose.emotion == formiga_core::AttentionEmotion::Averting
             || pose.gesture == Some(Gesture::Cover)
@@ -491,6 +524,13 @@ pub(super) fn resolve_gaze(
             axis_direction(pose.target.x - creature.state.position.x, 10.0),
             axis_direction(pose.target.y - (creature.state.position.y - 28.0), 10.0),
         );
+    }
+    if let Some(gaze) = creature
+        .state
+        .beat
+        .and_then(|beat| super::beats::beat_gaze(creature, beat))
+    {
+        return gaze;
     }
     let forward = if creature.state.facing_right { 1 } else { -1 };
     // Looking the snack over: down at it, closer, then up and along it.

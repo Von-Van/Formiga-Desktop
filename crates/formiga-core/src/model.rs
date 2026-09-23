@@ -526,6 +526,125 @@ pub struct CreatureState {
     /// Runtime only, like `attention`.
     #[serde(skip)]
     pub nudge: Option<SleepNudge>,
+    /// A small moment it is having by itself: a yawn, a leaf on its face, a turn at the garden or
+    /// at its own door. Runtime only, like `attention`.
+    #[serde(skip)]
+    pub beat: Option<Beat>,
+    /// Inside its own house, out of sight behind the drawn curtain. Runtime only: a colony
+    /// always opens with everybody outside.
+    #[serde(skip)]
+    pub indoors: bool,
+}
+
+/// A short moment a companion has between everything else it does: a yawn it caught from a
+/// friend, a leaf landing on its face, watering a garden, fluffing the cushion its house is made
+/// of. Each is a few seconds long and plays from start to finish unless something bigger comes
+/// along; the art reads how far through it is to choose a pose, a face, and anything it holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Beat {
+    pub kind: BeatKind,
+    /// Seconds since it began.
+    pub elapsed: f32,
+    /// Seconds it lasts.
+    pub length: f32,
+    /// Where it is looking, if anywhere in particular.
+    pub look: Option<Point>,
+    /// What it is holding up, if anything.
+    pub held: Option<VillageProp>,
+}
+
+impl Beat {
+    pub fn new(kind: BeatKind, length: f32) -> Self {
+        Self {
+            kind,
+            elapsed: 0.0,
+            length: length.max(0.1),
+            look: None,
+            held: None,
+        }
+    }
+
+    /// How far through it is, from 0 to 1.
+    pub fn progress(&self) -> f32 {
+        (self.elapsed / self.length).clamp(0.0, 1.0)
+    }
+
+    pub fn finished(&self) -> bool {
+        self.elapsed >= self.length
+    }
+}
+
+/// What a beat is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BeatKind {
+    /// Breathing in, a yawn, and settling again.
+    Yawn,
+    /// Lips pressed together and a little shake of the head: trying not to yawn, for now.
+    ResistYawn,
+    /// Stopped to look at something a companion nearby is doing.
+    Notice,
+    /// A leaf landed on its face: a start, a shake to get it off, and back to what it was doing.
+    LeafOnFace,
+    /// What it was eating got away from it: a start, then off after it.
+    DroppedSnack,
+    /// Picking up what rolled away.
+    Retrieve,
+    /// Sat down beside the cushion rather than on it: a start, and a shuffle across.
+    MissedCushion,
+    /// Watering a garden patch.
+    Watering,
+    /// Crouched over a patch, looking closely at what is coming up.
+    InspectSprout,
+    /// Picking something from a patch.
+    Picking,
+    /// Carrying something it grew over to a friend. Strikes no pose of its own: the walk shows,
+    /// with the thing held out in front.
+    Carrying,
+    /// Holding up something it grew for a friend to see.
+    ShowingOff,
+    /// Looking on, pleased, at something a friend is showing it.
+    Admiring,
+    /// Retying the flap of a tent.
+    AdjustFlap,
+    /// Plumping up the cushion a pillow fort is made of.
+    FluffCushion,
+    /// Looking up at the cap of a mushroom house and giving it a pat.
+    InspectCap,
+    /// Tidying the leaves of a leaf house.
+    TidyLeaves,
+    /// Sitting up on top of its house, looking out.
+    RoofSit,
+}
+
+/// Small things the village shows in someone's hands or on the ground.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VillageProp {
+    WateringCan,
+    /// Something picked from a garden of this kind.
+    Produce(GardenKind),
+    /// A snack that rolled away.
+    Apple,
+    /// A leaf drifting down, or sitting on somebody's face.
+    Leaf,
+}
+
+/// Somebody inside one of the village's houses, behind its drawn curtain. `slot` counts the
+/// colony house as zero, the way the village lays its houses out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HouseOccupancy {
+    pub slot: usize,
+    /// Asleep in there, so the house breathes out a Z now and then.
+    pub napping: bool,
+}
+
+/// A house being seen to by its keeper just now: the chore, and how far through it they are, so
+/// the house can answer — a cushion plumping up, a cap wobbling, a flap swinging, a leaf coming
+/// loose.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HouseMotion {
+    pub slot: usize,
+    pub chore: BeatKind,
+    pub progress: f32,
 }
 
 /// How a sleeper that has to make room is moved without being woken.
@@ -1100,6 +1219,10 @@ pub struct Creature {
     /// Where its owner would like it to roam. Absent from the file while it is `Anywhere`.
     #[serde(default, skip_serializing_if = "RoamingLeaning::is_anywhere")]
     pub leaning: RoamingLeaning,
+    /// What it is wearing, chosen by its owner. Absent from the file while it wears nothing.
+    /// Never carried in a share code: a companion shared with a friend arrives as itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accessory: Option<crate::Accessory>,
 }
 
 const fn default_true() -> bool {
@@ -1190,6 +1313,8 @@ impl Default for RitualState {
 
 pub const MAX_COLONY_OBJECTS: usize = 8;
 
+/// A belonging the colony keeps in the two trees' yards. The first eight are the ones colonies
+/// have always been given; the rest joined them in 0.60.0.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ColonyObjectKind {
     #[default]
@@ -1201,10 +1326,22 @@ pub enum ColonyObjectKind {
     Pebble,
     Lamp,
     Cup,
+    Kite,
+    Teapot,
+    Book,
+    Basket,
+    YarnBall,
+    Drum,
+    Umbrella,
+    Bucket,
+    Candle,
+    MusicBox,
+    SpinningTop,
+    Jar,
 }
 
 impl ColonyObjectKind {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 20] = [
         Self::Pillow,
         Self::Toy,
         Self::Plant,
@@ -1213,28 +1350,62 @@ impl ColonyObjectKind {
         Self::Pebble,
         Self::Lamp,
         Self::Cup,
+        Self::Kite,
+        Self::Teapot,
+        Self::Book,
+        Self::Basket,
+        Self::YarnBall,
+        Self::Drum,
+        Self::Umbrella,
+        Self::Bucket,
+        Self::Candle,
+        Self::MusicBox,
+        Self::SpinningTop,
+        Self::Jar,
     ];
 
     pub const fn index(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn label(self) -> &'static str {
         match self {
-            Self::Pillow => 0,
-            Self::Toy => 1,
-            Self::Plant => 2,
-            Self::Blanket => 3,
-            Self::Paper => 4,
-            Self::Pebble => 5,
-            Self::Lamp => 6,
-            Self::Cup => 7,
+            Self::Pillow => "Pillow",
+            Self::Toy => "Toy",
+            Self::Plant => "Plant",
+            Self::Blanket => "Blanket",
+            Self::Paper => "Paper",
+            Self::Pebble => "Pebble",
+            Self::Lamp => "Lamp",
+            Self::Cup => "Cup",
+            Self::Kite => "Kite",
+            Self::Teapot => "Teapot",
+            Self::Book => "Book",
+            Self::Basket => "Basket",
+            Self::YarnBall => "Ball of yarn",
+            Self::Drum => "Drum",
+            Self::Umbrella => "Umbrella",
+            Self::Bucket => "Bucket",
+            Self::Candle => "Candle",
+            Self::MusicBox => "Music box",
+            Self::SpinningTop => "Spinning top",
+            Self::Jar => "Jar",
         }
     }
 
     pub const fn default_role(self) -> ColonyObjectRole {
         match self {
-            Self::Pillow | Self::Blanket => ColonyObjectRole::Sleep,
-            Self::Toy => ColonyObjectRole::Play,
-            Self::Plant | Self::Lamp => ColonyObjectRole::Comfort,
-            Self::Paper | Self::Pebble => ColonyObjectRole::Curiosity,
-            Self::Cup => ColonyObjectRole::Social,
+            Self::Pillow | Self::Blanket | Self::MusicBox => ColonyObjectRole::Sleep,
+            Self::Toy | Self::Kite | Self::YarnBall | Self::Drum | Self::SpinningTop => {
+                ColonyObjectRole::Play
+            }
+            Self::Plant | Self::Lamp | Self::Basket | Self::Umbrella | Self::Candle => {
+                ColonyObjectRole::Comfort
+            }
+            Self::Paper | Self::Pebble | Self::Book | Self::Bucket | Self::Jar => {
+                ColonyObjectRole::Curiosity
+            }
+            Self::Cup | Self::Teapot => ColonyObjectRole::Social,
         }
     }
 }
@@ -1346,8 +1517,62 @@ pub struct ShelterGenome {
     pub detail_seed: u64,
 }
 
-pub const MAX_SHELTER_DECORATIONS: usize = 6;
+/// Where on a house a decoration hangs. Every house has one of each, and each takes one
+/// decoration at a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum DecorationSlot {
+    /// The peak of the roof.
+    Roof,
+    /// Strung along under the eaves.
+    Eaves,
+    /// On the front wall, left of the door.
+    WallLeft,
+    /// On the front wall, right of the door.
+    WallRight,
+    /// Set on the ground beside the left wall.
+    GroundLeft,
+    /// Set on the ground beside the right wall.
+    GroundRight,
+}
 
+impl DecorationSlot {
+    pub const ALL: [Self; 6] = [
+        Self::Roof,
+        Self::Eaves,
+        Self::WallLeft,
+        Self::WallRight,
+        Self::GroundLeft,
+        Self::GroundRight,
+    ];
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Roof => 0,
+            Self::Eaves => 1,
+            Self::WallLeft => 2,
+            Self::WallRight => 3,
+            Self::GroundLeft => 4,
+            Self::GroundRight => 5,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Roof => "Roof",
+            Self::Eaves => "Eaves",
+            Self::WallLeft => "Left wall",
+            Self::WallRight => "Right wall",
+            Self::GroundLeft => "Left of the house",
+            Self::GroundRight => "Right of the house",
+        }
+    }
+}
+
+/// The most decorations one house wears: one in each slot.
+pub const MAX_HOUSE_DECORATIONS: usize = DecorationSlot::ALL.len();
+
+/// Something a house can be decorated with. The first six are the ones a colony earned before
+/// 0.60.0, under the names its file keeps them by; each kind belongs to one slot on the house.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -1359,53 +1584,147 @@ pub enum ShelterDecorationKind {
     Flower,
     Lamp,
     RoofOrnament,
+    WeatherVane,
+    Pennant,
+    PerchedBird,
+    Pinwheel,
+    FairyLights,
+    WindChime,
+    LeafGarland,
+    PaperLanterns,
+    Wreath,
+    WindowBox,
+    Ivy,
+    HouseSign,
+    Clock,
+    Birdhouse,
+    Horseshoe,
+    Mailbox,
+    Woodpile,
+    WateringCan,
+    Boots,
+    Barrel,
+    PottedPlant,
+    Pumpkin,
+    Mushrooms,
+    Lantern,
 }
 
 impl ShelterDecorationKind {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 30] = [
         Self::Leaf,
         Self::Banner,
         Self::Stone,
         Self::Flower,
         Self::Lamp,
         Self::RoofOrnament,
+        Self::WeatherVane,
+        Self::Pennant,
+        Self::PerchedBird,
+        Self::Pinwheel,
+        Self::FairyLights,
+        Self::WindChime,
+        Self::LeafGarland,
+        Self::PaperLanterns,
+        Self::Wreath,
+        Self::WindowBox,
+        Self::Ivy,
+        Self::HouseSign,
+        Self::Clock,
+        Self::Birdhouse,
+        Self::Horseshoe,
+        Self::Mailbox,
+        Self::Woodpile,
+        Self::WateringCan,
+        Self::Boots,
+        Self::Barrel,
+        Self::PottedPlant,
+        Self::Pumpkin,
+        Self::Mushrooms,
+        Self::Lantern,
     ];
 
+    /// The decorations a new colony can put up from its first day.
+    pub const STARTING: [Self; 3] = [Self::Banner, Self::Flower, Self::Lamp];
+
     pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    /// Where on a house it hangs.
+    pub const fn slot(self) -> DecorationSlot {
         match self {
-            Self::Leaf => 0,
-            Self::Banner => 1,
-            Self::Stone => 2,
-            Self::Flower => 3,
-            Self::Lamp => 4,
-            Self::RoofOrnament => 5,
+            Self::RoofOrnament
+            | Self::WeatherVane
+            | Self::Pennant
+            | Self::PerchedBird
+            | Self::Pinwheel => DecorationSlot::Roof,
+            Self::Banner
+            | Self::FairyLights
+            | Self::WindChime
+            | Self::LeafGarland
+            | Self::PaperLanterns => DecorationSlot::Eaves,
+            Self::Leaf | Self::Wreath | Self::WindowBox | Self::Ivy | Self::HouseSign => {
+                DecorationSlot::WallLeft
+            }
+            Self::Lamp | Self::Clock | Self::Birdhouse | Self::Horseshoe | Self::Mailbox => {
+                DecorationSlot::WallRight
+            }
+            Self::Stone | Self::Woodpile | Self::WateringCan | Self::Boots | Self::Barrel => {
+                DecorationSlot::GroundLeft
+            }
+            Self::Flower | Self::PottedPlant | Self::Pumpkin | Self::Mushrooms | Self::Lantern => {
+                DecorationSlot::GroundRight
+            }
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Leaf => "Leaf sprig",
+            Self::Banner => "Bunting",
+            Self::Stone => "Doorstone",
+            Self::Flower => "Flower",
+            Self::Lamp => "Wall lamp",
+            Self::RoofOrnament => "Roof star",
+            Self::WeatherVane => "Weather vane",
+            Self::Pennant => "Pennant",
+            Self::PerchedBird => "Perched bird",
+            Self::Pinwheel => "Pinwheel",
+            Self::FairyLights => "Fairy lights",
+            Self::WindChime => "Wind chime",
+            Self::LeafGarland => "Leaf garland",
+            Self::PaperLanterns => "Paper lanterns",
+            Self::Wreath => "Wreath",
+            Self::WindowBox => "Window box",
+            Self::Ivy => "Ivy",
+            Self::HouseSign => "House sign",
+            Self::Clock => "Clock",
+            Self::Birdhouse => "Birdhouse",
+            Self::Horseshoe => "Horseshoe",
+            Self::Mailbox => "Letterbox",
+            Self::Woodpile => "Woodpile",
+            Self::WateringCan => "Watering can",
+            Self::Boots => "Boots",
+            Self::Barrel => "Rain barrel",
+            Self::PottedPlant => "Potted plant",
+            Self::Pumpkin => "Pumpkin",
+            Self::Mushrooms => "Mushrooms",
+            Self::Lantern => "Lantern",
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ShelterDecorationState {
+/// Which decorations one house wears, by the companion who keeps it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HouseDressing {
+    pub keeper: CreatureId,
+    /// At most one for each slot, in slot order.
     pub decorations: Vec<ShelterDecorationKind>,
-    #[serde(with = "time::serde::rfc3339")]
-    pub next_at_utc: OffsetDateTime,
-    pub ordinal: u32,
-}
-
-impl Default for ShelterDecorationState {
-    fn default() -> Self {
-        Self {
-            decorations: Vec::new(),
-            next_at_utc: OffsetDateTime::UNIX_EPOCH,
-            ordinal: 0,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColonyHome {
-    #[serde(default)]
-    pub hidden_decorations: u8,
     pub display: Option<DisplayKey>,
     pub corner: HomeCorner,
     pub shelter: ShelterGenome,
@@ -1413,8 +1732,6 @@ pub struct ColonyHome {
     pub active_since_utc: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub last_disappeared_utc: Option<OffsetDateTime>,
-    #[serde(default)]
-    pub decorations: ShelterDecorationState,
     /// The spots the person at the desk has put down on the ground between the houses. Absent
     /// from the file while there are none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1435,6 +1752,19 @@ pub struct ColonyHome {
     /// cottage. Absent while none has been chosen.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub house_styles: Vec<HouseStyleChoice>,
+    /// What the village has to choose from, and when the next thing arrives.
+    #[serde(default)]
+    pub unlocks: VillageUnlocks,
+    /// The decorations each house wears, by the companion who keeps it. A house with no entry
+    /// wears none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dressing: Vec<HouseDressing>,
+    /// Ornaments set out on the village ground. Absent while there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ornaments: Vec<OrnamentSpot>,
+    /// The keepsakes chosen to hang in the two trees. Absent while the trees fill themselves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree_keepsakes: Option<TreeKeepsakes>,
 }
 
 /// A palette the village can be painted in: a hand-made pairing of a main colour for roofs,
@@ -1488,26 +1818,48 @@ impl VillagePalette {
     }
 }
 
-/// The most garden patches a village has: one of each kind.
-pub const MAX_GARDENS: usize = 3;
+/// The most garden patches planted at once, each of a different kind.
+pub const MAX_GARDENS: usize = 4;
 
-/// A little patch planted on the village ground. Something to look at, not somewhere to go.
+/// A little patch planted on the village ground. It grows by itself through four stages and back
+/// round again, and the colony tends it now and then.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GardenKind {
     Flowers,
     Vegetables,
     Herbs,
+    Sunflowers,
+    Pumpkins,
+    Strawberries,
+    MushroomRing,
+    BerryBush,
+    Tulips,
+    Cactus,
+    PeaTrellis,
+    Tomatoes,
 }
 
 impl GardenKind {
-    pub const ALL: [Self; 3] = [Self::Flowers, Self::Vegetables, Self::Herbs];
+    pub const ALL: [Self; 12] = [
+        Self::Flowers,
+        Self::Vegetables,
+        Self::Herbs,
+        Self::Sunflowers,
+        Self::Pumpkins,
+        Self::Strawberries,
+        Self::MushroomRing,
+        Self::BerryBush,
+        Self::Tulips,
+        Self::Cactus,
+        Self::PeaTrellis,
+        Self::Tomatoes,
+    ];
+
+    /// The gardens a new colony can plant from its first day.
+    pub const STARTING: [Self; 3] = [Self::Flowers, Self::Vegetables, Self::Herbs];
 
     pub const fn index(self) -> u8 {
-        match self {
-            Self::Flowers => 0,
-            Self::Vegetables => 1,
-            Self::Herbs => 2,
-        }
+        self as u8
     }
 
     pub const fn label(self) -> &'static str {
@@ -1515,6 +1867,15 @@ impl GardenKind {
             Self::Flowers => "Flower bed",
             Self::Vegetables => "Vegetable patch",
             Self::Herbs => "Herb box",
+            Self::Sunflowers => "Sunflowers",
+            Self::Pumpkins => "Pumpkin patch",
+            Self::Strawberries => "Strawberry planter",
+            Self::MushroomRing => "Mushroom ring",
+            Self::BerryBush => "Berry bush",
+            Self::Tulips => "Tulip row",
+            Self::Cactus => "Cactus pots",
+            Self::PeaTrellis => "Pea trellis",
+            Self::Tomatoes => "Tomato cane",
         }
     }
 
@@ -1523,20 +1884,108 @@ impl GardenKind {
             Self::Flowers => "Three flowers in the colony's own colours.",
             Self::Vegetables => "A cabbage, a carrot and a pumpkin coming along.",
             Self::Herbs => "Rosemary, basil and lavender in a planter box.",
+            Self::Sunflowers => "Two tall sunflowers that turn to follow the light.",
+            Self::Pumpkins => "A trailing vine with one pumpkin growing fat on it.",
+            Self::Strawberries => "A strawberry pot with runners over the rim.",
+            Self::MushroomRing => "A little ring of mushrooms that came up by itself.",
+            Self::BerryBush => "A round bush that fills with berries.",
+            Self::Tulips => "A row of tulips standing to attention.",
+            Self::Cactus => "Two small cacti in clay pots, one of them flowering.",
+            Self::PeaTrellis => "Peas climbing a little lattice of sticks.",
+            Self::Tomatoes => "A tomato plant tied to a cane.",
+        }
+    }
+
+    /// Whether what grows here is something a companion might pick and eat.
+    pub const fn edible(self) -> bool {
+        matches!(
+            self,
+            Self::Vegetables
+                | Self::Herbs
+                | Self::Pumpkins
+                | Self::Strawberries
+                | Self::BerryBush
+                | Self::PeaTrellis
+                | Self::Tomatoes
+        )
+    }
+
+    /// Whether this is a patch someone would proudly hold something up from.
+    pub const fn harvest(self) -> bool {
+        matches!(
+            self,
+            Self::Vegetables | Self::Pumpkins | Self::PeaTrellis | Self::Tomatoes
+        )
+    }
+
+    /// How long each stage of growing lasts, in hours: quick herbs, slow pumpkins.
+    pub const fn stage_hours(self) -> i64 {
+        match self {
+            Self::Herbs | Self::MushroomRing => 5,
+            Self::Flowers | Self::Tulips | Self::Strawberries => 6,
+            Self::Vegetables | Self::PeaTrellis | Self::Tomatoes | Self::BerryBush => 8,
+            Self::Sunflowers | Self::Cactus => 10,
+            Self::Pumpkins => 12,
         }
     }
 }
 
-/// One garden patch: what is growing in it, and how far along the village ground it is, as a
-/// fraction from its left end to its right.
+/// How far along a garden patch is. A patch goes round these by itself — no watering needed, and
+/// nothing wilts for want of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum GardenStage {
+    /// Just a few green shoots.
+    Sprout,
+    /// Leafy, with nothing on it yet.
+    Growing,
+    /// Flowering or fruiting: how a patch looked before it grew.
+    Grown,
+    /// At its fullest, before it goes back to seed and starts over.
+    Bounty,
+}
+
+impl GardenStage {
+    pub const ALL: [Self; 4] = [Self::Sprout, Self::Growing, Self::Grown, Self::Bounty];
+
+    pub const fn index(self) -> u8 {
+        self as u8
+    }
+}
+
+/// One garden patch: what is growing in it, how far along the village ground it is, as a
+/// fraction from its left end to its right, and when it was planted.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GardenPatch {
     pub kind: GardenKind,
     pub along: f32,
+    /// Absent for a patch planted before gardens grew; such a patch is taken to have been planted
+    /// long ago, part way round its cycle.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "time::serde::rfc3339::option"
+    )]
+    pub planted_at_utc: Option<OffsetDateTime>,
 }
 
-/// The most hangout spots a village has: one of each kind.
-pub const MAX_HANGOUTS: usize = 3;
+impl GardenPatch {
+    /// How far along this patch is at `now`. It starts as a sprout when it is planted, and then
+    /// goes round sprout, growing, grown and bounty for as long as it stays in the ground. A clock
+    /// set back never un-plants it.
+    pub fn stage(&self, now: OffsetDateTime) -> GardenStage {
+        let hours = match self.planted_at_utc {
+            Some(planted) => (now - planted).whole_hours().max(0),
+            // An old patch: somewhere round its cycle, the same place for the same kind, and
+            // moving on from there with the clock like any other.
+            None => now.unix_timestamp() / 3600 + i64::from(self.kind.index()) * 7,
+        };
+        let stage = (hours / self.kind.stage_hours()).rem_euclid(4);
+        GardenStage::ALL[stage as usize]
+    }
+}
+
+/// The most hangout spots put down at once, each of a different kind.
+pub const MAX_HANGOUTS: usize = 4;
 
 /// Something the person at the desk can put down on the village ground for the colony to gather
 /// at. Each gently draws one kind of quiet moment at home to it; a companion is free to do
@@ -1549,17 +1998,44 @@ pub enum HangoutKind {
     Blanket,
     /// A little spyglass on a stand: somewhere to stand and look out.
     Lookout,
+    Hammock,
+    Swing,
+    TeaTable,
+    BookNook,
+    Campfire,
+    Sandbox,
+    Puddle,
+    Bench,
+    DrumStump,
+    BirdFeeder,
+    StargazingMat,
+    SunnyRock,
 }
 
 impl HangoutKind {
-    pub const ALL: [Self; 3] = [Self::Cushion, Self::Blanket, Self::Lookout];
+    pub const ALL: [Self; 15] = [
+        Self::Cushion,
+        Self::Blanket,
+        Self::Lookout,
+        Self::Hammock,
+        Self::Swing,
+        Self::TeaTable,
+        Self::BookNook,
+        Self::Campfire,
+        Self::Sandbox,
+        Self::Puddle,
+        Self::Bench,
+        Self::DrumStump,
+        Self::BirdFeeder,
+        Self::StargazingMat,
+        Self::SunnyRock,
+    ];
+
+    /// The spots a new colony can put down from its first day.
+    pub const STARTING: [Self; 3] = [Self::Cushion, Self::Blanket, Self::Lookout];
 
     pub const fn index(self) -> u8 {
-        match self {
-            Self::Cushion => 0,
-            Self::Blanket => 1,
-            Self::Lookout => 2,
-        }
+        self as u8
     }
 
     pub const fn label(self) -> &'static str {
@@ -1567,6 +2043,18 @@ impl HangoutKind {
             Self::Cushion => "Nap cushion",
             Self::Blanket => "Picnic blanket",
             Self::Lookout => "Lookout",
+            Self::Hammock => "Hammock",
+            Self::Swing => "Swing",
+            Self::TeaTable => "Tea table",
+            Self::BookNook => "Book nook",
+            Self::Campfire => "Campfire",
+            Self::Sandbox => "Sandbox",
+            Self::Puddle => "Splash puddle",
+            Self::Bench => "Bench",
+            Self::DrumStump => "Drum stump",
+            Self::BirdFeeder => "Bird feeder",
+            Self::StargazingMat => "Stargazing mat",
+            Self::SunnyRock => "Sunny rock",
         }
     }
 
@@ -1575,8 +2063,118 @@ impl HangoutKind {
             Self::Cushion => "Somewhere soft for a nap at home.",
             Self::Blanket => "Somewhere to snack and sip, and where a picnic gathers.",
             Self::Lookout => "Somewhere to stand and look out over the desktop.",
+            Self::Hammock => "Slung between two posts, for a swaying nap.",
+            Self::Swing => "A plank on two ropes, for swinging on.",
+            Self::TeaTable => "A little table set for tea, for a sip and a sit.",
+            Self::BookNook => "A stack of books to sit by and read.",
+            Self::Campfire => "A ring of stones and a small fire to warm paws at.",
+            Self::Sandbox => "A box of sand, for digging in.",
+            Self::Puddle => "A puddle kept on purpose, for splashing.",
+            Self::Bench => "A bench for sitting and watching the village.",
+            Self::DrumStump => "A hollow stump that makes a good drum.",
+            Self::BirdFeeder => "A feeder on a pole, and birds to watch at it.",
+            Self::StargazingMat => "A mat to lie back on and look up from.",
+            Self::SunnyRock => "A flat rock that holds the warmth, for basking.",
         }
     }
+}
+
+/// The most ornaments set out at once, each of a different kind.
+pub const MAX_ORNAMENTS: usize = 4;
+
+/// A standing ornament for the village ground: something to look at and to wander over and
+/// inspect, rather than somewhere to spend a quiet moment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OrnamentKind {
+    LampPost,
+    BirdBath,
+    Signpost,
+    WishingWell,
+    PicketFence,
+    SteppingStones,
+    Scarecrow,
+    WindSpinner,
+    Wheelbarrow,
+    Beehive,
+    StoneCairn,
+    LilyPond,
+    MailboxPost,
+    FlagPole,
+    LogStool,
+}
+
+impl OrnamentKind {
+    pub const ALL: [Self; 15] = [
+        Self::LampPost,
+        Self::BirdBath,
+        Self::Signpost,
+        Self::WishingWell,
+        Self::PicketFence,
+        Self::SteppingStones,
+        Self::Scarecrow,
+        Self::WindSpinner,
+        Self::Wheelbarrow,
+        Self::Beehive,
+        Self::StoneCairn,
+        Self::LilyPond,
+        Self::MailboxPost,
+        Self::FlagPole,
+        Self::LogStool,
+    ];
+
+    /// The ornaments a new colony can set out from its first day.
+    pub const STARTING: [Self; 3] = [Self::LampPost, Self::BirdBath, Self::Signpost];
+
+    pub const fn index(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::LampPost => "Lamp post",
+            Self::BirdBath => "Bird bath",
+            Self::Signpost => "Signpost",
+            Self::WishingWell => "Wishing well",
+            Self::PicketFence => "Picket fence",
+            Self::SteppingStones => "Stepping stones",
+            Self::Scarecrow => "Scarecrow",
+            Self::WindSpinner => "Wind spinner",
+            Self::Wheelbarrow => "Wheelbarrow",
+            Self::Beehive => "Beehive",
+            Self::StoneCairn => "Stone stack",
+            Self::LilyPond => "Lily pond",
+            Self::MailboxPost => "Post box",
+            Self::FlagPole => "Flag pole",
+            Self::LogStool => "Log stool",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::LampPost => "A lamp on a post that lights up after dark.",
+            Self::BirdBath => "A stone bowl of water for passing birds.",
+            Self::Signpost => "Two arrows pointing to places nobody has been.",
+            Self::WishingWell => "A little well with a roof and a bucket.",
+            Self::PicketFence => "A short run of white fence.",
+            Self::SteppingStones => "Flat stones set in the grass.",
+            Self::Scarecrow => "A scarecrow that scares nothing at all.",
+            Self::WindSpinner => "A spinner on a pole that turns in the slightest breeze.",
+            Self::Wheelbarrow => "A wheelbarrow, parked with a few things in it.",
+            Self::Beehive => "A round straw hive and its busy bees.",
+            Self::StoneCairn => "Stones balanced one on another.",
+            Self::LilyPond => "A tiny pond with a lily pad on it.",
+            Self::MailboxPost => "A post box on a pole, waiting for letters.",
+            Self::FlagPole => "A tall pole with the colony's own flag.",
+            Self::LogStool => "A round of log to sit on.",
+        }
+    }
+}
+
+/// One ornament: what it is, and how far along the village ground it stands.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrnamentSpot {
+    pub kind: OrnamentKind,
+    pub along: f32,
 }
 
 /// One hangout spot: what it is, and how far along the village ground it stands, as a fraction
@@ -1588,6 +2186,176 @@ pub struct HangoutSpot {
     pub along: f32,
 }
 
+/// Something the village can gain over time: a decoration for its houses, a hangout spot, a
+/// garden, or an ornament for its ground.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum VillageItem {
+    Decoration(ShelterDecorationKind),
+    Hangout(HangoutKind),
+    Garden(GardenKind),
+    Ornament(OrnamentKind),
+}
+
+impl VillageItem {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Decoration(kind) => kind.label(),
+            Self::Hangout(kind) => kind.label(),
+            Self::Garden(kind) => kind.label(),
+            Self::Ornament(kind) => kind.label(),
+        }
+    }
+
+    /// Everything the village can gain, in the order the catalogues list them.
+    pub fn all() -> impl Iterator<Item = Self> {
+        ShelterDecorationKind::ALL
+            .into_iter()
+            .map(Self::Decoration)
+            .chain(HangoutKind::ALL.into_iter().map(Self::Hangout))
+            .chain(GardenKind::ALL.into_iter().map(Self::Garden))
+            .chain(OrnamentKind::ALL.into_iter().map(Self::Ornament))
+    }
+}
+
+/// What the village has to choose from so far, and when the next thing arrives. Every category
+/// starts with three, and one more arrives every day or two for as long as there is anything left.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VillageUnlocks {
+    pub decorations: Vec<ShelterDecorationKind>,
+    pub hangouts: Vec<HangoutKind>,
+    pub gardens: Vec<GardenKind>,
+    pub ornaments: Vec<OrnamentKind>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub next_at_utc: OffsetDateTime,
+    pub ordinal: u32,
+}
+
+impl Default for VillageUnlocks {
+    fn default() -> Self {
+        Self::starting()
+    }
+}
+
+impl VillageUnlocks {
+    /// A new colony's village: three of everything.
+    pub fn starting() -> Self {
+        Self {
+            decorations: ShelterDecorationKind::STARTING.to_vec(),
+            hangouts: HangoutKind::STARTING.to_vec(),
+            gardens: GardenKind::STARTING.to_vec(),
+            ornaments: OrnamentKind::STARTING.to_vec(),
+            next_at_utc: OffsetDateTime::UNIX_EPOCH,
+            ordinal: 0,
+        }
+    }
+
+    /// Whether the village has this to choose from yet.
+    pub fn has(&self, item: VillageItem) -> bool {
+        match item {
+            VillageItem::Decoration(kind) => self.decorations.contains(&kind),
+            VillageItem::Hangout(kind) => self.hangouts.contains(&kind),
+            VillageItem::Garden(kind) => self.gardens.contains(&kind),
+            VillageItem::Ornament(kind) => self.ornaments.contains(&kind),
+        }
+    }
+
+    /// Add something to choose from. Returns whether it was new.
+    pub fn grant(&mut self, item: VillageItem) -> bool {
+        if self.has(item) {
+            return false;
+        }
+        match item {
+            VillageItem::Decoration(kind) => self.decorations.push(kind),
+            VillageItem::Hangout(kind) => self.hangouts.push(kind),
+            VillageItem::Garden(kind) => self.gardens.push(kind),
+            VillageItem::Ornament(kind) => self.ornaments.push(kind),
+        }
+        true
+    }
+
+    /// Everything still to come.
+    pub fn remaining(&self) -> impl Iterator<Item = VillageItem> + '_ {
+        VillageItem::all().filter(|item| !self.has(*item))
+    }
+
+    /// Each kind once, in the order it arrived, and every category topped up to its first three.
+    pub fn normalize(&mut self) {
+        fn dedup<T: PartialEq + Copy>(list: &mut Vec<T>, starting: &[T]) {
+            let mut seen: Vec<T> = Vec::with_capacity(list.len());
+            list.retain(|item| {
+                let fresh = !seen.contains(item);
+                seen.push(*item);
+                fresh
+            });
+            for item in starting {
+                if !list.contains(item) {
+                    list.push(*item);
+                }
+            }
+        }
+        dedup(&mut self.decorations, &ShelterDecorationKind::STARTING);
+        dedup(&mut self.hangouts, &HangoutKind::STARTING);
+        dedup(&mut self.gardens, &GardenKind::STARTING);
+        dedup(&mut self.ornaments, &OrnamentKind::STARTING);
+    }
+}
+
+/// The number of hooks across the two keepsake trees: eight on each.
+pub const TREE_HOOKS: usize = 16;
+
+/// Which keepsakes hang on the trees' hooks, as the person at the desk chose them: a variant or
+/// nothing for each hook, the outward tree's eight first. Absent until anything is chosen, in
+/// which case the trees fill themselves as finds come in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TreeKeepsakes {
+    pub hooks: [Option<u8>; TREE_HOOKS],
+}
+
+impl TreeKeepsakes {
+    /// How many hooks hold something.
+    pub fn hung(&self) -> usize {
+        self.hooks.iter().flatten().count()
+    }
+}
+
+/// What hangs on each of the sixteen hooks. With nothing chosen, the original sixteen finds hang
+/// on the hooks they have always hung on — a hook for each of them — and anything found since
+/// fills the hooks still empty, in the order it was found. With a choice, exactly what was chosen,
+/// less anything the scrapbook does not hold.
+pub fn hung_keepsakes(
+    chosen: Option<&TreeKeepsakes>,
+    scrapbook: &[crate::ScrapbookRecord],
+) -> [Option<u8>; TREE_HOOKS] {
+    let found = |variant: u8| {
+        variant < crate::TRINKET_VARIANTS
+            && scrapbook.iter().any(|record| record.variant == variant)
+    };
+    if let Some(chosen) = chosen {
+        return chosen
+            .hooks
+            .map(|hook| hook.filter(|variant| found(*variant)));
+    }
+    let mut hooks = [None; TREE_HOOKS];
+    for record in scrapbook {
+        if usize::from(record.variant) < TREE_HOOKS {
+            hooks[usize::from(record.variant)] = Some(record.variant);
+        }
+    }
+    let mut later: Vec<&crate::ScrapbookRecord> = scrapbook
+        .iter()
+        .filter(|record| usize::from(record.variant) >= TREE_HOOKS && found(record.variant))
+        .collect();
+    later.sort_by_key(|record| (record.first_at, record.variant));
+    let mut later = later.into_iter();
+    for hook in &mut hooks {
+        if hook.is_none() {
+            *hook = later.next().map(|record| record.variant);
+        }
+    }
+    hooks
+}
+
 impl ColonyHome {
     pub fn from_seed(
         seed: [u8; 32],
@@ -1597,7 +2365,6 @@ impl ColonyHome {
     ) -> Self {
         let detail_seed = u64::from_le_bytes(seed[8..16].try_into().unwrap());
         Self {
-            hidden_decorations: 0,
             display,
             corner: if seed[0] & 1 == 0 {
                 HomeCorner::BottomLeft
@@ -1614,12 +2381,15 @@ impl ColonyHome {
             },
             active_since_utc,
             last_disappeared_utc,
-            decorations: ShelterDecorationState::default(),
             hangouts: Vec::new(),
             cottage_order: Vec::new(),
             palette: None,
             gardens: Vec::new(),
             house_styles: Vec::new(),
+            unlocks: VillageUnlocks::starting(),
+            dressing: Vec::new(),
+            ornaments: Vec::new(),
+            tree_keepsakes: None,
         }
     }
 
@@ -1659,6 +2429,72 @@ impl ColonyHome {
         self.normalize_village();
     }
 
+    /// The decorations the house this companion keeps wears, one per slot at most, in slot order.
+    pub fn decorations_of(&self, keeper: CreatureId) -> &[ShelterDecorationKind] {
+        self.dressing
+            .iter()
+            .find(|dressing| dressing.keeper == keeper)
+            .map_or(&[], |dressing| dressing.decorations.as_slice())
+    }
+
+    /// The decoration in one slot of the house this companion keeps.
+    pub fn decoration_in(
+        &self,
+        keeper: CreatureId,
+        slot: DecorationSlot,
+    ) -> Option<ShelterDecorationKind> {
+        self.decorations_of(keeper)
+            .iter()
+            .copied()
+            .find(|kind| kind.slot() == slot)
+    }
+
+    /// Hang a decoration on the house this companion keeps, in the slot it belongs to, replacing
+    /// whatever was there; or with `None`, take down whatever is in `slot`. Refused for a
+    /// decoration the village has not got yet, or one that does not belong in `slot`.
+    pub fn set_decoration(
+        &mut self,
+        keeper: CreatureId,
+        slot: DecorationSlot,
+        kind: Option<ShelterDecorationKind>,
+    ) -> bool {
+        if let Some(kind) = kind
+            && (kind.slot() != slot || !self.unlocks.decorations.contains(&kind))
+        {
+            return false;
+        }
+        let index = match self.dressing.iter().position(|d| d.keeper == keeper) {
+            Some(index) => index,
+            None => {
+                self.dressing.push(HouseDressing {
+                    keeper,
+                    decorations: Vec::new(),
+                });
+                self.dressing.len() - 1
+            }
+        };
+        let decorations = &mut self.dressing[index].decorations;
+        decorations.retain(|existing| existing.slot() != slot);
+        if let Some(kind) = kind {
+            decorations.push(kind);
+        }
+        self.normalize_village();
+        true
+    }
+
+    /// The decorations every house in the village wears, in the order the houses stand.
+    pub fn house_decoration_list(
+        &self,
+        creatures: &[Creature],
+    ) -> [Vec<ShelterDecorationKind>; MAX_COLONY_CREATURES] {
+        let mut lists: [Vec<ShelterDecorationKind>; MAX_COLONY_CREATURES] = Default::default();
+        let owners = crate::house_owners(creatures, &self.cottage_order);
+        for (slot, keeper) in owners.as_slice().iter().enumerate() {
+            lists[slot] = self.decorations_of(*keeper).to_vec();
+        }
+        lists
+    }
+
     /// The shelter as it is drawn: the colony's own, repainted in the palette chosen for the
     /// village if one was. Its style, size and details are never touched.
     pub fn drawn_shelter(&self) -> ShelterGenome {
@@ -1685,15 +2521,33 @@ impl ColonyHome {
     }
 
     /// Plant a patch, move it, or with `None` dig it up. A fraction outside the ground is brought
-    /// back onto it; one that is not a number is refused.
-    pub fn set_garden(&mut self, kind: GardenKind, along: Option<f32>) -> bool {
+    /// back onto it; one that is not a number is refused, and so is a garden the village has not
+    /// got yet or one more than the ground holds. A new patch is planted `now` and starts as a
+    /// sprout; moving one keeps it growing where it is.
+    pub fn set_garden(
+        &mut self,
+        kind: GardenKind,
+        along: Option<f32>,
+        now: OffsetDateTime,
+    ) -> bool {
         match along {
             Some(along) if !along.is_finite() => false,
             Some(along) => {
                 let along = along.clamp(0.0, 1.0);
                 match self.gardens.iter_mut().find(|patch| patch.kind == kind) {
                     Some(patch) => patch.along = along,
-                    None => self.gardens.push(GardenPatch { kind, along }),
+                    None => {
+                        if !self.unlocks.gardens.contains(&kind)
+                            || self.gardens.len() >= MAX_GARDENS
+                        {
+                            return false;
+                        }
+                        self.gardens.push(GardenPatch {
+                            kind,
+                            along,
+                            planted_at_utc: Some(now),
+                        });
+                    }
                 }
                 self.normalize_village();
                 true
@@ -1705,22 +2559,57 @@ impl ColonyHome {
         }
     }
 
+    /// Set an ornament out, move it, or with `None` take it in again, on the same terms as a
+    /// garden.
+    pub fn set_ornament(&mut self, kind: OrnamentKind, along: Option<f32>) -> bool {
+        match along {
+            Some(along) if !along.is_finite() => false,
+            Some(along) => {
+                let along = along.clamp(0.0, 1.0);
+                match self.ornaments.iter_mut().find(|spot| spot.kind == kind) {
+                    Some(spot) => spot.along = along,
+                    None => {
+                        if !self.unlocks.ornaments.contains(&kind)
+                            || self.ornaments.len() >= MAX_ORNAMENTS
+                        {
+                            return false;
+                        }
+                        self.ornaments.push(OrnamentSpot { kind, along });
+                    }
+                }
+                self.normalize_village();
+                true
+            }
+            None => {
+                self.ornaments.retain(|spot| spot.kind != kind);
+                true
+            }
+        }
+    }
+
     /// Everything the person at the desk arranged about the village put back as it was
-    /// generated: the cottages in the order their keepers arrived, the colony's own colours, and
-    /// no garden patches. Hangout spots are left where they were put.
+    /// generated: the cottages in the order their keepers arrived, the colony's own colours and
+    /// house types, and nothing planted or set out on the ground. Hangout spots, decorations and
+    /// the keepsakes in the trees are left as they were.
     pub fn reset_arrangement(&mut self) {
         self.cottage_order.clear();
         self.palette = None;
         self.gardens.clear();
+        self.ornaments.clear();
         self.house_styles.clear();
     }
 
-    /// One patch of each kind at most, each somewhere on the ground, and hangout spots likewise.
+    /// One of each kind at most, each somewhere on the ground and each something the village
+    /// has, and no more than the ground holds; one dressing per house, one decoration per slot.
     pub fn normalize_village(&mut self) {
+        self.unlocks.normalize();
         self.normalize_hangouts();
         let mut seen = Vec::new();
+        let gardens = &self.unlocks.gardens;
         self.gardens.retain(|patch| {
-            let fresh = patch.along.is_finite() && !seen.contains(&patch.kind);
+            let fresh = patch.along.is_finite()
+                && !seen.contains(&patch.kind)
+                && gardens.contains(&patch.kind);
             seen.push(patch.kind);
             fresh
         });
@@ -1729,6 +2618,20 @@ impl ColonyHome {
         }
         self.gardens.sort_by_key(|patch| patch.kind.index());
         self.gardens.truncate(MAX_GARDENS);
+        let mut seen = Vec::new();
+        let ornaments = &self.unlocks.ornaments;
+        self.ornaments.retain(|spot| {
+            let fresh = spot.along.is_finite()
+                && !seen.contains(&spot.kind)
+                && ornaments.contains(&spot.kind);
+            seen.push(spot.kind);
+            fresh
+        });
+        for spot in &mut self.ornaments {
+            spot.along = spot.along.clamp(0.0, 1.0);
+        }
+        self.ornaments.sort_by_key(|spot| spot.kind.index());
+        self.ornaments.truncate(MAX_ORNAMENTS);
         let mut seen = Vec::new();
         self.cottage_order.retain(|id| {
             let fresh = !seen.contains(id);
@@ -1743,6 +2646,38 @@ impl ColonyHome {
             fresh
         });
         self.house_styles.truncate(MAX_COLONY_CREATURES);
+        let mut seen = Vec::new();
+        let decorations = &self.unlocks.decorations;
+        self.dressing.retain(|dressing| {
+            let fresh = !seen.contains(&dressing.keeper);
+            seen.push(dressing.keeper);
+            fresh
+        });
+        for dressing in &mut self.dressing {
+            let mut slots = Vec::with_capacity(MAX_HOUSE_DECORATIONS);
+            dressing.decorations.retain(|kind| {
+                let fresh = !slots.contains(&kind.slot()) && decorations.contains(kind);
+                slots.push(kind.slot());
+                fresh
+            });
+            dressing.decorations.sort_by_key(|kind| kind.slot());
+        }
+        self.dressing
+            .retain(|dressing| !dressing.decorations.is_empty());
+        self.dressing.truncate(MAX_COLONY_CREATURES);
+        if let Some(chosen) = &mut self.tree_keepsakes {
+            let mut seen = Vec::new();
+            for hook in &mut chosen.hooks {
+                if let Some(variant) = *hook
+                    && (variant >= crate::TRINKET_VARIANTS || seen.contains(&variant))
+                {
+                    *hook = None;
+                }
+                if let Some(variant) = *hook {
+                    seen.push(variant);
+                }
+            }
+        }
     }
 
     pub fn is_active(&self) -> bool {
@@ -1762,13 +2697,22 @@ impl ColonyHome {
             .find(|patch| patch.kind == kind)
     }
 
-    /// Whether anything has been put down or planted on the village ground.
+    /// The ornament of this kind, if one has been set out.
+    pub fn ornament(&self, kind: OrnamentKind) -> Option<OrnamentSpot> {
+        self.ornaments
+            .iter()
+            .copied()
+            .find(|spot| spot.kind == kind)
+    }
+
+    /// Whether anything has been put down, planted or set out on the village ground.
     pub fn has_ground_items(&self) -> bool {
-        !self.hangouts.is_empty() || !self.gardens.is_empty()
+        !self.hangouts.is_empty() || !self.gardens.is_empty() || !self.ornaments.is_empty()
     }
 
     /// Put a spot down, move it, or with `None` pick it up again. A fraction outside the ground
-    /// is brought back onto it; one that is not a number is refused.
+    /// is brought back onto it; one that is not a number is refused, and so is a spot the village
+    /// has not got yet or one more than the ground holds.
     pub fn set_hangout(&mut self, kind: HangoutKind, along: Option<f32>) -> bool {
         match along {
             Some(along) if !along.is_finite() => false,
@@ -1776,7 +2720,14 @@ impl ColonyHome {
                 let along = along.clamp(0.0, 1.0);
                 match self.hangouts.iter_mut().find(|spot| spot.kind == kind) {
                     Some(spot) => spot.along = along,
-                    None => self.hangouts.push(HangoutSpot { kind, along }),
+                    None => {
+                        if !self.unlocks.hangouts.contains(&kind)
+                            || self.hangouts.len() >= MAX_HANGOUTS
+                        {
+                            return false;
+                        }
+                        self.hangouts.push(HangoutSpot { kind, along });
+                    }
                 }
                 self.normalize_hangouts();
                 true
@@ -1791,8 +2742,11 @@ impl ColonyHome {
     /// One spot of each kind at most, each somewhere on the ground, in a stable order.
     pub fn normalize_hangouts(&mut self) {
         let mut seen = Vec::new();
+        let hangouts = &self.unlocks.hangouts;
         self.hangouts.retain(|spot| {
-            let fresh = spot.along.is_finite() && !seen.contains(&spot.kind);
+            let fresh = spot.along.is_finite()
+                && !seen.contains(&spot.kind)
+                && hangouts.contains(&spot.kind);
             seen.push(spot.kind);
             fresh
         });
@@ -1801,6 +2755,13 @@ impl ColonyHome {
         }
         self.hangouts.sort_by_key(|spot| spot.kind.index());
         self.hangouts.truncate(MAX_HANGOUTS);
+    }
+
+    /// Hang the keepsakes in the trees by hand: a variant or nothing for each hook, or with
+    /// `None` let the trees fill themselves again.
+    pub fn set_tree_keepsakes(&mut self, hooks: Option<[Option<u8>; TREE_HOOKS]>) {
+        self.tree_keepsakes = hooks.map(|hooks| TreeKeepsakes { hooks });
+        self.normalize_village();
     }
 }
 
@@ -2019,8 +2980,10 @@ pub enum WorldEvent {
         object_id: u64,
         kind: ColonyObjectKind,
     },
-    ShelterDecorationAdded {
-        kind: ShelterDecorationKind,
+    /// Something new for the village to choose from: a decoration, a hangout spot, a garden or
+    /// an ornament.
+    VillageUnlocked {
+        item: VillageItem,
     },
     /// A companion picked up a little habit of its own.
     HabitLearned {
@@ -2042,7 +3005,7 @@ impl WorldEvent {
             | Self::RitualStarted { .. }
             | Self::RitualInterrupted { .. }
             | Self::ColonyObjectAdded { .. }
-            | Self::ShelterDecorationAdded { .. }
+            | Self::VillageUnlocked { .. }
             | Self::HabitLearned { .. } => crate::SaveUrgency::Prompt,
             Self::ActionStarted { .. } | Self::SurfaceChanged { .. } => crate::SaveUrgency::Routine,
             _ => crate::SaveUrgency::None,
@@ -2198,7 +3161,10 @@ mod tests {
 
     #[test]
     fn colony_object_projection_is_typed_and_bounded() {
-        assert_eq!(ColonyObjectKind::ALL.len(), 8);
+        assert_eq!(ColonyObjectKind::ALL.len(), 20);
+        for (index, kind) in ColonyObjectKind::ALL.into_iter().enumerate() {
+            assert_eq!(usize::from(kind.index()), index);
+        }
         assert_eq!(MAX_COLONY_OBJECTS, 8);
         assert_eq!(
             ColonyObjectKind::Pillow.default_role(),
@@ -2221,25 +3187,180 @@ mod tests {
     }
 
     #[test]
-    fn shelter_decoration_projection_has_exactly_six_typed_choices() {
-        assert_eq!(ShelterDecorationKind::ALL.len(), MAX_SHELTER_DECORATIONS);
+    fn every_decoration_belongs_to_one_slot_and_every_slot_has_five_to_choose_from() {
         for (index, kind) in ShelterDecorationKind::ALL.into_iter().enumerate() {
             assert_eq!(kind.index(), index);
         }
-        let state = ShelterDecorationState {
-            decorations: ShelterDecorationKind::ALL.to_vec(),
-            next_at_utc: OffsetDateTime::UNIX_EPOCH,
-            ordinal: 6,
-        };
-        assert_eq!(state.decorations.len(), MAX_SHELTER_DECORATIONS);
+        // The six a colony could earn before keep their names in the file.
+        for (kind, name) in [
+            (ShelterDecorationKind::Leaf, "Leaf"),
+            (ShelterDecorationKind::Banner, "Banner"),
+            (ShelterDecorationKind::Stone, "Stone"),
+            (ShelterDecorationKind::Flower, "Flower"),
+            (ShelterDecorationKind::Lamp, "Lamp"),
+            (ShelterDecorationKind::RoofOrnament, "RoofOrnament"),
+        ] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), name);
+        }
+        // Each of the six earned before hangs in a slot of its own, so a colony house that wore
+        // all six still can.
+        let earned: std::collections::BTreeSet<_> = ShelterDecorationKind::ALL[..6]
+            .iter()
+            .map(|kind| kind.slot())
+            .collect();
+        assert_eq!(earned.len(), DecorationSlot::ALL.len());
+        for slot in DecorationSlot::ALL {
+            let choices = ShelterDecorationKind::ALL
+                .into_iter()
+                .filter(|kind| kind.slot() == slot)
+                .count();
+            assert_eq!(choices, 5, "{slot:?}");
+        }
+        let labels: std::collections::BTreeSet<_> = ShelterDecorationKind::ALL
+            .iter()
+            .map(|k| k.label())
+            .collect();
+        assert_eq!(labels.len(), ShelterDecorationKind::ALL.len());
+    }
+
+    #[test]
+    fn a_house_wears_one_decoration_per_slot_and_only_what_the_village_has() {
+        let mut home = ColonyHome::default();
+        let keeper = 7;
+        assert!(home.set_decoration(
+            keeper,
+            DecorationSlot::Eaves,
+            Some(ShelterDecorationKind::Banner)
+        ));
+        // Not yet the village's to hang.
+        assert!(!home.set_decoration(
+            keeper,
+            DecorationSlot::Eaves,
+            Some(ShelterDecorationKind::FairyLights)
+        ));
+        // In the wrong slot.
+        assert!(!home.set_decoration(
+            keeper,
+            DecorationSlot::Roof,
+            Some(ShelterDecorationKind::Banner)
+        ));
+        home.unlocks
+            .grant(VillageItem::Decoration(ShelterDecorationKind::FairyLights));
+        assert!(home.set_decoration(
+            keeper,
+            DecorationSlot::Eaves,
+            Some(ShelterDecorationKind::FairyLights)
+        ));
+        assert!(home.set_decoration(
+            keeper,
+            DecorationSlot::WallRight,
+            Some(ShelterDecorationKind::Lamp)
+        ));
         assert_eq!(
-            serde_json::to_value(state)
-                .unwrap()
-                .as_object()
-                .unwrap()
-                .len(),
-            3
+            home.decorations_of(keeper),
+            &[
+                ShelterDecorationKind::FairyLights,
+                ShelterDecorationKind::Lamp
+            ]
         );
+        assert!(home.set_decoration(keeper, DecorationSlot::Eaves, None));
+        assert_eq!(home.decorations_of(keeper), &[ShelterDecorationKind::Lamp]);
+        assert!(home.set_decoration(keeper, DecorationSlot::WallRight, None));
+        assert!(home.dressing.is_empty(), "a bare house has no entry at all");
+    }
+
+    #[test]
+    fn a_village_starts_with_three_of_everything_and_grows_one_at_a_time() {
+        let mut unlocks = VillageUnlocks::starting();
+        assert_eq!(unlocks.decorations.len(), 3);
+        assert_eq!(unlocks.hangouts.len(), 3);
+        assert_eq!(unlocks.gardens.len(), 3);
+        assert_eq!(unlocks.ornaments.len(), 3);
+        let total = VillageItem::all().count();
+        assert_eq!(total, 30 + 15 + 12 + 15);
+        assert_eq!(unlocks.remaining().count(), total - 12);
+        let next = unlocks.remaining().next().unwrap();
+        assert!(unlocks.grant(next));
+        assert!(!unlocks.grant(next), "granted once");
+        assert_eq!(unlocks.remaining().count(), total - 13);
+        // Normalising tops a category back up and drops a repeat.
+        unlocks.hangouts = vec![HangoutKind::Swing, HangoutKind::Swing];
+        unlocks.normalize();
+        assert_eq!(
+            unlocks.hangouts,
+            vec![
+                HangoutKind::Swing,
+                HangoutKind::Cushion,
+                HangoutKind::Blanket,
+                HangoutKind::Lookout
+            ]
+        );
+    }
+
+    #[test]
+    fn a_garden_grows_round_its_stages_by_itself() {
+        let planted = OffsetDateTime::UNIX_EPOCH + time::Duration::days(20_000);
+        let patch = GardenPatch {
+            kind: GardenKind::Herbs,
+            along: 0.5,
+            planted_at_utc: Some(planted),
+        };
+        let hours = GardenKind::Herbs.stage_hours();
+        let at = |h: i64| planted + time::Duration::hours(h);
+        assert_eq!(patch.stage(planted), GardenStage::Sprout);
+        assert_eq!(patch.stage(at(hours)), GardenStage::Growing);
+        assert_eq!(patch.stage(at(hours * 2)), GardenStage::Grown);
+        assert_eq!(patch.stage(at(hours * 3)), GardenStage::Bounty);
+        assert_eq!(patch.stage(at(hours * 4)), GardenStage::Sprout);
+        // A clock set back never un-plants it.
+        assert_eq!(patch.stage(at(-50)), GardenStage::Sprout);
+        // A patch from before gardens grew is somewhere round its cycle, and moves on with time.
+        let old = GardenPatch {
+            planted_at_utc: None,
+            ..patch
+        };
+        let seen: std::collections::BTreeSet<_> =
+            (0..4).map(|step| old.stage(at(step * hours))).collect();
+        assert_eq!(seen.len(), 4);
+    }
+
+    #[test]
+    fn the_trees_fill_themselves_until_chosen_and_the_first_sixteen_keep_their_hooks() {
+        let record = |variant: u8, day: i64| crate::ScrapbookRecord {
+            variant,
+            first_at: OffsetDateTime::UNIX_EPOCH + time::Duration::days(day),
+            finder: None,
+            finder_name: String::new(),
+        };
+        // An older colony's finds hang where they always did.
+        let old = [record(3, 1), record(12, 2), record(0, 3)];
+        let hooks = hung_keepsakes(None, &old);
+        assert_eq!(hooks[3], Some(3));
+        assert_eq!(hooks[12], Some(12));
+        assert_eq!(hooks[0], Some(0));
+        assert_eq!(hooks.iter().flatten().count(), 3);
+        // Later finds fill the empty hooks in the order they were found.
+        let mut grown = old.to_vec();
+        grown.extend([record(40, 9), record(20, 5), record(150, 7)]);
+        let hooks = hung_keepsakes(None, &grown);
+        assert_eq!(hooks[1], Some(20));
+        assert_eq!(hooks[2], Some(150));
+        assert_eq!(hooks[4], Some(40));
+        // Chosen by hand: exactly the choice, less anything never found.
+        let mut chosen = [None; TREE_HOOKS];
+        chosen[5] = Some(40);
+        chosen[6] = Some(99);
+        let hooks = hung_keepsakes(Some(&TreeKeepsakes { hooks: chosen }), &grown);
+        assert_eq!(hooks[5], Some(40));
+        assert_eq!(hooks.iter().flatten().count(), 1);
+        // A repeat or a variant past the catalogue is dropped when the village is tidied.
+        let mut home = ColonyHome::default();
+        let mut hooks = [None; TREE_HOOKS];
+        hooks[0] = Some(2);
+        hooks[1] = Some(2);
+        hooks[2] = Some(250);
+        home.set_tree_keepsakes(Some(hooks));
+        assert_eq!(home.tree_keepsakes.unwrap().hung(), 1);
     }
 
     #[test]

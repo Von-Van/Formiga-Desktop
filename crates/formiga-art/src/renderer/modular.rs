@@ -432,6 +432,70 @@ pub(super) fn prop_hold(design: CreatureDesign, pose: Pose, size: f32) -> PropHo
     }
 }
 
+/// Where this body's parts are in one frame, read from the same measurements `draw` places them
+/// by, for whatever it is wearing.
+pub(super) fn figure(design: CreatureDesign, pose: Pose, size: f32) -> Figure {
+    let d = design.bounded();
+    let Body {
+        x,
+        y,
+        rx,
+        ry,
+        hx,
+        hy,
+        head,
+        floor,
+    } = measure(d, pose, size);
+    let face = PixelPoint { x: hx, y: hy };
+    let hip = PixelPoint {
+        x: x - rx + 2,
+        y: y + ry / 3,
+    };
+    let back = PixelPoint {
+        x: x - rx / 2 - 1,
+        y: y - ry / 2,
+    };
+    let floor = feet_reach(d, floor) - 1;
+    if d.body == BodyPlan::Blob {
+        // One mass with the face on it: the collar goes round the mass just below the face.
+        let neck_y = (hy + 5).min(y + ry - 2);
+        return Figure {
+            face,
+            crown: PixelPoint { x, y: y - ry - 1 },
+            head_half: (rx - 3).max(3),
+            neck: PixelPoint { x, y: neck_y },
+            neck_half: super::classic::ellipse_half_width(rx, ry, neck_y - y),
+            chest: PixelPoint {
+                x: x + rx / 2,
+                y: neck_y + 2,
+            },
+            hip,
+            back,
+            floor,
+        };
+    }
+    Figure {
+        face,
+        crown: PixelPoint {
+            x: hx,
+            y: hy - head,
+        },
+        head_half: head,
+        neck: PixelPoint {
+            x: hx,
+            y: hy + head - 1,
+        },
+        neck_half: (head - 2).max(3),
+        chest: PixelPoint {
+            x: hx + 1,
+            y: (hy + head + 1).min(y + ry - 1),
+        },
+        hip,
+        back,
+        floor,
+    }
+}
+
 /// One side's paw or wing in a frame: folded where it rests, or carried out to a point.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Limb {
@@ -608,6 +672,14 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
             2 => [to(beside_head(-1), hy - 4), Limb::Rest],
             _ => [Limb::Rest; 2],
         },
+        // A paw brought up in front of the mouth for the middle of a yawn. A wing is not a paw,
+        // and a long body keeps its paws on the ground.
+        BodyClip::Gesture(Gesture::Yawn)
+            if (1..=2).contains(&frame) && !matches!(plan, BodyPlan::Long | BodyPlan::Winged) =>
+        {
+            front(to(hx + head / 2 + 2, hy + 3))
+        }
+        BodyClip::Gesture(Gesture::Yawn) => [Limb::Rest; 2],
         // A long body stretches along the ground with every paw planted.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Long => [Limb::Rest; 2],
         // Wings open up and out as far as they go.

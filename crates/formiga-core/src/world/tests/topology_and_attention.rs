@@ -305,6 +305,15 @@ fn neither_repeated_failure_nor_an_audience_lets_attention_take_over_the_day() {
             nudge = -nudge;
         }
         desktop.window_sample.as_mut().unwrap().monotonic_millis = (step * 50) as u64;
+        // Only a landing at the end of a jump across the gap is a jump that worked. Companions
+        // also come down to the floor for a while now and then, and climb back up after, and each
+        // of those ends in a landing of its own.
+        let jumping: Vec<CreatureId> = world
+            .window_journeys
+            .iter()
+            .filter(|(_, journey)| matches!(journey, WindowJourney::Gap(_)))
+            .map(|(id, _)| *id)
+            .collect();
         world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
         landings += world
             .drain_events()
@@ -312,9 +321,9 @@ fn neither_repeated_failure_nor_an_audience_lets_attention_take_over_the_day() {
                 matches!(
                     e,
                     WorldEvent::ActionCompleted {
+                        creature_id,
                         action: ActionKind::Landing,
-                        ..
-                    }
+                    } if jumping.contains(creature_id)
                 )
             })
             .count() as u32;

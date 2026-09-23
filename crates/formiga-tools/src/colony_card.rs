@@ -36,12 +36,19 @@ pub fn sample_colony() -> SaveFile {
     {
         creature.name = name.into();
     }
-    world.save.home.decorations.decorations = vec![
+    let founder = world.save.creatures[0].id;
+    for kind in [
         ShelterDecorationKind::Banner,
         ShelterDecorationKind::Lamp,
         ShelterDecorationKind::Flower,
         ShelterDecorationKind::Leaf,
-    ];
+    ] {
+        world.save.home.unlocks.grant(VillageItem::Decoration(kind));
+        world
+            .save
+            .home
+            .set_decoration(founder, kind.slot(), Some(kind));
+    }
     world.save.objects.objects = [
         ColonyObjectKind::Lamp,
         ColonyObjectKind::Plant,

@@ -627,10 +627,27 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
                 creature.state.action,
                 creature.state.position.x
             );
-            assert_eq!(
-                creature.state.position.y, ground,
-                "somebody left the ground"
-            );
+            // Only somebody sitting on its roof, or hopping up or down, is off the ground, and
+            // never higher than the tallest house.
+            let aloft = world
+                .village_life
+                .get(&creature.id)
+                .is_some_and(|activity| {
+                    matches!(activity.plan, crate::world::village_life::Plan::Roof { .. })
+                });
+            if aloft {
+                assert!(
+                    creature.state.position.y <= ground
+                        && creature.state.position.y >= ground - 80.0,
+                    "somebody went higher than a roof: {}",
+                    creature.state.position.y
+                );
+            } else {
+                assert_eq!(
+                    creature.state.position.y, ground,
+                    "somebody left the ground"
+                );
+            }
             let run = holding.entry(creature.id).or_default();
             if creature.state.action == ActionKind::Homebound {
                 *run = 0;
@@ -663,6 +680,10 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
                 | ActionKind::Sleep
                 | ActionKind::Greet
                 | ActionKind::InspectScreen
+                // Up on its roof, the hop there and back, and something found about the village.
+                | ActionKind::Perch
+                | ActionKind::Landing
+                | ActionKind::PresentDiscovery
         )),
         "a resident did something that is not a quiet moment: {seen:?}"
     );

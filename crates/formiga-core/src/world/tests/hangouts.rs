@@ -166,6 +166,10 @@ fn a_lookout_is_looked_out_of_toward_the_open_desktop() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = settled_colony([73; 32], 3, created, &desktop);
+    // A curious colony, so the lookout is somewhere they feel like going.
+    for creature in &mut world.save.creatures {
+        creature.personality.curiosity = 1.0;
+    }
     world.save.home.set_hangout(HangoutKind::Lookout, Some(0.5));
     let cottages = colony_cottage_list(&world.save.creatures);
     let (_, _, lookout) = home_hangout_positions(
@@ -177,8 +181,10 @@ fn a_lookout_is_looked_out_of_toward_the_open_desktop() {
     )[0];
     let middle =
         desktop.monitors[0].usable_bounds.x + desktop.monitors[0].usable_bounds.width / 2.0;
+    // The village has more to do than stand at the lookout — its gardens, its houses, its roofs
+    // — so it is given a long afternoon to get round to it.
     let mut looked = 0;
-    for _ in 0..40_000 {
+    for _ in 0..80_000 {
         world.tick(created, 0.05, &desktop);
         world.save.home.active_since_utc = Some(created);
         for creature in &world.save.creatures {

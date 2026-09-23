@@ -7,6 +7,10 @@ const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
 /// `habitat` is below `world` and cannot see into it. The two must never drift apart.
 const _: () = assert!(crate::REST_CLEAR_RATIO == spacing::FACE_CLEAR_RATIO);
 
+/// Where a resident's own house stands, half its width, and which of the village's houses it is,
+/// counting the colony house as zero.
+pub(super) type HouseAt = (Point, f32, usize);
+
 /// How long a resident waits before the first quiet moment of a visit, and between later ones:
 /// roughly one small thing each every couple of minutes, never two residents at once.
 const FIRST_MOMENT_SECS: std::ops::Range<f32> = 12.0..80.0;
@@ -355,6 +359,50 @@ fn advance_home_moment(
     Some((moment.action, moment.remaining))
 }
 
+/// What a hangout spot is for: whether this companion feels like it just now, the clip it does
+/// there, and how long for.
+fn hangout_moment(kind: HangoutKind, creature: &Creature) -> (bool, ActionKind, f32, f32) {
+    let drives = &creature.state.drives;
+    let personality = &creature.personality;
+    let sleepy = drives.sleep_pressure > 0.5;
+    let playful = personality.playfulness > 0.6;
+    let curious = personality.curiosity > 0.6;
+    match kind {
+        HangoutKind::Cushion | HangoutKind::Hammock => (sleepy, ActionKind::Sleep, 60.0, 150.0),
+        HangoutKind::StargazingMat => (sleepy, ActionKind::Sleep, 40.0, 100.0),
+        HangoutKind::SunnyRock => (drives.comfort < 0.5, ActionKind::Sleep, 30.0, 80.0),
+        HangoutKind::Blanket => (drives.energy < 0.45, ActionKind::Eat, 6.0, 12.0),
+        HangoutKind::TeaTable => (drives.comfort < 0.5, ActionKind::Drink, 5.0, 10.0),
+        HangoutKind::Lookout => (curious, ActionKind::InspectScreen, 5.0, 9.0),
+        HangoutKind::BookNook | HangoutKind::BirdFeeder => {
+            (curious, ActionKind::InspectScreen, 8.0, 16.0)
+        }
+        HangoutKind::Swing | HangoutKind::Sandbox | HangoutKind::Puddle => {
+            (playful, ActionKind::SoloPlay, 8.0, 16.0)
+        }
+        HangoutKind::DrumStump => (playful, ActionKind::SoloPlay, 6.0, 12.0),
+        HangoutKind::Campfire | HangoutKind::Bench => (
+            personality.sociability > 0.6 || drives.energy < 0.5,
+            ActionKind::Idle,
+            10.0,
+            20.0,
+        ),
+    }
+}
+
+/// Where a companion stands to use a spot: on it, or beside it and turned toward it.
+fn hangout_stands_beside(kind: HangoutKind) -> bool {
+    matches!(
+        kind,
+        HangoutKind::Lookout
+            | HangoutKind::TeaTable
+            | HangoutKind::BookNook
+            | HangoutKind::Campfire
+            | HangoutKind::DrumStump
+            | HangoutKind::BirdFeeder
+    )
+}
+
 /// Picks one quiet moment for a resident standing at `rest`. Everything it can choose is a clip
 /// the colony already has; the choice comes from the colony's own seeded stream, so the same
 /// colony always fidgets the same way.
@@ -414,18 +462,8 @@ fn choose_home_moment(
     // A spot the person at the desk put down draws the moment it is for, a little more so for a
     // companion who feels like it: a sleepy one to the cushion, a hungry one to the blanket, a
     // curious one to the lookout. It is only ever one choice among the rest.
-    let drives = &creature.state.drives;
     for hangout in hangouts.iter().copied() {
-        let (keen, action, low, high) = match hangout.kind {
-            HangoutKind::Cushion => (drives.sleep_pressure > 0.5, ActionKind::Sleep, 60.0, 150.0),
-            HangoutKind::Blanket => (drives.energy < 0.45, ActionKind::Eat, 6.0, 12.0),
-            HangoutKind::Lookout => (
-                creature.personality.curiosity > 0.6,
-                ActionKind::InspectScreen,
-                5.0,
-                9.0,
-            ),
-        };
+        let (keen, action, low, high) = hangout_moment(hangout.kind, creature);
         choices.push((2 + 2 * u8::from(keen), action, low, high, Some(hangout)));
     }
     let total: u32 = choices.iter().map(|(weight, ..)| u32::from(*weight)).sum();
@@ -452,16 +490,32 @@ fn choose_home_moment(
         } else {
             action
         };
-        // On the cushion or the blanket; beside the lookout, looking out past it.
-        let stand = match hangout.kind {
-            HangoutKind::Lookout => Point {
-                x: hangout.at.x + if hangout.open_right { -0.45 } else { 0.45 } * frame,
-                y: rest.y,
-            },
-            _ => Point {
-                x: hangout.at.x,
-                y: rest.y,
-            },
+        // On the cushion or the blanket; beside the lookout, looking out past it; and beside
+        // anything else that is for standing at, on the side the companion comes from, turned
+        // toward it.
+        let from_right = creature.state.position.x > hangout.at.x;
+        let (stand, facing_right) = match hangout.kind {
+            HangoutKind::Lookout => (
+                Point {
+                    x: hangout.at.x + if hangout.open_right { -0.45 } else { 0.45 } * frame,
+                    y: rest.y,
+                },
+                Some(hangout.open_right),
+            ),
+            kind if hangout_stands_beside(kind) => (
+                Point {
+                    x: hangout.at.x + if from_right { 0.45 } else { -0.45 } * frame,
+                    y: rest.y,
+                },
+                Some(!from_right),
+            ),
+            _ => (
+                Point {
+                    x: hangout.at.x,
+                    y: rest.y,
+                },
+                None,
+            ),
         };
         let speed = 22.0 + creature.personality.activity * 18.0;
         let walk = (stand.x - creature.state.position.x).abs() / speed + 2.0;
@@ -476,8 +530,7 @@ fn choose_home_moment(
                 visit: Some(HangoutVisit {
                     action,
                     seconds,
-                    facing_right: (hangout.kind == HangoutKind::Lookout)
-                        .then_some(hangout.open_right),
+                    facing_right,
                 }),
             },
             None,
@@ -555,6 +608,7 @@ impl World {
         // colony that is put on hold or tucked away settles out of whatever it was doing.
         if !self.save.home.is_active() || self.save.settings.paused || !self.save.settings.visible {
             self.cancel_home_moments();
+            self.end_village_life();
             self.end_village_moment(false);
         }
         self.save.home.is_active()
@@ -565,6 +619,7 @@ impl World {
     fn begin_home_visit(&mut self, now: OffsetDateTime) {
         self.save.home.active_since_utc = Some(now);
         self.home_moments.clear();
+        self.end_village_life();
         self.home_moment_timers.clear();
         self.home_roam.clear();
         self.clear_runtime_plans();
@@ -687,25 +742,99 @@ impl World {
         // Where each spot the person at the desk put down stands, and which way the open desktop
         // lies from it, on the display the village is on.
         let middle = monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0;
-        let hangouts: Vec<FreeHangout> = home_hangout_positions(
+        let ground_items = home_ground_positions(
             &self.save.home,
             cottage_list.as_slice(),
             &desktop.monitors,
             &self.save.settings.habitat,
             self.save.settings.display_scale,
-        )
-        .into_iter()
-        .filter(|(_, monitor_id, _)| *monitor_id == monitor.id)
-        .map(|(kind, _, at)| FreeHangout {
-            kind,
-            at,
-            open_right: middle >= at.x,
-        })
-        .collect();
+        );
+        let hangouts: Vec<FreeHangout> = ground_items
+            .iter()
+            .filter(|(_, monitor_id, _)| *monitor_id == monitor.id)
+            .filter_map(|(item, _, at)| match item {
+                GroundItem::Hangout(kind) => Some(FreeHangout {
+                    kind: *kind,
+                    at: *at,
+                    open_right: middle >= at.x,
+                }),
+                GroundItem::Garden(_) | GroundItem::Ornament(_) => None,
+            })
+            .collect();
+        // The garden patches, and how far along each has grown by now.
+        let gardens: Vec<village_life::PlantedPatch> = ground_items
+            .iter()
+            .filter(|(_, monitor_id, _)| *monitor_id == monitor.id)
+            .filter_map(|(item, _, at)| {
+                let GroundItem::Garden(kind) = item else {
+                    return None;
+                };
+                let patch = self.save.home.gardens.iter().find(|p| p.kind == *kind)?;
+                Some(village_life::PlantedPatch {
+                    kind: *kind,
+                    at: *at,
+                    stage: patch.stage(now),
+                })
+            })
+            .collect();
         // Passive moments are decoration. They stop for a still desktop and for a hidden one.
         let quiet = self.save.settings.reduce_motion || !self.save.settings.visible;
         let reduce_motion = self.save.settings.reduce_motion;
+        if quiet {
+            self.end_village_life();
+        }
         let mut occupied = self.home_moments.values().any(|moment| !moment.courtesy);
+        // Who is out and about on a plan of its own, and who is indoors: one of the first at a
+        // time, and never so many of the second that the village looks empty.
+        let mut plan_out = self
+            .village_life
+            .values()
+            .any(|activity| !activity.plan.indoors());
+        let mut indoors = self
+            .village_life
+            .values()
+            .filter(|activity| activity.plan.indoors())
+            .count();
+        let residents = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .count();
+        let house_styles = self.save.home.house_style_list(&self.save.creatures);
+        // Whose roof somebody is already sitting on.
+        let roofs_taken: Vec<usize> = self
+            .village_life
+            .values()
+            .filter_map(|activity| match activity.plan {
+                village_life::Plan::Roof { slot, .. } => Some(slot),
+                _ => None,
+            })
+            .collect();
+        // Who is standing about or strolling at home with nothing on, and could stop to look at
+        // something.
+        let onlookers: Vec<village_life::Onlooker> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| {
+                creature.state.arrival_delay_secs <= 0.0
+                    && matches!(
+                        creature.state.action,
+                        ActionKind::Homebound | ActionKind::Traverse
+                    )
+                    && !creature.state.indoors
+                    && !self.home_moments.contains_key(&creature.id)
+                    && !self.village_life.contains_key(&creature.id)
+            })
+            .map(|creature| village_life::Onlooker {
+                id: creature.id,
+                at: creature.state.position,
+                watching: creature.state.beat.is_some(),
+            })
+            .collect();
+        let with_visitor = self.save.visitors.on_stage().is_some();
+        let mut asides = Vec::new();
         let settled: Vec<(CreatureId, Point)> = self
             .save
             .creatures
@@ -748,6 +877,52 @@ impl World {
                 self.home_moments.remove(&creature.id);
                 continue;
             }
+            // A plan of its own about the village owns its feet until it is over, and then it goes
+            // back to strolling from wherever it has got to.
+            if let Some(activity) = self.village_life.get_mut(&creature.id) {
+                // A plan made for the village as it was is let go if the village has changed
+                // under it: the resident is put back on the ground and goes on from there.
+                let ground = commons.map(|commons| village_life::PlanGround {
+                    commons,
+                    house: houses
+                        .get(&creature.id)
+                        .map(|(point, _, slot)| (*point, *slot)),
+                    patch: match activity.plan {
+                        village_life::Plan::Garden { patch, .. } => gardens
+                            .iter()
+                            .find(|planted| planted.kind == patch)
+                            .map(|planted| planted.at),
+                        _ => None,
+                    },
+                });
+                if !activity.still_on(ground) {
+                    village_life::settle(activity, creature);
+                    self.village_life.remove(&creature.id);
+                    continue;
+                }
+                let mut context = village_life::VillageContext {
+                    rng: &mut self.village_life_rng,
+                    events: &mut self.events,
+                    asides: &mut asides,
+                    found: &self.save.companion.scrapbook,
+                    now,
+                    created: self.save.created_at_utc,
+                    with_visitor,
+                    onlookers: &onlookers,
+                    frame,
+                };
+                if village_life::advance(activity, creature, dt, &mut context) {
+                    continue;
+                }
+                self.village_life.remove(&creature.id);
+                creature.state.indoors = false;
+                creature.state.beat = None;
+            }
+            // A yawn, or a look at somebody, is had standing still, wherever it caught them.
+            if creature.state.beat.is_some() && !self.home_moments.contains_key(&creature.id) {
+                creature.state.velocity = Point::default();
+                continue;
+            }
             let anchored = resting.get(&creature.id).copied().unwrap_or(anchor);
             // Reduced motion keeps the colony where it stands, and so does a hidden one — there
             // is no sense walking a village nobody can see. Otherwise everyone has the run of the
@@ -774,7 +949,9 @@ impl World {
                         &mut self.home_roam_rng,
                         creature,
                         commons,
-                        houses.get(&creature.id).copied(),
+                        houses
+                            .get(&creature.id)
+                            .map(|(point, half, _)| (*point, *half)),
                         &standing,
                         &doorways,
                         anchored,
@@ -1011,7 +1188,66 @@ impl World {
                 *remaining -= dt;
                 *remaining <= 0.0
             };
-            if !due || quiet || occupied {
+            if !due || quiet {
+                continue;
+            }
+            // One of the quiet moments at its door, or something about the village: the garden,
+            // its house, indoors, its roof, or a small mishap along the way.
+            if let Some(commons) = commons {
+                let house = houses.get(&creature.id).map(|(at, half, slot)| {
+                    let style = house_styles[(*slot).min(house_styles.len() - 1)];
+                    let height = house_roof_height(&self.save.home.shelter, style, *slot == 0);
+                    village_life::OwnHouse {
+                        slot: *slot,
+                        at: *at,
+                        half: *half,
+                        style,
+                        roof: Point {
+                            x: at.x,
+                            y: at.y - height * commons.scale,
+                        },
+                    }
+                });
+                let cushions: Vec<Point> = hangouts
+                    .iter()
+                    .filter(|hangout| hangout.kind == HangoutKind::Cushion)
+                    .filter(|hangout| {
+                        !standing.iter().any(|(id, point)| {
+                            *id != creature.id && (point.x - hangout.at.x).abs() < frame * 0.6
+                        })
+                    })
+                    .map(|hangout| hangout.at)
+                    .collect();
+                let options = village_life::VillageOptions {
+                    commons,
+                    frame,
+                    house,
+                    gardens: &gardens,
+                    cushions: &cushions,
+                    onlookers: &onlookers,
+                    may_go_in: indoors < village_life::max_indoors(residents),
+                    roof_free: house.is_some_and(|house| !roofs_taken.contains(&house.slot)),
+                    moment_free: !occupied,
+                    plan_free: !plan_out,
+                };
+                match village_life::choose(&mut self.village_life_rng, creature, &options) {
+                    village_life::Choice::Moment => {}
+                    village_life::Choice::Wait => continue,
+                    village_life::Choice::Plan(plan) => {
+                        if plan.indoors() {
+                            indoors += 1;
+                        } else {
+                            plan_out = true;
+                        }
+                        let wait = plan.rough_length()
+                            + self.village_life_rng.random_range(NEXT_MOMENT_SECS);
+                        self.home_moment_timers.insert(creature.id, wait);
+                        self.village_life
+                            .insert(creature.id, village_life::VillageActivity::new(plan));
+                        continue;
+                    }
+                }
+            } else if occupied {
                 continue;
             }
             let neighbour = settled
@@ -1036,7 +1272,9 @@ impl World {
                 &mut self.home_moment_rng,
                 creature,
                 target,
-                houses.get(&creature.id).copied(),
+                houses
+                    .get(&creature.id)
+                    .map(|(point, half, _)| (*point, *half)),
                 neighbour,
                 &belongings,
                 &free,
@@ -1055,6 +1293,8 @@ impl World {
                 answering.push((id, point, length));
             }
         }
+
+        self.apply_asides(asides);
 
         // A neighbour waves back. A courtesy moment never counts against the one-at-a-time rule
         // and is never chosen over: it only ever answers something already happening.
@@ -1087,15 +1327,13 @@ impl World {
                 }))
     }
 
-    /// Where every member of the colony waits out a visit, and where its own house stands, in
-    /// the stable colony order the village is laid out in.
+    /// Where every member of the colony waits out a visit, and where its own house stands — how
+    /// wide it is, and which of the village's houses it is — in the stable colony order the
+    /// village is laid out in.
     pub(super) fn village_places(
         &self,
         desktop: &DesktopSnapshot,
-    ) -> (
-        BTreeMap<CreatureId, Point>,
-        BTreeMap<CreatureId, (Point, f32)>,
-    ) {
+    ) -> (BTreeMap<CreatureId, Point>, BTreeMap<CreatureId, HouseAt>) {
         let cottages = colony_cottage_list(&self.save.creatures);
         let cottages = cottages.as_slice();
         let scale_factor = desktop
@@ -1154,7 +1392,7 @@ impl World {
                     DwellingKind::Cottage
                 };
                 let unit = f32::from(self.save.settings.display_scale) / scale_factor;
-                houses.insert(creature_id, (point, kind.width() / 2.0 * unit));
+                houses.insert(creature_id, (point, kind.width() / 2.0 * unit, house));
             }
         }
         (resting, houses)
@@ -1214,10 +1452,22 @@ impl World {
                 creature.state.action,
                 ActionKind::Homebound | ActionKind::Traverse | ActionKind::Idle
             ) && resting.is_none()
+                && !self.village_life.contains_key(&creature_id)
         {
             return false;
         }
         // An offer outranks an idle fidget, and the scheduler leaves a requested moment alone.
+        // Whatever it was about in the village — the garden, a chore, indoors, up on the roof —
+        // it leaves off, back on the ground outside, to take what is held out.
+        self.end_village_activity(creature_id);
+        let Some(creature) = self
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == creature_id)
+        else {
+            return false;
+        };
         let rest = resting.map_or(creature.state.position, |moment| moment.rest);
         // Taking what is held out means stepping out of a shared moment, which carries on without
         // it for as long as there are still two.
@@ -1271,6 +1521,7 @@ impl World {
         self.save.home.last_disappeared_utc = Some(now);
         self.end_village_moment(false);
         self.cancel_home_moments();
+        self.end_village_life();
         self.home_moment_timers.clear();
         // Every visit starts with the walk home: nobody picks up a stroll where the last one left
         // off.

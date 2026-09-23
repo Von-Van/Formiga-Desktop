@@ -10,14 +10,15 @@ pub(crate) fn scheduled_colony_object_at(
     from + Duration::days(rng.random_range(3..=7))
 }
 
-pub(crate) fn scheduled_shelter_decoration_at(
+/// When the village is next given something new to choose from: a day or two after the last.
+pub(crate) fn scheduled_village_unlock_at(
     colony_seed: [u8; 32],
     ordinal: u32,
     from: OffsetDateTime,
 ) -> OffsetDateTime {
     let streams = SeedStream::new(colony_seed);
-    let mut rng = streams.rng("shelter-decoration-schedule", u64::from(ordinal));
-    from + Duration::days(rng.random_range(4..=9))
+    let mut rng = streams.rng("village-unlock-schedule", u64::from(ordinal));
+    from + Duration::hours(rng.random_range(24..=48))
 }
 
 impl World {
@@ -56,7 +57,16 @@ impl World {
         };
         let streams = SeedStream::new(self.save.colony_seed);
         let mut rng = streams.rng("colony-object", u64::from(self.save.objects.ordinal));
-        let kind = ColonyObjectKind::ALL[rng.random_range(0..ColonyObjectKind::ALL.len())];
+        // Something the yard does not have yet, while there is anything it does not have.
+        let fresh: Vec<ColonyObjectKind> = ColonyObjectKind::ALL
+            .into_iter()
+            .filter(|kind| !self.save.objects.objects.iter().any(|o| o.kind == *kind))
+            .collect();
+        let kind = if fresh.is_empty() {
+            ColonyObjectKind::ALL[rng.random_range(0..ColonyObjectKind::ALL.len())]
+        } else {
+            fresh[rng.random_range(0..fresh.len())]
+        };
         let cottages = colony_cottages(&self.save.creatures);
         let point = home_object_position(
             &self.save.home,
@@ -102,26 +112,31 @@ impl World {
         );
     }
 
-    pub(super) fn process_shelter_decorations(&mut self, now: OffsetDateTime) {
-        if self.save.home.decorations.decorations.len() >= MAX_SHELTER_DECORATIONS
-            || self.save.home.decorations.next_at_utc > now
-        {
+    /// Every day or two, one more thing for the village to choose from, picked by what the colony
+    /// has been doing. A decoration goes straight up on the colony house when the place it hangs
+    /// there is free, the way earned decorations always have; everything else waits on the Home
+    /// page to be put down. At most one arrives however long the colony has been away.
+    pub(super) fn process_village_unlocks(&mut self, now: OffsetDateTime) {
+        if self.save.home.unlocks.next_at_utc > now {
             return;
         }
-        let Some(kind) = preferred_shelter_decoration(&self.save) else {
+        let Some(item) = preferred_village_unlock(&self.save) else {
             return;
         };
-        self.save.home.decorations.decorations.push(kind);
-        self.save.home.decorations.ordinal = self.save.home.decorations.ordinal.saturating_add(1);
-        self.save.home.decorations.next_at_utc = scheduled_shelter_decoration_at(
-            self.save.colony_seed,
-            self.save.home.decorations.ordinal,
-            now,
-        );
-        Self::emit(
-            &mut self.events,
-            WorldEvent::ShelterDecorationAdded { kind },
-        );
+        let home = &mut self.save.home;
+        home.unlocks.grant(item);
+        if let VillageItem::Decoration(kind) = item {
+            let owners = house_owners(&self.save.creatures, &home.cottage_order);
+            if let Some(keeper) = owners.as_slice().first().copied()
+                && home.decoration_in(keeper, kind.slot()).is_none()
+            {
+                home.set_decoration(keeper, kind.slot(), Some(kind));
+            }
+        }
+        home.unlocks.ordinal = home.unlocks.ordinal.saturating_add(1);
+        home.unlocks.next_at_utc =
+            scheduled_village_unlock_at(self.save.colony_seed, home.unlocks.ordinal, now);
+        Self::emit(&mut self.events, WorldEvent::VillageUnlocked { item });
     }
 
     pub(super) fn reconcile_colony_objects(&mut self, desktop: &DesktopSnapshot) {
@@ -188,81 +203,201 @@ pub(super) fn nearby_object_utility(
     utility
 }
 
-pub(super) fn preferred_shelter_decoration(save: &SaveFile) -> Option<ShelterDecorationKind> {
-    let mut scores = [0_u64; MAX_SHELTER_DECORATIONS];
+/// What a colony's days have mostly been about, as the village reads it when choosing what comes
+/// next. Each thing the village can gain belongs to one of these.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VillageTheme {
+    /// Climbing, riding and the view from up high.
+    Sky,
+    /// Leaves, vines and green things.
+    Nature,
+    /// Company, play and parties.
+    Social,
+    /// Naps, lamps and quiet evenings.
+    Rest,
+    /// Finding and looking at things.
+    Curiosity,
+    /// Home itself: doorsteps, paths and the things by the door.
+    Home,
+    /// Growing things.
+    Garden,
+    /// Games and making a noise.
+    Play,
+}
+
+impl VillageTheme {
+    const ALL: [Self; 8] = [
+        Self::Sky,
+        Self::Nature,
+        Self::Social,
+        Self::Rest,
+        Self::Curiosity,
+        Self::Home,
+        Self::Garden,
+        Self::Play,
+    ];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+}
+
+fn theme_of(item: VillageItem) -> VillageTheme {
+    use ShelterDecorationKind as D;
+    use VillageTheme as T;
+    match item {
+        VillageItem::Decoration(kind) => match kind {
+            D::RoofOrnament | D::WeatherVane | D::PerchedBird | D::Pinwheel | D::WindChime => {
+                T::Sky
+            }
+            D::Leaf | D::Ivy | D::LeafGarland | D::Wreath => T::Nature,
+            D::Banner | D::Pennant | D::PaperLanterns | D::FairyLights => T::Social,
+            D::Lamp | D::Lantern | D::Clock => T::Rest,
+            D::Birdhouse | D::Horseshoe => T::Curiosity,
+            D::Stone | D::Woodpile | D::Barrel | D::Boots | D::Mailbox | D::HouseSign => T::Home,
+            D::Flower
+            | D::Pumpkin
+            | D::Mushrooms
+            | D::WateringCan
+            | D::PottedPlant
+            | D::WindowBox => T::Garden,
+        },
+        VillageItem::Hangout(kind) => match kind {
+            HangoutKind::Cushion
+            | HangoutKind::Hammock
+            | HangoutKind::SunnyRock
+            | HangoutKind::StargazingMat => T::Rest,
+            HangoutKind::Blanket
+            | HangoutKind::TeaTable
+            | HangoutKind::Campfire
+            | HangoutKind::Bench => T::Social,
+            HangoutKind::Lookout | HangoutKind::BirdFeeder | HangoutKind::BookNook => T::Curiosity,
+            HangoutKind::Swing
+            | HangoutKind::Sandbox
+            | HangoutKind::Puddle
+            | HangoutKind::DrumStump => T::Play,
+        },
+        VillageItem::Garden(kind) => match kind {
+            GardenKind::MushroomRing | GardenKind::Cactus => T::Nature,
+            _ => T::Garden,
+        },
+        VillageItem::Ornament(kind) => match kind {
+            OrnamentKind::LampPost => T::Rest,
+            OrnamentKind::BirdBath | OrnamentKind::Signpost | OrnamentKind::MailboxPost => {
+                T::Curiosity
+            }
+            OrnamentKind::WishingWell
+            | OrnamentKind::PicketFence
+            | OrnamentKind::SteppingStones
+            | OrnamentKind::StoneCairn => T::Home,
+            OrnamentKind::Scarecrow | OrnamentKind::Wheelbarrow | OrnamentKind::Beehive => {
+                T::Garden
+            }
+            OrnamentKind::WindSpinner | OrnamentKind::FlagPole => T::Sky,
+            OrnamentKind::LilyPond => T::Nature,
+            OrnamentKind::LogStool => T::Social,
+        },
+    }
+}
+
+/// How much of each theme the colony's own record shows: its memories, its bonds, the last ritual
+/// it held, the belongings it keeps, and the gardens it has planted.
+fn theme_scores(save: &SaveFile) -> [u64; VillageTheme::ALL.len()] {
+    use VillageTheme as T;
+    let mut scores = [0_u64; VillageTheme::ALL.len()];
+    let mut add = |theme: T, amount: u64| {
+        scores[theme.index()] = scores[theme.index()].saturating_add(amount);
+    };
     for creature in &save.creatures {
         let memory = &creature.memory;
-        scores[ShelterDecorationKind::Leaf.index()] = scores[ShelterDecorationKind::Leaf.index()]
-            .saturating_add(u64::from(memory.ledge_seconds / 60))
-            .saturating_add(u64::from(memory.window_climbs).saturating_mul(20));
-        scores[ShelterDecorationKind::Banner.index()] = scores
-            [ShelterDecorationKind::Banner.index()]
-        .saturating_add(u64::from(memory.times_petted).saturating_mul(3))
-        .saturating_add(u64::from(memory.play_sessions).saturating_mul(2));
-        scores[ShelterDecorationKind::Stone.index()] = scores[ShelterDecorationKind::Stone.index()]
-            .saturating_add(u64::from(memory.placements).saturating_mul(4))
-            .saturating_add(u64::from(memory.home_visits).saturating_mul(6));
-        scores[ShelterDecorationKind::Flower.index()] = scores
-            [ShelterDecorationKind::Flower.index()]
-        .saturating_add(u64::from(memory.discoveries_found).saturating_mul(4))
-        .saturating_add(u64::from(memory.times_petted));
-        scores[ShelterDecorationKind::Lamp.index()] = scores[ShelterDecorationKind::Lamp.index()]
-            .saturating_add(u64::from(memory.longest_sleep_seconds / 60))
-            .saturating_add(u64::from(memory.home_visits).saturating_mul(8));
-        scores[ShelterDecorationKind::RoofOrnament.index()] = scores
-            [ShelterDecorationKind::RoofOrnament.index()]
-        .saturating_add(u64::from(memory.window_climbs).saturating_mul(20))
-        .saturating_add(u64::from(memory.window_ride_seconds / 60))
-        .saturating_add(u64::from(memory.discoveries_found).saturating_mul(3));
+        add(
+            T::Sky,
+            u64::from(memory.window_climbs).saturating_mul(20)
+                + u64::from(memory.window_ride_seconds / 60),
+        );
+        add(T::Nature, u64::from(memory.ledge_seconds / 60));
+        add(
+            T::Social,
+            u64::from(memory.times_petted).saturating_mul(3)
+                + u64::from(memory.play_sessions).saturating_mul(2),
+        );
+        add(
+            T::Rest,
+            u64::from(memory.longest_sleep_seconds / 60)
+                + u64::from(memory.home_visits).saturating_mul(4),
+        );
+        add(
+            T::Curiosity,
+            u64::from(memory.discoveries_found).saturating_mul(6),
+        );
+        add(
+            T::Home,
+            u64::from(memory.placements).saturating_mul(4)
+                + u64::from(memory.home_visits).saturating_mul(6),
+        );
+        add(T::Play, u64::from(memory.play_sessions).saturating_mul(5));
     }
     for relationship in &save.relationships {
-        scores[ShelterDecorationKind::Banner.index()] = scores
-            [ShelterDecorationKind::Banner.index()]
-        .saturating_add(u64::from(relationship.affinity))
-        .saturating_add(u64::from(relationship.familiarity));
-        scores[ShelterDecorationKind::Flower.index()] = scores
-            [ShelterDecorationKind::Flower.index()]
-        .saturating_add(u64::from(relationship.playfulness));
-        scores[ShelterDecorationKind::Stone.index()] = scores[ShelterDecorationKind::Stone.index()]
-            .saturating_add(u64::from(relationship.avoidance));
+        add(
+            T::Social,
+            u64::from(relationship.affinity) + u64::from(relationship.familiarity),
+        );
+        add(T::Play, u64::from(relationship.playfulness));
     }
     if let Some(kind) = save.ritual.last_kind {
-        let decoration = match kind {
-            RitualKind::Picnic => ShelterDecorationKind::Flower,
-            RitualKind::GroupNap | RitualKind::LateNightSleepPile => ShelterDecorationKind::Lamp,
-            RitualKind::FloorRace => ShelterDecorationKind::RoofOrnament,
-            RitualKind::ShelterGathering | RitualKind::QuietDayHuddle => {
-                ShelterDecorationKind::Leaf
-            }
+        let theme = match kind {
+            RitualKind::Picnic => T::Garden,
+            RitualKind::GroupNap | RitualKind::LateNightSleepPile => T::Rest,
+            RitualKind::FloorRace => T::Play,
+            RitualKind::ShelterGathering | RitualKind::QuietDayHuddle => T::Home,
             RitualKind::Catch
             | RitualKind::GroupPresentation
             | RitualKind::HatchDay
-            | RitualKind::Dance => ShelterDecorationKind::Banner,
+            | RitualKind::Dance => T::Social,
         };
-        scores[decoration.index()] = scores[decoration.index()].saturating_add(256);
+        add(theme, 256);
     }
     for object in &save.objects.objects {
-        let decoration = match object.kind {
-            ColonyObjectKind::Pillow | ColonyObjectKind::Blanket | ColonyObjectKind::Lamp => {
-                ShelterDecorationKind::Lamp
-            }
-            ColonyObjectKind::Toy | ColonyObjectKind::Cup => ShelterDecorationKind::Banner,
-            ColonyObjectKind::Plant => ShelterDecorationKind::Flower,
-            ColonyObjectKind::Paper => ShelterDecorationKind::Leaf,
-            ColonyObjectKind::Pebble => ShelterDecorationKind::Stone,
+        let theme = match object.role {
+            ColonyObjectRole::Sleep | ColonyObjectRole::Comfort => T::Rest,
+            ColonyObjectRole::Play => T::Play,
+            ColonyObjectRole::Social => T::Social,
+            ColonyObjectRole::Curiosity => T::Curiosity,
         };
-        scores[decoration.index()] = scores[decoration.index()].saturating_add(128);
+        add(theme, 128);
     }
+    add(T::Garden, save.home.gardens.len() as u64 * 192);
+    scores
+}
 
+/// What the village gains next. Categories take turns — the one with the most still to come is
+/// likeliest — and within them what the colony has been doing decides, with the colony's own seed
+/// to break ties. `None` once the village has everything.
+pub(super) fn preferred_village_unlock(save: &SaveFile) -> Option<VillageItem> {
+    let unlocks = &save.home.unlocks;
+    let themes = theme_scores(save);
+    let busiest = themes.iter().copied().max().unwrap_or(0).max(1) as f32;
+    let still_to_come = |item: VillageItem| -> f32 {
+        let (have, of) = match item {
+            VillageItem::Decoration(_) => {
+                (unlocks.decorations.len(), ShelterDecorationKind::ALL.len())
+            }
+            VillageItem::Hangout(_) => (unlocks.hangouts.len(), HangoutKind::ALL.len()),
+            VillageItem::Garden(_) => (unlocks.gardens.len(), GardenKind::ALL.len()),
+            VillageItem::Ornament(_) => (unlocks.ornaments.len(), OrnamentKind::ALL.len()),
+        };
+        1.0 - have as f32 / of.max(1) as f32
+    };
     let streams = SeedStream::new(save.colony_seed);
-    let mut rng = streams.rng(
-        "shelter-decoration-choice",
-        u64::from(save.home.decorations.ordinal),
-    );
-    ShelterDecorationKind::ALL
-        .into_iter()
-        .filter(|kind| !save.home.decorations.decorations.contains(kind))
-        .map(|kind| (scores[kind.index()], rng.random::<u16>(), kind))
-        .max()
-        .map(|(_, _, kind)| kind)
+    let mut rng = streams.rng("village-unlock-choice", u64::from(unlocks.ordinal));
+    unlocks
+        .remaining()
+        .map(|item| {
+            let theme = themes[theme_of(item).index()] as f32 / busiest;
+            let jitter: f32 = rng.random_range(0.0..0.3);
+            let score = still_to_come(item) * 0.6 + theme * 0.4 + jitter;
+            (item, score)
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(item, _)| item)
 }

@@ -92,7 +92,8 @@ fn fixture() -> (SaveFile, Vec<MonitorInfo>) {
         creature: None,
         moment: JournalMoment::Visit("Wanderer 0".into()),
     });
-    world.save.home.decorations.decorations = ShelterDecorationKind::ALL.to_vec();
+    // Every decoration there is, so each place on a house has something to choose from.
+    world.save.home.unlocks.decorations = ShelterDecorationKind::ALL.to_vec();
     world.save.objects.objects = ColonyObjectKind::ALL
         .iter()
         .enumerate()
@@ -487,6 +488,40 @@ impl Harness {
         output.textures_delta.clear();
         outcome
     }
+    /// Where the Home page's preview drew something that can be picked out, last frame.
+    fn shown(&mut self, picked: crate::clubhouse::arrange::Picked) -> egui::Rect {
+        self.frame(Vec::new());
+        self.frame(Vec::new());
+        self.clubhouse
+            .arrange
+            .shown
+            .iter()
+            .find(|(candidate, _)| *candidate == picked)
+            .unwrap_or_else(|| panic!("{picked:?} is not in the preview"))
+            .1
+    }
+
+    /// Takes hold of whatever is at `from` and lets it go at `to`, a few frames along the way.
+    fn drag(&mut self, from: egui::Pos2, to: egui::Pos2) -> SettingsOutcome {
+        self.frame(vec![egui::Event::PointerMoved(from)]);
+        self.frame(vec![egui::Event::PointerButton {
+            pos: from,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Default::default(),
+        }]);
+        for step in 1..=4 {
+            let t = step as f32 / 4.0;
+            self.frame(vec![egui::Event::PointerMoved(from + (to - from) * t)]);
+        }
+        self.frame(vec![egui::Event::PointerButton {
+            pos: to,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        }])
+    }
+
     fn click(&mut self, label: &str) -> SettingsOutcome {
         self.frame(Vec::new());
         self.frame(Vec::new());
@@ -502,6 +537,10 @@ impl Harness {
             })
             .1
             .center();
+        self.click_at(point)
+    }
+
+    fn click_at(&mut self, point: egui::Pos2) -> SettingsOutcome {
         self.frame(vec![
             egui::Event::PointerMoved(point),
             egui::Event::PointerButton {
@@ -609,7 +648,19 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
         h.click("Bottom left").home_corner,
         Some(HomeCorner::BottomLeft)
     );
-    assert_eq!(h.click("Leaf").hidden_decorations, Some(1));
+    // A house picked out in the preview, and something hung on its roof.
+    let founder = house_owners(&h.save.creatures, &[]).as_slice()[0];
+    let house = h.shown(crate::clubhouse::arrange::Picked::House(founder));
+    h.click_at(house.center());
+    h.click("Nothing");
+    assert_eq!(
+        h.click("Roof star").set_decoration,
+        Some((
+            founder,
+            DecorationSlot::Roof,
+            Some(ShelterDecorationKind::RoofOrnament)
+        ))
+    );
     assert_eq!(h.click("Further").move_object, Some((0, 1)));
     h.tab = SettingsTab::Colony;
     h.save.companion.onboarding_complete = false;
@@ -814,8 +865,12 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 /// resident's curtain, and the Home page's daylit village grew from 128x128 to 256x128: 64 KiB
 /// more, which moved this to 496 KiB. The object sheet then grew from eight cells to fourteen,
 /// three hangout spots and three garden patches of 16x16 each: 6 KiB more, which is what moves
-/// this to 500 KiB.
-const ARTWORK_BUDGET: usize = 500 * 1024;
+/// this to 500 KiB. In 0.60.0 the scrapbook became a Collection of 160 keepsakes, of which the
+/// pages hold only the resting half of the sheet (160 KiB, 128 KiB more); the object sheet grew
+/// to carry every garden at every stage, fifteen spots, fifteen ornaments and the village's
+/// props (112 KiB, 98 KiB more); the Home page's village shrank to the one row it draws (128 KiB,
+/// no change); and a companion trying something on shows four poses (36 KiB): 760 KiB.
+const ARTWORK_BUDGET: usize = 760 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -883,9 +938,9 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
         bytes <= ARTWORK_BUDGET,
         "UI artwork exceeded budget: {bytes}"
     );
-    // Four portraits, four candidate strips, the village atlas, the object atlas, and one sheet
-    // holding every trinket — sixteen of them now, for the price of one texture.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1);
+    // Four portraits, four candidate strips, the village atlas, the object atlas, one sheet
+    // holding every trinket, and the last companion looked at trying something on in four poses.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 4);
 }
 
 #[test]
@@ -1081,37 +1136,56 @@ fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
     );
 }
 
-/// A hangout spot is put down in the middle of the ground from the Home page, slides along it,
-/// and is picked up again. The page only asks: the app is what changes the colony.
+/// Anything the village has can be put down on its ground from the shelves on the Home page —
+/// somewhere with room, in the widest gap left — and taken up again the same way. The page only
+/// asks: the app is what changes the colony.
 #[test]
-fn a_hangout_spot_is_put_down_and_picked_up_from_the_home_page() {
+fn things_are_put_down_on_the_ground_and_taken_up_again_from_the_shelves() {
     let mut h = Harness::new(SettingsTab::Home);
     let before = h.save.clone();
-    assert_eq!(
-        h.click("Put down").set_hangout,
-        Some((HangoutKind::Cushion, Some(0.5)))
-    );
-    assert!(h.save == before, "asking never changes the colony itself");
-    h.save.home.set_hangout(HangoutKind::Cushion, Some(0.5));
-    h.frame(Vec::new());
-    for label in ["Nap cushion", "Picnic blanket", "Lookout", "Left", "Right"] {
+    for shelf in ["Gardens", "Hangout spots", "Ornaments"] {
+        h.frame(Vec::new());
         assert!(
-            h.labels.iter().any(|(text, _)| text == label),
-            "{label} is on the page"
+            h.labels.iter().any(|(text, _)| text == shelf),
+            "the {shelf} shelf is on the page"
         );
     }
     assert_eq!(
-        h.click("Put down").set_hangout,
+        h.click("Nap cushion").set_hangout,
+        Some((HangoutKind::Cushion, Some(0.5)))
+    );
+    assert_eq!(
+        h.click("Flower bed").set_garden,
+        Some((GardenKind::Flowers, Some(0.5)))
+    );
+    assert_eq!(
+        h.click("Lamp post").set_ornament,
+        Some((OrnamentKind::LampPost, Some(0.5)))
+    );
+    assert!(h.save == before, "asking never changes the colony itself");
+    // With the cushion down in the middle, the next thing goes in the middle of a side.
+    h.save.home.set_hangout(HangoutKind::Cushion, Some(0.5));
+    let (kind, along) = h.click("Flower bed").set_garden.unwrap();
+    assert_eq!(kind, GardenKind::Flowers);
+    let along = along.unwrap();
+    assert!(
+        (along - 0.775).abs() < 1e-4 || (along - 0.225).abs() < 1e-4,
+        "{along}"
+    );
+    assert_eq!(
+        h.click("Nap cushion").set_hangout,
         Some((HangoutKind::Cushion, None))
     );
 }
 
-/// The village is arranged from the Home page: a cottage moved further along, a garden planted, a
-/// named palette chosen, and all of it put back as it grew once that has been asked twice. The
-/// page only asks: the app is what changes the colony.
+/// The village is arranged in its preview: a cottage carried along the row to stand further out,
+/// something on the ground carried along it, a named palette chosen, and all of it put back as it
+/// grew once that has been asked twice. The page only asks: the app is what changes the colony.
 #[test]
-fn the_village_is_arranged_from_the_home_page() {
+fn the_village_is_arranged_in_its_preview() {
+    use crate::clubhouse::arrange::Picked;
     let mut h = Harness::new(SettingsTab::Home);
+    h.save.home.corner = HomeCorner::BottomLeft;
     // Two cottages to put in order: one of the minis grown up for the purpose.
     let grown = h
         .save
@@ -1121,17 +1195,34 @@ fn the_village_is_arranged_from_the_home_page() {
         .expect("the fixture has a mini");
     h.save.creatures[grown].role = CreatureRole::Adult;
     let owners = house_owners(&h.save.creatures, &[]);
-    let owners = owners.as_slice();
+    let owners = owners.as_slice().to_vec();
     assert_eq!(owners.len(), 3);
+    h.save.home.set_hangout(HangoutKind::Cushion, Some(0.2));
     let before = h.save.clone();
-    assert_eq!(
-        h.click("Further").cottage_order,
-        Some(vec![owners[2], owners[1]])
+    h.click("Arrange");
+    // The first cottage, carried past the second.
+    let first = h.shown(Picked::House(owners[1]));
+    let second = h.shown(Picked::House(owners[2]));
+    let outcome = h.drag(
+        first.center(),
+        egui::pos2(second.right() + 4.0, first.center().y),
     );
-    assert_eq!(
-        h.click("Plant").set_garden,
-        Some((GardenKind::Flowers, Some(0.5)))
+    assert_eq!(outcome.cottage_order, Some(vec![owners[2], owners[1]]));
+    // The colony house always stands first, and cannot be carried anywhere.
+    let colony = h.shown(Picked::House(owners[0]));
+    let outcome = h.drag(
+        colony.center(),
+        egui::pos2(second.right() + 4.0, colony.center().y),
     );
+    assert!(outcome.cottage_order.is_none());
+    // The cushion, carried along the ground to the right.
+    let cushion = h.shown(Picked::Ground(GroundItem::Hangout(HangoutKind::Cushion)));
+    let outcome = h.drag(cushion.center(), cushion.center() + egui::vec2(60.0, 0.0));
+    let (kind, along) = outcome
+        .set_hangout
+        .expect("the cushion was let go somewhere");
+    assert_eq!(kind, HangoutKind::Cushion);
+    assert!(along.is_some_and(|along| along > 0.2), "{along:?}");
     h.click("From the colony");
     assert_eq!(
         h.click("Autumn").village_palette,
@@ -1139,13 +1230,16 @@ fn the_village_is_arranged_from_the_home_page() {
     );
     assert!(h.save == before, "asking never changes the colony itself");
 
-    // Nothing is arranged yet, so there is nothing to put back.
+    // Nothing is arranged yet but the cushion, and a spot stays where it is, so there is nothing
+    // to put back.
     let reset = "Put the village back as it grew…";
     assert!(!h.click(reset).reset_village);
     assert!(!h.labels.iter().any(|(text, _)| text == "Put back"));
 
     h.save.home.palette = Some(VillagePalette::Autumn);
-    h.save.home.set_garden(GardenKind::Herbs, Some(0.3));
+    h.save
+        .home
+        .set_garden(GardenKind::Herbs, Some(0.3), h.save.created_at_utc);
     assert!(!h.click(reset).reset_village, "the first click only asks");
     assert!(!h.click("Keep them").reset_village);
     h.frame(Vec::new());
@@ -1213,6 +1307,9 @@ fn a_house_is_built_as_another_type_from_the_home_page() {
     }
     let founder = house_owners(&h.save.creatures, &[]).as_slice()[0];
     let before = h.save.clone();
+    // Picked out in the preview, whichever house it is.
+    let house = h.shown(crate::clubhouse::arrange::Picked::House(founder));
+    h.click_at(house.center());
     h.click("Tent");
     assert_eq!(
         h.click("Mushroom").house_style,

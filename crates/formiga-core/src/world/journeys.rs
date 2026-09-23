@@ -596,13 +596,23 @@ pub(super) fn crossed_inspection_anchor(
         .any(|anchor| (path_min..=path_max).contains(&anchor))
 }
 
+/// The shortest climb worth making, in points.
+const MIN_CLIMB: f32 = 36.0;
+/// How far to either side a companion on the floor will go to climb a window, in points.
+const FLOOR_REACH_ACROSS: f32 = 420.0;
+/// How much of its own height a companion needs clear above a ledge, below the top of the
+/// screen, to sit on it without its head going under the menu bar.
+const LEDGE_HEADROOM_FRAMES: f32 = 0.85;
+
 pub(super) fn find_nearby_ledge(
     creature: &Creature,
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     topology: &DesktopTopology,
+    display_scale: u8,
 ) -> Option<(Point, SurfaceAttachment)> {
     let current_window = creature.state.surface.window_key;
+    let on_the_floor = creature.state.surface.kind == SurfaceKind::ScreenFloor;
     let candidate = topology
         .windows()
         .iter()
@@ -622,8 +632,21 @@ pub(super) fn find_nearby_ledge(
                     y: window.bounds.y,
                 })
             })?;
-            let reachable = dx <= 360.0
-                && (36.0..=640.0).contains(&dy)
+            // From the floor, any window is worth climbing however tall it stands, so long as
+            // a companion sitting on top of it still fits below the top of the screen: a big
+            // window is most of what a desktop has to climb. From one ledge to another the reach
+            // stays a single staircase step.
+            let frame = spacing::frame_width(display_scale, monitor.scale_factor);
+            let fits_below_the_top =
+                window.bounds.y - frame * LEDGE_HEADROOM_FRAMES >= monitor.usable_bounds.y;
+            let rise = creature.state.position.y - window.bounds.y;
+            let within_reach = if on_the_floor {
+                dx <= FLOOR_REACH_ACROSS && rise >= MIN_CLIMB
+            } else {
+                dx <= 360.0 && (MIN_CLIMB..=640.0).contains(&dy)
+            };
+            let reachable = within_reach
+                && fits_below_the_top
                 && habitat_contains(
                     policy,
                     monitor,

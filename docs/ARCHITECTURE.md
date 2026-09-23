@@ -162,17 +162,19 @@ keep them in place.
 
 `world.rs` holds `World` itself: its fields, `new`, `from_save`, `tick`, and the small helpers that
 belong to none of the themes. Everything else lives in a child module named after what it is about —
-`world/arrivals.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`, `discovery.rs`, `experience.rs`,
-`generation.rs`, `habits.rs`, `home.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`,
-`movement.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`,
-`surfaces.rs`, `tows.rs`, `undo.rs`, `visitors.rs`, and the `attention/` family. Each module adds
+`world/arrivals.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`, `discovery.rs`,
+`experience.rs`, `generation.rs`, `habits.rs`, `home.rs`, `interaction.rs`, `journeys.rs`,
+`moments.rs`, `movement.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`,
+`spacing.rs`, `surfaces.rs`, `tows.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, and the
+`attention/` family. Each module adds
 methods to the one `World` type rather than owning state of its own, so there is still a single
 simulation object and a single tick.
 
 Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bonds`, `bubbles`,
 `colony_management`, `companion`, `discovery`, `experience`, `habits`, `hangouts`, `home`,
 `interaction`, `journeys`, `misc`, `moments`, `objects_and_decorations`, `offers`, `perches`,
-`rituals`, `spacing`, `topology_and_attention`, `tows`, `undo`, `village`, `visitors` — with the
+`rituals`, `spacing`, `topology_and_attention`, `tows`, `undo`, `village`, `village_life`,
+`visitors` — with the
 shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
 behaviour-preserving: a differential harness ran five seeds for 18,000 ticks each against 0.57.1
 and compared the event streams and serialized saves byte for byte.
@@ -253,16 +255,18 @@ while `PresentDiscovery` is active. There is still no inventory, runtime generat
 collection; the only durable record is the scrapbook's one first-find row per variant.
 
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
-The face texture contains eleven expressions, nine gaze directions, three eyelid states, and one
-eight-slot trinket row. That row is still baked, at the same size and in the same place, but nothing
-samples it any more: the overlay's discovery quad and the settings scrapbook both read the colony
-trinket atlas instead. The body atlas holds exactly 130 unique frames: 92 for actions, because
-`Tossed` reuses the dragged body clip, and 38 for eleven gesture poses, laid out as ten columns by
-thirteen rows. That thirteenth row is now full: the two slots the rest loop grew into were the last
-spare ones, so the next clip that wants a frame has to find it in one already baked. Runtime work
-normally selects two slots and draws two nearest-filtered quads; discovery alone adds one temporary
-quad. The combined textures are exactly 1,529,856 bytes per creature — 9,179,136 for a full colony
-of six — and are enforced below a 4,500,000-byte test limit, raised deliberately from 1.5 MB so the
+The face texture contains twelve expressions — the twelfth the yawn's, eyes screwed shut and the
+mouth wide — nine gaze directions, three eyelid states, and one eight-slot trinket row. That row is
+still baked, at the same size and in the same place, but nothing samples it any more: the overlay's
+discovery quad and the settings pages both read the colony trinket atlas instead. The body atlas
+holds exactly 134 unique frames: 92 for actions, because `Tossed` reuses the dragged body clip, and
+42 for twelve gesture poses, laid out as ten columns by fourteen rows. The yawn's four frames opened
+the fourteenth row, which has six slots spare. Whatever a companion wears is drawn onto every body
+frame as the atlas is baked, so it costs no quad and no texture of its own. Runtime work normally
+selects two slots and draws two nearest-filtered quads; discovery alone adds one temporary quad, and
+something the village has put in a companion's hands adds one or two from the object sheet. The
+combined textures are exactly 1,649,664 bytes per creature — 9,897,984 for a full colony of six,
+held under 10 MiB — and are enforced below a 4,500,000-byte test limit, raised deliberately from 1.5 MB so the
 pose vocabulary has room to grow without the budget moving each time.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch — are a runtime-only
@@ -662,22 +666,31 @@ placing dwellings and a keepsake tree at each end, and every belonging is scatte
 inside one of the two trees' yards. The same walk drives rendering and nearby utility using the
 home's corner, display, scale, and accessible region. Lots without room remain stored but hidden;
 all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
-village. The renderer builds one 224×16 seed-derived sheet — the eight belongings, the three
-hangout spots, then the three garden patches — retains at most fourteen quads, and rebuilds those
-vertices only when object state, cottages, home state, habitat, display geometry, or scale changes.
+village. The renderer builds one 256×112 seed-derived sheet of 16×16 cells, sixteen to a row — the
+twenty belongings, the fifteen hangout spots, every garden at each of its four stages, the fifteen
+ornaments, and the small things a companion holds or chases in the village: a watering can and its
+water, what is picked from each garden, an apple, a leaf, a blossom, and the Z that drifts up out of
+a house somebody is asleep in. It rebuilds the ground's vertices only when object state, a garden's
+stage, cottages, home state, habitat, display geometry, or scale changes.
 
-Dwellings and trees come from one 256×256 village atlas of 64-pixel cells, four across: the six
-houses by day and the keepsake tree in the top two rows, and the same six houses lit from inside
-in the two rows below. Every house has a cell of its own — the decorated colony house in slot 0
-and a cottage in each later slot — because each is hung with its own resident's curtain, so a
-village needs one cell per house rather than one per kind. Each is drawn into its own cell-sized
-tile so art that would overrun a cell is clipped exactly as it is for a lone shelter. The first
-colony member shares the colony house and each later one adds a single quad sampling its slot's
-cell, by day or after dark, and the two trees add one quad each, so a full village is eight quads
-against one texture and bind group. The Home page and the colony portrait only ever draw by day, so
-they build just the top half, 256×128. Shelter decorations resolve their attachment points from
-the style's own silhouette — peak, eaves, wall, and ground line — so a banner hangs from the real
-roof rather than a shared canvas height.
+Dwellings and trees come from one 512×256 village atlas of 64-pixel cells, eight across: the six
+houses by day and the keepsake tree in the top row, the same six with their residents at home in
+the second, and the same again lit from inside after dark in the two rows below. Every house has a
+cell of its own because each is hung with its own resident's curtain and wears its own
+decorations, so a village needs one cell per house rather than one per kind. A house somebody is
+inside has the curtain drawn right across its door, hanging in folds with lamplight under the hem,
+and a window glowing by day; its silhouette is the same pixel for pixel, so nothing about the house
+moves when somebody goes in. Each cell is drawn into its own cell-sized tile so art that would
+overrun a cell is clipped exactly as it is for a lone shelter. The first colony member shares the
+colony house and each later one adds a single quad sampling its slot's cell — by day or after dark,
+with somebody at home or not — and the two trees add one quad each, so a full village is eight
+quads against one texture and bind group. A house being seen to by its keeper leans or settles
+while the chore lasts: the top of its quad moves a pixel or so, its foot never. The texture is keyed
+on `VillageLook` — the drawn genome, each house's kind, its decorations, and its curtain — so any of
+those changing redraws it once. The Home page only ever draws the houses by day with nobody home,
+so it holds just the top row, 512×64. Decorations resolve their attachment points from the style's
+own silhouette — peak, eaves, walls, and ground line — so a banner hangs from the real roof rather
+than a shared canvas height.
 
 Each style is drawn in the creatures' own pixel-art language, from `shelter/houses.rs`: separate
 materials for the roof or canopy, the walls or supports, and the trim, each with a base, a shade
@@ -717,17 +730,140 @@ boundaries; objects have no physics body, interaction proxy, action state, or up
 
 ## Growing shelter
 
-Save version 10 nests one bounded `ShelterDecorationState` inside the existing home: at most six
-unique typed decorations, one next UTC timestamp, and one ordinal. Every four to nine days, compact
-memory counters, canonical bond scores, the last ritual kind, and colony-object kinds contribute to
-six deterministic decoration scores. A named seed stream breaks ties, the highest unused kind is
-stored, and an overdue colony schedules from the current maximum-seen time after adding at most one.
+Save version 19 keeps what the village has to choose from in `VillageUnlocks`: the decorations,
+hangout spots, gardens and ornaments it has so far, when the next one arrives, and an ordinal. A new
+colony starts with three of each. Every 24 to 48 hours — `scheduled_village_unlock_at`, from a named
+seed stream — one more arrives, chosen by `preferred_village_unlock`. Categories take turns, the
+one with the most still to come likeliest; within them, what the colony has been up to decides:
+its companions' memory counters, its bonds, its last ritual, its belongings and its gardens score
+eight themes — sky, nature, company, rest, curiosity, home, garden, play — and every item not yet
+had scores its theme, with a little jitter from a seed stream of its own. A colony that has been
+away gains one item when it opens and schedules the next from then, rather than catching up on
+every one it missed. Each arrival is a `VillageUnlocked` event and a journal line, and a new
+decoration goes straight up on the colony house if its place there is empty, as earned ones always
+did.
 
-`ShelterRenderer::render_with_decorations` draws leaf, banner, stone, flower, lamp, and roof ornament
-pixels onto the same deterministic 64×64 CPU canvas after the shelter genome is resolved. The GPU
-shelter cache key contains only that genome and the bounded decoration list. A state change replaces
-the single shelter texture; normal presentation still uses one shelter quad, one bind group, and one
-draw call. Decorations have no world position, action, editor, animation, physics, or render loop.
+Decorations belong to houses rather than to the colony. There are thirty, each for one of six places
+on a house — `DecorationSlot::{Roof, Eaves, WallLeft, WallRight, GroundLeft, GroundRight}` — and
+`HouseDressing` keeps, for the companion who keeps each house, at most one decoration per place.
+`set_decoration` refuses one the village has not got or one that does not belong in that place, and
+`house_decoration_list` lays them out by house slot for the village atlas. A colony from before
+version 19 had one list of earned decorations for the colony house and a bitmask of hidden ones:
+the migration makes every earned decoration unlocked and hangs the ones that were showing on the
+colony house, in their places.
+
+`ShelterRenderer` draws each house with its own decorations from `shelter/decorations.rs`, placed
+from the house's own silhouette and pulled in to stay inside the house's lot. The GPU shelter cache
+key is the whole `VillageLook`, so a change to any house's decorations replaces the single village
+texture; presentation is still one quad per house, one bind group, and one draw call. Decorations
+have no world position, action, physics, or render loop of their own.
+
+## Village life
+
+While the houses are out, a resident with time on its hands — the moment a quiet moment at its door
+would otherwise come round — chooses between one of those moments and a plan about the village, in
+`world/village_life.rs`. A plan is a few steps — walk somewhere, do the thing, perhaps find
+something, go back to strolling — and owns the resident's feet while it lasts, the way a quiet
+moment does:
+
+- **The garden.** `GardenPatch::stage(now)` goes round sprout, growing, grown and bounty on each
+  kind's own clock, from when it was planted, and back again; a patch planted before gardens grew
+  is taken to have been planted long ago, somewhere round its cycle. A visit waters any patch, looks
+  in on one still sprouting or growing, picks from an edible one that is grown or at its fullest and
+  eats what it picked, or carries something from a patch at its fullest over to a resting friend,
+  who looks on pleased.
+- **A chore at its own house**, in the way the house's kind asks: retying a tent's flap, plumping a
+  pillow fort, patting a mushroom's cap, tidying a leaf house's leaves. `World::house_motions`
+  reports it with how far through it is, and the overlay leans or settles the house to answer.
+- **Indoors** for a spell, pottering or napping: the resident is marked `indoors`, drawn nowhere and
+  out of reach of the pointer, and `World::house_occupancy` names the house so the overlay draws its
+  occupied cell and, for a nap, the Zs. At most `max_indoors(residents)` are in at once — none while
+  there is only one resident, one for two or three, two beyond that.
+- **Up on its own roof**, in a little hop to the height `house_roof_height` gives: measured from the
+  house's proportions the way it is drawn, since the simulation cannot draw a house, and held to the
+  drawing within a pixel for every kind at every height by a test in the art crate.
+- **A mishap**: a leaf on the face, a snack that rolls away and is chased, or sitting down beside
+  the nap cushion and shuffling onto it. `World::loose_props` reports the leaf or the apple and
+  where it is.
+
+Only one plan out and about runs at a time, beside the one quiet moment the village already
+allowed, and a spell indoors counts against its own limit instead. Watering or looking in on a
+garden, a chore, or a spell on a roof turns something up one time in seven, with the at-home
+circumstances and the calendar's; the find completes as `PresentDiscovery` does anywhere, which is
+what writes it into the scrapbook. A friend nearby stops to look at a mishap or a find.
+
+A plan notes the ground it was made on — the commons, where the resident's own house stands and
+which house it is, and where the patch it set off for is — and is let go the moment any of that
+changes, so a cottage carried along the row or a corner changed never leaves somebody inside the
+wrong house or sitting on a roof that has moved away. Every plan is runtime only: ending a visit,
+pausing, hiding, reduced motion, an offer, a shared village moment, or picking the resident up ends
+it, and puts the resident back on the ground outside — or, picked up off a roof, leaves it where it
+was taken from, to hop down once it is let go.
+
+## Beats, and a yawn going round
+
+A `Beat` on a creature's state is a few seconds of something small: a yawn, holding one back, a look
+over at somebody, a start at a leaf, watering, a chore, sitting up on a roof. `world/beats.rs` moves
+each one on, lets it go when it is over or when something bigger takes over — being picked up, a
+scene, a reaction — and holds the creature still while it lasts, on the desktop and at home alike;
+the action it was doing waits rather than running out underneath it. The art reads the beat's
+progress to choose a pose, a face, eyelids and a gaze, and anything held, and shows the action's own
+clip for any stretch of it that asks for no pose.
+
+Every two and a half to six minutes somebody free for it yawns, weighted to the sleepiest. The
+nearest free friend on the same ground within three and a half creature widths catches it four
+times in five: a look over after 0.4–0.9 seconds, lasting 0.7–1.4, and then its own yawn. Two times
+in five the nearest free friend of that friend catches it too, and holds out for 1.3–2.1 seconds
+before giving in. Each link waits in a queue under a chain number; a friend no longer free when its
+turn comes takes the rest of its chain with it, and the next link of a chain follows straight on
+from the last without the two having to line up to the tick. A beat stream of its own makes every
+choice, so yawning never shifts any other choice the colony makes, and nothing about it is saved.
+
+## Something to wear
+
+`formiga-core::accessories` holds the twenty `AccessoryKind`s, each made from one catalogue variant
+and worn on the head, round the neck, across the body, or pinned on the chest, and
+`Accessory::{Worn, Pin}` — a find itself worn as a pin. What a colony can wear is read from its
+scrapbook and nothing else: `available_accessories` is every kind whose find has turned up, then
+every find as a pin. `World::set_accessory` puts one on, swaps it, or with `None` takes it off,
+refusing anything not found; `from_save` takes off anything a file names that the colony has not
+found. A share code never carries one.
+
+`renderer/accessories.rs` draws the piece onto every body frame as the atlas is baked, placed from
+the `Figure` that frame's body reports — the top of the head, the neck, the chest, the hip — so it
+follows every pose at a mini's size as well as an adult's, in the inks the colony's trinket sheet
+gives the find it is made from. The overlay rebakes a companion's atlas only when what it wears
+changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
+
+## Arranging the village
+
+The Home page's preview is drawn from the same layout functions the overlay uses, and in Arrange
+mode each house and each thing on the ground is something to take hold of. A cottage carried along
+the row drops into the gap it was carried to — the cottages ahead of where it was let go, in the
+direction the village runs, is its new place — and the colony house, always first, cannot be
+carried. Something on the ground carried along it is let go as a fraction of the ground a companion
+may stand on, and the layout keeps its usual room between things. The arrow keys nudge whatever is
+picked out: a thing on the ground by four hundredths of the ground, a cottage one place along the
+row. A house picked out shows its keeper, anyone else who lives there, its kind and its six places
+to decorate. Nothing is written until something is let go, and every change goes through the same
+outcomes as the rest of the page, so each can be undone.
+
+## How high companions go
+
+`find_nearby_ledge` lets a companion on the floor think of any window at least 36 points above it
+and within 420 points to either side, however tall it stands, so long as a companion sitting on top
+of it would still fit beneath the top of the display's usable area — 0.85 of a creature frame of
+headroom — since the overlay sits beneath the menu bar and a head up there would be cut off. From
+one ledge to another the reach stays a single staircase step, within 360 points across and 640 up
+or down, and planned routes keep their own limits.
+
+Everybody comes down now and then. Each time a companion up on a ledge chooses something other
+than perching or riding, it takes it to the floor with a chance that follows its leaning — 0.7 for
+a floor-dweller, 0.4 for a homebody, 0.35 for one that likes to be anywhere, 0.05 for a climber —
+and then does not think of climbing for a while: 35–90 seconds for one that likes to be anywhere,
+15–40 for a climber, 60–150 for a homebody, 90–200 for a floor-dweller. On the measurement harness
+in `world/tests/misc.rs` (`measure_time_on_ledges`, run with `--ignored`), four companions that
+like to be anywhere spend 40–49% of their time up high on desktops with anything to climb.
 
 ## The village yard
 
@@ -778,19 +914,20 @@ pixel of air past the widest thing in it. `HOME_EDGE_MARGIN` keeps its formula �
 whole lot against the edge of the display. The inward tree needs no margin of its own: the strip
 runs away from the edge, and a region that cannot take the inward end simply does not show it.
 
-`TreeEnd::of_trinket(variant)` splits the catalogue in half: the eight `TrinketCondition::Anywhere`
-finds, variants 0–7, hang in the outward tree by the colony house, and the eight conditional ones,
-variants 8–15, in the inward tree at the far end. `TRINKETS_PER_TREE` is `TRINKET_VARIANTS / 2` = 8,
-which is also the length of `formiga_art::TRINKET_ANCHORS` — four pairs mirrored about the middle
-of the cell, highest and most central filled first — so neither tree can overflow, and a keepsake
-depends on its variant alone, so it never moves once found and never changes ends when the village
-mirrors into the other corner. `formiga_art::trinket_place(variant)` answers with the end and the
-anchor as it is actually drawn there. Because the anchor set is mirror-symmetric, the inward tree
-is the same atlas cell sampled with its horizontal UVs swapped: still one village texture and one
-extra bind group, and every keepsake still meets the cord drawn down to it. The overlay draws one
-16×16 quad per found keepsake from the colony's own trinket atlas, so the trees fill in exactly as
-the scrapbook does. `colony_card.rs` draws both trees the same way, the inward one mirrored, so a
-portrait is not left with orphaned clusters at each end.
+The two trees have sixteen hooks between them, `TREE_HOOKS`: hooks 0–7 are the outward tree's, by
+the colony house, and 8–15 the inward tree's at the far end. `TreeEnd::of_hook` says which, and
+`TRINKETS_PER_TREE` = 8 is also the length of `formiga_art::TRINKET_ANCHORS` — four pairs mirrored
+about the middle of the cell, highest and most central filled first. `hung_keepsakes` decides what
+hangs on each hook. With nothing chosen, the original sixteen finds keep the hooks numbered after
+them, exactly where they always hung, and anything found since fills the hooks still empty in the
+order it was found; with a `TreeKeepsakes` choice from the Collection, exactly what was chosen,
+less anything the scrapbook does not hold. `formiga_art::hook_place(hook)` answers with the end and
+the anchor as it is actually drawn there, and `hung_trinkets` pairs every hung keepsake with both.
+Because the anchor set is mirror-symmetric, the inward tree is the same atlas cell sampled with its
+horizontal UVs swapped: still one village texture and one extra bind group, and every keepsake
+still meets the cord drawn down to it. The overlay draws one 16×16 quad per hung keepsake from the
+colony's own trinket atlas, sixteen at most. `colony_card.rs` draws both trees the same way, the
+inward one mirrored, so a portrait is not left with orphaned clusters at each end.
 
 Belongings alternate by slot — even slots to the outward yard, odd to the inward — four each, so a
 colony with three things has two at one end and one at the other rather than a full yard and an
@@ -1011,7 +1148,13 @@ crowding after 2.0. A step aside is ordered, not finished: the pair is held only
 be asked again on the next tick, and the episode's own clock keeps running, so a pair still drawn
 through one another once the mover has arrived is asked afresh instead of sitting out a cooldown
 granted on the assumption the move worked. Coming apart is what clears the clock, and the 1.08
-clearance margin is what stops a separated pair landing back on the threshold. Who moves is decided by cost: never someone dragged, tossed, airborne, climbing,
+clearance margin is what stops a separated pair landing back on the threshold. A companion
+walking to a spot of its own, or on its way through a game, is left to carry on for a while; once a
+face has been covered for two graces, 2.5 seconds, neither excuses it any more and whichever of the
+two can be asked is asked. One caught up from behind by the other going the same way stops for
+1.5 seconds to let it past rather than stepping on ahead of it, which only ends with it caught
+again — a sprinter on its way into a game had carried a playing friend's face behind its body for
+over seven seconds that way. Who moves is decided by cost: never someone dragged, tossed, airborne, climbing,
 hanging, homebound, or owned by a scene; +8 for being asleep and up to 4 more the longer it has
 slept, so the lighter sleeper moves; +7 for a ritual participant, +6 for a pile anchor, +5 for
 holding a prop, +2 for a bond plan; ties by id. An awake creature takes an ordinary short `Traverse`
@@ -1094,8 +1237,17 @@ variant, first find, finder, and the finder's name at the time — and never why
   arrived and stands on the same monitor, the same kind of surface, and the same window, within two
   frame widths (96 art-scaled points).
 
-With no circumstance holding, the choice is uniform over the eight everyday trinkets, exactly as
-before. Otherwise half the draws go to an everyday trinket and half to a qualifying conditional one,
+- **Home, garden, roof, visitor** are the circumstances of a find turned up about the village
+  while the houses are out: at home always, in the garden after watering or looking in on a patch,
+  on the roof after sitting up there, and with a visitor if a guest is on stage at the time.
+- **Morning, weekend, full moon, colony birthday** are read from the local clock for every find:
+  06:00 until 10:00, Saturday or Sunday, after dark within a day and a half of a full moon, and
+  within three days either side of the day the colony began, once it has had one.
+- **After a nap** is a previous action of `Sleep`.
+
+With no circumstance holding, the choice is uniform over the forty-eight everyday keepsakes, as it
+was over the original eight. Once in sixty finds, anywhere, it is instead one of the four rare
+ones. Otherwise half the draws go to an everyday trinket and half to a qualifying conditional one,
 and among the qualifying ones three in four go to those not yet in the scrapbook when any are
 missing. Exactly one draw is taken from the ambient stream on every path, and the conditional
 decisions run on a private generator keyed from that stream's state without advancing it. The
@@ -1107,17 +1259,21 @@ Game playthings are kept out of this. Keep-away and tug-of-war still show the ho
 (`seed % 8`), set on every change of hands, never a conditional keepsake — and a game still reaches
 neither the scrapbook nor the journal.
 
-The catalogue itself lives in `formiga-core::trinkets`: sixteen entries of name, description, hint,
-and condition, with `TRINKET_VARIANTS = 16`. `formiga-art::TrinketAtlasRenderer` bakes them into one
-256×32 sheet — sixteen columns by two rows, a rest frame and a glint frame, 32,768 bytes — whose
+The catalogue itself lives in `formiga-core::trinkets`: a hundred and sixty entries of name,
+description, hint, and condition, with `TRINKET_VARIANTS = 160`; the first sixteen are the original
+ones, drawn exactly as they were. `formiga-art::TrinketAtlasRenderer` bakes them into one 256×320
+sheet — sixteen columns by ten rows of resting drawings, then the same again with a glint, 327,680
+bytes — whose
 inks are drawn from the colony seed and scored against every member's coat at once, so a keepsake
 reads as a separate object whoever is holding it. A single holder's `prop_palette` keeps a belonging
 90 away from that one coat; dodging a whole colony at once is necessarily a little softer, and the
 tests report the worst distance rather than fixing a threshold, because the number that matters is
 comfortably past the roughly 25 at which two colours start to read as the same.
-The overlay's discovery quad and the settings scrapbook both sample it,
-so a trinket costs one texture per colony instead of one row per creature. The scrapbook shows all
-sixteen slots, undiscovered ones as a dim silhouette with the catalogue's hint.
+The overlay's discovery quad and the trees sample it, so a trinket costs one texture per colony
+instead of one row per creature; the settings pages hold only its resting half, 256×160. The
+Journal's scrapbook lists only what has been found, and the Collection on the Your colony page
+shows all hundred and sixty, those still to find as the shadow of their shape with the
+catalogue's hint.
 
 ## Exact offline seed sharing
 
@@ -1340,14 +1496,20 @@ deliberately no history database or telemetry layer. Update preferences live in 
 
 ## Native colony interface (save v14)
 
-`clubhouse.rs` holds only on-demand UI artwork and interaction state; `settings.rs` owns its egui
-window and presentation. Four static portraits, four eight-frame candidate strips (six walk frames
-and two expressions each), the daylit half of the village atlas, one object strip, and the one
-colony trinket sheet that carries all sixteen trinkets fit within 500 KiB of artwork textures. It
-was 416 KiB until that sheet replaced eight separate 16×16 drawings with 24 KiB more pixels in a
-single texture, 432 KiB until 0.59.0 gave every house a cell of its own and the Home page's village
-grew from 128×128 to 256×128, and 496 KiB until the object strip grew from eight cells to fourteen
-for the hangout spots and garden patches. The home preview draws the whole corner — houses, both
+`clubhouse.rs` holds only on-demand UI artwork and interaction state, with the Home page's
+preview and shelves in `clubhouse/arrange.rs` and the Collection, the Journal's scrapbook and each
+companion's wardrobe in `clubhouse/collection.rs`; `settings.rs` owns its egui window and
+presentation. Four static portraits, four eight-frame candidate strips (six walk frames and two
+expressions each), the top row of the village atlas, the object sheet, the resting half of the
+colony trinket sheet, and a companion trying something on in four poses fit within 760 KiB of
+artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
+24 KiB more pixels in a single texture, 432 KiB until 0.59.0 gave every house a cell of its own,
+496 KiB until the object strip grew from eight cells to fourteen, and 500 KiB until 0.60.0 brought
+ten times the keepsakes (128 KiB more, even holding only the resting half), an object sheet with
+every garden stage, spot, ornament and village prop (98 KiB more), and the try-on poses (36 KiB);
+the Home page's village shrank to the one row it draws and cost nothing more. Tiles in a wrapped
+row — the Collection, the pins, the shelves — are each allocated whole and painted into, because an
+egui `Frame` places itself before its row decides whether it still fits and so never wraps. The home preview draws the whole corner — houses, both
 trees, the keepsakes hung in them, and the belongings in the yards — from the village, trinket,
 and object atlases the desktop already samples, positioned by the very layout functions the
 overlay uses, so a complete village costs the same three textures whatever its size and nothing

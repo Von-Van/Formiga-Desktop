@@ -24,7 +24,7 @@ brace, balance, tuck, and play. Atlas baking moves procedural work out of the pr
 ### Expression without full-body atlas multiplication
 
 The body atlas is gaze-free and records one face anchor per frame. A separate 16×16 atlas combines
-eleven expressions, nine gaze directions, and three eyelid poses. Rendering one additional tiny quad
+twelve expressions, nine gaze directions, and three eyelid poses. Rendering one additional tiny quad
 is cheaper than the prior three complete gaze-specific body copies, while deterministic blink timing
 and drive-aware expression selection make the same face feel substantially more alive.
 

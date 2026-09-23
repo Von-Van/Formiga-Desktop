@@ -290,9 +290,14 @@ fn perched_creature_can_choose_a_different_window_height() {
 
     let mut topology = DesktopTopology::default();
     topology.rebuild_if_changed(&desktop, &BTreeMap::new());
-    let (target, surface) =
-        find_nearby_ledge(creature, &desktop, &world.save.settings.habitat, &topology)
-            .expect("the upper window should be a reachable transfer");
+    let (target, surface) = find_nearby_ledge(
+        creature,
+        &desktop,
+        &world.save.settings.habitat,
+        &topology,
+        world.save.settings.display_scale,
+    )
+    .expect("the upper window should be a reachable transfer");
     assert_eq!(surface.window_key, Some(202));
     assert_eq!(target.y, 330.0);
 }
@@ -350,8 +355,10 @@ fn creatures_explore_multiple_window_levels() {
                 application_name: None,
             },
         ]);
+        // Four minutes: long enough for a spell back down on the floor between climbs, which
+        // every companion that likes to be anywhere now takes.
         let mut visited = std::collections::BTreeSet::new();
-        for _ in 0..2_400 {
+        for _ in 0..4_800 {
             world.tick(created, 0.05, &desktop);
             if let Some(key) = world.save.creatures[0].state.surface.window_key {
                 visited.insert(key);

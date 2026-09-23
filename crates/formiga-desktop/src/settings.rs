@@ -35,7 +35,6 @@ pub struct SettingsOutcome {
     pub complete_onboarding: bool,
     pub home_corner: Option<formiga_core::HomeCorner>,
     pub home_display: Option<formiga_core::DisplayKey>,
-    pub hidden_decorations: Option<u8>,
     pub move_object: Option<(usize, usize)>,
     /// Put a hangout spot down at a fraction along the village ground, move it, or with `None`
     /// pick it up again.
@@ -49,6 +48,21 @@ pub struct SettingsOutcome {
     /// Plant a garden patch at a fraction along the village ground, move it, or with `None` dig
     /// it up.
     pub set_garden: Option<(formiga_core::GardenKind, Option<f32>)>,
+    /// Set an ornament out at a fraction along the village ground, move it, or with `None` take
+    /// it in.
+    pub set_ornament: Option<(formiga_core::OrnamentKind, Option<f32>)>,
+    /// Hang a decoration in one place on the house a companion keeps, or with `None` take down
+    /// whatever is there.
+    pub set_decoration: Option<(
+        CreatureId,
+        formiga_core::DecorationSlot,
+        Option<formiga_core::ShelterDecorationKind>,
+    )>,
+    /// The keepsakes chosen to hang in the two trees, or `Some(None)` to let the trees fill
+    /// themselves again.
+    pub tree_keepsakes: Option<Option<[Option<u8>; formiga_core::TREE_HOOKS]>>,
+    /// Something for a companion to wear, or `None` to take off whatever it is wearing.
+    pub set_accessory: Option<(CreatureId, Option<formiga_core::Accessory>)>,
     /// The cottages, colours and gardens put back as the village grew.
     pub reset_village: bool,
     /// Take back the last change made to the colony.
@@ -1151,6 +1165,8 @@ fn colony_tab(
     });
 
     ui.add_space(8.0);
+    clubhouse.wardrobe(ui, colony.save, creature, outcome);
+    ui.add_space(8.0);
     ui.group(|ui| {
         ui.strong("Colony care");
         let mut kept = creature.kept;
@@ -1261,6 +1277,9 @@ fn colony_tab(
     // The whole colony after the one companion: everyone's friendships, playmates and tensions.
     ui.add_space(18.0);
     colony_standings_card(ui, creatures, relationships, selected_creature);
+    // Everything the colony can find, and which of it hangs in the trees.
+    ui.add_space(18.0);
+    clubhouse.collection(ui, colony.save, outcome);
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_secs(1));
 }

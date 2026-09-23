@@ -11,17 +11,22 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
 
 ![One hundred uncurated deterministic creature seeds](assets/contact-sheet.png)
 
-- Read a creature's state through eleven expressions, two-dimensional gaze, eyelids, and irregular
+- Read a creature's state through twelve expressions, two-dimensional gaze, eyelids, and irregular
   blinks.
 - Catch one with nothing to do sitting as if it has something on its mind: it settles, shifts its
   weight onto one foot, tips its head and pricks its ears toward something off to one side, and
   settles back. Each companion leans its own way, and a sleepy one shows a Z as it drops off.
 - Watch creatures approach and climb to higher ledges, hop down to lower ones, patrol window tops,
-  ride moving windows, and startle when something shifts nearby.
+  ride moving windows, and startle when something shifts nearby. A companion that likes to be
+  anywhere spends about half of its roaming time up on the windows — any window whose top leaves
+  room for it below the menu bar — and comes down now and then to potter about the floor for a
+  while before it climbs again.
 - See them traverse short stacks of overlapping windows and squeeze through safe narrow gaps, with
   routes disappearing the moment the desktop changes.
-- Catch quiet moments: snacks, drinks, generated toys, ledge dangling, inspections, and sixteen
-  discovery trinkets held up for a look.
+- Catch quiet moments: snacks, drinks, generated toys, ledge dangling, inspections, and keepsakes
+  held up for a look — a hundred and sixty of them, many only found in the right moment.
+- See a yawn go round. One companion yawns, the friend beside it looks over and yawns a moment
+  later, and every so often it reaches a third, who holds out for a second before giving in.
 - Click a creature to pet it. Drag it to move it — a quick release tosses it with a soft bounce, a
   slow one places it precisely.
 - Right-click one (Control-click on macOS) for a small strip above its head: a snack, a toy, send
@@ -40,6 +45,17 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
   hello, spends the gathering with everyone, and wanders off again.
 - Look in on the houses and find small doorstep moments: a nibble, a drink, a game, a look up at
   its own front door, a nap, a wave to the neighbour, or a short errand out to a belonging.
+- Watch the village get on with things while the houses are out. Companions water the gardens,
+  crouch to look in on something just coming up, pick something ripe and eat it, or carry the best
+  of it over to show a friend. They see to their own houses the way each kind asks — retying a
+  tent's flap, plumping a pillow fort, patting a mushroom's cap, tidying a leaf house's leaves —
+  and the house answers. They go indoors for a while, when the curtain is drawn across the door,
+  the window glows and a Z drifts up if they are napping; never more than two at once, and never
+  the only companion there is. They climb up and sit on their own roofs, and now and then turn
+  something up about the village.
+- Catch a small mishap: a leaf landing on somebody's face, a snack rolling away and being chased,
+  a companion sitting down just beside the cushion and shuffling across onto it. Each is a start,
+  a recovery, and carrying on, and whoever is nearby stops to look.
 - Let bonded creatures follow, greet, sleep together, share or steal a toy, watch each other climb,
   react to a toss, and occasionally squabble.
 - Watch a creature think twice about a long jump: a look down, a step back, up to two changes of
@@ -64,6 +80,8 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
 
 ![Every action and gesture pose on three reference creatures](assets/gesture-sheet.png)
 
+![The village getting on with things: the gardens tended, every kind of house seen to, a nap indoors and a sit on a roof, three small mishaps, and a yawn going round](assets/village-life-sheet.png)
+
 Creatures remember how they are treated. Pets, tosses, sleep, ledges, window rides, discoveries,
 play, home visits, and repeated placement gradually shape bounded behavior scores while the
 personality they were generated with stays recognizable. The Colony tab shows those memories, up to
@@ -79,23 +97,38 @@ in the journal on the day it picks them up.
 ![Every habit and celebration on every body](assets/habit-sheet.png)
 
 A journal keeps small moments — arrivals, discoveries, a preference a creature has settled into, a
-new close friendship, a completed ritual, a keepsake that turned up, a decoration the home earned —
-grouped by Today, Yesterday, and the date, in your own local time. You can filter it to one
-companion, and keep up to eight moments pinned above the rest. A pin points at a moment the journal
-already holds, so it can never say something that did not happen. Alongside it, a
-scrapbook records the first time each of the sixteen kinds of trinket was found, with a drawing of
-it, the date, and who found it — still named even if that companion has since left. Eight of those
-kinds turn up on any ordinary day; the other eight only in a particular circumstance, and until one
-has been found its slot shows a dim silhouette and a hint about where to look. Every find hangs in
-the village too, in its own place in one of the two trees. The Journal page also
-keeps a guest book: the last two dozen creatures who came by the houses, when each one visited, and
-a code that recreates it. The Home page shows
-the corner as it really is: the colony house with the decorations it has earned, a cottage for each
-companion, a keepsake tree at either end with everything the colony has found hanging in it, and
-the belongings scattered in the two yards. Looking at it never calls anyone home. It is also where
-you can put down a nap cushion, a picnic blanket, or a lookout on the ground between the houses and
-slide each where you like: while the houses are out, the colony sometimes goes to nap, snack, or
-look out from them, and a picnic or a nap you invite gathers there.
+new close friendship, a completed ritual, a keepsake that turned up, something new for the
+village — grouped by Today, Yesterday, and the date, in your own local time. You can filter it to
+one companion, and keep up to eight moments pinned above the rest. A pin points at a moment the
+journal already holds, so it can never say something that did not happen. Beneath it, the
+scrapbook lists every keepsake that has been found, newest first, with a drawing of it, the date,
+and who found it — still named even if that companion has since left. The Journal page also keeps
+a guest book: the last two dozen creatures who came by the houses, when each one visited, and a
+code that recreates it.
+
+The Your colony page has the whole Collection: all hundred and sixty keepsakes, the found ones in
+colour and the rest as the shadow of their shape with a hint about where they turn up — at night,
+at home, in the garden, on a roof, first thing in the morning, at the weekend, under a full moon.
+Sixteen of the found ones hang in the village's two trees. The trees fill themselves as finds come
+in, or a click hangs one up or takes it down.
+
+What the colony finds, its companions can wear. Each has one place for it: a leaf hat, a flower
+crown, an acorn cap, a knitted scarf, a bell collar, a tiny satchel and more, each made from a find
+of its own and coloured like it, or any find at all as a pin. Choose it on the companion's profile,
+where pointing at something shows the companion wearing it standing, walking, up high and asleep
+before it goes on, and Nothing takes it off again.
+
+The Home page shows the corner as it really is: the houses, a keepsake tree at either end with its
+keepsakes hanging in it, the belongings scattered in the two yards, and the gardens, spots and
+ornaments on the ground between. Looking at it never calls anyone home. Press **Arrange** and it can
+be taken hold of: carry a cottage along the row to stand it somewhere else, or anything on the
+ground along the ground, and nudge whatever is picked out with the arrow keys. Click a house to see
+whose it is and who else lives there, to build it as a tent, a mushroom, a pillow fort or a leaf
+house, and to choose what it wears in each of its six places — the roof, under the eaves, a wall
+either side of the door, and the ground either side. Beneath it, shelves hold what the village has
+to put on its ground: gardens that grow by themselves through sprouts to flowers and fruit, spots
+the colony goes to nap, snack or look about at, and ornaments to wander over to. Each kind of thing
+starts with three, and something new arrives every day or two.
 
 ![Climbing, dangling, inspection, presentation poses, and the eight everyday discovery trinkets](assets/ambient-sheet.png)
 

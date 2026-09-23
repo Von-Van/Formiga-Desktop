@@ -10,6 +10,7 @@ use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
+mod accessory_sheet;
 mod colony_card;
 mod habit_sheet;
 mod palette_sheet;
@@ -19,6 +20,7 @@ mod social_preview;
 mod sticker;
 mod tick_bench;
 mod ui_sheet;
+mod village_life_sheet;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -47,6 +49,14 @@ fn main() -> Result<()> {
         Some("gesture-sheet") => gesture_sheet(output_argument_with_default(
             &args,
             "docs/assets/gesture-sheet.png",
+        )),
+        Some("village-life-sheet") => village_life_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/village-life-sheet.png",
+        )),
+        Some("accessory-sheet") => accessory_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/accessory-sheet.png",
         )),
         Some("habit-sheet") => habit_sheet::run(output_argument_with_default(
             &args,
@@ -526,7 +536,12 @@ fn draw_yard_panel(
         home.set_hangout(kind, along);
     }
     for (kind, along) in GardenKind::ALL.into_iter().zip(panel.gardens) {
-        home.set_garden(kind, along);
+        home.set_garden(kind, along, OffsetDateTime::UNIX_EPOCH);
+    }
+    // Grown, as a village's gardens always looked on this sheet.
+    for patch in &mut home.gardens {
+        patch.planted_at_utc =
+            Some(OffsetDateTime::UNIX_EPOCH - time::Duration::hours(patch.kind.stage_hours() * 2));
     }
     let policy = HabitatPolicy::default();
     let monitors = std::slice::from_ref(&monitor);
@@ -544,9 +559,11 @@ fn draw_yard_panel(
         .iter()
         .map(|resident| Some(formiga_art::ResidentMark::of(resident)))
         .collect();
+    // The colony house wearing the six decorations a colony could earn before 0.60.0, as it
+    // always has on this sheet.
     let village = ShelterRenderer::render_village(
         &home.drawn_shelter(),
-        &ShelterDecorationKind::ALL,
+        &[ShelterDecorationKind::ALL[..6].to_vec()],
         &marks,
         &panel.styles,
         true,
@@ -609,8 +626,9 @@ fn draw_yard_panel(
         }
         let (left, top) = standing(SHELTER_SIZE, tree);
         corner_of(&cell, SHELTER_SIZE, left, top);
+        // With nothing chosen, the first sixteen finds each hang on the hook numbered after them.
         for variant in 0..panel.found as u8 {
-            let Some((hangs_in, anchor)) = formiga_art::trinket_place(variant) else {
+            let Some((hangs_in, anchor)) = formiga_art::hook_place(usize::from(variant)) else {
                 continue;
             };
             if hangs_in != end {
@@ -645,6 +663,7 @@ fn draw_yard_panel(
         let (cell_x, cell_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::House {
             slot,
             lit: panel.night,
+            occupied: false,
         });
         let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
         for y in 0..SHELTER_SIZE as i32 {
@@ -665,10 +684,11 @@ fn draw_yard_panel(
         .collect();
     yard.sort_by(|a, b| a.1.y.total_cmp(&b.1.y));
     for (slot, p) in yard {
+        let (u, v) = formiga_art::ColonyObjectRenderer::cell_origin(slot as u32);
         let mut tile = formiga_art::Canvas::new(16, 16);
         for y in 0..16 {
             for x in 0..16 {
-                tile.set(x, y, atlas.get(slot as i32 * 16 + x, y));
+                tile.set(x, y, atlas.get(u as i32 + x, v as i32 + y));
             }
         }
         let (x, y) = standing(16, p);
@@ -679,13 +699,14 @@ fn draw_yard_panel(
     // rest of the display.
     let middle = monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0;
     for (item, _, p) in home_ground_positions(&home, cottages, monitors, &policy, 1) {
-        let cell = formiga_art::ColonyObjectRenderer::ground_cell(item) as i32;
+        let cell = formiga_art::ColonyObjectRenderer::ground_cell(item, GardenStage::Grown);
+        let (u, v) = formiga_art::ColonyObjectRenderer::cell_origin(cell);
         let mirrored = formiga_art::ColonyObjectRenderer::ground_mirrored(item, p.x, middle);
         let mut tile = formiga_art::Canvas::new(16, 16);
         for y in 0..16 {
             for x in 0..16 {
                 let read = if mirrored { 15 - x } else { x };
-                tile.set(x, y, atlas.get(cell * 16 + read, y));
+                tile.set(x, y, atlas.get(u as i32 + read, v as i32 + y));
             }
         }
         let (x, y) = standing(16, p);
@@ -860,6 +881,7 @@ fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Reach | Gesture::Watch => (ExpressionKind::Curious, EyelidPose::Open),
         // Shown as the desktop shows the top of it: eyes screwed shut.
         Gesture::Stretch => (ExpressionKind::Content, EyelidPose::Closed),
+        Gesture::Yawn => (ExpressionKind::Yawning, EyelidPose::Closed),
     };
     FaceRenderState {
         expression,
@@ -1460,23 +1482,27 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 3;
     const MARGIN: u32 = 8;
     const LANE_GAP: u32 = 10;
-    // One row per style, all on one ground line: the colony house plain, the same house carrying
-    // every decoration it can earn, a companion's cottage hung with that companion's curtain, the
-    // same cottage lit from inside after dark, the keepsake tree the colony hangs its finds on,
-    // and the companion itself drawn at the very same scale — so the decoration anchors, the way
-    // a cottage reads beside the one who lives in it, and the village atlas's day and night cells
-    // stay reviewable in one glance.
+    // One row per style, all on one ground line: the colony house plain; the same house dressed
+    // twice over, with something in each of its six places — two of the five kinds each place
+    // takes, so the four rows between them show every decoration there is; a companion's cottage
+    // hung with that companion's curtain, the same cottage with its resident at home behind the
+    // drawn curtain, and lit from inside after dark; the colony house with its resident sitting
+    // up on the roof, at the height the simulation seats it; the keepsake tree; and the companion
+    // itself at the very same scale.
     let footprints = [
         DwellingKind::Main.width() as u32,
         DwellingKind::Main.width() as u32,
+        DwellingKind::Main.width() as u32,
         DwellingKind::Cottage.width() as u32,
         DwellingKind::Cottage.width() as u32,
+        DwellingKind::Cottage.width() as u32,
+        DwellingKind::Main.width() as u32,
         TREE_WIDTH as u32,
         FRAME_SIZE,
     ];
     let lane: u32 = footprints.iter().sum::<u32>() + LANE_GAP * (footprints.len() as u32 - 1);
     let width = (lane + MARGIN * 2) * SCALE;
-    let row_height = SHELTER_SIZE * SCALE + MARGIN * SCALE;
+    let row_height = (SHELTER_SIZE + 20) * SCALE + MARGIN * SCALE;
     let height = row_height * 4 + MARGIN * SCALE;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     fill_gradient(
@@ -1486,6 +1512,13 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
         [18, 29, 34, 255],
         [35, 55, 54, 255],
     );
+    // Every decoration, by the place on a house it goes in.
+    let in_place = |place: DecorationSlot| -> Vec<ShelterDecorationKind> {
+        ShelterDecorationKind::ALL
+            .into_iter()
+            .filter(|kind| kind.slot() == place)
+            .collect()
+    };
     for style in 0..4_u32 {
         let mut seed = [0_u8; 32];
         seed.copy_from_slice(&Sha256::digest(format!("formiga-shelter-{style}")));
@@ -1508,18 +1541,30 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
             }
             tile
         };
-        let cottage = |lit| formiga_art::VillageCell::House { slot: 1, lit };
+        let cottage = |lit, occupied| formiga_art::VillageCell::House {
+            slot: 1,
+            lit,
+            occupied,
+        };
+        let dressed = |pick: usize| {
+            let kinds: Vec<ShelterDecorationKind> = DecorationSlot::ALL
+                .into_iter()
+                .map(|place| {
+                    let choices = in_place(place);
+                    choices[pick % choices.len()]
+                })
+                .collect();
+            ShelterRenderer::render_with_decorations(&home.shelter, &kinds)
+        };
+        let pick = style as usize * 2;
         let lane_items = [
             (ShelterRenderer::render(&home.shelter), SHELTER_SIZE),
-            (
-                ShelterRenderer::render_with_decorations(
-                    &home.shelter,
-                    &formiga_core::ShelterDecorationKind::ALL,
-                ),
-                SHELTER_SIZE,
-            ),
-            (cell(cottage(false)), SHELTER_SIZE),
-            (cell(cottage(true)), SHELTER_SIZE),
+            (dressed(pick), SHELTER_SIZE),
+            (dressed(pick + 1), SHELTER_SIZE),
+            (cell(cottage(false, false)), SHELTER_SIZE),
+            (cell(cottage(false, true)), SHELTER_SIZE),
+            (cell(cottage(true, true)), SHELTER_SIZE),
+            (ShelterRenderer::render(&home.shelter), SHELTER_SIZE),
             (cell(formiga_art::VillageCell::Tree), SHELTER_SIZE),
             (
                 CreatureRenderer::render_frame(
@@ -1533,9 +1578,11 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
         ];
         // Every dwelling cell stands on row 61 of its own 64px cell; a creature frame stands on
         // its own last row. Lining those two up puts everything on one ground line.
-        let baseline = style * row_height + (MARGIN + SHELTER_SIZE - 3) * SCALE;
+        let baseline = style * row_height + (MARGIN + 20 + SHELTER_SIZE - 3) * SCALE;
         let mut pen = MARGIN;
-        for ((canvas, size), footprint) in lane_items.into_iter().zip(footprints) {
+        for (index, ((canvas, size), footprint)) in
+            lane_items.into_iter().zip(footprints).enumerate()
+        {
             let centre = pen + footprint / 2;
             let foot = if size == FRAME_SIZE { 0 } else { 3 };
             blit_scaled_square_alpha(
@@ -1547,6 +1594,35 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
                 size,
                 SCALE,
             );
+            // Up on the roof: the resident's perched frame placed exactly as the overlay places
+            // it, its lowest resting pixel on the point the simulation seats it at — the ground
+            // line at the foot of the house's cell, less the house's own roof height.
+            if index == 6 {
+                let roof = formiga_core::house_roof_height(&home.shelter, home.shelter.style, true)
+                    .round() as u32;
+                let sitter = CreatureRenderer::render_frame(
+                    &resident.appearance,
+                    ActionKind::Perch,
+                    0,
+                    true,
+                );
+                let ground = baseline + 3 * SCALE;
+                let contact = ground - roof * SCALE;
+                let placement = formiga_art::FramePlacement::for_action(
+                    ActionKind::Perch,
+                    CreatureRenderer::resting_baseline(&resident.appearance, false),
+                );
+                let top = (contact as i32 + placement.origin_y * SCALE as i32) as u32;
+                blit_scaled_square_alpha(
+                    &mut pixels,
+                    width,
+                    (centre.saturating_sub(FRAME_SIZE / 2)) * SCALE,
+                    top,
+                    &sitter.rgba_bytes(),
+                    FRAME_SIZE,
+                    SCALE,
+                );
+            }
             pen = centre + footprint / 2 + LANE_GAP;
         }
     }

@@ -31,6 +31,7 @@ pub(super) fn build_atlas_pixels(
     creature: &Creature,
     reduce_motion: bool,
     outline: bool,
+    dress: Option<AccessoryArt>,
 ) -> AtlasPixels {
     let body_slots = total_animation_frames();
     let body_rows = body_slots.div_ceil(ATLAS_COLUMNS);
@@ -42,8 +43,9 @@ pub(super) fn build_atlas_pixels(
     for clip in BodyClip::baked() {
         let spec = AnimationSpec::for_clip(clip);
         for frame in 0..spec.frames {
-            let mut rendered = CreatureRenderer::render_body_frame(
+            let mut rendered = CreatureRenderer::render_dressed_body_frame(
                 &creature.appearance,
+                dress,
                 clip,
                 frame,
                 reduce_motion,

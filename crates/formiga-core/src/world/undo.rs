@@ -34,8 +34,12 @@ pub enum ColonyEdit {
     HouseType,
     /// The home moved to another corner or display.
     MovedHome,
-    /// Earned decorations shown or hidden.
+    /// A house's decorations hung or taken down.
     Decorations,
+    /// An ornament set out, moved or taken in.
+    Ornament(OrnamentKind),
+    /// The keepsakes hanging in the trees chosen.
+    TreeKeepsakes,
     /// The keepsakes rearranged.
     RearrangedKeepsakes,
 }
@@ -55,7 +59,9 @@ impl ColonyEdit {
             Self::Hangout(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::HouseType => "changing a house".to_owned(),
             Self::MovedHome => "moving the home".to_owned(),
-            Self::Decorations => "showing or hiding decorations".to_owned(),
+            Self::Decorations => "changing a house's decorations".to_owned(),
+            Self::Ornament(kind) => format!("changing the {}", kind.label().to_lowercase()),
+            Self::TreeKeepsakes => "choosing the keepsakes in the trees".to_owned(),
             Self::RearrangedKeepsakes => "rearranging the keepsakes".to_owned(),
         }
     }
@@ -154,16 +160,19 @@ impl World {
             }
             self.save.home.cottage_order = point.home.cottage_order.clone();
             self.save.home.house_styles = point.home.house_styles.clone();
+            self.save.home.dressing = point.home.dressing.clone();
         } else {
             let home = &mut self.save.home;
             home.corner = point.home.corner;
             home.display = point.home.display;
-            home.hidden_decorations = point.home.hidden_decorations;
             home.hangouts = point.home.hangouts.clone();
             home.cottage_order = point.home.cottage_order.clone();
             home.palette = point.home.palette;
             home.gardens = point.home.gardens.clone();
             home.house_styles = point.home.house_styles.clone();
+            home.dressing = point.home.dressing.clone();
+            home.ornaments = point.home.ornaments.clone();
+            home.tree_keepsakes = point.home.tree_keepsakes;
             // The keepsakes in the order they stood, and anything found since after them.
             let mut objects: Vec<ColonyObject> = point
                 .objects

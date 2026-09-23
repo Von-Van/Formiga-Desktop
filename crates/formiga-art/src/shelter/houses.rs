@@ -117,6 +117,9 @@ pub(super) struct House {
     pub(super) seed: u64,
     /// Lit from inside, after dark.
     pub(super) lit: bool,
+    /// Its resident is at home: the curtain is drawn across the door and a lamp is lit inside,
+    /// whatever the hour.
+    pub(super) occupied: bool,
     /// Whose house it is.
     pub(super) mark: Option<super::ResidentMark>,
 }
@@ -213,8 +216,64 @@ fn doorway(canvas: &mut Canvas, house: House, frame: Rgba, threshold: Rgba) {
         );
     }
     canvas.fill_rect(cx - rx - 1, bottom - 1, door_width + 2, 1, threshold);
-    if let Some(mark) = house.mark {
-        curtain(canvas, house, mark);
+    hang_curtain(canvas, house, frame);
+}
+
+/// The resident's curtain: tied back to one side while the house is empty, drawn right across
+/// while somebody is home.
+fn hang_curtain(canvas: &mut Canvas, house: House, plain: Rgba) {
+    match (house.mark, house.occupied) {
+        (Some(mark), false) => curtain(canvas, house, mark),
+        (Some(mark), true) => drawn_curtain(canvas, house, mark),
+        // A house with nobody's colours still shows when somebody is in.
+        (None, true) => drawn_curtain(
+            canvas,
+            house,
+            super::ResidentMark {
+                cloth: mix(plain, WHITE, 0.4),
+                fold: plain,
+                tie: plain,
+                tied_left: true,
+            },
+        ),
+        (None, false) => {}
+    }
+}
+
+/// The curtain drawn right across the doorway: the resident's cloth wherever the doorway shows,
+/// hanging in folds, parted a little in the middle, with lamplight showing along the bottom.
+fn drawn_curtain(canvas: &mut Canvas, house: House, mark: super::ResidentMark) {
+    let (door_width, door_height) = house.door();
+    let (cx, bottom) = (house.cx, house.bottom);
+    let rx = door_width / 2 + 1;
+    let top = bottom - door_height - 1;
+    let inside = |pixel: Rgba| pixel == DOORWAY || pixel == GLOW || pixel == GLOW_CORE;
+    for y in top..bottom - 1 {
+        for x in cx - rx..=cx + rx {
+            if !inside(canvas.get(x, y)) {
+                continue;
+            }
+            // A fold every third column, counted out from the parting in the middle where the
+            // two halves meet.
+            let color = if (x - cx).rem_euclid(3) == 0 {
+                mark.fold
+            } else {
+                mark.cloth
+            };
+            canvas.set(x, y, color);
+        }
+    }
+    // Lamplight under the hem, and between the halves near the floor.
+    for x in cx - rx..=cx + rx {
+        let y = bottom - 2;
+        let pixel = canvas.get(x, y);
+        if pixel == mark.cloth || pixel == mark.fold {
+            canvas.set(x, y, GLOW);
+        }
+    }
+    let parting = bottom - 3;
+    if canvas.get(cx, parting) == mark.fold {
+        canvas.set(cx, parting, GLOW_CORE);
     }
 }
 
@@ -266,6 +325,7 @@ fn blob(canvas: &mut Canvas, x: i32, y: i32, size: i32, color: Rgba) {
 
 /// A small round window: a frame, dark glass, and a glint, or lamplight after dark.
 fn round_window(canvas: &mut Canvas, x: i32, y: i32, size: i32, frame: Rgba, lit: bool) {
+    // Somebody at home lights the lamp whatever the hour, so a window shows it from outside.
     blob(canvas, x - 1, y - 1, size + 2, frame);
     blob(canvas, x, y, size, if lit { GLOW } else { GLASS });
     if lit {
@@ -387,9 +447,7 @@ fn triangle_doorway(canvas: &mut Canvas, house: House, m: Materials) {
     }
     canvas.set(flap_x + 1, top + door_height / 2, m.outline);
     canvas.fill_rect(cx - half - 1, bottom - 1, door_width + 2, 1, m.second.base);
-    if let Some(mark) = house.mark {
-        curtain(canvas, house, mark);
-    }
+    hang_curtain(canvas, house, m.trim.base);
 }
 
 /// A fuller domed cap with a shaded underside and a few spots, on a pale stem with a round
@@ -475,7 +533,7 @@ fn mushroom_hut(canvas: &mut Canvas, house: House, m: Materials) {
             bottom - door_height,
             size,
             m.trim.base,
-            house.lit,
+            house.lit || house.occupied,
         );
     }
     doorway(canvas, house, m.outline, m.wall.shade);
@@ -573,7 +631,14 @@ fn pillow_fort(canvas: &mut Canvas, house: House, m: Materials) {
     let window_x = house.cx - door_width / 2 - u(3) - size;
     let window_y = bottom - door_height - u(1);
     if window_x - 1 > house.cx - half + 1 && window_y > button_y + u(2) {
-        round_window(canvas, window_x, window_y, size, m.outline, house.lit);
+        round_window(
+            canvas,
+            window_x,
+            window_y,
+            size,
+            m.outline,
+            house.lit || house.occupied,
+        );
     }
     doorway(canvas, house, m.outline, m.second.shade);
     // A pillow glimpsed on the floor inside.
@@ -836,12 +901,13 @@ fn leaf_house(canvas: &mut Canvas, house: House, m: Materials) {
     let window_y = bottom - door_height - u(2);
     if house.span >= super::COTTAGE_SPAN {
         canvas.fill_rect(window_x - 1, window_y - 1, u(6), u(6), m.outline);
+        let glowing = house.lit || house.occupied;
         canvas.fill_rect(
             window_x,
             window_y,
             u(4),
             u(4),
-            if house.lit { GLOW } else { GLASS },
+            if glowing { GLOW } else { GLASS },
         );
         canvas.line(
             window_x + u(2),
@@ -859,7 +925,7 @@ fn leaf_house(canvas: &mut Canvas, house: House, m: Materials) {
             1,
             m.outline,
         );
-        if !house.lit {
+        if !glowing {
             canvas.set(window_x, window_y, mix(GLASS, WHITE, 0.5));
         }
     }

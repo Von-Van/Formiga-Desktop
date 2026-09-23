@@ -3,12 +3,15 @@ use crate::settings::{GenerationPreview, PreviewAcceptance, SettingsOutcome};
 use egui::{Color32, RichText, TextureHandle, Ui};
 use formiga_art::{
     COLONY_OBJECT_SIZE, Canvas, ColonyObjectRenderer, CreatureRenderer, SHELTER_SIZE,
-    ShelterRenderer, StickerClip, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL,
-    TRINKET_FRAME_REST, TrinketAtlasRenderer,
+    ShelterRenderer, StickerClip, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_REST,
+    TrinketAtlasRenderer,
 };
 use formiga_core::*;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
+
+pub(crate) mod arrange;
+mod collection;
 
 /// The interface palette. Cream, forest, and mint by daylight; charcoal and sage after dark. The
 /// settings window sets this once whenever the preference or the system appearance changes, and
@@ -107,11 +110,11 @@ pub struct Clubhouse {
     /// The colony's own sheet of found things: one texture the scrapbook cuts every slot out of,
     /// and the very same sheet the desktop samples when a companion holds one up.
     trinket_atlas: Option<([u8; 32], TextureHandle)>,
-    /// Where a hangout spot's slider is while it is being dragged, before it is let go. The spot
-    /// itself only moves, and the colony is only written, once the slider is released.
-    hangout_drafts: [Option<f32>; formiga_core::MAX_HANGOUTS],
-    /// The same for a garden patch's slider.
-    garden_drafts: [Option<f32>; formiga_core::MAX_GARDENS],
+    /// What the Home page's village preview has picked out, and whatever is being carried across
+    /// it in Arrange mode.
+    pub(crate) arrange: arrange::ArrangeState,
+    /// A companion's dressing-up previews, and the Collection's hold on the trees.
+    collection: collection::CollectionState,
     /// Whether putting the village back as it grew has been asked for once, and is waiting to be
     /// confirmed. A view state, never saved.
     village_reset_asked: bool,
@@ -125,12 +128,9 @@ pub struct Clubhouse {
 }
 
 /// The village the Home page last drew, and what it was drawn from, so it is only drawn again
-/// when the house, its decorations or its residents change.
+/// when a house, its decorations or its residents change.
 struct HomeTexture {
-    genome: ShelterGenome,
-    decorations: Vec<ShelterDecorationKind>,
-    marks: [Option<formiga_art::ResidentMark>; formiga_art::VILLAGE_HOUSES],
-    styles: [ShelterStyle; formiga_art::VILLAGE_HOUSES],
+    look: formiga_art::VillageLook,
     texture: TextureHandle,
 }
 
@@ -166,6 +166,7 @@ impl Clubhouse {
             .chain(self.home_texture.iter().map(|home| home.texture.id()))
             .chain(self.object_texture.iter().map(|(_, t)| t.id()))
             .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
+            .chain(self.collection.texture_ids())
             .collect()
     }
     pub fn release_images(&mut self) {
@@ -174,6 +175,7 @@ impl Clubhouse {
         self.home_texture = None;
         self.object_texture = None;
         self.trinket_atlas = None;
+        self.collection.release_images();
     }
     pub fn locks(&self) -> (Option<CreatureDesign>, bool, bool) {
         (
@@ -583,43 +585,20 @@ impl Clubhouse {
         title(
             ui,
             "A place to call home",
-            "Arrange the little things your colony has collected.",
+            "Arrange the village, dress its houses, and put out what the colony has collected.",
         );
-        let decorations: Vec<_> = save
-            .home
-            .decorations
-            .decorations
-            .iter()
-            .copied()
-            .filter(|k| save.home.hidden_decorations & (1 << k.index()) == 0)
-            .collect();
-        let marks =
-            formiga_art::ResidentMark::for_village(&save.creatures, &save.home.cottage_order);
-        let shelter = save.home.drawn_shelter();
-        let styles = save.home.house_style_list(&save.creatures);
-        if self.home_texture.as_ref().is_none_or(|home| {
-            home.genome != shelter
-                || home.decorations != decorations
-                || home.marks != marks
-                || home.styles != styles
-        }) {
-            self.home_texture = Some(HomeTexture {
-                genome: shelter,
-                decorations: decorations.clone(),
-                marks,
-                styles,
-                texture: upload(
-                    ui.ctx(),
-                    "home-preview",
-                    &ShelterRenderer::render_village(
-                        &shelter,
-                        &decorations,
-                        &marks,
-                        &styles,
-                        false,
-                    ),
-                ),
-            });
+        let look = formiga_art::VillageLook::of(&save.home, &save.creatures);
+        if self
+            .home_texture
+            .as_ref()
+            .is_none_or(|home| home.look != look)
+        {
+            let texture = upload(
+                ui.ctx(),
+                "home-preview",
+                &ShelterRenderer::render_home_row(&look),
+            );
+            self.home_texture = Some(HomeTexture { look, texture });
         }
         if self
             .object_texture
@@ -637,37 +616,74 @@ impl Clubhouse {
         }
         card(ui, |ui| {
             ui.horizontal(|ui| {
-                self.village_preview(ui, save, monitors);
-                ui.vertical(|ui| {
-                    ui.strong("Home corner");
-                    let mut corner = save.home.corner;
-                    ui.selectable_value(&mut corner, HomeCorner::BottomLeft, "Bottom left");
-                    ui.selectable_value(&mut corner, HomeCorner::BottomRight, "Bottom right");
-                    if corner != save.home.corner {
-                        outcome.home_corner = Some(corner);
+                ui.strong("The village");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let label = if self.arrange.arranging {
+                        "Done arranging"
+                    } else {
+                        "Arrange"
+                    };
+                    if ui
+                        .add(egui::Button::new(label).fill(if self.arrange.arranging {
+                            mint()
+                        } else {
+                            card_fill()
+                        }))
+                        .on_hover_text(
+                            "Drag the cottages along the row and move anything on the ground \
+                             where you like it. Arrow keys nudge whatever is picked out.",
+                        )
+                        .clicked()
+                    {
+                        self.arrange.arranging = !self.arrange.arranging;
                     }
-                    egui::ComboBox::from_id_salt("home-display")
-                        .selected_text("Choose home display")
-                        .show_ui(ui, |ui| {
-                            for (index, monitor) in monitors.iter().enumerate() {
-                                if ui
-                                    .selectable_label(
-                                        save.home.display == Some(monitor.display_key),
-                                        format!(
-                                            "Display {}{}",
-                                            index + 1,
-                                            if monitor.primary { " · primary" } else { "" }
-                                        ),
-                                    )
-                                    .clicked()
-                                {
-                                    outcome.home_display = Some(monitor.display_key);
-                                }
-                            }
-                        });
                 });
             });
+            self.village_preview(ui, save, monitors, outcome);
+            if self.arrange.arranging {
+                ui.small(
+                    "The colony house always stands first. Things on the ground keep a little \
+                     room between them, and settle where there is some.",
+                );
+            }
         });
+        ui.add_space(10.0);
+        self.picked_house(ui, save, outcome);
+        ui.add_space(10.0);
+        self.ground_catalogue(ui, save, outcome);
+        ui.add_space(10.0);
+        card(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.strong("Home corner");
+                let mut corner = save.home.corner;
+                ui.selectable_value(&mut corner, HomeCorner::BottomLeft, "Bottom left");
+                ui.selectable_value(&mut corner, HomeCorner::BottomRight, "Bottom right");
+                if corner != save.home.corner {
+                    outcome.home_corner = Some(corner);
+                }
+                egui::ComboBox::from_id_salt("home-display")
+                    .selected_text("Choose home display")
+                    .show_ui(ui, |ui| {
+                        for (index, monitor) in monitors.iter().enumerate() {
+                            if ui
+                                .selectable_label(
+                                    save.home.display == Some(monitor.display_key),
+                                    format!(
+                                        "Display {}{}",
+                                        index + 1,
+                                        if monitor.primary { " · primary" } else { "" }
+                                    ),
+                                )
+                                .clicked()
+                            {
+                                outcome.home_display = Some(monitor.display_key);
+                            }
+                        }
+                    });
+            });
+        });
+        ui.add_space(10.0);
+        self.village_colours(ui, save, outcome);
         ui.add_space(10.0);
         card(ui, |ui| {
             ui.strong("A portrait of everyone");
@@ -699,37 +715,7 @@ impl Clubhouse {
             }
         });
         ui.add_space(16.0);
-        self.village_arrangement(ui, save, outcome);
-        ui.add_space(16.0);
-        self.hangout_spots(ui, save, outcome);
-        ui.add_space(16.0);
-        ui.strong("Earned decorations");
-        if save.home.decorations.decorations.is_empty() {
-            ui.label(
-                "Your home will earn decorations as your colony grows. They arrive every few days.",
-            );
-        }
-        let mut hidden = save.home.hidden_decorations;
-        ui.horizontal_wrapped(|ui| {
-            for kind in &save.home.decorations.decorations {
-                let mut visible = hidden & (1 << kind.index()) == 0;
-                if ui
-                    .checkbox(&mut visible, words(&format!("{kind:?}")))
-                    .changed()
-                {
-                    if visible {
-                        hidden &= !(1 << kind.index());
-                    } else {
-                        hidden |= 1 << kind.index();
-                    }
-                }
-            }
-        });
-        if hidden != save.home.hidden_decorations {
-            outcome.hidden_decorations = Some(hidden);
-        }
-        ui.add_space(16.0);
-        ui.strong("Keepsake arrangement");
+        ui.strong("Belongings in the yards");
         ui.small("The colony keeps its things in the two trees' yards, one end then the other. Slots run outward from a trunk; moving one changes where its influence is felt.");
         if save.objects.objects.is_empty() {
             ui.label("The first keepsake will find its way here in a few days.");
@@ -738,14 +724,11 @@ impl Clubhouse {
             card(ui, |ui| {
                 ui.horizontal(|ui| {
                     if let Some((_, texture)) = &self.object_texture {
-                        let (left, right) = ColonyObjectRenderer::cell_u(
-                            ColonyObjectRenderer::object_cell(object.kind),
-                        );
                         ui.add(
                             egui::Image::new(texture)
-                                .uv(egui::Rect::from_min_max(
-                                    egui::pos2(left, 0.0),
-                                    egui::pos2(right, 1.0),
+                                .uv(arrange::object_uv(
+                                    ColonyObjectRenderer::object_cell(object.kind),
+                                    false,
                                 ))
                                 .maintain_aspect_ratio(false)
                                 .fit_to_exact_size(egui::vec2(40.0, 40.0)),
@@ -783,88 +766,13 @@ impl Clubhouse {
                 });
             });
         }
-        ui.add_space(20.0);
-        ui.separator();
-        ui.add_space(14.0);
-        self.scrapbook(ui, save);
     }
 }
 impl Clubhouse {
-    /// Everything the owner can arrange about the village itself: the order the cottages stand
-    /// in, the palette it is painted in, and the garden patches along its ground, with a way to
-    /// put all three back as the village grew. Nobody's house changes but its place, and the
-    /// colony house always stands first.
-    fn village_arrangement(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
-        ui.strong("Arrange the village");
-        ui.small(
-            "Stand the cottages in the order you like, build each house as a tent, a mushroom, a \
-             pillow fort or a leaf house, paint the village in a palette, and plant a garden or \
-             two. The colony house always stands first.",
-        );
-        let owners = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
-        let owners = owners.as_slice();
-        card(ui, |ui| {
-            for (slot, id) in owners.iter().enumerate() {
-                let Some(keeper) = save.creatures.iter().find(|creature| creature.id == *id) else {
-                    continue;
-                };
-                ui.horizontal(|ui| {
-                    let curtain = formiga_art::ResidentMark::of(keeper);
-                    swatch(ui, curtain.cloth, curtain.tie);
-                    if slot == 0 {
-                        ui.label(format!("Colony house · {}", keeper.name));
-                    } else {
-                        ui.label(format!("Cottage {slot} · {}", keeper.name));
-                    }
-                    // What it is built as: its own type unless another was chosen.
-                    let own = if slot == 0 {
-                        save.home.shelter.style
-                    } else {
-                        ShelterStyle::for_keeper(keeper)
-                    };
-                    let chosen = save.home.house_style(keeper.id);
-                    egui::ComboBox::from_id_salt(("house-type", keeper.id))
-                        .selected_text(chosen.unwrap_or(own).label())
-                        .show_ui(ui, |ui| {
-                            let own_label = format!("Its own · {}", own.label());
-                            if ui.selectable_label(chosen.is_none(), own_label).clicked()
-                                && chosen.is_some()
-                            {
-                                outcome.house_style = Some((keeper.id, None));
-                            }
-                            for style in ShelterStyle::ALL {
-                                if ui
-                                    .selectable_label(chosen == Some(style), style.label())
-                                    .clicked()
-                                    && chosen != Some(style)
-                                {
-                                    outcome.house_style = Some((keeper.id, Some(style)));
-                                }
-                            }
-                        });
-                    if slot == 0 || owners.len() < 3 {
-                        return;
-                    }
-                    let mut order: Vec<CreatureId> = owners[1..].to_vec();
-                    if ui
-                        .add_enabled(slot > 1, egui::Button::new("Closer"))
-                        .clicked()
-                    {
-                        order.swap(slot - 2, slot - 1);
-                        outcome.cottage_order = Some(order);
-                    } else if ui
-                        .add_enabled(slot + 1 < owners.len(), egui::Button::new("Further"))
-                        .clicked()
-                    {
-                        order.swap(slot - 1, slot);
-                        outcome.cottage_order = Some(order);
-                    }
-                });
-            }
-            if owners.len() < 3 {
-                ui.small("Cottages can be moved round once there are two of them.");
-            }
-        });
+    /// The palette the village is painted in, and a way to put the whole arrangement back as the
+    /// village grew: the order of the cottages, their types and decorations, the colours, and
+    /// everything on the ground.
+    fn village_colours(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
         card(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Colours");
@@ -903,35 +811,26 @@ impl Clubhouse {
             });
             ui.small("A palette paints every house and both trees; the colony's own colours come back with \"From the colony\".");
         });
-        for kind in GardenKind::ALL {
-            let change = ground_row(
-                ui,
-                self.object_texture.as_ref().map(|(_, texture)| texture),
-                ColonyObjectRenderer::garden_cell(kind),
-                kind.label(),
-                kind.description(),
-                "Plant",
-                save.home.garden(kind).map(|patch| patch.along),
-                &mut self.garden_drafts[usize::from(kind.index())],
-            );
-            if let Some(along) = change {
-                outcome.set_garden = Some((kind, along));
-            }
-        }
         let arranged = !save.home.cottage_order.is_empty()
             || save.home.palette.is_some()
             || !save.home.gardens.is_empty()
+            || !save.home.ornaments.is_empty()
             || !save.home.house_styles.is_empty();
-        ui.horizontal(|ui| {
+        ui.vertical(|ui| {
             if self.village_reset_asked && arranged {
-                ui.label("Put the houses, colours and gardens back as they grew?");
-                if ui.button("Put back").clicked() {
-                    outcome.reset_village = true;
-                    self.village_reset_asked = false;
-                }
-                if ui.button("Keep them").clicked() {
-                    self.village_reset_asked = false;
-                }
+                ui.label(
+                    "Put the houses, colours, gardens and ornaments back as they grew? Spots and \
+                     decorations stay where they are.",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Put back").clicked() {
+                        outcome.reset_village = true;
+                        self.village_reset_asked = false;
+                    }
+                    if ui.button("Keep them").clicked() {
+                        self.village_reset_asked = false;
+                    }
+                });
             } else {
                 self.village_reset_asked = false;
                 if ui
@@ -946,102 +845,6 @@ impl Clubhouse {
             }
         });
     }
-
-    /// The spots the owner can put down on the ground between the houses: one of each kind, each
-    /// placed with a slider from one end of the ground to the other. The village shows them while
-    /// the houses are out, and they draw the colony's naps, snacks and looking-about to them.
-    fn hangout_spots(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
-        ui.strong("Hangout spots");
-        ui.small(
-            "Put something down on the ground between the houses. The colony will sometimes \
-             go and use it while the houses are out, and sometimes do something else.",
-        );
-        for kind in HangoutKind::ALL {
-            let change = ground_row(
-                ui,
-                self.object_texture.as_ref().map(|(_, texture)| texture),
-                ColonyObjectRenderer::hangout_cell(kind),
-                kind.label(),
-                kind.description(),
-                "Put down",
-                save.home.hangout(kind).map(|spot| spot.along),
-                &mut self.hangout_drafts[usize::from(kind.index())],
-            );
-            if let Some(along) = change {
-                outcome.set_hangout = Some((kind, along));
-            }
-        }
-    }
-}
-
-/// One thing that can go on the village ground, as a card: its picture from the colony's object
-/// sheet, what it is, a checkbox to put it down or take it up again, and once it is down a slider
-/// from one end of the ground to the other. The slider moves only its own draft while it is
-/// dragged; what it is let go at comes back as the change, so the colony is written once.
-///
-/// Returns the change asked for, if any: `Some(Some(along))` to put it down or move it, and
-/// `Some(None)` to take it up.
-#[allow(clippy::too_many_arguments)]
-fn ground_row(
-    ui: &mut Ui,
-    objects: Option<&TextureHandle>,
-    cell: u32,
-    label: &str,
-    description: &str,
-    toggle: &str,
-    placed: Option<f32>,
-    draft: &mut Option<f32>,
-) -> Option<Option<f32>> {
-    let mut change = None;
-    card(ui, |ui| {
-        ui.horizontal(|ui| {
-            if let Some(texture) = objects {
-                let (left, right) = ColonyObjectRenderer::cell_u(cell);
-                ui.add(
-                    egui::Image::new(texture)
-                        .uv(egui::Rect::from_min_max(
-                            egui::pos2(left, 0.0),
-                            egui::pos2(right, 1.0),
-                        ))
-                        .maintain_aspect_ratio(false)
-                        .fit_to_exact_size(egui::vec2(40.0, 40.0)),
-                );
-            }
-            ui.vertical(|ui| {
-                ui.strong(label);
-                ui.small(description);
-                ui.horizontal(|ui| {
-                    let mut down = placed.is_some();
-                    if ui.checkbox(&mut down, toggle).changed() {
-                        change = Some(down.then_some(0.5));
-                        *draft = None;
-                    }
-                    let Some(at) = placed else {
-                        return;
-                    };
-                    let mut along = draft.unwrap_or(at);
-                    ui.small("Left");
-                    let slider = ui.add(
-                        egui::Slider::new(&mut along, 0.0..=1.0)
-                            .show_value(false)
-                            .text(""),
-                    );
-                    ui.small("Right");
-                    if slider.dragged() {
-                        *draft = Some(along);
-                    } else if slider.drag_stopped() || slider.changed() {
-                        *draft = None;
-                        if (along - at).abs() > f32::EPSILON {
-                            change = Some(Some(along));
-                        }
-                    } else {
-                        *draft = None;
-                    }
-                });
-            });
-        });
-    });
-    change
 }
 
 /// A little two-colour chip: a curtain's cloth and tie, or a palette's main colour and accent.
@@ -1068,31 +871,6 @@ fn swatch(ui: &mut Ui, main: formiga_art::Rgba, accent: formiga_art::Rgba) {
     );
 }
 
-/// Where a cell sits in the daylit half of the village atlas, the only half the Home page holds,
-/// as texture coordinates.
-fn village_uv(cell: formiga_art::VillageCell) -> egui::Rect {
-    let (x, y) = ShelterRenderer::village_cell(cell);
-    let (width, height) = (
-        formiga_art::VILLAGE_ATLAS_SIZE as f32,
-        formiga_art::VILLAGE_DAY_HEIGHT as f32,
-    );
-    let size = SHELTER_SIZE as f32;
-    egui::Rect::from_min_max(
-        egui::pos2(x as f32 / width, y as f32 / height),
-        egui::pos2((x as f32 + size) / width, (y as f32 + size) / height),
-    )
-}
-
-/// What the village preview draws each lot from, and in what order it lays them down: the houses
-/// and the two trees, then the keepsakes hanging in their branches, then the belongings standing
-/// on the ground in front of the trunks.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum VillageLayer {
-    Dwelling,
-    Trinket,
-    Belonging,
-}
-
 impl Clubhouse {
     /// The colony's sheet of found things, uploaded once. It comes from the colony's own seed and
     /// the colours of whoever lives here, so the book always shows the keepsake the desktop would
@@ -1108,7 +886,8 @@ impl Clubhouse {
                 .iter()
                 .map(|creature| formiga_art::palette_for(&creature.appearance))
                 .collect();
-            let canvas = TrinketAtlasRenderer::render(save.colony_seed, &members);
+            // Only the resting half: the pages show every find, and never twinkle one.
+            let canvas = TrinketAtlasRenderer::render_resting(save.colony_seed, &members);
             let texture = upload(ui.ctx(), "colony-trinkets", &canvas);
             self.trinket_atlas = Some((save.colony_seed, texture));
         }
@@ -1133,293 +912,14 @@ impl Clubhouse {
     /// Where one keepsake lives on that sheet, in the 0..1 coordinates egui samples with.
     fn trinket_uv(variant: u8) -> egui::Rect {
         let (x, y, width, height) = TrinketAtlasRenderer::cell_rect(variant, TRINKET_FRAME_REST);
+        let sheet = formiga_art::TRINKET_RESTING_HEIGHT as f32;
         egui::Rect::from_min_size(
-            egui::pos2(
-                x as f32 / TRINKET_ATLAS_WIDTH as f32,
-                y as f32 / TRINKET_ATLAS_HEIGHT as f32,
-            ),
+            egui::pos2(x as f32 / TRINKET_ATLAS_WIDTH as f32, y as f32 / sheet),
             egui::vec2(
                 width as f32 / TRINKET_ATLAS_WIDTH as f32,
-                height as f32 / TRINKET_ATLAS_HEIGHT as f32,
+                height as f32 / sheet,
             ),
         )
-    }
-
-    /// The corner as it actually is: the two keepsake trees that bookend the houses with
-    /// everything the scrapbook holds hung between them, the colony house with the decorations it
-    /// has earned, one cottage per companion in colony order, and the loose belongings scattered
-    /// in the two yards, all placed by the very functions the desktop places them with. Looking
-    /// at it never calls the colony home or changes what any creature is doing.
-    fn village_preview(&mut self, ui: &mut Ui, save: &SaveFile, monitors: &[MonitorInfo]) {
-        let trinkets = self.trinket_atlas(ui, save);
-        let (
-            Some(HomeTexture {
-                texture: village, ..
-            }),
-            Some((_, objects_texture)),
-        ) = (&self.home_texture, &self.object_texture)
-        else {
-            return;
-        };
-        let (village, objects_texture) = (village.clone(), objects_texture.clone());
-        let cottages = formiga_core::colony_cottages(&save.creatures);
-        let objects = save.objects.objects.len().min(MAX_COLONY_OBJECTS);
-        let scale = save.settings.display_scale;
-        // Every lot, in the desktop's own coordinates, on the display the home belongs to, with
-        // the sheet it is drawn from. Houses and trees go behind, then the keepsakes hung in the
-        // branches, then the belongings in front, exactly as the overlay layers them.
-        let mut lots: Vec<(egui::Rect, egui::Rect, VillageLayer)> = Vec::new();
-        let mut home_monitor = None;
-        let mut found: Vec<u8> = save
-            .companion
-            .scrapbook
-            .iter()
-            .map(|record| record.variant)
-            .filter(|variant| formiga_art::trinket_place(*variant).is_some())
-            .collect();
-        found.sort_unstable();
-        found.dedup();
-        for end in formiga_core::TreeEnd::BOTH {
-            let Some((monitor_id, point)) = formiga_core::home_tree_position(
-                &save.home,
-                end,
-                &cottages,
-                monitors,
-                &save.settings.habitat,
-                scale,
-            ) else {
-                continue;
-            };
-            home_monitor.get_or_insert(monitor_id);
-            let size = SHELTER_SIZE as f32;
-            let corner = egui::pos2(point.x - size / 2.0, point.y - size);
-            // The inward tree is the same atlas cell sampled the other way round, so the two
-            // bookends are not the same drawing twice.
-            let tree = village_uv(formiga_art::VillageCell::Tree);
-            let (u_left, u_right) = if end == formiga_core::TreeEnd::Inward {
-                (tree.max.x, tree.min.x)
-            } else {
-                (tree.min.x, tree.max.x)
-            };
-            lots.push((
-                egui::Rect::from_min_size(corner, egui::vec2(size, size)),
-                egui::Rect::from_min_max(
-                    egui::pos2(u_left, tree.min.y),
-                    egui::pos2(u_right, tree.max.y),
-                ),
-                VillageLayer::Dwelling,
-            ));
-            let half = TRINKET_CELL as f32 / 2.0;
-            for variant in found.iter().copied() {
-                let Some((hangs_in, anchor)) = formiga_art::trinket_place(variant) else {
-                    continue;
-                };
-                if hangs_in != end {
-                    continue;
-                }
-                lots.push((
-                    egui::Rect::from_min_size(
-                        corner + egui::vec2(anchor.x as f32 - half, anchor.y as f32 - half),
-                        egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32),
-                    ),
-                    Self::trinket_uv(variant),
-                    VillageLayer::Trinket,
-                ));
-            }
-        }
-        for slot in 0..=cottages.len() {
-            let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
-                &save.home,
-                slot,
-                &cottages,
-                monitors,
-                &save.settings.habitat,
-                scale,
-            ) else {
-                continue;
-            };
-            home_monitor.get_or_insert(monitor_id);
-            if home_monitor != Some(monitor_id) {
-                continue;
-            }
-            // Each house's own cell, the same one the desktop samples by day.
-            let size = SHELTER_SIZE as f32;
-            lots.push((
-                egui::Rect::from_min_size(
-                    egui::pos2(point.x - size / 2.0, point.y - size),
-                    egui::vec2(size, size),
-                ),
-                village_uv(formiga_art::VillageCell::House { slot, lit: false }),
-                VillageLayer::Dwelling,
-            ));
-        }
-        let yard = formiga_core::home_object_positions(
-            &save.home,
-            &cottages,
-            monitors,
-            &save.settings.habitat,
-            scale,
-        );
-        for (slot, place) in yard.iter().enumerate().take(objects) {
-            let Some((monitor_id, point)) = place else {
-                continue;
-            };
-            if home_monitor != Some(*monitor_id) {
-                continue;
-            }
-            let kind = save.objects.objects[slot].kind;
-            let size = COLONY_OBJECT_SIZE as f32;
-            let (left, right) =
-                ColonyObjectRenderer::cell_u(ColonyObjectRenderer::object_cell(kind));
-            lots.push((
-                egui::Rect::from_min_size(
-                    egui::pos2(point.x - size / 2.0, point.y - size),
-                    egui::vec2(size, size),
-                ),
-                egui::Rect::from_min_max(egui::pos2(left, 0.0), egui::pos2(right, 1.0)),
-                VillageLayer::Belonging,
-            ));
-        }
-        // The spots put down and the patches planted on the ground, drawn as the desktop draws
-        // them: the lookout turned out over the open desktop.
-        let ground = formiga_core::home_ground_positions(
-            &save.home,
-            &cottages,
-            monitors,
-            &save.settings.habitat,
-            scale,
-        );
-        for (item, monitor_id, point) in ground {
-            if home_monitor != Some(monitor_id) {
-                continue;
-            }
-            let middle = monitors
-                .iter()
-                .find(|monitor| monitor.id == monitor_id)
-                .map_or(point.x, |monitor| {
-                    monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0
-                });
-            let size = COLONY_OBJECT_SIZE as f32;
-            let (mut left, mut right) =
-                ColonyObjectRenderer::cell_u(ColonyObjectRenderer::ground_cell(item));
-            if ColonyObjectRenderer::ground_mirrored(item, point.x, middle) {
-                std::mem::swap(&mut left, &mut right);
-            }
-            lots.push((
-                egui::Rect::from_min_size(
-                    egui::pos2(point.x - size / 2.0, point.y - size),
-                    egui::vec2(size, size),
-                ),
-                egui::Rect::from_min_max(egui::pos2(left, 0.0), egui::pos2(right, 1.0)),
-                VillageLayer::Belonging,
-            ));
-        }
-        let frame = egui::vec2(200.0, 160.0);
-        let (response, painter) = ui.allocate_painter(frame, egui::Sense::hover());
-        let area = response.rect;
-        painter.rect_filled(area, 4.0, card_fill());
-        if lots.is_empty() {
-            painter.text(
-                area.center(),
-                egui::Align2::CENTER_CENTER,
-                if save.home.is_active() {
-                    "No room for the village here"
-                } else {
-                    "The colony is out exploring"
-                },
-                egui::TextStyle::Small.resolve(ui.style()),
-                muted(),
-            );
-            return;
-        }
-        // Fit the whole strip, without ever stretching a pixel out of square.
-        let village_bounds = lots
-            .iter()
-            .fold(lots[0].0, |acc, (rect, _, _)| acc.union(*rect));
-        let fit = (area.width() / village_bounds.width().max(1.0))
-            .min(area.height() / village_bounds.height().max(1.0))
-            .clamp(0.25, 2.0);
-        let origin = area.center() - village_bounds.size() * fit / 2.0;
-        // Houses and both trees behind, then what is hung in them, then the belongings in front,
-        // exactly as the desktop layers them.
-        lots.sort_by_key(|(_, _, layer)| *layer);
-        for (rect, uv, layer) in lots {
-            let placed = egui::Rect::from_min_size(
-                origin + (rect.min - village_bounds.min) * fit,
-                rect.size() * fit,
-            );
-            painter.image(
-                match layer {
-                    VillageLayer::Dwelling => village.id(),
-                    VillageLayer::Trinket => trinkets.id(),
-                    VillageLayer::Belonging => objects_texture.id(),
-                },
-                placed,
-                uv,
-                Color32::WHITE,
-            );
-        }
-    }
-
-    pub fn scrapbook(&mut self, ui: &mut Ui, save: &SaveFile) {
-        let offset = local_offset();
-        let found = save.companion.scrapbook.clone();
-        let atlas = self.trinket_atlas(ui, save);
-        ui.label(
-            RichText::new(format!(
-                "THE SCRAPBOOK · {} of {}",
-                found.len(),
-                TRINKET_VARIANTS
-            ))
-            .color(forest())
-            .size(11.0),
-        );
-        ui.add_space(6.0);
-        if found.is_empty() {
-            card(ui, |ui| {
-                ui.strong("Nothing found yet");
-                ui.label(
-                    "When a companion brings something back for the first time, it is recorded \
-                     here with the date and who found it.",
-                );
-            });
-            ui.add_space(8.0);
-        }
-        for info in formiga_core::all_trinkets() {
-            let record = found.iter().find(|r| r.variant == info.variant);
-            card(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // An empty slot still shows the shape of what belongs in it, dimmed to a
-                    // silhouette, so the page reads as a book with room left in it.
-                    let tint = if record.is_some() {
-                        Color32::WHITE
-                    } else {
-                        Color32::from_rgba_unmultiplied(255, 255, 255, 40)
-                    };
-                    ui.add(Self::trinket_image(&atlas, info.variant, 48.0).tint(tint));
-                    ui.vertical(|ui| match record {
-                        Some(record) => {
-                            ui.strong(info.name);
-                            ui.label(info.description);
-                            // The finder's name was kept when it was found, so a companion who
-                            // has since left is still the one credited.
-                            let finder = record
-                                .finder
-                                .and_then(|id| save.creatures.iter().find(|c| c.id == id))
-                                .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                            let at = record.first_at.to_offset(offset);
-                            ui.small(format!("Found by {finder} · {}", at.date()));
-                        }
-                        None => {
-                            ui.strong(RichText::new(info.name).color(muted()));
-                            ui.small(RichText::new(info.hint).color(muted()));
-                        }
-                    });
-                });
-            });
-            ui.add_space(8.0);
-        }
-        ui.small("Only the first find of each kind is recorded, and only on this computer.");
     }
 }
 
@@ -1434,6 +934,28 @@ pub fn title(ui: &mut Ui, heading: &str, description: &str) {
     ui.label(description);
     ui.add_space(20.0);
 }
+/// A tile in a wrapped row: a space of its own, filled and edged, for whatever is painted into it,
+/// and something to click. A `Frame` works out where it goes before the row has decided whether it
+/// still fits, so a row of them never wraps and runs off the side of the page; a space allocated
+/// whole does wrap, like a word.
+pub(crate) fn tile(
+    ui: &mut Ui,
+    size: egui::Vec2,
+    fill: Color32,
+    edge: Color32,
+) -> (egui::Response, egui::Rect) {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, fill);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(1.0, edge),
+        egui::StrokeKind::Inside,
+    );
+    (response, rect)
+}
+
 pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
     egui::Frame::new()
         .fill(card_fill())
@@ -1509,6 +1031,10 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
         JournalMoment::Decoration(kind) => format!(
             "The home earned a {}",
             words(&format!("{kind:?}")).to_lowercase()
+        ),
+        JournalMoment::Unlocked(item) => format!(
+            "Something new for the village: {}",
+            item.label().to_lowercase()
         ),
         // A visitor is never a colony member, so the moment carries the name it went by.
         JournalMoment::Visit(ref visitor) => format!("{visitor} came by the houses"),
@@ -1808,7 +1334,14 @@ fn today_tally(moments: &[&JournalEntry]) -> Vec<String> {
             "shared moments",
         ),
         (
-            count(&|m| matches!(m, JournalMoment::Object(_) | JournalMoment::Decoration(_))),
+            count(&|m| {
+                matches!(
+                    m,
+                    JournalMoment::Object(_)
+                        | JournalMoment::Decoration(_)
+                        | JournalMoment::Unlocked(_)
+                )
+            }),
             "new keepsake",
             "new keepsakes",
         ),
@@ -1927,6 +1460,8 @@ pub fn journal(
             ui.heading("The story is just beginning");
             ui.label("New arrivals, discoveries, learned preferences, and shared rituals will appear here as they happen.");
         });
+        ui.add_space(14.0);
+        clubhouse.scrapbook(ui, save);
         return;
     }
     // Kept moments sit above the rolling journal and are not repeated inside it. They are read
@@ -2032,6 +1567,10 @@ pub fn journal(
         "The most recent {MAX_JOURNAL_ENTRIES} moments stay on this computer, plus up to \
          {MAX_PINNED_ENTRIES} you keep. Missed time is never replayed."
     ));
+    ui.add_space(20.0);
+    ui.separator();
+    ui.add_space(14.0);
+    clubhouse.scrapbook(ui, save);
 }
 /// Charcoal or cream, and how large the words are. These change the settings window only; the
 /// creatures on the desktop are untouched by either.
@@ -2308,19 +1847,19 @@ mod tests {
     /// letterboxed into a sliver and the keepsake inside it is squashed flat. Every keepsake the
     /// scrapbook draws has to come out square.
     #[test]
-    fn a_keepsake_is_drawn_square_however_wide_the_sheet_it_is_cut_from() {
-        let sheet = egui::vec2(TRINKET_ATLAS_WIDTH as f32, TRINKET_ATLAS_HEIGHT as f32);
+    fn a_keepsake_is_drawn_square_however_the_sheet_it_is_cut_from_is_shaped() {
+        let sheet = egui::vec2(
+            TRINKET_ATLAS_WIDTH as f32,
+            formiga_art::TRINKET_RESTING_HEIGHT as f32,
+        );
         assert!(
-            sheet.x > sheet.y * 4.0,
-            "the sheet has to be far wider than it is tall for this to be worth pinning"
+            (sheet.x - sheet.y).abs() > 16.0,
+            "the sheet has to be out of square for this to be worth pinning"
         );
         let context = egui::Context::default();
         let atlas = context.load_texture(
             "colony-trinkets",
-            egui::ColorImage::filled(
-                [TRINKET_ATLAS_WIDTH as usize, TRINKET_ATLAS_HEIGHT as usize],
-                egui::Color32::WHITE,
-            ),
+            egui::ColorImage::filled([sheet.x as usize, sheet.y as usize], egui::Color32::WHITE),
             egui::TextureOptions::NEAREST,
         );
         let plenty = egui::vec2(512.0, 512.0);

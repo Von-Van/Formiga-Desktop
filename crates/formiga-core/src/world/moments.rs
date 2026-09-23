@@ -326,6 +326,7 @@ impl World {
             VillageMoment::Nap => BubbleIcon::Sleepy,
         };
         for place in &places {
+            self.end_village_activity(place.creature_id);
             self.home_moments.remove(&place.creature_id);
             self.home_moment_timers.remove(&place.creature_id);
             self.home_roam.remove(&place.creature_id);

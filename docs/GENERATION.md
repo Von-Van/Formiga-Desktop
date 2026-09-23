@@ -1,4 +1,4 @@
-# Modular creature generation · v0.59.5
+# Modular creature generation · v0.60.0
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -111,12 +111,19 @@ are baked into the same action atlas as the body, anchored to the paw or the mou
 drawn through `modular::prop_hold`, so a toy is held in a real hand rather than at a guessed offset.
 `prop-sheet` shows all fifteen against the bodies that carry them.
 
-Trinkets are a colony's, not a creature's. `formiga-core::trinkets` is the catalogue — sixteen
-entries of name, description, hint, and condition, with `TRINKET_VARIANTS = 16` — and
-`formiga-art::TrinketAtlasRenderer` bakes it into one 256×32 sheet of sixteen columns by two rows, a
-rest frame and a glint frame. Its colours come from the colony seed and are chosen to stay clear of
-every member's coat, so a found keepsake reads as a separate object however the colony is coloured
-and whoever is holding it. A new variant is a new column, not a new texture per creature.
+Trinkets are a colony's, not a creature's. `formiga-core::trinkets` is the catalogue — a hundred
+and sixty entries of name, description, hint, and condition, with `TRINKET_VARIANTS = 160` — and
+`formiga-art::TrinketAtlasRenderer` bakes it into one 256×320 sheet of sixteen columns, ten rows of
+resting drawings and ten of the same with a glint. Its colours come from the colony seed and are
+chosen to stay clear of every member's coat, so a found keepsake reads as a separate object however
+the colony is coloured and whoever is holding it. A new variant is a new cell, not a new texture per
+creature.
+
+What a companion wears is a colony's finds too. Each of the twenty accessories in
+`formiga-core::accessories` is made from one variant and drawn in that variant's inks, and any find
+can be worn as a pin. `renderer/accessories.rs` draws the piece onto every body frame as the atlas is
+baked, from the `Figure` the frame's body reports — the top of the head, the neck, the chest and the
+hip — so it adds no gene, no texture, and no quad.
 
 ## Extending safely
 

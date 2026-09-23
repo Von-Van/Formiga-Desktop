@@ -1,6 +1,6 @@
 use crate::{
     ColonyHome, ColonyObject, Creature, CreatureRole, DesktopRect, GardenKind, HabitatPolicy,
-    HabitatPreset, HabitatZoneKind, HangoutKind, HomeCorner, MonitorInfo, Point,
+    HabitatPreset, HabitatZoneKind, HangoutKind, HomeCorner, MonitorInfo, OrnamentKind, Point,
 };
 
 pub const MAX_HABITAT_ZONES: usize = 32;
@@ -121,14 +121,12 @@ impl TreeEnd {
     /// Both ends, outward first, which is the order the walk lays them out in.
     pub const BOTH: [Self; 2] = [Self::Outward, Self::Inward];
 
-    /// Which of the two a keepsake hangs in. The everyday finds — the ones with no condition on
-    /// them at all, which are variants 0..8 — hang by the door on the outward tree; the eight
-    /// that only turn up in a particular circumstance hang at the far end. The catalogue is built
-    /// so that split is exactly eight each, which is exactly how many anchors a tree has, so
-    /// neither tree can overflow. It depends on the variant alone, so a keepsake never moves once
-    /// it has been found and never changes ends when the village mirrors into the other corner.
-    pub const fn of_trinket(variant: u8) -> Self {
-        if variant < TRINKETS_PER_TREE {
+    /// Which of the two trees a hook is on: the first eight hooks are on the outward tree by the
+    /// door, the next eight at the far end. With nothing chosen by hand, the original sixteen finds
+    /// each have a hook of their own — variant `n` on hook `n` — so they hang exactly where they
+    /// always have, and never change ends when the village mirrors into the other corner.
+    pub const fn of_hook(hook: usize) -> Self {
+        if hook < TRINKETS_PER_TREE as usize {
             Self::Outward
         } else {
             Self::Inward
@@ -144,9 +142,9 @@ impl TreeEnd {
     }
 }
 
-/// How many keepsakes one tree carries: half the catalogue each, and the number of anchors
+/// How many keepsakes one tree carries: half the sixteen hooks each, and the number of anchors
 /// `formiga_art::TRINKET_ANCHORS` holds.
-pub const TRINKETS_PER_TREE: u8 = crate::TRINKET_VARIANTS / 2;
+pub const TRINKETS_PER_TREE: u8 = (crate::TREE_HOOKS / 2) as u8;
 
 /// A lot on the strip: a dwelling, or one of the two keepsake trees and its yard. The ground in
 /// front of the houses is no lot at all — the colony shares it and walks it — and the colony's
@@ -924,6 +922,31 @@ pub fn home_object_positions(
     places
 }
 
+/// How far above the village ground line the top of a house reaches, in shelter pixels: where a
+/// companion sitting on its roof has its feet. Measured the way the house is drawn — its size in
+/// twelfths of the colony house, the dwelling's own proportions from the colony's shelter genome,
+/// and where each type's roof actually tops out — and held to the drawing by a test in the art
+/// crate. The ground line is three rows below where a house's walls stand in its cell.
+pub fn house_roof_height(
+    shelter: &crate::ShelterGenome,
+    style: crate::ShelterStyle,
+    colony_house: bool,
+) -> f32 {
+    let span = if colony_house { 12 } else { 10 };
+    let height = (i32::from(shelter.height).clamp(27, 36) * span / 12).max(13);
+    let unit = |value: i32| (value * span / 12).max(1);
+    let top = match style {
+        // The canvas comes to its apex a little below the top of the pole.
+        crate::ShelterStyle::Tent => height - unit(3) - 2,
+        crate::ShelterStyle::Mushroom => height,
+        // The roof pillow puffs up a few pixels above the walls.
+        crate::ShelterStyle::PillowFort => height + 3,
+        // The ridge of leaves sits a little below the house's full height.
+        crate::ShelterStyle::LeafHouse => height - 2,
+    };
+    (top + 3) as f32
+}
+
 /// How wide a hangout spot stands on the ground, in shelter pixels: the art's own cell.
 pub const HANGOUT_WIDTH: f32 = 16.0;
 
@@ -932,6 +955,26 @@ pub const HANGOUT_WIDTH: f32 = 16.0;
 pub enum GroundItem {
     Hangout(HangoutKind),
     Garden(GardenKind),
+    Ornament(OrnamentKind),
+}
+
+impl GroundItem {
+    /// A stable order for items that land on the same spot, so a tie always breaks one way.
+    const fn rank(self) -> u8 {
+        match self {
+            Self::Hangout(kind) => kind.index(),
+            Self::Garden(kind) => 32 + kind.index(),
+            Self::Ornament(kind) => 64 + kind.index(),
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Hangout(kind) => kind.label(),
+            Self::Garden(kind) => kind.label(),
+            Self::Ornament(kind) => kind.label(),
+        }
+    }
 }
 
 /// Where everything put down on the village ground stands, resolved in one go: hangout spots and
@@ -946,7 +989,7 @@ pub fn home_ground_positions(
     policy: &HabitatPolicy,
     display_scale: u8,
 ) -> Vec<(GroundItem, u64, Point)> {
-    if home.hangouts.is_empty() && home.gardens.is_empty() {
+    if !home.has_ground_items() {
         return Vec::new();
     }
     let Some(commons) = home_commons(home, cottages, monitors, policy, display_scale) else {
@@ -964,12 +1007,13 @@ pub fn home_ground_positions(
                 .iter()
                 .map(|patch| (GroundItem::Garden(patch.kind), at(patch.along))),
         )
+        .chain(
+            home.ornaments
+                .iter()
+                .map(|spot| (GroundItem::Ornament(spot.kind), at(spot.along))),
+        )
         .collect();
-    let rank = |item: GroundItem| match item {
-        GroundItem::Hangout(kind) => kind.index(),
-        GroundItem::Garden(kind) => 8 + kind.index(),
-    };
-    spots.sort_by(|a, b| a.1.total_cmp(&b.1).then(rank(a.0).cmp(&rank(b.0))));
+    spots.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.rank().cmp(&b.0.rank())));
     // Pushed apart from the left, then back inside the right-hand end.
     for index in 1..spots.len() {
         spots[index].1 = spots[index].1.max(spots[index - 1].1 + gap);
@@ -1008,7 +1052,7 @@ pub fn home_hangout_positions(
         .into_iter()
         .filter_map(|(item, monitor_id, point)| match item {
             GroundItem::Hangout(kind) => Some((kind, monitor_id, point)),
-            GroundItem::Garden(_) => None,
+            GroundItem::Garden(_) | GroundItem::Ornament(_) => None,
         })
         .collect()
 }

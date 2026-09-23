@@ -203,6 +203,7 @@ fn ledge_journey_visibly_moves_before_attaching() {
             topology.rebuild_if_changed(&desktop, &BTreeMap::new());
             topology
         },
+        world.save.settings.display_scale,
     )
     .expect("test window should expose a reachable ledge");
     let creature_id = world.save.creatures[0].id;

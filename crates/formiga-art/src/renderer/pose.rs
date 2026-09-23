@@ -391,6 +391,23 @@ impl Pose {
                 // Ears up the whole time, with a single flick on the fourth frame.
                 ear_perk: [2, 2, 2, 1, 2, 2][slow],
             },
+            // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
+            // mouth, held at the top, and settling down a little lower than it began. Played once:
+            // the face does the yawning, and the body frames it.
+            Gesture::Yawn => {
+                let rise = [1, 2, 2, 0][usize::from(frame.min(3))];
+                Self {
+                    bob: i32::from(frame >= 3),
+                    squash_x: -i32::from(rise > 0),
+                    squash_y: rise,
+                    play_lift: i32::from(frame == 1 || frame == 2),
+                    appendage_lift: 1 + rise,
+                    tail_sway: i32::from(frame >= 1),
+                    lean: -i32::from(frame == 1 || frame == 2),
+                    ear_perk: -i32::from(frame >= 3),
+                    ..Self::default()
+                }
+            }
             // Up onto its toes and drawn up tall as the paws go overhead, rocked back a touch at
             // the top and held there. Played once rather than looped, so the last frame is the
             // top of the stretch, and the nap it opens is what lets it go.

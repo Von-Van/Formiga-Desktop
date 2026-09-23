@@ -175,7 +175,8 @@ pub(super) fn draw_gesture_effects(
         | Gesture::Balance
         | Gesture::Reach
         | Gesture::Watch
-        | Gesture::Stretch => {}
+        | Gesture::Stretch
+        | Gesture::Yawn => {}
     }
 }
 

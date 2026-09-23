@@ -27,6 +27,7 @@ mod topology_and_attention;
 mod tows;
 mod undo;
 mod village;
+mod village_life;
 mod visitors;
 
 pub(super) fn desktop() -> DesktopSnapshot {

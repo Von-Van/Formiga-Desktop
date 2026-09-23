@@ -4,6 +4,38 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.60.0
+
+The village comes to life while the houses are out. Companions water the gardens, crouch to look
+in on something just coming up, pick something ripe for a snack, and carry the best of it over to
+show a friend. They see to their own houses the way each kind of house asks — retying a tent's
+flap, plumping a pillow fort, patting a mushroom's cap, tidying a leaf house's leaves — and the
+house answers. They go indoors now and then: the curtain is drawn across the door, the window
+glows, and a Z drifts up if they are napping in there, but never so many at once that the village
+looks empty. They climb up and sit on their own roofs. Gardens grow through sprouts and leaves to
+flowers and fruit on their own, with no watering to keep up and nothing to wilt.
+
+Little things go a little wrong, too. A leaf lands on somebody's face, a snack rolls away and has
+to be chased, someone sits down just beside the cushion and shuffles across onto it — and whoever
+is nearby stops to look. Yawns are catching: one companion yawns, the friend beside them looks
+over and yawns a moment later, and every so often it reaches a third, who holds out for a second
+before giving in.
+
+There are a hundred and sixty keepsakes to find now, many of them only in the right moment — at
+home, in the garden, on a roof, first thing in the morning, under a full moon. The Journal keeps
+what has been found, and the Your colony page has the whole Collection, with the ones still to find
+shown as shadows with a hint, and a choice of which sixteen hang in the trees. Finds become things
+to wear: a leaf hat, a flower crown, a scarf, a tiny satchel, or any find at all as a pin, one each,
+tried on in a few poses before it goes on.
+
+The Home page is arranged right in its picture of the village: drag a cottage along the row, drag a
+garden or a spot or an ornament along the ground, and click a house to choose its kind and what it
+wears in each of its six places. Every category of village thing starts with three, and something
+new arrives every day or two.
+
+And companions spend about half of their roaming time up on the windows, where before a desktop of
+ordinary windows had them all on the bottom row.
+
 ## New in 0.59.5
 
 A companion with nothing to do now sits like it has something on its mind. Resting used to be a

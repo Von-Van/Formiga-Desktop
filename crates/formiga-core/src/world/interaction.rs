@@ -175,11 +175,15 @@ impl World {
             });
             return true;
         }
+        // Somebody indoors is out of sight, and out of reach with it.
         let Some(creature_index) = self.save.creatures.iter().position(|creature| {
-            creature.id == creature_id && creature.state.arrival_delay_secs <= 0.0
+            creature.id == creature_id
+                && creature.state.arrival_delay_secs <= 0.0
+                && !creature.state.indoors
         }) else {
             return false;
         };
+        self.drop_village_activity(creature_id);
         let interrupted_journey = self.window_journeys.remove(&creature_id).is_some();
         self.cancel_creature_attention(creature_id);
         self.window_routes.remove(&creature_id);

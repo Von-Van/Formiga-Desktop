@@ -42,6 +42,12 @@ const COVER_GRACE_SECONDS: f32 = 1.25;
 /// the last fraction of a walk does not read as still being on the way.
 const ARRIVED_SLACK: f32 = 6.0;
 
+/// How many graces a covered face waits on two companions that are merely busy — walking to a
+/// spot of their own, or on their way through a game. Two of them going the same way at the same
+/// pace can carry one face behind the other body all the way across the floor, so past this the
+/// one that is free of any scene steps aside after all.
+const PATIENCE_GRACES: f32 = 2.0;
+
 /// Two companions merely standing too close have longer, because nothing is hidden and the one
 /// walking past is about to solve it by walking on.
 const CROWD_GRACE_SECONDS: f32 = 2.0;
@@ -59,6 +65,9 @@ const SCENE_DEADLINE_SECONDS: f32 = 21.0;
 
 /// How long to wait before asking again when neither of a pair could be moved.
 const RETRY_SECONDS: f32 = 0.5;
+
+/// How long a companion stands still to let somebody coming up from behind go past.
+const LET_PAST_SECONDS: f32 = 1.5;
 
 /// A sleeper shuffling over settles again within this long, or gives up and stays put.
 const SHUFFLE_SECONDS: f32 = 3.0;
@@ -246,6 +255,8 @@ struct Placed {
     hanging: f32,
     /// Still on its feet rather than part way through a walk of its own.
     settled: bool,
+    /// Which way, and how fast, it is going along its surface.
+    velocity_x: f32,
 }
 
 impl Placed {
@@ -335,13 +346,27 @@ impl World {
                 if covered < grace || cooldown > 0.0 {
                     continue;
                 }
-                if self.contact_excused(back.id) || self.contact_excused(front.id) {
+                // Somebody the user is holding, somebody in the air or climbing, and a sleeper
+                // being moved are always left alone. Somebody merely busy is left alone for a
+                // while, and then asked after all.
+                let patience_spent = hidden && covered >= COVER_GRACE_SECONDS * PATIENCE_GRACES;
+                if self.contact_excused(back.id, patience_spent)
+                    || self.contact_excused(front.id, patience_spent)
+                {
                     continue;
                 }
                 // Leaving a surface altogether is the last thing tried, so it waits out several
                 // graces first: a companion crowding a ledge is usually only passing through.
                 let pressing = hidden && covered >= COVER_GRACE_SECONDS * 5.0;
-                self.step_one_aside(&back, &front, shared, pressing, &placed, desktop);
+                self.step_one_aside(
+                    &back,
+                    &front,
+                    shared,
+                    pressing,
+                    patience_spent,
+                    &placed,
+                    desktop,
+                );
                 // A move is ordered here, not finished. Whoever was asked is walking or shuffling
                 // to the spot it was given and `contact_excused` leaves it alone until it gets
                 // there, so all this cooldown has to do is stop the pair being asked afresh on the
@@ -376,6 +401,7 @@ impl World {
                     action: creature.state.action,
                     hanging: creature.state.attention.map_or(0.0, |pose| pose.hanging),
                     settled: creature.state.velocity.x.abs() < 1.0,
+                    velocity_x: creature.state.velocity.x,
                 }
             })
             .collect()
@@ -395,8 +421,9 @@ impl World {
     }
 
     /// Contact nobody should interrupt: the user has hold of this creature, it is off the ground,
-    /// it is on its way up or hanging, or a scene is still making the contact and will end.
-    fn contact_excused(&self, id: CreatureId) -> bool {
+    /// it is on its way up or hanging, or a sleeper is being moved; and — until `patience_spent`
+    /// — a walk to a spot of its own, or a scene still making the contact and bound to end.
+    fn contact_excused(&self, id: CreatureId, patience_spent: bool) -> bool {
         let Some(creature) = self.save.creatures.iter().find(|c| c.id == id) else {
             return true;
         };
@@ -430,6 +457,9 @@ impl World {
         if self.overlaps.shuffling(id) || self.tows.involves(id) {
             return true;
         }
+        if patience_spent {
+            return false;
+        }
         // Still walking to a spot it chose for itself. Shuffling it now would drag it away from
         // the mark while its own walk pushes back, and the two would fight over it a pixel at a
         // time; once it arrives, it is standing still and can be asked properly.
@@ -449,9 +479,17 @@ impl World {
     /// What it would cost to ask this creature to move, or `None` if it cannot be asked at all.
     /// Lower moves first: awake before asleep, a bystander before the anchor of a pile, an empty
     /// moment before one holding a prop, and an idle companion before one that is mid-scene.
-    fn step_aside_cost(&self, who: &Placed, desktop: &DesktopSnapshot) -> Option<u32> {
+    fn step_aside_cost(
+        &self,
+        who: &Placed,
+        patience_spent: bool,
+        desktop: &DesktopSnapshot,
+    ) -> Option<u32> {
         // Already on its way; asking again would only restart the same move.
-        if self.contact_excused(who.id) || who.hanging > 0.05 || self.overlaps.shuffling(who.id) {
+        if self.contact_excused(who.id, patience_spent)
+            || who.hanging > 0.05
+            || self.overlaps.shuffling(who.id)
+        {
             return None;
         }
         // A scene that owns this creature is steering it somewhere of its own. Overlap
@@ -491,18 +529,20 @@ impl World {
     }
 
     /// Ask the better-placed of the two to take a short walk clear. Returns whether one set off.
+    #[allow(clippy::too_many_arguments)]
     fn step_one_aside(
         &mut self,
         back: &Placed,
         front: &Placed,
         shared: bool,
         pressing: bool,
+        patience_spent: bool,
         placed: &[Placed],
         desktop: &DesktopSnapshot,
     ) -> bool {
         let costs = (
-            self.step_aside_cost(back, desktop),
-            self.step_aside_cost(front, desktop),
+            self.step_aside_cost(back, patience_spent, desktop),
+            self.step_aside_cost(front, patience_spent, desktop),
         );
         // Ties break on creature id, so the same pair always resolves the same way.
         let mover = match costs {
@@ -517,6 +557,18 @@ impl World {
             (None, Some(_)) => front,
             (None, None) => return false,
         };
+        // Somebody coming up from behind would only catch up again with whoever ran on ahead of
+        // it, so the one in front stops for a moment and lets it past.
+        let other = if mover.id == back.id { front } else { back };
+        let ahead = if mover.position.x >= other.position.x {
+            1.0
+        } else {
+            -1.0
+        };
+        if other.velocity_x * ahead > 1.0 && !mover.asleep() && !self.in_ritual(mover.id) {
+            self.let_past(mover.id);
+            return true;
+        }
         let Some(target_x) = self.clear_spot(mover, placed, shared, desktop) else {
             // Somewhere else entirely is the last resort, for a ledge with no room left and a
             // face that has been hidden for a while. A ledge that is merely crowded is left be:
@@ -807,6 +859,20 @@ impl World {
 
     /// An awake companion takes an ordinary walk to the clear spot, after whatever was holding it
     /// has been let go of through its own cancellation rules.
+    /// Stands still for a moment to let somebody coming up from behind go past. Nothing is
+    /// announced, for the same reason nothing is when stepping aside.
+    fn let_past(&mut self, id: CreatureId) {
+        self.bond_plans.remove(&id);
+        self.action_choices.remove(&id);
+        let Some(creature) = creature_mut(&mut self.save.creatures, id) else {
+            return;
+        };
+        creature.state.action = ActionKind::Idle;
+        creature.state.action_elapsed = 0.0;
+        creature.state.action_duration = LET_PAST_SECONDS;
+        creature.state.velocity = Point::default();
+    }
+
     fn walk_aside(&mut self, id: CreatureId, target_x: f32) {
         self.bond_plans.remove(&id);
         let Some(creature) = creature_mut(&mut self.save.creatures, id) else {

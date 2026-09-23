@@ -689,3 +689,67 @@ bytes and a full colony's 9,179,136. A colony at rest is drawn at the frame rate
 resting in, and the loop runs at three frames a second where the bob ran at four, so a resting
 colony is redrawn once a second less often than it was. The two new thought bubbles use icons the
 interface atlas already had.
+
+## 0.60.0
+
+### The simulation
+
+The village's new life — gardens, chores, spells indoors, roofs, mishaps — and the yawns that go
+round cost the simulation nothing that can be measured. `tick-bench`, built in release on the
+development Mac, the two builds run side by side in the same sitting:
+
+| scenario | 0.59.5 mean µs | 0.60.0 mean µs |
+|---|---:|---:|
+| 1 creature, quiet desktop | 0.90 | 0.90 |
+| 6 creatures, quiet desktop | 3.02 | 3.10 |
+| 6 creatures, busy desktop + cursor | 6.48 | 6.30 |
+| 6 creatures, homebound at shelter | 3.26 | 3.26 |
+| 6 creatures + visitor, homebound | 4.11 | 4.15 |
+| 6 creatures, paused, busy desktop | 1.72 | 1.69 |
+
+A colony's file grows by about 4.5% — 50,749 bytes to 53,041 for the benchmark's six — and a save
+of it takes 5.25 ms on average against 4.85.
+
+### Frames
+
+A walk about the village on some errand of a resident's own is drawn as a stroll is, at ten frames a
+second, like the errands to a belonging it sits beside; the hop up onto a roof is half a second. A
+spell indoors draws the companion not at all, a Z or two while it naps, and the house's occupied
+cell from the same atlas.
+The overlay's per-frame village work — the look of every house, who is indoors, what is being seen
+to, and what is loose — is a few comparisons and, while nobody is doing anything, three empty lists.
+The running application was not measured again for this release; nothing here adds frames to a
+colony that 0.59.5 drew.
+
+### Textures
+
+| | 0.59.5 | 0.60.0 |
+|---|---:|---:|
+| one companion's atlas | 1,529,856 bytes | 1,649,664 |
+| a full colony's six | 9,179,136 | 9,897,984 |
+| village atlas | 256×256 | 512×256 |
+| colony trinket sheet | 256×32 | 256×320 |
+| object sheet | 224×16 | 256×112 |
+| settings artwork, at most | 500 KiB | 760 KiB |
+
+The yawn's four frames opened a fourteenth row of the companion atlas and its face a row of its
+own; whatever a companion wears is drawn into the frames it already has and costs nothing. The
+village atlas doubled in width to hold every house again with somebody at home. The settings pages
+hold only the row of the village they draw and the resting half of the trinket sheet.
+
+### Time up high
+
+What the climbing change was for, measured over half an hour of four companions that like to be
+anywhere, on five desktops, with the harness in `world/tests/misc.rs`, before and after the change
+to how high a companion looks and how often it comes down:
+
+| desktop | up high, before | up high, after | all four on the floor, after |
+|---|---:|---:|---:|
+| a grid of six mid-height windows | 98.7% | 47.1% | 15.4% |
+| a laptop's three windows | 99.1% | 48.6% | 5.6% |
+| a browser the height of the screen and two windows high up | 0.0% | 40.3% | 16.2% |
+| one maximised window | 0.0% | 0.0% | 100% |
+| two side by side | 0.0% | 0.0% | 100% |
+
+A stint up high lasts about a minute and a stint on the floor a little longer. A maximised window,
+or two side by side, has nothing a companion can sit on without its head going under the menu bar.

@@ -233,6 +233,7 @@ impl InteractionProxy {
         let visible = settings.visible
             && settings.direct_manipulation
             && creature.state.arrival_delay_secs <= 0.0
+            && !creature.state.indoors
             && !runtime.occluded;
         if self.visible != visible {
             self.window.set_visible(visible);

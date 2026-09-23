@@ -1,6 +1,7 @@
 use crate::{Canvas, PALETTES, Rgba};
 use formiga_core::{ShelterDecorationKind, ShelterGenome, ShelterStyle};
 
+mod decorations;
 mod houses;
 
 pub const SHELTER_SIZE: u32 = 64;
@@ -10,10 +11,13 @@ pub const SHELTER_SIZE: u32 = 64;
 /// than one house per companion.
 pub const VILLAGE_HOUSES: usize = formiga_core::MAX_COLONY_CREATURES;
 
-/// Four cells across and four down: the houses by day and the keepsake tree in the top two rows,
-/// and the same houses lit from inside in the two rows below. The daylit half on its own is what
-/// the Home page and the colony portrait draw from.
-pub const VILLAGE_ATLAS_SIZE: u32 = SHELTER_SIZE * 4;
+/// Eight cells across and four down. The top row is every house by day and the keepsake tree; the
+/// second row the same houses by day with somebody at home; the third and fourth rows the same
+/// again lit from inside after dark. The daylit half on its own is what the Home page and the
+/// colony portrait draw from.
+pub const VILLAGE_ATLAS_COLUMNS: u32 = 8;
+pub const VILLAGE_ATLAS_WIDTH: u32 = SHELTER_SIZE * VILLAGE_ATLAS_COLUMNS;
+pub const VILLAGE_ATLAS_HEIGHT: u32 = SHELTER_SIZE * 4;
 /// The height of the daylit half of the village atlas.
 pub const VILLAGE_DAY_HEIGHT: u32 = SHELTER_SIZE * 2;
 
@@ -26,8 +30,13 @@ pub const COTTAGE_SPAN: i32 = 10;
 /// One cell of the village atlas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VillageCell {
-    /// The house in village slot `slot` — the colony house is slot 0 — by day or lit after dark.
-    House { slot: usize, lit: bool },
+    /// The house in village slot `slot` — the colony house is slot 0 — by day or lit after dark,
+    /// and with its resident at home behind a drawn curtain or not.
+    House {
+        slot: usize,
+        lit: bool,
+        occupied: bool,
+    },
     /// The keepsake tree both ends of the village are drawn from.
     Tree,
 }
@@ -72,6 +81,30 @@ impl ResidentMark {
     }
 }
 
+/// Everything about how the village's houses look, in the order they stand: each house's type,
+/// the decorations it wears, and whose curtain hangs in its door. Two villages that compare equal
+/// draw the same atlas, so this is what a cached village texture is keyed on.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VillageLook {
+    pub genome: ShelterGenome,
+    pub styles: [ShelterStyle; VILLAGE_HOUSES],
+    pub decorations: [Vec<ShelterDecorationKind>; VILLAGE_HOUSES],
+    pub marks: [Option<ResidentMark>; VILLAGE_HOUSES],
+}
+
+impl VillageLook {
+    /// The village as this colony has it: painted in its palette, each house built as its own
+    /// type, dressed as it was dressed, and hung with its keeper's curtain.
+    pub fn of(home: &formiga_core::ColonyHome, creatures: &[formiga_core::Creature]) -> Self {
+        Self {
+            genome: home.drawn_shelter(),
+            styles: home.house_style_list(creatures),
+            decorations: home.house_decoration_list(creatures),
+            marks: ResidentMark::for_village(creatures, &home.cottage_order),
+        }
+    }
+}
+
 pub struct ShelterRenderer;
 
 impl ShelterRenderer {
@@ -84,72 +117,95 @@ impl ShelterRenderer {
         decorations: &[ShelterDecorationKind],
     ) -> Canvas {
         let mut canvas = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-        draw_dwelling(
-            &mut canvas,
-            genome,
-            decorations,
-            32,
-            61,
-            MAIN_SPAN,
-            None,
-            false,
-        );
+        draw_dwelling(&mut canvas, genome, decorations, Dwelling::main());
         canvas
     }
 
     /// Where a cell's top-left sits in the village atlas, in pixels.
     pub fn village_cell(cell: VillageCell) -> (u32, u32) {
-        let index = match cell {
-            VillageCell::House { slot, lit } => {
-                slot.min(VILLAGE_HOUSES - 1) + if lit { 8 } else { 0 }
-            }
-            VillageCell::Tree => VILLAGE_HOUSES,
-        } as u32;
-        (index % 4 * SHELTER_SIZE, index / 4 * SHELTER_SIZE)
+        let (column, row) = match cell {
+            VillageCell::House {
+                slot,
+                lit,
+                occupied,
+            } => (
+                slot.min(VILLAGE_HOUSES - 1),
+                usize::from(occupied) + if lit { 2 } else { 0 },
+            ),
+            VillageCell::Tree => (VILLAGE_HOUSES, 0),
+        };
+        (column as u32 * SHELTER_SIZE, row as u32 * SHELTER_SIZE)
     }
 
-    /// Every house in the village and the keepsake tree, in one cached texture: the colony house
-    /// with the decorations it has earned, a cottage in each later slot, each hung with its
-    /// resident's curtain, and — with `after_dark` — the same houses lit from inside in the rows
-    /// below. Without it the texture is only the daylit half.
-    /// Every house in the village by day, and lit after dark if asked for, with the keepsake
-    /// tree. `marks` hangs each house's resident's curtain and `styles` builds each house as its
-    /// own type, slot by slot; a slot either leaves out is the colony's own.
+    /// Every house in the village by day, with and without somebody at home, and — with
+    /// `after_dark` — the same houses lit from inside in the rows below, with the keepsake tree.
+    /// Without it the texture is only the daylit half.
+    pub fn render_look(look: &VillageLook, after_dark: bool) -> Canvas {
+        Self::render_village(
+            &look.genome,
+            &look.decorations,
+            &look.marks,
+            &look.styles,
+            after_dark,
+        )
+    }
+
+    /// Every house by day with nobody at home, and the keepsake tree: the atlas's top row, which
+    /// is all the Home page draws, as a texture of its own a quarter the size of the whole.
+    pub fn render_home_row(look: &VillageLook) -> Canvas {
+        let daylit = Self::render_look(look, false);
+        let mut row = Canvas::new(VILLAGE_ATLAS_WIDTH, SHELTER_SIZE);
+        for y in 0..SHELTER_SIZE as i32 {
+            for x in 0..VILLAGE_ATLAS_WIDTH as i32 {
+                row.set(x, y, daylit.get(x, y));
+            }
+        }
+        row
+    }
+
+    /// The village atlas from its parts. `decorations`, `marks` and `styles` are by house slot; a
+    /// slot any of them leaves out is bare, unmarked, and the colony's own type.
     pub fn render_village(
         genome: &ShelterGenome,
-        decorations: &[ShelterDecorationKind],
+        decorations: &[Vec<ShelterDecorationKind>],
         marks: &[Option<ResidentMark>],
         styles: &[ShelterStyle],
         after_dark: bool,
     ) -> Canvas {
         let height = if after_dark {
-            VILLAGE_ATLAS_SIZE
+            VILLAGE_ATLAS_HEIGHT
         } else {
             VILLAGE_DAY_HEIGHT
         };
-        let mut canvas = Canvas::new(VILLAGE_ATLAS_SIZE, height);
+        let mut canvas = Canvas::new(VILLAGE_ATLAS_WIDTH, height);
         // Each cell is drawn into its own cell-sized tile first. Art that would run past a cell
-        // is clipped exactly as it is for a lone shelter, never bleeding into a neighbour. Only
-        // the colony house carries the decorations it earned over time.
+        // is clipped exactly as it is for a lone shelter, never bleeding into a neighbour.
         for lit in [false, true] {
             if lit && !after_dark {
                 continue;
             }
-            for slot in 0..VILLAGE_HOUSES {
-                let (span, decorations) = if slot == 0 {
-                    (MAIN_SPAN, decorations)
-                } else {
-                    (COTTAGE_SPAN, &[][..])
-                };
-                let mark = marks.get(slot).copied().flatten();
-                let house = ShelterGenome {
-                    style: styles.get(slot).copied().unwrap_or(genome.style),
-                    ..*genome
-                };
-                let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                draw_dwelling(&mut tile, &house, decorations, 32, 61, span, mark, lit);
-                let (x, y) = Self::village_cell(VillageCell::House { slot, lit });
-                blit_cell(&mut canvas, &tile, x as i32, y as i32);
+            for occupied in [false, true] {
+                for slot in 0..VILLAGE_HOUSES {
+                    let dressed = decorations.get(slot).map_or(&[][..], Vec::as_slice);
+                    let house = ShelterGenome {
+                        style: styles.get(slot).copied().unwrap_or(genome.style),
+                        ..*genome
+                    };
+                    let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                    let dwelling = Dwelling {
+                        mark: marks.get(slot).copied().flatten(),
+                        lit,
+                        occupied,
+                        ..Dwelling::in_slot(slot)
+                    };
+                    draw_dwelling(&mut tile, &house, dressed, dwelling);
+                    let (x, y) = Self::village_cell(VillageCell::House {
+                        slot,
+                        lit,
+                        occupied,
+                    });
+                    blit_cell(&mut canvas, &tile, x as i32, y as i32);
+                }
             }
         }
         let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
@@ -157,6 +213,24 @@ impl ShelterRenderer {
         let (x, y) = Self::village_cell(VillageCell::Tree);
         blit_cell(&mut canvas, &tile, x as i32, y as i32);
         canvas
+    }
+
+    /// How far above its ground line the top of a house of this type reaches, in shelter
+    /// pixels, measured from the drawing itself: the height a companion sitting on its roof sits
+    /// at. Only the middle of the house counts, so a pennant pole or a sprout does not.
+    pub fn roof_height(genome: &ShelterGenome, style: ShelterStyle, colony_house: bool) -> i32 {
+        let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+        let house = ShelterGenome { style, ..*genome };
+        let dwelling = if colony_house {
+            Dwelling::main()
+        } else {
+            Dwelling::in_slot(1)
+        };
+        draw_dwelling(&mut tile, &house, &[], dwelling);
+        (29..=35)
+            .filter_map(|x| (0..SHELTER_SIZE as i32).find(|y| tile.get(x, *y).a > 0))
+            .max()
+            .map_or(0, |top| dwelling.bottom - top)
     }
 }
 
@@ -181,19 +255,54 @@ fn dwelling_size(genome: &ShelterGenome, span: i32) -> (i32, i32) {
     )
 }
 
-/// Draws one dwelling into `canvas`, centred on `cx` and standing on `bottom`. `span` scales
-/// the house in twelfths of the colony house: see `MAIN_SPAN` and its companions.
-#[allow(clippy::too_many_arguments)]
-fn draw_dwelling(
-    canvas: &mut Canvas,
-    genome: &ShelterGenome,
-    decorations: &[ShelterDecorationKind],
+/// Where and how one dwelling is drawn in its cell: centred on `cx` and standing on `bottom`, at
+/// `span` twelfths of the colony house, hung with its resident's curtain, lit from inside after
+/// dark, and with its resident at home behind the curtain or not.
+#[derive(Clone, Copy)]
+struct Dwelling {
     cx: i32,
     bottom: i32,
     span: i32,
     mark: Option<ResidentMark>,
     lit: bool,
+    occupied: bool,
+}
+
+impl Dwelling {
+    const fn main() -> Self {
+        Self {
+            cx: 32,
+            bottom: 61,
+            span: MAIN_SPAN,
+            mark: None,
+            lit: false,
+            occupied: false,
+        }
+    }
+
+    const fn in_slot(slot: usize) -> Self {
+        Self {
+            span: if slot == 0 { MAIN_SPAN } else { COTTAGE_SPAN },
+            ..Self::main()
+        }
+    }
+}
+
+/// Draws one dwelling into `canvas`.
+fn draw_dwelling(
+    canvas: &mut Canvas,
+    genome: &ShelterGenome,
+    decorations: &[ShelterDecorationKind],
+    dwelling: Dwelling,
 ) {
+    let Dwelling {
+        cx,
+        bottom,
+        span,
+        mark,
+        lit,
+        occupied,
+    } = dwelling;
     let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
     let accent = PALETTES[genome.accent_index as usize % PALETTES.len()];
     let (width, height) = dwelling_size(genome, span);
@@ -220,6 +329,7 @@ fn draw_dwelling(
             span,
             seed: genome.detail_seed,
             lit,
+            occupied,
             mark,
         },
         houses::Materials::for_style(genome.style, palette, accent),
@@ -228,15 +338,17 @@ fn draw_dwelling(
     for kind in decorations
         .iter()
         .copied()
-        .take(formiga_core::MAX_SHELTER_DECORATIONS)
+        .take(formiga_core::MAX_HOUSE_DECORATIONS)
     {
-        draw_decoration(
+        decorations::draw(
             canvas,
             kind,
-            palette.outline,
-            palette.coat,
-            accent.accent,
-            accent.highlight,
+            decorations::Inks {
+                outline: palette.outline,
+                coat: palette.coat,
+                accent: accent.accent,
+                highlight: accent.highlight,
+            },
             genome,
             frame,
             lit,
@@ -257,6 +369,9 @@ struct ShelterFrame {
     wall_half: i32,
     ground_y: i32,
     ground_half: i32,
+    /// A cottage, which keeps what stands beside it a little closer in: its lot is narrower than
+    /// the colony house's.
+    cottage: bool,
 }
 
 impl ShelterFrame {
@@ -265,6 +380,7 @@ impl ShelterFrame {
         let top = bottom - height;
         let half = width / 2;
         let unit = |value: i32| (value * span / MAIN_SPAN).max(1);
+        let cottage = span < MAIN_SPAN;
         match genome.style {
             ShelterStyle::Tent => Self {
                 cx,
@@ -275,6 +391,7 @@ impl ShelterFrame {
                 wall_half: (half + unit(2)) * 7 / 10,
                 ground_y: bottom - unit(2),
                 ground_half: half + unit(2),
+                cottage,
             },
             ShelterStyle::Mushroom => {
                 // Under the rim of the cap, across the front of the stem.
@@ -289,6 +406,7 @@ impl ShelterFrame {
                     wall_half: stem_half,
                     ground_y: bottom,
                     ground_half: stem_half + unit(2),
+                    cottage,
                 }
             }
             ShelterStyle::PillowFort => {
@@ -304,6 +422,7 @@ impl ShelterFrame {
                     wall_half: half,
                     ground_y: bottom - unit(1),
                     ground_half: half + unit(2),
+                    cottage,
                 }
             }
             ShelterStyle::LeafHouse => {
@@ -317,94 +436,9 @@ impl ShelterFrame {
                     wall_half: half - unit(2),
                     ground_y: bottom,
                     ground_half: half,
+                    cottage,
                 }
             }
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_decoration(
-    canvas: &mut Canvas,
-    kind: ShelterDecorationKind,
-    outline: Rgba,
-    coat: Rgba,
-    accent: Rgba,
-    highlight: Rgba,
-    genome: &ShelterGenome,
-    frame: ShelterFrame,
-    lit: bool,
-) {
-    // Mounted pieces take their position from the shelter itself. Only the two ground pieces
-    // shift, and by a single pixel, so a home still varies without looking scattered.
-    let drift = ((genome.detail_seed >> (kind.index() * 7)) & 0x1) as i32;
-    match kind {
-        ShelterDecorationKind::Leaf => {
-            let x = frame.cx - frame.wall_half + 3;
-            let y = frame.wall_y - 4;
-            canvas.line(x, y + 9, x + 2, y, 1, outline);
-            canvas.fill_ellipse(x - 1, y + 2, 3, 2, coat);
-            canvas.fill_ellipse(x + 3, y + 6, 3, 2, highlight);
-            canvas.line(x, y + 3, x + 4, y + 6, 1, accent);
-        }
-        ShelterDecorationKind::Banner => {
-            // Strung under the eaves, spanning the roof it actually hangs from.
-            let span = (frame.eave_half - 2).max(6);
-            let y = frame.eave_y;
-            canvas.line(frame.cx - span, y, frame.cx + span, y, 1, outline);
-            for (index, offset) in (-1..=1).enumerate() {
-                let x = frame.cx + offset * (span - 3) - 2;
-                fill_triangle(
-                    canvas,
-                    x + 2,
-                    y + 1,
-                    x,
-                    y + 4,
-                    x + 5,
-                    y + 4,
-                    if index % 2 == 0 { accent } else { highlight },
-                );
-            }
-        }
-        ShelterDecorationKind::Stone => {
-            let x = frame.cx - frame.ground_half - 2 - drift;
-            let y = frame.ground_y - 2;
-            canvas.fill_ellipse(x, y, 4, 3, outline);
-            canvas.fill_ellipse(x, y - 1, 3, 2, coat);
-            canvas.set(x + 2, y - 2, highlight);
-        }
-        ShelterDecorationKind::Flower => {
-            let x = frame.cx + frame.ground_half + 2 + drift;
-            let base = frame.ground_y - 1;
-            canvas.line(x, base, x, base - 9, 1, coat);
-            canvas.fill_ellipse(x - 2, base - 10, 3, 2, accent);
-            canvas.fill_ellipse(x + 2, base - 10, 3, 2, accent);
-            canvas.fill_ellipse(x, base - 13, 2, 3, highlight);
-            canvas.set(x, base - 10, outline);
-        }
-        ShelterDecorationKind::Lamp => {
-            // Bracketed onto the wall face, just under the eaves.
-            let x = frame.cx + frame.wall_half - 1;
-            let y = frame.wall_y - 3;
-            canvas.line(x - 5, y + 5, x, y + 5, 1, outline);
-            canvas.line(x, y + 5, x, y + 3, 1, outline);
-            canvas.fill_ellipse(x, y, 3, 4, outline);
-            if lit {
-                // Lit after dark, like the windows.
-                canvas.fill_ellipse(x, y, 2, 3, Rgba::new(255, 206, 118, 255));
-                canvas.set(x, y, Rgba::new(255, 236, 178, 255));
-            } else {
-                canvas.fill_ellipse(x, y, 2, 3, highlight);
-                canvas.set(x, y, accent);
-            }
-        }
-        ShelterDecorationKind::RoofOrnament => {
-            let y = frame.peak_y - 4;
-            canvas.line(frame.cx, frame.peak_y + 2, frame.cx, y, 1, outline);
-            canvas.line(frame.cx - 3, y, frame.cx + 3, y, 1, accent);
-            canvas.line(frame.cx, y - 3, frame.cx, y + 3, 1, accent);
-            canvas.line(frame.cx - 2, y - 2, frame.cx + 2, y + 2, 1, highlight);
-            canvas.line(frame.cx - 2, y + 2, frame.cx + 2, y - 2, 1, highlight);
         }
     }
 }
@@ -432,6 +466,16 @@ fn fill_triangle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dwelling drawn in the middle of its own cell at `span`.
+    fn dwelling(span: i32, mark: Option<ResidentMark>, lit: bool) -> Dwelling {
+        Dwelling {
+            span,
+            mark,
+            lit,
+            ..Dwelling::main()
+        }
+    }
 
     #[test]
     fn every_shelter_style_is_deterministic_and_inside_the_canvas() {
@@ -490,29 +534,46 @@ mod tests {
             let marks: Vec<Option<ResidentMark>> = (0..VILLAGE_HOUSES as u8)
                 .map(|seed| Some(mark(seed)))
                 .collect();
-            let village = ShelterRenderer::render_village(
-                &genome,
-                &ShelterDecorationKind::ALL,
-                &marks,
-                &[],
-                true,
-            );
-            // One 256x256 texture however full the village: every house by day and after dark,
-            // and the tree.
-            assert_eq!(VILLAGE_ATLAS_SIZE, 256);
-            assert_eq!(village.width(), VILLAGE_ATLAS_SIZE);
-            assert_eq!(village.height(), VILLAGE_ATLAS_SIZE);
-            for lit in [false, true] {
+            // Every house dressed differently: one decoration per slot, chosen by the house's
+            // own slot number so no two houses wear the same set.
+            let dressed: Vec<Vec<ShelterDecorationKind>> = (0..VILLAGE_HOUSES)
+                .map(|slot| {
+                    formiga_core::DecorationSlot::ALL
+                        .into_iter()
+                        .filter_map(|place| {
+                            ShelterDecorationKind::ALL
+                                .into_iter()
+                                .filter(|kind| kind.slot() == place)
+                                .nth(slot % 5)
+                        })
+                        .collect()
+                })
+                .collect();
+            let village = ShelterRenderer::render_village(&genome, &dressed, &marks, &[], true);
+            // One 512x256 texture however full the village: every house by day and after dark,
+            // with and without its resident home, and the tree.
+            assert_eq!(VILLAGE_ATLAS_WIDTH, 512);
+            assert_eq!(village.width(), VILLAGE_ATLAS_WIDTH);
+            assert_eq!(village.height(), VILLAGE_ATLAS_HEIGHT);
+            for (lit, occupied) in [(false, false), (false, true), (true, false), (true, true)] {
                 for (slot, mark) in marks.iter().copied().enumerate() {
-                    let (span, decorations) = if slot == 0 {
-                        (MAIN_SPAN, &ShelterDecorationKind::ALL[..])
-                    } else {
-                        (COTTAGE_SPAN, &[][..])
-                    };
+                    let span = if slot == 0 { MAIN_SPAN } else { COTTAGE_SPAN };
                     let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                    draw_dwelling(&mut tile, &genome, decorations, 32, 61, span, mark, lit);
+                    draw_dwelling(
+                        &mut tile,
+                        &genome,
+                        &dressed[slot],
+                        Dwelling {
+                            occupied,
+                            ..dwelling(span, mark, lit)
+                        },
+                    );
                     assert!(tile.alpha_bounds().is_some());
-                    let (x0, y0) = ShelterRenderer::village_cell(VillageCell::House { slot, lit });
+                    let (x0, y0) = ShelterRenderer::village_cell(VillageCell::House {
+                        slot,
+                        lit,
+                        occupied,
+                    });
                     for y in 0..SHELTER_SIZE as i32 {
                         for x in 0..SHELTER_SIZE as i32 {
                             assert_eq!(
@@ -524,7 +585,7 @@ mod tests {
                     }
                 }
             }
-            // The fourth cell of the second row holds the keepsake tree, and nothing else.
+            // The seventh cell of the top row holds the keepsake tree, and nothing else.
             let mut tree = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
             crate::tree::draw_tree(&mut tree, &genome, 32, 61);
             let (tx, ty) = ShelterRenderer::village_cell(VillageCell::Tree);
@@ -538,29 +599,16 @@ mod tests {
                 }
             }
             // The daylit half is exactly the top of the whole.
-            let day = ShelterRenderer::render_village(
-                &genome,
-                &ShelterDecorationKind::ALL,
-                &marks,
-                &[],
-                false,
-            );
+            let day = ShelterRenderer::render_village(&genome, &dressed, &marks, &[], false);
             assert_eq!(day.height(), VILLAGE_DAY_HEIGHT);
             for y in 0..VILLAGE_DAY_HEIGHT as i32 {
-                for x in 0..VILLAGE_ATLAS_SIZE as i32 {
+                for x in 0..VILLAGE_ATLAS_WIDTH as i32 {
                     assert_eq!(day.get(x, y), village.get(x, y));
                 }
             }
             // Without anyone's mark, the colony house cell is exactly the standalone shelter.
-            let unmarked = ShelterRenderer::render_village(
-                &genome,
-                &ShelterDecorationKind::ALL,
-                &[],
-                &[],
-                false,
-            );
-            let alone =
-                ShelterRenderer::render_with_decorations(&genome, &ShelterDecorationKind::ALL);
+            let unmarked = ShelterRenderer::render_village(&genome, &dressed, &[], &[], false);
+            let alone = ShelterRenderer::render_with_decorations(&genome, &dressed[0]);
             for y in 0..SHELTER_SIZE as i32 {
                 for x in 0..SHELTER_SIZE as i32 {
                     assert_eq!(unmarked.get(x, y), alone.get(x, y));
@@ -590,7 +638,7 @@ mod tests {
                 };
                 let draw = |mark: Option<ResidentMark>, lit: bool| {
                     let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                    draw_dwelling(&mut tile, &genome, &[], 32, 61, span, mark, lit);
+                    draw_dwelling(&mut tile, &genome, &[], dwelling(span, mark, lit));
                     tile
                 };
                 let plain = draw(None, false);
@@ -604,6 +652,7 @@ mod tests {
                     span,
                     seed: 0,
                     lit: false,
+                    occupied: false,
                     mark: None,
                 }
                 .door();
@@ -683,6 +732,7 @@ mod tests {
             seed[1] = style;
             let mut home = formiga_core::ColonyHome::from_seed(seed, None, None, None);
             let own = ShelterRenderer::render_village(&home.drawn_shelter(), &[], &[], &[], true);
+
             let mut seen = vec![own.clone()];
             for palette in formiga_core::VillagePalette::ALL {
                 home.palette = Some(palette);
@@ -732,7 +782,7 @@ mod tests {
                         (COTTAGE_SPAN, DwellingKind::Cottage),
                     ] {
                         let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                        draw_dwelling(&mut tile, &genome, &[], 32, 61, span, Some(mark(1)), true);
+                        draw_dwelling(&mut tile, &genome, &[], dwelling(span, Some(mark(1)), true));
                         let bounds = tile.alpha_bounds().expect("a dwelling is drawn");
                         let drawn = (bounds.2 - bounds.0 + 1) as f32;
                         assert!(
@@ -780,7 +830,7 @@ mod tests {
                         // near-black, so its own pixels say exactly how wide it is. The dark
                         // frame drawn around it adds two more either side.
                         let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-                        draw_dwelling(&mut tile, &genome, &[], 32, 61, span, None, false);
+                        draw_dwelling(&mut tile, &genome, &[], dwelling(span, None, false));
                         let doorway = Rgba::new(25, 23, 31, 255);
                         let open = |x: i32| (55..=60).any(|y| tile.get(x, y) == doorway);
                         let reach = (0..=WIDEST_DOOR_HALF + 6)
@@ -800,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn all_six_decorations_are_baked_deterministically_into_one_shelter_canvas() {
+    fn every_decoration_is_drawn_deterministically_and_changes_the_house() {
         let genome = ShelterGenome {
             style: ShelterStyle::LeafHouse,
             palette_index: 3,
@@ -810,15 +860,181 @@ mod tests {
             detail_seed: 0x1234_5678,
         };
         let undecorated = ShelterRenderer::render(&genome);
-        let decorated =
-            ShelterRenderer::render_with_decorations(&genome, &ShelterDecorationKind::ALL);
-        assert_eq!(
-            decorated,
-            ShelterRenderer::render_with_decorations(&genome, &ShelterDecorationKind::ALL)
-        );
-        assert_ne!(decorated, undecorated);
-        assert_eq!(decorated.width(), SHELTER_SIZE);
-        assert_eq!(decorated.height(), SHELTER_SIZE);
-        assert!(decorated.alpha_bounds().is_some());
+        let mut seen = vec![undecorated.clone()];
+        for kind in ShelterDecorationKind::ALL {
+            let decorated = ShelterRenderer::render_with_decorations(&genome, &[kind]);
+            assert_eq!(
+                decorated,
+                ShelterRenderer::render_with_decorations(&genome, &[kind])
+            );
+            assert!(
+                !seen.contains(&decorated),
+                "{kind:?} draws nothing of its own"
+            );
+            seen.push(decorated);
+        }
+    }
+
+    /// A house's decorations stay on the ground its lot claims, so a dressed cottage never reaches
+    /// over into the house beside it, whichever style it is and whatever size its genome makes it.
+    #[test]
+    fn a_house_dressed_in_everything_stays_inside_its_own_lot() {
+        use formiga_core::DwellingKind;
+        for style in ShelterStyle::ALL {
+            for (width, height) in [(34_u8, 27_u8), (42, 36)] {
+                let genome = ShelterGenome {
+                    style,
+                    palette_index: 5,
+                    accent_index: 2,
+                    width,
+                    height,
+                    detail_seed: 0xdead_beef_0bad_f00d,
+                };
+                for (span, kind) in [
+                    (MAIN_SPAN, DwellingKind::Main),
+                    (COTTAGE_SPAN, DwellingKind::Cottage),
+                ] {
+                    for choice in 0..5 {
+                        let dressed: Vec<ShelterDecorationKind> = formiga_core::DecorationSlot::ALL
+                            .into_iter()
+                            .filter_map(|place| {
+                                ShelterDecorationKind::ALL
+                                    .into_iter()
+                                    .filter(|kind| kind.slot() == place)
+                                    .nth(choice)
+                            })
+                            .collect();
+                        // The six a colony could earn before were only ever hung on the colony
+                        // house, and still draw exactly as they did there; they may lean a pixel
+                        // or two into the gap beside it, never as far as the next house.
+                        let legacy = dressed.iter().all(|kind| kind.index() < 6);
+                        let slack = if legacy && span == MAIN_SPAN { 3 } else { 0 };
+                        for lit in [false, true] {
+                            let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                            draw_dwelling(&mut tile, &genome, &dressed, dwelling(span, None, lit));
+                            let (x0, _, x1, _) = tile.alpha_bounds().expect("drawn");
+                            let lot = kind.width() as i32 / 2 + slack;
+                            assert!(
+                                32 - x0 as i32 <= lot && x1 as i32 - 32 < lot,
+                                "{style:?} {width}x{height} {kind:?} dressed {dressed:?} reaches {x0}..={x1}, past its {} lot",
+                                kind.width()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// With its resident at home a house draws the curtain across its whole doorway and lights a
+    /// lamp, by day as well as by night, and nothing else about it changes.
+    #[test]
+    fn an_occupied_house_draws_its_curtain_and_lights_up() {
+        for style in ShelterStyle::ALL {
+            for span in [MAIN_SPAN, COTTAGE_SPAN] {
+                let genome = ShelterGenome {
+                    style,
+                    palette_index: 7,
+                    accent_index: 1,
+                    width: 38,
+                    height: 32,
+                    detail_seed: 0x0123_4567_89ab_cdef,
+                };
+                let draw = |occupied: bool, lit: bool| {
+                    let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                    draw_dwelling(
+                        &mut tile,
+                        &genome,
+                        &[],
+                        Dwelling {
+                            occupied,
+                            ..dwelling(span, Some(mark(4)), lit)
+                        },
+                    );
+                    tile
+                };
+                for lit in [false, true] {
+                    let empty = draw(false, lit);
+                    let home = draw(true, lit);
+                    assert_ne!(empty, home, "{style:?} {span} {lit}: nobody can tell");
+                    let count = |tile: &Canvas, colors: &[Rgba]| {
+                        (0..SHELTER_SIZE as i32)
+                            .flat_map(|y| (0..SHELTER_SIZE as i32).map(move |x| (x, y)))
+                            .filter(|(x, y)| colors.contains(&tile.get(*x, *y)))
+                            .count()
+                    };
+                    let curtain = [mark(4).cloth, mark(4).fold];
+                    assert!(
+                        count(&home, &curtain) > count(&empty, &curtain),
+                        "{style:?} {span} {lit}: the curtain is not drawn across"
+                    );
+                    // Drawn right across: no bare doorway shows anywhere.
+                    assert_eq!(
+                        count(&home, &[houses::DOORWAY]),
+                        0,
+                        "{style:?} {span} {lit}: the doorway still shows"
+                    );
+                    // The silhouette never changes: only what is inside the doorway and the
+                    // windows does.
+                    for y in 0..SHELTER_SIZE as i32 {
+                        for x in 0..SHELTER_SIZE as i32 {
+                            assert_eq!(empty.get(x, y).a, home.get(x, y).a, "{style:?} {x},{y}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A companion sitting on its roof sits at the top of the house, which is somewhere a house
+    /// actually reaches, lower on a cottage than on the colony house.
+    #[test]
+    fn a_roof_is_as_high_as_the_house_it_tops() {
+        for style in ShelterStyle::ALL {
+            let genome = ShelterGenome {
+                style,
+                palette_index: 2,
+                accent_index: 6,
+                width: 38,
+                height: 32,
+                detail_seed: 7,
+            };
+            let main = ShelterRenderer::roof_height(&genome, style, true);
+            let cottage = ShelterRenderer::roof_height(&genome, style, false);
+            assert!((20..=40).contains(&main), "{style:?}: {main}");
+            assert!(cottage < main, "{style:?}: {cottage} against {main}");
+        }
+    }
+
+    /// The simulation cannot draw a house, so it works out where a roof is from the house's
+    /// proportions. It has to land on the drawing: within a couple of pixels of the top of every
+    /// type of house at every height a colony's houses can be, measured from the ground line
+    /// three rows below the walls.
+    #[test]
+    fn the_simulation_seats_a_roof_sitter_on_the_drawn_roof() {
+        for style in ShelterStyle::ALL {
+            for height in 27..=36 {
+                for width in [34, 38, 42] {
+                    let genome = ShelterGenome {
+                        style,
+                        palette_index: 1,
+                        accent_index: 4,
+                        width,
+                        height,
+                        detail_seed: 11,
+                    };
+                    for colony_house in [true, false] {
+                        let drawn = ShelterRenderer::roof_height(&genome, style, colony_house) + 3;
+                        let reckoned =
+                            formiga_core::house_roof_height(&genome, style, colony_house);
+                        assert!(
+                            (reckoned - drawn as f32).abs() <= 2.0,
+                            "{style:?} height {height} width {width} colony house \
+                             {colony_house}: drawn {drawn}, reckoned {reckoned}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

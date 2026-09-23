@@ -72,6 +72,8 @@ cargo run -p formiga-tools -- shelter-sheet
 cargo run -p formiga-tools -- village-palette-sheet
 cargo run -p formiga-tools -- home-yard-sheet
 cargo run -p formiga-tools -- prop-sheet
+cargo run -p formiga-tools -- accessory-sheet
+cargo run -p formiga-tools -- village-life-sheet
 cargo run -p formiga-tools -- ui-sheet
 cargo run -p formiga-tools -- creature-card
 cargo run -p formiga-tools -- colony-card
@@ -90,8 +92,16 @@ image is deterministic, so regenerating one that nothing has changed gives back 
 
 Some of the sheets are review tools first and illustrations second. `ui-sheet` draws the whole
 interface atlas: every thought bubble, menu frame, icon state, and label tab. `prop-sheet` draws
-the eight toys, four snacks, and three kinds of drinkware in the paws and mouths that hold them,
-and `gesture-sheet` and `habit-sheet` show every pose on every body. `sticker` takes
+the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keepsakes held up the
+way the overlay holds them, and the toys, snacks and drinkware in the paws and mouths that hold
+them. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
+walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
+moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
+on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them.
+`shelter-sheet` draws every kind of house plain, dressed two ways
+between which every decoration appears, as a cottage by day, with its resident at home and lit
+after dark, and with its resident sitting on the roof where the simulation seats it. And
+`gesture-sheet` and `habit-sheet` show every pose on every body. `sticker` takes
 `--clip walk|wave|cheer|play|snack|sleep|dance`, `--scale 4|8`, and `--seed NUMBER`. `postcard`
 draws a single postcard (`--scene nap|picnic|play|dusk`, `--caption TEXT`). `social-preview` is a
 1280×640 link-preview image, and `itch-cover` is a 630×500 store cover. Run the tools without a

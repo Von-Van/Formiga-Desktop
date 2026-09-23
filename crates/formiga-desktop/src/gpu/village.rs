@@ -69,6 +69,8 @@ impl TrinketAtlasKey {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ObjectVertexCacheKey {
     pub(super) objects: Vec<ColonyObject>,
+    /// How far along each garden patch has grown, which changes by itself every few hours.
+    pub(super) stages: Vec<formiga_core::GardenStage>,
     pub(super) cottages: Vec<formiga_core::DwellingKind>,
     pub(super) home: formiga_core::ColonyHome,
     pub(super) habitat: HabitatPolicy,
@@ -94,14 +96,42 @@ pub(super) struct TreeVertexCacheKey {
 }
 
 /// Where a lot samples the village atlas, as the top-left texture coordinate of its cell: each
-/// house its own cell, by day or lit after dark, and both trees the one tree cell, the inward one
-/// drawn from it mirrored.
+/// house its own cell, by day or lit after dark and with somebody at home or not, and both trees
+/// the one tree cell, the inward one drawn from it mirrored.
 pub(super) fn village_cell(cell: VillageCell) -> (f32, f32) {
     let (x, y) = ShelterRenderer::village_cell(cell);
     (
-        x as f32 / VILLAGE_ATLAS_SIZE as f32,
-        y as f32 / VILLAGE_ATLAS_SIZE as f32,
+        x as f32 / VILLAGE_ATLAS_WIDTH as f32,
+        y as f32 / VILLAGE_ATLAS_HEIGHT as f32,
     )
+}
+
+/// How far the top of a house leans or settles while its keeper sees to it, in art pixels, as
+/// `(across, down)`: a cap wobbling when it is patted, a tent swaying as its flap is retied, a
+/// cushion house puffing up as it is plumped. Its foot never moves.
+pub(super) fn house_sway(motion: Option<HouseMotion>) -> (f32, f32) {
+    let Some(motion) = motion else {
+        return (0.0, 0.0);
+    };
+    let turn = motion.progress * std::f32::consts::TAU;
+    let fading = 1.0 - motion.progress;
+    match motion.chore {
+        BeatKind::InspectCap => ((turn * 3.0).sin() * fading, 0.0),
+        BeatKind::AdjustFlap => ((turn * 2.0).sin() * 0.5 * fading, 0.0),
+        BeatKind::FluffCushion => (0.0, -(turn * 2.0).sin().abs()),
+        _ => (0.0, 0.0),
+    }
+}
+
+/// Which of the two Zs drifting up out of a sleeping house is where, at `clock` seconds: each
+/// rises and drifts sideways over a couple of seconds, half a cycle behind the other, and is
+/// gone for the last part of its climb. Offsets are in art pixels from the top of the roof.
+pub(super) fn snores(clock: f32) -> impl Iterator<Item = (f32, f32)> {
+    const CYCLE: f32 = 2.4;
+    (0..2).filter_map(move |index| {
+        let t = (clock / CYCLE + index as f32 * 0.5).rem_euclid(1.0);
+        (t < 0.8).then_some((4.0 + t * 6.0, -4.0 - t * 14.0))
+    })
 }
 
 /// Whether a tree at this end of the village samples its cell mirrored. The inward bookend does,
@@ -127,15 +157,13 @@ pub(super) fn hung_trinket_centre(
     )
 }
 
-/// Every kind the colony has found, once each, in catalogue order. A save can hold a variant this
-/// build's catalogue does not have; it keeps its place in the save and simply has no tree slot.
+/// Every kind the colony has found, once each, in catalogue order.
 pub(super) fn found_trinkets(save: &SaveFile) -> Vec<u8> {
     let mut found: Vec<u8> = save
         .companion
         .scrapbook
         .iter()
         .map(|record| record.variant)
-        .filter(|variant| formiga_art::trinket_place(*variant).is_some())
         .collect();
     found.sort_unstable();
     found.dedup();
@@ -195,8 +223,15 @@ impl OverlayRenderer {
 
     pub(super) fn cached_colony_object_vertices(&mut self, save: &SaveFile) -> &[Vertex] {
         let cottages = formiga_core::colony_cottages(&save.creatures);
+        let now = save.maximum_seen_utc;
         let key = ObjectVertexCacheKey {
             objects: save.objects.objects.clone(),
+            stages: save
+                .home
+                .gardens
+                .iter()
+                .map(|patch| patch.stage(now))
+                .collect(),
             cottages: cottages.clone(),
             home: save.home.clone(),
             habitat: save.settings.habitat.clone(),
@@ -253,9 +288,17 @@ impl OverlayRenderer {
             if monitor_id != self.monitor.id {
                 continue;
             }
+            // A garden is drawn at whatever stage it has grown to by now.
+            let stage = match item {
+                formiga_core::GroundItem::Garden(kind) => save
+                    .home
+                    .garden(kind)
+                    .map_or(formiga_core::GardenStage::Grown, |patch| patch.stage(now)),
+                _ => formiga_core::GardenStage::Grown,
+            };
             self.object_vertices
                 .extend_from_slice(&self.object_vertices_for(
-                    ColonyObjectRenderer::ground_cell(item),
+                    ColonyObjectRenderer::ground_cell(item, stage),
                     ColonyObjectRenderer::ground_mirrored(item, point.x, middle),
                     point,
                     save.settings.display_scale,
@@ -280,7 +323,7 @@ impl OverlayRenderer {
         let top_px = contact_y - size;
         let top = 1.0 - top_px / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - contact_y / self.layout.height as f32 * 2.0;
-        let (mut u_left, mut u_right) = ColonyObjectRenderer::cell_u(cell);
+        let (mut u_left, v_top, mut u_right, v_bottom) = ColonyObjectRenderer::cell_uv(cell);
         if mirrored {
             std::mem::swap(&mut u_left, &mut u_right);
         }
@@ -290,19 +333,161 @@ impl OverlayRenderer {
             occlusion_enabled: 1.0,
         };
         [
-            vertex([left, top], [u_left, 0.0]),
-            vertex([right, top], [u_right, 0.0]),
-            vertex([right, bottom], [u_right, 1.0]),
-            vertex([left, top], [u_left, 0.0]),
-            vertex([right, bottom], [u_right, 1.0]),
-            vertex([left, bottom], [u_left, 1.0]),
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, top], [u_right, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, bottom], [u_left, v_bottom]),
         ]
+    }
+
+    /// One cell of the object sheet centred on `centre`, in this display's own pixels.
+    pub(super) fn object_quad_at(
+        &self,
+        cell: u32,
+        (centre_x, centre_y): (f32, f32),
+        mirrored: bool,
+        display_scale: u8,
+        occlusion_enabled: f32,
+    ) -> [Vertex; 6] {
+        let size = COLONY_OBJECT_SIZE as f32 * f32::from(display_scale);
+        let centre_x = self.snap(centre_x);
+        let centre_y = self.snap(centre_y);
+        let left = (centre_x - size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (centre_x + size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - (centre_y - size * 0.5) / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - (centre_y + size * 0.5) / self.layout.height as f32 * 2.0;
+        let (mut u_left, v_top, mut u_right, v_bottom) = ColonyObjectRenderer::cell_uv(cell);
+        if mirrored {
+            std::mem::swap(&mut u_left, &mut u_right);
+        }
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled,
+        };
+        [
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, top], [u_right, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, bottom], [u_left, v_bottom]),
+        ]
+    }
+
+    /// Everything loose about the village this frame, from the colony's object sheet: a leaf
+    /// drifting down onto somebody's face or an apple rolling away, a leaf coming off a leaf
+    /// house as it is tidied, and the Zs drifting up out of a house somebody is asleep in.
+    pub(super) fn village_prop_vertices(
+        &self,
+        save: &SaveFile,
+        scene: VillageScene<'_>,
+    ) -> Vec<Vertex> {
+        if scene.loose.is_empty() && scene.occupied.is_empty() && scene.motions.is_empty() {
+            return Vec::new();
+        }
+        let display_scale = save.settings.display_scale;
+        let unit = f32::from(display_scale);
+        let local = |point: formiga_core::Point| {
+            (
+                (point.x - self.monitor.bounds.x) * self.monitor.scale_factor,
+                (point.y - self.monitor.bounds.y) * self.monitor.scale_factor,
+            )
+        };
+        let half = COLONY_OBJECT_SIZE as f32 * unit / 2.0;
+        let mut vertices = Vec::new();
+        for (prop, at) in scene.loose {
+            if !self.monitor.bounds.contains(*at) {
+                continue;
+            }
+            let (x, y) = local(*at);
+            // An apple sits on the ground it is rolling along; a leaf is wherever it has got to.
+            let y = if *prop == VillageProp::Apple {
+                y - half + 4.0 * unit
+            } else {
+                y
+            };
+            vertices.extend_from_slice(&self.object_quad_at(
+                ColonyObjectRenderer::prop_cell(PropSprite::of(*prop)),
+                (x, y),
+                false,
+                display_scale,
+                1.0,
+            ));
+        }
+        let cottages = formiga_core::colony_cottages(&save.creatures);
+        let styles = save.home.house_style_list(&save.creatures);
+        let house = |slot: usize| {
+            formiga_core::home_dwelling_position(
+                &save.home,
+                slot,
+                &cottages,
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                display_scale,
+            )
+            .filter(|(monitor_id, _)| *monitor_id == self.monitor.id)
+            .map(|(_, point)| {
+                let roof = formiga_core::house_roof_height(
+                    &save.home.shelter,
+                    styles[slot.min(styles.len() - 1)],
+                    slot == 0,
+                );
+                let (x, ground) = local(point);
+                (x, ground, ground - roof * unit)
+            })
+        };
+        for occupancy in scene.occupied.iter().filter(|house| house.napping) {
+            let Some((x, _, roof)) = house(occupancy.slot) else {
+                continue;
+            };
+            for (across, up) in snores(scene.clock) {
+                vertices.extend_from_slice(&self.object_quad_at(
+                    ColonyObjectRenderer::prop_cell(PropSprite::Snore),
+                    (x + across * unit, roof + up * unit),
+                    false,
+                    display_scale,
+                    1.0,
+                ));
+            }
+        }
+        for motion in scene
+            .motions
+            .iter()
+            .filter(|motion| motion.chore == BeatKind::TidyLeaves)
+        {
+            let Some((x, ground, roof)) = house(motion.slot) else {
+                continue;
+            };
+            // One leaf let go of at the eaves, swaying down to the ground.
+            let t = ((motion.progress - 0.3) / 0.6).clamp(0.0, 1.0);
+            if t <= 0.0 || t >= 1.0 {
+                continue;
+            }
+            let fall = roof + (ground - roof) * t;
+            let sway = (t * std::f32::consts::TAU * 1.5).sin() * 4.0 * unit;
+            vertices.extend_from_slice(&self.object_quad_at(
+                ColonyObjectRenderer::prop_cell(PropSprite::Leaf),
+                (x + 12.0 * unit + sway, fall),
+                false,
+                display_scale,
+                1.0,
+            ));
+        }
+        vertices
     }
 
     /// Every dwelling in the village and the two keepsake trees that bookend it, sampled from
     /// their own cells of the shared atlas. The colony house is always first; companion cottages
     /// follow along the same ground line, and a tree closes each end of it.
-    pub(super) fn village_vertices(&self, save: &SaveFile, night: bool) -> Vec<Vertex> {
+    pub(super) fn village_vertices(
+        &self,
+        save: &SaveFile,
+        night: bool,
+        scene: VillageScene<'_>,
+    ) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
         for end in formiga_core::TreeEnd::BOTH {
@@ -320,6 +505,7 @@ impl OverlayRenderer {
                     village_cell(VillageCell::Tree),
                     tree_is_mirrored(end),
                     save.settings.display_scale,
+                    (0.0, 0.0),
                 ));
             }
         }
@@ -337,11 +523,24 @@ impl OverlayRenderer {
             if monitor_id != self.monitor.id {
                 continue;
             }
+            // Somebody at home behind a drawn curtain, and the house answering whatever its
+            // keeper is doing to it.
+            let occupied = scene.occupied.iter().any(|house| house.slot == slot);
+            let motion = scene
+                .motions
+                .iter()
+                .copied()
+                .find(|motion| motion.slot == slot);
             vertices.extend_from_slice(&self.village_cell_vertices(
                 point,
-                village_cell(VillageCell::House { slot, lit: night }),
+                village_cell(VillageCell::House {
+                    slot,
+                    lit: night,
+                    occupied,
+                }),
                 false,
                 save.settings.display_scale,
+                house_sway(motion),
             ));
         }
         vertices
@@ -356,28 +555,43 @@ impl OverlayRenderer {
         (u, v): (f32, f32),
         mirror: bool,
         display_scale: u8,
+        (lean, settle): (f32, f32),
     ) -> [Vertex; 6] {
-        let size = SHELTER_SIZE as f32 * f32::from(display_scale);
+        let unit = f32::from(display_scale);
+        let size = SHELTER_SIZE as f32 * unit;
         let local_x = self.snap((anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor);
         let local_y = self.snap((anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor);
-        let left = (local_x - size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
-        let right = (local_x + size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
-        let top = 1.0 - (local_y - size) / self.layout.height as f32 * 2.0;
-        let bottom = 1.0 - local_y / self.layout.height as f32 * 2.0;
-        let cell = SHELTER_SIZE as f32 / VILLAGE_ATLAS_SIZE as f32;
-        let (u_left, u_right) = if mirror { (u + cell, u) } else { (u, u + cell) };
+        let x = |value: f32| value / self.layout.width as f32 * 2.0 - 1.0;
+        let y = |value: f32| 1.0 - value / self.layout.height as f32 * 2.0;
+        // The foot of the cell stays where it stands; only its top leans or settles.
+        let (top_left, top_right) = (
+            x(local_x - size / 2.0 + lean * unit),
+            x(local_x + size / 2.0 + lean * unit),
+        );
+        let (left, right) = (x(local_x - size / 2.0), x(local_x + size / 2.0));
+        let top = y(local_y - size + settle * unit);
+        let bottom = y(local_y);
+        let (cell_u, cell_v) = (
+            SHELTER_SIZE as f32 / VILLAGE_ATLAS_WIDTH as f32,
+            SHELTER_SIZE as f32 / VILLAGE_ATLAS_HEIGHT as f32,
+        );
+        let (u_left, u_right) = if mirror {
+            (u + cell_u, u)
+        } else {
+            (u, u + cell_u)
+        };
         let vertex = |position, uv| Vertex {
             position,
             uv,
             occlusion_enabled: 1.0,
         };
         [
-            vertex([left, top], [u_left, v]),
-            vertex([right, top], [u_right, v]),
-            vertex([right, bottom], [u_right, v + cell]),
-            vertex([left, top], [u_left, v]),
-            vertex([right, bottom], [u_right, v + cell]),
-            vertex([left, bottom], [u_left, v + cell]),
+            vertex([top_left, top], [u_left, v]),
+            vertex([top_right, top], [u_right, v]),
+            vertex([right, bottom], [u_right, v + cell_v]),
+            vertex([top_left, top], [u_left, v]),
+            vertex([right, bottom], [u_right, v + cell_v]),
+            vertex([left, bottom], [u_left, v + cell_v]),
         ]
     }
 
@@ -415,10 +629,9 @@ impl OverlayRenderer {
             .filter(|(monitor_id, _)| *monitor_id == self.monitor.id)
             .map(|(_, point)| point);
         }
-        for variant in &key.found {
-            let Some((end, anchor)) = formiga_art::trinket_place(*variant) else {
-                continue;
-            };
+        for (variant, end, anchor) in
+            formiga_art::hung_trinkets(&save.home, &save.companion.scrapbook)
+        {
             let slot = formiga_core::TreeEnd::BOTH
                 .iter()
                 .position(|candidate| *candidate == end)
@@ -429,7 +642,7 @@ impl OverlayRenderer {
             self.tree_vertices
                 .extend_from_slice(&self.hung_trinket_vertices(
                     tree,
-                    *variant,
+                    variant,
                     anchor,
                     save.settings.display_scale,
                 ));

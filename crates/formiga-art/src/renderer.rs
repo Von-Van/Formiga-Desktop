@@ -8,12 +8,15 @@ use formiga_core::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
+mod accessories;
+mod beats;
 mod classic;
 mod effects;
 mod face;
 mod modular;
 mod pose;
 mod props;
+pub use accessories::AccessoryArt;
 use classic::*;
 use effects::*;
 use face::*;
@@ -60,10 +63,12 @@ pub enum ExpressionKind {
     Worried,
     Determined,
     Bored,
+    /// Mid-yawn: eyes screwed shut and the mouth wide open.
+    Yawning,
 }
 
 impl ExpressionKind {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Neutral,
         Self::Content,
         Self::Curious,
@@ -75,6 +80,7 @@ impl ExpressionKind {
         Self::Worried,
         Self::Determined,
         Self::Bored,
+        Self::Yawning,
     ];
 
     pub const fn index(self) -> u32 {
@@ -121,6 +127,29 @@ pub struct FaceRenderState {
     pub expression: ExpressionKind,
     pub eyelids: EyelidPose,
     pub gaze: GazeDirection,
+}
+
+/// Where a body's parts are in one frame, as its drawing placed them: what anything it wears is
+/// put on against. Frames are drawn facing right.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Figure {
+    face: PixelPoint,
+    /// The middle of the top of the head: its topmost drawn row.
+    crown: PixelPoint,
+    /// Half the head's width.
+    head_half: i32,
+    /// Where a collar sits, and half its width: the neck, or for a body that carries its face on
+    /// its front, a band across the body just under the face.
+    neck: PixelPoint,
+    neck_half: i32,
+    /// On the front of the chest.
+    chest: PixelPoint,
+    /// On the back hip, where a bag hangs.
+    hip: PixelPoint,
+    /// The top of the back, where a pack rides.
+    back: PixelPoint,
+    /// The lowest row anything worn may reach: the feet.
+    floor: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -244,13 +273,16 @@ impl AnimationSpec {
             Gesture::Watch => (6, 3),
             // One long breath: a second to get all the way up, then held at the top.
             Gesture::Stretch => (4, 3),
+            // In, up, held, and down again, in a little under two seconds.
+            Gesture::Yawn => (4, 2),
         };
         Self {
             frames,
             fps,
-            // A stretch is done once, from the moment the habit starts, and held until it lets
-            // go; every other gesture loops for as long as the moment asks for it.
-            playback: if gesture == Gesture::Stretch {
+            // A stretch and a yawn are done once, from the moment they start, and held at their
+            // last frame until they are let go; every other gesture loops for as long as the
+            // moment asks for it.
+            playback: if matches!(gesture, Gesture::Stretch | Gesture::Yawn) {
                 PlaybackMode::Hold
             } else {
                 PlaybackMode::Loop
@@ -383,6 +415,12 @@ impl BodyPresentation {
                 body.facing_right ^= turned(state.action_elapsed, TWIRL_TURN_SECS);
             }
             return body;
+        }
+        // A small moment of its own comes next: a yawn, a start, a turn at the garden.
+        if let Some(beat) = state.beat
+            && let Some((gesture, into)) = beats::beat_pose(beat)
+        {
+            return shown(BodyClip::Gesture(gesture), into);
         }
         let Some((habit, action, into)) = flourish_shown(creature) else {
             // Wriggling over in its sleep: the breaths come quicker, a squirm rather than a slide.
@@ -556,8 +594,45 @@ impl CreatureRenderer {
         Self::render_composited_frame(genome, action, frame, facing_right, reduce_motion, state)
     }
 
+    /// One whole frame of an action with whatever the creature is wearing, looking ahead: how
+    /// the colony page shows something being tried on, in each of a few poses.
+    pub fn render_dressed_frame(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
+        action: ActionKind,
+        frame: u8,
+        facing_right: bool,
+    ) -> Canvas {
+        let state = FaceRenderState {
+            expression: expression_for_action(action),
+            eyelids: default_eyelids(action, frame),
+            gaze: GazeDirection::new(0, 0),
+        };
+        Self::render_dressed_composited_frame(
+            genome,
+            dress,
+            action,
+            frame,
+            facing_right,
+            false,
+            state,
+        )
+    }
+
     pub fn render_body_frame(
         genome: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        reduce_motion: bool,
+    ) -> RenderedBodyFrame {
+        Self::render_dressed_body_frame(genome, None, clip, frame, reduce_motion)
+    }
+
+    /// One body frame with whatever the creature is wearing drawn on, placed against the body as
+    /// this frame draws it.
+    pub fn render_dressed_body_frame(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
         clip: impl Into<BodyClip>,
         frame: u8,
         reduce_motion: bool,
@@ -567,7 +642,7 @@ impl CreatureRenderer {
         let palette = crate::palette_for(genome);
         let clip = clip.into().body();
         let pose = Pose::new(genome, clip, frame, reduce_motion);
-        let mut face_anchor = if let Some(design) = genome.design {
+        let figure = if let Some(design) = genome.design {
             modular::draw(
                 &mut canvas,
                 design,
@@ -576,7 +651,8 @@ impl CreatureRenderer {
                 scale(genome),
                 clip,
                 frame,
-            )
+            );
+            modular::figure(design, pose, scale(genome))
         } else {
             match genome.family {
                 BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
@@ -586,6 +662,10 @@ impl CreatureRenderer {
                 }
             }
         };
+        let mut face_anchor = figure.face;
+        if let Some(dress) = dress {
+            accessories::draw_accessory(&mut canvas, dress, figure);
+        }
         match clip {
             BodyClip::Action(action) => {
                 draw_activity_prop(
@@ -689,7 +769,29 @@ impl CreatureRenderer {
         reduce_motion: bool,
         face_state: FaceRenderState,
     ) -> Canvas {
-        let mut body = Self::render_body_frame(genome, clip, frame, reduce_motion);
+        Self::render_dressed_composited_frame(
+            genome,
+            None,
+            clip,
+            frame,
+            facing_right,
+            reduce_motion,
+            face_state,
+        )
+    }
+
+    /// One whole frame, face and all, with whatever the creature is wearing: what the overlay
+    /// draws, as one picture, for previews and review sheets.
+    pub fn render_dressed_composited_frame(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+        face_state: FaceRenderState,
+    ) -> Canvas {
+        let mut body = Self::render_dressed_body_frame(genome, dress, clip, frame, reduce_motion);
         if !facing_right {
             body.canvas.mirror_horizontal();
             // A 16-pixel face is centered between logical pixel columns; mirroring its full

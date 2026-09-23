@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=17 => migrate_legacy(value, version),
+            1..=18 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -243,6 +243,13 @@ fn migrate_legacy(
     // additions it would quietly drop.
     // v18 adds a house type chosen by hand for any house. Nothing is migrated: an older colony
     // has chosen none, so every house is its own. It moved for the same reason v17 did.
+    //
+    // v19 turns the colony house's earned decorations into what the whole village can choose
+    // from, and hangs the ones that were showing on the colony house exactly as they hung. Read
+    // before the file is parsed, because the fields that held them are gone.
+    let legacy_decorations = (source_version <= 18)
+        .then(|| take_legacy_decorations(&mut value))
+        .flatten();
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -265,21 +272,8 @@ fn migrate_legacy(
         save.home =
             crate::ColonyHome::from_seed(save.colony_seed, None, None, Some(save.maximum_seen_utc));
     }
-    let mut seen_decorations = std::collections::BTreeSet::new();
-    save.home
-        .decorations
-        .decorations
-        .retain(|kind| seen_decorations.insert(*kind));
-    save.home
-        .decorations
-        .decorations
-        .truncate(crate::MAX_SHELTER_DECORATIONS);
-    if save.home.decorations.next_at_utc == time::OffsetDateTime::UNIX_EPOCH {
-        save.home.decorations.next_at_utc = crate::world::scheduled_shelter_decoration_at(
-            save.colony_seed,
-            save.home.decorations.ordinal,
-            save.maximum_seen_utc,
-        );
+    if source_version <= 18 {
+        migrate_village_unlocks(&mut save, legacy_decorations.unwrap_or_default());
     }
     for creature in &mut save.creatures {
         if creature.born_at_utc == time::OffsetDateTime::UNIX_EPOCH {
@@ -287,6 +281,60 @@ fn migrate_legacy(
         }
     }
     Ok(save)
+}
+
+/// The decorations an older colony had earned, and which of them it had hidden, taken out of the
+/// file. `None` when it had never earned any.
+fn take_legacy_decorations(
+    value: &mut serde_json::Value,
+) -> Option<(Vec<crate::ShelterDecorationKind>, u8)> {
+    let home = value.get_mut("home")?.as_object_mut()?;
+    let hidden = home
+        .remove("hidden_decorations")
+        .and_then(|hidden| hidden.as_u64())
+        .and_then(|hidden| u8::try_from(hidden).ok())
+        .unwrap_or(0);
+    let earned = home
+        .remove("decorations")
+        .and_then(|state| state.get("decorations").cloned())
+        .and_then(|list| serde_json::from_value::<Vec<crate::ShelterDecorationKind>>(list).ok())
+        .unwrap_or_default();
+    Some((earned, hidden))
+}
+
+/// What a colony from before 0.60.0 has to choose from. Everything it earned stays earned, the
+/// three hangout spots and three gardens every village already had stay, and every category is
+/// topped up to its first three, so an older colony gains three ornaments. The decorations that
+/// were showing on the colony house go on hanging there; the hidden ones are simply not hung.
+fn migrate_village_unlocks(
+    save: &mut SaveFile,
+    (earned, hidden): (Vec<crate::ShelterDecorationKind>, u8),
+) {
+    let home = &mut save.home;
+    home.unlocks = crate::VillageUnlocks {
+        decorations: earned.clone(),
+        hangouts: crate::HangoutKind::STARTING.to_vec(),
+        gardens: crate::GardenKind::STARTING.to_vec(),
+        ornaments: crate::OrnamentKind::STARTING.to_vec(),
+        next_at_utc: crate::world::scheduled_village_unlock_at(
+            save.colony_seed,
+            0,
+            save.maximum_seen_utc,
+        ),
+        ordinal: 0,
+    };
+    home.unlocks.normalize();
+    let showing: Vec<crate::ShelterDecorationKind> = earned
+        .into_iter()
+        .filter(|kind| kind.index() >= 8 || hidden & (1 << kind.index()) == 0)
+        .collect();
+    let owners = crate::house_owners(&save.creatures, &home.cottage_order);
+    if let Some(keeper) = owners.as_slice().first().copied() {
+        for kind in showing {
+            home.set_decoration(keeper, kind.slot(), Some(kind));
+        }
+    }
+    home.normalize_village();
 }
 
 fn migrate_colony_management(value: &mut serde_json::Value) {
@@ -608,26 +656,33 @@ mod tests {
     /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 235] = [
+    const SAVED_FIELDS: [&str; 247] = [
         "Decoration",
         "Friendship",
+        "Garden",
         "Habit",
+        "Hangout",
         "MacBundleId",
         "Object",
+        "Ornament",
+        "Pin",
         "Preference",
         "Ritual",
+        "Unlocked",
         "Visit",
+        "Worn",
         "a",
         "accent",
         "accent_index",
+        "accessory",
         "action",
         "action_duration",
         "action_elapsed",
         "active_since_utc",
         "activity",
         "activity_variant",
-        "along",
         "affinity",
+        "along",
         "appearance",
         "application",
         "application_occlusion_rules",
@@ -681,6 +736,7 @@ mod tests {
         "display_name",
         "display_scale",
         "display_scale_percent",
+        "dressing",
         "drives",
         "ear_size",
         "ears",
@@ -705,8 +761,8 @@ mod tests {
         "forelimbs",
         "fullscreen_app_occlusion",
         "gait_bob",
-        "gatherings",
         "gardens",
+        "gatherings",
         "generation",
         "guest",
         "guest_book",
@@ -718,11 +774,11 @@ mod tests {
         "head_appendages",
         "head_ratio",
         "height",
-        "hidden_decorations",
         "highlight_style",
         "home",
         "home_affinity",
         "home_visits",
+        "hooks",
         "house_styles",
         "id",
         "journal",
@@ -765,6 +821,7 @@ mod tests {
         "onboarding_complete",
         "ordinal",
         "origin",
+        "ornaments",
         "overridden",
         "palette",
         "palette_index",
@@ -775,6 +832,7 @@ mod tests {
         "personality",
         "pins",
         "placements",
+        "planted_at_utc",
         "play",
         "play_sessions",
         "playfulness",
@@ -828,6 +886,8 @@ mod tests {
         "times_tossed",
         "tip_style",
         "transitions",
+        "tree_keepsakes",
+        "unlocks",
         "variant",
         "velocity",
         "vertical_offset",
@@ -1031,9 +1091,10 @@ mod tests {
             .iter()
             .map(crate::PinnedMoment::of)
             .collect();
-        save.companion.scrapbook = (0..40u8)
+        save.companion.scrapbook = (0..=u8::MAX)
+            .chain(0..40)
             .map(|variant| crate::ScrapbookRecord {
-                variant: variant % crate::TRINKET_VARIANTS,
+                variant,
                 first_at: now,
                 finder: None,
                 finder_name: format!("Finder {variant}"),
@@ -1061,11 +1122,17 @@ mod tests {
                 ..Default::default()
             })
             .collect();
-        save.home.decorations.decorations = crate::ShelterDecorationKind::ALL
+        save.home.unlocks.decorations = crate::ShelterDecorationKind::ALL
             .iter()
             .copied()
             .cycle()
-            .take(30)
+            .take(90)
+            .collect();
+        save.home.dressing = (0..40)
+            .map(|keeper| crate::HouseDressing {
+                keeper: keeper % 9,
+                decorations: crate::ShelterDecorationKind::ALL.to_vec(),
+            })
             .collect();
 
         // The same oversized collections, arriving as a current file and as a version-13 one.
@@ -1136,8 +1203,13 @@ mod tests {
             }
             assert!(loaded.save.objects.objects.len() <= crate::MAX_COLONY_OBJECTS);
             assert!(
-                loaded.save.home.decorations.decorations.len() <= crate::MAX_SHELTER_DECORATIONS
+                loaded.save.home.unlocks.decorations.len()
+                    <= crate::ShelterDecorationKind::ALL.len()
             );
+            assert!(loaded.save.home.dressing.len() <= crate::MAX_COLONY_CREATURES);
+            for dressing in &loaded.save.home.dressing {
+                assert!(dressing.decorations.len() <= crate::MAX_HOUSE_DECORATIONS);
+            }
             assert!(loaded.save.relationships.len() <= crate::MAX_RELATIONSHIPS);
             for creature in &loaded.save.creatures {
                 assert!(creature.routines.len as usize <= crate::MAX_ROUTINES);
@@ -1385,13 +1457,32 @@ mod tests {
                 world
                     .save
                     .home
-                    .set_garden(crate::GardenKind::Herbs, Some(0.5625));
+                    .set_garden(crate::GardenKind::Herbs, Some(0.5625), now);
+                // An ornament set out, a decoration hung, a keepsake chosen for the trees, and a
+                // companion wearing a pin.
+                world
+                    .save
+                    .home
+                    .set_ornament(crate::OrnamentKind::BirdBath, Some(0.6875));
+                world
+                    .save
+                    .companion
+                    .remember_discovery(2, first, "Finder".into(), now);
+                let mut hooks = [None; crate::TREE_HOOKS];
+                hooks[3] = Some(2);
+                world.save.home.set_tree_keepsakes(Some(hooks));
+                world.save.creatures[0].accessory = Some(crate::Accessory::Pin(2));
                 // And the colony house built as a pillow fort.
                 let founder = world.save.creatures[0].id;
                 world
                     .save
                     .home
                     .set_house_style(founder, Some(crate::ShelterStyle::PillowFort));
+                world.save.home.set_decoration(
+                    founder,
+                    crate::DecorationSlot::Eaves,
+                    Some(crate::ShelterDecorationKind::Banner),
+                );
                 // Another being towed out of the way in its sleep.
                 world.save.creatures[0].state.nudge = Some(crate::SleepNudge::Towed {
                     by: world.save.creatures[1].id,
@@ -1499,6 +1590,66 @@ mod tests {
         assert!(migrated.companion.onboarding_complete);
         assert!(migrated.companion.journal.is_empty());
     }
+    /// A colony from before 0.60.0 keeps everything it earned: its earned decorations are the
+    /// village's to choose from, the ones that were showing go on hanging on the colony house in
+    /// their places and the hidden ones are taken down, and every category is topped up to its
+    /// first three.
+    #[test]
+    fn a_v18_colony_keeps_what_it_earned_and_hangs_what_was_showing() {
+        use crate::{DecorationSlot, GardenKind, HangoutKind, OrnamentKind, ShelterDecorationKind};
+        let desktop = crate::DesktopSnapshot::default();
+        let now = datetime!(2026-09-14 12:00 UTC);
+        let original = crate::World::new([57; 32], now, &desktop).save;
+        let founder = original.creatures[0].id;
+        let mut json = serde_json::to_value(&original).unwrap();
+        json["save_version"] = 18.into();
+        let home = json["home"].as_object_mut().unwrap();
+        home.remove("unlocks");
+        home.remove("dressing");
+        home.insert(
+            "decorations".into(),
+            serde_json::json!({
+                "decorations": ["Leaf", "Banner", "Lamp", "RoofOrnament"],
+                "next_at_utc": "2026-09-20T00:00:00Z",
+                "ordinal": 4,
+            }),
+        );
+        // The banner was hidden.
+        home.insert("hidden_decorations".into(), 2.into());
+        let migrated = migrate_legacy(json, 18).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        let unlocks = &migrated.home.unlocks;
+        for kind in [
+            ShelterDecorationKind::Leaf,
+            ShelterDecorationKind::Banner,
+            ShelterDecorationKind::Lamp,
+            ShelterDecorationKind::RoofOrnament,
+        ]
+        .into_iter()
+        .chain(ShelterDecorationKind::STARTING)
+        {
+            assert!(unlocks.decorations.contains(&kind), "{kind:?} was earned");
+        }
+        assert_eq!(unlocks.hangouts, HangoutKind::STARTING);
+        assert_eq!(unlocks.gardens, GardenKind::STARTING);
+        assert_eq!(unlocks.ornaments, OrnamentKind::STARTING);
+        let wears = |place| migrated.home.decoration_in(founder, place);
+        assert_eq!(
+            wears(DecorationSlot::WallLeft),
+            Some(ShelterDecorationKind::Leaf)
+        );
+        assert_eq!(
+            wears(DecorationSlot::WallRight),
+            Some(ShelterDecorationKind::Lamp)
+        );
+        assert_eq!(
+            wears(DecorationSlot::Roof),
+            Some(ShelterDecorationKind::RoofOrnament)
+        );
+        assert_eq!(wears(DecorationSlot::Eaves), None, "the banner was hidden");
+        assert_eq!(migrated.creatures, original.creatures);
+    }
+
     #[test]
     fn recovery_preserves_corrupt_files_and_does_not_rotate_over_good_backup() {
         let directory =
@@ -1533,7 +1684,12 @@ mod tests {
         let now = datetime!(2026-09-14 12:00 UTC);
         let mut world = crate::World::new([63; 32], now, &crate::DesktopSnapshot::default());
         world.set_quiet_mode(30, now);
-        world.save.home.hidden_decorations = 5;
+        let founder = world.save.creatures[0].id;
+        world.save.home.set_decoration(
+            founder,
+            crate::DecorationSlot::WallRight,
+            Some(crate::ShelterDecorationKind::Lamp),
+        );
         world.save.companion.modes[0] = Some(crate::BehaviorPreset::capture(&world.save.settings));
         SaveStore::new(&path).save(&world.save).unwrap();
         assert_eq!(SaveStore::read_snapshot(&path).unwrap(), world.save);
@@ -1545,7 +1701,7 @@ mod tests {
 
     fn example_save() -> SaveFile {
         let mut home = crate::ColonyHome::default();
-        home.decorations.next_at_utc = datetime!(2026-01-05 0:00 UTC);
+        home.unlocks.next_at_utc = datetime!(2026-01-05 0:00 UTC);
         SaveFile {
             companion: crate::CompanionState::default(),
             save_version: crate::SAVE_VERSION,
@@ -2209,7 +2365,13 @@ mod tests {
         let migrated = SaveStore::new(&path).load().unwrap().unwrap();
 
         assert_eq!(migrated.save_version, crate::SAVE_VERSION);
-        assert_eq!(migrated.home, expected_home);
+        // Everything about the home a version-4 file could hold comes through untouched. What the
+        // village can choose from is decided afresh for any file older than 19, which no version-4
+        // colony could have held in the first place.
+        let mut home = migrated.home.clone();
+        home.unlocks = expected_home.unlocks.clone();
+        home.dressing = expected_home.dressing.clone();
+        assert_eq!(home, expected_home);
         assert_eq!(migrated.creatures[0].born_at_utc, created);
         assert_eq!(
             migrated.creatures[1].born_at_utc,
@@ -2521,9 +2683,13 @@ mod tests {
         assert_eq!(migrated.home.display, expected_home.display);
         assert_eq!(migrated.home.corner, expected_home.corner);
         assert_eq!(migrated.home.shelter, expected_home.shelter);
-        assert!(migrated.home.decorations.decorations.is_empty());
-        assert!(migrated.home.decorations.next_at_utc - maximum_seen >= time::Duration::days(4));
-        assert!(migrated.home.decorations.next_at_utc - maximum_seen <= time::Duration::days(9));
+        // A colony that never earned a decoration hangs none, and has the village's first three
+        // of everything to choose from, with the next thing a day or two away.
+        assert!(migrated.home.dressing.is_empty());
+        assert_eq!(migrated.home.unlocks.decorations.len(), 3);
+        assert_eq!(migrated.home.unlocks.ornaments.len(), 3);
+        let next = migrated.home.unlocks.next_at_utc - maximum_seen;
+        assert!(next >= time::Duration::hours(24) && next <= time::Duration::hours(48));
 
         let round_trip = directory.join("round-trip.json");
         let store = SaveStore::new(&round_trip);

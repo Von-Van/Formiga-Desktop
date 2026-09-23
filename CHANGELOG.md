@@ -2,10 +2,111 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.60.0] - 2026-09-23
+
+### Added
+
+- A hundred and sixty keepsakes to find, up from sixteen. Forty-eight turn up anywhere; the rest
+  belong to a circumstance and only turn up when it holds: sixteen at home while the houses are
+  out, twelve after dark, twelve while tending a garden, ten high up on a ledge, ten beside a
+  close friend, eight mid-ride, eight in the early morning, six each at the weekend, up on a roof,
+  on waking from a nap, and while a guest is visiting, and four each under a full moon, around the
+  colony's own birthday, and — anywhere, once in sixty finds — the rare ones. Three finds in four
+  still prefer something the scrapbook has not got yet. Each has its own drawing in the colony's
+  own inks, on one 256×320 sheet with its glint frames.
+- A Collection on the Your colony page: every keepsake there is, the found ones in colour and the
+  rest as the shadow of their shape with a hint about where they turn up. Sixteen of the found ones
+  hang in the village's two trees; with nothing chosen the trees fill themselves as finds come in,
+  the original sixteen on the hooks they always had, and a click hangs one up or takes it down.
+  The Journal now keeps the scrapbook itself, and lists only what has actually been found, newest
+  first, with who found it and when.
+- Something to wear. Each companion has one place for it, and what there is to wear comes from
+  what the colony has found: twenty accessories — a leaf hat, a flower crown, an acorn cap, a
+  knitted scarf, a bell collar, a tiny satchel, a snail-shell pack and more — each made from a
+  find of its own and coloured in that find's inks, and any find at all worn as a pin. It is drawn
+  onto every frame of the companion's own body, placed from where that frame puts the head, the
+  neck, the chest and the hip, so it walks, climbs, sleeps and dances with them at a mini's size as
+  well as an adult's. It is chosen on the Your colony page, where pointing at something shows the
+  companion wearing it standing, walking, up high and asleep before it is put on, and Nothing takes
+  it off again. A companion shared with a friend arrives as itself, wearing nothing.
+- The village gains things to choose from over time. Decorations, hangout spots, gardens and
+  ornaments each start with three, and one more arrives every day or two, chosen by what the colony
+  has been up to, and noted in the journal as something new for the village. There are thirty
+  decorations, fifteen spots, twelve gardens and fifteen ornaments in all, and the belongings that
+  turn up in the tree yards come from a catalogue of twenty.
+- Every house can be decorated, not only the colony house: six places on each — the roof, under
+  the eaves, a wall either side of the door, and the ground either side of the house — one
+  decoration in each, chosen for that house on the Home page.
+- Gardens grow. Each patch goes round sprout, growing, grown and at its fullest by itself, at its
+  own pace — herbs in five hours a stage, pumpkins in twelve — and back to seed again. There is no
+  watering to keep up with and nothing wilts.
+- Ornaments to set out on the village ground beside the gardens and spots: a lamp post, a bird
+  bath, a signpost, a wishing well, a picket fence and ten more.
+- Village life while the houses are out. Residents water the gardens, crouch to look in on
+  something still coming up, pick something ready and eat it, and carry something grown at its
+  fullest over to show a friend, who looks on pleased. They see to their own houses in the way
+  each kind asks — retying a tent's flap, plumping the pillow a pillow fort is made of, patting a
+  mushroom's cap, tidying a leaf house's leaves — and the house answers: the cap wobbles, the
+  pillow puffs up, a leaf comes loose. They go indoors for a while, when their curtain is drawn
+  across the door and the window glows, and a Z drifts up while they nap in there; never more than
+  two at once and never the only companion there is, so the village never looks empty. They sit up
+  on their own roofs and look out. And now and then one of them turns something up about the
+  village, which is where the home, garden, roof and visitor keepsakes are found.
+- Small mishaps, each a start, a recovery and carrying on: a leaf drifts down onto a face and is
+  shaken off, a snack gets away and rolls off and is chased and picked up and eaten on with, and a
+  companion sits down just beside the nap cushion and shuffles across onto it. Somebody nearby
+  stops to look.
+- Yawns are catching. Every few minutes somebody yawns — the sleepiest likeliest — and the nearest
+  friend within a few widths looks over and, a moment later, yawns too, four times in five; two
+  times in five it goes on to a third, who holds out for a second or two before giving in. A
+  friend out for a stroll stops for it and walks on. Nothing about a yawn is saved or written down,
+  and a paused, hidden or still colony does not yawn.
+- An Arrange mode in the Home page's preview. The cottages can be carried along the row to stand
+  in another order, and anything on the ground carried along it, with the gap a cottage would drop
+  into marked and the ground a thing can go anywhere along picked out while it is carried; the
+  arrow keys nudge whatever is picked out. Clicking a house shows whose it is, who else lives there,
+  what it is built as, and its six places to decorate. The spots, gardens and ornaments are put
+  down and taken up again from shelves of what the village has so far, each placed in the widest
+  gap left.
 
 ### Changed
 
+- Companions climb windows about half of the time they spend roaming. A companion on the floor
+  used to think only of ledges within 640 points above it, so on a desktop of ordinary windows,
+  which mostly start high up the screen, nobody ever climbed at all; and once a companion that
+  likes to be anywhere was up, it stayed up. Now any window is worth climbing from the floor so
+  long as a companion sitting on top of it fits below the top of the screen; everybody comes down
+  now and then, a companion that likes to be anywhere a third of the times it chooses something to
+  do up high and a climber one time in twenty; and a companion that has just come down potters
+  about the floor for a while — half a minute to a minute and a half, less for a climber, more for
+  a homebody or a floor-dweller — before it thinks of climbing again. Over half an hour of four
+  companions on five desktops: a grid of six mid-height windows went from 98.7% of their time up
+  high to 47.1%, a laptop's three windows from 99.1% to 48.6%, and an everyday desktop — a browser
+  the height of the screen and two windows starting high up — from 0% to 40.3%, where all four
+  had been on the floor all the time and now are 16.2% of it. A maximised window, or two side by
+  side, still has nothing to climb: its top is under the menu bar.
+- A companion caught up from behind by another going the same way stops for a moment to let it
+  past, rather than running on ahead and being caught again. Walking to a spot of its own, or
+  being on its way through a game, now excuses covering a face for two and a half seconds rather
+  than for as long as the walk lasts; somebody the user is holding, somebody in the air or
+  climbing, and a sleeper being moved are left alone as before. A sprinter on its way into a game
+  had carried a playing friend's face behind its body for over seven seconds.
+- The Home page is arranged around its preview. The sliders and the rows of checkboxes are gone:
+  the houses and everything on the ground are arranged in the preview, and what goes on the ground
+  comes off three shelves. The earned-decorations list is replaced by each house's own six places.
+- The Home page holds only the row of the village atlas it draws, a quarter of the atlas, and the
+  settings pages only the resting half of the keepsake sheet: 760 KiB of artwork at most, up from
+  500, for ten times the keepsakes, an object sheet that now carries every garden at every stage,
+  fifteen spots, fifteen ornaments and the village's props, and a companion trying something on in
+  four poses.
+- None of it costs the simulation anything measurable. On `tick-bench`, built in release on the
+  development Mac, a tick of six companions on a busy desktop with the cursor about went from
+  6.48 µs to 6.30, and six at home from 3.26 µs to 3.26, with every walk about the village drawn at
+  the stroll's ten frames a second. A colony's file grows by about 4.5%, from 50,749 bytes to
+  53,041 for the benchmark's six.
+- A companion's atlas is 1,649,664 bytes, up from 1,529,856: the yawn's four frames opened a
+  fourteenth row of bodies and its face a row of its own, leaving six spare body slots. A full
+  colony of six is held under 10 MiB.
 - Dependencies are brought up to their latest compatible versions: egui and its companion crates
   from 0.36.1 to 0.36.2, ureq from 3.4.0 to 3.4.2, and the crates beneath them, 55 packages in
   all. Nothing drawn changes: every documentation image regenerates byte for byte, the
@@ -20,6 +121,14 @@ All notable changes are documented here.
   differently. All 20,280 rendered frames are identical pixel for pixel, face anchors included.
   Five seeded four-companion sessions produce identical event streams and saves, the same 676
   tests pass, and the app runs on a copy of a real colony.
+
+### Compatibility
+
+- Colonies are saved in format 19. A colony from an earlier version opens with everything it had
+  earned: its decorations hang on the colony house as they were showing, the hidden ones taken
+  down; the three spots and three gardens it had stay; and every category is topped up to its first
+  three, so it gains three ornaments. A save naming something to wear that the colony has not
+  found opens with that companion wearing nothing. Earlier versions cannot open a format 19 save.
 
 ### Fixed
 

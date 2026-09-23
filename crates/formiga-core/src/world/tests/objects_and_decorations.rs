@@ -61,88 +61,145 @@ fn colony_objects_cap_at_eight_and_invalid_positions_recover() {
 }
 
 #[test]
-fn shelter_decoration_schedule_is_deterministic_and_between_four_and_nine_days() {
+fn the_village_gains_something_every_day_or_two_on_a_deterministic_schedule() {
     let now = datetime!(2026-01-01 0:00 UTC);
     for ordinal in 0..64 {
-        let first = scheduled_shelter_decoration_at([104; 32], ordinal, now);
-        let second = scheduled_shelter_decoration_at([104; 32], ordinal, now);
+        let first = scheduled_village_unlock_at([104; 32], ordinal, now);
+        let second = scheduled_village_unlock_at([104; 32], ordinal, now);
         assert_eq!(first, second);
-        assert!(first - now >= Duration::days(4));
-        assert!(first - now <= Duration::days(9));
+        assert!(first - now >= Duration::hours(24));
+        assert!(first - now <= Duration::hours(48));
     }
 }
 
 #[test]
-fn shelter_decorations_add_one_after_downtime_and_cap_at_six_unique_kinds() {
+fn the_village_gains_one_thing_after_downtime_and_in_time_everything() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = World::new([105; 32], created, &desktop);
-    let overdue = created + Duration::days(40);
-    world.save.home.decorations.next_at_utc = created + Duration::days(4);
-    world.tick(overdue, 0.05, &desktop);
-    assert_eq!(world.save.home.decorations.decorations.len(), 1);
-    assert!(world.save.home.decorations.next_at_utc >= overdue + Duration::days(4));
-    assert!(world.save.home.decorations.next_at_utc <= overdue + Duration::days(9));
-    world.tick(overdue, 0.05, &desktop);
-    assert_eq!(world.save.home.decorations.decorations.len(), 1);
+    let starting = world.save.home.unlocks.clone();
     assert_eq!(
+        starting.remaining().count(),
+        VillageItem::all().count() - 12
+    );
+    let overdue = created + Duration::days(40);
+    world.save.home.unlocks.next_at_utc = created + Duration::days(1);
+    world.tick(overdue, 0.05, &desktop);
+    assert_eq!(
+        world.save.home.unlocks.remaining().count(),
+        starting.remaining().count() - 1,
+        "a long absence brings one thing, not a flood"
+    );
+    assert!(world.save.home.unlocks.next_at_utc >= overdue + Duration::hours(24));
+    assert!(world.save.home.unlocks.next_at_utc <= overdue + Duration::hours(48));
+    world.tick(overdue, 0.05, &desktop);
+    let unlocked: Vec<VillageItem> = world
+        .drain_events()
+        .filter_map(|event| match event {
+            WorldEvent::VillageUnlocked { item } => Some(item),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unlocked.len(), 1);
+    assert!(
         world
-            .drain_events()
-            .filter(|event| matches!(event, WorldEvent::ShelterDecorationAdded { .. }))
-            .count(),
-        1
+            .save
+            .companion
+            .journal
+            .iter()
+            .any(|entry| entry.moment == JournalMoment::Unlocked(unlocked[0])),
+        "the journal says what arrived"
     );
 
-    for day in 1..=MAX_SHELTER_DECORATIONS + 3 {
-        world.save.home.decorations.next_at_utc = overdue;
-        world.tick(overdue + Duration::days(day as i64), 0.05, &desktop);
+    let total = VillageItem::all().count();
+    for day in 1..=total as i64 + 3 {
+        world.save.home.unlocks.next_at_utc = overdue;
+        world.tick(overdue + Duration::days(day), 0.05, &desktop);
     }
-    let decorations = &world.save.home.decorations.decorations;
-    assert_eq!(decorations.len(), MAX_SHELTER_DECORATIONS);
+    assert_eq!(world.save.home.unlocks.remaining().count(), 0);
+    // Categories take turns rather than one filling up before the next begins.
+    let unlocks = &world.save.home.unlocks;
+    assert_eq!(unlocks.decorations.len(), ShelterDecorationKind::ALL.len());
+    assert_eq!(unlocks.ornaments.len(), OrnamentKind::ALL.len());
+}
+
+#[test]
+fn a_new_decoration_goes_up_on_the_colony_house_when_its_place_there_is_free() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([106; 32], created, &desktop);
+    let founder = world.save.creatures[0].id;
+    assert!(world.save.home.decorations_of(founder).is_empty());
+    let mut hung = 0;
+    for day in 1..=90 {
+        world.save.home.unlocks.next_at_utc = created;
+        world.tick(created + Duration::days(day), 0.05, &desktop);
+        let events: Vec<WorldEvent> = world.drain_events().collect();
+        for event in events {
+            if let WorldEvent::VillageUnlocked {
+                item: VillageItem::Decoration(kind),
+            } = event
+            {
+                let showing = world.save.home.decoration_in(founder, kind.slot());
+                assert!(showing.is_some(), "{kind:?}'s slot is filled");
+                hung += usize::from(showing == Some(kind));
+            }
+        }
+    }
+    // One for each slot the house had free; everything later waits to be chosen.
+    assert_eq!(hung, DecorationSlot::ALL.len());
     assert_eq!(
-        decorations.iter().copied().collect::<BTreeSet<_>>().len(),
-        decorations.len()
+        world.save.home.decorations_of(founder).len(),
+        DecorationSlot::ALL.len()
     );
 }
 
 #[test]
-fn shelter_decoration_choice_reflects_memories_bonds_rituals_and_objects() {
+fn what_the_village_gains_reflects_what_the_colony_has_been_doing() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
+    let first_decoration = |world: &mut World| {
+        // Only the decorations are left to come, so the theme alone decides between them.
+        let unlocks = &mut world.save.home.unlocks;
+        for item in VillageItem::all() {
+            if !matches!(item, VillageItem::Decoration(_)) {
+                unlocks.grant(item);
+            }
+        }
+        preferred_village_unlock(&world.save)
+    };
 
-    let mut memories = World::new([106; 32], created, &desktop);
-    memories.save.creatures[0].memory.ledge_seconds = u32::MAX;
-    assert_eq!(
-        preferred_shelter_decoration(&memories.save),
-        Some(ShelterDecorationKind::Leaf)
+    let mut climbers = World::new([106; 32], created, &desktop);
+    climbers.save.creatures[0].memory.window_climbs = u32::MAX;
+    let Some(VillageItem::Decoration(kind)) = first_decoration(&mut climbers) else {
+        panic!("a decoration was left to come");
+    };
+    assert!(
+        matches!(
+            kind,
+            ShelterDecorationKind::RoofOrnament
+                | ShelterDecorationKind::WeatherVane
+                | ShelterDecorationKind::PerchedBird
+                | ShelterDecorationKind::Pinwheel
+                | ShelterDecorationKind::WindChime
+        ),
+        "a colony of climbers gets something for the sky, not {kind:?}"
     );
 
-    let mut bonds = two_creature_world([107; 32], created);
-    bonds.save.relationships[0].affinity = u8::MAX;
-    bonds.save.relationships[0].familiarity = u8::MAX;
-    assert_eq!(
-        preferred_shelter_decoration(&bonds.save),
-        Some(ShelterDecorationKind::Banner)
-    );
-
-    let mut ritual = World::new([108; 32], created, &desktop);
-    ritual.save.ritual.last_kind = Some(RitualKind::Picnic);
-    assert_eq!(
-        preferred_shelter_decoration(&ritual.save),
-        Some(ShelterDecorationKind::Flower)
-    );
-
-    let mut objects = World::new([109; 32], created, &desktop);
-    objects.save.objects.objects.push(ColonyObject {
-        id: 1,
-        kind: ColonyObjectKind::Pebble,
-        display: desktop.monitors[0].display_key,
-        normalized_position: Point { x: 0.5, y: 0.9 },
-        role: ColonyObjectRole::Curiosity,
-    });
-    assert_eq!(
-        preferred_shelter_decoration(&objects.save),
-        Some(ShelterDecorationKind::Stone)
+    let mut friends = two_creature_world([107; 32], created);
+    friends.save.relationships[0].affinity = u8::MAX;
+    friends.save.relationships[0].familiarity = u8::MAX;
+    let Some(VillageItem::Decoration(kind)) = first_decoration(&mut friends) else {
+        panic!("a decoration was left to come");
+    };
+    assert!(
+        matches!(
+            kind,
+            ShelterDecorationKind::Pennant
+                | ShelterDecorationKind::PaperLanterns
+                | ShelterDecorationKind::FairyLights
+        ),
+        "close friends get something for a party, not {kind:?}"
     );
 }
 

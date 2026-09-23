@@ -56,10 +56,13 @@ pub enum Gesture {
     /// Drawn up tall on its toes with its paws overhead, held a moment: the stretch a companion
     /// with that habit takes before a nap. No attention scene strikes it; it belongs to a habit.
     Stretch,
+    /// Head tipped back, drawn up tall, a paw brought up to the mouth, and settling again: a
+    /// yawn, which one companion can set off in another. No attention scene strikes it.
+    Yawn,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -71,11 +74,13 @@ impl Gesture {
         Self::Bop,
         Self::Watch,
         Self::Stretch,
+        Self::Yawn,
     ];
 
-    /// Whether attention scenes strike this pose. The rest belong to habits.
+    /// Whether attention scenes strike this pose. The rest belong to habits and to the small
+    /// moments companions have between scenes.
     pub const fn in_scenes(self) -> bool {
-        !matches!(self, Self::Stretch)
+        !matches!(self, Self::Stretch | Self::Yawn)
     }
 }
 

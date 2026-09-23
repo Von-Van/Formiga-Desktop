@@ -282,14 +282,22 @@ fn draw_village(
     scale: i32,
 ) -> i32 {
     let genome = ColonyHome::from_seed([166; 32], None, None, None).shelter;
-    let atlas =
-        ShelterRenderer::render_village(&genome, &ShelterDecorationKind::ALL, &[], &[], false);
+    let atlas = ShelterRenderer::render_village(
+        &genome,
+        &[ShelterDecorationKind::ALL[..6].to_vec()],
+        &[],
+        &[],
+        false,
+    );
     let size = SHELTER_SIZE as i32;
     let gap = 4 * scale;
     let mut cursor = x;
     for slot in 0..3 {
-        let (cell_x, cell_y) =
-            ShelterRenderer::village_cell(formiga_art::VillageCell::House { slot, lit: false });
+        let (cell_x, cell_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::House {
+            slot,
+            lit: false,
+            occupied: false,
+        });
         let (cell_x, cell_y) = (cell_x as i32, cell_y as i32);
         let (cell_w, cell_h, sprite) = extract_cell_cropped(&atlas, cell_x, cell_y, size);
         blit_rect_alpha(

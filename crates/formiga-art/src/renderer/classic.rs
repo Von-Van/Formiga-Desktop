@@ -9,7 +9,7 @@ pub(super) fn draw_blob(
     pose: Pose,
     clip: BodyClip,
     frame: u8,
-) -> PixelPoint {
+) -> Figure {
     let s = scale(genome);
     let rx = ((genome.body_width as f32 * s / 2.0).round() as i32 + pose.squash_x).clamp(6, 16);
     // A blob carries its feet on the underside of the one mass it is, so it has no legs to fold
@@ -57,10 +57,42 @@ pub(super) fn draw_blob(
             family: BodyFamily::Blob,
         },
     );
-    PixelPoint {
+    // One mass carrying its face: the "neck" a collar goes round is a band across the mass just
+    // under the face, as wide as the mass is there.
+    let face = PixelPoint {
         x: cx + 2 + lean,
         y: cy - 1,
+    };
+    let neck_y = (face.y + 5).min(cy + ry - 2);
+    Figure {
+        face,
+        crown: PixelPoint {
+            x: cx + lean,
+            y: cy - ry,
+        },
+        head_half: (rx - 2).max(3),
+        neck: PixelPoint { x: cx, y: neck_y },
+        neck_half: ellipse_half_width(rx, ry, neck_y - cy),
+        chest: PixelPoint {
+            x: cx + rx / 2,
+            y: neck_y + 2,
+        },
+        hip: PixelPoint {
+            x: cx - rx + 2,
+            y: cy + ry / 2,
+        },
+        back: PixelPoint {
+            x: cx - rx + 2,
+            y: cy - ry / 3,
+        },
+        floor: cy + ry + 1,
     }
+}
+
+/// Half the width of an ellipse `dy` rows from its middle.
+pub(super) fn ellipse_half_width(rx: i32, ry: i32, dy: i32) -> i32 {
+    let t = (dy as f32 / ry.max(1) as f32).clamp(-1.0, 1.0);
+    ((rx as f32) * (1.0 - t * t).max(0.0).sqrt()).round() as i32
 }
 
 pub(super) fn draw_hopper(
@@ -70,7 +102,7 @@ pub(super) fn draw_hopper(
     pose: Pose,
     clip: BodyClip,
     frame: u8,
-) -> PixelPoint {
+) -> Figure {
     let s = scale(genome);
     // A rounder, lower crouch reads closer to a resting rabbit and leaves headroom for long ears.
     let rx = ((genome.body_width as f32 * s * 0.42).round() as i32 + pose.squash_x).clamp(6, 11);
@@ -125,9 +157,35 @@ pub(super) fn draw_hopper(
             family: BodyFamily::Hopper,
         },
     );
-    PixelPoint {
-        x: cx + 1 + lean,
-        y: cy - 2,
+    // The face rides the front of the one mass, which is drawn a row up from `cy`.
+    Figure {
+        face: PixelPoint {
+            x: cx + 1 + lean,
+            y: cy - 2,
+        },
+        crown: PixelPoint {
+            x: cx + lean,
+            y: cy - ry - 1,
+        },
+        head_half: (rx - 2).max(3),
+        neck: PixelPoint {
+            x: cx + 1,
+            y: cy + 2,
+        },
+        neck_half: ellipse_half_width(rx, ry, 3),
+        chest: PixelPoint {
+            x: cx + rx / 2 + 1,
+            y: cy + 4,
+        },
+        hip: PixelPoint {
+            x: cx - rx + 1,
+            y: cy + ry / 2,
+        },
+        back: PixelPoint {
+            x: cx - rx + 2,
+            y: cy - ry / 2,
+        },
+        floor: ground,
     }
 }
 
@@ -138,7 +196,7 @@ pub(super) fn draw_quadruped(
     pose: Pose,
     clip: BodyClip,
     frame: u8,
-) -> PixelPoint {
+) -> Figure {
     let s = scale(genome);
     let body_rx =
         ((genome.body_width as f32 * s * 0.42).round() as i32 + pose.squash_x).clamp(7, 13);
@@ -244,9 +302,34 @@ pub(super) fn draw_quadruped(
     let muzzle_x = head_x + (head_radius - 3).clamp(1, 3);
     canvas.fill_ellipse(muzzle_x, head_y + 2, 2, 1, palette.highlight);
     canvas.set(muzzle_x, head_y, palette.accent);
-    PixelPoint {
-        x: head_x + 1,
-        y: head_y - 1,
+    Figure {
+        face: PixelPoint {
+            x: head_x + 1,
+            y: head_y - 1,
+        },
+        crown: PixelPoint {
+            x: head_x,
+            y: head_y - head_radius - 1,
+        },
+        head_half: head_radius,
+        neck: PixelPoint {
+            x: head_x - 2,
+            y: head_y + head_radius - 1,
+        },
+        neck_half: (head_radius - 1).max(3),
+        chest: PixelPoint {
+            x: head_x - 1,
+            y: head_y + head_radius + 1,
+        },
+        hip: PixelPoint {
+            x: body_x - body_rx + 2,
+            y: body_y,
+        },
+        back: PixelPoint {
+            x: body_x - 2,
+            y: body_y - body_ry,
+        },
+        floor: ground,
     }
 }
 
@@ -743,6 +826,16 @@ pub(super) fn gesture_limb_targets(
                 0 => (resting_left, at(right.x + length, right.y - length - 2)),
                 2 => (at(left.x - length, left.y - length - 2), resting_right),
                 _ => offset_pair(left, right, ((-length, 0), (length, 0))),
+            }
+        }
+        // The near paw comes up in front of the mouth for the middle of the yawn and goes down
+        // again; the far one stays where it rests.
+        Gesture::Yawn => {
+            let (resting_left, resting_right) = resting();
+            if (1..=2).contains(&frame) {
+                (resting_left, at(middle + 3, right.y - length - 1))
+            } else {
+                (resting_left, resting_right)
             }
         }
         // Both paws go up and in over the head, higher each frame until they are at full stretch.

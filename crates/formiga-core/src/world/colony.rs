@@ -146,6 +146,26 @@ impl World {
         changed
     }
 
+    /// Dress a companion in something made from a find, pin a find on it, or with `None` take
+    /// off whatever it is wearing. Only a member of the colony can be dressed, and only in
+    /// something the colony has found. Returns whether anything changed.
+    pub fn set_accessory(
+        &mut self,
+        creature_id: CreatureId,
+        accessory: Option<Accessory>,
+    ) -> Result<bool, AccessoryError> {
+        if let Some(accessory) = accessory
+            && !accessory.available(&self.save.companion.scrapbook)
+        {
+            return Err(AccessoryError::NotFound);
+        }
+        let creature = creature_mut(&mut self.save.creatures, creature_id)
+            .ok_or(AccessoryError::UnknownCreature(creature_id))?;
+        let changed = creature.accessory != accessory;
+        creature.accessory = accessory;
+        Ok(changed)
+    }
+
     pub fn add_designed_adult(
         &mut self,
         source_seed: [u8; 32],
@@ -264,12 +284,38 @@ impl World {
         if self.save.creatures[index].role.is_adult() && adult_count(&self.save.creatures) == 1 {
             return Err(ColonyManagementError::LastAdult);
         }
+        let colony_house_keeper = house_owners(&self.save.creatures, &self.save.home.cottage_order)
+            .as_slice()
+            .first()
+            .copied();
         self.save.creatures.remove(index);
         self.save.home.cottage_order.retain(|id| *id != creature_id);
         self.save
             .home
             .house_styles
             .retain(|choice| choice.keeper != creature_id);
+        // A cottage's decorations go with it. The colony house stays, and so does everything
+        // hung on it: they pass to whoever keeps it now.
+        let successor = house_owners(&self.save.creatures, &self.save.home.cottage_order)
+            .as_slice()
+            .first()
+            .copied();
+        let home = &mut self.save.home;
+        if colony_house_keeper == Some(creature_id)
+            && let Some(successor) = successor
+            && !home
+                .dressing
+                .iter()
+                .any(|dressing| dressing.keeper == successor)
+        {
+            for dressing in &mut home.dressing {
+                if dressing.keeper == creature_id {
+                    dressing.keeper = successor;
+                }
+            }
+        }
+        home.dressing
+            .retain(|dressing| dressing.keeper != creature_id);
         self.remove_creature_runtime(creature_id);
         rebalance_minis(&mut self.save.creatures);
         normalize_relationships(&mut self.save);
@@ -346,6 +392,11 @@ impl World {
                 choice.keeper = new_id;
             }
         }
+        for dressing in &mut self.save.home.dressing {
+            if dressing.keeper == old_id {
+                dressing.keeper = new_id;
+            }
+        }
         self.remove_creature_runtime(old_id);
         self.register_creature_runtime(&replacement);
         self.save.creatures[index] = replacement;
@@ -377,6 +428,8 @@ impl World {
         self.action_choices.clear();
         self.bond_plans.clear();
         self.clear_attention();
+        self.end_village_life();
+        self.clear_beats();
     }
 
     pub(super) fn register_creature_runtime(&mut self, creature: &Creature) {
@@ -387,6 +440,7 @@ impl World {
             AmbientTimers {
                 inspect_remaining: self.ambient_rng.random_range(INSPECT_INTERVAL_SECS),
                 dangle_remaining: self.ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+                climb_rest: 0.0,
             },
         );
     }
@@ -432,6 +486,7 @@ impl World {
         }
         self.rngs.remove(&creature_id);
         self.ambient_timers.remove(&creature_id);
+        self.village_life.remove(&creature_id);
         self.window_journeys.remove(&creature_id);
         self.window_routes.remove(&creature_id);
         self.tosses.remove(&creature_id);

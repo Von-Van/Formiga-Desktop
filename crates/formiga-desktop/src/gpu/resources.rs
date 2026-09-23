@@ -3,17 +3,26 @@
 use super::*;
 
 impl OverlayRenderer {
-    pub(super) fn ensure_sprite(
-        &mut self,
-        creature: &Creature,
-        reduce_motion: bool,
-        outline: bool,
-    ) {
+    pub(super) fn ensure_sprite(&mut self, creature: &Creature, save: &SaveFile) {
+        let reduce_motion = save.settings.reduce_motion;
+        let outline = save.companion.appearance.sprite_outline;
+        // What it is wearing is baked into every frame, so choosing something else, or taking it
+        // off, bakes the atlas again. Nothing else about the choice is looked at frame to frame.
         let requires_bake = self.sprites.get(&creature.id).is_none_or(|sprite| {
-            sprite.reduce_motion != reduce_motion || sprite.outline != outline
+            sprite.reduce_motion != reduce_motion
+                || sprite.outline != outline
+                || sprite.dress.map(|dress| dress.accessory) != creature.accessory
         });
         if requires_bake {
-            let atlas = build_atlas_pixels(creature, reduce_motion, outline);
+            let dress = creature.accessory.map(|accessory| {
+                let members: Vec<formiga_art::Palette> = save
+                    .creatures
+                    .iter()
+                    .map(|member| formiga_art::palette_for(&member.appearance))
+                    .collect();
+                AccessoryArt::resolve(accessory, save.colony_seed, &members)
+            });
+            let atlas = build_atlas_pixels(creature, reduce_motion, outline, dress);
             let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("procedural creature body atlas"),
                 size: wgpu::Extent3d {
@@ -129,38 +138,26 @@ impl OverlayRenderer {
                         &creature.appearance,
                         reduce_motion,
                     ),
+                    dress,
                 },
             );
         }
     }
 
-    pub(super) fn ensure_shelter(
-        &mut self,
-        genome: ShelterGenome,
-        decorations: &[ShelterDecorationKind],
-        marks: [Option<ResidentMark>; VILLAGE_HOUSES],
-        styles: [ShelterStyle; VILLAGE_HOUSES],
-    ) {
-        if self.shelter.as_ref().is_some_and(|shelter| {
-            shelter.genome == genome
-                && shelter.decorations == decorations
-                && shelter.marks == marks
-                && shelter.styles == styles
-        }) {
+    pub(super) fn ensure_shelter(&mut self, look: VillageLook) {
+        if self
+            .shelter
+            .as_ref()
+            .is_some_and(|shelter| shelter.look == look)
+        {
             return;
         }
-        let decorations: Vec<_> = decorations
-            .iter()
-            .copied()
-            .take(formiga_core::MAX_SHELTER_DECORATIONS)
-            .collect();
-        let pixels = ShelterRenderer::render_village(&genome, &decorations, &marks, &styles, true)
-            .rgba_bytes();
+        let pixels = ShelterRenderer::render_look(&look, true).rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("procedural colony village"),
             size: wgpu::Extent3d {
-                width: VILLAGE_ATLAS_SIZE,
-                height: VILLAGE_ATLAS_SIZE,
+                width: VILLAGE_ATLAS_WIDTH,
+                height: VILLAGE_ATLAS_HEIGHT,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -180,12 +177,12 @@ impl OverlayRenderer {
             &pixels,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(VILLAGE_ATLAS_SIZE * 4),
-                rows_per_image: Some(VILLAGE_ATLAS_SIZE),
+                bytes_per_row: Some(VILLAGE_ATLAS_WIDTH * 4),
+                rows_per_image: Some(VILLAGE_ATLAS_HEIGHT),
             },
             wgpu::Extent3d {
-                width: VILLAGE_ATLAS_SIZE,
-                height: VILLAGE_ATLAS_SIZE,
+                width: VILLAGE_ATLAS_WIDTH,
+                height: VILLAGE_ATLAS_HEIGHT,
                 depth_or_array_layers: 1,
             },
         );
@@ -207,10 +204,7 @@ impl OverlayRenderer {
         self.shelter = Some(ShelterGpu {
             _texture: texture,
             bind_group,
-            genome,
-            decorations,
-            marks,
-            styles,
+            look,
         });
     }
 

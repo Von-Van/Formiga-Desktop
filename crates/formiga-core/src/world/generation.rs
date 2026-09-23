@@ -307,6 +307,7 @@ fn generate_creature(
         tendencies: LearnedTendencies::default(),
         routines: RoutineTable::default(),
         leaning: RoamingLeaning::default(),
+        accessory: None,
         state: CreatureState {
             attention: None,
             position,
@@ -327,6 +328,8 @@ fn generate_creature(
             arrival_delay_secs: 0.0,
             flourish: None,
             nudge: None,
+            beat: None,
+            indoors: false,
         },
     }
 }

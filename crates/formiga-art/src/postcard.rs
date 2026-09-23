@@ -465,19 +465,8 @@ fn paint_village(
     if lots.is_empty() {
         return;
     }
-    let decorations: Vec<_> = save
-        .home
-        .decorations
-        .decorations
-        .iter()
-        .copied()
-        .filter(|kind| save.home.hidden_decorations & (1 << kind.index()) == 0)
-        .collect();
-    let village = ShelterRenderer::render_village(
-        &save.home.drawn_shelter(),
-        &decorations,
-        &crate::ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
-        &save.home.house_style_list(&save.creatures),
+    let village = ShelterRenderer::render_look(
+        &crate::VillageLook::of(&save.home, &save.creatures),
         after_dark,
     );
     let objects = ColonyObjectRenderer::render_atlas(save.colony_seed);
@@ -510,6 +499,7 @@ fn paint_village(
                 let (u, v) = ShelterRenderer::village_cell(VillageCell::House {
                     slot,
                     lit: after_dark,
+                    occupied: false,
                 });
                 (&village, u as i32, v as i32, SHELTER_SIZE as i32, false)
             }
@@ -517,20 +507,27 @@ fn paint_village(
                 let (u, v) = ShelterRenderer::village_cell(VillageCell::Tree);
                 (&village, u as i32, v as i32, SHELTER_SIZE as i32, mirrored)
             }
-            LotArt::Object(kind) => (
-                &objects,
-                i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32,
-                0,
-                COLONY_OBJECT_SIZE as i32,
-                false,
-            ),
-            LotArt::Ground { item, mirrored } => (
-                &objects,
-                ColonyObjectRenderer::ground_cell(item) as i32 * COLONY_OBJECT_SIZE as i32,
-                0,
-                COLONY_OBJECT_SIZE as i32,
-                mirrored,
-            ),
+            LotArt::Object(kind) => {
+                let (u, v) =
+                    ColonyObjectRenderer::cell_origin(ColonyObjectRenderer::object_cell(kind));
+                (
+                    &objects,
+                    u as i32,
+                    v as i32,
+                    COLONY_OBJECT_SIZE as i32,
+                    false,
+                )
+            }
+            LotArt::Ground { cell, mirrored } => {
+                let (u, v) = ColonyObjectRenderer::cell_origin(cell);
+                (
+                    &objects,
+                    u as i32,
+                    v as i32,
+                    COLONY_OBJECT_SIZE as i32,
+                    mirrored,
+                )
+            }
         };
         for row in 0..size {
             for column in 0..size {
@@ -1010,6 +1007,7 @@ fn draw_stamp(
     let (u, v) = ShelterRenderer::village_cell(VillageCell::House {
         slot: 0,
         lit: false,
+        occupied: false,
     });
     let origin = (x + width / 2 - 32, y + 14);
     for row in 0..SHELTER_SIZE as i32 {

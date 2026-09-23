@@ -8,6 +8,7 @@ use time::{Duration, OffsetDateTime, UtcOffset};
 
 mod arrivals;
 mod attention;
+mod beats;
 mod bonds;
 mod bubbles;
 mod colony;
@@ -29,6 +30,7 @@ mod spacing;
 mod surfaces;
 mod tows;
 mod undo;
+mod village_life;
 mod visitors;
 use attention::{AttentionRuntime, DisplayAttention};
 use bonds::*;
@@ -41,7 +43,7 @@ use interaction::*;
 use journeys::*;
 use movement::*;
 use objects::*;
-pub(crate) use objects::{scheduled_colony_object_at, scheduled_shelter_decoration_at};
+pub(crate) use objects::{scheduled_colony_object_at, scheduled_village_unlock_at};
 pub(crate) use rituals::scheduled_ritual_at;
 use rituals::*;
 use surfaces::SurfaceMemory;
@@ -54,6 +56,18 @@ const CREATURE_ART_WIDTH: f32 = crate::CREATURE_FRAME_WIDTH;
 const INSPECT_INTERVAL_SECS: std::ops::Range<f32> = 120.0..240.0;
 const DANGLE_INTERVAL_SECS: std::ops::Range<f32> = 240.0..480.0;
 const DISCOVERY_INTERVAL_SECS: std::ops::Range<f32> = 600.0..1_200.0;
+/// The chance, each time it chooses something to do up on a ledge, that a companion comes down
+/// to do it on the floor instead, and how long it stays down before it thinks of climbing again.
+const ANYWHERE_COMES_DOWN: f64 = 0.35;
+const CLIMBER_COMES_DOWN: f64 = 0.05;
+fn climb_rest_secs(leaning: RoamingLeaning) -> std::ops::Range<f32> {
+    match leaning {
+        RoamingLeaning::Climber => 15.0..40.0,
+        RoamingLeaning::Anywhere => 35.0..90.0,
+        RoamingLeaning::Homebody => 60.0..150.0,
+        RoamingLeaning::FloorDweller => 90.0..200.0,
+    }
+}
 
 pub struct World {
     pub save: SaveFile,
@@ -98,6 +112,15 @@ pub struct World {
     last_edit: Option<undo::UndoPoint>,
     /// Sleepers being towed out of somebody's way by a friend on a little rope.
     tows: tows::TowTable,
+    /// When the colony next yawns, and the yawns and looks still waiting to start.
+    beats: beats::Beats,
+    /// What residents are doing about the village beyond strolling and the quiet moments at their
+    /// doors: tending the gardens, seeing to their houses, indoors, up on a roof, or in the middle
+    /// of a small mishap. Runtime only, like the moments.
+    village_life: BTreeMap<CreatureId, village_life::VillageActivity>,
+    /// Which of those each resident does, and whether it turns something up. A stream of its own,
+    /// like the moments'.
+    village_life_rng: ChaCha12Rng,
     colony_plan: Option<ColonyPlan>,
     topology: DesktopTopology,
     geometry_observer: crate::attention::GeometryObserver,
@@ -123,6 +146,9 @@ pub struct World {
 struct AmbientTimers {
     inspect_remaining: f32,
     dangle_remaining: f32,
+    /// Seconds before a companion that has just come down off a ledge thinks of climbing again:
+    /// a spell pottering about the floor between one climb and the next.
+    climb_rest: f32,
 }
 
 fn lerp(a: f32, b: f32, progress: f32) -> f32 {
@@ -192,7 +218,7 @@ impl World {
             .or_else(|| desktop.monitors.first())
             .map(|monitor| monitor.display_key);
         let mut home = ColonyHome::from_seed(colony_seed, home_display, Some(now), None);
-        home.decorations.next_at_utc = scheduled_shelter_decoration_at(colony_seed, 0, now);
+        home.unlocks.next_at_utc = scheduled_village_unlock_at(colony_seed, 0, now);
         let save = SaveFile {
             companion: crate::CompanionState {
                 onboarding_complete: false,
@@ -243,19 +269,10 @@ impl World {
                 save.maximum_seen_utc,
             );
         }
-        let mut seen_decorations = BTreeSet::new();
-        save.home
-            .decorations
-            .decorations
-            .retain(|kind| seen_decorations.insert(*kind));
-        save.home
-            .decorations
-            .decorations
-            .truncate(MAX_SHELTER_DECORATIONS);
-        if save.home.decorations.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.home.decorations.next_at_utc = scheduled_shelter_decoration_at(
+        if save.home.unlocks.next_at_utc == OffsetDateTime::UNIX_EPOCH {
+            save.home.unlocks.next_at_utc = scheduled_village_unlock_at(
                 save.colony_seed,
-                save.home.decorations.ordinal,
+                save.home.unlocks.ordinal,
                 save.maximum_seen_utc,
             );
         }
@@ -268,6 +285,14 @@ impl World {
                 .design
                 .map(crate::CreatureDesign::bounded);
             creature.origin.design = creature.appearance.design;
+            // Only something the colony has found can be worn: a file that says otherwise wears
+            // nothing rather than something from nowhere.
+            if creature
+                .accessory
+                .is_some_and(|accessory| !accessory.available(&save.companion.scrapbook))
+            {
+                creature.accessory = None;
+            }
             creature.state.action = ActionKind::Idle;
             creature.state.action_elapsed = 0.0;
             creature.state.action_duration = 2.5;
@@ -291,6 +316,7 @@ impl World {
                     AmbientTimers {
                         inspect_remaining: ambient_rng.random_range(INSPECT_INTERVAL_SECS),
                         dangle_remaining: ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+                        climb_rest: 0.0,
                     },
                 )
             })
@@ -331,6 +357,9 @@ impl World {
             village_moment: None,
             last_edit: None,
             tows: tows::TowTable::default(),
+            beats: beats::Beats::new(&streams),
+            village_life: BTreeMap::new(),
+            village_life_rng: streams.rng("village-life", 0),
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             creature_views: Vec::new(),
@@ -363,7 +392,7 @@ impl World {
         self.apply_routine_schedule(now);
         self.process_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
-        self.process_shelter_decorations(timeline_now);
+        self.process_village_unlocks(timeline_now);
         self.reconcile_colony_objects(desktop);
         // Capture display loss before route recovery can replace a creature's old attachment.
         let display_attention_active = self.save.settings.visible
@@ -477,6 +506,7 @@ impl World {
         }
         self.tick_bubbles(dt);
         self.tick_offers(dt, desktop);
+        self.advance_beats(dt, desktop);
         if self.save.settings.paused {
             self.settle_active_tosses(desktop);
             self.project_events(timeline_now);
@@ -501,6 +531,7 @@ impl World {
             for timers in self.ambient_timers.values_mut() {
                 timers.inspect_remaining = (timers.inspect_remaining - dt).max(0.0);
                 timers.dangle_remaining = (timers.dangle_remaining - dt).max(0.0);
+                timers.climb_rest = (timers.climb_rest - dt).max(0.0);
             }
             self.discovery_remaining = (self.discovery_remaining - dt).max(0.0);
         }
@@ -623,6 +654,15 @@ impl World {
                 spacing::creature_frame_width(creature, self.save.settings.display_scale, desktop);
             update_drives(creature, dt);
             creature.state.cursor_cooldown = (creature.state.cursor_cooldown - dt).max(0.0);
+            // A yawn, or a look at a friend yawning, is had standing still, and whatever it was
+            // doing waits for it rather than running out underneath it.
+            if creature.state.beat.is_some()
+                && !self.window_journeys.contains_key(&creature.id)
+                && !self.attention.owns(creature.id)
+            {
+                creature.state.velocity = Point::default();
+                continue;
+            }
             creature.state.action_elapsed += dt;
             if creature.state.action == ActionKind::Sleep {
                 *self.sleep_elapsed.entry(creature.id).or_default() += dt;
@@ -1047,9 +1087,11 @@ impl World {
                     });
                     explicit_experience = Some(RelationshipExperience::Squabble);
                 }
+                // Waking from a nap is a fine moment to notice something lying beside the pillow;
+                // being startled by a window is not.
                 if selected_choice.is_none()
                     && discovery_available
-                    && !matches!(old, ActionKind::Sleep | ActionKind::ReactToWindow)
+                    && old != ActionKind::ReactToWindow
                 {
                     creature.state.activity_variant = discovery::choose_trinket_variant(
                         &mut self.ambient_rng,
@@ -1057,6 +1099,7 @@ impl World {
                             creature,
                             old,
                             now,
+                            self.save.created_at_utc,
                             desktop,
                             &self.save.settings,
                             &self.ride_memory,
@@ -1133,13 +1176,19 @@ impl World {
                     // application windows and later descend when the desktop arrangement changes.
                     // Turning window ledges off is a request to stay on the floor, so a ledge
                     // simply stops being somewhere a creature can think of going.
+                    let resting_from_climbing = self
+                        .ambient_timers
+                        .get(&creature.id)
+                        .is_some_and(|timers| timers.climb_rest > 0.0);
                     let context = BehaviorContext {
                         reachable_window_ledge: self.save.settings.window_ledges
+                            && !resting_from_climbing
                             && find_nearby_ledge(
                                 creature,
                                 desktop,
                                 &self.save.settings.habitat,
                                 &self.topology,
+                                self.save.settings.display_scale,
                             )
                             .is_some(),
                         home_point: (creature.leaning == RoamingLeaning::Homebody)
@@ -1240,6 +1289,7 @@ impl World {
                                 desktop,
                                 &self.save.settings.habitat,
                                 &self.topology,
+                                self.save.settings.display_scale,
                             )
                         })
                     {
@@ -1251,10 +1301,15 @@ impl World {
                 // A companion its owner would rather keep lower down comes off a ledge to do
                 // whatever it has chosen next, the way the colony comes down to walk home: the
                 // same hop to the floor below, and the chosen action once it has landed.
+                // Everybody comes down now and then, so a colony that can climb spends its time
+                // about the whole screen rather than settling up on the windows for good: about
+                // half of it up high for a companion that likes to be anywhere, more for a
+                // climber, and less for the others.
                 let comes_down = match creature.leaning {
                     RoamingLeaning::FloorDweller => 0.7,
                     RoamingLeaning::Homebody => 0.4,
-                    RoamingLeaning::Anywhere | RoamingLeaning::Climber => 0.0,
+                    RoamingLeaning::Anywhere => ANYWHERE_COMES_DOWN,
+                    RoamingLeaning::Climber => CLIMBER_COMES_DOWN,
                 };
                 if comes_down > 0.0
                     && creature.state.surface.kind == SurfaceKind::WindowLedge
@@ -1282,6 +1337,9 @@ impl World {
                     });
                     next = journey.initial_action();
                     self.window_journeys.insert(creature.id, journey);
+                    if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
+                        timers.climb_rest = rng.random_range(climb_rest_secs(creature.leaning));
+                    }
                 }
                 creature.state.action = next;
                 creature.state.action_elapsed = 0.0;

@@ -134,6 +134,8 @@ pub(super) fn drawn_on_monitor(
         .filter(|creature| {
             creature.state.surface.monitor_id == monitor_id
                 && creature.state.arrival_delay_secs <= 0.0
+                // Inside its house, behind the drawn curtain.
+                && !creature.state.indoors
                 && (!fully_occluded || creature.state.action == ActionKind::Dragged)
         })
         .collect()

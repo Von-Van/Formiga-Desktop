@@ -218,12 +218,10 @@ pub(crate) enum LotArt {
     Tree { mirrored: bool },
     /// One cell of the colony object sheet.
     Object(ColonyObjectKind),
-    /// A hangout spot or garden patch put down on the ground, from the same sheet; the lookout
-    /// turned out over the rest of the display, as the desktop turns it.
-    Ground {
-        item: formiga_core::GroundItem,
-        mirrored: bool,
-    },
+    /// A hangout spot, garden patch or ornament put down on the ground, by its cell on the same
+    /// sheet — a garden at whatever stage it has grown to — and the lookout turned out over the
+    /// rest of the display, as the desktop turns it.
+    Ground { cell: u32, mirrored: bool },
 }
 
 /// One piece of the village strip, and where the desktop puts it.
@@ -332,7 +330,7 @@ pub(crate) fn village_lots(save: &SaveFile) -> Vec<Lot> {
     ) {
         lots.push(Lot {
             art: LotArt::Ground {
-                item,
+                cell: ColonyObjectRenderer::ground_cell(item, ground_stage(save, item)),
                 mirrored: ColonyObjectRenderer::ground_mirrored(item, point.x, middle),
             },
             center_x: point.x,
@@ -340,6 +338,23 @@ pub(crate) fn village_lots(save: &SaveFile) -> Vec<Lot> {
         });
     }
     lots
+}
+
+/// How far along a garden on the ground has grown, as of the latest time the colony has seen.
+/// Anything that is not a garden is always the one drawing.
+pub(crate) fn ground_stage(
+    save: &SaveFile,
+    item: formiga_core::GroundItem,
+) -> formiga_core::GardenStage {
+    match item {
+        formiga_core::GroundItem::Garden(kind) => save
+            .home
+            .garden(kind)
+            .map_or(formiga_core::GardenStage::Grown, |patch| {
+                patch.stage(save.maximum_seen_utc)
+            }),
+        _ => formiga_core::GardenStage::Grown,
+    }
 }
 
 /// One desktop unit per art pixel, so a house's spacing and a house's art agree exactly.
@@ -369,21 +384,8 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
     if lots.is_empty() {
         return;
     }
-    let decorations: Vec<_> = save
-        .home
-        .decorations
-        .decorations
-        .iter()
-        .copied()
-        .filter(|kind| save.home.hidden_decorations & (1 << kind.index()) == 0)
-        .collect();
-    let village = ShelterRenderer::render_village(
-        &save.home.drawn_shelter(),
-        &decorations,
-        &crate::ResidentMark::for_village(&save.creatures, &save.home.cottage_order),
-        &save.home.house_style_list(&save.creatures),
-        false,
-    );
+    let village =
+        ShelterRenderer::render_look(&crate::VillageLook::of(&save.home, &save.creatures), false);
     let objects = ColonyObjectRenderer::render_atlas(save.colony_seed);
 
     let left = lots
@@ -424,7 +426,11 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
         match lot.art {
             // The same cells the desktop samples from the same atlas, by day.
             LotArt::Dwelling { slot } => {
-                let (u, v) = ShelterRenderer::village_cell(VillageCell::House { slot, lit: false });
+                let (u, v) = ShelterRenderer::village_cell(VillageCell::House {
+                    slot,
+                    lit: false,
+                    occupied: false,
+                });
                 blit_cell(
                     canvas,
                     &village,
@@ -453,30 +459,37 @@ fn draw_village(canvas: &mut Canvas, save: &SaveFile, gaps: &[i32]) {
                     mirrored,
                 )
             }
-            LotArt::Object(kind) => blit_cell(
-                canvas,
-                &objects,
-                i32::from(kind.index()) * COLONY_OBJECT_SIZE as i32,
-                0,
-                COLONY_OBJECT_SIZE as i32,
-                COLONY_OBJECT_SIZE as i32,
-                x,
-                y,
-                scale,
-                false,
-            ),
-            LotArt::Ground { item, mirrored } => blit_cell(
-                canvas,
-                &objects,
-                ColonyObjectRenderer::ground_cell(item) as i32 * COLONY_OBJECT_SIZE as i32,
-                0,
-                COLONY_OBJECT_SIZE as i32,
-                COLONY_OBJECT_SIZE as i32,
-                x,
-                y,
-                scale,
-                mirrored,
-            ),
+            LotArt::Object(kind) => {
+                let (u, v) =
+                    ColonyObjectRenderer::cell_origin(ColonyObjectRenderer::object_cell(kind));
+                blit_cell(
+                    canvas,
+                    &objects,
+                    u as i32,
+                    v as i32,
+                    COLONY_OBJECT_SIZE as i32,
+                    COLONY_OBJECT_SIZE as i32,
+                    x,
+                    y,
+                    scale,
+                    false,
+                )
+            }
+            LotArt::Ground { cell, mirrored } => {
+                let (u, v) = ColonyObjectRenderer::cell_origin(cell);
+                blit_cell(
+                    canvas,
+                    &objects,
+                    u as i32,
+                    v as i32,
+                    COLONY_OBJECT_SIZE as i32,
+                    COLONY_OBJECT_SIZE as i32,
+                    x,
+                    y,
+                    scale,
+                    mirrored,
+                )
+            }
         }
     }
 }
@@ -912,9 +925,22 @@ mod tests {
         let mut world = World::new([25; 32], created, &desktop);
         world.tick(created + time::Duration::days(60), 0.05, &desktop);
         world.save.creatures.truncate(members.max(1));
-        world.save.home.decorations.decorations = ShelterDecorationKind::ALL.to_vec();
+        // Every decoration the village can have, one of each slot hung on every house.
+        for item in formiga_core::VillageItem::all() {
+            world.save.home.unlocks.grant(item);
+        }
+        let keepers: Vec<_> = world.save.creatures.iter().map(|c| c.id).collect();
+        for kind in ShelterDecorationKind::ALL {
+            for keeper in &keepers {
+                world
+                    .save
+                    .home
+                    .set_decoration(*keeper, kind.slot(), Some(kind));
+            }
+        }
         world.save.objects.objects = ColonyObjectKind::ALL
             .iter()
+            .take(formiga_core::MAX_COLONY_OBJECTS)
             .enumerate()
             .map(|(index, kind)| ColonyObject {
                 id: index as u64,

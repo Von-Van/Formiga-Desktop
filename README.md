@@ -1,4 +1,4 @@
-# Formiga · v0.59.5
+# Formiga · v0.60.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -54,11 +54,12 @@ one costs.
 ## What it does
 
 - **Creatures with a life of their own.** Five body plans with generated ears, tails, markings, and
-  palettes, eleven expressions, a gaze that follows whatever has caught their interest, and a
+  palettes, twelve expressions, a gaze that follows whatever has caught their interest, and a
   personality of their own that how they are treated slowly nudges.
   [One hundred uncurated seeds](docs/assets/contact-sheet.png) show the range.
 - **Your desktop as terrain.** They climb onto windows, ride them when they move, hop between them,
-  squeeze through narrow gaps, watch a risky jump from the ledge, and notice the cursor.
+  squeeze through narrow gaps, watch a risky jump from the ledge, and notice the cursor — up on the
+  windows about half the time they spend roaming, and down on the floor the rest.
 - **Handled gently.** Click to pet, drag to move, and a quick release tosses one with a soft bounce.
   Right-click (Control-click on macOS) for a small menu: offer a snack or a toy, send everyone
   home, or open a profile. Creatures answer in pictures, not words.
@@ -66,11 +67,12 @@ one costs.
   windows), and now and then the whole colony gathers for a picnic, a nap, or a late-night sleep
   pile.
 - **A village.** When the colony goes home, a village of up to six houses stands in a corner of the
-  screen, with keepsake trees, gardens, and visitors who drop by. You can arrange it from the Home
-  page.
-- **Keepsakes.** A journal of small moments, a scrapbook of sixteen kinds of trinket, and a guest
-  book. Creatures, the colony, and postcards of the village can be exported as images and animated
-  GIFs.
+  screen, with keepsake trees, gardens that grow, and visitors who drop by, and the colony gets on
+  with village life: tending the gardens, seeing to its houses, napping indoors, sitting on the
+  roofs. You can arrange it right in its picture on the Home page, and dress every house.
+- **Keepsakes.** A journal of small moments, a hundred and sixty keepsakes to find and collect, some
+  of them to wear, and a guest book. Creatures, the colony, and postcards of the village can be
+  exported as images and animated GIFs.
 - **Your own creatures.** Preview new ones, reinterpret a PNG or JPEG you already have (a local
   colour-and-shape reading, not an AI model), share any creature as a seed code, or invite a
   friend's creature for a day.
@@ -90,7 +92,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.59.5-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.60.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -102,29 +104,37 @@ Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit. Formi
 update on its own: when one is available it verifies the download's SHA-256 and hands the installer
 to your operating system.
 
-## New in 0.59.5
+## New in 0.60.0
 
-A companion with nothing to do now sits like it has something on its mind. Resting used to be a
-one-pixel bob, held square to the screen for as long as nothing else was happening. Now a resting
-companion settles, shifts its weight onto one foot, tips its head and pricks its ears toward
-something off to one side, and settles back. Each one does it in its own way, leaning to its own
-side, slumping into it or keeping its legs under it, so a colony sitting about is not a row of
-companions doing the same nothing in step.
+The village comes to life while the houses are out. Companions water the gardens, crouch to look
+in on something just coming up, pick something ripe for a snack, and carry the best of it over to
+show a friend. They see to their own houses the way each kind of house asks — retying a tent's
+flap, plumping a pillow fort, patting a mushroom's cap, tidying a leaf house's leaves — and the
+house answers. They go indoors now and then: the curtain is drawn across the door, the window
+glows, and a Z drifts up if they are napping in there, but never so many at once that the village
+looks empty. They climb up and sit on their own roofs. Gardens grow through sprouts and leaves to
+flowers and fruit on their own, with no watering to keep up and nothing to wilt.
 
-Companions say a little more, too. A game starts with a music note over each player's head, so a
-pair breaking off from what they were doing reads as the start of something. A companion dropping
-off to sleep shows a Z as it goes, whether that is by its own door, on the nap cushion, or out on
-the desktop. And feet stay on the ground: a companion no longer rises a pixel or two as it sets
-off walking and sinks back down when it stops.
+Little things go a little wrong, too. A leaf lands on somebody's face, a snack rolls away and has
+to be chased, someone sits down just beside the cushion and shuffles across onto it — and whoever
+is nearby stops to look. Yawns are catching: one companion yawns, the friend beside them looks
+over and yawns a moment later, and every so often it reaches a third, who holds out for a second
+before giving in.
 
-A village that is out costs about half what it did. Whenever one resident was lively enough to
-stroll a little faster than an old threshold allowed, strolling companions were drawn twenty times
-a second instead of ten. Now every stroll is drawn at ten, and on the Mac Formiga is developed on,
-a colony of five with its houses out went from 2.44% to 1.32% of one core.
+There are a hundred and sixty keepsakes to find now, many of them only in the right moment — at
+home, in the garden, on a roof, first thing in the morning, under a full moon. The Journal keeps
+what has been found, and the Your colony page has the whole Collection, with the ones still to find
+shown as shadows with a hint, and a choice of which sixteen hang in the trees. Finds become things
+to wear: a leaf hat, a flower crown, a scarf, a tiny satchel, or any find at all as a pin, one each,
+tried on in a few poses before it goes on.
 
-Formiga also tidies up after its own updates. The installers it downloaded used to stay in its
-data folder for good, one for every version it had ever been updated to. Now, each time Formiga
-starts, it clears the ones for the version it is running and any earlier version.
+The Home page is arranged right in its picture of the village: drag a cottage along the row, drag a
+garden or a spot or an ornament along the ground, and click a house to choose its kind and what it
+wears in each of its six places. Every category of village thing starts with three, and something
+new arrives every day or two.
+
+And companions spend about half of their roaming time up on the windows, where before a desktop of
+ordinary windows had them all on the bottom row.
 
 Earlier releases are described in [the release notes](docs/RELEASE_NOTES.md), and every change is
 itemised in [the changelog](CHANGELOG.md).

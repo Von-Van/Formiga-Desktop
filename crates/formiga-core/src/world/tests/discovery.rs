@@ -2,7 +2,8 @@ use super::*;
 use crate::trinkets::{TrinketCondition, trinket_info, trinkets_for};
 use crate::world::discovery::{
     ColonyView, DiscoveryCircumstances, after_dark, beside_close_friend, choose_trinket_variant,
-    high_up, mid_ride, plaything_variant,
+    colony_birthday, early_morning, full_moon, high_up, is_everyday, mid_ride, moon_age_days,
+    plaything_variant, weekend,
 };
 use std::collections::BTreeSet;
 use time::macros::offset;
@@ -44,23 +45,58 @@ fn ledge_world(ledge_y: f32) -> (World, DesktopSnapshot) {
     (world, desktop)
 }
 
-/// The one circumstance under test and nothing else.
-fn only(condition: TrinketCondition) -> DiscoveryCircumstances {
+/// A set of circumstances from one bit per condition, in catalogue order after `Anywhere`.
+fn circumstances(mask: u16) -> DiscoveryCircumstances {
+    let bit = |n: u16| mask & (1 << n) != 0;
     DiscoveryCircumstances {
-        night: condition == TrinketCondition::Night,
-        high_tier: condition == TrinketCondition::HighTier,
-        mid_ride: condition == TrinketCondition::MidRide,
-        beside_close_friend: condition == TrinketCondition::BesideCloseFriend,
+        night: bit(0),
+        high_tier: bit(1),
+        mid_ride: bit(2),
+        beside_close_friend: bit(3),
+        at_home: bit(4),
+        in_garden: bit(5),
+        morning: bit(6),
+        weekend: bit(7),
+        after_nap: bit(8),
+        on_roof: bit(9),
+        with_visitor: bit(10),
+        full_moon: bit(11),
+        colony_birthday: bit(12),
     }
 }
 
+/// The conditions a circumstance can hold for, in the order `circumstances` numbers them.
+const CIRCUMSTANTIAL: [TrinketCondition; 13] = [
+    TrinketCondition::Night,
+    TrinketCondition::HighTier,
+    TrinketCondition::MidRide,
+    TrinketCondition::BesideCloseFriend,
+    TrinketCondition::AtHome,
+    TrinketCondition::InGarden,
+    TrinketCondition::Morning,
+    TrinketCondition::Weekend,
+    TrinketCondition::AfterNap,
+    TrinketCondition::OnRoof,
+    TrinketCondition::WithVisitor,
+    TrinketCondition::FullMoon,
+    TrinketCondition::ColonyBirthday,
+];
+
+/// The one circumstance under test and nothing else.
+fn only(condition: TrinketCondition) -> DiscoveryCircumstances {
+    let index = CIRCUMSTANTIAL
+        .iter()
+        .position(|candidate| *candidate == condition)
+        .expect("a circumstance of its own");
+    circumstances(1 << index)
+}
+
 fn every_circumstance() -> DiscoveryCircumstances {
-    DiscoveryCircumstances {
-        night: true,
-        high_tier: true,
-        mid_ride: true,
-        beside_close_friend: true,
-    }
+    circumstances(u16::MAX)
+}
+
+fn is_rare(variant: u8) -> bool {
+    trinket_info(variant).is_some_and(|info| info.condition == TrinketCondition::Rare)
 }
 
 /// A scrapbook that has already seen these variants.
@@ -77,33 +113,60 @@ fn found(variants: &[u8]) -> Vec<ScrapbookRecord> {
 }
 
 #[test]
-fn with_nothing_special_going_on_only_the_everyday_trinkets_turn_up() {
+fn with_nothing_special_going_on_only_everyday_and_rare_trinkets_turn_up() {
     let mut rng = ChaCha12Rng::from_seed([7; 32]);
-    let mut plain = ChaCha12Rng::from_seed([7; 32]);
-    for _ in 0..512 {
+    let mut seen = BTreeSet::new();
+    let mut rare = 0;
+    for _ in 0..4096 {
         let variant = choose_trinket_variant(&mut rng, DiscoveryCircumstances::default(), &[]);
-        assert!(variant < 8, "variant {variant} needs a circumstance");
-        // The everyday sequence is the one the colony has always had: one plain draw over the
-        // original eight per find, in the same order, with nothing else taken off the stream.
-        assert_eq!(variant, plain.random_range(0..8_u8));
+        assert!(
+            is_everyday(variant) || is_rare(variant),
+            "variant {variant} needs a circumstance"
+        );
+        rare += usize::from(is_rare(variant));
+        seen.insert(variant);
     }
+    // Every everyday find turns up, and a rare one only once in a long while.
+    assert!(trinkets_for(TrinketCondition::Anywhere).all(|info| seen.contains(&info.variant)));
+    assert!((30..110).contains(&rare), "{rare} rare finds in 4096");
+}
+
+#[test]
+fn an_everyday_find_prefers_what_the_scrapbook_is_missing() {
+    // Everything everyday found but two: those two turn up far more often than the rest.
+    let everyday: Vec<u8> = trinkets_for(TrinketCondition::Anywhere)
+        .map(|info| info.variant)
+        .collect();
+    let (missing, have) = everyday.split_at(2);
+    let scrapbook = found(have);
+    let mut rng = ChaCha12Rng::from_seed([11; 32]);
+    let (mut fresh, mut again) = (0, 0);
+    for _ in 0..4096 {
+        let variant =
+            choose_trinket_variant(&mut rng, DiscoveryCircumstances::default(), &scrapbook);
+        if missing.contains(&variant) {
+            fresh += 1;
+        } else if is_everyday(variant) {
+            again += 1;
+        }
+    }
+    assert!(fresh > again * 2, "{fresh} fresh against {again} again");
 }
 
 #[test]
 fn a_find_leaves_the_ambient_stream_where_an_everyday_draw_would_whatever_was_true() {
-    let scrapbook = found(&[8, 10, 12]);
-    for mask in 0..16_u8 {
-        let circumstances = DiscoveryCircumstances {
-            night: mask & 1 != 0,
-            high_tier: mask & 2 != 0,
-            mid_ride: mask & 4 != 0,
-            beside_close_friend: mask & 8 != 0,
-        };
+    let scrapbook = found(&[8, 10, 12, 40, 90, 156]);
+    let everyday = trinket_count(TrinketCondition::Anywhere);
+    let masks = std::iter::once(0)
+        .chain((0..13).map(|bit| 1_u16 << bit))
+        .chain([0b1_0101_0101_0101, u16::MAX]);
+    for mask in masks {
+        let circumstances = circumstances(mask);
         let mut rng = ChaCha12Rng::from_seed([13; 32]);
         let mut plain = ChaCha12Rng::from_seed([13; 32]);
         for step in 0..128 {
             choose_trinket_variant(&mut rng, circumstances, &scrapbook);
-            plain.random_range(0..8_u8);
+            plain.random_range(0..everyday);
             // Whether a circumstance held depends on the clock and on where the windows happen to
             // be. Neither is allowed a say in how far the ambient stream has moved, so the next
             // draw is the same one it would always have been.
@@ -114,6 +177,39 @@ fn a_find_leaves_the_ambient_stream_where_an_everyday_draw_would_whatever_was_tr
             );
         }
     }
+}
+
+#[test]
+fn the_clock_the_calendar_and_the_moon_are_read_as_the_owner_would_read_them() {
+    // Morning is six until ten on the wall clock.
+    for hour in 0..24_i64 {
+        let local = datetime!(2026-03-01 0:00 UTC) + Duration::hours(hour);
+        assert_eq!(early_morning(local), (6..10).contains(&hour), "{hour}");
+    }
+    // 2026-03-07 is a Saturday.
+    assert!(weekend(datetime!(2026-03-07 12:00 UTC)));
+    assert!(weekend(datetime!(2026-03-08 12:00 UTC)));
+    assert!(!weekend(datetime!(2026-03-09 12:00 UTC)));
+    // Full moons of 2026: 3 March 11:38 UTC and 1 April 02:12 UTC. A day either side still
+    // counts; a week off does not.
+    assert!(full_moon(datetime!(2026-03-03 11:38 UTC)));
+    assert!(full_moon(datetime!(2026-03-02 12:00 UTC)));
+    assert!(full_moon(datetime!(2026-04-01 02:12 UTC)));
+    assert!(!full_moon(datetime!(2026-03-10 12:00 UTC)));
+    assert!(!full_moon(datetime!(2026-03-19 12:00 UTC)), "a new moon");
+    assert!(moon_age_days(datetime!(2026-03-19 01:23 UTC)) < 1.0);
+    // The colony's birthday: never in its first year, three days either side after that, and a
+    // February-the-29th colony celebrates on the 28th.
+    let founded = datetime!(2026-06-10 12:00 UTC);
+    assert!(!colony_birthday(datetime!(2026-06-10 12:00 UTC), founded));
+    assert!(colony_birthday(datetime!(2027-06-10 12:00 UTC), founded));
+    assert!(colony_birthday(datetime!(2027-06-13 12:00 UTC), founded));
+    assert!(!colony_birthday(datetime!(2027-06-14 12:00 UTC), founded));
+    assert!(colony_birthday(datetime!(2028-06-07 12:00 UTC), founded));
+    let new_year = datetime!(2025-12-31 12:00 UTC);
+    assert!(colony_birthday(datetime!(2027-01-02 12:00 UTC), new_year));
+    let leap = datetime!(2028-02-29 12:00 UTC);
+    assert!(colony_birthday(datetime!(2029-02-28 12:00 UTC), leap));
 }
 
 #[test]
@@ -284,16 +380,17 @@ fn a_close_friend_has_to_be_both_close_and_near() {
 
 #[test]
 fn a_keepsake_never_turns_up_without_the_circumstance_it_belongs_to() {
-    for condition in TrinketCondition::ALL {
-        if condition == TrinketCondition::Anywhere {
-            continue;
-        }
+    for condition in CIRCUMSTANTIAL {
         let mut rng = ChaCha12Rng::from_seed([37; 32]);
         let mut seen = BTreeSet::new();
         for _ in 0..4096 {
             seen.insert(choose_trinket_variant(&mut rng, only(condition), &[]));
         }
-        let conditional: BTreeSet<u8> = seen.iter().copied().filter(|v| *v >= 8).collect();
+        let conditional: BTreeSet<u8> = seen
+            .iter()
+            .copied()
+            .filter(|v| !is_everyday(*v) && !is_rare(*v))
+            .collect();
         let expected: BTreeSet<u8> = trinkets_for(condition).map(|t| t.variant).collect();
         assert_eq!(conditional, expected, "{condition:?}");
         assert!(
@@ -309,49 +406,54 @@ fn a_circumstance_makes_its_keepsake_likely_without_promising_one() {
     let mut conditional = 0;
     let draws = 8192;
     for _ in 0..draws {
-        conditional +=
-            usize::from(choose_trinket_variant(&mut rng, only(TrinketCondition::Night), &[]) >= 8);
+        let variant = choose_trinket_variant(&mut rng, only(TrinketCondition::Night), &[]);
+        conditional += usize::from(!is_everyday(variant) && !is_rare(variant));
     }
     // About half, by design: a circumstance should make a keepsake likely and never promise one.
     let share = conditional as f32 / draws as f32;
-    assert!((0.45..0.55).contains(&share), "{conditional} of {draws}");
+    assert!((0.44..0.55).contains(&share), "{conditional} of {draws}");
 }
 
 #[test]
 fn an_empty_scrapbook_slot_fills_before_one_already_filled() {
-    let scrapbook = found(&[8]);
+    let night: Vec<u8> = trinkets_for(TrinketCondition::Night)
+        .map(|info| info.variant)
+        .collect();
+    // Every night keepsake in the book but one.
+    let scrapbook = found(&night[1..]);
     let mut rng = ChaCha12Rng::from_seed([29; 32]);
     let (mut refound, mut fresh) = (0, 0);
     for _ in 0..8192 {
-        match choose_trinket_variant(&mut rng, only(TrinketCondition::Night), &scrapbook) {
-            8 => refound += 1,
-            9 => fresh += 1,
-            _ => {}
+        let variant = choose_trinket_variant(&mut rng, only(TrinketCondition::Night), &scrapbook);
+        if variant == night[0] {
+            fresh += 1;
+        } else if night.contains(&variant) {
+            refound += 1;
         }
     }
     // Three times in four the pick prefers the empty slot, so the scrapbook fills rather than
-    // handing back the same keepsake; the fourth time either of them can turn up.
+    // handing back the same keepsake; the fourth time any of them can turn up.
     assert!(
-        fresh > refound * 4,
+        fresh > refound * 3,
         "{fresh} fresh against {refound} refound"
     );
     assert!(refound > 0, "a keepsake can still be found twice");
 
-    // With both already in the book there is nothing to favour, and they share the slot evenly.
-    let complete = found(&[8, 9]);
+    // With all of them already in the book there is nothing to favour, and they share evenly.
+    let complete = found(&night);
     let mut rng = ChaCha12Rng::from_seed([29; 32]);
-    let (mut eight, mut nine) = (0, 0);
-    for _ in 0..8192 {
+    let (mut first, mut second) = (0, 0);
+    for _ in 0..16_384 {
         match choose_trinket_variant(&mut rng, only(TrinketCondition::Night), &complete) {
-            8 => eight += 1,
-            9 => nine += 1,
+            variant if variant == night[0] => first += 1,
+            variant if variant == night[1] => second += 1,
             _ => {}
         }
     }
-    assert!(eight > 0 && nine > 0);
+    assert!(first > 0 && second > 0);
     assert!(
-        (eight as f32 / nine as f32 - 1.0).abs() < 0.2,
-        "{eight} against {nine}"
+        (first as f32 / second as f32 - 1.0).abs() < 0.25,
+        "{first} against {second}"
     );
 }
 
@@ -359,7 +461,7 @@ fn an_empty_scrapbook_slot_fills_before_one_already_filled() {
 fn every_trinket_in_the_catalogue_can_be_found() {
     let mut rng = ChaCha12Rng::from_seed([31; 32]);
     let mut seen = BTreeSet::new();
-    for _ in 0..8192 {
+    for _ in 0..16_384 {
         seen.insert(choose_trinket_variant(&mut rng, every_circumstance(), &[]));
     }
     let catalogue: BTreeSet<u8> = (0..TRINKET_VARIANTS).collect();
@@ -428,7 +530,7 @@ fn a_find_in_the_right_circumstances_reaches_the_scrapbook_with_its_trinket_and_
         else {
             continue;
         };
-        if finder.state.activity_variant >= 8 {
+        if !is_everyday(finder.state.activity_variant) {
             keepsake = Some((
                 finder.id,
                 finder.name.clone(),
@@ -440,10 +542,23 @@ fn a_find_in_the_right_circumstances_reaches_the_scrapbook_with_its_trinket_and_
     let (finder_id, finder_name, variant) =
         keepsake.expect("a keepsake turns up where its circumstance holds");
     let info = trinket_info(variant).expect("a catalogued trinket");
+    let calendar = crate::world::discovery::calendar_circumstances(at, world.save.created_at_utc);
     let held = match info.condition {
-        TrinketCondition::Anywhere | TrinketCondition::HighTier | TrinketCondition::MidRide => true,
+        TrinketCondition::Anywhere
+        | TrinketCondition::HighTier
+        | TrinketCondition::MidRide
+        | TrinketCondition::Rare => true,
         TrinketCondition::Night => after_dark(local_time_or_utc(at)),
-        TrinketCondition::BesideCloseFriend => false,
+        TrinketCondition::Morning => calendar.morning,
+        TrinketCondition::Weekend => calendar.weekend,
+        TrinketCondition::FullMoon => calendar.full_moon,
+        TrinketCondition::ColonyBirthday => calendar.colony_birthday,
+        TrinketCondition::BesideCloseFriend
+        | TrinketCondition::AtHome
+        | TrinketCondition::InGarden
+        | TrinketCondition::AfterNap
+        | TrinketCondition::OnRoof
+        | TrinketCondition::WithVisitor => false,
     };
     assert!(held, "{info:?} turned up without its circumstance");
 

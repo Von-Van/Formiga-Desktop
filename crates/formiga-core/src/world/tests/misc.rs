@@ -294,3 +294,120 @@ fn a_colony_of_climbers_lives_higher_than_a_colony_of_floor_dwellers() {
         serde_json::from_str(&serde_json::to_string(&world.save).unwrap()).unwrap();
     assert_eq!(reloaded.creatures[0].leaning, RoamingLeaning::Homebody);
 }
+
+/// Measurement, not a check: how much of their time out on the desktop an ordinary colony spends
+/// up on ledges, on a few everyday arrangements of windows. Run with `--ignored --nocapture`.
+#[test]
+#[ignore]
+fn measure_time_on_ledges() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let window = |key: u64, x: f32, y: f32, width: f32, height: f32| DesktopWindow {
+        key,
+        bounds: DesktopRect {
+            x,
+            y,
+            width,
+            height,
+        },
+        z_order: key as u32,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    };
+    let layouts: Vec<(&str, Vec<DesktopWindow>)> = vec![
+        (
+            "grid of six",
+            (0..6_u64)
+                .map(|index| {
+                    window(
+                        900 + index,
+                        80.0 + (index % 3) as f32 * 440.0,
+                        260.0 + (index / 3) as f32 * 260.0,
+                        380.0,
+                        200.0,
+                    )
+                })
+                .collect(),
+        ),
+        (
+            "laptop",
+            vec![
+                window(901, 60.0, 40.0, 1000.0, 780.0),
+                window(902, 420.0, 90.0, 960.0, 700.0),
+                window(903, 900.0, 380.0, 480.0, 420.0),
+            ],
+        ),
+        (
+            "everyday",
+            vec![
+                window(901, 100.0, 24.0, 1100.0, 826.0),
+                window(902, 300.0, 170.0, 760.0, 480.0),
+                window(903, 880.0, 90.0, 480.0, 600.0),
+            ],
+        ),
+        ("maximised", vec![window(901, 0.0, 24.0, 1440.0, 826.0)]),
+        (
+            "side by side",
+            vec![
+                window(901, 0.0, 24.0, 720.0, 826.0),
+                window(902, 720.0, 24.0, 720.0, 826.0),
+            ],
+        ),
+    ];
+    for (name, windows) in layouts {
+        let mut desktop = desktop();
+        desktop.windows = windows;
+        let mut world = World::new([83; 32], created, &desktop);
+        let start = created + Duration::days(40);
+        world.tick(start, 0.05, &desktop);
+        let_colony_wander(&mut world, start);
+        world.save.ritual.next_at_utc = start + Duration::days(1);
+        for creature in &mut world.save.creatures {
+            creature.state.arrival_delay_secs = 0.0;
+        }
+        let (mut up, mut total, mut all_down, mut ticks) = (0_usize, 0_usize, 0_usize, 0_usize);
+        // How long each stint up high and down on the floor lasts, in seconds.
+        let mut stints: BTreeMap<CreatureId, (bool, f32)> = BTreeMap::new();
+        let (mut ups, mut downs): (Vec<f32>, Vec<f32>) = (Vec::new(), Vec::new());
+        for step in 1..=36_000_i64 {
+            let now = start + Duration::milliseconds(step * 50);
+            world.tick(now, 0.05, &desktop);
+            world.drain_events().for_each(drop);
+            let_colony_wander(&mut world, now);
+            ticks += 1;
+            let mut any_up = false;
+            for creature in &world.save.creatures {
+                total += 1;
+                let high = creature.state.surface.kind == SurfaceKind::WindowLedge
+                    || creature.state.position.y < 800.0;
+                up += usize::from(high);
+                any_up |= high;
+                let stint = stints.entry(creature.id).or_insert((high, 0.0));
+                if stint.0 == high {
+                    stint.1 += 0.05;
+                } else {
+                    if stint.0 {
+                        ups.push(stint.1)
+                    } else {
+                        downs.push(stint.1)
+                    }
+                    *stint = (high, 0.05);
+                }
+            }
+            all_down += usize::from(!any_up);
+        }
+        let mean = |values: &[f32]| values.iter().sum::<f32>() / values.len().max(1) as f32;
+        eprintln!(
+            "{name:>13}: {} companions, {:.1}% of their time up off the floor, all on the floor \
+             {:.1}% of the time; {} stints up of {:.0}s, {} down of {:.0}s on average",
+            world.save.creatures.len(),
+            up as f32 / total.max(1) as f32 * 100.0,
+            all_down as f32 / ticks.max(1) as f32 * 100.0,
+            ups.len(),
+            mean(&ups),
+            downs.len(),
+            mean(&downs),
+        );
+    }
+}

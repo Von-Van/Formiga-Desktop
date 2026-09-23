@@ -21,11 +21,11 @@ fn window(
 
 #[test]
 fn multi_creature_presentation_capacity_and_stall_recovery_are_bounded() {
-    // Four creatures, four dwellings and the two trees that bookend them, every keepsake
-    // hung between the pair, one bubble, and the colony's eight belongings.
+    // Four creatures, four dwellings and the two trees that bookend them, the sixteen keepsakes
+    // the trees hold between them, one bubble, and the colony's eight belongings.
     assert_eq!(
         INITIAL_VERTEX_CAPACITY,
-        4 * 18 + 6 * 6 + usize::from(formiga_core::TRINKET_VARIANTS) * 6 + 6 + 8 * 6
+        4 * 18 + 6 * 6 + formiga_core::TREE_HOOKS * 6 + 6 + 8 * 6
     );
     assert_eq!(
         expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY),
@@ -249,17 +249,17 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_at_the_same_cost() {
     let choices = [(false, false), (true, false), (false, true), (true, true)];
     let first: Vec<_> = choices
         .iter()
-        .map(|&(reduce_motion, outline)| build_atlas_pixels(creature, reduce_motion, outline))
+        .map(|&(reduce_motion, outline)| build_atlas_pixels(creature, reduce_motion, outline, None))
         .collect();
     for (choice, atlas) in choices.iter().zip(&first) {
         let bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
-        assert_eq!(bytes, 1_529_856, "{choice:?} costs {bytes} bytes");
+        assert_eq!(bytes, 1_649_664, "{choice:?} costs {bytes} bytes");
         assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
     }
     // Thrown away and baked again, twice over: the same atlas, byte for byte, every time.
     for round in 1..3 {
         for (choice, previous) in choices.iter().zip(&first) {
-            let atlas = build_atlas_pixels(creature, choice.0, choice.1);
+            let atlas = build_atlas_pixels(creature, choice.0, choice.1, None);
             assert_eq!(
                 atlas.body_pixels, previous.body_pixels,
                 "{choice:?} {round}"
@@ -304,51 +304,62 @@ fn every_trinket_in_the_catalogue_samples_its_own_cell_of_the_colony_sheet() {
     assert_eq!(trinket_frame(3), formiga_art::TRINKET_FRAME_GLINT);
 }
 
-/// The village atlas is one texture: a cell for every house by day and another for it lit
-/// after dark, and one tree cell both trees come from. No two lots may sample the same cell,
-/// and none may sample off the sheet.
+/// The village atlas is one texture: a cell for every house by day, with somebody at home and
+/// without, the same again lit after dark, and one tree cell both trees come from. No two lots may
+/// sample the same cell, and none may sample off the sheet.
 #[test]
 fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
-    let cell = SHELTER_SIZE as f32 / VILLAGE_ATLAS_SIZE as f32;
-    let mut cells: Vec<VillageCell> = (0..VILLAGE_HOUSES)
-        .flat_map(|slot| [false, true].map(|lit| VillageCell::House { slot, lit }))
+    let (cell_u, cell_v) = (
+        SHELTER_SIZE as f32 / VILLAGE_ATLAS_WIDTH as f32,
+        SHELTER_SIZE as f32 / VILLAGE_ATLAS_HEIGHT as f32,
+    );
+    let mut cells: Vec<VillageCell> = (0..formiga_art::VILLAGE_HOUSES)
+        .flat_map(|slot| {
+            [(false, false), (false, true), (true, false), (true, true)].map(|(lit, occupied)| {
+                VillageCell::House {
+                    slot,
+                    lit,
+                    occupied,
+                }
+            })
+        })
         .collect();
     cells.push(VillageCell::Tree);
     let mut seen = std::collections::BTreeSet::new();
     for kind in cells {
         let (u, v) = village_cell(kind);
         assert!(
-            (0.0..=1.0 - cell).contains(&u) && (0.0..=1.0 - cell).contains(&v),
+            (0.0..=1.0 - cell_u).contains(&u) && (0.0..=1.0 - cell_v).contains(&v),
             "{kind:?} samples off the sheet"
         );
         assert!(
-            seen.insert(((u / cell).round() as u8, (v / cell).round() as u8)),
+            seen.insert(((u / cell_u).round() as u8, (v / cell_v).round() as u8)),
             "{kind:?} shares a cell"
         );
         // By day everything is in the top half, which is all the Home page holds.
         if !matches!(kind, VillageCell::House { lit: true, .. }) {
-            assert!(v + cell <= 0.5, "{kind:?} is not in the daylit half");
+            assert!(v + cell_v <= 0.5, "{kind:?} is not in the daylit half");
         }
     }
-    assert_eq!(seen.len(), VILLAGE_HOUSES * 2 + 1);
+    assert_eq!(seen.len(), formiga_art::VILLAGE_HOUSES * 4 + 1);
     assert!(
         tree_is_mirrored(formiga_core::TreeEnd::Inward)
             && !tree_is_mirrored(formiga_core::TreeEnd::Outward),
         "the inward bookend is the outward one read the other way round"
     );
     assert_eq!(
-        formiga_art::VILLAGE_ATLAS_SIZE,
-        SHELTER_SIZE * 4,
-        "sixteen cells, one 256x256 texture"
+        (VILLAGE_ATLAS_WIDTH, VILLAGE_ATLAS_HEIGHT),
+        (SHELTER_SIZE * 8, SHELTER_SIZE * 4),
+        "thirty-two cells, one 512x256 texture"
     );
 }
 
-/// A colony draws exactly the keepsakes it has found, once each, split between the two trees,
-/// and every one of them lands inside its own tree's cell — never beside it, never twice.
+/// A colony hangs sixteen of its keepsakes at most, once each, split between the two trees, and
+/// every one of them lands inside its own tree's cell — never beside it, never twice.
 #[test]
-fn the_trees_draw_one_quad_for_each_found_keepsake_and_keep_it_on_their_own_branches() {
+fn the_trees_draw_one_quad_for_each_hung_keepsake_and_keep_it_on_their_own_branches() {
     let mut world = ui_world();
-    for found in [0_u8, 1, 8, formiga_core::TRINKET_VARIANTS] {
+    for found in [0_u8, 1, 8, 16, formiga_core::TRINKET_VARIANTS] {
         world.save.companion.scrapbook = (0..found)
             .map(|variant| formiga_core::ScrapbookRecord {
                 variant,
@@ -362,20 +373,18 @@ fn the_trees_draw_one_quad_for_each_found_keepsake_and_keep_it_on_their_own_bran
             let repeat = world.save.companion.scrapbook[0].clone();
             world.save.companion.scrapbook.push(repeat);
         }
-        let drawn = found_trinkets(&world.save);
-        assert_eq!(
-            drawn.len(),
-            usize::from(found),
-            "{found} found should hang {found} keepsakes"
-        );
+        let hung = formiga_art::hung_trinkets(&world.save.home, &world.save.companion.scrapbook);
+        let expected = usize::from(found).min(formiga_core::TREE_HOOKS);
+        assert_eq!(hung.len(), expected, "{found} found should hang {expected}");
+        let mut variants: Vec<u8> = hung.iter().map(|(variant, ..)| *variant).collect();
+        variants.dedup();
+        assert_eq!(variants.len(), hung.len(), "something hangs twice");
         let mut per_tree = std::collections::BTreeMap::new();
         for scale in [2.0_f32, 3.0, 4.0] {
             let half = TRINKET_CELL as f32 * scale / 2.0;
-            for variant in &drawn {
-                let (end, anchor) =
-                    formiga_art::trinket_place(*variant).expect("a found keepsake has a place");
-                *per_tree.entry(end).or_insert(0_usize) += 1;
-                let (x, y) = hung_trinket_centre(500.0, 400.0, anchor, scale);
+            for (variant, end, anchor) in &hung {
+                *per_tree.entry(*end).or_insert(0_usize) += 1;
+                let (x, y) = hung_trinket_centre(500.0, 400.0, *anchor, scale);
                 // The tree's own cell, measured from its contact point at (500, 400).
                 let cell = SHELTER_SIZE as f32 * scale;
                 assert!(
@@ -388,16 +397,12 @@ fn the_trees_draw_one_quad_for_each_found_keepsake_and_keep_it_on_their_own_bran
                 );
             }
         }
-        // The everyday finds fill the outward tree first; the conditional ones only ever go
-        // on the inward one, so neither can be asked to carry more than its eight anchors.
-        let hung = |end| per_tree.get(&end).copied().unwrap_or(0) / 3;
+        // The first eight hooks are the outward tree's and the next eight the inward one's.
+        let on = |end| per_tree.get(&end).copied().unwrap_or(0) / 3;
+        assert_eq!(on(formiga_core::TreeEnd::Outward), expected.min(8));
         assert_eq!(
-            hung(formiga_core::TreeEnd::Outward),
-            usize::from(found.min(formiga_core::TRINKETS_PER_TREE)),
-        );
-        assert_eq!(
-            hung(formiga_core::TreeEnd::Inward),
-            usize::from(found.saturating_sub(formiga_core::TRINKETS_PER_TREE)),
+            on(formiga_core::TreeEnd::Inward),
+            expected.saturating_sub(8)
         );
     }
     // A save from a catalogue this build does not have keeps its record and hangs nothing.
@@ -407,7 +412,9 @@ fn the_trees_draw_one_quad_for_each_found_keepsake_and_keep_it_on_their_own_bran
         finder: None,
         finder_name: String::new(),
     }];
-    assert!(found_trinkets(&world.save).is_empty());
+    assert!(
+        formiga_art::hung_trinkets(&world.save.home, &world.save.companion.scrapbook).is_empty()
+    );
 }
 
 #[test]
@@ -435,31 +442,30 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     };
     let world = World::new([7; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
     let started = std::time::Instant::now();
-    let atlas = build_atlas_pixels(&world.save.creatures[0], false, false);
+    let atlas = build_atlas_pixels(&world.save.creatures[0], false, false, None);
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 38 gesture frames: ten columns by thirteen rows of 48px bodies,
-    // plus the unchanged face atlas. Raised deliberately from 1,437,696 bytes in 0.57.1,
-    // where the twelfth row was already full. The habits' stretch took four of the six
-    // spare slots in the thirteenth row in 0.59.0, and the two the rest loop grew into in
-    // 0.59.5 were the last of them, so neither cost any bytes. The row is now full: the
-    // next clip to want a frame has to find it in one that is already baked.
-    assert_eq!(total_animation_frames(), 130);
-    assert_eq!(total_bytes, 1_529_856);
+    // 92 action frames and 42 gesture frames: ten columns by fourteen rows of 48px bodies,
+    // plus the face atlas. Raised deliberately from 1,437,696 bytes in 0.57.1, where the
+    // twelfth row was already full. The habits' stretch took four of the six spare slots in
+    // the thirteenth row in 0.59.0, and the rest loop the last two in 0.59.5. In 0.60.0 the
+    // yawn's four frames opened a fourteenth row (92,160 bytes) and its face a row of its own
+    // in the face atlas (27,648), leaving six spare body slots for whatever comes next.
+    assert_eq!(total_animation_frames(), 134);
+    assert_eq!(total_bytes, 1_649_664);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(total_bytes <= 4_500_000, "atlas uses {total_bytes} bytes");
-    // A full colony of six: 9,179,136 bytes, held to the same 1.5 MiB a creature the budget
-    // for four once set.
+    // A full colony of six: 9,897,984 bytes since the yawn, held under 10 MiB.
     assert!(
-        total_bytes * formiga_core::MAX_COLONY_CREATURES < 9_437_184,
-        "a full colony's atlases exceed 9 MiB"
+        total_bytes * formiga_core::MAX_COLONY_CREATURES < 10_485_760,
+        "a full colony's atlases exceed 10 MiB"
     );
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,
     // and the same bytes. It touches only pixels the creature itself does not occupy.
-    let outlined = build_atlas_pixels(&world.save.creatures[0], false, true);
+    let outlined = build_atlas_pixels(&world.save.creatures[0], false, true, None);
     assert_eq!(
         outlined.body_pixels.len() + outlined.face_pixels.len(),
         total_bytes
@@ -591,7 +597,7 @@ fn quad_sprite(quad: &[Vertex]) -> (f32, f32, f32, f32) {
 fn the_crown_of_a_head_is_the_frame_it_draws_not_the_box_it_is_drawn_in() {
     let world = ui_world();
     let creature = &world.save.creatures[0];
-    let atlas = build_atlas_pixels(creature, false, false);
+    let atlas = build_atlas_pixels(creature, false, false, None);
     assert_eq!(atlas.silhouette.len(), total_animation_frames() as usize);
     for clip in BodyClip::baked() {
         for frame in 0..AnimationSpec::for_clip(clip).frames {
@@ -636,8 +642,8 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
     let mut mini = adult.clone();
     mini.appearance.logical_size = adult.appearance.logical_size / 2;
     let slot = atlas_slot(ActionKind::Idle, 0) as usize;
-    let adult_top = build_atlas_pixels(&adult, false, false).silhouette[slot].0;
-    let mini_top = build_atlas_pixels(&mini, false, false).silhouette[slot].0;
+    let adult_top = build_atlas_pixels(&adult, false, false, None).silhouette[slot].0;
+    let mini_top = build_atlas_pixels(&mini, false, false, None).silhouette[slot].0;
     assert!(
         mini_top > adult_top,
         "a smaller creature's crown is further down its frame ({mini_top} vs {adult_top})"

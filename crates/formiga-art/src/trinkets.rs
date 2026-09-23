@@ -2,31 +2,39 @@
 //!
 //! A found thing used to be drawn into each creature's own face texture, which meant a colony of
 //! four carried four copies of the same eight objects and could only ever hold eight. This is the
-//! colony's own sheet instead: sixteen 16x16 kinds across the top row and the same sixteen with a
-//! glint across the second, 256x32 pixels in total, built once per colony and shared by every
-//! member, by the scrapbook, and by the review sheets.
+//! colony's own sheet instead: every kind across ten rows of sixteen 16x16 cells, then the same
+//! ten rows again with a glint on each, 256x320 pixels in total, built once per colony and shared
+//! by every member, by the scrapbook and collection, and by the review sheets.
 //!
 //! Colour comes from the colony seed, but it is *chosen against* the colony: the search below
 //! scores candidate hues by how far they land from the coat, accent, and highlight of every member
-//! who might hold one, and spreads the sixteen kinds through the colours that survive. A keepsake
-//! never reads as another patch of the fur holding it.
+//! who might hold one, and spreads the kinds through the colours that survive. A keepsake never
+//! reads as another patch of the fur holding it.
 //!
 //! Every kind is drawn as a solid interior and then outlined in one pass, so each one leaves the
 //! atlas with the same crisp single-pixel dark edge and stays legible at 2x on a bright desktop.
+//! The first sixteen are drawn by hand below; the rest are grids in `sprites`.
+
+mod sprites;
 
 use crate::palette::{from_hsl, to_hsl};
 use crate::{Canvas, Palette, Rgba};
 
 /// One trinket cell, the same 16x16 the overlay's prop quad samples.
 pub const TRINKET_CELL: u32 = 16;
-/// One column per variant: `formiga_core::TRINKET_VARIANTS` of them.
+/// Sixteen kinds to a row.
 pub const TRINKET_ATLAS_COLUMNS: u32 = 16;
-/// The resting drawing, then the same drawing with a glint on it.
-pub const TRINKET_ATLAS_ROWS: u32 = 2;
+/// Rows of kinds in each frame: enough for every variant the catalogue has.
+pub const TRINKET_KIND_ROWS: u32 =
+    (formiga_core::TRINKET_VARIANTS as u32).div_ceil(TRINKET_ATLAS_COLUMNS);
+/// The resting drawings, then the same drawings with a glint on them.
+pub const TRINKET_ATLAS_ROWS: u32 = TRINKET_KIND_ROWS * 2;
 pub const TRINKET_ATLAS_WIDTH: u32 = TRINKET_CELL * TRINKET_ATLAS_COLUMNS;
 pub const TRINKET_ATLAS_HEIGHT: u32 = TRINKET_CELL * TRINKET_ATLAS_ROWS;
-/// What the atlas costs as RGBA8, which is what the GPU and the settings budget both pay.
+/// What the atlas costs as RGBA8, which is what the GPU pays.
 pub const TRINKET_ATLAS_BYTES: usize = (TRINKET_ATLAS_WIDTH * TRINKET_ATLAS_HEIGHT * 4) as usize;
+/// The height of the resting half of the sheet: every kind once, with no glint.
+pub const TRINKET_RESTING_HEIGHT: u32 = TRINKET_CELL * TRINKET_KIND_ROWS;
 /// The frame a trinket rests on, and the frame it twinkles on.
 pub const TRINKET_FRAME_REST: u8 = 0;
 pub const TRINKET_FRAME_GLINT: u8 = 1;
@@ -51,10 +59,30 @@ pub struct TrinketAtlasRenderer;
 impl TrinketAtlasRenderer {
     /// One sheet for the whole colony. `members` are the resolved palettes of everyone who might
     /// hold a trinket; passing none simply leaves the search nothing to avoid.
+    /// Only the resting half of the sheet, every kind in the same place it has on the whole
+    /// one: all that a page showing the finds, and never twinkling them, needs to hold.
+    pub fn render_resting(colony_seed: [u8; 32], members: &[Palette]) -> Canvas {
+        let mut canvas = Canvas::new(TRINKET_ATLAS_WIDTH, TRINKET_RESTING_HEIGHT);
+        let safe = safe_inks(colony_seed, members);
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
+            let ink = pick_ink(&safe, colony_seed, variant);
+            let (x, y, _, _) = Self::cell_rect(variant, TRINKET_FRAME_REST);
+            draw_trinket(
+                &mut canvas,
+                ink,
+                variant,
+                TRINKET_FRAME_REST,
+                x as i32,
+                y as i32,
+            );
+        }
+        canvas
+    }
+
     pub fn render(colony_seed: [u8; 32], members: &[Palette]) -> Canvas {
         let mut canvas = Canvas::new(TRINKET_ATLAS_WIDTH, TRINKET_ATLAS_HEIGHT);
         let safe = safe_inks(colony_seed, members);
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
             let ink = pick_ink(&safe, colony_seed, variant);
             for frame in [TRINKET_FRAME_REST, TRINKET_FRAME_GLINT] {
                 let (x, y, _, _) = Self::cell_rect(variant, frame);
@@ -68,8 +96,9 @@ impl TrinketAtlasRenderer {
     /// onto a real cell rather than off the sheet, so a save from a future catalogue still samples
     /// something.
     pub fn cell_rect(variant: u8, frame: u8) -> (u32, u32, u32, u32) {
-        let column = u32::from(variant) % TRINKET_ATLAS_COLUMNS;
-        let row = u32::from(frame) % TRINKET_ATLAS_ROWS;
+        let variant = u32::from(variant) % u32::from(formiga_core::TRINKET_VARIANTS);
+        let column = variant % TRINKET_ATLAS_COLUMNS;
+        let row = variant / TRINKET_ATLAS_COLUMNS + (u32::from(frame) % 2) * TRINKET_KIND_ROWS;
         (
             column * TRINKET_CELL,
             row * TRINKET_CELL,
@@ -87,11 +116,12 @@ impl TrinketAtlasRenderer {
 
 /// Draw one trinket with its top-left corner at `(x, y)`. The drawing keeps to a 16x16 cell.
 pub fn draw_trinket(canvas: &mut Canvas, ink: TrinketInk, variant: u8, frame: u8, x: i32, y: i32) {
+    let variant = variant % formiga_core::TRINKET_VARIANTS;
     let mut cell = Cell { canvas, x, y };
-    shape(&mut cell, ink, variant % TRINKET_ATLAS_COLUMNS as u8);
+    shape(&mut cell, ink, variant);
     cell.outline(ink.outline);
-    if frame % TRINKET_ATLAS_ROWS as u8 == TRINKET_FRAME_GLINT {
-        glint(&mut cell, ink, variant % TRINKET_ATLAS_COLUMNS as u8);
+    if frame % 2 == TRINKET_FRAME_GLINT {
+        glint(&mut cell, ink, variant);
     }
     cell.clear_eye_corners();
 }
@@ -186,7 +216,12 @@ fn pick_ink(safe: &[TrinketInk], colony_seed: [u8; 32], variant: u8) -> TrinketI
     // Spread the catalogue evenly through whatever survived, so neighbouring slots in the
     // scrapbook are never the same colour twice.
     let stride = (safe.len() / TRINKET_ATLAS_COLUMNS as usize).max(1);
-    safe[(offset + usize::from(variant) * stride) % safe.len()]
+    // A row of sixteen walks the colours that survived once; each row after it starts a little
+    // further round, so a find and the one sixteen after it are never the same colour.
+    let variant = usize::from(variant % TRINKET_ATLAS_COLUMNS as u8) * stride
+        + usize::from(variant / TRINKET_ATLAS_COLUMNS as u8) * (stride / 2 + 1);
+    let offset = offset + variant;
+    safe[offset % safe.len()]
 }
 
 /// The inks for a trinket held by one particular creature, for the single-sprite paths that have a
@@ -322,6 +357,10 @@ impl Cell<'_> {
 // ---------------------------------------------------------------------------------------------
 
 fn shape(cell: &mut Cell, ink: TrinketInk, variant: u8) {
+    if let Some(grid) = sprites::grid(variant) {
+        draw_grid(cell, ink, grid);
+        return;
+    }
     match variant {
         0 => gem(cell, ink),
         1 => key(cell, ink),
@@ -691,6 +730,25 @@ fn matching_charms(cell: &mut Cell, ink: TrinketInk) {
     }
 }
 
+/// One of the grid-drawn finds: its interior, two pixels in from the cell's corner.
+fn draw_grid(cell: &mut Cell, ink: TrinketInk, grid: &[&str; 12]) {
+    for (row, line) in grid.iter().enumerate() {
+        for (column, ch) in line.chars().enumerate() {
+            let color = match ch {
+                'b' => ink.body,
+                'd' => ink.deep,
+                'l' => ink.light,
+                'a' => ink.accent,
+                'k' => ink.outline,
+                'w' => sprites::WHITE,
+                'c' => sprites::CREAM,
+                _ => continue,
+            };
+            cell.px(column as i32 + 2, row as i32 + 2, color);
+        }
+    }
+}
+
 /// The twinkle on the second frame. Drawn after the outline, so it stays a spark of light rather
 /// than another outlined object.
 fn glint(cell: &mut Cell, ink: TrinketInk, variant: u8) {
@@ -714,7 +772,10 @@ fn glint(cell: &mut Cell, ink: TrinketInk, variant: u8) {
         (5, 6),
         (4, 9),
     ];
-    let (x, y) = SPOTS[usize::from(variant) % SPOTS.len()];
+    let (x, y) = match sprites::grid(variant) {
+        Some(grid) => sprites::glint_spot(grid),
+        None => SPOTS[usize::from(variant) % SPOTS.len()],
+    };
     cell.px(x, y, ink.light);
     for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
         cell.px(x + dx, y + dy, ink.light);
@@ -751,7 +812,7 @@ mod tests {
         assert_eq!(first.width(), TRINKET_ATLAS_WIDTH);
         assert_eq!(first.height(), TRINKET_ATLAS_HEIGHT);
         assert_eq!(first.rgba_bytes().len(), TRINKET_ATLAS_BYTES);
-        assert_eq!(TRINKET_ATLAS_BYTES, 256 * 32 * 4);
+        assert_eq!(TRINKET_ATLAS_BYTES, 256 * 320 * 4);
         // A different colony gets a different sheet.
         let other = TrinketAtlasRenderer::render([43; 32], &members);
         assert_ne!(first, other);
@@ -760,7 +821,7 @@ mod tests {
     #[test]
     fn every_cell_holds_one_readable_object_inside_its_own_borders() {
         let canvas = TrinketAtlasRenderer::render([9; 32], &colony_members(&[1, 5]));
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
             for frame in [TRINKET_FRAME_REST, TRINKET_FRAME_GLINT] {
                 let opaque = opaque_in(&canvas, variant, frame);
                 assert!(
@@ -797,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn all_sixteen_are_different_objects_and_each_one_twinkles() {
+    fn every_kind_is_a_different_object_and_each_one_twinkles() {
         let canvas = TrinketAtlasRenderer::render([77; 32], &colony_members(&[2, 6, 9, 11]));
         let cell_pixels = |variant: u8, frame: u8| {
             let (x0, y0, width, height) = TrinketAtlasRenderer::cell_rect(variant, frame);
@@ -810,7 +871,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let mut seen = BTreeSet::new();
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
             let rest = cell_pixels(variant, TRINKET_FRAME_REST);
             let glint = cell_pixels(variant, TRINKET_FRAME_GLINT);
             assert_ne!(rest, glint, "variant {variant} never twinkles");
@@ -819,7 +880,7 @@ mod tests {
                 "variant {variant} repeats an earlier one"
             );
         }
-        assert_eq!(seen.len(), TRINKET_ATLAS_COLUMNS as usize);
+        assert_eq!(seen.len(), usize::from(formiga_core::TRINKET_VARIANTS));
     }
 
     #[test]
@@ -860,8 +921,8 @@ mod tests {
     fn nothing_is_drawn_in_the_corners_that_land_on_the_eyes() {
         let canvas = TrinketAtlasRenderer::render([5; 32], &colony_members(&[3, 8]));
         let mut over = Vec::new();
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
-            for frame in 0..TRINKET_ATLAS_ROWS as u8 {
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
+            for frame in [TRINKET_FRAME_REST, TRINKET_FRAME_GLINT] {
                 let (x0, y0, _, _) = TrinketAtlasRenderer::cell_rect(variant, frame);
                 for y in 0..=3 {
                     for x in (0..=4).chain(11..=15) {
@@ -878,8 +939,8 @@ mod tests {
     #[test]
     fn cell_lookup_covers_the_sheet_and_never_leaves_it() {
         let mut corners = BTreeSet::new();
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
-            for frame in 0..TRINKET_ATLAS_ROWS as u8 {
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
+            for frame in [TRINKET_FRAME_REST, TRINKET_FRAME_GLINT] {
                 let (x, y, width, height) = TrinketAtlasRenderer::cell_rect(variant, frame);
                 assert_eq!((width, height), (TRINKET_CELL, TRINKET_CELL));
                 assert!(x + width <= TRINKET_ATLAS_WIDTH && y + height <= TRINKET_ATLAS_HEIGHT);
@@ -888,12 +949,42 @@ mod tests {
         }
         assert_eq!(
             corners.len(),
-            (TRINKET_ATLAS_COLUMNS * TRINKET_ATLAS_ROWS) as usize
+            usize::from(formiga_core::TRINKET_VARIANTS) * 2
         );
         // A variant from a catalogue this build does not have still samples a real cell.
+        let (x, y, _, _) = TrinketAtlasRenderer::cell_rect(200, 9);
+        assert!(x < TRINKET_ATLAS_WIDTH && y < TRINKET_ATLAS_HEIGHT);
+    }
+
+    /// Every grid is exactly twelve by twelve, uses only the characters it may, and keeps out of
+    /// the corners of the cell that land on a holder's eyes.
+    #[test]
+    fn every_grid_is_well_formed_and_keeps_to_where_it_may_draw() {
+        const INKS: &str = ".bdlakwc";
+        for (index, grid) in sprites::GRIDS.iter().enumerate() {
+            let variant = usize::from(sprites::FIRST) + index;
+            for (row, line) in grid.iter().enumerate() {
+                assert_eq!(line.chars().count(), 12, "variant {variant} row {row}");
+                for (column, ch) in line.chars().enumerate() {
+                    assert!(INKS.contains(ch), "variant {variant} uses {ch:?}");
+                    if ch == '.' {
+                        continue;
+                    }
+                    let allowed = match row {
+                        0 | 1 => 4..=7,
+                        2 => 3..=8,
+                        _ => 0..=11,
+                    };
+                    assert!(
+                        allowed.contains(&column),
+                        "variant {variant} draws at row {row} column {column}"
+                    );
+                }
+            }
+        }
         assert_eq!(
-            TrinketAtlasRenderer::cell_rect(200, 9),
-            TrinketAtlasRenderer::cell_rect(200 % 16, 9 % 2)
+            usize::from(sprites::FIRST) + sprites::GRIDS.len(),
+            usize::from(formiga_core::TRINKET_VARIANTS)
         );
     }
 }

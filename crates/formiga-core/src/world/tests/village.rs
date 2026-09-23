@@ -1,6 +1,9 @@
 use super::home::settled_colony;
 use super::*;
 
+/// When the gardens in these tests were planted.
+const PLANTED: OffsetDateTime = datetime!(2026-01-01 0:00 UTC);
+
 /// The founder keeps the colony house whatever order is asked for. The cottages stand in the
 /// order arranged, anyone left out stands after them in the order they arrived, a mini comes
 /// home to its big version's house wherever that now stands, and an order that is only the
@@ -126,32 +129,36 @@ fn a_palette_repaints_the_village_and_nothing_else() {
 #[test]
 fn a_village_keeps_one_patch_of_each_kind_and_puts_back_what_was_arranged() {
     let mut home = ColonyHome::default();
-    assert!(home.set_garden(GardenKind::Herbs, Some(0.4)));
-    assert!(home.set_garden(GardenKind::Herbs, Some(2.0)));
-    assert!(home.set_garden(GardenKind::Flowers, Some(0.1)));
-    assert!(!home.set_garden(GardenKind::Vegetables, Some(f32::NAN)));
+    assert!(home.set_garden(GardenKind::Herbs, Some(0.4), PLANTED));
+    assert!(home.set_garden(GardenKind::Herbs, Some(2.0), PLANTED));
+    assert!(home.set_garden(GardenKind::Flowers, Some(0.1), PLANTED));
+    assert!(!home.set_garden(GardenKind::Vegetables, Some(f32::NAN), PLANTED));
     assert_eq!(
         home.gardens,
         [
             GardenPatch {
                 kind: GardenKind::Flowers,
-                along: 0.1
+                along: 0.1,
+                planted_at_utc: Some(PLANTED),
             },
             GardenPatch {
                 kind: GardenKind::Herbs,
-                along: 1.0
+                along: 1.0,
+                planted_at_utc: Some(PLANTED),
             },
         ]
     );
-    assert!(home.set_garden(GardenKind::Flowers, None));
+    assert!(home.set_garden(GardenKind::Flowers, None, PLANTED));
     assert_eq!(home.garden(GardenKind::Flowers), None);
     home.gardens.push(GardenPatch {
         kind: GardenKind::Herbs,
         along: 0.2,
+        planted_at_utc: None,
     });
     home.gardens.push(GardenPatch {
         kind: GardenKind::Vegetables,
         along: f32::NEG_INFINITY,
+        planted_at_utc: None,
     });
     home.cottage_order = vec![4, 4, 3];
     home.normalize_village();
@@ -199,7 +206,7 @@ fn gardens_and_spots_share_the_ground_without_touching() {
             home.set_hangout(kind, Some(*along));
         }
         for (kind, along) in GardenKind::ALL.into_iter().zip(&placements[3..]) {
-            home.set_garden(kind, Some(*along));
+            home.set_garden(kind, Some(*along), PLANTED);
         }
         let ground =
             home_ground_positions(&home, cottages.as_slice(), &desktop.monitors, policy, scale);
@@ -219,7 +226,7 @@ fn gardens_and_spots_share_the_ground_without_touching() {
             .iter()
             .filter_map(|(item, monitor_id, at)| match item {
                 GroundItem::Hangout(kind) => Some((*kind, *monitor_id, *at)),
-                GroundItem::Garden(_) => None,
+                GroundItem::Garden(_) | GroundItem::Ornament(_) => None,
             })
             .collect();
         assert_eq!(spots, from_ground);
@@ -237,7 +244,7 @@ fn an_arranged_village_is_kept_and_an_unarranged_one_writes_nothing() {
     }
     home.cottage_order = vec![11, 7];
     home.palette = Some(VillagePalette::Pebble);
-    home.set_garden(GardenKind::Vegetables, Some(0.75));
+    home.set_garden(GardenKind::Vegetables, Some(0.75), PLANTED);
     let back: ColonyHome = serde_json::from_str(&serde_json::to_string(&home).unwrap()).unwrap();
     assert_eq!(back, home);
 }

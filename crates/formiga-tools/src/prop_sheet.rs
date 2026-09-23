@@ -1,9 +1,10 @@
 //! Everything a companion can be holding, on the backgrounds it will be held against.
 //!
-//! Three bands. The colony's trinket atlas at 4x and 2x, resting and glinting, on pale, dark, and
-//! busy wallpaper. The same sixteen held up by a companion in the presentation pose, arranged the
-//! way the overlay arranges them — body frame, face anchor, prop quad. Then every toy, snack, and
-//! cup the generator can produce, across the frames of its own clip, for each body plan.
+//! Three bands. The colony's whole trinket atlas at 4x on pale wallpaper, then resting and
+//! glinting at 2x on dark and busy wallpaper. Sixteen of them, one from each stretch of the
+//! catalogue, held up by a companion in the presentation pose, arranged the way the overlay
+//! arranges them — body frame, face anchor, prop quad. Then every toy, snack, and cup the
+//! generator can produce, across the frames of its own clip, for each body plan.
 //!
 //! This is a review sheet, not a test: it exists so a person can see at a glance whether a held
 //! thing reads as that thing at the size it is actually shown.
@@ -14,7 +15,7 @@ use anyhow::Result;
 use formiga_art::{
     Canvas, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FramePlacement, PropAnchor,
     TRINKET_ATLAS_COLUMNS, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST,
-    TrinketAtlasRenderer,
+    TRINKET_KIND_ROWS, TrinketAtlasRenderer,
 };
 use formiga_core::{ActionKind, AppearanceGenome, Creature, TrinketCondition, all_trinkets};
 use std::path::PathBuf;
@@ -184,44 +185,72 @@ pub fn run(path: PathBuf) -> Result<()> {
         .collect();
     let atlas = TrinketAtlasRenderer::render(colony_seed, &members);
 
-    // Header, a 4x row for each frame, a 2x pair, and a caption.
-    let swatch_band = 22 + 4 * TRINKET_CELL + 4 * TRINKET_CELL + 2 * TRINKET_CELL + 26;
+    // The whole catalogue at 4x on pale wallpaper, each with its name and circumstance, then at
+    // 2x resting and glinting on dark and on busy wallpaper.
+    let big_row = 4 * TRINKET_CELL + 24;
+    let big_band = 22 + TRINKET_KIND_ROWS * big_row;
+    let small_row = 2 * TRINKET_CELL + 10;
+    let small_band = 22 + TRINKET_KIND_ROWS * small_row;
     let held_band = 22 + 3 * 132;
     let clip_rows =
         u32::from(formiga_art::TOY_KINDS + formiga_art::SNACK_KINDS + formiga_art::DRINK_KINDS);
     let clip_band = 22 + clip_rows * CLIP_CELL;
-    let height = swatch_band * 3 + held_band + clip_band;
+    let height = big_band + small_band * 2 + held_band + clip_band;
     let mut sheet = Sheet::new(WIDTH, height);
 
     let mut y = 0;
-    for ground in Ground::ALL {
-        sheet.ground(ground, y, swatch_band);
+    sheet.ground(Ground::Pale, y, big_band);
+    sheet.text(
+        "FOUND THINGS 4X PALE WALLPAPER",
+        10,
+        y + 8,
+        2,
+        Ground::Pale.ink(),
+    );
+    for variant in 0..formiga_core::TRINKET_VARIANTS {
+        let column = u32::from(variant) % TRINKET_ATLAS_COLUMNS * COLUMN;
+        let top = y + 22 + u32::from(variant) / TRINKET_ATLAS_COLUMNS * big_row;
+        let big = TRINKET_CELL * 4;
+        sheet.stamp_cell(
+            &atlas,
+            variant,
+            TRINKET_FRAME_REST,
+            (column + (COLUMN - big) / 2) as i32,
+            top as i32,
+            4,
+        );
+        if let Some(info) = formiga_core::trinket_info(variant) {
+            sheet.text(
+                &format!("{} {}", variant, short(info.name)),
+                column + 4,
+                top + big + 2,
+                1,
+                Ground::Pale.ink(),
+            );
+            if info.condition != TrinketCondition::Anywhere {
+                sheet.text(
+                    &condition_tag(info.condition),
+                    column + 4,
+                    top + big + 10,
+                    1,
+                    [150, 90, 60, 255],
+                );
+            }
+        }
+    }
+    y += big_band;
+    for ground in [Ground::Dark, Ground::Busy] {
+        sheet.ground(ground, y, small_band);
         sheet.text(
-            &format!("FOUND THINGS 4X AND 2X {}", ground.label()),
+            &format!("FOUND THINGS 2X {}", ground.label()),
             10,
             y + 8,
             2,
             ground.ink(),
         );
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
-            let column = variant as u32 * COLUMN;
-            let big = TRINKET_CELL as i32 * 4;
-            sheet.stamp_cell(
-                &atlas,
-                variant,
-                TRINKET_FRAME_REST,
-                (column + (COLUMN - big as u32) / 2) as i32,
-                (y + 22) as i32,
-                4,
-            );
-            sheet.stamp_cell(
-                &atlas,
-                variant,
-                TRINKET_FRAME_GLINT,
-                (column + (COLUMN - big as u32) / 2) as i32,
-                (y + 22 + 4 * TRINKET_CELL) as i32,
-                4,
-            );
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
+            let column = u32::from(variant) % TRINKET_ATLAS_COLUMNS * COLUMN;
+            let top = y + 22 + u32::from(variant) / TRINKET_ATLAS_COLUMNS * small_row;
             let small = TRINKET_CELL as i32 * 2;
             let pair = (COLUMN - (small as u32 * 2 + 8)) / 2;
             for (index, frame) in [TRINKET_FRAME_REST, TRINKET_FRAME_GLINT]
@@ -233,30 +262,12 @@ pub fn run(path: PathBuf) -> Result<()> {
                     variant,
                     frame,
                     (column + pair) as i32 + index as i32 * (small + 8),
-                    (y + 22 + 8 * TRINKET_CELL + 4) as i32,
+                    top as i32,
                     2,
                 );
             }
-            if let Some(info) = formiga_core::trinket_info(variant) {
-                sheet.text(
-                    &short(info.name),
-                    column + 6,
-                    y + swatch_band - 12,
-                    1,
-                    ground.ink(),
-                );
-                if info.condition != TrinketCondition::Anywhere {
-                    sheet.text(
-                        &condition_tag(info.condition),
-                        column + 6,
-                        y + swatch_band - 20,
-                        1,
-                        ground.ink(),
-                    );
-                }
-            }
         }
-        y += swatch_band;
+        y += small_band;
     }
 
     // Held up, exactly as the overlay stacks it: body frame, layered face, then the prop quad
@@ -273,8 +284,10 @@ pub fn run(path: PathBuf) -> Result<()> {
         let ground = Ground::ALL[row % Ground::ALL.len()];
         let top = y + 22 + row as u32 * 132;
         sheet.ground(ground, top, 132);
-        for variant in 0..TRINKET_ATLAS_COLUMNS as u8 {
-            let column = variant as u32 * COLUMN;
+        // One from each stretch of the catalogue, so every kind of drawing is seen held.
+        for index in 0..TRINKET_ATLAS_COLUMNS as u8 {
+            let variant = index * 10 + (index % 10);
+            let column = u32::from(index) * COLUMN;
             held(&mut sheet, &atlas, creature, variant, column, top);
         }
     }
@@ -422,6 +435,16 @@ fn condition_tag(condition: TrinketCondition) -> String {
         TrinketCondition::HighTier => "HIGH",
         TrinketCondition::MidRide => "RIDE",
         TrinketCondition::BesideCloseFriend => "FRIEND",
+        TrinketCondition::AtHome => "HOME",
+        TrinketCondition::InGarden => "GARDEN",
+        TrinketCondition::Morning => "MORNING",
+        TrinketCondition::Weekend => "WEEKEND",
+        TrinketCondition::AfterNap => "NAP",
+        TrinketCondition::OnRoof => "ROOF",
+        TrinketCondition::WithVisitor => "GUEST",
+        TrinketCondition::FullMoon => "FULL MOON",
+        TrinketCondition::ColonyBirthday => "BIRTHDAY",
+        TrinketCondition::Rare => "RARE",
         TrinketCondition::Anywhere => "ANY",
     }
     .into()
@@ -447,7 +470,7 @@ fn short(name: &str) -> String {
     name.to_ascii_uppercase()
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == ' ')
-        .take(16)
+        .take(15)
         .collect()
 }
 

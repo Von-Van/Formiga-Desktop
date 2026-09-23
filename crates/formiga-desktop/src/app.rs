@@ -4,7 +4,9 @@ use crate::card_export::{
     export_to_selected_destination,
 };
 use crate::creature_menu::{CreatureMenu, MenuDismissal, MenuTarget, MenuWorld};
-use crate::gpu::{MenuView, OverlayRenderer, OverlayUi, SideView, monitor_has_fullscreen_window};
+use crate::gpu::{
+    MenuView, OverlayRenderer, OverlayUi, SideView, VillageScene, monitor_has_fullscreen_window,
+};
 use crate::interaction::{InteractionProxy, MenuProxy, ProxyRuntimeState};
 use crate::platform;
 use crate::reference_match::match_reference_file;
@@ -915,6 +917,22 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     }
                     _ => None,
                 };
+                // Who is indoors, which houses are being seen to, and what is loose about the
+                // village. Each is empty, and costs nothing, while nobody is doing any of it.
+                let (occupied, motions, loose) =
+                    self.world.as_ref().map_or_else(Default::default, |world| {
+                        (
+                            world.house_occupancy(),
+                            world.house_motions(),
+                            world.loose_props(&self.monitors),
+                        )
+                    });
+                let village = VillageScene {
+                    occupied: &occupied,
+                    motions: &motions,
+                    loose: &loose,
+                    clock: self.observation_epoch.elapsed().as_secs_f32(),
+                };
                 if let (Some(overlay), Some(world)) =
                     (self.overlays.get_mut(&window_id), &self.world)
                     && let Err(error) = overlay.render(
@@ -928,6 +946,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             reduce_motion: world.save.settings.reduce_motion,
                             night: self.night,
                             menu,
+                            village,
                         },
                     )
                 {
@@ -1102,7 +1121,7 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::RitualCompleted { .. } => "ritual_completed",
         WorldEvent::RitualInterrupted { .. } => "ritual_interrupted",
         WorldEvent::ColonyObjectAdded { .. } => "colony_object_added",
-        WorldEvent::ShelterDecorationAdded { .. } => "shelter_decoration_added",
+        WorldEvent::VillageUnlocked { .. } => "village_unlocked",
         WorldEvent::HabitLearned { .. } => "habit_learned",
     }
 }

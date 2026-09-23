@@ -62,6 +62,7 @@ pub fn run(path: PathBuf) -> Result<()> {
                     VillageCell::House {
                         slot: 0,
                         lit: false,
+                        occupied: false,
                     },
                 ),
                 (
@@ -69,6 +70,7 @@ pub fn run(path: PathBuf) -> Result<()> {
                     VillageCell::House {
                         slot: 1,
                         lit: false,
+                        occupied: false,
                     },
                 ),
             ] {

@@ -6,9 +6,10 @@ use time::OffsetDateTime;
 pub const MAX_JOURNAL_ENTRIES: usize = 64;
 /// Pinned moments sit alongside the rolling journal without extending it.
 pub const MAX_PINNED_ENTRIES: usize = 8;
-/// The trinket variants the artwork can draw; the identifier is the variant itself. Eight of them
-/// turn up anywhere and eight only under some circumstance; `crate::trinkets` is the table.
-pub const TRINKET_VARIANTS: u8 = 16;
+/// The trinket variants the artwork can draw; the identifier is the variant itself. Forty-eight
+/// turn up on any ordinary day and the rest only under some circumstance; `crate::trinkets` is
+/// the table.
+pub const TRINKET_VARIANTS: u8 = 160;
 /// A week of routine changes is plenty; more would be a calendar, not a habit.
 pub const MAX_SCHEDULED_TRANSITIONS: usize = 14;
 
@@ -26,6 +27,8 @@ pub enum JournalMoment {
     Visit(String),
     /// A companion picked up a little habit of its own.
     Habit(Habit),
+    /// Something new arrived for the village to choose from.
+    Unlocked(VillageItem),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -218,7 +221,7 @@ pub struct CompanionState {
     pub modes: [Option<BehaviorPreset>; 2],
     /// Journal moments kept on purpose, at most eight, never shown twice.
     pub pins: Vec<PinnedMoment>,
-    /// One record per trinket variant, at most eight.
+    /// One record per trinket variant: the first find of each.
     pub scrapbook: Vec<ScrapbookRecord>,
     pub appearance: AppearancePreferences,
     pub schedule: RoutineSchedule,
@@ -255,7 +258,7 @@ impl CompanionState {
             } => (Some(creature_id), JournalMoment::Preference(descriptor)),
             WorldEvent::RitualCompleted { kind } => (None, JournalMoment::Ritual(kind)),
             WorldEvent::ColonyObjectAdded { kind, .. } => (None, JournalMoment::Object(kind)),
-            WorldEvent::ShelterDecorationAdded { kind } => (None, JournalMoment::Decoration(kind)),
+            WorldEvent::VillageUnlocked { item } => (None, JournalMoment::Unlocked(item)),
             WorldEvent::HabitLearned { creature_id, habit } => {
                 (Some(creature_id), JournalMoment::Habit(habit))
             }
@@ -991,10 +994,11 @@ mod tests {
                 .iter()
                 .all(|record| record.finder_name == "Finder 0")
         );
-        // Nothing grew: the file is the same size it was after the first few days.
+        // Nothing grew: the file is the same size it was after the first few days. A full
+        // scrapbook of 160 finds is most of it.
         let bytes = serde_json::to_string(&state).unwrap().len();
         eprintln!("journal and keepsakes after 4,000 hours: {bytes} bytes");
-        assert!(bytes < 16 * 1024, "keepsakes grew to {bytes} bytes");
+        assert!(bytes < 32 * 1024, "keepsakes grew to {bytes} bytes");
         state.normalize();
         assert_eq!(state.journal.len(), MAX_JOURNAL_ENTRIES);
         assert_eq!(state.pins.len(), MAX_PINNED_ENTRIES);

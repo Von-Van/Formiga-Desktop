@@ -9,12 +9,12 @@
 //! the same ground shadow — and it varies with the colony seed exactly as a house does: the trunk
 //! leans, the canopy's lobes shift, and the leaf specks land differently.
 //!
-//! `TRINKET_ANCHORS` is the fixed, ordered set of eight places something can sit on one tree.
-//! Which tree a keepsake hangs in is `formiga_core::TreeEnd::of_trinket`: the eight everyday
-//! finds go on the outward tree by the door, the eight that only turn up in a particular
-//! circumstance at the far end. The overlay draws one 16x16 quad from the colony's own trinket
-//! atlas centred on each anchor, so a colony that has found three things has three of them and
-//! the trees fill in exactly as the scrapbook does. The drawing here is what makes those quads
+//! `TRINKET_ANCHORS` is the fixed, ordered set of eight places something can sit on one tree, and
+//! the two trees together have sixteen hooks: `hook_place` says where each is. What hangs on them
+//! is `formiga_core::hung_keepsakes` — the keepsakes the owner chose, or with nothing chosen the
+//! original sixteen finds on the hooks numbered after them and later finds on whichever hooks are
+//! still empty. The overlay draws one 16x16 quad from the colony's own trinket atlas centred on
+//! each anchor, so a colony that has found three things has three of them. The drawing here is what makes those quads
 //! read as hung rather than stuck on: every anchor has a cord drawn down to it out of the leaves
 //! above, ending a pixel inside where its keepsake's own drawing begins.
 
@@ -85,20 +85,38 @@ pub const TRINKET_ANCHORS: [TrinketAnchor; formiga_core::TRINKETS_PER_TREE as us
     hung(50, 38),
 ];
 
-/// Where keepsake `variant` hangs: which of the village's two trees, and the anchor on that tree
-/// as it is actually drawn there. One fixed place per variant, so a find never moves once it has
-/// turned up. A variant this build has no artwork for — a save from a later version — has no
-/// place on either tree and simply is not drawn.
-pub fn trinket_place(variant: u8) -> Option<(TreeEnd, TrinketAnchor)> {
-    if variant >= formiga_core::TRINKET_VARIANTS {
+/// Where hook `hook` is: which of the village's two trees, and the anchor on that tree as it is
+/// actually drawn there. Hooks 0..8 are the outward tree's anchors in the order a tree fills up,
+/// and 8..16 the inward tree's, mirrored. With nothing chosen by hand the original sixteen finds
+/// each keep the hook numbered after them, so they hang exactly where they always have.
+pub fn hook_place(hook: usize) -> Option<(TreeEnd, TrinketAnchor)> {
+    if hook >= formiga_core::TREE_HOOKS {
         return None;
     }
-    let end = TreeEnd::of_trinket(variant);
-    let anchor = TRINKET_ANCHORS[usize::from(variant) % TRINKET_ANCHORS.len()];
+    let end = TreeEnd::of_hook(hook);
+    let anchor = TRINKET_ANCHORS[hook % TRINKET_ANCHORS.len()];
     Some(match end {
         TreeEnd::Outward => (end, anchor),
         TreeEnd::Inward => (end, anchor.mirrored()),
     })
+}
+
+/// Every keepsake hanging in the two trees, with where it hangs: the colony's choice if it made
+/// one, and otherwise the trees filling themselves as finds come in. A variant this build has no
+/// artwork for — a save from a later version — is simply not drawn.
+pub fn hung_trinkets(
+    home: &formiga_core::ColonyHome,
+    scrapbook: &[formiga_core::ScrapbookRecord],
+) -> Vec<(u8, TreeEnd, TrinketAnchor)> {
+    formiga_core::hung_keepsakes(home.tree_keepsakes.as_ref(), scrapbook)
+        .iter()
+        .enumerate()
+        .filter_map(|(hook, variant)| {
+            let variant = (*variant)?;
+            let (end, anchor) = hook_place(hook)?;
+            Some((variant, end, anchor))
+        })
+        .collect()
 }
 
 /// The closest two anchors may sit, in tree pixels. A keepsake draws eleven to fourteen pixels
@@ -262,8 +280,8 @@ mod tests {
     fn the_anchors_stay_in_the_branches_keep_their_distance_and_never_move() {
         assert_eq!(
             TRINKET_ANCHORS.len() * 2,
-            formiga_core::TRINKET_VARIANTS as usize,
-            "two trees, half the catalogue each"
+            formiga_core::TREE_HOOKS,
+            "two trees, half the hooks each"
         );
         assert_eq!(
             TRINKET_ANCHORS.len(),
@@ -320,40 +338,47 @@ mod tests {
         }
     }
 
-    /// Every keepsake in the catalogue has one fixed place, and the catalogue divides evenly:
-    /// the ordinary finds by the door on the outward tree, the conditional ones at the far end.
+    /// Every hook has one place of its own: the first eight on the outward tree by the door and
+    /// the next eight at the far end, each on an anchor as it is drawn there. The original sixteen
+    /// finds, which each hung in a fixed place of their own before hooks, keep those places.
     #[test]
-    fn each_keepsake_has_one_tree_and_one_anchor_of_its_own() {
+    fn each_hook_has_one_tree_and_one_anchor_of_its_own() {
         let mut seen = BTreeSet::new();
-        for variant in 0..formiga_core::TRINKET_VARIANTS {
-            let (end, anchor) = trinket_place(variant).expect("every variant has a place");
-            assert_eq!(end, formiga_core::TreeEnd::of_trinket(variant));
+        for hook in 0..formiga_core::TREE_HOOKS {
+            let (end, anchor) = hook_place(hook).expect("every hook has a place");
+            assert_eq!(end, formiga_core::TreeEnd::of_hook(hook));
             assert_eq!(
                 end,
-                if formiga_core::trinket_info(variant).unwrap().condition
-                    == formiga_core::TrinketCondition::Anywhere
-                {
+                if hook < 8 {
                     formiga_core::TreeEnd::Outward
                 } else {
                     formiga_core::TreeEnd::Inward
-                },
-                "variant {variant} hangs at the wrong end for what it is"
+                }
             );
-            // The anchor is reported as it is drawn on its own tree, so the inward tree's places
-            // are the mirrored ones.
             assert!(
                 TRINKET_ANCHORS.contains(&anchor),
-                "variant {variant} hangs off a place no tree has"
+                "hook {hook} hangs off a place no tree has"
             );
             assert!(
                 seen.insert((end, anchor.x, anchor.y)),
-                "variant {variant} shares a place with something else"
+                "hook {hook} shares a place with another"
             );
-            assert_eq!(trinket_place(variant), Some((end, anchor)), "it moved");
         }
-        assert_eq!(seen.len(), usize::from(formiga_core::TRINKET_VARIANTS));
-        assert_eq!(trinket_place(formiga_core::TRINKET_VARIANTS), None);
-        assert_eq!(trinket_place(u8::MAX), None);
+        assert_eq!(hook_place(formiga_core::TREE_HOOKS), None);
+        // Where the first sixteen finds hung before there were hooks: variant `n` on the outward
+        // tree's anchor `n` for the everyday eight, and on the inward tree's mirrored anchor
+        // `n - 8` for the rest.
+        for variant in 0..16_usize {
+            let before = if variant < 8 {
+                (formiga_core::TreeEnd::Outward, TRINKET_ANCHORS[variant])
+            } else {
+                (
+                    formiga_core::TreeEnd::Inward,
+                    TRINKET_ANCHORS[variant - 8].mirrored(),
+                )
+            };
+            assert_eq!(hook_place(variant), Some(before), "variant {variant} moved");
+        }
     }
 
     /// How far down a keepsake may reach before it is in among the belongings rather than in the

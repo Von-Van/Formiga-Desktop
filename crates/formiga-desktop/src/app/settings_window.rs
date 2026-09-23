@@ -116,11 +116,31 @@ impl FormigaApp {
                 });
                 companion_changed = true;
             }
-            if let Some(hidden) = outcome.hidden_decorations {
-                world.edit(ColonyEdit::Decorations, |world| {
-                    world.save.home.hidden_decorations = hidden & 0x3f;
+            if let Some((keeper, slot, kind)) = outcome.set_decoration {
+                companion_changed |= world.edit(ColonyEdit::Decorations, |world| {
+                    world.save.home.set_decoration(keeper, slot, kind)
+                });
+            }
+            if let Some((kind, along)) = outcome.set_ornament {
+                companion_changed |= world.edit(ColonyEdit::Ornament(kind), |world| {
+                    world.save.home.set_ornament(kind, along)
+                });
+            }
+            if let Some(hooks) = outcome.tree_keepsakes {
+                world.edit(ColonyEdit::TreeKeepsakes, |world| {
+                    world.save.home.set_tree_keepsakes(hooks);
                 });
                 companion_changed = true;
+            }
+            if let Some((creature_id, accessory)) = outcome.set_accessory {
+                match world.set_accessory(creature_id, accessory) {
+                    Ok(changed) => companion_changed |= changed,
+                    Err(error) => {
+                        if let Some(window) = &mut self.settings_window {
+                            window.set_error(error.to_string());
+                        }
+                    }
+                }
             }
             if let Some((kind, along)) = outcome.set_hangout {
                 companion_changed |= world.edit(ColonyEdit::Hangout(kind), |world| {
@@ -148,7 +168,9 @@ impl FormigaApp {
             }
             if let Some((kind, along)) = outcome.set_garden {
                 companion_changed |= world.edit(ColonyEdit::Garden(kind), |world| {
-                    world.save.home.set_garden(kind, along)
+                    // A patch put down now starts growing from now, by the colony's own clock.
+                    let now = world.save.maximum_seen_utc;
+                    world.save.home.set_garden(kind, along, now)
                 });
             }
             if outcome.reset_village {

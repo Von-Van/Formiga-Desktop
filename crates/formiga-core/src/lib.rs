@@ -1,3 +1,4 @@
+mod accessories;
 mod ambience;
 mod attention;
 mod behavior;
@@ -17,6 +18,9 @@ mod trinkets;
 mod visitor;
 mod world;
 
+pub use accessories::{
+    Accessory, AccessoryError, AccessoryKind, AccessoryPlace, available_accessories,
+};
 pub use ambience::DesktopAmbience;
 pub use attention::{AttentionEmotion, AttentionPose, Gesture, WindowSample};
 pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
@@ -31,9 +35,9 @@ pub use habitat::{
     TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot, accessible_regions, colony_cottage_list,
     colony_cottages, habitat_contains, home_anchor, home_commons, home_dwelling_position,
     home_ground_positions, home_guest_position, home_hangout_positions, home_object_position,
-    home_object_positions, home_resting_position, home_tree_position, house_owners, house_slot_for,
-    nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, validate_habitat,
-    village_span,
+    home_object_positions, home_resting_position, home_tree_position, house_owners,
+    house_roof_height, house_slot_for, nearest_habitat_point, resolved_colony_object_position,
+    resolved_home_anchor, validate_habitat, village_span,
 };
 pub use habits::{
     Celebration, FLOURISH_WAIT_SECS, Flourish, HABIT_PERFORMANCE_CHANCE, Habit, HabitCue,
@@ -53,7 +57,9 @@ pub use topology::{
     MAX_WINDOW_ROUTE_HOPS, RouteHopKind, RoutePreferences, TopologyLandmark, TopologyLandmarkKind,
     TopologyRouteHop, TopologyWindow,
 };
-pub use trinkets::{TrinketCondition, TrinketInfo, all_trinkets, trinket_info, trinkets_for};
+pub use trinkets::{
+    TrinketCondition, TrinketInfo, all_trinkets, trinket_count, trinket_info, trinkets_for,
+};
 pub use visitor::{
     FavoriteError, FavoriteVisitor, GuestBookEntry, MAX_FAVORITE_VISITORS, MAX_GUEST_BOOK_ENTRIES,
     MAX_TOUR_STOPS, ResidentAnswer, TourInterest, TourMoment, TourStop, VisitPhase, VisitProgress,
@@ -61,4 +67,4 @@ pub use visitor::{
 };
 pub use world::{BubbleGrowth, ColonyEdit, MAX_STROLL_SPEED, ThoughtBubble, UndoError, World};
 
-pub const SAVE_VERSION: u32 = 18;
+pub const SAVE_VERSION: u32 = 19;

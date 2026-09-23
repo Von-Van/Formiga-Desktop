@@ -490,3 +490,83 @@ fn imported_creature_gets_a_distinct_companion_lineage() {
         shared.source_colony_seed
     );
 }
+
+/// Anything the colony has found can be put on a companion, swapped for something else found, or
+/// taken off again, as often as the person at the desk likes; each companion wears one thing at a
+/// time, two can wear the same thing, and nothing unfound can be worn. A file that names something
+/// the colony never found opens with that companion wearing nothing.
+#[test]
+fn found_accessories_go_on_come_off_and_swap_freely() {
+    let now = datetime!(2026-09-14 12:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([7; 32], now, &desktop);
+    let mut second = world.save.creatures[0].clone();
+    second.id = 900;
+    second.colony_order = 1;
+    world.save.creatures.push(second);
+    let (first, second) = (world.save.creatures[0].id, 900);
+    let hat = Accessory::Worn(AccessoryKind::LeafHat);
+    let scarf = Accessory::Worn(AccessoryKind::KnittedScarf);
+
+    // Nothing found yet: nothing to wear, and nothing to take off either.
+    assert_eq!(
+        world.set_accessory(first, Some(hat)),
+        Err(AccessoryError::NotFound)
+    );
+    assert_eq!(world.set_accessory(first, None), Ok(false));
+    assert_eq!(
+        world.set_accessory(77, None),
+        Err(AccessoryError::UnknownCreature(77))
+    );
+
+    for kind in [AccessoryKind::LeafHat, AccessoryKind::KnittedScarf] {
+        world
+            .save
+            .companion
+            .remember_discovery(kind.made_from(), first, "Finder".to_owned(), now);
+    }
+    let available = available_accessories(&world.save.companion.scrapbook);
+    assert!(available.contains(&hat) && available.contains(&scarf));
+    assert!(available.contains(&Accessory::Pin(AccessoryKind::LeafHat.made_from())));
+
+    let wearing = |world: &World, id| {
+        world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == id)
+            .unwrap()
+            .accessory
+    };
+    assert_eq!(world.set_accessory(first, Some(hat)), Ok(true));
+    assert_eq!(wearing(&world, first), Some(hat));
+    assert_eq!(
+        world.set_accessory(first, Some(hat)),
+        Ok(false),
+        "already wearing it"
+    );
+    // Swapped for something else, and the same hat on a friend too.
+    assert_eq!(world.set_accessory(first, Some(scarf)), Ok(true));
+    assert_eq!(world.set_accessory(second, Some(hat)), Ok(true));
+    assert_eq!(wearing(&world, first), Some(scarf));
+    assert_eq!(wearing(&world, second), Some(hat));
+    // Taken off, and put back on again.
+    assert_eq!(world.set_accessory(first, None), Ok(true));
+    assert_eq!(wearing(&world, first), None);
+    assert_eq!(world.set_accessory(first, Some(scarf)), Ok(true));
+    // Worn as a pin, which any find can be.
+    let pin = Accessory::Pin(AccessoryKind::KnittedScarf.made_from());
+    assert_eq!(world.set_accessory(first, Some(pin)), Ok(true));
+    assert_eq!(wearing(&world, first), Some(pin));
+    assert_eq!(
+        world.set_accessory(first, Some(Accessory::Pin(0))),
+        Err(AccessoryError::NotFound)
+    );
+
+    // What is worn is kept, and a file naming something never found wears nothing.
+    let mut save = world.save.clone();
+    save.creatures[1].accessory = Some(Accessory::Worn(AccessoryKind::SnailPack));
+    let reopened = World::from_save(save);
+    assert_eq!(reopened.save.creatures[0].accessory, Some(pin));
+    assert_eq!(reopened.save.creatures[1].accessory, None);
+}

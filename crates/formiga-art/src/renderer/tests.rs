@@ -1675,3 +1675,94 @@ fn nothing_held_or_folded_sinks_below_the_feet() {
         "every kind of snack was tried"
     );
 }
+
+/// Whatever a companion wears shows on it, on every body plan and in every kind of pose — standing,
+/// walking, climbing, up high, eating, asleep, and mid-yawn — and sits on the body: every pixel it
+/// adds is within a few pixels of the companion's own drawing, a hat's height above the crown at
+/// most, so nothing is ever left floating beside the companion it belongs to.
+#[test]
+fn whatever_a_companion_wears_shows_on_it_in_every_pose_and_sits_on_its_body() {
+    use formiga_core::{Accessory, AccessoryKind};
+    let preview = World::preview_adult(
+        [29; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    let mut bodies: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut appearance = preview.appearance.clone();
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        appearance.design = Some(design);
+        bodies.push((format!("{plan:?}"), appearance));
+    }
+    let members = [crate::palette_for(&preview.appearance)];
+    let dresses: Vec<AccessoryArt> = AccessoryKind::ALL
+        .into_iter()
+        .map(Accessory::Worn)
+        .chain([Accessory::Pin(0), Accessory::Pin(3), Accessory::Pin(159)])
+        .map(|accessory| AccessoryArt::resolve(accessory, [29; 32], &members))
+        .collect();
+    let clips: Vec<BodyClip> = [
+        ActionKind::Idle,
+        ActionKind::Traverse,
+        ActionKind::ClimbWindow,
+        ActionKind::Perch,
+        ActionKind::Eat,
+        ActionKind::Sleep,
+    ]
+    .into_iter()
+    .map(BodyClip::from)
+    .chain([BodyClip::from(Gesture::Yawn)])
+    .collect();
+    for (body, genome) in &bodies {
+        for clip in &clips {
+            for frame in 0..AnimationSpec::for_clip(*clip).frames {
+                let bare = CreatureRenderer::render_body_frame(genome, *clip, frame, false);
+                let (left, top, right, bottom) = bare
+                    .canvas
+                    .alpha_bounds()
+                    .expect("every frame draws something");
+                for dress in &dresses {
+                    let dressed = CreatureRenderer::render_dressed_body_frame(
+                        genome,
+                        Some(*dress),
+                        *clip,
+                        frame,
+                        false,
+                    );
+                    let mut added = 0;
+                    for y in 0..FRAME_SIZE as i32 {
+                        for x in 0..FRAME_SIZE as i32 {
+                            if dressed.canvas.get(x, y) == bare.canvas.get(x, y) {
+                                continue;
+                            }
+                            added += 1;
+                            assert!(
+                                x >= left as i32 - 8
+                                    && x <= right as i32 + 8
+                                    && y >= top as i32 - 12
+                                    && y <= bottom as i32 + 2,
+                                "{body} {clip:?} frame {frame}: {:?} draws at {x},{y}, away \
+                                 from the body at {left},{top}..{right},{bottom}",
+                                dress.accessory
+                            );
+                        }
+                    }
+                    assert!(
+                        added >= 3,
+                        "{body} {clip:?} frame {frame}: {:?} does not show",
+                        dress.accessory
+                    );
+                }
+            }
+        }
+    }
+}
