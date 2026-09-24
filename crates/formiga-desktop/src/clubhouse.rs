@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 
 pub(crate) mod arrange;
 mod collection;
+pub(crate) mod tour;
 
 /// The interface palette. Cream, forest, and mint by daylight; charcoal and sage after dark. The
 /// settings window sets this once whenever the preference or the system appearance changes, and
@@ -93,13 +94,13 @@ pub struct Clubhouse {
     pub seed_code: String,
     pub feedback: Option<(String, std::time::Instant)>,
     pub recovery: Option<String>,
-    pub onboarding_step: usize,
     /// Which companion the journal is filtered to, if any. A view preference, never saved.
     pub journal_filter: Option<CreatureId>,
     pub restore_confirmed: bool,
     pub fresh_confirmed: bool,
     pub replace_confirmed: bool,
-    pub show_intro: bool,
+    /// Where the tour has got to, while it is being taken.
+    pub(crate) tour: tour::TourState,
     /// Which clip the sticker export will use. A view preference, never saved.
     pub sticker_clip: StickerClip,
     /// Whether the sticker export draws at the smaller of the two offered scales. The default,
@@ -262,73 +263,6 @@ impl Clubhouse {
         self.portraits
             .retain(|id, _| creatures.iter().any(|c| c.id == *id));
     }
-    pub fn intro(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
-        if save.companion.onboarding_complete && !self.show_intro {
-            return;
-        }
-        card(ui, |ui| {
-            ui.label(
-                RichText::new("WELCOME TO YOUR LITTLE COLONY")
-                    .small()
-                    .color(forest()),
-            );
-            let (title, description) = match self.onboarding_step {
-                0 => (
-                    "Meet your first companion",
-                    "Choose a name below. Your creature will develop its own preferences as you spend time together.",
-                ),
-                1 => (
-                    "Say hello",
-                    "Click your creature on the desktop to pet it. A quick click is enough; watch its expression change.",
-                ),
-                2 => (
-                    "Find a favorite spot",
-                    "Drag your creature gently onto a window or the desktop. Release slowly to place it; a quick release gives it a soft toss.",
-                ),
-                _ => (
-                    "A home that grows with you",
-                    "The menu-bar or tray icon opens your colony, gathers companions, and pauses or hides them. A mini can arrive after an hour; more companions and keepsakes follow over time.",
-                ),
-            };
-            ui.heading(title);
-            ui.label(description);
-            if let Some(first) = save.creatures.first() {
-                let observed = match self.onboarding_step {
-                    1 => first.memory.times_petted > 0,
-                    2 => first.memory.placements > 0 || first.memory.times_tossed > 0,
-                    _ => false,
-                };
-                if observed {
-                    ui.colored_label(forest(), "Lovely — you've tried it!");
-                }
-            }
-            ui.horizontal(|ui| {
-                ui.label(format!("{} / 4", self.onboarding_step + 1));
-                if ui
-                    .button(if self.onboarding_step == 3 {
-                        "Make yourself at home"
-                    } else {
-                        "Next"
-                    })
-                    .clicked()
-                {
-                    if self.onboarding_step == 3 {
-                        outcome.complete_onboarding = true;
-                        self.show_intro = false;
-                    } else {
-                        self.onboarding_step += 1;
-                    }
-                }
-                if ui.small_button("Skip introduction").clicked() {
-                    outcome.complete_onboarding = true;
-                    self.show_intro = false;
-                }
-            });
-        });
-        ui.add_space(16.0);
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_secs(1));
-    }
     pub fn adoption_footer(
         &self,
         ui: &mut Ui,
@@ -351,9 +285,8 @@ impl Clubhouse {
                 "This companion already lives here".into()
             } else {
                 format!(
-                    "{} / 4 companions · {} / 3 full-size",
-                    save.creatures.len(),
-                    adults
+                    "{} / {MAX_COLONY_CREATURES} companions",
+                    save.creatures.len()
                 )
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -389,19 +322,22 @@ impl Clubhouse {
             "Creature studio",
             "Find a companion that feels like yours.",
         );
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("Discover four companions").clicked() {
-                outcome.request_random_creature = true;
-            }
-            if ui.button("Create from image…").clicked() {
-                outcome.request_reference_creature = true;
-            }
+        let discover = ui.scope(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Discover four companions").clicked() {
+                    outcome.request_random_creature = true;
+                }
+                if ui.button("Create from image…").clicked() {
+                    outcome.request_reference_creature = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.lock_colors, "Keep selected colors");
+                ui.checkbox(&mut self.lock_body, "Keep selected body");
+            });
+            ui.small("Locks guide the next random set. Images are interpreted locally and discarded after preview.");
         });
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.lock_colors, "Keep selected colors");
-            ui.checkbox(&mut self.lock_body, "Keep selected body");
-        });
-        ui.small("Locks guide the next random set. Images are interpreted locally and discarded after preview.");
+        self.tour_mark(ui, tour::TourMark::Discover, discover.response.rect);
         ui.add_space(16.0);
         egui::CollapsingHeader::new("Adopt a shared companion from a code")
             .default_open(!self.seed_code.trim().is_empty())
@@ -615,7 +551,7 @@ impl Clubhouse {
                 ),
             ));
         }
-        card(ui, |ui| {
+        let village = card(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.strong("The village");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -648,12 +584,13 @@ impl Clubhouse {
                 );
             }
         });
+        self.tour_mark(ui, tour::TourMark::Village, village.response.rect);
         ui.add_space(10.0);
         self.picked_house(ui, save, outcome);
         ui.add_space(10.0);
         self.ground_catalogue(ui, save, outcome);
         ui.add_space(10.0);
-        card(ui, |ui| {
+        let corner = card(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Home corner");
                 let mut corner = save.home.corner;
@@ -685,6 +622,7 @@ impl Clubhouse {
                     });
             });
         });
+        self.tour_mark(ui, tour::TourMark::HomeCorner, corner.response.rect);
         ui.add_space(10.0);
         self.village_colours(ui, save, outcome);
         ui.add_space(10.0);

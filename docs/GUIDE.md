@@ -3,6 +3,14 @@
 Everything a colony does, and everything you can do with one. The [README](../README.md) has the
 short version; [the release notes](RELEASE_NOTES.md) say when each piece arrived.
 
+## Getting started
+
+The first time Formiga runs, its settings window opens with it, and a tour shows you round. It
+starts on the desktop — petting a companion, carrying one, its right-click menu, and the menu-bar
+or tray icon — and notices when you try each one, then walks through what every page of the window
+is for, turning the pages itself and outlining each part as it talks about it. Skip it whenever you
+like; **Take the tour** in Preferences starts it again from the beginning.
+
 ## What creatures do
 
 Formiga does not choose from premade pets. A 256-bit seed resolves a body plan, ears, tail,
@@ -119,7 +127,8 @@ where pointing at something shows the companion wearing it standing, walking, up
 before it goes on, and Nothing takes it off again.
 
 The Home page shows the corner as it really is: the houses, a keepsake tree at either end with its
-keepsakes hanging in it, the belongings scattered in the two yards, and the gardens, spots and
+keepsakes hanging in it and standing a little in front of the house beside it, the belongings
+scattered in the two yards, and the gardens, spots and
 ornaments on the ground between. Looking at it never calls anyone home. Press **Arrange** and it can
 be taken hold of: carry a cottage along the row to stand it somewhere else, or anything on the
 ground along the ground, and nudge whatever is picked out with the arrow keys. Click a house to see

@@ -126,7 +126,7 @@ pub(super) struct House {
 
 impl House {
     fn unit(&self, value: i32) -> i32 {
-        (value * self.span / super::MAIN_SPAN).max(1)
+        (value * self.span / super::DRAWN_SPAN).max(1)
     }
 
     fn left(&self) -> i32 {

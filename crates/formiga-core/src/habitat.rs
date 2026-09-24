@@ -80,20 +80,22 @@ pub enum DwellingKind {
 
 impl DwellingKind {
     /// Ground footprint in shelter pixels: the drawn house plus its shadow and any decoration
-    /// that reaches past the wall, with a pixel or two of breathing room. Smaller than the 64px
+    /// that reaches past the wall, with a pixel or two of breathing room. Smaller than the 80px
     /// atlas cell it is sampled from, so neighbours sit close without their artwork touching.
-    /// A companion house is near enough a standing creature's own width to read as a home rather
-    /// than a model of one; the colony house stays plainly the largest building on the strip.
+    /// The houses are drawn a quarter larger than they were until 0.61.0, so a companion's house
+    /// is a little wider than a standing creature and reads plainly as its home; the colony house
+    /// stays plainly the largest building on the strip. The footprints grew less than the houses
+    /// did, from 60 and 46, because shadows and decorations did not grow with them.
     pub const fn width(self) -> f32 {
         match self {
-            Self::Main => 60.0,
-            Self::Cottage => 46.0,
+            Self::Main => 70.0,
+            Self::Cottage => 56.0,
         }
     }
 }
 
-/// Every dwelling is drawn from one 64px atlas cell, whatever its footprint.
-pub const DWELLING_CELL: f32 = 64.0;
+/// Every dwelling is drawn from one 80px atlas cell, whatever its footprint.
+pub const DWELLING_CELL: f32 = 80.0;
 
 /// How wide a creature's frame draws, in shelter pixels. The village mirrors
 /// `formiga_art::FRAME_SIZE` the same way `home_anchor` mirrors the shelter's own size.
@@ -163,6 +165,13 @@ pub enum VillageLot {
 /// fifty-five pixels of empty lane once the strip was laid end to end.
 const VILLAGE_GAP: f32 = 3.0;
 
+/// How far each tree's lot reaches in over the house beside it. The houses grew a quarter in
+/// 0.61.0 and the village only about a tenth, so the trees at either end stand a little in over
+/// the end houses' ground rather than a seam clear of it; where a tree's drawing and a house's
+/// meet, the tree is drawn in front. Six pixels is the shadow and whatever decoration stands on
+/// the ground beside the wall, never the wall itself.
+pub const TREE_OVERLAP: f32 = 6.0;
+
 /// The ground one belonging claims. Every belonging draws from a 16-pixel quad, but the thing
 /// inside it is thirteen or fourteen pixels wide with a transparent margin either side.
 pub const OBJECT_WIDTH: f32 = 10.0;
@@ -192,24 +201,25 @@ pub const RESTING_WIDTH: f32 = CREATURE_FRAME_WIDTH - REST_WALL_SLIVER * 2.0;
 /// its whole lot room or that tree would be drawn half off the screen. The inward tree needs no
 /// margin of its own: the strip runs away from the edge, and a region that cannot take the
 /// inward end simply does not show it.
-const HOME_EDGE_MARGIN: f32 = DwellingKind::Main.width() / 2.0 + VILLAGE_GAP + TREE_WIDTH;
+const HOME_EDGE_MARGIN: f32 = DwellingKind::Main.width() / 2.0 - TREE_OVERLAP + TREE_WIDTH;
 
 /// What the whole village is allowed to measure end to end, in shelter pixels: a tree at either
 /// end and a house for every one of six full-size companions. It is the ground a *full* colony
 /// takes, not the ground every colony takes — a village lays out only the houses it has, so a
 /// founder on its own is a third of this and grows toward it a house at a time.
 ///
-/// The figure itself is inherited rather than chosen: 0.58.5's four-companion village measured
-/// 445 with a house and a standing place for each of them, and six houses fit inside the same
-/// ground once the standing places came out of the strip. The companions did not lose anything —
-/// the whole run of ground in front of the houses is theirs to walk now, instead of a parcel each.
-pub const VILLAGE_SPAN_LIMIT: f32 = 448.0;
+/// It was 448 until 0.61.0, inherited from 0.58.5's four-companion village, which measured 445
+/// with a house and a standing place for each of them; six houses fit inside the same ground once
+/// the standing places came out of the strip. The houses then grew a quarter and the ground about
+/// a tenth: a full village measures 465, with each tree standing a little in over its end house.
+pub const VILLAGE_SPAN_LIMIT: f32 = 468.0;
 
-/// Where the outward tree's lot sits on the walk, counting outward from the colony house: one gap
-/// past the colony house's own footprint, on the negative side of the origin. The inward tree's
-/// place depends on how many cottages there are, so the walk works it out as it goes.
+/// Where the outward tree's lot sits on the walk, counting outward from the colony house: reaching
+/// `TREE_OVERLAP` in over the colony house's own footprint, on the negative side of the origin.
+/// The inward tree's place depends on how many cottages there are, so the walk works it out as it
+/// goes.
 const OUTWARD_TREE_CENTRE: f32 =
-    -(DwellingKind::Main.width() / 2.0 + VILLAGE_GAP + TREE_WIDTH / 2.0);
+    -(DwellingKind::Main.width() / 2.0 - TREE_OVERLAP + TREE_WIDTH / 2.0);
 
 /// The ground each kind of lot claims, in shelter pixels.
 fn lot_width(lot: VillageLot, cottages: &[DwellingKind]) -> f32 {
@@ -279,10 +289,10 @@ fn village_walk(cottages: &[DwellingKind]) -> VillageWalk {
         push(VillageLot::Dwelling(house), edge + width / 2.0);
         edge += width;
     }
-    // The far wall: the second tree closes the strip off past the last house.
+    // The far wall: the second tree closes the strip off, a little in over the last house.
     push(
         VillageLot::Tree(TreeEnd::Inward),
-        edge + VILLAGE_GAP + TREE_WIDTH / 2.0,
+        edge - TREE_OVERLAP + TREE_WIDTH / 2.0,
     );
     walk
 }
@@ -924,17 +934,18 @@ pub fn home_object_positions(
 
 /// How far above the village ground line the top of a house reaches, in shelter pixels: where a
 /// companion sitting on its roof has its feet. Measured the way the house is drawn — its size in
-/// twelfths of the colony house, the dwelling's own proportions from the colony's shelter genome,
-/// and where each type's roof actually tops out — and held to the drawing by a test in the art
-/// crate. The ground line is three rows below where a house's walls stand in its cell.
+/// twenty-fourths of the colony house as it was drawn until 0.61.0, the dwelling's own
+/// proportions from the colony's shelter genome, and where each type's roof actually tops out —
+/// and held to the drawing by a test in the art crate. The ground line is three rows below where
+/// a house's walls stand in its cell.
 pub fn house_roof_height(
     shelter: &crate::ShelterGenome,
     style: crate::ShelterStyle,
     colony_house: bool,
 ) -> f32 {
-    let span = if colony_house { 12 } else { 10 };
-    let height = (i32::from(shelter.height).clamp(27, 36) * span / 12).max(13);
-    let unit = |value: i32| (value * span / 12).max(1);
+    let span = if colony_house { 30 } else { 25 };
+    let height = (i32::from(shelter.height).clamp(27, 36) * span / 24).max(13);
+    let unit = |value: i32| (value * span / 24).max(1);
     let top = match style {
         // The canvas comes to its apex a little below the top of the pole.
         crate::ShelterStyle::Tent => height - unit(3) - 2,
@@ -1330,8 +1341,9 @@ mod tests {
             .collect()
     }
 
-    /// The houses and both trees come out of one walk, so no two of them may ever claim the same
-    /// ground — and the two corners have to be the same village, measured from the house outward.
+    /// The houses and both trees come out of one walk, so no two houses may ever claim the same
+    /// ground and a tree reaches in over its end house by `TREE_OVERLAP` and no further — and the
+    /// two corners have to be the same village, measured from the house outward.
     #[test]
     fn the_houses_and_the_trees_share_one_walk_and_mirror_in_both_corners() {
         let monitor = wide_monitor(2.0);
@@ -1367,11 +1379,22 @@ mod tests {
                     "{lot:?} stands outside the two trees"
                 );
             }
+            let unit = f32::from(TIGHTEST_SCALE) / monitor.scale_factor.max(1.0);
             for (index, (lot, centre, half)) in lots.iter().enumerate() {
                 for (other, other_centre, other_half) in &lots[index + 1..] {
                     let clearance = (centre - other_centre).abs();
+                    let tree_over_house = matches!(
+                        (lot, other),
+                        (VillageLot::Tree(_), VillageLot::Dwelling(_))
+                            | (VillageLot::Dwelling(_), VillageLot::Tree(_))
+                    );
+                    let overlap = if tree_over_house {
+                        TREE_OVERLAP * unit
+                    } else {
+                        0.0
+                    };
                     assert!(
-                        clearance >= half + other_half - 0.01,
+                        clearance >= half + other_half - overlap - 0.01,
                         "{corner:?}: {lot:?} and {other:?} share ground ({clearance} apart, \
                          {half} + {other_half} wide)"
                     );
@@ -1609,7 +1632,7 @@ mod tests {
         // for what stands past them against the edge.
         for (corner, left) in [
             (HomeCorner::BottomLeft, 0.1_f32),
-            (HomeCorner::BottomRight, 0.55),
+            (HomeCorner::BottomRight, 0.5),
         ] {
             let policy = HabitatPolicy {
                 preset: HabitatPreset::Custom,
@@ -1619,7 +1642,7 @@ mod tests {
                     normalized_bounds: DesktopRect {
                         x: left,
                         y: 0.0,
-                        width: 0.35,
+                        width: 0.4,
                         height: 1.0,
                     },
                     kind: HabitatZoneKind::Allowed,

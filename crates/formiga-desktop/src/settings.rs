@@ -1,3 +1,4 @@
+use crate::clubhouse::tour::TourMark;
 use crate::clubhouse::{self, Clubhouse, forest, gold, ink, mint, paper, rail, rail_ink};
 use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
@@ -16,7 +17,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum SettingsTab {
+pub(crate) enum SettingsTab {
     General,
     #[default]
     Colony,
@@ -883,6 +884,9 @@ fn draw_settings(
             }
         });
     egui::CentralPanel::default().frame(egui::Frame::new().fill(paper()).inner_margin(24)).show(root, |ui| {
+        // The tour, above the page rather than on it, so it stays in view while the page scrolls
+        // to whatever it is pointing at.
+        clubhouse.tour_card(ui, save, tab, outcome);
         egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
             if let Some(reason) = clubhouse.recovery.clone() {
                 clubhouse::card(ui, |ui| {
@@ -898,7 +902,6 @@ fn draw_settings(
             match tab {
                 SettingsTab::Colony => {
                     clubhouse::title(ui, "Your colony", "Familiar faces. Small adventures. A home that grows.");
-                    clubhouse.intro(ui, save, outcome);
                     colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, clubhouse, outcome);
                 }
                 SettingsTab::Studio => clubhouse.studio(ui, save, selected_creature, outcome),
@@ -943,7 +946,11 @@ fn general_tab(
         "At your own pace",
         "A few gentle adjustments for your desktop.",
     );
-    clubhouse::quiet_controls(ui, save, outcome);
+    let quiet = ui
+        .scope(|ui| clubhouse::quiet_controls(ui, save, outcome))
+        .response
+        .rect;
+    clubhouse.tour_mark(ui, TourMark::Quiet, quiet);
     ui.add_space(16.0);
     clubhouse::card(ui, |ui| {
         ui.strong("Saved routines");
@@ -996,10 +1003,8 @@ fn general_tab(
         }
     });
     ui.add_space(18.0);
-    if ui.button("Show introduction again").clicked() {
-        clubhouse.show_intro = true;
-        clubhouse.onboarding_step = 0;
-        clubhouse.notify("Introduction ready in Your colony");
+    if ui.button("Take the tour").clicked() {
+        clubhouse.take_the_tour();
     }
 }
 
@@ -1131,7 +1136,7 @@ fn colony_tab(
         ui.label("Closest friend: still getting acquainted");
     }
     ui.add_space(18.0);
-    ui.group(|ui| {
+    let name = ui.group(|ui| {
         ui.strong("Name");
         ui.small("A name for your companion. Their preferences grow through experience.");
         let name = creature_names
@@ -1172,6 +1177,7 @@ fn colony_tab(
             ui.small(creature.leaning.description());
         });
     });
+    clubhouse.tour_mark(ui, TourMark::Name, name.response.rect);
 
     ui.add_space(8.0);
     clubhouse.wardrobe(ui, colony.save, creature, outcome);
@@ -1226,7 +1232,7 @@ fn colony_tab(
     });
 
     ui.add_space(8.0);
-    ui.group(|ui| {
+    let share = ui.group(|ui| {
         ui.strong("Share this creature");
         ui.label("The code recreates innate appearance and personality, not its name or history.");
         let code = encode_creature_seed(creature.origin);
@@ -1263,6 +1269,7 @@ fn colony_tab(
             }
         });
     });
+    clubhouse.tour_mark(ui, TourMark::Share, share.response.rect);
 
     ui.add_space(8.0);
 

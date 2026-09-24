@@ -91,6 +91,7 @@ impl FormigaApp {
             }
         }
         self.creature_menu = Some(menu);
+        self.menus_opened += 1;
         // Place and show it now rather than on the next tick, so the strip appears under the
         // click that asked for it instead of up to a frame later.
         self.sync_creature_menu(0.0);

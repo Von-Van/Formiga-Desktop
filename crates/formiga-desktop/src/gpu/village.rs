@@ -150,7 +150,9 @@ pub(super) fn hung_trinket_centre(
     anchor: TrinketAnchor,
     scale: f32,
 ) -> (f32, f32) {
-    let cell = SHELTER_SIZE as f32;
+    // The anchors are measured in the tree's own cell, which stands on the ground line in the
+    // middle of its larger village cell: its foot is the village cell's foot.
+    let cell = formiga_art::TREE_CELL as f32;
     (
         tree_x + (anchor.x as f32 - cell / 2.0) * scale,
         tree_y - (cell - anchor.y as f32) * scale,
@@ -481,7 +483,8 @@ impl OverlayRenderer {
 
     /// Every dwelling in the village and the two keepsake trees that bookend it, sampled from
     /// their own cells of the shared atlas. The colony house is always first; companion cottages
-    /// follow along the same ground line, and a tree closes each end of it.
+    /// follow along the same ground line, and a tree closes each end of it, drawn last so it
+    /// stands in front of the house it reaches in over.
     pub(super) fn village_vertices(
         &self,
         save: &SaveFile,
@@ -490,25 +493,6 @@ impl OverlayRenderer {
     ) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
-        for end in formiga_core::TreeEnd::BOTH {
-            if let Some((monitor_id, point)) = formiga_core::home_tree_position(
-                &save.home,
-                end,
-                &cottages,
-                std::slice::from_ref(&self.monitor),
-                &save.settings.habitat,
-                save.settings.display_scale,
-            ) && monitor_id == self.monitor.id
-            {
-                vertices.extend_from_slice(&self.village_cell_vertices(
-                    point,
-                    village_cell(VillageCell::Tree),
-                    tree_is_mirrored(end),
-                    save.settings.display_scale,
-                    (0.0, 0.0),
-                ));
-            }
-        }
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
                 &save.home,
@@ -542,6 +526,27 @@ impl OverlayRenderer {
                 save.settings.display_scale,
                 house_sway(motion),
             ));
+        }
+        // The trees after the houses: each stands a little in over the house at its end, and is
+        // drawn in front of it.
+        for end in formiga_core::TreeEnd::BOTH {
+            if let Some((monitor_id, point)) = formiga_core::home_tree_position(
+                &save.home,
+                end,
+                &cottages,
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                save.settings.display_scale,
+            ) && monitor_id == self.monitor.id
+            {
+                vertices.extend_from_slice(&self.village_cell_vertices(
+                    point,
+                    village_cell(VillageCell::Tree),
+                    tree_is_mirrored(end),
+                    save.settings.display_scale,
+                    (0.0, 0.0),
+                ));
+            }
         }
         vertices
     }

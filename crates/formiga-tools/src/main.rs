@@ -572,15 +572,21 @@ fn draw_yard_panel(
     // Everything is blitted by the top-left of its own square, so a quad hung in a tree lands
     // by its anchor and a house lands by its footprint's middle on the ground line.
     let mut corner_of = |canvas: &formiga_art::Canvas, size: u32, x: i32, y: i32| {
-        if x < 0 || y < 0 {
-            return;
+        // Whatever reaches past the panel's left or top edge is cut off there, the way the
+        // display's own edge cuts off the empty margin of a tree's cell standing close to it.
+        let (skip_x, skip_y) = ((-x).max(0), (-y).max(0));
+        let mut visible = formiga_art::Canvas::new(size, size);
+        for row in 0..size as i32 - skip_y {
+            for column in 0..size as i32 - skip_x {
+                visible.set(column, row, canvas.get(column + skip_x, row + skip_y));
+            }
         }
         blit_scaled_square_alpha(
             pixels,
             width,
-            base_x + x as u32 * YARD_SCALE,
-            base_y + y as u32 * YARD_SCALE,
-            &canvas.rgba_bytes(),
+            base_x + (x + skip_x) as u32 * YARD_SCALE,
+            base_y + (y + skip_y) as u32 * YARD_SCALE,
+            &visible.rgba_bytes(),
             size,
             YARD_SCALE,
         );
@@ -592,9 +598,30 @@ fn draw_yard_panel(
         )
     };
 
-    // The two trees first, and then whatever the scrapbook holds hung between them: one 16x16
-    // quad from the colony's own trinket sheet at the anchor for its slot, exactly as the overlay
-    // draws them. The inward tree is the same atlas cell read the other way round.
+    for slot in 0..=cottages.len() {
+        let Some((_, p)) = home_dwelling_position(&home, slot, cottages, monitors, &policy, 1)
+        else {
+            continue;
+        };
+        let (cell_x, cell_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::House {
+            slot,
+            lit: panel.night,
+            occupied: false,
+        });
+        let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+        for y in 0..SHELTER_SIZE as i32 {
+            for x in 0..SHELTER_SIZE as i32 {
+                cell.set(x, y, village.get(cell_x as i32 + x, cell_y as i32 + y));
+            }
+        }
+        let (x, y) = standing(SHELTER_SIZE, p);
+        corner_of(&cell, SHELTER_SIZE, x, y);
+    }
+
+    // The two trees in front of the houses they reach in over, and then whatever the scrapbook
+    // holds hung between them: one 16x16 quad from the colony's own trinket sheet at the anchor
+    // for its slot, exactly as the overlay draws them. The inward tree is the same atlas cell
+    // read the other way round.
     let members: Vec<formiga_art::Palette> = (0..=cottages.len())
         .map(|slot| {
             formiga_art::palette_for(
@@ -646,33 +673,14 @@ fn draw_yard_panel(
                 }
             }
             let half = formiga_art::TRINKET_CELL as i32 / 2;
+            let (inset_x, inset_y) = formiga_art::TREE_INSET;
             corner_of(
                 &quad,
                 formiga_art::TRINKET_CELL,
-                left + anchor.x - half,
-                top + anchor.y - half,
+                left + inset_x + anchor.x - half,
+                top + inset_y + anchor.y - half,
             );
         }
-    }
-
-    for slot in 0..=cottages.len() {
-        let Some((_, p)) = home_dwelling_position(&home, slot, cottages, monitors, &policy, 1)
-        else {
-            continue;
-        };
-        let (cell_x, cell_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::House {
-            slot,
-            lit: panel.night,
-            occupied: false,
-        });
-        let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-        for y in 0..SHELTER_SIZE as i32 {
-            for x in 0..SHELTER_SIZE as i32 {
-                cell.set(x, y, village.get(cell_x as i32 + x, cell_y as i32 + y));
-            }
-        }
-        let (x, y) = standing(SHELTER_SIZE, p);
-        corner_of(&cell, SHELTER_SIZE, x, y);
     }
 
     // The colony's belongings, four over each tree's roots. They are drawn after the trees, so

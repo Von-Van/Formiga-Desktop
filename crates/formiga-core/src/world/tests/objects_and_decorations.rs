@@ -224,7 +224,8 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                 home.corner = corner;
                 let anchor = resolved_home_anchor(&home, monitor, scale, &policy).unwrap();
                 let unit = f32::from(scale) / monitor.scale_factor.max(1.0);
-                // Houses, trees and belongings share one walk, so no two footprints overlap.
+                // Houses and trees share one walk, so no two houses' footprints overlap, and a
+                // tree reaches in over its end house by `TREE_OVERLAP` and no further.
                 let mut spans: Vec<(f32, f32)> = Vec::new();
                 let push = |centre: f32, width: f32, spans: &mut Vec<(f32, f32)>| {
                     let half = width * unit / 2.0;
@@ -282,7 +283,7 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
                             .unwrap();
                     assert_eq!(tree_id, monitor.id);
                     assert!((tree.y - anchor.y).abs() < 0.01);
-                    push(tree.x, TREE_WIDTH, &mut spans);
+                    push(tree.x, TREE_WIDTH - 2.0 * TREE_OVERLAP, &mut spans);
                     trees.push(tree);
                 }
                 // The outward tree is the one nearest the corner; the inward one is past

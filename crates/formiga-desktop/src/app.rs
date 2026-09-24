@@ -90,6 +90,9 @@ pub struct FormigaApp {
     /// click is being handled.
     creature_menu: Option<CreatureMenu>,
     menu_proxy: Option<MenuProxy>,
+    /// How many right-click menus have been opened on the desktop since Formiga started, which
+    /// is how the tour notices one being tried.
+    menus_opened: u64,
     habitat_editor: Option<HabitatEditor>,
     event_proxy: EventLoopProxy<UserEvent>,
     updates: UpdateController,
@@ -128,6 +131,7 @@ impl FormigaApp {
             interaction_proxies: BTreeMap::new(),
             creature_menu: None,
             menu_proxy: None,
+            menus_opened: 0,
             habitat_editor: None,
             event_proxy,
             updates,
@@ -858,6 +862,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             return;
                         };
                         window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
+                        window.clubhouse.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,
                             &self.monitors,

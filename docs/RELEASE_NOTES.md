@@ -4,6 +4,20 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.61.0
+
+The houses are bigger. Every house in the village is drawn a quarter larger beside your
+companions, so each one reads plainly as somebody's home now that the village can be arranged, and
+the village is about a tenth wider to hold them. The keepsake trees at either end stand a little in
+over the house beside them and are drawn in front of it where they meet, so the row sits tucked in
+between its two trees. The colony portrait and the postcards draw the houses bigger too.
+
+A new colony is shown round. The first time Formiga opens, a tour walks through the desktop —
+petting a companion, carrying one, its right-click menu, and the icon in the menu bar or tray —
+and notices when you try each one, then through what every page of the settings window is for,
+turning the pages itself and outlining each part as it talks about it. Skip it whenever you like,
+and take it again any time from Preferences.
+
 ## New in 0.60.1
 
 Choosing what a companion wears no longer jumps about under the pointer. Pointing at something

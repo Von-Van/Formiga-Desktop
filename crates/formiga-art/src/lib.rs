@@ -40,8 +40,8 @@ pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
 };
 pub use tree::{
-    ANCHOR_CLEARANCE, KeepsakeTreeRenderer, TREE_CELL, TRINKET_ANCHORS, TrinketAnchor, hook_place,
-    hung_trinkets,
+    ANCHOR_CLEARANCE, KeepsakeTreeRenderer, TREE_CELL, TREE_INSET, TRINKET_ANCHORS, TrinketAnchor,
+    hook_place, hung_trinkets,
 };
 pub use trinkets::{
     TRINKET_ATLAS_BYTES, TRINKET_ATLAS_COLUMNS, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_ROWS,

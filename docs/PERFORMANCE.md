@@ -753,3 +753,39 @@ to how high a companion looks and how often it comes down:
 
 A stint up high lasts about a minute and a stint on the floor a little longer. A maximised window,
 or two side by side, has nothing a companion can sit on without its head going under the menu bar.
+
+## 0.61.0
+
+### The simulation
+
+Bigger houses and a slightly wider village change nothing the simulation does per tick but a few
+numbers it reads. `tick-bench`, built in release on the development Mac, each build run twice
+side by side in the same sitting, the two runs averaged:
+
+| scenario | 0.60.1 mean µs | 0.61.0 mean µs |
+|---|---:|---:|
+| 1 creature, quiet desktop | 0.91 | 0.92 |
+| 6 creatures, quiet desktop | 3.15 | 3.11 |
+| 6 creatures, busy desktop + cursor | 6.44 | 6.36 |
+| 6 creatures, homebound at shelter | 3.34 | 3.34 |
+| 6 creatures + visitor, homebound | 4.18 | 4.22 |
+| 6 creatures, paused, busy desktop | 1.73 | 1.72 |
+
+The save format is the same. The benchmark's colony comes out 267 bytes larger, 53,308 against
+53,041, because its companions end the run standing in slightly different places on the wider
+ground.
+
+### Frames and textures
+
+A village is the same number of quads as before, each a quarter larger on every side, and the tour
+draws only in the settings window: while a step is waiting for something to be tried on the
+desktop, that window redraws once a second to notice it.
+
+| | 0.60.1 | 0.61.0 |
+|---|---:|---:|
+| village atlas, per display | 512×256, 524,288 bytes | 560×320, 716,800 bytes |
+| the Home page's row of it | 512×64 | 560×80 |
+| settings artwork, at most | 760 KiB | 807 KiB |
+
+The atlas's cells grew from 64 pixels to 80, and it dropped the eighth column it never drew in;
+one companion's atlas, the trinket sheet and the object sheet are unchanged.

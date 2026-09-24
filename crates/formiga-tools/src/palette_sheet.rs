@@ -18,8 +18,9 @@ use time::OffsetDateTime;
 
 const SCALE: u32 = 2;
 /// How far apart the tree, the colony house and the cottage stand within one village, in
-/// shelter pixels.
-const STEP: u32 = 40;
+/// shelter pixels: a swatch rather than a street, so they overlap. It grew from 40 when the
+/// houses were drawn a quarter larger in 0.61.0, so they overlap by as much as they did.
+const STEP: u32 = 50;
 const VILLAGE_WIDTH: u32 = SHELTER_SIZE + STEP * 2;
 const GAP: u32 = 8;
 

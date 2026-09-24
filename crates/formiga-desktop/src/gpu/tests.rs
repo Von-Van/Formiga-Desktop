@@ -349,8 +349,8 @@ fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
     );
     assert_eq!(
         (VILLAGE_ATLAS_WIDTH, VILLAGE_ATLAS_HEIGHT),
-        (SHELTER_SIZE * 8, SHELTER_SIZE * 4),
-        "thirty-two cells, one 512x256 texture"
+        (SHELTER_SIZE * 7, SHELTER_SIZE * 4),
+        "twenty-eight cells, one 560x320 texture"
     );
 }
 
@@ -394,6 +394,17 @@ fn the_trees_draw_one_quad_for_each_hung_keepsake_and_keep_it_on_their_own_branc
                 assert!(
                     y - half >= 400.0 - cell && y + half <= 400.0,
                     "variant {variant} at {scale}x hangs off the top or foot of its tree"
+                );
+                // And on the very pixel of the atlas's tree cell its anchor names: the tree's
+                // own smaller cell sits in the middle of the village cell, on its foot.
+                let (inset_x, inset_y) = formiga_art::TREE_INSET;
+                assert_eq!(
+                    (
+                        (x - (500.0 - cell / 2.0)) / scale,
+                        (y - (400.0 - cell)) / scale
+                    ),
+                    ((inset_x + anchor.x) as f32, (inset_y + anchor.y) as f32),
+                    "variant {variant} at {scale}x is not on its anchor"
                 );
             }
         }

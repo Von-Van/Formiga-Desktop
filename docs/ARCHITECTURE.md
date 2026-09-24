@@ -673,9 +673,14 @@ water, what is picked from each garden, an apple, a leaf, a blossom, and the Z t
 a house somebody is asleep in. It rebuilds the ground's vertices only when object state, a garden's
 stage, cottages, home state, habitat, display geometry, or scale changes.
 
-Dwellings and trees come from one 512×256 village atlas of 64-pixel cells, eight across: the six
+Dwellings and trees come from one 560×320 village atlas of 80-pixel cells, seven across: the six
 houses by day and the keepsake tree in the top row, the same six with their residents at home in
-the second, and the same again lit from inside after dark in the two rows below. Every house has a
+the second, and the same again lit from inside after dark in the two rows below. The cells grew
+from 64 pixels in 0.61.0, when the houses were drawn a quarter larger; the atlas lost the eighth
+column it had never drawn in, which had only kept its width a round 512. The tree stays the size it
+was, drawn in its own 64-pixel cell (`TREE_CELL`) and set into the middle of its village cell on
+the ground line the houses share (`TREE_INSET`), so its keepsake anchors are measured exactly as
+they always were. Every house has a
 cell of its own because each is hung with its own resident's curtain and wears its own
 decorations, so a village needs one cell per house rather than one per kind. A house somebody is
 inside has the curtain drawn right across its door, hanging in folds with lamplight under the hem,
@@ -688,9 +693,15 @@ quads against one texture and bind group. A house being seen to by its keeper le
 while the chore lasts: the top of its quad moves a pixel or so, its foot never. The texture is keyed
 on `VillageLook` — the drawn genome, each house's kind, its decorations, and its curtain — so any of
 those changing redraws it once. The Home page only ever draws the houses by day with nobody home,
-so it holds just the top row, 512×64. Decorations resolve their attachment points from the style's
+so it holds just the top row, 560×80. Decorations resolve their attachment points from the style's
 own silhouette — peak, eaves, walls, and ground line — so a banner hangs from the real roof rather
 than a shared canvas height.
+
+Every drawing is written at the size the colony house had until 0.61.0, `DRAWN_SPAN` = 24
+twenty-fourths, and scaled from there: the colony house draws at `MAIN_SPAN` = 30, a quarter
+larger, and a companion's cottage at `COTTAGE_SPAN` = 25, still five-sixths of it. A style's
+details scale through the same ratio, so a bigger house is the same house rather than a different
+one; single-pixel outlines stay a pixel.
 
 Each style is drawn in the creatures' own pixel-art language, from `shelter/houses.rs`: separate
 materials for the roof or canopy, the walls or supports, and the trim, each with a base, a shade
@@ -906,32 +917,40 @@ wall's edge or air a neighbour may reach over. `REST_WALL_SLIVER` is 9, `OBJECT_
 drawn width of a belonging, not the quad it is cut from), and `REST_CLEAR_RATIO` is unchanged and
 still const-asserted equal to `world::spacing::FACE_CLEAR_RATIO`.
 
-The widest village — six houses, eight belongings, both trees — measures 423 shelter pixels end to
-end, against a `VILLAGE_SPAN_LIMIT` of 448 inherited from the four-companion village that used to
-take 445. Six houses now fit in less ground than four did with a doorstep each, and a village lays
-out only the houses it has: a founder on its own is 178, and three houses are 276. The 305 between
-the trees is dwelling footprint and seam, and nothing else — everything the strip used to spend on
-standing room and belongings it no longer spends at all.
+The widest village — six houses, eight belongings, both trees — measures 465 shelter pixels end to
+end, against a `VILLAGE_SPAN_LIMIT` of 468. Until 0.61.0 it measured 423 against 448, a limit
+inherited from the four-companion village that used to take 445; then the houses were drawn a
+quarter larger and their footprints grew from 60 and 46 to 70 and 56 — less than the drawings,
+because shadows and decorations did not grow with them — and the village about a tenth. A village
+lays out only the houses it has: a founder on its own is 170, and three houses are 288. The 353
+between the trees is dwelling footprint and seam, and nothing else.
 
 A keepsake tree stands at each end of the walk, claiming `TREE_WIDTH` = 56 shelter pixels of lot.
 The art reaches ±27 from the trunk across all nine lean-and-tilt combinations, so the lot is a
-pixel of air past the widest thing in it. `HOME_EDGE_MARGIN` keeps its formula —
-`DwellingKind::Main.width() / 2 + VILLAGE_GAP + TREE_WIDTH` — and so reserves the outward tree's
+pixel of air past the widest thing in it. Each tree's lot reaches `TREE_OVERLAP` = 6 in over the
+end house's footprint rather than standing a seam clear of it: that is the house's shadow and
+whatever decoration stands on the ground beside its wall, never the wall. Where the two drawings
+meet, the tree is in front — the overlay draws the trees after the houses, the Home page's
+preview gives them a layer between the houses and the keepsakes, and the colony card, the
+postcards and the review sheets all lay them down in that order. `HOME_EDGE_MARGIN` is
+`DwellingKind::Main.width() / 2 − TREE_OVERLAP + TREE_WIDTH`, which reserves the outward tree's
 whole lot against the edge of the display. The inward tree needs no margin of its own: the strip
 runs away from the edge, and a region that cannot take the inward end simply does not show it.
 
 The two trees have sixteen hooks between them, `TREE_HOOKS`: hooks 0–7 are the outward tree's, by
 the colony house, and 8–15 the inward tree's at the far end. `TreeEnd::of_hook` says which, and
 `TRINKETS_PER_TREE` = 8 is also the length of `formiga_art::TRINKET_ANCHORS` — four pairs mirrored
-about the middle of the cell, highest and most central filled first. `hung_keepsakes` decides what
-hangs on each hook. With nothing chosen, the original sixteen finds keep the hooks numbered after
-them, exactly where they always hung, and anything found since fills the hooks still empty in the
-order it was found; with a `TreeKeepsakes` choice from the Collection, exactly what was chosen,
+about the middle of the tree's own 64-pixel cell, highest and most central filled first. Anything
+that places a keepsake in a village cell adds `TREE_INSET` to its anchor, and the overlay measures
+from the foot of `TREE_CELL`, which is the foot of the village cell too. `hung_keepsakes` decides
+what hangs on each hook. With nothing chosen, the original sixteen finds keep the hooks numbered
+after them, exactly where they always hung, and anything found since fills the hooks still empty in
+the order it was found; with a `TreeKeepsakes` choice from the Collection, exactly what was chosen,
 less anything the scrapbook does not hold. `formiga_art::hook_place(hook)` answers with the end and
 the anchor as it is actually drawn there, and `hung_trinkets` pairs every hung keepsake with both.
 Because the anchor set is mirror-symmetric, the inward tree is the same atlas cell sampled with its
-horizontal UVs swapped: still one village texture and one extra bind group, and every keepsake
-still meets the cord drawn down to it. The overlay draws one 16×16 quad per hung keepsake from the
+horizontal UVs swapped: still one village texture and one extra bind group, and every keepsake still
+meets the cord drawn down to it. The overlay draws one 16×16 quad per hung keepsake from the
 colony's own trinket atlas, sixteen at most. `colony_card.rs` draws both trees the same way, the
 inward one mirrored, so a portrait is not left with orphaned clusters at each end.
 
@@ -1502,32 +1521,33 @@ deliberately no history database or telemetry layer. Update preferences live in 
 
 ## Native colony interface (save v14)
 
-`clubhouse.rs` holds only on-demand UI artwork and interaction state, with the Home page's
-preview and shelves in `clubhouse/arrange.rs` and the Collection, the Journal's scrapbook and each
+`clubhouse.rs` holds only on-demand UI artwork and interaction state, with the Home page's preview
+and shelves in `clubhouse/arrange.rs` and the Collection, the Journal's scrapbook and each
 companion's wardrobe in `clubhouse/collection.rs`; `settings.rs` owns its egui window and
 presentation. Four static portraits, four eight-frame candidate strips (six walk frames and two
 expressions each), the top row of the village atlas, the object sheet, the resting half of the
-colony trinket sheet, and a companion trying something on in four poses fit within 760 KiB of
+colony trinket sheet, and a companion trying something on in four poses fit within 807 KiB of
 artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
-24 KiB more pixels in a single texture, 432 KiB until 0.59.0 gave every house a cell of its own,
-496 KiB until the object strip grew from eight cells to fourteen, and 500 KiB until 0.60.0 brought
-ten times the keepsakes (128 KiB more, even holding only the resting half), an object sheet with
-every garden stage, spot, ornament and village prop (98 KiB more), and the try-on poses (36 KiB);
-the Home page's village shrank to the one row it draws and cost nothing more. Tiles in a wrapped
-row — the Collection, the pins, the shelves — are each allocated whole and painted into, because an
-egui `Frame` places itself before its row decides whether it still fits and so never wraps. A frame,
-a column or a combo box with text in it — the cards under Life here, a companion's descriptors, the
-studio's candidates, the try-on poses, the display chooser — is measured first and handed to
-`make_room`, which starts the next row when this one has no room left; a row of text that has to
-fit a narrow window is a `horizontal_wrapped`, so its text carries on onto the next line. egui
-widens a page to fit whatever is too wide for it, so one row that did not fit took the rest of the
-page past the window's edge with it. `no_page_is_drawn_past_the_edge_of_its_window` draws every
+24 KiB more pixels in a single texture, 432 KiB until 0.59.0 gave every house a cell of its own, 496
+KiB until the object strip grew from eight cells to fourteen, and 500 KiB until 0.60.0 brought ten
+times the keepsakes (128 KiB more, even holding only the resting half), an object sheet with every
+garden stage, spot, ornament and village prop (98 KiB more), and the try-on poses (36 KiB); the Home
+page's village shrank to the one row it draws and cost nothing more. It was 760 KiB until 0.61.0
+drew the houses a quarter larger, and that row grew from 512×64 to 560×80 (47 KiB more). Tiles in a
+wrapped row — the Collection, the pins, the shelves — are each allocated whole and painted into,
+because an egui `Frame` places itself before its row decides whether it still fits and so never
+wraps. A frame, a column or a combo box with text in it — the cards under Life here, a companion's
+descriptors, the studio's candidates, the try-on poses, the display chooser — is measured first and
+handed to `make_room`, which starts the next row when this one has no room left; a row of text that
+has to fit a narrow window is a `horizontal_wrapped`, so its text carries on onto the next line.
+egui widens a page to fit whatever is too wide for it, so one row that did not fit took the rest of
+the page past the window's edge with it. `no_page_is_drawn_past_the_edge_of_its_window` draws every
 page whole, 760 and 940 points wide at 100%, 125% and 150% text, and fails on anything drawn past
-the edge of the area that shows it. The home preview draws the whole corner — houses, both
-trees, the keepsakes hung in them, and the belongings in the yards — from the village, trinket,
-and object atlases the desktop already samples, positioned by the very layout functions the
-overlay uses, so a complete village costs the same three textures whatever its size and nothing
-about looking at it calls the colony home or moves a creature.
+the edge of the area that shows it. The home preview draws the whole corner — houses, both trees,
+the keepsakes hung in them, and the belongings in the yards — from the village, trinket, and object
+atlases the desktop already samples, positioned by the very layout functions the overlay uses, so a
+complete village costs the same three textures whatever its size and nothing about looking at it
+calls the colony home or moves a creature.
 
 The last change to who lives here or how the village is laid out can be taken back. The app makes
 each such change through `World::edit(ColonyEdit, change)`, which applies it and, if it changed the
@@ -1558,7 +1578,9 @@ Playback selects cached UVs at six fps only on the visible Studio page with expl
 reduced motion suppresses playback. Repaint deadlines join the existing event-loop deadline and are
 cleared when hidden/occluded. No extra thread or timer loop is introduced.
 
-`CompanionState` adds a maximum 64-entry typed journal, onboarding flag, optional quiet expiry, and
+`CompanionState` adds a maximum 64-entry typed journal, the flag that says the tour has been
+finished or skipped (`onboarding_complete`, named for the introduction it replaced), optional quiet
+expiry, and
 two optional behavior presets. Projection reuses existing events; continuous observations never
 enter the journal. A close friendship is recorded only when affinity crosses the existing close-bond
 threshold. Repeated equal moments are throttled for six hours. Quiet mode holds the existing home
@@ -1855,3 +1877,27 @@ seconds for a copied gesture to twenty for hide and seek, with a staring contest
 between 3.5 and seven depending on how steady the pair is; every scene is then followed by a
 45-second play cooldown, and interruption never claims a completed interaction. Reduced motion
 retains stationary looks and expressions. No game writes a journal entry.
+
+## The tour
+
+A colony that has never finished or skipped the tour is given it the first time the settings
+window opens: `clubhouse/tour.rs`, eighteen steps in a fixed order — the desktop basics on the Your
+colony page first, then every page from the top of the rail to the bottom, and back. Each step
+names its page, what it says, and optionally a `TourMark` (a part of the page it points at) and
+something it asks to be tried on the desktop.
+
+The card is drawn above the page's scroll area rather than on the page, so it stays in view while
+the page scrolls to whatever the step points at. As a step begins, the tour turns to its page; a
+page chosen from the rail part way through shows a short card saying which page the tour is
+waiting on, with a way back. Sections the tour can point at call `Clubhouse::tour_mark` with their
+rectangle after they are drawn: the one the step names is outlined and, once per step, scrolled
+into view.
+
+The three desktop steps notice being tried — a pet, a companion set down or tossed, a right-click
+menu opened — by comparing the colony's own counters, and the app's count of menus opened, with
+their values when the step began, so taking the tour again asks for each to be tried again.
+Nothing about where the tour has got to is saved: finishing or skipping it sets
+`onboarding_complete`, which `World::new` leaves false and every older colony has true, and a
+window closed part way keeps its place for as long as Formiga runs, because closing the settings
+window only hides it. Preferences offers "Take the tour" to start it again from the first step.
+

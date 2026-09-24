@@ -7,6 +7,7 @@
 //! choose one thing to wear, made from a find, with a look at how it sits in each of a few poses
 //! before it is put on.
 
+use super::tour::TourMark;
 use super::*;
 use formiga_art::AccessoryArt;
 use formiga_core::{Accessory, AccessoryKind, TREE_HOOKS, available_accessories, hung_keepsakes};
@@ -98,7 +99,7 @@ impl Clubhouse {
         let found = &save.companion.scrapbook;
         let hung = hung_keepsakes(save.home.tree_keepsakes.as_ref(), found);
         let hanging = hung.iter().flatten().count();
-        card(ui, |ui| {
+        let collection = card(ui, |ui| {
             ui.label(
                 RichText::new(format!(
                     "COLLECTION · {} of {} found",
@@ -201,6 +202,7 @@ impl Clubhouse {
                 }
             });
         });
+        self.tour_mark(ui, TourMark::Collection, collection.response.rect);
     }
 
     /// The finds themselves, for the Journal: only what has actually turned up, newest first,
@@ -327,7 +329,7 @@ impl Clubhouse {
         let poses = self.try_on_poses(ui, save, creature, trying);
         let atlas = self.trinket_atlas(ui, save);
         let mut pointed: Option<Option<Accessory>> = None;
-        ui.group(|ui| {
+        let wardrobe = ui.group(|ui| {
             ui.horizontal(|ui| {
                 ui.strong("Wears");
                 ui.label(creature.accessory.map_or_else(
@@ -438,6 +440,7 @@ impl Clubhouse {
                     });
             }
         });
+        self.tour_mark(ui, TourMark::Wardrobe, wardrobe.response.rect);
         // What the pointer is over now is what the poses show next frame; moving off every
         // choice goes back to what is actually worn.
         self.collection.trying = pointed.map(|candidate| (creature.id, candidate));

@@ -1,4 +1,4 @@
-# Modular creature generation · v0.60.1
+# Modular creature generation · v0.61.0
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -150,7 +150,7 @@ whole village.
 
 `ShelterRenderer::render_village` bakes every house — the colony house and a cottage per later
 full-size companion, each hung with its resident's curtain — by day and lit after dark, and the
-keepsake tree, into one 256×256 atlas of 64px cells, each drawn into its own cell-sized tile first
+keepsake tree, into one 560×320 atlas of 80px cells, each drawn into its own cell-sized tile first
 so nothing bleeds into a neighbour. The tree shares the house's own style, palette, and baseline,
 so it belongs to the same yard. Every dwelling and every tree is one quad sampling that single
 texture — the inward tree samples the tree cell with its horizontal UVs swapped — so the village

@@ -2,6 +2,56 @@
 
 All notable changes are documented here.
 
+## [0.61.0] - 2026-09-24
+
+### Added
+
+- A tour for a new colony. The first time the settings window opens on a colony that has never
+  finished or skipped it, a card above the page walks through eighteen steps: the desktop basics
+  on the Your colony page — petting a companion, carrying one, its right-click menu, and the
+  menu-bar or tray icon — and then every page of the window from the top of the rail to the
+  bottom, and back. The card stays in view above the page while the page scrolls to whatever the
+  step is about, which it outlines. It turns the pages itself; a page chosen from the rail part
+  way through shows which page the tour is waiting on, with a way back. The three desktop steps
+  notice being tried, counted from the moment each step begins. Back, Next, and Skip the tour are
+  on every step, and Take the tour in Preferences, in place of Show introduction again, starts it
+  again. It replaces the four-card introduction. Nothing new is saved: finishing or skipping sets
+  the flag the introduction set, which an older colony already has, so it is not shown the tour
+  unasked; a window closed part way keeps its place until Formiga quits.
+
+### Changed
+
+- The houses are drawn a quarter larger beside the companions. Every house was drawn at the colony
+  house's size in twelfths; they are now written at that old size in twenty-fourths and drawn at
+  thirty for the colony house and twenty-five for a cottage, so every detail scales with the house
+  and a single-pixel outline stays a pixel. The village atlas's cells grew from 64 pixels to 80,
+  the footprints the village reserves from 60 and 46 to 70 and 56 — less than the drawings,
+  because shadows and decorations did not grow with them — and every roof a quarter higher, where
+  the simulation seats a roof sitter within two pixels of it as before. The keepsake trees keep
+  their size, in their own 64-pixel cell set into the middle of the village's on the houses'
+  ground line.
+- The village is about a tenth wider: a full village of six measures 465 shelter pixels rather
+  than 423, a founder's 170 rather than 178, and three houses 288 rather than 276. Each tree
+  stands six pixels in over the end house's ground rather than a seam clear of it — its shadow
+  and whatever decoration stands beside the wall, never the wall — and wherever a tree and a house
+  meet, the tree is drawn in front: on the desktop, in the Home page's preview, on the colony
+  card, on the postcards, and on the review sheets.
+- The colony card and the postcards keep drawing a village at the scale they did, so its houses
+  stand a quarter taller beside the colony there too. The height they allow the colony house rose
+  by the same quarter: from 90 to 113 on the card, and from 72 to 90 on the postcards, 118 to 148
+  at dusk.
+- The village atlas is 560×320 rather than 512×256: seven cells across of 80 pixels rather than
+  eight of 64, since the eighth column was never drawn in. It costs 716,800 bytes on each display
+  rather than 524,288, and the Home page's row of it is 560×80, which moves the settings window's
+  artwork budget from 760 KiB to 807. The simulation costs what it did on `tick-bench`: a tick of
+  six companions on a busy desktop with the cursor about took 6.36 µs against 6.44, and six at
+  home 3.34 against 3.34.
+
+### Fixed
+
+- The Creature studio counted the colony against a cap of four companions and three full-size
+  ones, which had been six and six since 0.58.7; it now says how many of six there are.
+
 ## [0.60.1] - 2026-09-23
 
 ### Fixed

@@ -58,7 +58,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Village moments: offered only while the houses are out, in sight, unpaused and with two companions free, rechecked when chosen; a picnic lines everyone up face-clear on the commons facing the middle, eats and drinks by turns, and hands them back with a journal line and a bond per pair | CI | CI |
 | A dance poses every dancer and ends with each one's own celebration; reduced motion offers no dance and shares a moment in place; too few willing means no moment, and a sleeper stays asleep | CI | CI |
 | Stopping, hiding or pausing ends a moment with no journal line and no bond; the houses wait for a moment under way; a pet leaves it going, something held out on the way takes one companion out and mid-moment is turned down, and a pick-up sends the houses and the moment away; the dance is never scheduled | CI | CI |
-| Houses: every house a cell of its own by day and after dark, with and without somebody at home, plus the tree in one 512x256 atlas, the Home page's row exactly its top; a resident's curtain only in its doorway; after dark only lamplight changes; somebody at home draws the curtain across the door and lights a window without changing the silhouette; each house carries its keeper's mark and a mini adds none; doorways, footprints and decoration anchors held for every style, span, curtain and night | CI | CI |
+| Houses: every house a cell of its own by day and after dark, with and without somebody at home, plus the tree in one 560x320 atlas, the Home page's row exactly its top; a resident's curtain only in its doorway; after dark only lamplight changes; somebody at home draws the curtain across the door and lights a window without changing the silhouette; each house carries its keeper's mark and a mini adds none; doorways, footprints and decoration anchors held for every style, span, curtain and night | CI | CI |
 | Decorations: thirty, each for one of a house's six places and five for every place; a house wears one per place and only what the village has; each drawn deterministically and changing the house; a house dressed in everything stays inside its own lot | CI | CI |
 | The village gains something new every 24–48 hours on a deterministic schedule, one after downtime and in time everything, chosen by what the colony has been doing; a new decoration goes up on the colony house when its place there is free | CI | CI |
 | Gardens grow round sprout, growing, grown and at their fullest by themselves at each kind's own pace, and the overlay draws each at its stage | CI | CI |
@@ -79,9 +79,11 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Image aspect/alpha handling, dominant/accent colors, blank and extreme references | CI | CI |
 | v11 save preservation, v1/v2/v3 code validation, exact design add/replace/save/share, and a v16 colony opening unchanged in v17 | CI | CI |
 | Mirrored village layout: separated lots, shared ground line, scale changes, missing/narrow displays, and a narrow corner giving up a tree before a house | CI | CI |
-| Village atlas cells match their own dwelling and never bleed into a neighbour; both trees come from the fourth cell, the inward one mirrored | CI | CI |
+| Village atlas cells match their own dwelling and never bleed into a neighbour; both trees come from the tree's own cell, set into the middle of the seventh on the houses' ground line, the inward one mirrored | CI | CI |
+| Houses drawn a quarter larger than before 0.61.0: every genome, bare or dressed in everything, inside the 70- and 56-pixel footprints the village reserves; roofs a quarter higher and the simulation's roof still within two pixels of each; the colony card and postcards keep the scale they drew a village at | CI | CI |
+| A keepsake hung in a tree lands on the very pixel of the atlas's tree cell its anchor names, at every drawing scale | CI | CI |
 | Companion houses per colony member, with matching half-size cottages for minis | CI | CI |
-| Two trees bookending the houses: the widest village inside its 448-pixel span limit at the tightest scale and on a real display, both corners identical, and each tree's whole lot clear of the screen edge | CI | CI |
+| Two trees bookending the houses: the widest village inside its 468-pixel span limit at the tightest scale and on a real display, both corners identical, each tree's whole lot clear of the screen edge, no house on another's ground, and each tree reaching exactly `TREE_OVERLAP` in over its end house and drawn in front of it | CI | CI |
 | Six companions with a house for every full-size one, a mini coming home to its big version's, and the widest village still inside its span limit | CI | CI |
 | Companions roam the commons between the trees: on it, spaced, out of the yards, and still where a hidden or reduced-motion colony left them | CI | CI |
 | Topping out a climb hauls straight up and then steps in, with no sideways drift | CI | CI |
@@ -95,6 +97,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Keepsakes and belongings in the yards: sixteen hooks, one tree and one anchor each; the trees fill themselves until chosen, the first sixteen finds keeping their hooks; every hung keepsake drawn once inside its own tree's cell; four belongings to each yard fixed by slot, `BELONGING_CLEARANCE` held after the per-colony drift, and no resident standing on one | CI | CI |
 | Collection and scrapbook: the Journal lists only what has been found; the Your colony page shows all hundred and sixty in a wrapped grid, hangs one in the trees or takes it down, and lets the trees fill themselves again | CI | CI |
 | Every settings page, drawn whole 760 and 940 points wide at 100%, 125% and 150% text, leaves nothing drawn past the edge of the area that shows it, the navigation rail included | CI | CI |
+| The tour: a new colony is shown round every page in rail order, wherever the window opened, and can finish; Back returns a step and Skip ends it from any; it notices a pet, a companion set down or tossed, and a menu opened from the moment each step begins, not before; Preferences starts it again; a page chosen part way through leads back to it; every step's card fits the smallest window at the largest text | CI | CI |
 | Belonging colors stay distinct from every creature palette they are carried against | CI | CI |
 | Four-total/three-adult/two-minis-per-adult caps, even distribution, and oldest-adult tie-break | CI | CI |
 | Keep replacement guard, bulk regeneration, final-adult protection, reparenting, and relationship normalization | CI | CI |
@@ -222,7 +225,7 @@ it, matching the contact anchor the tests assert numerically. Nothing in those s
 change. The three geometry games have no sheet of their own; they are covered by the assertions
 below.
 
-Native follow-up checks remain pending on macOS and Windows: introduction pet/drag observations,
+Native follow-up checks remain pending on macOS and Windows: the tour's pet, drag and menu observations,
 open/close/minimize during preview playback, multi-display home edits and reconnects, native
 export/restore cancellation and dialogs, tray quiet-mode expiry, keyboard navigation, the dark
 palette and text scaling under each platform's own appearance setting and its system-appearance

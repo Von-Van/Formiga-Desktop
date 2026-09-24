@@ -21,8 +21,18 @@
 use crate::{Canvas, PALETTES, Rgba};
 use formiga_core::{ShelterGenome, TreeEnd};
 
-/// The tree is drawn into one shelter cell, on the same ground line the houses stand on.
-pub const TREE_CELL: u32 = crate::SHELTER_SIZE;
+/// The tree's own cell, which its keepsake anchors are measured in. It stays the size it always
+/// was when the houses grew a quarter in 0.61.0, and stands in the middle of its larger village
+/// cell on the same ground line the houses stand on, three pixels above the foot of both.
+pub const TREE_CELL: u32 = 64;
+
+/// Where the tree's own cell sits inside its larger cell of the village atlas: across the middle,
+/// and down on the ground line the houses stand on. Add it to an anchor to find that anchor in
+/// the village cell.
+pub const TREE_INSET: (i32, i32) = (
+    (crate::SHELTER_SIZE - TREE_CELL) as i32 / 2,
+    (crate::SHELTER_SIZE - TREE_CELL) as i32,
+);
 /// The ground line inside the cell, shared with `draw_dwelling`.
 const GROUND_Y: i32 = 61;
 /// The middle of the cell.

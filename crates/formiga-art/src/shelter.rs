@@ -4,28 +4,41 @@ use formiga_core::{ShelterDecorationKind, ShelterGenome, ShelterStyle};
 mod decorations;
 mod houses;
 
-pub const SHELTER_SIZE: u32 = 64;
+/// One cell of the village atlas: room for the largest house drawn a quarter larger than it was
+/// until 0.61.0, standing on a ground line three pixels above the cell's foot.
+pub const SHELTER_SIZE: u32 = 80;
+
+/// Where a dwelling stands in its cell: across the middle, on the ground line the tree shares.
+const CELL_CENTRE: i32 = SHELTER_SIZE as i32 / 2;
+const CELL_GROUND: i32 = SHELTER_SIZE as i32 - 3;
 
 /// The houses one village atlas holds: the colony house, and a cottage for each full-size
 /// companion after the first. A mini lives in its big version's house, so there is never more
 /// than one house per companion.
 pub const VILLAGE_HOUSES: usize = formiga_core::MAX_COLONY_CREATURES;
 
-/// Eight cells across and four down. The top row is every house by day and the keepsake tree; the
-/// second row the same houses by day with somebody at home; the third and fourth rows the same
-/// again lit from inside after dark. The daylit half on its own is what the Home page and the
-/// colony portrait draw from.
-pub const VILLAGE_ATLAS_COLUMNS: u32 = 8;
+/// Seven cells across, a house for each companion and the tree, and four down. The top row is
+/// every house by day and the keepsake tree; the second row the same houses by day with somebody
+/// at home; the third and fourth rows the same again lit from inside after dark. The daylit half
+/// on its own is what the Home page and the colony portrait draw from. There were eight columns,
+/// one of them never drawn in, until the cells grew in 0.61.0 and 512 pixels stopped being a
+/// round width worth keeping an empty column for.
+pub const VILLAGE_ATLAS_COLUMNS: u32 = VILLAGE_HOUSES as u32 + 1;
 pub const VILLAGE_ATLAS_WIDTH: u32 = SHELTER_SIZE * VILLAGE_ATLAS_COLUMNS;
 pub const VILLAGE_ATLAS_HEIGHT: u32 = SHELTER_SIZE * 4;
 /// The height of the daylit half of the village atlas.
 pub const VILLAGE_DAY_HEIGHT: u32 = SHELTER_SIZE * 2;
 
-/// How large each dwelling draws, in twelfths of the colony house. A companion cottage is only
-/// a little smaller than the house it stands beside — small enough that the colony house is
-/// plainly the main building, big enough to read as a home next to a 48px creature.
-pub const MAIN_SPAN: i32 = 12;
-pub const COTTAGE_SPAN: i32 = 10;
+/// The span every drawing's proportions are written at: the colony house as it was drawn until
+/// 0.61.0. A dwelling at any other span is the same drawing scaled by `span / DRAWN_SPAN`.
+pub const DRAWN_SPAN: i32 = 24;
+
+/// How large each dwelling draws, in twenty-fourths of the colony house as it was drawn until
+/// 0.61.0: both a quarter larger now, beside the same 48px creatures, and a companion cottage
+/// still five-sixths of the colony house — small enough that the colony house is plainly the
+/// main building, big enough to read as a home.
+pub const MAIN_SPAN: i32 = 30;
+pub const COTTAGE_SPAN: i32 = 25;
 
 /// One cell of the village atlas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -208,10 +221,12 @@ impl ShelterRenderer {
                 }
             }
         }
-        let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-        crate::tree::draw_tree(&mut tile, genome, 32, 61);
+        // The tree keeps its own size and its own cell, and stands in the middle of its village
+        // cell on the ground line the houses share.
+        let tree = crate::KeepsakeTreeRenderer::render(genome);
         let (x, y) = Self::village_cell(VillageCell::Tree);
-        blit_cell(&mut canvas, &tile, x as i32, y as i32);
+        let (inset_x, inset_y) = crate::TREE_INSET;
+        blit_cell(&mut canvas, &tree, x as i32 + inset_x, y as i32 + inset_y);
         canvas
     }
 
@@ -227,7 +242,7 @@ impl ShelterRenderer {
             Dwelling::in_slot(1)
         };
         draw_dwelling(&mut tile, &house, &[], dwelling);
-        (29..=35)
+        (dwelling.cx - 3..=dwelling.cx + 3)
             .filter_map(|x| (0..SHELTER_SIZE as i32).find(|y| tile.get(x, *y).a > 0))
             .max()
             .map_or(0, |top| dwelling.bottom - top)
@@ -236,8 +251,8 @@ impl ShelterRenderer {
 
 /// Copies one cell-sized tile into the atlas, leaving whatever is already under its empty pixels.
 fn blit_cell(canvas: &mut Canvas, tile: &Canvas, origin_x: i32, origin_y: i32) {
-    for y in 0..SHELTER_SIZE as i32 {
-        for x in 0..SHELTER_SIZE as i32 {
+    for y in 0..tile.height() as i32 {
+        for x in 0..tile.width() as i32 {
             let pixel = tile.get(x, y);
             if pixel.a > 0 {
                 canvas.set(origin_x + x, origin_y + y, pixel);
@@ -250,8 +265,8 @@ fn blit_cell(canvas: &mut Canvas, tile: &Canvas, origin_x: i32, origin_y: i32) {
 /// own proportions, so a mini's home is the same house seen smaller rather than a different one.
 fn dwelling_size(genome: &ShelterGenome, span: i32) -> (i32, i32) {
     (
-        (i32::from(genome.width).clamp(34, 42) * span / MAIN_SPAN).max(16),
-        (i32::from(genome.height).clamp(27, 36) * span / MAIN_SPAN).max(13),
+        (i32::from(genome.width).clamp(34, 42) * span / DRAWN_SPAN).max(16),
+        (i32::from(genome.height).clamp(27, 36) * span / DRAWN_SPAN).max(13),
     )
 }
 
@@ -271,8 +286,8 @@ struct Dwelling {
 impl Dwelling {
     const fn main() -> Self {
         Self {
-            cx: 32,
-            bottom: 61,
+            cx: CELL_CENTRE,
+            bottom: CELL_GROUND,
             span: MAIN_SPAN,
             mark: None,
             lit: false,
@@ -308,7 +323,7 @@ fn draw_dwelling(
     let (width, height) = dwelling_size(genome, span);
     // Style details scale with the dwelling, so a mini's house keeps the proportions of the
     // colony house it matches. At full span this resolves to the original constants exactly.
-    let unit = |value: i32| (value * span / MAIN_SPAN).max(1);
+    let unit = |value: i32| (value * span / DRAWN_SPAN).max(1);
 
     // A single-pixel ground shadow keeps every generated shelter readable on bright desktops.
     canvas.fill_ellipse(
@@ -379,7 +394,7 @@ impl ShelterFrame {
         let (width, height) = dwelling_size(genome, span);
         let top = bottom - height;
         let half = width / 2;
-        let unit = |value: i32| (value * span / MAIN_SPAN).max(1);
+        let unit = |value: i32| (value * span / DRAWN_SPAN).max(1);
         let cottage = span < MAIN_SPAN;
         match genome.style {
             ShelterStyle::Tent => Self {
@@ -550,9 +565,10 @@ mod tests {
                 })
                 .collect();
             let village = ShelterRenderer::render_village(&genome, &dressed, &marks, &[], true);
-            // One 512x256 texture however full the village: every house by day and after dark,
+            // One 560x320 texture however full the village: every house by day and after dark,
             // with and without its resident home, and the tree.
-            assert_eq!(VILLAGE_ATLAS_WIDTH, 512);
+            assert_eq!(VILLAGE_ATLAS_WIDTH, 560);
+            assert_eq!(VILLAGE_ATLAS_HEIGHT, 320);
             assert_eq!(village.width(), VILLAGE_ATLAS_WIDTH);
             assert_eq!(village.height(), VILLAGE_ATLAS_HEIGHT);
             for (lit, occupied) in [(false, false), (false, true), (true, false), (true, true)] {
@@ -585,9 +601,11 @@ mod tests {
                     }
                 }
             }
-            // The seventh cell of the top row holds the keepsake tree, and nothing else.
+            // The seventh cell of the top row holds the keepsake tree, and nothing else: the tree
+            // in its own smaller cell, in the middle of this one and on the same ground line.
             let mut tree = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
-            crate::tree::draw_tree(&mut tree, &genome, 32, 61);
+            let (inset_x, inset_y) = crate::TREE_INSET;
+            crate::tree::draw_tree(&mut tree, &genome, 32 + inset_x, 61 + inset_y);
             let (tx, ty) = ShelterRenderer::village_cell(VillageCell::Tree);
             for y in 0..SHELTER_SIZE as i32 {
                 for x in 0..SHELTER_SIZE as i32 {
@@ -645,8 +663,8 @@ mod tests {
                 let hung = draw(Some(mark(3)), false);
                 let (door_width, door_height) = houses::House {
                     style,
-                    cx: 32,
-                    bottom: 61,
+                    cx: CELL_CENTRE,
+                    bottom: CELL_GROUND,
                     width: dwelling_size(&genome, span).0,
                     height: dwelling_size(&genome, span).1,
                     span,
@@ -662,7 +680,8 @@ mod tests {
                         if plain.get(x, y) != hung.get(x, y) {
                             changed += 1;
                             assert!(
-                                (x - 32).abs() <= door_width / 2 && y > 61 - door_height,
+                                (x - CELL_CENTRE).abs() <= door_width / 2
+                                    && y > CELL_GROUND - door_height,
                                 "{style:?} {span}: the curtain reached ({x}, {y})"
                             );
                         }
@@ -915,7 +934,7 @@ mod tests {
                             let (x0, _, x1, _) = tile.alpha_bounds().expect("drawn");
                             let lot = kind.width() as i32 / 2 + slack;
                             assert!(
-                                32 - x0 as i32 <= lot && x1 as i32 - 32 < lot,
+                                CELL_CENTRE - x0 as i32 <= lot && x1 as i32 - CELL_CENTRE < lot,
                                 "{style:?} {width}x{height} {kind:?} dressed {dressed:?} reaches {x0}..={x1}, past its {} lot",
                                 kind.width()
                             );
@@ -1001,7 +1020,8 @@ mod tests {
             };
             let main = ShelterRenderer::roof_height(&genome, style, true);
             let cottage = ShelterRenderer::roof_height(&genome, style, false);
-            assert!((20..=40).contains(&main), "{style:?}: {main}");
+            // A quarter taller than the 20 to 40 they reached until 0.61.0.
+            assert!((25..=50).contains(&main), "{style:?}: {main}");
             assert!(cottage < main, "{style:?}: {cottage} against {main}");
         }
     }

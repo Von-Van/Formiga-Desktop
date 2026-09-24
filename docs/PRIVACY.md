@@ -246,10 +246,10 @@ and preserves existing colony files first. No backup is uploaded. Recovery copie
 filenames and are never automatically deleted; unreadable saves remain untouched until a user
 chooses recovery or a valid backup safely repairs the primary.
 
-The introduction completion flag, at most two saved behavior presets, a quiet-mode expiry timestamp,
-and six decoration-visibility bits are also local. Studio comparisons retain at most four temporary
-candidates; closing the window releases their artwork. Color/body locks use only generated design
-recipes, never a retained source image.
+Whether the tour has been finished or skipped, at most two saved behavior presets, a quiet-mode
+expiry timestamp, and six decoration-visibility bits are also local. Studio comparisons retain at
+most four temporary candidates; closing the window releases their artwork. Color/body locks use only
+generated design recipes, never a retained source image.
 
 
 Environmental curiosity uses the same rectangles, stacking order, and actual scan times. Its

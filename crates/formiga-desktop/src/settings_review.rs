@@ -243,7 +243,9 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
                         .iter()
                         .map(|id| textures[id].0.pixels.len() * 4)
                         .sum();
-                    assert!(bytes <= 416 * 1024, "UI artwork exceeded budget: {bytes}");
+                    // The Home page is the heaviest: 416 KiB until 0.61.0 drew the houses a
+                    // quarter larger and its row of the village grew by 47 KiB.
+                    assert!(bytes <= 463 * 1024, "UI artwork exceeded budget: {bytes}");
                     if let Some(path) = &output_dir {
                         let jobs = context.tessellate(output.shapes, output.pixels_per_point);
                         rasterize(&jobs, &textures, width, height)
@@ -412,6 +414,10 @@ struct Harness {
     labels: Vec<(String, egui::Rect)>,
     /// Every filled or outlined rectangle drawn last frame, where it was drawn.
     rects: Vec<egui::Rect>,
+    /// How big the window is.
+    screen: egui::Vec2,
+    /// Whatever the last frame drew past the edge of the area that shows it.
+    cut: Vec<String>,
     textures: Textures,
     time: f64,
 }
@@ -433,6 +439,9 @@ impl Harness {
             bulk: false,
             labels: Vec::new(),
             rects: Vec::new(),
+            // Tall enough for the whole Home page with a full village to arrange.
+            screen: egui::vec2(1000.0, 2200.0),
+            cut: Vec::new(),
             textures: Textures::new(),
             time: 0.0,
         }
@@ -449,11 +458,7 @@ impl Harness {
     fn frame(&mut self, events: Vec<egui::Event>) -> SettingsOutcome {
         self.time += 0.05;
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                // Tall enough for the whole Home page with a full village to arrange.
-                egui::vec2(1000.0, 2200.0),
-            )),
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.screen)),
             time: Some(self.time),
             events,
             ..Default::default()
@@ -485,6 +490,7 @@ impl Harness {
         });
         self.labels.clear();
         self.rects.clear();
+        self.cut = cut_off(&output.shapes);
         for shape in &output.shapes {
             collect_labels(&shape.shape, &mut self.labels);
             collect_rects(&shape.shape, &mut self.rects);
@@ -680,7 +686,7 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
     assert_eq!(h.click("Further").move_object, Some((0, 1)));
     h.tab = SettingsTab::Colony;
     h.save.companion.onboarding_complete = false;
-    assert!(h.click("Skip introduction").complete_onboarding);
+    assert!(h.click("Skip the tour").complete_onboarding);
 }
 
 /// A pin is a promise that this moment will still be here. The rolling journal keeps only the
@@ -885,8 +891,10 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 /// pages hold only the resting half of the sheet (160 KiB, 128 KiB more); the object sheet grew
 /// to carry every garden at every stage, fifteen spots, fifteen ornaments and the village's
 /// props (112 KiB, 98 KiB more); the Home page's village shrank to the one row it draws (128 KiB,
-/// no change); and a companion trying something on shows four poses (36 KiB): 760 KiB.
-const ARTWORK_BUDGET: usize = 760 * 1024;
+/// no change); and a companion trying something on shows four poses (36 KiB): 760 KiB. In 0.61.0
+/// the houses were drawn a quarter larger, so the Home page's row of the village is 560x80
+/// rather than 512x64 (175 KiB, 47 KiB more): 807 KiB.
+const ARTWORK_BUDGET: usize = 807 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -1424,6 +1432,31 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
     }
 }
 
+/// Everything drawn past the edge of the area that shows it: the first text in each such shape,
+/// where it reaches, and where it is cut off.
+fn cut_off(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
+    shapes
+        .iter()
+        .filter_map(|clipped| {
+            let bounds = clipped.shape.visual_bounding_rect();
+            let clip = clipped.clip_rect;
+            (bounds.is_positive()
+                && (bounds.right() > clip.right() + 0.5 || bounds.left() < clip.left() - 0.5))
+                .then(|| {
+                    format!(
+                        "{:?} at {:.0} spans {:.0}–{:.0}, shown only {:.0}–{:.0}",
+                        first_text(&clipped.shape).unwrap_or_default(),
+                        bounds.top(),
+                        bounds.left(),
+                        bounds.right(),
+                        clip.left(),
+                        clip.right()
+                    )
+                })
+        })
+        .collect()
+}
+
 /// The first text in `shape`, to say what was cut off.
 fn first_text(shape: &egui::Shape) -> Option<String> {
     match shape {
@@ -1538,28 +1571,204 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
                     if frame < 2 {
                         continue;
                     }
-                    for clipped in &output.shapes {
-                        let bounds = clipped.shape.visual_bounding_rect();
-                        let clip = clipped.clip_rect;
-                        if bounds.is_positive()
-                            && (bounds.right() > clip.right() + 0.5
-                                || bounds.left() < clip.left() - 0.5)
-                        {
-                            cut.push(format!(
-                                "{page:?}, {width} wide, text at {text_scale}%: {:?} at {:.0} \
-                                 spans {:.0}–{:.0}, shown only {:.0}–{:.0}",
-                                first_text(&clipped.shape).unwrap_or_default(),
-                                bounds.top(),
-                                bounds.left(),
-                                bounds.right(),
-                                clip.left(),
-                                clip.right()
-                            ));
-                        }
+                    for what in cut_off(&output.shapes) {
+                        cut.push(format!(
+                            "{page:?}, {width} wide, text at {text_scale}%: {what}"
+                        ));
                     }
                 }
             }
         }
     }
     assert!(cut.is_empty(), "{} cut off: {cut:#?}", cut.len());
+}
+
+/// Where the tour is: its header, and the page it has turned to.
+fn tour_header(h: &Harness) -> Option<String> {
+    h.labels
+        .iter()
+        .find(|(text, _)| text.starts_with("TOUR · "))
+        .map(|(text, _)| text.clone())
+}
+
+/// The page each step of the tour is shown on, in order: the desktop basics and the Your colony
+/// page, then every other page from the top of the rail to the bottom, and home again.
+const TOURED: [SettingsTab; 18] = [
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Colony,
+    SettingsTab::Studio,
+    SettingsTab::Home,
+    SettingsTab::Home,
+    SettingsTab::Journal,
+    SettingsTab::Habitat,
+    SettingsTab::Applications,
+    SettingsTab::General,
+    SettingsTab::About,
+    SettingsTab::Colony,
+];
+
+#[test]
+fn a_new_colony_is_shown_round_every_page_and_can_finish_the_tour() {
+    assert_eq!(TOURED.len(), crate::clubhouse::tour::TourState::LENGTH);
+    // Wherever the window opens, the tour turns to its own first page.
+    let mut h = Harness::new(SettingsTab::Journal);
+    h.save.companion.onboarding_complete = false;
+    for (index, page) in TOURED.iter().enumerate() {
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert_eq!(
+            h.tab,
+            *page,
+            "step {} is shown on the wrong page",
+            index + 1
+        );
+        assert_eq!(
+            tour_header(&h),
+            Some(format!("TOUR · {} OF {}", index + 1, TOURED.len()))
+        );
+        let last = index + 1 == TOURED.len();
+        let outcome = h.click(if last { "Finish" } else { "Next" });
+        assert_eq!(outcome.complete_onboarding, last, "step {}", index + 1);
+    }
+    // Finished, it does not start again, though this window's save has not been told yet.
+    h.frame(Vec::new());
+    assert_eq!(tour_header(&h), None);
+    for page in [
+        SettingsTab::Colony,
+        SettingsTab::Studio,
+        SettingsTab::Home,
+        SettingsTab::Journal,
+        SettingsTab::Habitat,
+        SettingsTab::Applications,
+        SettingsTab::General,
+        SettingsTab::About,
+    ] {
+        assert!(TOURED.contains(&page), "{page:?} is not on the tour");
+    }
+}
+
+#[test]
+fn the_tour_goes_back_a_step_and_can_be_skipped_from_any() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.save.companion.onboarding_complete = false;
+    for _ in 0..9 {
+        h.click("Next");
+    }
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Studio);
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 18"));
+    h.click("Back");
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Colony);
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 9 OF 18"));
+    assert!(h.click("Skip the tour").complete_onboarding);
+    h.frame(Vec::new());
+    assert_eq!(tour_header(&h), None);
+}
+
+#[test]
+fn the_tour_notices_a_companion_petted_carried_and_asked_for_something() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.save.companion.onboarding_complete = false;
+    let tried = |h: &Harness| {
+        h.labels
+            .iter()
+            .any(|(text, _)| text == "Lovely — you've tried it!")
+    };
+    // Say hello. The fixture's companions have been petted before; only a pet from now counts.
+    h.click("Next");
+    h.frame(Vec::new());
+    assert!(!tried(&h));
+    h.save.creatures[1].memory.times_petted += 1;
+    h.frame(Vec::new());
+    assert!(tried(&h), "a pet went unnoticed");
+    // Pick them up: a toss counts as much as setting one down.
+    h.click("Next");
+    h.frame(Vec::new());
+    assert!(!tried(&h));
+    h.save.creatures[0].memory.times_tossed += 1;
+    h.frame(Vec::new());
+    assert!(tried(&h), "a toss went unnoticed");
+    // Ask for something: the app counts the menus opened on the desktop.
+    h.click("Next");
+    h.frame(Vec::new());
+    assert!(!tried(&h));
+    h.clubhouse.tour.menus_opened += 1;
+    h.frame(Vec::new());
+    assert!(tried(&h), "a menu went unnoticed");
+    // And the next step asks for nothing.
+    h.click("Next");
+    h.frame(Vec::new());
+    assert!(!tried(&h));
+}
+
+#[test]
+fn preferences_offers_the_tour_again() {
+    let mut h = Harness::new(SettingsTab::General);
+    h.frame(Vec::new());
+    assert_eq!(
+        tour_header(&h),
+        None,
+        "a colony that has taken the tour is not shown it again unasked"
+    );
+    h.click("Take the tour");
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Colony);
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 1 OF 18"));
+}
+
+#[test]
+fn the_tour_waits_on_its_own_page_and_leads_back_to_it() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.save.companion.onboarding_complete = false;
+    h.frame(Vec::new());
+    // Another page chosen from the rail, part way through.
+    h.tab = SettingsTab::Journal;
+    h.frame(Vec::new());
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text == "The tour is waiting on Your colony."),
+        "{:?}",
+        h.labels.iter().map(|(text, _)| text).collect::<Vec<_>>()
+    );
+    h.click("Back to the tour");
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Colony);
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text == "Welcome to your colony")
+    );
+}
+
+#[test]
+fn every_step_of_the_tour_fits_the_smallest_window_at_the_largest_text() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.save.companion.onboarding_complete = false;
+    configure_style(
+        &h.context,
+        AppearancePreferences {
+            text_scale: 150,
+            ..Default::default()
+        },
+    );
+    // The smallest window the app allows, drawn tall enough to show each page whole.
+    h.screen = egui::vec2(760.0, 6000.0);
+    for index in 0..TOURED.len() {
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert!(h.cut.is_empty(), "step {}: {:#?}", index + 1, h.cut);
+        if index + 1 < TOURED.len() {
+            h.click("Next");
+        }
+    }
 }

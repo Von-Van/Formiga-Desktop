@@ -1,4 +1,4 @@
-# Formiga · v0.60.1
+# Formiga · v0.61.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -92,39 +92,34 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.60.1-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.61.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
 Control-click the app and choose **Open**; on Windows, choose **More info → Run anyway**. Formiga
 will never ask you to turn off any operating-system security feature.
 
-Settings open automatically the first time you launch. After that, the menu-bar or tray icon offers
-Show/Hide, Pause, Gather Creatures, Check for Updates, Settings, and Quit. Formiga never installs an
-update on its own: when one is available it verifies the download's SHA-256 and hands the installer
-to your operating system.
+Settings open automatically the first time you launch, with a short tour you can skip. After
+that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check for Updates,
+Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
+the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.60.1
+## New in 0.61.0
 
-Choosing what a companion wears no longer jumps about under the pointer. Pointing at something
-on a companion's profile put a line above the choices saying what was being tried on, and that
-pushed every choice down out from under the pointer, so the line went away again, the choices
-sprang back, and the menu shook faster than anything in it could be clicked. With the pointer high
-on a choice, the one above slid under it instead, and a click put that on. The line is there all
-the time now, with a word on what to do when nothing is being tried on, and a choice stays the same
-size when it is pointed at, so nothing in the menu moves while you choose.
+The houses are bigger. Every house in the village is drawn a quarter larger beside your
+companions, so each one reads plainly as somebody's home now that the village can be arranged, and
+the village is about a tenth wider to hold them. The keepsake trees at either end stand a little in
+over the house beside them and are drawn in front of it where they meet, so the row sits tucked in
+between its two trees. The colony portrait and the postcards draw the houses bigger too.
 
-The settings pages also stay inside their window at larger text. At 125% and 150%, a few rows on
-the Your colony, Creature studio and Home pages were wider than a narrow window, and each took the
-rest of its page past the window's edge, where it was cut off: the far end of every row of things
-to wear, the last companion to choose from in the studio, and the choice of display to live on.
-Those rows now carry on onto the next line instead, so everything on every page can be seen and
-reached at every text size, down to the smallest window.
+A new colony is shown round. The first time Formiga opens, a tour walks through the desktop —
+petting a companion, carrying one, its right-click menu, and the icon in the menu bar or tray —
+and notices when you try each one, then through what every page of the settings window is for,
+turning the pages itself and outlining each part as it talks about it. Skip it whenever you like,
+and take it again any time from Preferences.
 
-Everything 0.60.0 brought — the village's own life, a hundred and sixty keepsakes, things to wear,
-and arranging the village in its picture — is described with every earlier release in
-[the release notes](docs/RELEASE_NOTES.md), and every change is itemised in
-[the changelog](CHANGELOG.md).
+Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
+and every change is itemised in [the changelog](CHANGELOG.md).
 
 ## Status
 

@@ -37,12 +37,13 @@ pub(crate) struct ArrangeState {
     pub(crate) shown: Vec<(Picked, egui::Rect)>,
 }
 
-/// What the village preview draws each lot from, and in what order it lays them down: the houses
-/// and the two trees, then the keepsakes hanging in their branches, then the belongings standing
-/// on the ground in front of the trunks.
+/// What the village preview draws each lot from, and in what order it lays them down: the houses,
+/// then the two trees in front of the end houses they reach in over, then the keepsakes hanging
+/// in their branches, then the belongings standing on the ground in front of the trunks.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum VillageLayer {
     Dwelling,
+    Tree,
     Trinket,
     Belonging,
 }
@@ -212,18 +213,25 @@ impl Clubhouse {
                     egui::pos2(u_left, tree.min.y),
                     egui::pos2(u_right, tree.max.y),
                 ),
-                layer: VillageLayer::Dwelling,
+                layer: VillageLayer::Tree,
                 picks: None,
                 slot: None,
             });
+            // An anchor is measured in the tree's own cell, which stands in the middle of the
+            // village cell on its foot.
             let half = TRINKET_CELL as f32 / 2.0;
+            let (inset_x, inset_y) = formiga_art::TREE_INSET;
             for (variant, hangs_in, anchor) in &hung {
                 if *hangs_in != end {
                     continue;
                 }
                 lots.push(Lot {
                     rect: egui::Rect::from_min_size(
-                        corner + egui::vec2(anchor.x as f32 - half, anchor.y as f32 - half),
+                        corner
+                            + egui::vec2(
+                                (inset_x + anchor.x) as f32 - half,
+                                (inset_y + anchor.y) as f32 - half,
+                            ),
                         egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32),
                     ),
                     uv: Self::trinket_uv(*variant),
@@ -422,8 +430,8 @@ impl Clubhouse {
         if arranging && response.has_focus() {
             self.nudge_picked(ui, save, owners, outcome);
         }
-        // The houses and both trees behind, then what hangs in them, then everything on the
-        // ground in front, exactly as the desktop layers them. Whatever is being carried is
+        // The houses behind, the trees in front of them, then what hangs in the trees, then
+        // everything on the ground in front, exactly as the desktop layers them. Whatever is being carried is
         // drawn where the pointer has it instead, a little see-through.
         let dragging = self.arrange.drag;
         let mut drawn: Vec<&Lot> = lots.iter().collect();
@@ -431,7 +439,7 @@ impl Clubhouse {
         for lot in &drawn {
             let carried = dragging.is_some_and(|drag| lot.picks == Some(drag.picked));
             let texture = match lot.layer {
-                VillageLayer::Dwelling => village.id(),
+                VillageLayer::Dwelling | VillageLayer::Tree => village.id(),
                 VillageLayer::Trinket => trinkets.id(),
                 VillageLayer::Belonging => objects_texture.id(),
             };
