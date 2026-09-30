@@ -1,4 +1,4 @@
-# Modular creature generation · v0.61.0
+# Modular creature generation · v0.62.0
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -78,10 +78,121 @@ body without moving the feet, the eye arrangements change only the face layer, a
 placed from the recipe's own bytes, so it never moves. `classic-sheet` shows each part alone on
 every body plan and wholly classic companions through ten poses.
 
+## Archetypes and authored faces
+
+Since 0.62.0 a new companion is made by a second generator, `Edition::Archetypes`, beside the one
+every earlier companion came from, `Edition::Original`. A generator goes on drawing exactly what it
+always drew from a seed, so a new way of generating is a new edition rather than a change to an old
+one: a companion keeps its looks and its temperament, a mini of a family that began before
+archetypes is drawn the way its family always was, and a friend's code brings back the same
+companion. A recipe says which edition drew it by whether it names an archetype.
+
+An archetype is a set of odds over the parts every recipe already has — body plan, ears and how big,
+tail, markings, classic parts and which face — not a species:
+
+| Archetype | What it leans toward |
+|---|---|
+| Mochi | Round or blob, with tiny limbs and simple ears |
+| Critter | Four legs, ears and a tail |
+| Bean | Upright, with an oversized head and stubby limbs |
+| Puff | Round and fluffy |
+| Sprite | Upright, crowned with antennae or sprouts |
+| Whelp | Four legs and a tail with some presence to it |
+| Birb | Wings, a round body and tiny feet |
+| Goober | A blob, and strange on purpose |
+
+Each part is drawn after the ones it has to suit, and its odds lean away from what would clash with
+them: big ears make a big tail less likely, wings keep ears and tail simple, a tiny body keeps
+everything that sticks out small, a busy outline keeps the markings plain, a bright coat keeps the
+accent colour to a few places, and busy markings keep the face plain. Nothing is ruled out; the
+odds only lean. Coat and accent start from a harmonious pair — close, opposite, or a third of the
+way round the wheel — nudged a little.
+
+`CreatureDesign::drawn` draws the archetype from a `creature-archetype-v1` stream, then how strange
+the companion is to be. Seven in ten are the most coherent of six recipes drawn from the
+archetype's own odds; two in ten are the most coherent of six that each break one of its rules; and
+one in ten is a genuine oddball, the least coherent of six drawn strange on purpose — two or three
+rules broken, and four times in ten a goober to start from. `coherence` is a heuristic for choosing
+between recipes, from 0 to 1: a head as wide as the body or wider, a plain outline, plain markings,
+colours that belong together without vanishing into each other, parts that suit one another, and a
+face that fits the head it is on. It is never shown and never judges a companion once it is made.
+Over the 150 companions `cuteness-sheet` draws by default, 107 came out cute, 33 weird-cute and 10
+oddballs, with mean coherence 0.87, 0.86 and 0.63.
+
+A mini of an archetype companion keeps its parent's archetype, body plan, face and accent, usually
+its ears (80%), a coat a few shades off its parent's, and its classic parts the way any mini does,
+and draws its own proportions from the archetype's odds.
+
+Every recipe the new generator draws wears one of twelve authored face layouts, numbered from 1 in
+`face_template`. A layout fixes the eyes — their shape, size, how far apart, and how high — and how
+far below them the mouth sits; the mouth, brows, cheeks and shine still come from the face genes
+every companion has, kept to the few each layout allows:
+
+| Layout | Eyes |
+|---|---|
+| 1 Button | Round, a little apart, over a tiny mouth |
+| 2 Wide button | The same, set wide |
+| 3 Low and wide | Big and low on the face, the mouth tucked under |
+| 4 Modular | The face every modular recipe before 0.62.0 wears |
+| 5 Beady | Small and bright, set wide |
+| 6 Low beads | The same, low and wide |
+| 7 Tall | Tall ovals in the middle of the face |
+| 8 Tall and wide | Small tall eyes held apart |
+| 9 Square | Small soft squares |
+| 10 Mask | The originals' close-set eyes that run together |
+| 11 Visor | The originals' squared eyes run into one band |
+| 12 Beak | Round eyes over a little beak |
+
+A body busy with stripes, spots or a patch wears its layout with plain cheeks, though a happy face
+still blushes. A blob carries its face high on its one mass, so it wears layouts 4 and 12 as 1, 7
+as 8 and 11 as 9, a row lower, and wears large eyes no wider set than the button face and rounder.
+`face-sheet` shows every layout in every expression.
+
+![The twelve face layouts, one to a column, in every expression and a blink](assets/face-sheet.png)
+
+## Temperament
+
+A companion made by the new generator is given a temperament from a `temperament-v1` stream. It
+has nine plain-language axes, each from 0 to 1: solitary to social, calm to energetic, cautious to
+bold, serious to playful, incurious to curious, gentle to feisty, patient to impulsive, trusting to
+suspicious, and independent to affectionate. Its kind is drawn first — sweetheart, troublemaker,
+grump, explorer, wallflower, show-off, scholar, lazybones or guardian at close to even odds, and an
+oddball at six in a hundred — and its axes are drawn loosely around that kind's middle, so two
+grumps are never the same grump, and now and then one axis ignores the kind altogether. An
+oddball has no middle of its own: most of its axes sit out near one end or the other, and it is
+rarely patient. If another kind fits the axes a companion was given clearly better, it is read as
+that kind. About one in four has a tension, two
+things that do not usually go together: brave but nervous, affectionate but independent, playful
+but shy, gentle but stubborn, serious but curious, confident but easily embarrassed, lazy but
+competitive, suspicious but loyal, dramatic but cowardly, or grumpy but affectionate. The behaviour
+values the rest of the simulation reads — sociability, activity, boldness, playfulness and
+curiosity — are then taken from the axes, so a grump really does keep to itself.
+
+A profile shows three traits, read out of the axes, the kind and the tension, one from each side of
+a companion at most so the three say three different things. There are sixty-eight: warm ones,
+plain ones and mild flaws — Grumpy, Nosy, Vain, Stubborn, Jealous, Messy — never more than two
+flaws at once, and a trait never sits beside one it contradicts. A phrase in plain English goes with them, such as "A curious
+professor" or "A brave little adventurer". Over two thousand new companions each kind is 6 to 12
+in a hundred, the commonest trait is on about one in seven, about three in ten of the traits shown
+are flaws, and about one in four companions has a tension. A test holds each within bounds, so a
+change that sent every companion back toward the same few words would fail it.
+
+Every older companion reads its temperament from the values it has always had, and nothing is drawn
+for it: its sociability, energy, boldness, playfulness and curiosity are its own, and the four
+sides it never had — feistiness, impulsiveness, suspicion and affection — read as middling, which
+also leaves its behaviour exactly as it was. `temperament-sheet` shows the six poses a temperament
+strikes.
+
+![A huff, a swoon, begging, a strut, a peek and a stomp, on three original companions and one of each new body plan](assets/temperament-sheet.png)
+
 ## Rendering and compatibility
 
 The modular renderer lives beside the legacy renderer in `formiga-art`. It uses the same 48×48
-body frames, 16×16 face frames, poses, expressions, and animation atlases. Tail/ear geometry sits
+body frames, 16×16 face frames, poses, fifteen expressions, and animation atlases. A face drawn
+from an authored layout carries most of its expression in the eyes' own shape — a lid lowered flat
+for sleepy or bored, a top corner cut on a slant for a scowl or worry, a shut curve for joy and
+affection, white round a shrunken pupil for a fright — and draws brows, where the face has them,
+only while they move, a clear row above the eyes. Every other face is drawn as it always was. Tail/ear geometry sits
 behind the body; gestures keep the reserved face area covered and never draw over the layered face;
 outlines connect paws to bodies, and each side has exactly one limb that a gesture carries out. The palette
 resolver softens colors once during atlas construction and guarantees dark facial contrast. There
@@ -98,7 +209,11 @@ parts is still written as version 2, byte for byte as before, so every version s
 importing it. A version 2 code with anything in those bytes, or a version 3 code with nothing in
 them, is rejected, and a code carrying classic parts needs v0.59.0 or newer. Save version 17 adds the
 parts to stored recipes and migrates nothing; it moved so an older build refuses a colony whose
-classic parts it would otherwise quietly drop. Incompatible recipe changes require a new format,
+classic parts it would otherwise quietly drop. A recipe the archetype generator drew travels as a
+version 4 code, whose last reserved byte holds its archetype and face layout, a nibble each; the
+companion it brings back has the temperament that generator gives it. Neither older version may
+carry an archetype, a version 4 code must, and a version 4 code needs v0.62.0 or newer. Save
+version 20 adds temperaments and archetype recipes and migrates nothing, for the same reason. Incompatible recipe changes require a new format,
 not reinterpretation of existing codes. Source provenance duplicates the bounded recipe so sharing
 does not depend on a reference file or a temporary preview.
 
@@ -130,14 +245,17 @@ hip — so it adds no gene, no texture, and no quad.
 - Add a bounded part or body plan with an explicit face-safe area and connected limb roots.
 - Keep reduced-motion behavior, mirrored rendering, miniature proportions, and gesture poses. A new
   pose moves the limb a side already has; it never draws a second one beside it.
-- Update code versioning before changing the byte layout or meaning of a serialized choice.
+- Update code versioning before changing the byte layout or meaning of a serialized choice, and
+  add a generator edition rather than change what an existing one draws from a seed.
 - Preserve atlas dimensions, clip counts, and the colony creature limit unless a separate resource
   budget change is intended. Generation must not introduce an idle worker or retain source pixels.
-- Run workspace tests and review `generation-sheet`, `classic-sheet`, `contact-sheet`, and
-  `animation-preview`. Automated coverage includes all body/ear/tail combinations and every
-  combination of classic body parts at extreme sizes, connected silhouettes, reserved faces, both
-  eyes in every classic arrangement, 1,000 generated creatures across every action, legacy
-  migration, and exact sharing, including the v0.58.9 code and recipes byte for byte.
+- Run workspace tests and review `generation-sheet`, `classic-sheet`, `contact-sheet`,
+  `cuteness-sheet`, `face-sheet`, `temperament-sheet`, and `animation-preview`. Automated coverage
+  includes all body/ear/tail combinations and every combination of classic body parts at extreme
+  sizes, connected silhouettes, reserved faces, both eyes in every classic arrangement and face
+  layout, every face layout on every body at every size, 1,000 generated creatures across every
+  action, legacy migration, both generators byte for byte, the spread of temperaments over two
+  thousand companions, and exact sharing, including the v0.58.9 code and recipes byte for byte.
 
 The village is independent of creature generation. `formiga-core::habitat` walks one ground line
 outward from the colony house, laying out a keepsake tree, the colony house, and a cottage and a

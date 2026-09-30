@@ -59,10 +59,24 @@ pub enum Gesture {
     /// Head tipped back, drawn up tall, a paw brought up to the mouth, and settling again: a
     /// yawn, which one companion can set off in another. No attention scene strikes it.
     Yawn,
+    /// Puffed up square with its paws folded across its chest and its chin up: a huff, a
+    /// grumble, a sulk. This and the five after it belong to a companion's temperament, and no
+    /// attention scene strikes them.
+    Huff,
+    /// Rocked back with a paw to its brow, sinking a little lower each moment: a dramatic faint.
+    Swoon,
+    /// Sat up tall with its paws together under its chin, bouncing: please?
+    Beg,
+    /// Drawn up tall, chin up, one paw on its hip and the other up in a flourish: look at me.
+    Strut,
+    /// Hunched small with its paws over its face, one dropping to peek out.
+    Peek,
+    /// Stiff and square, one foot tapping.
+    Stomp,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 18] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -75,12 +89,28 @@ impl Gesture {
         Self::Watch,
         Self::Stretch,
         Self::Yawn,
+        Self::Huff,
+        Self::Swoon,
+        Self::Beg,
+        Self::Strut,
+        Self::Peek,
+        Self::Stomp,
     ];
 
-    /// Whether attention scenes strike this pose. The rest belong to habits and to the small
-    /// moments companions have between scenes.
+    /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
+    /// temperament, and to the small moments companions have between scenes.
     pub const fn in_scenes(self) -> bool {
-        !matches!(self, Self::Stretch | Self::Yawn)
+        !matches!(
+            self,
+            Self::Stretch
+                | Self::Yawn
+                | Self::Huff
+                | Self::Swoon
+                | Self::Beg
+                | Self::Strut
+                | Self::Peek
+                | Self::Stomp
+        )
     }
 }
 

@@ -1,6 +1,5 @@
-//! How often the colony is ticked and drawn: twenty times a second while anything moves, ten while
-//! the only movement is a stroll at home, and as little as the poses on show allow when it is
-//! still.
+//! How often the colony is ticked and drawn: twenty times a second while anything moves — a stroll
+//! round the village included — and as little as the poses on show allow when it is still.
 use super::*;
 
 pub(super) fn world_needs_frequent_window_scan(world: &World, button_down: bool) -> bool {
@@ -53,36 +52,10 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     })
 }
 
-/// Below this, in points a second, movement at home is a stroll round the village. A stroll
-/// steps under two and a half points a tick even at 10 Hz, and its walk cycle runs at less than
-/// half speed to match, so the colony is ticked and drawn at 10 Hz while nothing moves faster.
-///
-/// It is the stroll's own ceiling — the briskest walk any companion could have, at a stroll's
-/// pace — plus a whisker of slack, because velocity is measured from the step a companion
-/// actually took and the briskest stroll therefore lands on the ceiling rather than under it. A
-/// round number here quietly excluded the liveliest companions: at 24 points a second, a colony
-/// with one member of high spirits strolled at 24.8 and the whole village was drawn twice as
-/// often as it needed to be, which is most of what a strolling village cost.
-pub(super) const STROLL_TICK_SPEED: f32 = MAX_STROLL_SPEED + 0.5;
-
-/// The colony is at home and everyone moving is only strolling round the commons.
-pub(super) fn world_moves_only_at_a_stroll(world: &World) -> bool {
-    world.save.home.is_active()
-        && world.save.creatures.iter().all(|creature| {
-            creature.state.velocity.x.abs() < STROLL_TICK_SPEED
-                && creature.state.velocity.y.abs() <= 0.1
-        })
-}
-
-/// How often a colony that is moving needs a tick and a frame: 20 Hz, or 10 while the only thing
-/// moving is a stroll at home.
-pub(super) fn moving_interval(world: &World) -> Duration {
-    if world_moves_only_at_a_stroll(world) {
-        Duration::from_millis(100)
-    } else {
-        Duration::from_millis(50)
-    }
-}
+/// A colony that is moving is ticked and drawn at 20 Hz, a stroll round the village as much as
+/// anything else. From 0.59.2 until 0.62.0 a stroll at home ran at 10 Hz to save frames, which
+/// left the village visibly steppier than the desktop around it.
+const MOVING_INTERVAL: Duration = Duration::from_millis(50);
 
 pub(super) fn world_redraw_interval(world: &World) -> Duration {
     if world.is_interacting() {
@@ -94,7 +67,7 @@ pub(super) fn world_redraw_interval(world: &World) -> Duration {
     // The simulation itself advances at 20 Hz, so presenting faster would only repeat identical
     // positions. Pose-only activities follow their authored atlas frame rate instead.
     if world_has_spatial_motion(world) {
-        return moving_interval(world);
+        return MOVING_INTERVAL;
     }
     let fps = world
         .save
@@ -116,7 +89,7 @@ pub(super) fn world_tick_interval(world: &World) -> Duration {
         return Duration::from_millis(250);
     }
     if world_has_spatial_motion(world) {
-        return moving_interval(world);
+        return MOVING_INTERVAL;
     }
     let has_expressive_action = world.save.creatures.iter().any(|creature| {
         creature.state.arrival_delay_secs <= 0.0

@@ -54,7 +54,7 @@ fn a_tall_staircase_step_needs_individual_traversal_ability() {
         "a timid creature refuses the tier"
     );
     // Learned climbing and liveliness bring the same creature back over that limit.
-    world.save.creatures[0].tendencies.climbing = 100;
+    world.save.creatures[0].tendencies.climbing = 100.0;
     world.save.creatures[0].personality.activity = 0.5;
     assert_eq!(route(&world).len(), 1);
     // Fatigue takes it away again, without touching the route caps themselves.
@@ -78,7 +78,7 @@ fn personality_scores_stay_bounded_and_identity_does_not_enter_them() {
         c.personality.playfulness = bit(3);
         c.state.drives.energy = bit(4);
         c.state.drives.sleep_pressure = bit(5);
-        c.tendencies.climbing = if bits % 2 == 0 { -100 } else { 100 };
+        c.tendencies.climbing = if bits % 2 == 0 { -100.0 } else { 100.0 };
         let (rise, drop) = traversal_ability(c);
         assert!((120.0..=400.0).contains(&rise), "rise {rise} for {bits}");
         assert!((180.0..=440.0).contains(&drop), "drop {drop} for {bits}");

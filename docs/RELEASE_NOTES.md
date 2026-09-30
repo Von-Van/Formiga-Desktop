@@ -4,6 +4,35 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.62.0
+
+Companions have a temperament of their own. Each is one of ten kinds — a sweetheart, a
+troublemaker, a grump, an explorer, a wallflower, a show-off, a scholar, a lazybones, a guardian,
+or now and then an oddball — with its own mix of nine sides from solitary to social and trusting to
+suspicious, sometimes a contradiction like brave but nervous, and three traits its profile shows,
+the odd flaw among them: "A reckless scamp · Reckless · Mischievous · Excitable". It shows. A
+jealous one huffs when somebody else is petted, a grump grumbles at a pet but a secretly soft one
+gives in with a heart, a dramatic one swoons at a fright, a food-lover begs when somebody eats, a
+show-off strikes a pose after a climb, and a troublemaker pounces on a dozing friend. Temperament
+also steers what they choose — snacks, naps, dances, games, and how they greet a visitor — and what
+they learn from living with you now fades as well as grows, so companions no longer all end up
+described the same way. Your companions keep their own personalities, read from the values
+they have always had.
+
+New companions come out cuter and more of a piece. Each is drawn from one of eight body kinds —
+round mochis, four-legged critters, big-headed beans, fluffy puffs, sprites with antennae, whelps
+with a proper tail, winged birbs, and deliberately odd goobers — with parts chosen to suit each
+other, colours that belong together, and one of twelve hand-made faces. Most are the cutest of
+several drawn for them; now and then one is a little strange, and once in a while a true oddball.
+Their faces show feelings in the eyes themselves, sleepy lids, a scowl, smiling eyes, a start, so
+expressions read at a glance, and everyone gains three new ones: grumpy, smug, and pleading. Your
+companions look exactly as they did, except that their brows now go the right way when they worry
+or concentrate.
+
+The village moves smoothly: companions strolling round it are drawn twenty times a second like
+everything else. And each companion's pictures take about a fifth less memory than before, and far
+less with reduced motion on, even with all the new poses and faces.
+
 ## New in 0.61.0
 
 The houses are bigger. Every house in the village is drawn a quarter larger beside your

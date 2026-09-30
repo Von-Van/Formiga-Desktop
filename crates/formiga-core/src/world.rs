@@ -6,6 +6,7 @@ use rand_chacha::ChaCha12Rng;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use time::{Duration, OffsetDateTime, UtcOffset};
 
+mod antics;
 mod arrivals;
 mod attention;
 mod beats;
@@ -38,7 +39,6 @@ pub use bubbles::{BubbleGrowth, ThoughtBubble};
 use colony::*;
 use generation::*;
 use habits::*;
-pub use home::MAX_STROLL_SPEED;
 use interaction::*;
 use journeys::*;
 use movement::*;
@@ -114,6 +114,9 @@ pub struct World {
     tows: tows::TowTable,
     /// When the colony next yawns, and the yawns and looks still waiting to start.
     beats: beats::Beats,
+    /// The little moments a temperament makes of what goes on: who is waiting to react to what,
+    /// who is having a while to itself, and when the next prank is due. Runtime only.
+    antics: antics::Antics,
     /// What residents are doing about the village beyond strolling and the quiet moments at their
     /// doors: tending the gardens, seeing to their houses, indoors, up on a roof, or in the middle
     /// of a small mishap. Runtime only, like the moments.
@@ -140,6 +143,9 @@ pub struct World {
     /// two lists are kept between ticks so that taking the picture reuses their storage.
     creature_views: Vec<Creature>,
     relationship_views: Vec<CreatureRelationship>,
+    /// Which generator new companions come from: always the latest in the app. Only tests ask for
+    /// an older one, to keep a scene that was tuned on the companions an older generator made.
+    generator: Edition,
 }
 
 #[derive(Clone, Copy)]
@@ -209,8 +215,40 @@ impl World {
     }
 
     pub fn new(colony_seed: [u8; 32], now: OffsetDateTime, desktop: &DesktopSnapshot) -> Self {
+        Self::new_from(colony_seed, now, desktop, Edition::LATEST)
+    }
+
+    /// A new colony whose companions all come from the original generator, as every colony's did
+    /// before 0.62.0: for the scenes tests tuned on the companions it made.
+    #[cfg(test)]
+    pub(crate) fn new_original(
+        colony_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+    ) -> Self {
+        Self::new_from(colony_seed, now, desktop, Edition::Original)
+    }
+
+    /// A new colony from whichever generator a test compares.
+    #[cfg(test)]
+    pub(crate) fn new_from_generator(
+        colony_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        generator: Edition,
+    ) -> Self {
+        Self::new_from(colony_seed, now, desktop, generator)
+    }
+
+    fn new_from(
+        colony_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        generator: Edition,
+    ) -> Self {
         let streams = SeedStream::new(colony_seed);
-        let creature = generate_new_creature(&streams, colony_seed, 0, now, desktop, &[], None);
+        let creature =
+            generate_new_creature(&streams, colony_seed, 0, now, desktop, &[], None, generator);
         let home_display = desktop
             .monitors
             .iter()
@@ -248,7 +286,9 @@ impl World {
             },
             visitors: VisitorState::default(),
         };
-        Self::from_save(save)
+        let mut world = Self::from_save(save);
+        world.generator = generator;
+        world
     }
 
     pub fn from_save(mut save: SaveFile) -> Self {
@@ -358,12 +398,14 @@ impl World {
             last_edit: None,
             tows: tows::TowTable::default(),
             beats: beats::Beats::new(&streams),
+            antics: antics::Antics::new(&streams),
             village_life: BTreeMap::new(),
             village_life_rng: streams.rng("village-life", 0),
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             creature_views: Vec::new(),
             relationship_views: Vec::new(),
+            generator: Edition::LATEST,
             topology: DesktopTopology::default(),
             geometry_observer: crate::attention::GeometryObserver::default(),
             attention: AttentionRuntime::default(),
@@ -507,6 +549,7 @@ impl World {
         self.tick_bubbles(dt);
         self.tick_offers(dt, desktop);
         self.advance_beats(dt, desktop);
+        self.advance_antics(dt);
         if self.save.settings.paused {
             self.settle_active_tosses(desktop);
             self.project_events(timeline_now);

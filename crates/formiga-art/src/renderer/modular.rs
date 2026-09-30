@@ -680,6 +680,42 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
             front(to(hx + head / 2 + 2, hy + 3))
         }
         BodyClip::Gesture(Gesture::Yawn) => [Limb::Rest; 2],
+        // Folded across the chest, each paw reaching past the middle to the other side. Wings
+        // fold, which reads as puffing up, and so does a blob, whose short paws folded across
+        // it would only draw a belt.
+        BodyClip::Gesture(Gesture::Huff) if matches!(plan, BodyPlan::Winged | BodyPlan::Blob) => {
+            [Limb::Rest; 2]
+        }
+        BodyClip::Gesture(Gesture::Huff) => [to(hx + 2, y + 1), to(hx - 2, y + 2)],
+        // Wings fling open as it goes over.
+        BodyClip::Gesture(Gesture::Swoon) if plan == BodyPlan::Winged => {
+            let sink = i32::from(frame.min(2));
+            [to(x - (rx + 5), y - 4 + sink), to(x + rx + 5, y - 6 + sink)]
+        }
+        // A long body's paw comes up beside the head rather than across the face.
+        BodyClip::Gesture(Gesture::Swoon) if plan == BodyPlan::Long => {
+            [Limb::Rest, to(hx + head + 1, hy - head)]
+        }
+        // One paw to the brow, the other flung out and sinking with the body.
+        BodyClip::Gesture(Gesture::Swoon) => [
+            to(x - (rx + 4), y - 3 + i32::from(frame.min(2))),
+            to(hx + 2, hy - head + 2),
+        ],
+        // Both paws together under the chin, bouncing with the body. Wings stay folded.
+        BodyClip::Gesture(Gesture::Beg) if plan == BodyPlan::Winged => [Limb::Rest; 2],
+        BodyClip::Gesture(Gesture::Beg) => [
+            to(hx - 1, hy + head - 1 + tick),
+            to(hx + 1, hy + head - 1 + tick),
+        ],
+        // One paw on the hip and the other up in a flourish.
+        BodyClip::Gesture(Gesture::Strut) => [
+            to(x - rx - 1, y + 2),
+            to(beside_head(1) + 1, hy - head - tick),
+        ],
+        // Paws over the face, the near one dropping to peek on the second frame.
+        BodyClip::Gesture(Gesture::Peek) => [to(hx - 3, hy - 1), to(hx + 3, hy - 1 + tick * 4)],
+        // Paws stiff at the sides: the foot does the talking.
+        BodyClip::Gesture(Gesture::Stomp) => [Limb::Rest; 2],
         // A long body stretches along the ground with every paw planted.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Long => [Limb::Rest; 2],
         // Wings open up and out as far as they go.
@@ -698,7 +734,15 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
     if plan == BodyPlan::Long
         && matches!(
             clip,
-            BodyClip::Gesture(Gesture::Cover | Gesture::Worry | Gesture::Heave)
+            BodyClip::Gesture(
+                Gesture::Cover
+                    | Gesture::Worry
+                    | Gesture::Heave
+                    | Gesture::Huff
+                    | Gesture::Beg
+                    | Gesture::Strut
+                    | Gesture::Peek
+            )
         )
     {
         return [Limb::Rest, aimed[1]];

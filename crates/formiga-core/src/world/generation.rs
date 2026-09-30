@@ -1,5 +1,6 @@
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn generated_adult(
     source_seed: [u8; 32],
     now: OffsetDateTime,
@@ -7,10 +8,19 @@ pub(super) fn generated_adult(
     colony_order: u8,
     existing_names: &[String],
     kept: bool,
+    generator: Edition,
 ) -> Creature {
     let streams = SeedStream::new(source_seed);
-    let mut creature =
-        generate_new_creature(&streams, source_seed, 0, now, desktop, existing_names, None);
+    let mut creature = generate_new_creature(
+        &streams,
+        source_seed,
+        0,
+        now,
+        desktop,
+        existing_names,
+        None,
+        generator,
+    );
     creature.generation = 0;
     creature.colony_order = colony_order;
     creature.role = CreatureRole::Adult;
@@ -71,6 +81,7 @@ pub(super) fn generate_mini_for_parent(
             desktop,
             &existing_names,
             Some(parent),
+            parent.edition(),
         )
     };
     mini.colony_order = next_colony_order(creatures);
@@ -80,6 +91,9 @@ pub(super) fn generate_mini_for_parent(
     Some(mini)
 }
 
+/// A new companion from `generator`, or a mini from its parent's generator, so a family that
+/// began before archetypes and temperaments existed goes on as it began.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn generate_new_creature(
     streams: &SeedStream,
     colony_seed: [u8; 32],
@@ -88,7 +102,9 @@ pub(super) fn generate_new_creature(
     desktop: &DesktopSnapshot,
     existing_names: &[String],
     parent: Option<&Creature>,
+    generator: Edition,
 ) -> Creature {
+    let edition = parent.map_or(generator, Creature::edition);
     let mut creature = generate_creature(
         streams,
         colony_seed,
@@ -97,13 +113,15 @@ pub(super) fn generate_new_creature(
         desktop,
         existing_names,
         parent,
+        edition,
     );
     // An original companion has no recipe to pass on, so its mini keeps the genes it inherited
     // from it rather than taking an unrelated recipe of its own.
     if parent.is_some_and(|parent| parent.appearance.design.is_none()) {
         return creature;
     }
-    let design = CreatureDesign::generated(
+    let design = CreatureDesign::generated_by(
+        edition,
         colony_seed,
         generation,
         parent.and_then(|p| p.appearance.design),
@@ -112,6 +130,7 @@ pub(super) fn generate_new_creature(
     creature
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_creature(
     streams: &SeedStream,
     colony_seed: [u8; 32],
@@ -120,6 +139,7 @@ fn generate_creature(
     desktop: &DesktopSnapshot,
     existing_names: &[String],
     parent: Option<&Creature>,
+    edition: Edition,
 ) -> Creature {
     let mut appearance_rng = streams.rng("appearance", generation as u64);
     let mut personality_rng = streams.rng("personality", generation as u64);
@@ -251,17 +271,27 @@ fn generate_creature(
         ),
         face_signature,
     };
-    let personality = PersonalityGenome {
-        activity: personality_rng.random_range(0.2..0.95),
-        curiosity: personality_rng.random_range(0.15..0.95),
-        boldness: personality_rng.random_range(0.1..0.95),
-        playfulness: personality_rng.random_range(0.15..0.95),
-        sociability: personality_rng.random_range(0.25..0.95),
-        routine_affinity: personality_rng.random_range(0.1..0.9),
-        sleep_timing: personality_rng.random_range(0.2..0.9),
-        window_tolerance: personality_rng.random_range(0.1..0.95),
-        cursor_interest: personality_rng.random_range(0.1..0.95),
-        decision_temperature: personality_rng.random_range(0.22..0.75),
+    // The original generator draws every value on its own; since 0.62.0 a temperament is drawn
+    // first and the values come from it. The original stream is left exactly as it was.
+    let (personality, temperament) = if edition == Edition::Original {
+        let personality = PersonalityGenome {
+            activity: personality_rng.random_range(0.2..0.95),
+            curiosity: personality_rng.random_range(0.15..0.95),
+            boldness: personality_rng.random_range(0.1..0.95),
+            playfulness: personality_rng.random_range(0.15..0.95),
+            sociability: personality_rng.random_range(0.25..0.95),
+            routine_affinity: personality_rng.random_range(0.1..0.9),
+            sleep_timing: personality_rng.random_range(0.2..0.9),
+            window_tolerance: personality_rng.random_range(0.1..0.95),
+            cursor_interest: personality_rng.random_range(0.1..0.95),
+            decision_temperature: personality_rng.random_range(0.22..0.75),
+        };
+        (personality, None)
+    } else {
+        let parent_temperament = parent.map(Creature::temperament);
+        let (temperament, personality) =
+            Temperament::generated(colony_seed, generation, parent_temperament.as_ref());
+        (personality, Some(temperament))
     };
     let monitor = desktop
         .monitors
@@ -302,6 +332,7 @@ fn generate_creature(
         display_scale_percent: scale_percent,
         appearance,
         personality,
+        temperament,
         behavior_seed: streams.bytes("behavior", generation as u64),
         memory: CreatureMemory::default(),
         tendencies: LearnedTendencies::default(),
@@ -340,6 +371,11 @@ pub(super) fn generate_source_creature(
     desktop: &DesktopSnapshot,
 ) -> Creature {
     let streams = SeedStream::new(shared.source_colony_seed);
+    // A code carries the recipe it was made with, and the recipe says which generator made the
+    // companion, so its temperament is drawn the way it was first drawn.
+    let edition = shared
+        .design
+        .map_or(Edition::Original, |design| design.edition());
     let mut creatures = Vec::with_capacity(usize::from(shared.source_generation) + 1);
     for generation in 0..=shared.source_generation.min(3) {
         let existing_names: Vec<_> = creatures
@@ -354,6 +390,7 @@ pub(super) fn generate_source_creature(
             desktop,
             &existing_names,
             creatures.first(),
+            edition,
         );
         creatures.push(creature);
     }

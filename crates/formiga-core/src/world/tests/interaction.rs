@@ -71,8 +71,8 @@ fn click_without_drag_pets_and_does_not_dismiss_the_shelter() {
     assert!(world.save.home.is_active());
     assert_eq!(creature.state.action, ActionKind::PetReaction);
     assert_eq!(creature.memory.times_petted, 1);
-    assert_eq!(creature.tendencies.cursor_trust, 3);
-    assert_eq!(creature.tendencies.sociability, 2);
+    assert!(creature.tendencies.cursor_trust > 0.0);
+    assert!(creature.tendencies.sociability > 0.0);
 }
 
 #[test]

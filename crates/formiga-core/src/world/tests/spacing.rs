@@ -710,3 +710,26 @@ fn nobody_shivers_on_the_spot_when_a_companion_is_near() {
         }
     }
 }
+
+/// The same measurement as above over thirty-two colonies from each generator, for comparing them
+/// rather than for holding either to a bound. Run with
+/// `cargo test -p formiga-core --release measure_face_cover_for_each_generator -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn measure_face_cover_for_each_generator() {
+    for generator in [Edition::LATEST, Edition::Original] {
+        let mut covers = Vec::new();
+        for index in 0_u8..32 {
+            let seed = [index.wrapping_mul(37).wrapping_add(11); 32];
+            let colony = super::topology_and_attention::eager_colony_from(seed, generator);
+            covers.push(worst_episodes_in(colony, 1_400).0);
+        }
+        let bound = World::cover_grace() + 4.0;
+        let over = covers.iter().filter(|cover| **cover > bound).count();
+        covers.sort_by(f32::total_cmp);
+        eprintln!(
+            "{generator:?}: worst face cover median {:.2}s, p90 {:.2}s, max {:.2}s; {over} of 32 past {bound:.2}s",
+            covers[16], covers[28], covers[31]
+        );
+    }
+}

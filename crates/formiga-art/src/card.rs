@@ -1,8 +1,6 @@
 use crate::{Canvas, CreatureRenderer, Rgba};
 use epaint::{Color32, FontFamily, FontId, Fonts, TextOptions, text::FontDefinitions};
-use formiga_core::{
-    ActionKind, BodyFamily, Creature, EffectMotif, encode_creature_seed, profile_descriptors,
-};
+use formiga_core::{ActionKind, Creature, EffectMotif, encode_creature_seed};
 use time::Month;
 
 pub const CARD_WIDTH: u32 = 960;
@@ -46,37 +44,25 @@ impl CreatureCardRenderer {
         let name_size = text.fit_size(&creature.name, 415.0, 54.0, 18.0);
         text.draw(&mut canvas, 486, 119, &creature.name, name_size, INK);
 
-        let family = creature.appearance.design.map_or_else(
-            || family_label(creature.appearance.family),
-            |d| d.body.label(),
-        );
-        text.draw(&mut canvas, 488, 184, family, 20.0, MUTED_INK);
+        // Who it is, which a share code brings back with it: the line its profile leads with,
+        // and its three traits. Nothing it has learned here goes on the card.
+        let phrase = creature.temperament_phrase();
+        let phrase_size = text.fit_size(&phrase, 398.0, 20.0, 12.0);
+        text.draw(&mut canvas, 488, 184, &phrase, phrase_size, MUTED_INK);
         canvas.fill_rect(488, 216, 398, 2, PAPER_SHADOW);
 
         text.draw(&mut canvas, 488, 242, "KNOWN FOR", 14.0, MUTED_INK);
-        let descriptors = profile_descriptors(creature);
-        if descriptors.is_empty() {
-            draw_chip(
-                &mut canvas,
-                &mut text,
-                488,
-                271,
-                "Still becoming themself",
-                palette.highlight,
-            );
-        } else {
-            let mut x = 488;
-            let mut y = 271;
-            for descriptor in descriptors {
-                let label = descriptor.label();
-                let chip_width = (text.measure(label, 17.0).ceil() as i32 + 26).clamp(80, 394);
-                if x + chip_width > 894 {
-                    x = 488;
-                    y += 43;
-                }
-                draw_chip(&mut canvas, &mut text, x, y, label, palette.highlight);
-                x += chip_width + 9;
+        let mut x = 488;
+        let mut y = 271;
+        for t in creature.traits() {
+            let label = t.label();
+            let chip_width = (text.measure(label, 17.0).ceil() as i32 + 26).clamp(80, 394);
+            if x + chip_width > 894 {
+                x = 488;
+                y += 43;
             }
+            draw_chip(&mut canvas, &mut text, x, y, label, palette.highlight);
+            x += chip_width + 9;
         }
 
         draw_field(
@@ -259,14 +245,6 @@ pub(crate) const fn month_label(month: Month) -> &'static str {
         Month::October => "October",
         Month::November => "November",
         Month::December => "December",
-    }
-}
-
-const fn family_label(family: BodyFamily) -> &'static str {
-    match family {
-        BodyFamily::Blob => "Blob",
-        BodyFamily::Hopper => "Hopper",
-        BodyFamily::SoftQuadruped => "Soft Quadruped",
     }
 }
 

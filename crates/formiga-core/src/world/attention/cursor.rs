@@ -2,8 +2,7 @@ use super::*;
 use crate::cursor::CursorInterest;
 
 fn cursor_confidence(creature: &Creature) -> f32 {
-    (creature.personality.boldness + f32::from(creature.tendencies.cursor_trust) / 100.0 * 0.2)
-        .clamp(0.0, 1.0)
+    (creature.personality.boldness + creature.tendencies.cursor_trust / 100.0 * 0.2).clamp(0.0, 1.0)
 }
 
 /// A race alongside the cursor is brief by design.
@@ -209,7 +208,7 @@ mod tests {
         let creature = &mut world.save.creatures[0];
         creature.personality.cursor_interest = 1.0;
         creature.personality.boldness = boldness;
-        creature.tendencies.cursor_trust = 0;
+        creature.tendencies.cursor_trust = 0.0;
         (world, desktop, now)
     }
 
@@ -348,7 +347,7 @@ mod tests {
                 creature.personality.cursor_interest = if index == 0 { 1.0 } else { 0.0 };
                 creature.personality.boldness = 0.9;
                 creature.personality.playfulness = if index == 0 { 0.9 } else { 0.0 };
-                creature.tendencies.cursor_trust = 0;
+                creature.tendencies.cursor_trust = 0.0;
             }
             let id = world.save.creatures[0].id;
             let start = if racing {
@@ -407,9 +406,9 @@ mod tests {
     fn cursor_learning_is_bounded_and_can_shift_an_uncertain_creature() {
         let (mut world, _, _) = scene(0.4);
         let creature = &mut world.save.creatures[0];
-        creature.tendencies.cursor_trust = -100;
+        creature.tendencies.cursor_trust = -100.0;
         let wary = cursor_confidence(creature);
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
         let trusting = cursor_confidence(creature);
         assert!(wary < 0.4 && trusting > 0.4);
         creature.personality.boldness = 1.0;

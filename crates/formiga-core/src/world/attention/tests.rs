@@ -23,7 +23,8 @@ pub(super) fn scene() -> (World, DesktopSnapshot, OffsetDateTime) {
         application: None,
         application_name: None,
     });
-    let mut world = World::new([92; 32], created, &desktop);
+    // Tuned on the companions the original generator made for this seed.
+    let mut world = World::new_original([92; 32], created, &desktop);
     world.tick(now, 0.05, &desktop);
     super::super::tests::let_colony_wander(&mut world, now);
     world.save.ritual.next_at_utc = now + Duration::days(1);

@@ -29,10 +29,20 @@ pub enum BubbleIcon {
     Sparkle,
     /// A visitor agreed to stay.
     Stay,
+    /// A grumble: a little storm cloud. Petted all the same, by a grump.
+    Grumble,
+    /// Jealous: a green heart with a crack across it.
+    Jealous,
+    /// Swooning: seeing stars.
+    Swoon,
+    /// Embarrassed or shy: a blush.
+    Blush,
+    /// Keeping an eye on somebody.
+    Watching,
 }
 
 impl BubbleIcon {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 19] = [
         Self::Heart,
         Self::Snack,
         Self::Toy,
@@ -47,5 +57,10 @@ impl BubbleIcon {
         Self::Hello,
         Self::Sparkle,
         Self::Stay,
+        Self::Grumble,
+        Self::Jealous,
+        Self::Swoon,
+        Self::Blush,
+        Self::Watching,
     ];
 }

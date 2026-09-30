@@ -238,8 +238,20 @@ fn a_desktop_full_of_chosen_windows_still_hands_the_shader_a_list_it_can_hold() 
     assert!(!rects_cover(monitor, &rects));
 }
 
+/// What one creature's atlases would cost if no two of its frames or faces came out alike: a cell
+/// for every one. Nothing can cost more, so this is what the budgets are held to.
+fn full_layout_bytes() -> usize {
+    let body = total_animation_frames().div_ceil(ATLAS_COLUMNS) * ATLAS_COLUMNS * FRAME_SIZE;
+    let face = face_slot_count().div_ceil(FACE_ATLAS_COLUMNS) * FACE_ATLAS_COLUMNS;
+    (body * FRAME_SIZE * 4 + face * FACE_FRAME_SIZE * FACE_FRAME_SIZE * 4) as usize
+}
+
+/// Every motion and readability choice bakes one atlas, byte for byte the same each time, with a
+/// cell for every frame and face. An outline never makes two frames alike or apart, so it costs
+/// what the plain atlas costs; reduced motion holds each clip still, so its frames share far
+/// fewer cells.
 #[test]
-fn every_motion_and_readability_choice_bakes_the_same_atlas_at_the_same_cost() {
+fn every_motion_and_readability_choice_bakes_the_same_atlas_every_time() {
     let world = World::new(
         [19; 32],
         time::OffsetDateTime::UNIX_EPOCH,
@@ -251,11 +263,21 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_at_the_same_cost() {
         .iter()
         .map(|&(reduce_motion, outline)| build_atlas_pixels(creature, reduce_motion, outline, None))
         .collect();
+    let cost = |atlas: &AtlasPixels| atlas.body_pixels.len() + atlas.face_pixels.len();
     for (choice, atlas) in choices.iter().zip(&first) {
-        let bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
-        assert_eq!(bytes, 1_649_664, "{choice:?} costs {bytes} bytes");
+        assert_eq!(atlas.body_cells.len(), total_animation_frames() as usize);
+        assert_eq!(atlas.face_cells.len(), face_slot_count() as usize);
         assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+        assert!(cost(atlas) <= full_layout_bytes(), "{choice:?}");
     }
+    assert_eq!(cost(&first[0]), cost(&first[2]));
+    assert_eq!(cost(&first[1]), cost(&first[3]));
+    assert!(
+        cost(&first[1]) < cost(&first[0]) / 2,
+        "reduced motion costs {} bytes against {}",
+        cost(&first[1]),
+        cost(&first[0])
+    );
     // Thrown away and baked again, twice over: the same atlas, byte for byte, every time.
     for round in 1..3 {
         for (choice, previous) in choices.iter().zip(&first) {
@@ -264,17 +286,91 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_at_the_same_cost() {
                 atlas.body_pixels, previous.body_pixels,
                 "{choice:?} {round}"
             );
+            assert_eq!(atlas.body_cells, previous.body_cells, "{choice:?} {round}");
             assert_eq!(
                 atlas.face_pixels, previous.face_pixels,
                 "{choice:?} {round}"
             );
+            assert_eq!(atlas.face_cells, previous.face_cells, "{choice:?} {round}");
         }
     }
-    // The eight slots the face atlas has always ended with are still there and still the
-    // same size, so switching the overlay to the colony sheet changed nothing per creature.
-    assert_eq!(trinket_atlas_slot(0), face_slot_count());
-    assert_eq!(trinket_atlas_slot(7) + 1, face_slot_count() + 8);
-    assert_eq!(trinket_atlas_slot(8), trinket_atlas_slot(0));
+}
+
+/// Frames and faces that come out alike share a cell, so every one has to be found again where
+/// its slot says: each baked frame and every face, drawn afresh, is exactly the cell it points
+/// at, with reduced motion and without.
+#[test]
+fn every_frame_and_face_is_drawn_from_a_cell_that_holds_it() {
+    let world = World::new(
+        [7; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let cell_of = |pixels: &[u8], width: u32, cell: u16, columns: u32, size: u32| {
+        let (x, y) = (
+            u32::from(cell) % columns * size,
+            u32::from(cell) / columns * size,
+        );
+        (0..size)
+            .flat_map(|row| {
+                let start = (((y + row) * width + x) * 4) as usize;
+                pixels[start..start + (size * 4) as usize].to_vec()
+            })
+            .collect::<Vec<u8>>()
+    };
+    for reduce_motion in [false, true] {
+        let atlas = build_atlas_pixels(creature, reduce_motion, false, None);
+        for clip in BodyClip::baked() {
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let drawn = CreatureRenderer::render_dressed_body_frame(
+                    &creature.appearance,
+                    None,
+                    clip,
+                    frame,
+                    reduce_motion,
+                );
+                let cell = atlas.body_cells[atlas_slot(clip, frame) as usize];
+                assert_eq!(
+                    cell_of(
+                        &atlas.body_pixels,
+                        atlas.body_width,
+                        cell,
+                        ATLAS_COLUMNS,
+                        FRAME_SIZE
+                    ),
+                    drawn.canvas.rgba_bytes(),
+                    "{clip:?} frame {frame}, reduced motion {reduce_motion}"
+                );
+            }
+        }
+        for expression in formiga_art::ExpressionKind::ALL {
+            for eyelids in formiga_art::EyelidPose::ALL {
+                for gaze in (-1..=1)
+                    .flat_map(|y| (-1..=1).map(move |x| formiga_art::GazeDirection::new(x, y)))
+                {
+                    let state = FaceRenderState {
+                        expression,
+                        eyelids,
+                        gaze,
+                    };
+                    let cell = atlas.face_cells[face_atlas_slot(state) as usize];
+                    assert_eq!(
+                        cell_of(
+                            &atlas.face_pixels,
+                            atlas.face_width,
+                            cell,
+                            FACE_ATLAS_COLUMNS,
+                            FACE_FRAME_SIZE
+                        ),
+                        CreatureRenderer::render_face_frame(&creature.appearance, state)
+                            .rgba_bytes(),
+                        "{state:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// Every variant the catalogue has — including the eight the simulation cannot pick yet —
@@ -457,21 +553,23 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 42 gesture frames: ten columns by fourteen rows of 48px bodies,
-    // plus the face atlas. Raised deliberately from 1,437,696 bytes in 0.57.1, where the
-    // twelfth row was already full. The habits' stretch took four of the six spare slots in
-    // the thirteenth row in 0.59.0, and the rest loop the last two in 0.59.5. In 0.60.0 the
-    // yawn's four frames opened a fourteenth row (92,160 bytes) and its face a row of its own
-    // in the face atlas (27,648), leaving six spare body slots for whatever comes next.
-    assert_eq!(total_animation_frames(), 134);
-    assert_eq!(total_bytes, 1_649_664);
+    // 92 action frames and 55 gesture frames, and fifteen expressions' faces in every eyelid pose
+    // and gaze. Until 0.62.0 every one had a cell of its own, ten columns of 48px bodies and
+    // twenty-seven of 16px faces to a row, and the face texture ended in eight trinket cells
+    // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
+    // frame or face that comes out the same as one already baked shares its cell — a held pose,
+    // eyes shut whichever way they would be looking — and the trinket cells are gone.
+    assert_eq!(total_animation_frames(), 147);
+    assert_eq!(total_bytes, 1_244_160);
+    assert_eq!(full_layout_bytes(), 1_797_120);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
-    assert!(total_bytes <= 4_500_000, "atlas uses {total_bytes} bytes");
-    // A full colony of six: 9,897,984 bytes since the yawn, held under 10 MiB.
+    assert!(full_layout_bytes() <= 4_500_000);
+    // A full colony of six like this one: 7,464,960 bytes. Even with no two frames alike it
+    // would be 10,782,720, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0.
     assert!(
-        total_bytes * formiga_core::MAX_COLONY_CREATURES < 10_485_760,
-        "a full colony's atlases exceed 10 MiB"
+        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 15 * 1024 * 1024,
+        "a full colony's atlases could exceed 15 MiB"
     );
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,
@@ -481,6 +579,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
         outlined.body_pixels.len() + outlined.face_pixels.len(),
         total_bytes
     );
+    assert_eq!(outlined.body_cells, atlas.body_cells);
     assert_eq!(outlined.face_anchors, atlas.face_anchors);
     let (mut added, mut changed) = (0, 0);
     for (plain, edged) in atlas

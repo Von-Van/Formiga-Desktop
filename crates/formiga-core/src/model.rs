@@ -614,6 +614,24 @@ pub enum BeatKind {
     TidyLeaves,
     /// Sitting up on top of its house, looking out.
     RoofSit,
+    /// Puffed up with its paws folded and its nose in the air: jealous of a pet somebody else
+    /// got, or grumbling at one it got itself. This and the rest below are a companion's
+    /// temperament showing.
+    Huff,
+    /// A start, then a paw to the brow and down it goes: a dramatic companion at a fright.
+    Swoon,
+    /// Sat up with its paws together, looking at somebody else's snack.
+    Beg,
+    /// A pose struck for whoever is watching, after a climb or a find.
+    Strut,
+    /// Hiding behind its paws and peeking out: shy, or embarrassed.
+    Peek,
+    /// A foot stamped: it will not, or it is tired of waiting.
+    Stomp,
+    /// Crouched and wound up, then a pounce: a troublemaker springing on a dozing friend.
+    Pounce,
+    /// Jumping at something: the friend a troublemaker has just pounced on.
+    Startle,
 }
 
 /// Small things the village shows in someone's hands or on the ground.
@@ -903,27 +921,96 @@ pub struct MiniArrivalState {
     pub arrived: [bool; 2],
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// What a companion has come to lean toward from living here, each from -100 to 100. Since
+/// 0.62.0 a leaning is learned a little at a time, less the nearer it already is to the end an
+/// experience pushes it toward, and drifts back toward the companion's own nature while nothing
+/// pushes it; before that, most of them only ever went up, and every companion ended at the top
+/// of all of them. Whole numbers in older files read as the same values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LearnedTendencies {
-    pub cursor_trust: i8,
-    pub sociability: i8,
-    pub climbing: i8,
-    pub sleep_security: i8,
-    pub exploration: i8,
-    pub play: i8,
-    pub home_affinity: i8,
-    pub routine: i8,
+    pub cursor_trust: f32,
+    pub sociability: f32,
+    pub climbing: f32,
+    pub sleep_security: f32,
+    pub exploration: f32,
+    pub play: f32,
+    pub home_affinity: f32,
+    pub routine: f32,
 }
 
 impl LearnedTendencies {
-    pub fn adjust(value: &mut i8, delta: i8) {
-        *value = i16::from(*value)
-            .saturating_add(i16::from(delta))
-            .clamp(-100, 100) as i8;
+    /// A plain nudge, kept on the scale.
+    pub fn adjust(value: &mut f32, delta: f32) {
+        *value = (*value + delta).clamp(-100.0, 100.0);
     }
 
-    pub fn utility(value: i8) -> f32 {
-        f32::from(value) / 100.0 * 0.35
+    /// What an experience teaches: `delta`, less the nearer the leaning already is to the end it
+    /// pushes toward, so however often something happens a leaning only approaches an end.
+    pub fn learn(value: &mut f32, delta: f32) {
+        let room = if delta >= 0.0 {
+            (100.0 - value.max(0.0)) / 100.0
+        } else {
+            (100.0 + value.min(0.0)) / 100.0
+        };
+        Self::adjust(value, delta * room);
+    }
+
+    pub fn utility(value: f32) -> f32 {
+        value.clamp(-100.0, 100.0) / 100.0 * 0.35
+    }
+
+    /// Every leaning, in field order.
+    pub fn values(&self) -> [f32; 8] {
+        [
+            self.cursor_trust,
+            self.sociability,
+            self.climbing,
+            self.sleep_security,
+            self.exploration,
+            self.play,
+            self.home_affinity,
+            self.routine,
+        ]
+    }
+
+    fn values_mut(&mut self) -> [&mut f32; 8] {
+        [
+            &mut self.cursor_trust,
+            &mut self.sociability,
+            &mut self.climbing,
+            &mut self.sleep_security,
+            &mut self.exploration,
+            &mut self.play,
+            &mut self.home_affinity,
+            &mut self.routine,
+        ]
+    }
+
+    /// Where each leaning rests for a companion of this temperament when nothing is teaching it
+    /// anything: a bold one sits a little toward high places, a suspicious one a little away from
+    /// the cursor. A middling side rests at 0, which is where every leaning of a companion older
+    /// than temperaments rests for the sides it never had.
+    pub fn baseline(temperament: &crate::Temperament) -> Self {
+        let a = temperament.axes.bounded();
+        let lean = |value: f32| (value - 0.5) * 2.0;
+        Self {
+            cursor_trust: 30.0 * -lean(a.suspicion) + 15.0 * lean(a.affection),
+            sociability: 35.0 * lean(a.social),
+            climbing: 20.0 * lean(a.boldness) + 15.0 * lean(a.energy),
+            sleep_security: 20.0 * -lean(a.suspicion) + 15.0 * -lean(a.energy),
+            exploration: 35.0 * lean(a.curiosity),
+            play: 35.0 * lean(a.playfulness),
+            home_affinity: 20.0 * lean(a.affection) + 15.0 * -lean(a.curiosity),
+            routine: 35.0 * -lean(a.impulsiveness),
+        }
+    }
+
+    /// Drift every leaning a share of the way back toward where it rests.
+    pub fn fade_toward(&mut self, baseline: Self, share: f32) {
+        let share = share.clamp(0.0, 1.0);
+        for (value, rest) in self.values_mut().into_iter().zip(baseline.values()) {
+            *value += (rest - *value) * share;
+        }
     }
 }
 
@@ -1033,7 +1120,7 @@ impl ProfileDescriptor {
     }
 }
 
-fn descriptor_value(tendencies: LearnedTendencies, descriptor: ProfileDescriptor) -> i8 {
+fn descriptor_value(tendencies: LearnedTendencies, descriptor: ProfileDescriptor) -> f32 {
     match descriptor {
         ProfileDescriptor::Trusting => tendencies.cursor_trust,
         ProfileDescriptor::Wary => -tendencies.cursor_trust,
@@ -1058,7 +1145,7 @@ pub fn update_descriptor_flags(memory: &mut CreatureMemory, tendencies: LearnedT
     let previous = memory.descriptor_flags;
     for descriptor in ProfileDescriptor::ALL {
         let bit = descriptor.flag();
-        let threshold = if previous & bit == 0 { 35 } else { 25 };
+        let threshold = if previous & bit == 0 { 35.0 } else { 25.0 };
         if descriptor_value(tendencies, descriptor) >= threshold {
             memory.descriptor_flags |= bit;
         } else {
@@ -1073,16 +1160,50 @@ pub fn update_descriptor_flags(memory: &mut CreatureMemory, tendencies: LearnedT
     }
 }
 
-pub fn profile_descriptors(creature: &Creature) -> Vec<ProfileDescriptor> {
-    let mut descriptors: Vec<_> = ProfileDescriptor::ALL
+/// How far a companion has to lean past the rest of its colony before what it has learned says
+/// something about it in particular.
+pub const DESCRIPTOR_STANDOUT: f32 = 20.0;
+
+/// What a companion has come to lean toward that sets it apart, at most two, the furthest first:
+/// the learned words it has earned, each only while it leans at least [`DESCRIPTOR_STANDOUT`]
+/// further that way than the middle of the rest of `colony`. Something the whole colony has
+/// learned says nothing about any one of them, so it is not shown at all. A companion on its own
+/// has nobody to stand apart from, and shows what it has earned.
+pub fn profile_descriptors(creature: &Creature, colony: &[Creature]) -> Vec<ProfileDescriptor> {
+    let others: Vec<&Creature> = colony
+        .iter()
+        .filter(|other| other.id != creature.id)
+        .collect();
+    let standout = |descriptor: ProfileDescriptor| {
+        let own = descriptor_value(creature.tendencies, descriptor);
+        if others.is_empty() {
+            return own;
+        }
+        let mut values: Vec<f32> = others
+            .iter()
+            .map(|other| descriptor_value(other.tendencies, descriptor))
+            .collect();
+        values.sort_by(f32::total_cmp);
+        let middle = values.len() / 2;
+        let median = if values.len().is_multiple_of(2) {
+            (values[middle - 1] + values[middle]) / 2.0
+        } else {
+            values[middle]
+        };
+        own - median
+    };
+    let mut descriptors: Vec<(ProfileDescriptor, f32)> = ProfileDescriptor::ALL
         .into_iter()
         .filter(|descriptor| creature.memory.descriptor_flags & descriptor.flag() != 0)
+        .map(|descriptor| (descriptor, standout(descriptor)))
+        .filter(|(_, standout)| *standout >= DESCRIPTOR_STANDOUT)
         .collect();
-    descriptors.sort_by_key(|descriptor| {
-        std::cmp::Reverse(descriptor_value(creature.tendencies, *descriptor))
-    });
-    descriptors.truncate(3);
+    descriptors.sort_by(|a, b| b.1.total_cmp(&a.1));
+    descriptors.truncate(2);
     descriptors
+        .into_iter()
+        .map(|(descriptor, _)| descriptor)
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -1211,6 +1332,10 @@ pub struct Creature {
     pub display_scale_percent: u8,
     pub appearance: AppearanceGenome,
     pub personality: PersonalityGenome,
+    /// Who it is, for a companion made since 0.62.0. Absent for everyone older, whose
+    /// temperament is read from the values they already have.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperament: Option<crate::Temperament>,
     pub behavior_seed: [u8; 32],
     pub memory: CreatureMemory,
     pub tendencies: LearnedTendencies,
@@ -3081,7 +3206,7 @@ mod tests {
     #[test]
     fn compact_lived_experience_state_stays_within_budget() {
         assert!(std::mem::size_of::<CreatureMemory>() < 192);
-        assert!(std::mem::size_of::<LearnedTendencies>() <= 8);
+        assert!(std::mem::size_of::<LearnedTendencies>() <= 32);
         let memory = CreatureMemory {
             times_petted: u32::MAX,
             times_tossed: u32::MAX,
@@ -3122,14 +3247,14 @@ mod tests {
             "Mallow the Magnificent",
             memory,
             LearnedTendencies {
-                cursor_trust: 100,
-                sociability: 100,
-                climbing: 100,
-                sleep_security: 100,
-                exploration: 100,
-                play: 100,
-                home_affinity: 100,
-                routine: 100,
+                cursor_trust: 100.0,
+                sociability: 100.0,
+                climbing: 100.0,
+                sleep_security: 100.0,
+                exploration: 100.0,
+                play: 100.0,
+                home_affinity: 100.0,
+                routine: 100.0,
             },
             routines,
         ))
@@ -3386,17 +3511,83 @@ mod tests {
     #[test]
     fn learned_tendencies_saturate_and_descriptors_use_hysteresis() {
         let mut tendencies = LearnedTendencies::default();
-        LearnedTendencies::adjust(&mut tendencies.climbing, 120);
-        assert_eq!(tendencies.climbing, 100);
+        LearnedTendencies::adjust(&mut tendencies.climbing, 120.0);
+        assert_eq!(tendencies.climbing, 100.0);
         let mut memory = CreatureMemory::default();
         assert!(update_descriptor_flags(&mut memory, tendencies));
         let high_places = ProfileDescriptor::LovesHighPlaces.flag();
         assert_ne!(memory.descriptor_flags & high_places, 0);
-        tendencies.climbing = 30;
+        tendencies.climbing = 30.0;
         assert!(!update_descriptor_flags(&mut memory, tendencies));
-        tendencies.climbing = 24;
+        tendencies.climbing = 24.0;
         assert!(update_descriptor_flags(&mut memory, tendencies));
         assert_eq!(memory.descriptor_flags & high_places, 0);
+    }
+
+    /// Something that keeps happening only ever brings a leaning toward an end, and when it stops,
+    /// the leaning drifts back to where the companion's nature rests it, from either side.
+    #[test]
+    fn leanings_approach_an_end_and_drift_back_both_ways() {
+        let mut value = 0.0;
+        for _ in 0..2_000 {
+            LearnedTendencies::learn(&mut value, 3.0);
+        }
+        assert!(value > 99.0 && value <= 100.0, "{value}");
+        let before = value;
+        LearnedTendencies::learn(&mut value, 3.0);
+        assert!(value - before < 0.01, "near the end, it barely moves");
+        for _ in 0..2_000 {
+            LearnedTendencies::learn(&mut value, -3.0);
+        }
+        assert!((-100.0..-99.0).contains(&value), "{value}");
+
+        let temperament = crate::Temperament {
+            kind: crate::TemperamentKind::Grump,
+            axes: crate::Axes {
+                social: 0.1,
+                suspicion: 0.9,
+                ..crate::Axes::MIDDLING
+            },
+            tension: None,
+        };
+        let rest = LearnedTendencies::baseline(&temperament);
+        assert!(
+            rest.sociability < -20.0 && rest.cursor_trust < -20.0,
+            "{rest:?}"
+        );
+        assert_eq!(rest.play, 0.0, "a middling side rests at the middle");
+        let mut high = LearnedTendencies {
+            sociability: 100.0,
+            cursor_trust: 100.0,
+            ..LearnedTendencies::default()
+        };
+        let mut low = LearnedTendencies {
+            sociability: -100.0,
+            ..LearnedTendencies::default()
+        };
+        for _ in 0..20_000 {
+            high.fade_toward(rest, 1.0 / 2000.0);
+            low.fade_toward(rest, 1.0 / 2000.0);
+        }
+        assert!(
+            (high.sociability - rest.sociability).abs() < 1.0,
+            "{high:?}"
+        );
+        assert!((low.sociability - rest.sociability).abs() < 1.0, "{low:?}");
+        assert!(
+            (high.cursor_trust - rest.cursor_trust).abs() < 1.0,
+            "{high:?}"
+        );
+        // An older companion's middling sides rest its leanings at nothing at all.
+        let read = crate::Temperament {
+            kind: crate::TemperamentKind::Explorer,
+            axes: crate::Axes::MIDDLING,
+            tension: None,
+        };
+        assert_eq!(
+            LearnedTendencies::baseline(&read),
+            LearnedTendencies::default()
+        );
     }
 
     #[test]

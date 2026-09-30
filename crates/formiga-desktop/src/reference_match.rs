@@ -104,6 +104,13 @@ fn match_reference_image(
             if target.color_variation < 0.08 {
                 design.marking = 0;
             }
+            // A body the picture chose belongs to an archetype of its own.
+            if let Some(archetype) = design.body_archetype()
+                && !archetype.allows(design.body)
+            {
+                design.archetype =
+                    formiga_core::BodyArchetype::for_body(design.body, ordinal % 2 == 0).number();
+            }
         }
         apply_creature_design(&mut creature, Some(design));
         let frame = CreatureRenderer::render_frame(&creature.appearance, ActionKind::Idle, 0, true);

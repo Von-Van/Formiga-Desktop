@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=18 => migrate_legacy(value, version),
+            1..=19 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -250,6 +250,12 @@ fn migrate_legacy(
     let legacy_decorations = (source_version <= 18)
         .then(|| take_legacy_decorations(&mut value))
         .flatten();
+    // v20 adds temperaments, recipes drawn from archetypes with authored faces, and learned
+    // leanings kept as fractions. Nothing is migrated: a companion without a temperament reads
+    // one from the values it already has, a recipe without an archetype is drawn as it always
+    // was, and whole-number leanings read as the same values. The version moved so an older build
+    // refuses a colony whose temperaments and recipes it would quietly drop and whose leanings it
+    // could not read.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -656,7 +662,7 @@ mod tests {
     /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 247] = [
+    const SAVED_FIELDS: [&str; 257] = [
         "Decoration",
         "Friendship",
         "Garden",
@@ -681,18 +687,21 @@ mod tests {
         "active_since_utc",
         "activity",
         "activity_variant",
+        "affection",
         "affinity",
         "along",
         "appearance",
         "application",
         "application_occlusion_rules",
         "applied",
+        "archetype",
         "arousal",
         "arrival_delay_secs",
         "arrival_state",
         "arrived",
         "at",
         "avoidance",
+        "axes",
         "b",
         "behavior_seed",
         "body",
@@ -749,11 +758,13 @@ mod tests {
         "eye_spacing",
         "face",
         "face_signature",
+        "face_template",
         "facing_right",
         "familiarity",
         "family",
         "favorite_display",
         "favorites",
+        "feistiness",
         "finder",
         "finder_name",
         "first_at",
@@ -781,6 +792,7 @@ mod tests {
         "hooks",
         "house_styles",
         "id",
+        "impulsiveness",
         "journal",
         "keeper",
         "kept",
@@ -865,6 +877,7 @@ mod tests {
         "sleep_timing",
         "slots",
         "sociability",
+        "social",
         "social_need",
         "source",
         "source_colony_seed",
@@ -875,10 +888,13 @@ mod tests {
         "strength",
         "style",
         "surface",
+        "suspicion",
         "tail",
         "tail_length",
         "tail_style",
+        "temperament",
         "tendencies",
+        "tension",
         "text_scale",
         "theme",
         "thickness",
@@ -1590,6 +1606,49 @@ mod tests {
         assert!(migrated.companion.onboarding_complete);
         assert!(migrated.companion.journal.is_empty());
     }
+    /// A colony written by 0.61, before temperaments, archetypes and fractional leanings: every
+    /// companion comes through exactly as it was, whole-number leanings read as the same values,
+    /// nobody is given a temperament it did not have, and each reads one from its own values.
+    #[test]
+    fn a_v19_colony_keeps_every_companion_exactly_as_it_was() {
+        let desktop = crate::DesktopSnapshot::default();
+        let now = datetime!(2026-09-24 12:00 UTC);
+        let mut world = crate::World::new_original([59; 32], now, &desktop);
+        world.tick(now + time::Duration::days(40), 0.05, &desktop);
+        for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+            creature.tendencies.play = 100.0;
+            creature.tendencies.cursor_trust = -(index as f32) * 7.0;
+        }
+        let original = world.save;
+        assert!(original.creatures.len() >= 3);
+        assert!(original.creatures.iter().all(|c| c.temperament.is_none()));
+        let mut json = serde_json::to_value(&original).unwrap();
+        json["save_version"] = 19.into();
+        // 0.61 wrote leanings as whole numbers.
+        for creature in json["creatures"].as_array_mut().unwrap() {
+            let tendencies = creature["tendencies"].as_object_mut().unwrap();
+            for value in tendencies.values_mut() {
+                *value = serde_json::Value::from(value.as_f64().unwrap().round() as i64);
+            }
+        }
+        let text = json.to_string();
+        assert!(!text.contains("temperament") && !text.contains("archetype"));
+        let migrated = migrate_legacy(json, 19).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.creatures, original.creatures);
+        for creature in &migrated.creatures {
+            assert!(creature.temperament.is_none());
+            assert_eq!(
+                creature.temperament(),
+                crate::Temperament::read(&creature.personality)
+            );
+            assert!(creature.temperament_phrase().starts_with('A'));
+        }
+        // And back out again without gaining anything.
+        let written = serde_json::to_string(&migrated).unwrap();
+        assert!(!written.contains("\"temperament\""), "{written}");
+    }
+
     /// A colony from before 0.60.0 keeps everything it earned: its earned decorations are the
     /// village's to choose from, the ones that were showing go on hanging on the colony house in
     /// their places and the hidden ones are taken down, and every category is topped up to its
@@ -1964,6 +2023,7 @@ mod tests {
                 after: 1.0,
                 hold: 2.0,
                 gesture: Some(crate::Gesture::Bop),
+                bubble: None,
             }],
             // The walk round the village is a scene too, and is no more saved than the rest.
             stops: vec![crate::TourStop {
@@ -2462,7 +2522,7 @@ mod tests {
         original.tick(created + time::Duration::hours(1), 0.05, &desktop);
         original.save.creatures[0].name = "Keepsake".into();
         original.save.creatures[0].memory.times_petted = 47;
-        original.save.creatures[0].tendencies.cursor_trust = 33;
+        original.save.creatures[0].tendencies.cursor_trust = 33.0;
         let preserved_creatures = original.save.creatures.clone();
         let first_id = preserved_creatures[0].id;
         let second_id = preserved_creatures[1].id;
@@ -2728,7 +2788,7 @@ mod tests {
         for (index, creature) in original.save.creatures.iter_mut().enumerate() {
             creature.name = format!("Legacy {index}");
             creature.memory.times_petted = index as u32 + 10;
-            creature.tendencies.sociability = index as i8 * 7;
+            creature.tendencies.sociability = (index * 7) as f32;
         }
         let expected: Vec<_> = original
             .save

@@ -399,6 +399,131 @@ fn every_classic_face_keeps_two_readable_eyes_and_its_own_arrangement() {
     assert_eq!(neutral.len(), 6, "every eye arrangement is its own");
 }
 
+/// The authored faces a recipe drawn since 0.62.0 wears: every layout shows an eye on each side in
+/// every expression, eyelid pose and gaze; no two layouts draw the same face, and no two
+/// expressions the same face on one layout; and on every body plan, at every head and width, grown
+/// up and as small as a mini is drawn, through every clip, every pixel any expression draws lands
+/// on the body under it, so no eye, brow or mouth hangs off the edge of a head.
+#[test]
+fn every_face_layout_keeps_two_eyes_and_sits_on_its_head() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut genome = World::preview_adult(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    )
+    .appearance;
+    let base = genome.design.expect("a new companion has a recipe");
+    assert_ne!(base.face_template, 0);
+    let mut neutral = BTreeSet::new();
+    // Every pixel a layout draws in any expression, eyelid pose and gaze, on a blob — which wears
+    // its layout snug — and on every other body.
+    let mut drawn = BTreeMap::new();
+    for template in 1..=formiga_core::FACE_TEMPLATES {
+        for body in [formiga_core::BodyPlan::Round, formiga_core::BodyPlan::Blob] {
+            genome.design = Some(formiga_core::CreatureDesign {
+                face_template: template,
+                body,
+                ..base
+            });
+            genome.logical_size = 38;
+            let palette = crate::palette_for(&genome);
+            let mut pixels = vec![false; (FACE_FRAME_SIZE * FACE_FRAME_SIZE) as usize];
+            let mut expressions = BTreeSet::new();
+            for expression in ExpressionKind::ALL {
+                for eyelids in EyelidPose::ALL {
+                    for (gaze_x, gaze_y) in [(0, 0), (-1, -1), (1, 1), (1, -1), (-1, 1)] {
+                        let rendered = CreatureRenderer::render_face_frame(
+                            &genome,
+                            FaceRenderState {
+                                expression,
+                                eyelids,
+                                gaze: GazeDirection::new(gaze_x, gaze_y),
+                            },
+                        );
+                        let side = |left: bool| {
+                            rendered.pixels().iter().enumerate().any(|(index, pixel)| {
+                                (index as u32 % FACE_FRAME_SIZE < FACE_FRAME_SIZE / 2) == left
+                                    && *pixel == palette.eye
+                            })
+                        };
+                        assert!(
+                            side(true) && side(false),
+                            "layout {template} on {body:?} {expression:?} {eyelids:?}"
+                        );
+                        for (drawn, pixel) in pixels.iter_mut().zip(rendered.pixels()) {
+                            *drawn |= pixel.a > 0;
+                        }
+                        if eyelids == EyelidPose::Open && (gaze_x, gaze_y) == (0, 0) {
+                            let hash = Sha256::digest(rendered.rgba_bytes()).to_vec();
+                            if expression == ExpressionKind::Neutral
+                                && body == formiga_core::BodyPlan::Round
+                            {
+                                neutral.insert(hash.clone());
+                            }
+                            expressions.insert(hash);
+                        }
+                    }
+                }
+            }
+            assert_eq!(
+                expressions.len(),
+                ExpressionKind::ALL.len(),
+                "layout {template} on {body:?}: every expression is its own"
+            );
+            drawn.insert((template, body == formiga_core::BodyPlan::Blob), pixels);
+        }
+    }
+    assert_eq!(
+        neutral.len(),
+        usize::from(formiga_core::FACE_TEMPLATES),
+        "every layout is its own"
+    );
+    let clips: Vec<BodyClip> = [ActionKind::Idle, ActionKind::Traverse, ActionKind::Sleep]
+        .into_iter()
+        .map(BodyClip::Action)
+        .chain(Gesture::ALL.into_iter().map(BodyClip::Gesture))
+        .collect();
+    for body in formiga_core::BodyPlan::ALL {
+        for head in 7..=9 {
+            for width in [8, 10, 12] {
+                for size in [19, 21, 22, 24, 25, 28, 34, 40] {
+                    genome.logical_size = size;
+                    genome.design = Some(formiga_core::CreatureDesign {
+                        body,
+                        head,
+                        width,
+                        ..base
+                    });
+                    for &clip in &clips {
+                        for frame in 0..AnimationSpec::for_clip(clip).frames {
+                            let body_frame =
+                                CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                            let origin_x = body_frame.face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
+                            let origin_y = body_frame.face_anchor.y - FACE_FRAME_SIZE as i32 / 2;
+                            for template in 1..=formiga_core::FACE_TEMPLATES {
+                                let pixels =
+                                    &drawn[&(template, body == formiga_core::BodyPlan::Blob)];
+                                for (index, _) in pixels.iter().enumerate().filter(|(_, on)| **on) {
+                                    let x = origin_x + (index as u32 % FACE_FRAME_SIZE) as i32;
+                                    let y = origin_y + (index as u32 / FACE_FRAME_SIZE) as i32;
+                                    let inside = (0..FRAME_SIZE as i32).contains(&x)
+                                        && (0..FRAME_SIZE as i32).contains(&y);
+                                    assert!(
+                                        inside && body_frame.canvas.get(x, y).a > 0,
+                                        "layout {template} on {body:?} head {head} width {width} size {size} {clip:?} frame {frame}: a face pixel at {x},{y} hangs off the body"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn all_body_anchors_keep_the_layered_face_inside_the_sprite() {
     let half_face = FACE_FRAME_SIZE as i32 / 2;
@@ -1159,12 +1284,12 @@ fn every_gesture_is_a_distinct_looping_pose_on_every_body() {
         let mut poses: Vec<(Gesture, Canvas)> = Vec::new();
         for gesture in Gesture::ALL {
             let spec = AnimationSpec::for_clip(gesture);
-            // A scene holds a pose for as long as the moment lasts. A habit's stretch is done
-            // once and held at the top until the nap it opens takes over.
-            let playback = if gesture.in_scenes() {
-                PlaybackMode::Loop
-            } else {
+            // A scene holds a pose for as long as the moment lasts, and so does a temperament's.
+            // A habit's stretch, a yawn and a swoon are done once and held at the end.
+            let playback = if matches!(gesture, Gesture::Stretch | Gesture::Yawn | Gesture::Swoon) {
                 PlaybackMode::Hold
+            } else {
+                PlaybackMode::Loop
             };
             assert_eq!(spec.playback, playback, "{gesture:?}");
             assert!(spec.frames >= 2, "{gesture:?} is a pose that moves");
@@ -1348,9 +1473,20 @@ fn a_body_shows_a_gesture_only_while_its_attention_carries_one() {
         );
         let face =
             CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
-        // Covering the face shuts the eyes behind the paws; nothing else changes the face.
+        // Covering the face shuts the eyes behind the paws, and a temperament's own poses wear
+        // their own faces; nothing else changes the face.
+        let own = match gesture {
+            Gesture::Huff | Gesture::Stomp => Some(ExpressionKind::Grumpy),
+            Gesture::Peek => Some(ExpressionKind::Worried),
+            Gesture::Strut => Some(ExpressionKind::Smug),
+            Gesture::Beg => Some(ExpressionKind::Pleading),
+            Gesture::Swoon => Some(ExpressionKind::Affectionate),
+            _ => None,
+        };
         if gesture == Gesture::Cover {
             assert_eq!(face.eyelids, EyelidPose::Closed);
+        } else if let Some(expression) = own {
+            assert_eq!(face.expression, expression, "{gesture:?}");
         } else {
             assert_eq!(face, open, "{gesture:?}");
         }

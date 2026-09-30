@@ -195,10 +195,10 @@ fn a_resting_colony_is_drawn_three_times_a_second() {
     }
 }
 
-/// A stroll round the village at home is ticked and drawn at 10 Hz; the walk home, anything
-/// brisker, and any movement out on the desktop keep the full 20.
+/// A stroll round the village at home is ticked and drawn at the full 20 Hz, like the walk home
+/// and every movement out on the desktop.
 #[test]
-fn a_stroll_at_home_ticks_at_ten_and_a_walk_at_twenty() {
+fn a_stroll_at_home_ticks_at_twenty_like_every_walk() {
     let mut world = World::new(
         [5; 32],
         time::OffsetDateTime::UNIX_EPOCH,
@@ -210,16 +210,8 @@ fn a_stroll_at_home_ticks_at_ten_and_a_walk_at_twenty() {
         creature.state.arrival_delay_secs = 0.0;
         creature.state.velocity = Point { x: 16.0, y: 0.0 };
     }
-    assert_eq!(world_tick_interval(&world), Duration::from_millis(100));
-    assert_eq!(world_redraw_interval(&world), Duration::from_millis(100));
-    // The briskest stroll a colony can have counts as a stroll. A companion of high spirits
-    // strolls at nearly twenty-six points a second, and one of them used to hold the whole
-    // village at twenty frames a second.
-    world.save.creatures[0].state.velocity.x = MAX_STROLL_SPEED;
-    assert_eq!(world_tick_interval(&world), Duration::from_millis(100));
-    assert_eq!(world_redraw_interval(&world), Duration::from_millis(100));
-    // A walk home is a different thing: the slowest walk any companion has is over thirty
-    // points a second, and the village is drawn every tick while one is crossing it.
+    assert_eq!(world_tick_interval(&world), Duration::from_millis(50));
+    assert_eq!(world_redraw_interval(&world), Duration::from_millis(50));
     world.save.creatures[0].state.velocity.x = 30.8;
     assert_eq!(world_tick_interval(&world), Duration::from_millis(50));
     world.save.creatures[0].state.velocity.x = 36.0;

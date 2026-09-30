@@ -473,7 +473,7 @@ fn cursor_and_monitor_attention_render_distinct_notice_and_movement() {
         c.personality.boldness = if case == 1 { 0.1 } else { 0.9 };
         c.personality.cursor_interest = 1.0;
         c.personality.curiosity = 1.0;
-        c.tendencies.cursor_trust = 0;
+        c.tendencies.cursor_trust = 0.0;
         desktop.cursor.available = false;
         let mut added = desktop.monitors[0].clone();
         added.id = 2;

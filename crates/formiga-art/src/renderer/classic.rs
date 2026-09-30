@@ -630,6 +630,11 @@ pub(super) fn draw_quadruped_forelimbs(
                 | Gesture::Reach
                 | Gesture::Bop
                 | Gesture::Watch
+                | Gesture::Huff
+                | Gesture::Swoon
+                | Gesture::Beg
+                | Gesture::Strut
+                | Gesture::Peek
         )
     ) {
         draw_quad_leg(
@@ -851,6 +856,30 @@ pub(super) fn gesture_limb_targets(
             let curl = [0, 1, 1, 0, 0, 0][usize::from(frame % 6)];
             offset_pair(left, right, ((2, 3 - curl), (-1, 2 - curl)))
         }
+        // Folded across the chest, each paw past the middle.
+        Gesture::Huff => (at(middle + 2, left.y + 2), at(middle - 2, right.y + 3)),
+        // The far paw flung out, the near one up to the brow.
+        Gesture::Swoon => (
+            at(left.x - length - 2, left.y - 2 + i32::from(frame.min(2))),
+            at(middle + 1, right.y - length - 3),
+        ),
+        // Together under the chin, bouncing.
+        Gesture::Beg => (
+            at(middle - 1, left.y - 1 + tick),
+            at(middle + 1, right.y - 1 + tick),
+        ),
+        // One on the hip, one up in a flourish.
+        Gesture::Strut => (
+            at(left.x - 2, left.y + 2),
+            at(right.x + length, right.y - length - 3 - tick),
+        ),
+        // Over the face, the near one dropping to peek.
+        Gesture::Peek => (
+            at(middle - 3, left.y - 2),
+            at(middle + 3, right.y - 2 + tick * 4),
+        ),
+        // Where they rest: the foot does the talking.
+        Gesture::Stomp => resting(),
     }
 }
 

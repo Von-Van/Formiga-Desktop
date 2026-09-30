@@ -789,3 +789,66 @@ desktop, that window redraws once a second to notice it.
 
 The atlas's cells grew from 64 pixels to 80, and it dropped the eighth column it never drew in;
 one companion's atlas, the trinket sheet and the object sheet are unchanged.
+
+## 0.62.0
+
+### On the desktop
+
+A village strolls at 20 Hz again. From 0.59.2 a colony at home whose only movement was a stroll was
+ticked and drawn at 10 Hz, and 0.62.0 draws it at 20 like everything else. Measured on the desktop
+it was written on — an Apple M5, the owner's own colony of six copied into a scratch data directory
+with `FORMIGA_DATA_DIR` and the houses out, a minute to settle and two minutes sampled, each build on
+a fresh copy of the colony in the same sitting, `scripts/measure-macos.sh` taking the readings:
+
+| | average CPU | peak CPU | RSS | physical footprint |
+|---|---:|---:|---:|---:|
+| 0.61.0 | 2.92% | 3.29% | 59.7 MB | 120.9 MB |
+| 0.62.0 | 3.00% | 3.86% | 53.1 MB | 121.9 MB |
+
+The strolls cost about a twelfth of a point of one core on this colony. The owner's colony has grown
+since the 1.32% of 0.59.5 was measured, from five companions to six, and the village has had a life
+of its own since 0.60.0, so the 0.61.0 row, not the 0.59.5 one, is the baseline to compare later
+releases with. Frames were not counted, so how much of the village's time the 10 Hz rule still
+covered in 0.61.0 is not known; that dropping it cost so little suggests not much.
+
+### Textures
+
+A frame or a face that comes out the same as one already baked shares its cell, and the eight
+trinket cells nothing sampled are gone from the face texture. A new companion's pair of textures
+comes to 1,244,160 bytes and 506,880 under reduced motion; the owner's six:
+
+| | 0.61.0 | 0.62.0 |
+|---|---:|---:|
+| body frames, face states | 134, 324 | 147, 405 |
+| one companion, at most | 1,649,664 bytes | 1,797,120 bytes |
+| the owner's colony of six | 9,897,984 bytes | 8,202,240 bytes |
+| the same under reduced motion | 9,897,984 bytes | 3,870,720 bytes |
+| a full colony, at most | under 10 MiB | under 15 MiB |
+
+"At most" is a companion none of whose frames came out alike, which is what the budgets hold. A
+real companion shares a tenth to a quarter of its body frames and a third to seven in ten of its
+faces — a new companion's eyes are shut or smiling in more of them — and under reduced motion
+three in four of its body frames. Baking a companion's atlas, matches and all, takes about 4 ms in
+a release build.
+
+### The simulation
+
+`tick-bench`, built in release, the two builds run three times each, alternating, in the same
+sitting; the median of each three:
+
+| scenario | 0.61.0 mean µs | 0.62.0 mean µs |
+|---|---:|---:|
+| 1 creature, quiet desktop | 0.92 | 0.95 |
+| 4 creatures, quiet desktop | 2.30 | 2.42 |
+| 6 creatures, quiet desktop | 3.22 | 3.23 |
+| 6 creatures, busy desktop + cursor | 6.51 | 6.52 |
+| 6 creatures, homebound at shelter | 3.90 | 3.41 |
+| 6 creatures + visitor, homebound | 4.26 | 4.32 |
+| 6 creatures, paused, busy desktop | 1.73 | 1.74 |
+
+Every scenario is within about a tenth of a microsecond of 0.61.0 except six at home, whose three
+0.61.0 runs spread from 3.32 to 4.31. What a temperament adds per tick is the antics' queue and the
+check for a prank or a tapping foot; who is a troublemaker and who is impatient is worked out once
+per companion, and a companion's traits are otherwise read only when something happens. The
+benchmark's colony file is 56,543 bytes against 53,308, the temperaments and fractional leanings,
+and a save of it takes 5.65 ms against 5.17. The app binary is 15.8 MB against 15.6.

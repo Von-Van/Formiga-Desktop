@@ -489,6 +489,12 @@ impl World {
                 hanging: 0.0,
                 gesture: answer.gesture,
             });
+            // Said once, as it turns.
+            if let Some(icon) = answer.bubble
+                && since < answer.after + 0.06
+            {
+                self.show_bubble(answer.creature_id, icon);
+            }
         }
     }
 
@@ -612,7 +618,12 @@ impl World {
             let shared = SharedCreatureSeed {
                 source_colony_seed: seed,
                 source_generation: generation,
-                design: Some(CreatureDesign::generated(seed, generation, None)),
+                design: Some(CreatureDesign::generated_by(
+                    self.generator,
+                    seed,
+                    generation,
+                    None,
+                )),
             };
             let mut creature = generate_source_creature(shared, now, &desktop);
             if self
@@ -936,23 +947,41 @@ fn shared_moment(beat: u8, reduce_motion: bool) -> (ActionKind, f32) {
 
 /// One resident's answer: when it turns, how long it holds, and what its temperament makes of
 /// the moment. `index` staggers a round of them, so the colony answers in ones and twos.
-fn resident_answer(creature: &Creature, index: usize, reduce_motion: bool) -> ResidentAnswer {
+pub(super) fn resident_answer(
+    creature: &Creature,
+    index: usize,
+    reduce_motion: bool,
+) -> ResidentAnswer {
+    let traits = creature.traits();
+    let kind = creature.temperament().kind;
+    let has = |any: &[Trait]| traits.iter().any(|t| any.contains(t));
+    // A guardian keeps an eye on the stranger, a shy one hides behind its paws, a show-off shows
+    // off and a grump huffs. Otherwise a playful one bounces where it stands, a bold one waves
+    // back, and a timid one only looks. Reduced motion leaves everyone looking, bubbles and all.
+    let (gesture, bubble) = if has(&[Trait::Suspicious, Trait::Watchful, Trait::Protective])
+        || kind == TemperamentKind::Guardian
+    {
+        (Some(Gesture::Watch), Some(BubbleIcon::Watching))
+    } else if has(&[Trait::Shy]) || kind == TemperamentKind::Wallflower {
+        (Some(Gesture::Peek), Some(BubbleIcon::Blush))
+    } else if has(&[Trait::Vain, Trait::AttentionSeeking]) || kind == TemperamentKind::Showoff {
+        (Some(Gesture::Strut), Some(BubbleIcon::Sparkle))
+    } else if has(&[Trait::Grumpy, Trait::Irritable]) || kind == TemperamentKind::Grump {
+        (Some(Gesture::Huff), Some(BubbleIcon::Grumble))
+    } else if creature.personality.playfulness >= 0.6 {
+        (Some(Gesture::Bop), None)
+    } else if creature.personality.boldness >= 0.35 {
+        (Some(Gesture::Reach), None)
+    } else {
+        (None, None)
+    };
     ResidentAnswer {
         creature_id: creature.id,
         // The sociable ones look up first and the rest follow, a beat apart.
         after: 0.4 + index as f32 * 0.9 + (1.0 - creature.personality.sociability) * 2.2,
         hold: ANSWER_HOLD_SECS + creature.personality.sociability * 1.4,
-        // A playful one bounces where it stands, a bold one waves back, and a timid one only
-        // looks. Reduced motion leaves everyone looking.
-        gesture: if reduce_motion {
-            None
-        } else if creature.personality.playfulness >= 0.6 {
-            Some(Gesture::Bop)
-        } else if creature.personality.boldness >= 0.35 {
-            Some(Gesture::Reach)
-        } else {
-            None
-        },
+        gesture: gesture.filter(|_| !reduce_motion),
+        bubble,
     }
 }
 

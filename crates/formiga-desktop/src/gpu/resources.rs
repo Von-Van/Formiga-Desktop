@@ -130,8 +130,10 @@ impl OverlayRenderer {
                     outline,
                     body_atlas_width: atlas.body_width,
                     body_atlas_height: atlas.body_height,
+                    body_cells: atlas.body_cells,
                     face_atlas_width: atlas.face_width,
                     face_atlas_height: atlas.face_height,
+                    face_cells: atlas.face_cells,
                     face_anchors: atlas.face_anchors,
                     silhouette: atlas.silhouette,
                     resting_baseline: CreatureRenderer::resting_baseline(

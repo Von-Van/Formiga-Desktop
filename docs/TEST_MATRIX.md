@@ -12,14 +12,15 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
 | Raised cat tail and visible rabbit puff for every tail style | CI | CI |
 | Resting cats plant all four paws on the same contact row as walking; gesture paws cap long generated reaches | CI | CI |
-| v1–v18→v19 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
+| v1–v19→v20 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | A v18 colony keeps what it earned: its decorations unlocked, the ones showing hung on the colony house in their places and the hidden ones taken down, every category topped up to three; one that never earned any hangs nothing and waits a day or two for its first new thing | CI | CI |
+| A v19 colony keeps every companion exactly as it was: whole-number leanings read as the same values, nobody is given a temperament it did not have, and each reads one from its own values | CI | CI |
 | A v14 colony migrates to an empty visitor state; the saved-field allowlist and runtime-only field denylist both hold | CI | CI |
 | Atomic round trip and corrupt-primary recovery from the previous-save backup | CI | CI |
 | One-hour, one-week, and clamped calendar-month arrival boundaries | CI | CI |
 | Fixed memory/routine limits and sub-2-KiB per-creature serialized growth | CI | CI |
-| Learned utility monotonicity, ±0.35 cap, saturation, and contrary-experience recovery | CI | CI |
-| Descriptor ±35/±25 hysteresis, badge persistence, and 12-active-hour bubble throttle | CI | CI |
+| Learned leanings: each lesson smaller the nearer a leaning is to its end, drifting back toward where the temperament rests it from either side, at a pace the temperament sets; the ±0.35 utility cap and contrary-experience recovery | CI | CI |
+| Descriptor ±35/±25 hysteresis, badge persistence, and 12-active-hour bubble throttle; learned words shown only where a companion leans 20 further than the rest of its colony | CI | CI |
 | Unicode name validation, deterministic unique defaults, and user duplicate names | CI | CI |
 | 60-active-second observation projection and hidden/paused suspension | CI | CI |
 | Six-pair relationship maximum, canonical IDs, four score bytes, saturation, and deterministic round trip | CI | CI |
@@ -43,6 +44,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | All four seed generations round-trip case-insensitively and reproduce innate identity byte-for-byte | CI | CI |
 | Seed prefix/group/version/generation/length/alphabet/padding/checksum validation and corruption rejection | CI | CI |
 | Imported fresh history, distinct companion lineage, explicit replacement gate, and unchanged save compatibility | CI | CI |
+| A recipe drawn by the archetype generator travels in a version 4 code and nowhere else, and comes back byte for byte with the same temperament; versions 2 and 3 refuse an archetype and version 4 requires one | CI | CI |
 | Deterministic 960×600 opaque card pixels, Unicode names, long-name bounds, abbreviated seed, and zero-sized renderer state | CI | CI |
 | Card save cancellation before rendering, Unicode-safe filenames, and PNG extension normalization | CI | CI |
 | PNG/JPEG local decode limits, fixed 512-candidate matching, determinism, and full-size preview output | CI | CI |
@@ -51,6 +53,11 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Every classic body combination connected with a reserved face at extreme sizes, through every action and gesture, inside the frame and spacing boxes, with one limb per side | CI | CI |
 | Both eyes readable in every classic face arrangement and expression, and candy colours keeping a dark face on any coat | CI | CI |
 | A companion without a recipe has minis drawn from its own genes, replayed exactly by a version 1 code | CI | CI |
+| Generator editions: the original generator draws every recipe and personality exactly as before, golden recipe bytes and golden temperaments hold for the new one, and both are pure functions of the seed | CI | CI |
+| Archetypes: each keeps to its bodies, clashing parts come together less often than chance, about seven in ten cute, two weird-cute and one oddball, and a mini takes after its parent without being a copy | CI | CI |
+| Temperaments: over two thousand new companions every kind 4–16%, no trait on more than one in five, flaws 25–45% of the traits shown, tensions 15–35%; traits never contradict, repeat or pile up flaws; phrases read as plain English; an older companion reads its own values back and its behaviour values stay in their old ranges | CI | CI |
+| Face layouts: every layout shows an eye on each side in every expression, eyelid pose and gaze; no two layouts and no two expressions on one layout draw the same face; every pixel of every expression lands on the body under it for every body plan, head, width and size, grown up and mini, through every clip | CI | CI |
+| Antics: a jealous companion huffs at a neighbour's pet, a grump grumbles and a soft one gives in, a dramatic one swoons and a jumpy one hides, a food-lover begs, a show-off poses after a climb or a find, a troublemaker pounces and its friend jumps, a stubborn one stamps its foot; moments rest between them and keep to reduced motion, pause and hiding | CI | CI |
 | A roaming leaning tips climbing without forbidding it, sends a homebody home, and over half an hour keeps floor-dwellers mostly off ledges and homebodies lower than the rest, saved only once chosen | CI | CI |
 | Habits: at most two, one per kind of moment, kept once had and announced once; picked up at the measured pace; never taught at the door; hidden by reduced motion; done standing still, after any walk the action begins with, and ended by whatever replaces the action | CI | CI |
 | Celebrations spread across hop, dance and twirl and fixed per creature; a cheer drawn as the creature's own; each habit drawn only while it is being done, with its own face; the stretch inside the frame and distinct on every body | CI | CI |
@@ -107,10 +114,10 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Continuous upward traverse/climb/mantle, downward hops, and route interruption | CI | CI |
 | Raised dangling GPU/proxy handhold placement contract | CI | CI |
 | A hundred and sixty deterministic keepsakes, each its own object with a glint, readable inside its own cell and clear of the eyes; the original sixteen keep their numbers, names and circumstances | CI | CI |
-| Exactly 134 unique body frames (92 action, 42 gesture), one slot each; 1,649,664 bytes a companion, a full colony under 10 MiB; layered atlas at or below 4,500,000 bytes | CI | CI |
+| Exactly 147 body frames (92 action, 55 gesture) with a slot each; frames and faces that come out alike share a cell, and every slot is drawn from a cell holding exactly its frame, with and without reduced motion; the same atlas byte for byte on every bake; 1,797,120 bytes a companion at most and a full colony under 15 MiB; the layered atlas at or below 4,500,000 bytes | CI | CI |
 | One limb per side: a raised paw or wing leaves no resting nub or folded wing behind, and winged bodies reach with their wings | CI | CI |
 | Every action and gesture keeps one connected body and the reserved face on every body plan at extreme sizes | CI | CI |
-| Twelve gestures are distinct, moving, in-frame poses on every body, the yawn among them; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
+| Eighteen gestures are distinct, moving, in-frame poses on every body, the yawn among them; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
 | A gesture is presented at its own frame rate, not that of the action beneath it | CI | CI |
 | Every body pose has a scene that strikes it; poses never appear over travel, hops, hangs, reduced motion, or an action whose own clip is the point | CI | CI |
 | A tug of war reaches its pull and hauls, from the position its settling-in walk actually reaches | CI | CI |
@@ -122,12 +129,12 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Alpha-mask and occlusion geometry | CI | CI |
 | Update version/asset selection and 24-hour throttle | CI | CI |
 | Update digest validation and unsafe-name rejection | CI | CI |
-| Offers: acceptance curve and clamp, sleep hard stops, the three cooldowns, every refusal condition, bounded reversible learning, and a behaviour stream left undisturbed | CI | CI |
+| Offers: a food-lover takes what a picky eater turns down; acceptance curve and clamp, sleep hard stops, the three cooldowns, every refusal condition, bounded reversible learning, and a behaviour stream left undisturbed | CI | CI |
 | Send home starts an ordinary visit without the cooldown, refuses while paused, mid-interaction, or with no usable home display, and answers with one bubble each | CI | CI |
 | Thought bubbles: 2.4-second lifetime, growth steps, holding a repeated icon and swapping a different one, the five-at-once cap, hidden and reduced-motion behaviour, and nothing saved | CI | CI |
 | Creature menu: member and guest item sets, the swapped Stay/Copy-code cell, placement above and flipped below at every scale, every dismissal cause, and a hit region covering only the strip body | CI | CI |
-| UI atlas: every bubble, frame, icon, and label tab inside one 256×80 texture, built on demand and released when idle | CI | CI |
-| Visitors: one wanderer per block of four gatherings, the full visit timeline, residents answering without changing a bond, tendency, or counter, and every interruption path | CI | CI |
+| UI atlas: every bubble, frame, icon, and label tab inside one 256×120 texture, fifteen bubbles to a row, built on demand and released when idle | CI | CI |
+| Visitors: one wanderer per block of four gatherings, the full visit timeline, residents answering in character without changing a bond, tendency, or counter, and every interruption path | CI | CI |
 | Invitations: a duplicate or already-present code refused, a 24-hour stay attended at every gathering, one guest-book signature per visit, the 24-entry cap, and staying through the ordinary adoption path | CI | CI |
 | Village layout: a porch sharing its own house's lot line, everyone resting beside its own door, both narrow-display fallbacks, and a guest spot clear of every resident | CI | CI |
 | Doorstep moments: pacing bounds, one resident busy at a time, cancellation by pet, pick-up, dismissal, pause, hide, or changed geometry, and no tendency, counter, bond, or journal line moving | CI | CI |
@@ -140,14 +147,14 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Stickers: every clip and scale, byte-deterministic GIFs, the creature's own cadence in the frame delays, an infinite loop, and no comment/application/plain-text blocks | CI | CI |
 | Colony portrait: deterministic 960×600 opaque pixels that stay identical with memories, tendencies, and relationships maxed out, and no PNG text chunks | CI | CI |
 | House kinds: the colony house is the colony's own kind and every cottage its keeper's own until one is chosen; a choice is one per house, passes to a replacement, leaves with a departing companion, is cleared by putting the village back and undone like any layout change; every kind turns up among keepers about equally; the saved names are the ones colony files have always used; each kind keeps its doorway, footprint, curtain and lamplight rules, and every palette paints every kind without reshaping it; the Home page builds a house as another kind and gives it back its own | CI | CI |
-| Sleep and strolls: a companion walking to bed is drawn walking, heavy-lidded, and lies down when it stops; a sleeper that has to make room is towed by a free friend at an unhurried pace without waking anyone, the rope let go at the end; with nobody free it wriggles over, and a tow cut short by a pick-up ends at once; the rope reaches from hand to sleeper without a gap and sags; residents stroll out and back with at most three out at once, and every visit starts with the walk home; a stroll at home ticks and draws at 10 Hz and anything brisker at 20 | CI | CI |
+| Sleep and strolls: a companion walking to bed is drawn walking, heavy-lidded, and lies down when it stops; a sleeper that has to make room is towed by a free friend at an unhurried pace without waking anyone, the rope let go at the end; with nobody free it wriggles over, and a tow cut short by a pick-up ends at once; the rope reaches from hand to sleeper without a gap and sags; residents stroll out and back with at most three out at once, and every visit starts with the walk home; a stroll at home ticks and draws at 20 Hz like every walk | CI | CI |
 | Undo: a removed companion comes back with its id, place, memories, bonds, minis and cottage while everyone else keeps what they did since; a replaced one comes back and its replacement leaves no creature or bond behind; a welcomed one goes and a natural arrival stays; a full colony refuses and keeps the change; a layout change puts back only its own fields, keepsakes found since after the rest; failed and empty changes keep the earlier one; the footer offers the change on every page only while there is one | CI | CI |
 | Postcards: every scene deterministic, opaque, and different from the others for a colony of one and of six; everyone in the picture, in order, inside the frame; a caption changes only the lines under the picture and is written without control characters, folded and cut to sixty characters; a cancelled export writes nothing, a sent one has no text chunks, names, or caption bytes, and a filename naming only the scene; the Home page picks a scene and a caption and uploads nothing | CI | CI |
 | Resting: a six-frame loop with at least four postures on every body plan, the settle alone under reduced motion, both sides and both manners reached by generated companions, and no faster than the clip it replaced | CI | CI |
 | Ground line: every standing clip stands on one row, for the classic families and 64 modular seeds, with and without reduced motion | CI | CI |
 | Bubbles on transitions: a music note over every companion that joins a game and over none of its watchers; a Z over a companion as it drops off, by any route into a nap, and over nobody still standing | CI | CI |
 | Updates folder: installers for the running version or an earlier one, and part-finished downloads untouched for a day, are cleared at start; later installers, other files, and names that are not Formiga's own are kept | CI | CI |
-| Stroll cadence: every stroll a companion can take stays at or under `MAX_STROLL_SPEED` and every walk well over it, the briskest stroll still ticks and draws at 10 Hz, a walk home at 20, and a resting colony is redrawn three times a second | CI | CI |
+| Stroll cadence: a stroll at home, a walk home, and movement out on the desktop all tick and draw at 20 Hz, and a resting colony is redrawn three times a second | CI | CI |
 | Nothing below the feet: sleeping, eating, and crouching frames of the three classic families and 64 modular seeds, with every snack and both motion settings, stay on or above the row the feet reach | CI | CI |
 | Universal app / x64 package | CI | CI |
 

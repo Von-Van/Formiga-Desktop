@@ -365,6 +365,8 @@ impl World {
             creature.state.velocity = Point::default();
             creature.state.drives.comfort = (creature.state.drives.comfort + 0.12).min(1.0);
             creature.state.drives.arousal = (creature.state.drives.arousal - 0.08).max(0.0);
+            // A heart, or from a grump a grumble, and from a secretly soft grump the heart after.
+            let (icon, heart_after) = antics::pet_bubble(creature);
             if let Some(elapsed_seconds) = interrupted_seconds {
                 Self::emit(
                     &mut self.events,
@@ -374,7 +376,11 @@ impl World {
                     },
                 );
             }
-            bubbles::show(&mut self.bubbles, creature_id, BubbleIcon::Heart);
+            bubbles::show(&mut self.bubbles, creature_id, icon);
+            if heart_after {
+                self.antics
+                    .bubble_later(creature_id, BubbleIcon::Heart, 1.3);
+            }
             Self::emit(&mut self.events, WorldEvent::CreaturePetted { creature_id });
             Self::emit(
                 &mut self.events,

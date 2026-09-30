@@ -1011,9 +1011,10 @@ mod tests {
             // And the drawing really did follow the layout.
             let card = ColonyCardRenderer::render(&save);
             let (drawn_left, drawn_right) = drawn_row(&card);
-            // The band skips the lowest rows, where a wide foot can sit, so a few pixels of slack.
+            // The band skips the lowest rows, where a wide foot can sit, and a slim companion
+            // with no tail leaves more of its frame empty at the ends, so a few pixels of slack.
             assert!(
-                (drawn_left - left).abs() <= 12 && (drawn_right - right).abs() <= 12,
+                (drawn_left - left).abs() <= 16 && (drawn_right - right).abs() <= 16,
                 "{members} members were drawn at {drawn_left}..{drawn_right}, laid out at {left}..{right}"
             );
         }
@@ -1120,8 +1121,8 @@ mod tests {
             creature.memory.window_climbs = 9_999;
             creature.memory.discoveries_found = 99;
             creature.memory.descriptor_flags = u16::MAX;
-            creature.tendencies.climbing = 127;
-            creature.tendencies.sociability = 127;
+            creature.tendencies.climbing = 127.0;
+            creature.tendencies.sociability = 127.0;
         }
         loud.relationships = save
             .creatures

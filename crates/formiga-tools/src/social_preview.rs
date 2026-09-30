@@ -634,7 +634,7 @@ fn draw_text_centered_with_shadow(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_text(
+pub(crate) fn draw_text(
     pixels: &mut [u8],
     width: i32,
     height: i32,

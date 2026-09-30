@@ -37,6 +37,18 @@ pub(super) fn beat_pose(beat: Beat) -> Option<(Gesture, f32)> {
         BeatKind::ShowingOff => Gesture::Reach,
         BeatKind::Admiring | BeatKind::InspectCap => Gesture::Watch,
         BeatKind::RoofSit | BeatKind::Carrying => return None,
+        BeatKind::Huff => Gesture::Huff,
+        // A start, and then over it goes.
+        BeatKind::Swoon if p < 0.18 => Gesture::Gasp,
+        BeatKind::Swoon => return Some((Gesture::Swoon, at(0.18))),
+        BeatKind::Beg => Gesture::Beg,
+        BeatKind::Strut => Gesture::Strut,
+        BeatKind::Peek => Gesture::Peek,
+        BeatKind::Stomp => Gesture::Stomp,
+        // Wound up low, then up and over.
+        BeatKind::Pounce if p < 0.55 => Gesture::Crouch,
+        BeatKind::Pounce => return Some((Gesture::Cheer, at(0.55))),
+        BeatKind::Startle => Gesture::Gasp,
     };
     Some((gesture, beat.elapsed))
 }
@@ -61,6 +73,17 @@ pub(super) fn beat_expression(beat: Beat) -> ExpressionKind {
         BeatKind::AdjustFlap | BeatKind::FluffCushion | BeatKind::TidyLeaves => {
             ExpressionKind::Focused
         }
+        // Hmph.
+        BeatKind::Huff | BeatKind::Stomp => ExpressionKind::Grumpy,
+        BeatKind::Swoon if p < 0.18 => ExpressionKind::Startled,
+        // Eyes shut on a smile and blushing, all the way down.
+        BeatKind::Swoon => ExpressionKind::Affectionate,
+        BeatKind::Peek => ExpressionKind::Worried,
+        BeatKind::Beg => ExpressionKind::Pleading,
+        BeatKind::Strut => ExpressionKind::Smug,
+        BeatKind::Pounce if p < 0.55 => ExpressionKind::Focused,
+        BeatKind::Pounce => ExpressionKind::Joy,
+        BeatKind::Startle => ExpressionKind::Startled,
         _ => ExpressionKind::Content,
     }
 }
@@ -76,6 +99,16 @@ pub(super) fn beat_eyelids(beat: Beat) -> Option<EyelidPose> {
         BeatKind::LeafOnFace | BeatKind::DroppedSnack | BeatKind::MissedCushion => {
             Some(EyelidPose::Open)
         }
+        BeatKind::Swoon if p >= 0.18 => Some(EyelidPose::Closed),
+        // Pleased with itself.
+        BeatKind::Strut => Some(EyelidPose::Half),
+        // Eyes shut behind the paws, then open for the peek.
+        BeatKind::Peek => Some(if p < 0.5 {
+            EyelidPose::Closed
+        } else {
+            EyelidPose::Half
+        }),
+        BeatKind::Startle | BeatKind::Swoon => Some(EyelidPose::Open),
         _ => None,
     }
 }
@@ -91,6 +124,19 @@ pub(super) fn beat_gaze(creature: &Creature, beat: Beat) -> Option<GazeDirection
         }
         BeatKind::LeafOnFace if beat.progress() < 0.3 => {
             return Some(GazeDirection::new(0, -1));
+        }
+        // Nose in the air, looking away from whatever it is put out about.
+        BeatKind::Huff => {
+            return Some(GazeDirection::new(
+                beat.look.map_or(-forward, |target| {
+                    -face::axis_direction(target.x - creature.state.position.x, 10.0)
+                }),
+                -1,
+            ));
+        }
+        // Looking up at whoever has the snack, or whoever is watching.
+        BeatKind::Beg | BeatKind::Strut if beat.look.is_none() => {
+            return Some(GazeDirection::new(forward, -1));
         }
         _ => {}
     }

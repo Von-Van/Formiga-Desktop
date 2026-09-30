@@ -122,7 +122,21 @@ impl Kind {
     pub(super) fn hops(self) -> bool {
         matches!(self, Self::JumpContest | Self::Race | Self::Lava)
     }
+
+    /// Games that are nothing but a runner and whoever is after it. Standing still is never part
+    /// of them for more than a moment, unlike a vault waited for or a leader's route hesitated at.
+    fn all_about_moving(self) -> bool {
+        matches!(self, Self::Chase | Self::Tag | Self::KeepAway)
+    }
 }
+
+/// How long a player in a game that is all about moving may stand exactly where it is. Every goal
+/// the game sets it is being refused — no room ahead, the spot taken — and holding it there only
+/// keeps it on top of whoever it is stuck beside, while the rest of the game runs on without it.
+const STALLED_SECONDS: f32 = 1.5;
+
+/// How far a member has to have gone to count as having gone anywhere, in points.
+const STALL_REACH: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum PlayRole {
@@ -169,6 +183,11 @@ pub(super) struct Session {
     pub(super) trail: [Option<Point>; 4],
     /// The window a race runs to. Other scenes leave it empty.
     pub(super) goal: Option<WindowKey>,
+    /// How long each member of a game that is all about moving has stood where it stands, and
+    /// how far along its surface that is (not a number until it has been measured). Along the
+    /// surface is enough: none of these games hops.
+    still_for: [f32; MAX_PARTICIPANTS],
+    still_x: [f32; MAX_PARTICIPANTS],
 }
 
 impl Session {
@@ -345,7 +364,20 @@ impl World {
             + bond.map_or(0.0, |b| f32::from(b.affinity) / 255.0 * 0.2)
             - invitee.state.drives.sleep_pressure * 0.4
             - bond.map_or(0.0, |b| f32::from(b.avoidance) / 255.0 * 0.3);
-        appetite >= kind.appetite()
+        // A competitive one takes up a contest it would otherwise be too idle for, and a shy one
+        // would rather not be seen playing.
+        let traits = invitee.traits();
+        let has = |any: &[Trait]| traits.iter().any(|t| any.contains(t));
+        let contest = matches!(
+            kind,
+            Kind::Race | Kind::JumpContest | Kind::Tag | Kind::Chase | Kind::Hill | Kind::Tug
+        );
+        let temperament = if contest && has(&[Trait::Competitive]) {
+            0.35
+        } else {
+            0.0
+        } - if has(&[Trait::Shy]) { 0.15 } else { 0.0 };
+        appetite + temperament >= kind.appetite()
     }
 
     pub(super) fn observe_play(&mut self, desktop: &DesktopSnapshot, dt: f32) {
@@ -703,6 +735,8 @@ impl World {
             focus: matches!(e.kind, Kind::Hush | Kind::Prank).then_some(e.pair[1]),
             trail: [None; 4],
             goal: None,
+            still_for: [0.0; MAX_PARTICIPANTS],
+            still_x: [f32::NAN; MAX_PARTICIPANTS],
         });
         self.attention.colony_cooldown = 15.0;
     }
@@ -812,6 +846,35 @@ impl World {
         if s.elapsed >= s.ends_at {
             self.finish_play(s);
             return;
+        }
+        if s.kind.all_about_moving() {
+            for index in 0..MAX_PARTICIPANTS {
+                let Some(id) = s.members[index] else {
+                    continue;
+                };
+                let here = self.play_position(id).map_or(f32::NAN, |point| point.x);
+                // A comparison with a number that is not one is false, so the first measurement
+                // always starts the count afresh.
+                if (here - s.still_x[index]).abs() <= STALL_REACH {
+                    s.still_for[index] += dt;
+                } else {
+                    s.still_for[index] = 0.0;
+                    s.still_x[index] = here;
+                }
+                if s.still_for[index] < STALLED_SECONDS {
+                    continue;
+                }
+                if s.roles[index] == PlayRole::Lead {
+                    // Nowhere left to run: the game winds down like any that has run out of
+                    // room, so everyone still gets its ending.
+                    s.ends_at = s.ends_at.min(s.elapsed + 1.4);
+                } else {
+                    // Stuck, so it drops out and gets on with its day; the quorum below ends the
+                    // game if that leaves too few to play it.
+                    s.members[index] = None;
+                    self.release_player(id);
+                }
+            }
         }
         self.settle_leaps();
         if matches!(s.kind, Kind::Copycat(_))

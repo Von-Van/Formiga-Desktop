@@ -1,4 +1,4 @@
-# Formiga · v0.61.0
+# Formiga · v0.62.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -54,8 +54,9 @@ one costs.
 ## What it does
 
 - **Creatures with a life of their own.** Five body plans with generated ears, tails, markings, and
-  palettes, twelve expressions, a gaze that follows whatever has caught their interest, and a
-  personality of their own that how they are treated slowly nudges.
+  palettes, fifteen expressions, a gaze that follows whatever has caught their interest, and a
+  temperament of their own — grump, sweetheart, troublemaker, show-off and more — that shows in what
+  they do and that how they are treated slowly nudges.
   [One hundred uncurated seeds](docs/assets/contact-sheet.png) show the range.
 - **Your desktop as terrain.** They climb onto windows, ride them when they move, hop between them,
   squeeze through narrow gaps, watch a risky jump from the ledge, and notice the cursor — up on the
@@ -92,7 +93,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.61.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.62.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -104,19 +105,34 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.61.0
+## New in 0.62.0
 
-The houses are bigger. Every house in the village is drawn a quarter larger beside your
-companions, so each one reads plainly as somebody's home now that the village can be arranged, and
-the village is about a tenth wider to hold them. The keepsake trees at either end stand a little in
-over the house beside them and are drawn in front of it where they meet, so the row sits tucked in
-between its two trees. The colony portrait and the postcards draw the houses bigger too.
+Companions have a temperament of their own. Each is one of ten kinds — a sweetheart, a
+troublemaker, a grump, an explorer, a wallflower, a show-off, a scholar, a lazybones, a guardian,
+or now and then an oddball — with its own mix of nine sides from solitary to social and trusting to
+suspicious, sometimes a contradiction like brave but nervous, and three traits its profile shows,
+the odd flaw among them: "A reckless scamp · Reckless · Mischievous · Excitable". It shows. A
+jealous one huffs when somebody else is petted, a grump grumbles at a pet but a secretly soft one
+gives in with a heart, a dramatic one swoons at a fright, a food-lover begs when somebody eats, a
+show-off strikes a pose after a climb, and a troublemaker pounces on a dozing friend. Temperament
+also steers what they choose — snacks, naps, dances, games, and how they greet a visitor — and what
+they learn from living with you now fades as well as grows, so companions no longer all end up
+described the same way. Your companions keep their own personalities, read from the values
+they have always had.
 
-A new colony is shown round. The first time Formiga opens, a tour walks through the desktop —
-petting a companion, carrying one, its right-click menu, and the icon in the menu bar or tray —
-and notices when you try each one, then through what every page of the settings window is for,
-turning the pages itself and outlining each part as it talks about it. Skip it whenever you like,
-and take it again any time from Preferences.
+New companions come out cuter and more of a piece. Each is drawn from one of eight body kinds —
+round mochis, four-legged critters, big-headed beans, fluffy puffs, sprites with antennae, whelps
+with a proper tail, winged birbs, and deliberately odd goobers — with parts chosen to suit each
+other, colours that belong together, and one of twelve hand-made faces. Most are the cutest of
+several drawn for them; now and then one is a little strange, and once in a while a true oddball.
+Their faces show feelings in the eyes themselves, sleepy lids, a scowl, smiling eyes, a start, so
+expressions read at a glance, and everyone gains three new ones: grumpy, smug, and pleading. Your
+companions look exactly as they did, except that their brows now go the right way when they worry
+or concentrate.
+
+The village moves smoothly: companions strolling round it are drawn twenty times a second like
+everything else. And each companion's pictures take about a fifth less memory than before, and far
+less with reduced motion on, even with all the new poses and faces.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

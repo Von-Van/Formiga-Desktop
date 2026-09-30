@@ -49,8 +49,9 @@ click history, clipboard contents, screenshots, pixels from other applications, 
 content. It does not require Accessibility, Screen Recording, Input Monitoring, administrator
 privileges, or elevated process access.
 
-The versioned JSON save contains the colony seed, resolved genomes, personality values, creature
-names and birth timestamps, current drives and positions, compact counters, bounded learned
+The versioned JSON save contains the colony seed, resolved genomes, personality values, the
+temperament of each companion made since 0.62.0 (nine numbers, a kind, and an optional tension),
+creature names and birth timestamps, current drives and positions, compact counters, bounded learned
 tendencies, twelve numeric routine slots, one unordered relationship record for each pair of
 companions — fifteen once a colony of six is full — arrival state,
 adult/mini roles, mini parent IDs, Keep preferences, and bounded per-adult mini-arrival bits,
@@ -176,7 +177,8 @@ either the old or migrated save.
 
 Seed sharing is fully offline. A code contains only a format nibble, original generation, immutable
 256-bit creature-origin seed, the sixteen-byte design recipe when the creature has one, four bytes of
-classic parts when that recipe has any, and a checksum. It does not contain the creature's custom name, birth
+classic parts when that recipe has any — the last of them holding the archetype and face layout of
+a companion made since 0.62.0 — and a checksum. It does not contain the creature's custom name, birth
 time, memory, tendencies, routines, relationships, current colony seed, objects, shelter, display
 keys, settings, device data, or desktop information. Copying uses the local system clipboard;
 Formiga does not transmit, register, resolve, or look up a code.
@@ -188,8 +190,8 @@ colony members keep their histories. No account, analytics event, server, DNS re
 The shared code contains no journal, home preferences, or saved behavior routines.
 
 Creature-card export is local and read-only. The 960×600 PNG contains ordinary rendered pixels for
-the creature, custom name, family, up to three visible descriptors, UTC birth month/year, colony
-number, and an abbreviated seed glimpse. It does not embed the full share code, memory JSON,
+the creature, custom name, the phrase and three traits of its temperament, UTC birth month/year,
+colony number, and an abbreviated seed glimpse. It does not embed the full share code, memory JSON,
 relationships, objects, shelter state, display keys, device data, screen content, source paths, or
 hidden text metadata. The save dialog opens before rendering; cancellation creates no image, and
 temporary card/font/PNG buffers are released after the export completes.

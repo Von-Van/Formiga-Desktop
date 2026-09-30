@@ -29,13 +29,24 @@ fn contrary_experiences_reverse_tendencies_and_badges_persist_until_viewed() {
     let desktop = desktop();
     let mut world = World::new([85; 32], created, &desktop);
     let creature_id = world.save.creatures[0].id;
-    for _ in 0..12 {
+    // A companion middling on every side learns at the plain rate: each pet is worth a little
+    // less than the one before it.
+    world.save.creatures[0].temperament = Some(Temperament {
+        kind: TemperamentKind::Sweetheart,
+        axes: Axes::MIDDLING,
+        tension: None,
+    });
+    for _ in 0..20 {
         world
             .events
             .push(WorldEvent::CreaturePetted { creature_id });
     }
     world.project_events(created);
-    assert_eq!(world.save.creatures[0].tendencies.cursor_trust, 36);
+    let trust = world.save.creatures[0].tendencies.cursor_trust;
+    assert!(
+        (trust - 100.0 * (1.0 - 0.97_f32.powi(20))).abs() < 0.01,
+        "{trust}"
+    );
     assert!(world.save.creatures[0].memory.profile_revision > 0);
     assert!(world.save.creatures[0].memory.viewed_profile_revision == 0);
     assert!(world.drain_events().any(|event| matches!(
@@ -46,7 +57,9 @@ fn contrary_experiences_reverse_tendencies_and_badges_persist_until_viewed() {
             ..
         }
     )));
-    for _ in 0..10 {
+    // Each toss sets it back a little less than the last once it is already wary, so it takes a
+    // few more than it used to for wariness to show.
+    for _ in 0..14 {
         world.events.push(WorldEvent::DragEnded {
             creature_id,
             outcome: DragReleaseKind::Tossed {
@@ -55,7 +68,7 @@ fn contrary_experiences_reverse_tendencies_and_badges_persist_until_viewed() {
         });
     }
     world.project_events(created + Duration::hours(1));
-    assert!(world.save.creatures[0].tendencies.cursor_trust < 0);
+    assert!(world.save.creatures[0].tendencies.cursor_trust < 0.0);
     assert!(world.drain_events().any(|event| matches!(
         event,
         WorldEvent::ProfileChanged {

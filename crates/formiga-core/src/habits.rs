@@ -177,13 +177,11 @@ impl Habit {
     fn affinity(self, creature: &Creature) -> f32 {
         let p = &creature.personality;
         let t = &creature.tendencies;
-        let learned = |value: i8| f32::from(value.max(0)) / 100.0 * 0.5;
+        let learned = |value: f32| value.max(0.0) / 100.0 * 0.5;
         match self {
             // Curious and careful creatures check what they have been given.
             Self::LooksFoodOver => {
-                0.4 + p.curiosity * 0.6
-                    + (1.0 - p.boldness) * 0.5
-                    + learned(t.exploration.saturating_neg())
+                0.4 + p.curiosity * 0.6 + (1.0 - p.boldness) * 0.5 + learned(-t.exploration)
             }
             Self::StretchesBeforeNaps => 0.4 + p.activity * 0.9 + learned(t.sleep_security),
             Self::CirclesBeforeNaps => 0.4 + p.routine_affinity * 0.9 + learned(t.routine),
@@ -320,7 +318,7 @@ mod tests {
                 .unwrap()] += 1;
             creature.id ^= 0xffff;
             creature.name = "Renamed".into();
-            creature.tendencies.play = 100;
+            creature.tendencies.play = 100.0;
             creature.memory.habits = vec![Habit::PlayBows];
             assert_eq!(Celebration::for_creature(&creature), celebration);
         }

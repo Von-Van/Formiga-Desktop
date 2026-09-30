@@ -1041,12 +1041,41 @@ fn colony_tab(
         clubhouse.portrait(ui, creature, 144.0);
         ui.vertical(|ui| {
             ui.heading(&creature.name);
-            ui.label(creature.appearance.design.map_or_else(
-                || clubhouse::words(&format!("{:?}", creature.appearance.family)),
-                |d| d.body.label().to_owned(),
-            ));
-            ui.label(format!(
-                "Currently {}",
+            // Who it is, then its three traits, then what it has come to lean toward more than
+            // anyone else here.
+            ui.label(
+                egui::RichText::new(creature.temperament_phrase())
+                    .strong()
+                    .color(forest()),
+            );
+            ui.horizontal_wrapped(|ui| {
+                for t in creature.traits() {
+                    clubhouse::make_room(ui, clubhouse::text_width(ui, t.label()) + 10.0);
+                    egui::Frame::new()
+                        .fill(mint())
+                        .inner_margin(5)
+                        .show(ui, |ui| {
+                            ui.label(t.label());
+                        });
+                }
+            });
+            let learned = profile_descriptors(creature, creatures);
+            if !learned.is_empty() {
+                ui.small(format!(
+                    "Lately: {}",
+                    learned
+                        .iter()
+                        .map(|descriptor| descriptor.label())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                ));
+            }
+            ui.small(format!(
+                "{} · currently {}",
+                creature.appearance.design.map_or_else(
+                    || clubhouse::words(&format!("{:?}", creature.appearance.family)),
+                    |d| d.body.label().to_owned(),
+                ),
                 activity_label(creature.state.action)
             ));
             if let Some(parent_id) = creature.role.parent_id() {
@@ -1058,21 +1087,6 @@ fn colony_tab(
                         .map_or("a colony adult", |c| c.name.as_str())
                 ));
             }
-            let descriptors = profile_descriptors(creature);
-            if descriptors.is_empty() {
-                ui.small("Still developing preferences");
-            }
-            ui.horizontal_wrapped(|ui| {
-                for descriptor in descriptors {
-                    clubhouse::make_room(ui, clubhouse::text_width(ui, descriptor.label()) + 10.0);
-                    egui::Frame::new()
-                        .fill(mint())
-                        .inner_margin(5)
-                        .show(ui, |ui| {
-                            ui.label(descriptor.label());
-                        });
-                }
-            });
             // Its own little ways: how it celebrates, and the habits it has picked up here.
             ui.small(little_ways(creature));
         });
@@ -1129,7 +1143,7 @@ fn colony_tab(
             ui.label(format!(
                 "Bond: {} • {}",
                 bond_label(relationship.affinity, relationship.avoidance),
-                play_label(relationship.playfulness)
+                together_label(creature, friend, relationship)
             ));
         }
     } else {
@@ -1444,10 +1458,18 @@ fn colony_standings_card(
                         *selected_creature = Some(id);
                     }
                 }
+                let together = creatures
+                    .iter()
+                    .find(|creature| creature.id == a)
+                    .zip(creatures.iter().find(|creature| creature.id == b))
+                    .map_or_else(
+                        || play_label(relationship.playfulness),
+                        |(a, b)| together_label(a, b, &relationship),
+                    );
                 ui.label(format!(
                     "· {} · {}",
                     bond_label(relationship.affinity, relationship.avoidance),
-                    play_label(relationship.playfulness)
+                    together
                 ));
             });
         }
@@ -1475,6 +1497,37 @@ fn play_label(playfulness: u8) -> &'static str {
         "playful"
     } else {
         "gentle"
+    }
+}
+
+/// How two companions are together, beyond how close they are: how they play, or, while they do
+/// not play much, what their temperaments make of each other.
+fn together_label(
+    a: &Creature,
+    b: &Creature,
+    relationship: &formiga_core::CreatureRelationship,
+) -> &'static str {
+    use formiga_core::TemperamentKind as Kind;
+    if relationship.playfulness >= 72 {
+        return play_label(relationship.playfulness);
+    }
+    let (a, b) = (a.temperament(), b.temperament());
+    let feisty = |t: &formiga_core::Temperament| t.axes.feistiness >= 0.65;
+    let both = |test: &dyn Fn(&formiga_core::Temperament) -> bool| test(&a) && test(&b);
+    if both(&feisty) {
+        "squabbling"
+    } else if both(&|t| t.kind == Kind::Troublemaker) {
+        "partners in mischief"
+    } else if (a.kind == Kind::Grump || b.kind == Kind::Grump) && feisty(&a) != feisty(&b) {
+        "an odd couple"
+    } else if both(&|t| t.axes.social <= 0.3) {
+        "quiet company"
+    } else if both(&|t| t.axes.energy <= 0.35) {
+        "easy company"
+    } else if relationship.affinity >= 112 {
+        "cozy"
+    } else {
+        "polite"
     }
 }
 

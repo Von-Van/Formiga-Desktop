@@ -85,7 +85,7 @@ impl Beats {
 /// standing about or ambling somewhere, and doing nothing that owns its body — no scene, no
 /// journey, no small thing at its door, no beat of its own under way. Somebody walking stops
 /// where it is for the yawn and then walks on.
-fn free_for_a_beat(world: &World, creature: &Creature) -> bool {
+pub(super) fn free_for_a_beat(world: &World, creature: &Creature) -> bool {
     let state = &creature.state;
     state.arrival_delay_secs <= 0.0
         && state.beat.is_none()

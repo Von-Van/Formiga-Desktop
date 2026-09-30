@@ -69,8 +69,12 @@ struct SpriteGpu {
     outline: bool,
     body_atlas_width: u32,
     body_atlas_height: u32,
+    /// Which cell of the body texture each baked frame is drawn from, by slot.
+    body_cells: Vec<u16>,
     face_atlas_width: u32,
     face_atlas_height: u32,
+    /// Which cell of the face texture each face is drawn from, by face slot.
+    face_cells: Vec<u16>,
     face_anchors: Vec<PixelPoint>,
     /// The topmost and just-past-the-lowest drawn rows of each baked body frame, in art pixels
     /// from the frame's top edge. A bubble hangs off the crown rather than off the frame, so a
@@ -996,8 +1000,9 @@ impl OverlayRenderer {
             facing_right,
         } = BodyPresentation::for_creature(creature);
         let slot = atlas_slot(clip, frame);
-        let column = slot % ATLAS_COLUMNS;
-        let row = slot / ATLAS_COLUMNS;
+        let cell = u32::from(sprite.body_cells[slot as usize]);
+        let column = cell % ATLAS_COLUMNS;
+        let row = cell / ATLAS_COLUMNS;
         let mut u_left = column as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
         let mut u_right = (column + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
         let v_top = row as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
@@ -1058,9 +1063,9 @@ impl OverlayRenderer {
         if !facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
         }
-        let face_slot = face_atlas_slot(source_face_state);
-        let face_column = face_slot % FACE_ATLAS_COLUMNS;
-        let face_row = face_slot / FACE_ATLAS_COLUMNS;
+        let face_cell = u32::from(sprite.face_cells[face_atlas_slot(source_face_state) as usize]);
+        let face_column = face_cell % FACE_ATLAS_COLUMNS;
+        let face_row = face_cell / FACE_ATLAS_COLUMNS;
         let mut face_u_left =
             face_column as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
         let mut face_u_right =

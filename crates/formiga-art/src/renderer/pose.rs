@@ -408,6 +408,70 @@ impl Pose {
                     ..Self::default()
                 }
             }
+            // Puffed up and square, chin up, with a little hmph on the second frame and the tail
+            // flicked across.
+            Gesture::Huff => Self {
+                squash_x: 1,
+                squash_y: tick,
+                appendage_lift: 1,
+                tail_sway: if tick == 0 { 2 } else { -1 },
+                lean: -1,
+                ..Self::default()
+            },
+            // Rocked back with the paw at the brow, sinking a little lower each frame and held at
+            // the bottom.
+            Gesture::Swoon => {
+                let into = usize::from(frame.min(2));
+                Self {
+                    squash_x: i32::from(into >= 2),
+                    squash_y: 1 - i32::from(into >= 2),
+                    appendage_lift: 2,
+                    tail_sway: -1,
+                    lean: -1 - i32::from(into >= 1),
+                    crouch: [0, 2, 3][into],
+                    ..Self::default()
+                }
+            }
+            // Sat up tall and bouncing, ears up, tail going.
+            Gesture::Beg => Self {
+                squash_x: -1,
+                squash_y: 2,
+                play_lift: tick,
+                appendage_lift: 2,
+                tail_sway: if tick == 0 { 2 } else { -2 },
+                lean: -1,
+                ear_perk: 1,
+                ..Self::default()
+            },
+            // Tall, chest out and chin up, one foot forward, the tail swishing.
+            Gesture::Strut => Self {
+                squash_y: 1,
+                appendage_lift: 2,
+                step_a: 1,
+                tail_sway: 2 - tick * 2,
+                lean: -1,
+                ear_perk: 1,
+                ..Self::default()
+            },
+            // Hunched small, the tail tucked away.
+            Gesture::Peek => Self {
+                bob: 1,
+                squash_x: 1,
+                squash_y: -1,
+                crouch: 2,
+                appendage_lift: 1,
+                tail_sway: -2,
+                lean: -1,
+                ..Self::default()
+            },
+            // Square and stiff, one foot lifting and coming down again.
+            Gesture::Stomp => Self {
+                bob: 1 - tick,
+                step_a: -tick,
+                appendage_lift: -1,
+                tail_sway: tick,
+                ..Self::default()
+            },
             // Up onto its toes and drawn up tall as the paws go overhead, rocked back a touch at
             // the top and held there. Played once rather than looped, so the last frame is the
             // top of the stretch, and the nap it opens is what lets it go.

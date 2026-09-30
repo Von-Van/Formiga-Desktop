@@ -1,4 +1,4 @@
-use crate::{CreatureDesign, CreatureOrigin};
+use crate::{CreatureDesign, CreatureOrigin, Edition};
 use sha2::{Digest, Sha256};
 
 const FORMAT_VERSION: u8 = 1;
@@ -56,11 +56,14 @@ pub enum SeedCodeError {
 }
 
 /// Version 1 carries a seed alone, version 2 a seed and a modular recipe, and version 3 a recipe
-/// with classic parts in the four bytes version 2 keeps at zero. A recipe without classic parts is
-/// still written as version 2, so every version since v0.55.0 can import it.
+/// with classic parts in the four bytes version 2 keeps at zero. Version 4 is a recipe drawn since
+/// 0.62.0, whose archetype and face fill the last of those four bytes; the companion it brings
+/// back has the temperament the current generator gives it. A recipe without classic parts or an
+/// archetype is still written as version 2, so every version since v0.55.0 can import it.
 pub fn encode_creature_seed(origin: CreatureOrigin) -> String {
     debug_assert!(origin.source_generation <= 3);
     let version = match origin.design {
+        Some(design) if design.edition() == Edition::Archetypes => 4,
         Some(design) if !design.classic.is_modular() => 3,
         Some(_) => 2,
         None => FORMAT_VERSION,
@@ -113,7 +116,7 @@ pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeEr
     }
     let payload = decode_base32(&encoded)?;
     let version = payload[0] >> 4;
-    if ![FORMAT_VERSION, 2, 3].contains(&version) {
+    if ![FORMAT_VERSION, 2, 3, 4].contains(&version) {
         return Err(SeedCodeError::Version);
     }
     if payload.len() != if version == 1 { PAYLOAD_BYTES } else { 57 } {
@@ -131,8 +134,14 @@ pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeEr
         None
     } else {
         let design = CreatureDesign::from_bytes(&payload[33..53]).ok_or(SeedCodeError::Design)?;
-        // Version 2 reserves the classic bytes, and version 3 exists only to fill them.
-        if design.classic.is_modular() != (version == 2) {
+        // Version 2 reserves the classic bytes, version 3 exists only to fill them, and version 4
+        // only to carry an archetype, which neither of the others may.
+        let fits = match version {
+            4 => design.edition() == Edition::Archetypes,
+            3 => design.edition() == Edition::Original && !design.classic.is_modular(),
+            _ => design.edition() == Edition::Original && design.classic.is_modular(),
+        };
+        if !fits {
             return Err(SeedCodeError::Design);
         }
         Some(design)
@@ -277,7 +286,7 @@ mod tests {
 
     #[test]
     fn classic_parts_travel_in_a_version_3_code_and_nowhere_else() {
-        let mut design = CreatureDesign::generated([13; 32], 0, None);
+        let mut design = CreatureDesign::modular([13; 32], 0, None);
         design.classic = crate::ClassicParts {
             coat: 1,
             face: 2,
@@ -325,6 +334,54 @@ mod tests {
             derive_imported_colony_seed(shared),
             derive_imported_colony_seed(modular)
         );
+    }
+
+    /// A recipe drawn since 0.62.0 travels in a version 4 code, which carries its archetype and
+    /// face in the last reserved byte; neither older version can carry one, and a version 4 code
+    /// without one is refused too.
+    #[test]
+    fn an_archetype_travels_in_a_version_4_code_and_nowhere_else() {
+        for index in 0..32_u64 {
+            let seed = crate::SeedStream::new([29; 32]).bytes("v4-codes", index);
+            let design = CreatureDesign::generated(seed, 0, None);
+            assert_eq!(design.edition(), Edition::Archetypes);
+            let shared = SharedCreatureSeed {
+                design: Some(design),
+                source_colony_seed: seed,
+                source_generation: 0,
+            };
+            let code = encode_creature_seed(shared.into());
+            assert_eq!(code.split('-').skip(1).count(), 23);
+            assert_eq!(decode_creature_seed(&code), Ok(shared));
+            let encoded = code.strip_prefix("FORMIGA-").unwrap().replace('-', "");
+            let payload = decode_base32(&encoded).unwrap();
+            assert_eq!(payload[0] >> 4, 4);
+            assert_ne!(
+                payload[52], 0,
+                "the archetype and face are in the last byte"
+            );
+            let reversion = |payload: &mut Vec<u8>, version: u8| {
+                payload[0] = (version << 4) | (payload[0] & 0x0f);
+                let digest = checksum(&payload[..53]);
+                payload[53..].copy_from_slice(&digest);
+            };
+            for older in [2, 3] {
+                let mut disguised = payload.clone();
+                reversion(&mut disguised, older);
+                assert_eq!(
+                    decode_creature_seed(&group_payload(&disguised)),
+                    Err(SeedCodeError::Design),
+                    "a version {older} code cannot carry an archetype"
+                );
+            }
+            let mut without = payload.clone();
+            without[52] = 0;
+            reversion(&mut without, 4);
+            assert_eq!(
+                decode_creature_seed(&group_payload(&without)),
+                Err(SeedCodeError::Design)
+            );
+        }
     }
 
     #[test]
@@ -420,7 +477,7 @@ mod tests {
 
         let encoded = valid.strip_prefix("FORMIGA-").unwrap().replace('-', "");
         let mut payload = decode_base32(&encoded).unwrap();
-        payload[0] = 4 << 4;
+        payload[0] = 5 << 4;
         let digest = checksum(&payload[..33]);
         payload[33..].copy_from_slice(&digest);
         assert_eq!(

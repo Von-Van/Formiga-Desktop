@@ -4,6 +4,7 @@ use super::*;
 use time::macros::datetime;
 
 mod ambient;
+mod antics;
 mod arrivals;
 mod bonds;
 mod bubbles;
@@ -61,7 +62,8 @@ pub(super) fn let_colony_wander(world: &mut World, now: OffsetDateTime) {
 
 fn two_creature_world(seed: [u8; 32], created: OffsetDateTime) -> World {
     let desktop = desktop();
-    let mut world = World::new(seed, created, &desktop);
+    // Tuned on the companions the original generator made for this seed.
+    let mut world = World::new_original(seed, created, &desktop);
     let now = created + Duration::hours(1);
     world.tick(now, 0.05, &desktop);
     let_colony_wander(&mut world, now);

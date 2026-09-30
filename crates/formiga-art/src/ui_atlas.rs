@@ -75,6 +75,11 @@ const PINE: Rgba = Rgba::new(92, 150, 126, 255);
 const PINE_DEEP: Rgba = Rgba::new(62, 112, 96, 255);
 const SEA: Rgba = Rgba::new(76, 158, 140, 255);
 const SEA_DEEP: Rgba = Rgba::new(50, 118, 106, 255);
+const STORM: Rgba = Rgba::new(118, 124, 146, 255);
+const STORM_DEEP: Rgba = Rgba::new(86, 92, 114, 255);
+const ENVY: Rgba = Rgba::new(122, 176, 92, 255);
+const ENVY_DEEP: Rgba = Rgba::new(84, 132, 64, 255);
+const BLUSH: Rgba = Rgba::new(232, 120, 142, 255);
 
 // ---------------------------------------------------------------------------------------------
 // Geometry
@@ -120,7 +125,8 @@ pub const UI_ATLAS_WIDTH: u32 = 256;
 /// See [`UI_ATLAS_WIDTH`].
 pub const UI_ATLAS_HEIGHT: u32 = 120;
 
-const BUBBLE_COLUMNS: u32 = 8;
+/// As many bubbles as fit across the atlas, in the two rows above the menu.
+const BUBBLE_COLUMNS: u32 = UI_ATLAS_WIDTH / BUBBLE_CELL.0;
 /// Two shared no-icon steps (`Small`, `Medium`) come first, then one `Full` cell per icon.
 const SHARED_BUBBLE_SLOTS: u32 = 2;
 /// Menu cells, normal and hovered side by side, fill two rows of cells across the atlas.
@@ -813,6 +819,96 @@ fn draw_bubble_icon(canvas: &mut Canvas, x: i32, y: i32, icon: BubbleIcon) {
                 "oooo.....",
             ],
             &[('#', SEA), ('+', SEA_DEEP), ('o', OUTLINE)],
+        ),
+        // A little storm cloud with a spark of lightning under it.
+        BubbleIcon::Grumble => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "...##....",
+                "..####.#.",
+                ".#######.",
+                "#########",
+                ".+++++++.",
+                "....a....",
+                "...a.....",
+                "....a....",
+                "...a.....",
+            ],
+            &[('#', STORM), ('+', STORM_DEEP), ('a', AMBER)],
+        ),
+        // A heart gone green, with a crack down it.
+        BubbleIcon::Jealous => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".........",
+                ".##...##.",
+                "####.####",
+                "###.####+",
+                "####.##++",
+                ".##.###+.",
+                "..##.#+..",
+                "...#.+...",
+                "....#....",
+            ],
+            &[('#', ENVY), ('+', ENVY_DEEP)],
+        ),
+        // Seeing stars: three little ones going round.
+        BubbleIcon::Swoon => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "....#....",
+                "...###...",
+                "....#....",
+                ".#.....+.",
+                "###...+++",
+                ".#.....+.",
+                ".........",
+                ".........",
+                ".........",
+            ],
+            &[('#', GOLD), ('+', PLUM)],
+        ),
+        // Three strokes over a pink cheek: a blush.
+        BubbleIcon::Blush => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".........",
+                "..#..#..#",
+                ".#..#..#.",
+                "#..#..#..",
+                ".........",
+                ".+++++++.",
+                "+++++++++",
+                ".+++++++.",
+                ".........",
+            ],
+            &[('#', ROSE_DEEP), ('+', BLUSH)],
+        ),
+        // One wide-open eye.
+        BubbleIcon::Watching => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".........",
+                ".........",
+                "..#####..",
+                ".#.....#.",
+                "#..ooo..#",
+                "#..oOo..#",
+                "#..ooo..#",
+                ".#.....#.",
+                "..#####..",
+            ],
+            &[('#', OUTLINE), ('o', SLATE_DEEP), ('O', OUTLINE)],
         ),
     }
 }

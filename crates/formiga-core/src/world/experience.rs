@@ -2,6 +2,22 @@ use super::*;
 
 pub(super) const OBSERVATION_INTERVAL_SECS: f32 = 60.0;
 
+/// The share of the way every learned leaning drifts back toward where the companion's own nature
+/// rests it, for each minute it spends out and about: about half the way in a day of company.
+/// Something that keeps happening keeps a leaning up; something that stops happening lets it go.
+pub(super) const FADE_PER_MINUTE: f32 = 1.0 / 2000.0;
+
+/// How readily a companion learns from something, given how far its nature already leans toward
+/// what that something teaches, from -1 to 1: from a quarter as readily to one and three quarters.
+fn readily(lean: f32) -> f32 {
+    (1.0 + lean.clamp(-1.0, 1.0) * 0.75).clamp(0.25, 1.75)
+}
+
+/// How far an axis leans from its middle, from -1 to 1.
+fn lean(value: f32) -> f32 {
+    (value - 0.5) * 2.0
+}
+
 impl World {
     pub(super) fn sample_observations(&mut self, dt: f32, desktop: &DesktopSnapshot) {
         if !self.save.settings.visible || self.save.settings.paused {
@@ -114,13 +130,44 @@ impl World {
                     .remember_discovery(variant, creature_id, name, now);
             }
             self.save.companion.record(&event, now);
+            // What a companion's temperament might make something of, for the next tick.
+            match &event {
+                WorldEvent::CreaturePetted { creature_id } => {
+                    self.antics.cue(antics::Cue::Petted(*creature_id));
+                }
+                WorldEvent::ActionStarted {
+                    creature_id,
+                    action: ActionKind::Eat,
+                } => self.antics.cue(antics::Cue::Eating(*creature_id)),
+                WorldEvent::WindowReaction {
+                    creature_id,
+                    action: ActionKind::ReactToWindow,
+                } => self.antics.cue(antics::Cue::Startled(*creature_id)),
+                WorldEvent::ActionCompleted {
+                    creature_id,
+                    action: ActionKind::ClimbWindow,
+                } => self.antics.cue(antics::Cue::Climbed(*creature_id)),
+                WorldEvent::ActionCompleted {
+                    creature_id,
+                    action: ActionKind::PresentDiscovery,
+                } => self.antics.cue(antics::Cue::Found(*creature_id)),
+                _ => {}
+            }
             match event {
                 WorldEvent::CreaturePetted { creature_id } => {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
                         creature.memory.times_petted =
                             creature.memory.times_petted.saturating_add(1);
-                        LearnedTendencies::adjust(&mut creature.tendencies.cursor_trust, 3);
-                        LearnedTendencies::adjust(&mut creature.tendencies.sociability, 2);
+                        let a = creature.temperament().axes;
+                        let warmth = readily(lean(a.affection) - lean(a.suspicion));
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.cursor_trust,
+                            3.0 * warmth,
+                        );
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.sociability,
+                            1.5 * readily(lean(a.social)),
+                        );
                         changed_profiles.push(creature_id);
                     }
                 }
@@ -132,10 +179,17 @@ impl World {
                     // Being asked is the kind part, and a creature is allowed to say no. Taking
                     // what was offered is the warmer of the two, so it moves a little further.
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
-                        let warmth = if accepted { 3 } else { 1 };
-                        LearnedTendencies::adjust(&mut creature.tendencies.cursor_trust, warmth);
+                        let a = creature.temperament().axes;
+                        let warmth = if accepted { 3.0 } else { 1.0 };
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.cursor_trust,
+                            warmth * readily(lean(a.affection) - lean(a.suspicion)),
+                        );
                         if accepted {
-                            LearnedTendencies::adjust(&mut creature.tendencies.sociability, 2);
+                            LearnedTendencies::learn(
+                                &mut creature.tendencies.sociability,
+                                1.5 * readily(lean(a.social)),
+                            );
                         }
                         changed_profiles.push(creature_id);
                     }
@@ -147,7 +201,12 @@ impl World {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
                         creature.memory.times_tossed =
                             creature.memory.times_tossed.saturating_add(1);
-                        LearnedTendencies::adjust(&mut creature.tendencies.cursor_trust, -8);
+                        // A suspicious companion holds a toss against you for longer.
+                        let a = creature.temperament().axes;
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.cursor_trust,
+                            -8.0 * readily(lean(a.suspicion)),
+                        );
                         changed_profiles.push(creature_id);
                     }
                 }
@@ -158,15 +217,25 @@ impl World {
                 } => {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
                         creature.memory.placements = creature.memory.placements.saturating_add(1);
+                        let a = creature.temperament().axes;
                         match &mut creature.memory.preferred_region {
                             Some(preferred)
                                 if preferred.display == display && preferred.cell == region =>
                             {
                                 preferred.confidence = preferred.confidence.saturating_add(4);
-                                LearnedTendencies::adjust(&mut creature.tendencies.routine, 2);
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.routine,
+                                    2.0 * readily(-lean(a.impulsiveness)),
+                                );
                             }
+                            // Somewhere other than its usual spot: a patient one minds, an
+                            // impulsive one learns it can be anywhere.
                             Some(preferred) if preferred.confidence > 2 => {
                                 preferred.confidence = preferred.confidence.saturating_sub(2);
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.routine,
+                                    -readily(lean(a.impulsiveness)),
+                                );
                             }
                             preferred => {
                                 *preferred = Some(PreferredRegionMemory {
@@ -183,7 +252,11 @@ impl World {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
                         creature.memory.sleep_interruptions =
                             creature.memory.sleep_interruptions.saturating_add(1);
-                        LearnedTendencies::adjust(&mut creature.tendencies.sleep_security, -6);
+                        let a = creature.temperament().axes;
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.sleep_security,
+                            -6.0 * readily(lean(a.suspicion)),
+                        );
                         changed_profiles.push(creature_id);
                     }
                 }
@@ -197,7 +270,11 @@ impl World {
                             .longest_sleep_seconds
                             .max(uninterrupted_seconds);
                         if uninterrupted_seconds >= 15 * 60 {
-                            LearnedTendencies::adjust(&mut creature.tendencies.sleep_security, 2);
+                            let a = creature.temperament().axes;
+                            LearnedTendencies::learn(
+                                &mut creature.tendencies.sleep_security,
+                                1.5 * readily(-lean(a.energy)),
+                            );
                             changed_profiles.push(creature_id);
                         }
                     }
@@ -207,23 +284,33 @@ impl World {
                     action,
                 } => {
                     if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
+                        let a = creature.temperament().axes;
                         match action {
                             ActionKind::ClimbWindow => {
                                 creature.memory.window_climbs =
                                     creature.memory.window_climbs.saturating_add(1);
-                                LearnedTendencies::adjust(&mut creature.tendencies.climbing, 2);
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.climbing,
+                                    0.6 * readily(lean(a.boldness)),
+                                );
                                 changed_profiles.push(creature_id);
                             }
                             ActionKind::PresentDiscovery => {
                                 creature.memory.discoveries_found =
                                     creature.memory.discoveries_found.saturating_add(1);
-                                LearnedTendencies::adjust(&mut creature.tendencies.exploration, 3);
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.exploration,
+                                    3.0 * readily(lean(a.curiosity)),
+                                );
                                 changed_profiles.push(creature_id);
                             }
                             ActionKind::SoloPlay | ActionKind::SocialPlay => {
                                 creature.memory.play_sessions =
                                     creature.memory.play_sessions.saturating_add(1);
-                                LearnedTendencies::adjust(&mut creature.tendencies.play, 2);
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.play,
+                                    0.3 * readily(lean(a.playfulness)),
+                                );
                                 changed_profiles.push(creature_id);
                             }
                             _ => {}
@@ -271,8 +358,12 @@ impl World {
                                 .ledge_seconds
                                 .saturating_add(u32::from(active_seconds));
                             let earned = creature.memory.ledge_seconds / 300 - previous;
+                            let a = creature.temperament().axes;
                             for _ in 0..earned {
-                                LearnedTendencies::adjust(&mut creature.tendencies.climbing, 1);
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.climbing,
+                                    0.5 * readily(lean(a.boldness)),
+                                );
                             }
                             if earned > 0 {
                                 changed_profiles.push(creature_id);
@@ -284,6 +375,13 @@ impl World {
                                 .window_ride_seconds
                                 .saturating_add(u32::from(active_seconds));
                         }
+                        // A minute out and about: everything it has learned drifts a little back
+                        // toward where its own nature rests it.
+                        let rest = LearnedTendencies::baseline(&creature.temperament());
+                        creature
+                            .tendencies
+                            .fade_toward(rest, FADE_PER_MINUTE * f32::from(active_seconds) / 60.0);
+                        changed_profiles.push(creature_id);
                         match &mut creature.memory.favorite_display {
                             Some(favorite) if favorite.display == display => {
                                 favorite.confidence = favorite.confidence.saturating_add(1);
@@ -301,6 +399,30 @@ impl World {
                     }
                 }
                 WorldEvent::BondInteraction { a, b, experience } => {
+                    // Warm moments together make both a little more sociable, a sociable one more
+                    // readily; a squabble or a stolen toy makes both a little less so, and it is the
+                    // solitary one that takes it to heart.
+                    let social = match experience {
+                        RelationshipExperience::Greeting
+                        | RelationshipExperience::SharedRest
+                        | RelationshipExperience::PositivePlay
+                        | RelationshipExperience::HomecomingGreeting => 0.4,
+                        RelationshipExperience::Squabble | RelationshipExperience::StoleToy => -1.5,
+                        _ => 0.0,
+                    };
+                    if social != 0.0 {
+                        for id in [a, b] {
+                            if let Some(creature) = creature_mut(&mut self.save.creatures, id) {
+                                let axis = lean(creature.temperament().axes.social);
+                                let readiness = readily(if social > 0.0 { axis } else { -axis });
+                                LearnedTendencies::learn(
+                                    &mut creature.tendencies.sociability,
+                                    social * readiness,
+                                );
+                                changed_profiles.push(id);
+                            }
+                        }
+                    }
                     if let Some(relationship) =
                         relationship_mut_or_insert(&mut self.save.relationships, a, b)
                     {
@@ -325,8 +447,43 @@ impl World {
                         .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
                     {
                         creature.memory.home_visits = creature.memory.home_visits.saturating_add(1);
-                        LearnedTendencies::adjust(&mut creature.tendencies.home_affinity, 2);
+                        let a = creature.temperament().axes;
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.home_affinity,
+                            1.5 * readily(lean(a.affection) - lean(a.curiosity)),
+                        );
                         changed_profiles.push(creature.id);
+                    }
+                }
+                // Shying from the cursor teaches a little wariness of it, and going to see what it
+                // is doing a little trust; a start at a window makes high places a little less
+                // appealing, to a cautious companion most of all.
+                WorldEvent::CursorReaction {
+                    creature_id,
+                    action,
+                } => {
+                    if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
+                        let a = creature.temperament().axes;
+                        let delta = match action {
+                            ActionKind::AvoidCursor => -0.4 * readily(lean(a.suspicion)),
+                            ActionKind::InvestigateCursor => 0.3 * readily(lean(a.curiosity)),
+                            _ => 0.0,
+                        };
+                        LearnedTendencies::learn(&mut creature.tendencies.cursor_trust, delta);
+                        changed_profiles.push(creature_id);
+                    }
+                }
+                WorldEvent::WindowReaction {
+                    creature_id,
+                    action: ActionKind::ReactToWindow,
+                } => {
+                    if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
+                        let a = creature.temperament().axes;
+                        LearnedTendencies::learn(
+                            &mut creature.tendencies.climbing,
+                            -0.8 * readily(-lean(a.boldness)),
+                        );
+                        changed_profiles.push(creature_id);
                     }
                 }
                 _ => {}

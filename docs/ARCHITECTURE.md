@@ -209,7 +209,12 @@ of one another.
 
 A 256-bit colony seed derives named ChaCha streams for appearance, personality, markings, animation
 flavor, runtime decisions, and each mini. Resolved genomes are stored in the save so future generator
-changes cannot silently redesign an existing creature.
+changes cannot silently redesign an existing creature. Since 0.62.0 a new companion comes from a
+second generator edition, which draws its recipe from one of eight body archetypes with one of
+twelve authored face layouts and gives it a temperament (`formiga-core::temperament`): nine axes, a
+kind, now and then a tension, and the three traits its profile shows. An older companion keeps the
+edition it came from, and its minis do too; it has no stored temperament and reads one from the
+personality values it already has. [GENERATION.md](GENERATION.md) describes both editions.
 
 Blob, hopper, and soft-quadruped rigs share a stable two-eye face grammar. The renderer branches on
 body family for the ear, tail, and forelimb passes, so soft quadrupeds read as cats and hoppers as
@@ -255,22 +260,28 @@ while `PresentDiscovery` is active. There is still no inventory, runtime generat
 collection; the only durable record is the scrapbook's one first-find row per variant.
 
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
-The face texture contains twelve expressions — the twelfth the yawn's, eyes screwed shut and the
-mouth wide — nine gaze directions, three eyelid states, and one eight-slot trinket row. That row is
-still baked, at the same size and in the same place, but nothing samples it any more: the overlay's
-discovery quad and the settings pages both read the colony trinket atlas instead. The body atlas
-holds exactly 134 unique frames: 92 for actions, because `Tossed` reuses the dragged body clip, and
-42 for twelve gesture poses, laid out as ten columns by fourteen rows. The yawn's four frames opened
-the fourteenth row, which has six slots spare. Whatever a companion wears is drawn onto every body
-frame as the atlas is baked, so it costs no quad and no texture of its own. Runtime work normally
-selects two slots and draws two nearest-filtered quads; discovery alone adds one temporary quad, and
-something the village has put in a companion's hands adds one or two from the object sheet. The
-combined textures are exactly 1,649,664 bytes per creature — 9,897,984 for a full colony of six,
-held under 10 MiB — and are enforced below a 4,500,000-byte test limit, raised deliberately from 1.5 MB so the
-pose vocabulary has room to grow without the budget moving each time.
+The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
+since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
+directions and three eyelid states. The body atlas holds 147 frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 55 for eighteen gesture poses. Since 0.62.0 a frame or a
+face that comes out identical to one already baked — a pose held across frames, a whole clip under
+reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
+creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
+texture used to end with, unread since the overlay and the settings pages moved to the colony
+trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a row. Whatever a
+companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
+texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
+discovery alone adds one temporary quad, and something the village has put in a companion's hands
+adds one or two from the object sheet. A new companion's textures come to about 1.24 MB, and about
+0.5 MB under reduced motion, where every creature's cost 1,649,664 bytes in 0.61.0. With no two
+frames alike they would be 1,797,120 bytes, which is what the budgets hold: below a 4,500,000-byte
+test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
+without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
+0.62.0 for the new poses and faces.
 
-Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch — are a runtime-only
-`gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
+Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch; the stretch and
+yawn a habit or a yawn going round shows; and the huff, swoon, beg, strut, peek and stomp a
+temperament strikes — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
 shows its baked clip in place of the action's; the action still owns movement, placement, facing,
 and frame timing, and the GPU quad, the interaction mask, and the review sheets resolve the same
 clip. One place decides whether a body is free to show a pose — `body_free` in `world/attention.rs`,
@@ -300,16 +311,32 @@ starts the cooldown.
 ## Lived-experience projection
 
 `World::emit` is the sole event queue path. Before events become visible through `drain_events`, a
-projection updates compact typed memory, bounded `i8` tendencies, fixed numeric routines, and profile
+projection updates compact typed memory, bounded tendencies, fixed numeric routines, and profile
 revision state. Selected moments also project into the capped 64-entry typed journal. The event
 vector is runtime-only and emptied by the desktop host; no coordinates, cursor paths, or window
 layouts enter the journal.
 
-The eight tendency fields stay in `-100..=100`. Learned action modifiers, including routine and
+The eight tendency fields stay in `-100..=100`, kept as fractions since 0.62.0; whole numbers in an
+older file read as the same values. Learned action modifiers, including routine and
 successful-window-ride confidence, are clamped to ±0.35 after combination. Innate personality still
 sets the base utility and temperature, and contrary events move the same fields in the opposite
 direction. Every 60 active visible seconds becomes at most one summarized observation per creature;
 sampling stops while paused or hidden.
+
+Until 0.62.0 six of the eight only ever rose, so within days every companion stood at the top of
+all of them and every profile read the same. Now an experience teaches a little at a time, less the
+nearer a leaning already is to the end it pushes toward, and how readily a companion learns it —
+from a quarter as readily to one and three-quarters — follows how far its temperament already leans
+that way: a solitary one takes a squabble to heart, a suspicious one holds a toss against the
+person for longer, and a cautious one is put off high places by a start at a window. Warm moments
+together make both a little more sociable, and a squabble or a stolen toy a little less. Each
+minute out and about, every leaning drifts about a two-thousandth of the way back toward where the
+companion's own nature rests it (`FADE_PER_MINUTE`), about half the way in a day of company, so
+what keeps happening keeps a leaning up and what stops lets it go. A bold one rests a little toward
+high places and a suspicious one a little away from the cursor; an older companion's middling sides
+rest its leanings at nothing. The profile shows at most two learned words under "Lately", and only
+while a companion leans at least `DESCRIPTOR_STANDOUT` (20) further that way than the middle of the
+rest of its colony: something everyone has learned says nothing about any one of them.
 
 Legacy string habits become twelve compact slots keyed by packed time bucket, display third, surface,
 and action. Repeated placement also records a recoverable preferred 3×3 display cell and can supply
@@ -337,7 +364,11 @@ the first of four headings it meets — keeping their distance (avoidance at lea
 friends (affinity at least 112), playmates (playfulness at least 72), and still getting to know each
 other — ordered by closeness within a heading and described with the profile's own bond and play
 labels. A pair with no record yet has not spent time together. Nothing is inferred beyond the four
-scores, so the card never suggests an event the colony did not record.
+scores and the two temperaments, so the card never suggests an event the colony did not record. A
+pair that plays a lot is playful or very playful; otherwise their temperaments say how they are
+together: two feisty ones are squabbling, two troublemakers partners in mischief, a grump with
+someone of the other temper an odd couple, two solitary ones quiet company, two calm ones easy
+company, and close friends cozy; anyone else is polite.
 
 At action boundaries, utility selection receives the preferred pair as a `BondContext`. A
 runtime-only `BondPlan` can approach through `Follow` and then execute an existing targeted action.
@@ -499,7 +530,9 @@ unavailable, because a proxy never takes keyboard focus.
 ## Offers
 
 `world/offers.rs` answers `OfferSnack` and `OfferToy`. The creature decides. A score adds want,
-trust, and manner and subtracts tiredness; the chance of acceptance is
+trust, manner and, since 0.62.0, character, and subtracts tiredness: a food-lover is readier to take
+a snack (+0.6) and a picky one less so (−0.35), and a suspicious or wary one is warier of anything
+held out to it (−0.2). The chance of acceptance is
 `logistic((score − 0.55) × 2.6)` clamped to `0.03..=0.97`. Want for a snack rises with low energy
 and want for a toy with boredom and playfulness; trust combines learned `cursor_trust`, innate
 sociability, and the difference between times petted and times tossed, capped at ±50. The roll is
@@ -520,9 +553,10 @@ duration; a sufficiently rested sleeper wakes, emitting the same `SleepInterrupt
 `CreatureWoke` events any other interruption does. Declining shows Decline, or Sleepy when tired, or
 Question for a toy offered to a creature whose playfulness is below 0.35; a timid creature — boldness
 below 0.38 — shows Ellipsis for 0.55 seconds first. `WorldEvent::OfferAnswered { creature_id, kind,
-accepted }` then nudges `cursor_trust` by +3 for an acceptance and +1 for a decline, and sociability
-by +2 for an acceptance, through the same bounded `LearnedTendencies::adjust` a pet uses: ±100 mapped
-to at most ±0.35 of utility, and reversible by handling the creature badly. No saved field is added.
+accepted }` then teaches `cursor_trust` 3 for an acceptance and 1 for a decline, and sociability 1.5
+for an acceptance, through the same bounded `LearnedTendencies::learn` a pet uses — scaled by how
+readily the companion's temperament takes it, and less the nearer the leaning already is to 100 —
+with ±100 mapped to at most ±0.35 of utility, and reversible by handling the creature badly. No saved field is added.
 A guest answers offers and learns nothing from them; nothing about a visitor is recorded. At home an
 accepted offer is enjoyed at the doorstep through `begin_home_moment`, and a colony ritual will not
 start while an offer response is still playing.
@@ -537,17 +571,22 @@ interaction, and when no usable home display exists. Every member answers with a
 ## Thought bubbles
 
 `world/bubbles.rs` keeps a runtime-only list of icons over creatures' heads. Nothing about a bubble
-is saved, journaled, or counted. `BubbleIcon` has fourteen members: Heart, Snack, Toy, Home, Sleepy,
-Surprise, Question, Ellipsis, Decline, Music, Dizzy, Hello, Sparkle, and Stay. A bubble lives 2.4
+is saved, journaled, or counted. `BubbleIcon` has nineteen members: Heart, Snack, Toy, Home, Sleepy,
+Surprise, Question, Ellipsis, Decline, Music, Dizzy, Hello, Sparkle, Stay, and since 0.62.0
+Grumble, Jealous, Swoon, Blush, and Watching. A bubble lives 2.4
 seconds, growing in over two 0.12-second steps and shrinking out the same way through
 `BubbleGrowth::{Small, Medium, Full}`. Asking for the icon a creature is already showing holds that
 bubble open rather than re-popping it; a different icon swaps in place. At most five exist at once,
 none while the colony is hidden, and reduced motion skips the growth steps.
 
-Every trigger is something the person at the desk did: a pet shows Heart, a pick-up Surprise, a toss
+Most triggers are something the person at the desk did: a pet shows Heart — or for a grump
+Grumble, followed a moment later by a Heart if it is secretly soft — a pick-up Surprise, a toss
 landing Dizzy, send home Home, an offer one of Snack, Toy, Decline, Sleepy, Question, or Ellipsis, a
-visitor's greeting Hello, and a visitor agreeing to stay Stay. Nothing a creature does on its own
-raises one.
+visitor's greeting Hello, and a visitor agreeing to stay Stay. Since 0.62.0 a companion's
+temperament raises a few of its own, each with the moment it goes with: Jealous over a huff at
+somebody else's pet, Swoon, Snack over begging, Sparkle over a strut, Blush or Surprise behind its
+paws, Music over a pounce, Ellipsis over a tapped foot, and Watching, Blush, Sparkle or Grumble from
+a resident answering a visitor. See [antics](#beats-and-a-yawn-going-round).
 
 The overlay draws bubbles from the UI atlas, anchored at the real crown of the creature's current
 baked frame — the per-frame silhouette rows measured during the existing atlas bake — so a mini's
@@ -556,7 +595,7 @@ occluded and hidden exactly as their creature is.
 
 ## The interface atlas
 
-One 256×80 RGBA texture (81,920 bytes) carries every bubble sprite in a 17×16 cell whose anchor
+One 256×120 RGBA texture (122,880 bytes) carries every bubble sprite in a 17×16 cell whose anchor
 pixel (8, 15) sits just above the head, the menu frames for strips of two to four cells (16n + 2 art
 pixels wide, 21 tall including the notch), six menu icons — Snack, Toy, Home, Profile, Stay, Copy
 code — in normal and hovered states, and the pixel-font label tabs. It is built on first use,
@@ -595,8 +634,11 @@ nothing is paused or hidden, nobody is being carried, no ritual is under way, an
 companions are home on their own feet — reduced motion never offers a dance. Everyone home answers
 for themselves from a runtime `village-moments` stream: a companion already asleep stays asleep,
 tiredness and temperament make the rest more or less willing, and the one that was asked is twice
-as willing. Each answers with a bubble; fewer than two willing means no moment, and the one who
-would have come shows a question mark.
+as willing. Since 0.62.0 its traits have a say as well: a food-lover never misses a picnic and a
+sleepy or lazy one never a nap, a dramatic, attention-seeking or confident one is far readier to
+dance and a shy, cautious or stoic one less so, and a stubborn one digs its heels in over anything
+and stamps its foot when it says no. Each answers with a bubble; fewer than two willing means no
+moment, and the one who would have come shows a question mark.
 
 Those who join get places in one line on the commons, shoulder to shoulder at the village's own
 face-clear spacing, centred on the one that was asked and kept inside the walkable ground; a line
@@ -830,6 +872,30 @@ turn comes takes the rest of its chain with it, and the next link of a chain fol
 from the last without the two having to line up to the tick. A beat stream of its own makes every
 choice, so yawning never shifts any other choice the colony makes, and nothing about it is saved.
 
+### Antics
+
+Since 0.62.0 `world/antics.rs` turns a companion's temperament into beats of its own. What happens
+is queued as a cue — somebody petted, sitting down to eat, startled, up on a window, holding up a
+find, a mishap over, a no to joining in — and answered on the next tick by whoever it concerns,
+once it is free for a beat. A jealous companion within five creature widths huffs at somebody
+else's pet three times in four; a food-lover nearby sits up and begs when somebody eats, about two
+times in three; a dramatic one swoons at its own fright and a jumpy one hides behind its paws; a
+show-off strikes a pose after a climb or a find seven times in ten; one that embarrasses easily
+peeks out from behind its paws once a mishap is over; and a stubborn one stamps its foot when it
+declines to join in. Every two and a half to six minutes of visible time a troublemaker creeps up
+on a friend resting nearby and pounces, and the friend jumps a second later, and an impatient
+companion left standing about for sixteen seconds now and then taps its foot. A pet a grump gets
+shows Grumble rather than Heart, and a grump that is secretly soft follows it with a Heart.
+
+A cue nobody is free for waits three seconds and is let go, and a companion has 45 to 100 seconds
+to itself after one of these moments. Reduced motion keeps the bubble and leaves out the pose.
+Cues, pranks and whatever follows a moment are runtime-only and drawn from an `antics` stream of
+their own, so none of it shifts any other choice the colony makes; all of it is cleared while the
+colony is hidden, paused, or being arranged. Who is a troublemaker and who is impatient, which the
+prank and the tapping foot ask every tick, is worked out once per companion and kept with the
+temperament it came from. The poses — huff, swoon, beg, strut, peek, stomp, pounce and a start —
+wear faces of their own: grumpy, a blushing shut-eyed smile, pleading, smug, worried, and startled.
+
 ## Something to wear
 
 `formiga-core::accessories` holds the twenty `AccessoryKind`s, each made from one catalogue variant
@@ -989,8 +1055,8 @@ offer, so 99.6% of strolls were called off and residents stood still. Strolling 
 resident's time now. A quiet moment owns the creature's feet while it lasts, so a companion doing
 its small thing is not also walking somewhere. A hidden colony and one under reduced motion do not
 stroll at all. Stroll state is runtime-only and cleared each time the houses go or come, so every
-visit starts with the walk home. While the only thing moving at home is a stroll, the app ticks
-and draws at 10 Hz instead of 20.
+visit starts with the walk home. A stroll is ticked and drawn at 20 Hz like every other movement;
+from 0.59.2 until 0.62.0 it ran at 10.
 
 A visit is a tour rather than a stand. `plan_tour` asks the same layout functions where everything
 is, turns each house, resting resident and belonging into a span of ground the guest may not
@@ -1096,9 +1162,13 @@ with one Hello bubble for 3.2 seconds, then alternates 15-second idles with 6.5-
 PresentDiscovery, SoloPlay, or Perch until 90 seconds remain, says goodbye with a greet and a reach
 for 2.6 seconds, and walks out — gone around 825 seconds into a 900-second gathering. Residents
 answer the hello with a turn and a runtime pose only, staggered by sociability: a bop from a playful
-one, a reach from a bold one, a look from a timid one. Everyone resting at the village answers. No
-resident moves, and no bond, tendency, or memory counter changes; a control gathering with no
-visitor is asserted to project identically.
+one, a reach from a bold one, a look from a timid one. Since 0.62.0 a resident's temperament
+answers first where it has something to say: a guardian watches the newcomer under a Watching
+bubble, a shy one or a wallflower peeks out from behind its paws and blushes, a vain or
+attention-seeking one or a show-off struts under a Sparkle, and a grumpy or irritable one or a grump
+huffs under a Grumble; the bubble shows once, as the answer starts. Everyone resting at the village
+answers. No resident moves, and no bond, tendency, or memory counter changes; a control gathering
+with no visitor is asserted to project identically.
 
 Interruptions behave like every other scene. Pause freezes the visit; hidden runs it undrawn; quiet
 mode still lets the guest leave on schedule; reduced motion drops the walk in and out, holds the
@@ -1317,7 +1387,12 @@ worker, or persistent code cache. Modular creatures use format version 2: the sa
 generation followed by a 16-byte bounded design, four reserved zero bytes, and a four-byte checksum.
 Its 57-byte payload is 92 Base32 characters in 23 groups. A recipe with classic parts uses format
 version 3, identical except that the four reserved bytes hold those parts two to a byte; a recipe
-without them is still written as version 2, so its code is unchanged. Legacy format 1 is unchanged;
+without them is still written as version 2, so its code is unchanged. A recipe the archetype
+generator drew uses format version 4, the same again with its archetype and face layout in the last
+of those bytes, a nibble each. Versions 2 and 3 may not carry an archetype and version 4 must, so a
+code cannot be read as the wrong kind. The recipe says which generator made the companion, and
+import reconstructs its temperament and personality the way that generator first drew them.
+Legacy format 1 is unchanged;
 a recipe is applied after legacy named-stream reconstruction so inherited traits and personalities
 replay exactly. Design bytes also participate in the imported colony's lineage hash, the classic
 bytes only when there are classic parts, so an existing code's lineage is unchanged.
@@ -1331,8 +1406,9 @@ draws the creature's existing procedural greeting frame into palette-derived pix
 writes one RGBA PNG. Every temporary value is dropped before returning, and no card texture enters
 the overlay GPU cache.
 
-Card fields are derived directly from the selected creature at export time: custom name, family, up
-to three already-promoted profile descriptors, UTC birth month/year, colony order, and an
+Card fields are derived directly from the selected creature at export time: custom name, the
+phrase and three traits of its temperament — which a share code brings back with it, where nothing
+learned in the colony goes on the card since 0.62.0 — UTC birth month/year, colony order, and an
 abbreviation of the existing share code. The encoder adds no text chunks or application metadata.
 It never receives memory payloads, relationships, full seed text, screen geometry, device data, or
 the save file itself. Export is therefore read-only and leaves the save untouched.
@@ -1844,7 +1920,13 @@ staggered beats, a pile beside a resting companion, leapfrog using ordinary vali
 keep-away and tug-of-war over one toy, tag with an immunity interval, turns at a gap, a route to
 copy, and a contest for the middle of a ledge. Walks carry a spacing factor so players may come to
 creature-scale contact where an audience keeps its distance, and a scene may travel for up to
-twelve seconds. Invitations can be declined, and a refused pair is left alone for 75 seconds.
+twelve seconds. Invitations can be declined, and a refused pair is left alone for 75 seconds. Since
+0.62.0 a competitive companion takes up a contest — a race, a jump contest, tag, a chase, king of
+the hill or tug-of-war — that it would otherwise be too idle for, and a shy one would rather not be
+seen playing at all. Chase, tag and keep-away are nothing but moving, so a player in one of them that stands
+within two points of the same spot for a second and a half, every goal it is set refused, drops out
+and gets on with its day; if it is the one being chased, the game winds down as any game does that
+has run out of room. Until then a stuck player held the others beside it for the rest of the game.
 
 `world/attention/geometry_games.rs` holds the three games about the desktop's own shape. A race
 picks one finish line both runners can reach — the furthest window the first one's own route

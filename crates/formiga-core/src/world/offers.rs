@@ -308,7 +308,20 @@ impl World {
             + personality.boldness * 0.26
             + personality.curiosity * 0.12;
         let tiredness = drives.sleep_pressure * 0.75 + (1.0 - drives.comfort) * 0.05;
-        let score = want + trust + manner - tiredness;
+        // Its temperament: a food-lover will take a snack from anyone, a picky one is harder to
+        // please, and a suspicious one is warier of anything held out to it.
+        let traits = creature.traits();
+        let has = |any: &[Trait]| traits.iter().any(|t| any.contains(t));
+        let character = match kind {
+            OfferKind::Snack if has(&[Trait::FoodMotivated]) => 0.6,
+            OfferKind::Snack if has(&[Trait::Picky]) => -0.35,
+            _ => 0.0,
+        } + if has(&[Trait::Suspicious, Trait::Wary]) {
+            -0.2
+        } else {
+            0.0
+        };
+        let score = want + trust + manner - tiredness + character;
         // Nothing is ever certain in either direction: every invitation can be declined.
         let chance = (1.0 / (1.0 + (-(score - 0.55) * 2.6).exp())).clamp(0.03, 0.97);
 

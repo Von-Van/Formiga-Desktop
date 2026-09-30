@@ -19,7 +19,7 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
 
 ![One hundred uncurated deterministic creature seeds](assets/contact-sheet.png)
 
-- Read a creature's state through twelve expressions, two-dimensional gaze, eyelids, and irregular
+- Read a creature's state through fifteen expressions, two-dimensional gaze, eyelids, and irregular
   blinks.
 - Catch one with nothing to do sitting as if it has something on its mind: it settles, shifts its
   weight onto one foot, tips its head and pricks its ears toward something off to one side, and
@@ -90,11 +90,23 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
 
 ![The village getting on with things: the gardens tended, every kind of house seen to, a nap indoors and a sit on a roof, three small mishaps, and a yawn going round](assets/village-life-sheet.png)
 
+Every creature has a temperament: one of ten kinds — sweetheart, troublemaker, grump, explorer,
+wallflower, show-off, scholar, oddball, lazybones or guardian — its own mix of nine sides from
+solitary to social and trusting to suspicious, now and then a contradiction such as brave but
+nervous, and three traits read out of all of that, the odd mild flaw among them. It shows in what
+a creature does: a jealous one huffs when another is petted, a grump grumbles at a pet, a dramatic
+one swoons at a fright, a food-lover begs when somebody eats, a show-off strikes a pose after a
+climb, a troublemaker pounces on a dozing friend, a stubborn one stamps its foot, and an impatient
+one taps it. It has its say in what a creature takes, joins in with and plays at, and in how it
+greets a visitor.
+
 Creatures remember how they are treated. Pets, tosses, sleep, ledges, window rides, discoveries,
-play, home visits, and repeated placement gradually shape bounded behavior scores while the
-personality they were generated with stays recognizable. The Colony tab shows those memories, up to
-three learned descriptors, age, favorite places, and closest companions; the name is the only thing
-you can edit.
+play, home visits, and repeated placement gradually shape bounded leanings, which fade back toward
+the creature's own nature when nothing keeps them up, while the temperament stays recognizable. The
+Colony tab leads with the temperament's phrase and three traits, then what a creature has lately
+come to lean toward more than the rest of the colony, its age, favorite places, and closest
+companions, and how each pair gets along — squabbling, partners in mischief, cozy, polite; the name
+is the only thing you can edit.
 
 Each companion also has little ways of its own. It celebrates the same way every time — a hop, a
 little dance, or a twirl — and over its first days picks up as many as two habits: looking a snack
@@ -171,8 +183,8 @@ begins a fresh life of its own exactly as an adopted creature does. A guest's co
 appearance and temperament as any shared code, and nothing more.
 
 Each Colony profile can also export a 960×600 illustrated creature card using the creature's real
-sprite and palette, with its family, learned descriptors, arrival month, and only a short glimpse of
-its seed.
+sprite and palette, with its temperament's phrase and three traits, arrival month, and only a short
+glimpse of its seed.
 
 ![An exportable Formiga creature card for Mallow](assets/creature-card.png)
 

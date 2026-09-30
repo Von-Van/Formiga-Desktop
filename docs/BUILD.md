@@ -62,6 +62,8 @@ cargo run -p formiga-tools -- demo-animation
 cargo run -p formiga-tools -- contact-sheet --output docs/assets/contact-sheet.png
 cargo run -p formiga-tools -- generation-sheet
 cargo run -p formiga-tools -- classic-sheet
+cargo run -p formiga-tools -- face-sheet
+cargo run -p formiga-tools -- temperament-sheet
 cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/animation-preview.png
 cargo run -p formiga-tools -- expression-sheet
 cargo run -p formiga-tools -- gesture-sheet
@@ -90,6 +92,16 @@ Without `--output`, each subcommand writes to its own file under `docs/assets/`,
 repository root, which Git ignores, so pass `--output` to replace the documentation copy. Every
 image is deterministic, so regenerating one that nothing has changed gives back identical pixels.
 
+`cuteness-sheet` is for judging the generator rather than illustrating it. It draws 150 freshly
+generated companions (`--count` takes 1 to 400) on a numbered sheet, to `cuteness-sheet.png` in the
+repository root unless `--output` says otherwise, and prints a table of what each is made of: how
+it was chosen (cute, weird-cute or oddball), its archetype, coherence score, body, ears, tail, face
+layout and markings. `--seed NUMBER` draws a different sheet and `--edition original` draws what the
+generator before 0.62.0 makes from the same seeds. Rate them in a text file of lines like
+`good: 1 4 9`, `ok: 2, 3` and `bad: 12`, pass it back with `--ratings FILE`, and the report shows
+which archetypes, faces and parts turn up among the ones rated bad more often than they turn up at
+all.
+
 Some of the sheets are review tools first and illustrations second. `ui-sheet` draws the whole
 interface atlas: every thought bubble, menu frame, icon state, and label tab. `prop-sheet` draws
 the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keepsakes held up the
@@ -98,7 +110,9 @@ them. `accessory-sheet` draws everything a companion can wear on six kinds of bo
 walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
 moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
 on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them.
-`shelter-sheet` draws every kind of house plain, dressed two ways
+`face-sheet` draws the twelve face layouts a new companion can wear in every expression and a
+blink, and `temperament-sheet` every frame of the six poses a temperament strikes, each with the
+face its moment wears. `shelter-sheet` draws every kind of house plain, dressed two ways
 between which every decoration appears, as a cottage by day, with its resident at home and lit
 after dark, and with its resident sitting on the roof where the simulation seats it. And
 `gesture-sheet` and `habit-sheet` show every pose on every body. `sticker` takes

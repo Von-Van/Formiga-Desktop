@@ -117,6 +117,7 @@ impl World {
                         next_colony_order(&self.save.creatures),
                         &existing_names,
                         true,
+                        self.generator,
                     ))
                 } else {
                     let Some(parent_id) = balanced_parent_id(&self.save.creatures) else {

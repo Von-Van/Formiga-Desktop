@@ -129,7 +129,7 @@ impl World {
         now: OffsetDateTime,
         desktop: &DesktopSnapshot,
     ) -> Creature {
-        generated_adult(source_seed, now, desktop, 0, &[], true)
+        generated_adult(source_seed, now, desktop, 0, &[], true, Edition::LATEST)
     }
 
     /// Set where a companion's owner would like it to roam. Returns whether anything changed.
@@ -186,7 +186,15 @@ impl World {
             .map(|creature| creature.name.clone())
             .collect();
         let order = next_colony_order(&self.save.creatures);
-        let mut creature = generated_adult(source_seed, now, desktop, order, &existing_names, true);
+        let mut creature = generated_adult(
+            source_seed,
+            now,
+            desktop,
+            order,
+            &existing_names,
+            true,
+            self.generator,
+        );
         if let Some(design) = design {
             apply_creature_design(&mut creature, Some(design));
         }
@@ -256,6 +264,7 @@ impl World {
             colony_order,
             &existing_names,
             true,
+            self.generator,
         );
         if let Some(design) = design {
             apply_creature_design(&mut replacement, Some(design));

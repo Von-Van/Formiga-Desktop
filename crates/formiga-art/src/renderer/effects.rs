@@ -168,6 +168,54 @@ pub(super) fn draw_gesture_effects(
             canvas.set(x + 2, y - 3, palette.accent);
             canvas.fill_circle(x, y + 1, 1, palette.accent);
         }
+        // A puff of steam off the top of the head on the hmph.
+        Gesture::Huff => {
+            if pulse == 1 || reduce_motion {
+                let y = (face.y - 12).max(3);
+                for x in [(face.x - 6).max(3), (face.x + 6).min(44)] {
+                    canvas.set(x, y, palette.highlight);
+                    canvas.set(x, y - 1, palette.highlight);
+                    canvas.set(x + 1, y - 2, palette.highlight);
+                }
+            }
+        }
+        // Stars going round over a swoon.
+        Gesture::Swoon => {
+            let y = (face.y - 13).max(4);
+            let turn = if reduce_motion {
+                0
+            } else {
+                i32::from(frame % 2) * 2
+            };
+            for dx in [-4 + turn, 3 - turn] {
+                let x = (face.x + dx).clamp(3, 44);
+                canvas.set(x, y, palette.accent);
+                canvas.set(x - 1, y, palette.accent);
+                canvas.set(x + 1, y, palette.accent);
+                canvas.set(x, y - 1, palette.accent);
+                canvas.set(x, y + 1, palette.accent);
+            }
+        }
+        // A glint off the flourish.
+        Gesture::Strut => {
+            if pulse == 0 {
+                draw_motif(
+                    canvas,
+                    EffectMotif::Spark,
+                    (face.x + 12).min(42),
+                    (face.y - 12).max(4),
+                    palette.highlight,
+                );
+            }
+        }
+        // A little dust where the foot comes down.
+        Gesture::Stomp => {
+            if frame.is_multiple_of(2) && !reduce_motion {
+                let y = (face.y + 20).min(44);
+                canvas.set((face.x - 9).max(2), y, palette.highlight);
+                canvas.set((face.x - 11).max(2), y - 1, palette.highlight);
+            }
+        }
         // Nothing floats over a watching creature. A mark here would be the creature telling the
         // viewer it is interested; the pose has to say that by itself.
         Gesture::Cover
@@ -176,7 +224,9 @@ pub(super) fn draw_gesture_effects(
         | Gesture::Reach
         | Gesture::Watch
         | Gesture::Stretch
-        | Gesture::Yawn => {}
+        | Gesture::Yawn
+        | Gesture::Beg
+        | Gesture::Peek => {}
     }
 }
 

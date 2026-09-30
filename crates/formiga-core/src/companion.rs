@@ -549,7 +549,8 @@ mod tests {
         };
         let now = created + age;
         let desktop = restless_desktop(0);
-        let mut world = World::new([64; 32], created, &desktop);
+        // Tuned on the companions the original generator made for this seed.
+        let mut world = World::new_original([64; 32], created, &desktop);
         world.tick(now, 0.05, &desktop);
         world.save.home.active_since_utc = None;
         world.save.home.last_disappeared_utc = Some(now);

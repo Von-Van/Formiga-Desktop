@@ -111,6 +111,8 @@ pub struct ResidentAnswer {
     /// Seconds it holds the answer once it has turned.
     pub hold: f32,
     pub gesture: Option<Gesture>,
+    /// What its bubble says as it turns, if its temperament has anything to say.
+    pub bubble: Option<crate::BubbleIcon>,
 }
 
 /// Where an authored visit has got to. Never saved: see [`VisitPhase`].

@@ -2,6 +2,137 @@
 
 All notable changes are documented here.
 
+## [0.62.0] - 2026-09-30
+
+### Added
+
+- New companions come out cuter and more of a piece. A companion made from now on is drawn from one
+  of eight body archetypes — a round mochi, a four-legged critter, a big-headed bean, a fluffy puff,
+  a sprite crowned with antennae or sprouts, a whelp with a proper tail, a winged birb, and the
+  goober, a blob strange on purpose — whose odds over the parts every companion already has lean
+  toward parts that suit one another: big ears make a big tail less likely, wings keep the ears and
+  tail simple, a tiny body keeps everything that sticks out small, and busy markings keep the face
+  plain. Seven in ten are the most coherent of six recipes drawn for them, two in ten the most
+  coherent of six that each break one of their archetype's rules, and one in ten a genuine oddball.
+  Its coat and accent start from a pair that belong together. It is a new generator beside the old
+  one rather than a change to it, so nobody already in a colony is redrawn, and a mini of a family
+  that began before archetypes is drawn the way its family always was.
+- Twelve authored face layouts for new companions: round button eyes, the same set wide, big eyes
+  low on the face, the modular face, small beady eyes and the same set low, tall ovals and small tall
+  eyes held apart, soft squares, the originals' mask and visor, and a little beak. A layout fixes
+  where the eyes sit and how big they are; the mouth, cheeks and shine still come from each
+  companion's own face, kept to what its layout allows. `face-sheet` shows every layout in every
+  expression.
+- Expressions on the new faces are drawn in the eyes themselves: a lid lowered flat for a sleepy or
+  bored look, a top corner cut on a slant for a scowl or a worry, a shut smiling curve for joy and
+  affection, and white round a shrunken pupil for a fright. Brows sit a clear row above the eyes and
+  show only while they move, so a face at rest stays clean and no feature is drawn over another.
+- Three new expressions, for every companion: grumpy, smug and pleading.
+- A temperament for every companion. A new one is given one of ten kinds — sweetheart,
+  troublemaker, grump, explorer, wallflower, show-off, scholar, oddball, lazybones or guardian —
+  nine plain-language sides drawn loosely around it, from solitary to social and trusting to
+  suspicious, and about one time in four a tension such as brave but nervous or grumpy but
+  affectionate. Its profile says who it is in a phrase, "A curious professor", and shows three of
+  sixty-eight traits read out of all of that, one per side of it: warm ones, plain ones and mild
+  flaws — Nosy, Vain, Stubborn, Jealous — never two that contradict each other. The behaviour values
+  the simulation has always read are drawn from the temperament, so a grump really does keep to
+  itself. Every companion already in a colony reads its temperament from the values it has always
+  had, and nothing new is drawn for it.
+- A companion's temperament shows. A jealous one huffs when somebody near it is petted, and a grump
+  grumbles at a pet of its own, though a secretly soft one follows the grumble with a heart. A
+  dramatic one swoons at a fright and a jumpy one hides behind its paws. A food-lover sits up and
+  begs when somebody near it is eating, a show-off strikes a pose after a climb or a find, and one
+  that embarrasses easily peeks out from behind its paws after a mishap. Now and then a troublemaker
+  creeps up on a friend who is resting and pounces, and the friend jumps; a stubborn one stamps its
+  foot when it will not join in, and an impatient one left standing about taps its foot. Each is a
+  moment with a pose, a face and a bubble — six new poses, a pounce and a start, and five new bubbles
+  (a grumble, jealousy, a swoon, a blush, and watching) — and then a while to itself before the
+  next. Reduced motion keeps the bubbles and leaves out the poses.
+- `cuteness-sheet` draws a numbered sheet of freshly generated companions, with a table of how each
+  was chosen and what it is made of, and reads back a file of good, ok and bad ratings to report
+  which parts turn up among the bad ones more than they turn up at all. `temperament-sheet` shows
+  the poses a temperament strikes.
+
+### Changed
+
+- What companions learn now moves both ways and fades. Six of the eight things a companion learns
+  to lean toward only ever went up, so within days every companion had learned all of them as far as
+  they go, and five of the owner's six showed the same three words. A lesson now teaches a little at
+  a time, less the nearer a leaning already is to its end; everything learned drifts back toward
+  where the companion's own nature rests it, about half the way in a day of company; and how
+  readily it learns something follows its temperament, so a solitary one takes a squabble to heart
+  and a suspicious one holds a toss against you for longer. The profile shows at most two learned
+  words, under "Lately", and only where a companion leans further than the rest of its colony. A
+  companion already in a colony keeps what it learned, which now fades like anything else, so its
+  habits of mind drift over the coming days.
+- A temperament has its say in what a companion chooses. A food-lover is readier to take a snack
+  and a picky one less so; a suspicious or wary one is warier of anything held out to it. A
+  food-lover never misses a picnic and a sleepy or lazy one never a nap, a dramatic or confident one
+  is far readier to dance and a shy one less so, and a stubborn one digs its heels in over anything.
+  A competitive one takes up a race, a chase or a contest it would otherwise be too idle for, and a
+  shy one would rather not be seen playing. When a visitor comes, a guardian watches it, a shy resident peeks and blushes, a vain
+  one struts and a grump huffs.
+- A creature card shows who a companion is — its temperament's phrase and three traits — in place
+  of its body and the words it had learned, since a card goes with the companion's code and nothing
+  it learned in its colony goes with that.
+- How two companions get along says more than how much they play: squabbling, partners in mischief,
+  an odd couple, quiet company, easy company, cozy, or polite, from their temperaments, and playful
+  or very playful for a pair that plays a lot.
+- A village strolling round the commons is drawn twenty times a second, like every other movement.
+  From 0.59.2 strolls at home were ticked and drawn at ten, which left the village visibly steppier
+  than the desktop around it. The speed limit that told a stroll from a walk for that rule is gone
+  with it.
+- A companion's textures hold each distinct frame once. Frames and faces that come out the same — a
+  pose held across frames, a whole clip under reduced motion, eyes shut whichever way they would be
+  looking — share one cell, and each companion keeps a table of the cell every frame is drawn from.
+  The eight trinket cells at the end of every face texture, which nothing had read since the
+  keepsakes moved to the colony's own sheet, are gone.
+
+### Fixed
+
+- A worried companion no longer scowls, and a determined one no longer looks worried. The original
+  faces tilted each brow's inner end the wrong way for worry, affection, focus, determination and a
+  yawn; they now lift for worry and affection and lower for focus, determination and a yawn.
+- A player in a chase, a game of tag or keep-away that stood on the same spot for a second and a
+  half, every goal it was set refused, held the others beside it for the rest of the game. It now
+  drops out and gets on with its day, and if it was the one being chased the game winds down as a
+  game does that has run out of room.
+
+### Compatibility
+
+- Colonies are saved in format 20, which adds temperaments, archetype recipes and fractional
+  leanings, and migrates nothing: a companion without a temperament reads one from its own values,
+  a recipe without an archetype is drawn as it always was, and whole-number leanings read as the
+  same values. Earlier versions cannot open a format 20 save.
+- Every companion already in a colony looks as it did. For the owner's colony of six and the three
+  reference creatures, all 2,412 body frames — every clip, with and without reduced motion — are
+  identical to 0.61.0's pixel for pixel, face anchors included, and so is every face in every
+  expression, eyelid pose and gaze, but for the brows of the five expressions above.
+- A companion made by the new generator is shared as a version 4 code, whose last reserved byte
+  holds its archetype and face layout; it brings back the same companion with the same temperament,
+  and needs 0.62.0 or newer to import. Versions 1 to 3 are unchanged, and a companion made before
+  0.62.0 is still shared exactly as before.
+- Colonies from the new generator have not had the face-spacing model retuned for their bodies.
+  Measured over thirty-two seeded sessions, three of them left a face behind another body for 6.4
+  to 7.3 seconds — a dance over a sleeper, a slow walker, and a game of tag — where the tests hold
+  colonies of the original generator to 5.25, and one of theirs went over in the same measurement,
+  at 5.45.
+
+### Performance
+
+- The owner's colony of six, with the houses out, averaged 3.00% of one core over two minutes
+  against 2.92% for 0.61.0 on a fresh copy of the same colony in the same sitting, with 53 MB
+  resident against 60 and a footprint of 122 MB against 121: the village's twenty frames a second
+  while it strolls cost about a twelfth of a point.
+- A companion's textures cost less than in 0.61.0 despite thirteen more body frames and three more
+  expressions: 1,244,160 bytes for a new companion against 1,649,664, and 506,880 under reduced
+  motion. The owner's six take 8,202,240 bytes against 9,897,984, and 3,870,720 under reduced
+  motion. A companion none of whose frames came out alike would cost 1,797,120, and the ceiling for
+  a full colony of six at that worst was raised from 10 MiB to 15 MiB.
+- `tick-bench` is unchanged within its spread: a full colony on a busy desktop with the cursor about
+  takes 6.52 µs a tick against 6.51. A save of the benchmark's colony is 56,543 bytes against
+  53,308, the temperaments and fractional leanings, and takes 5.65 ms against 5.17.
+
 ## [0.61.0] - 2026-09-24
 
 ### Added

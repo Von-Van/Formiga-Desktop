@@ -65,10 +65,16 @@ pub enum ExpressionKind {
     Bored,
     /// Mid-yawn: eyes screwed shut and the mouth wide open.
     Yawning,
+    /// Put out: lids low and scowling over a pout.
+    Grumpy,
+    /// Pleased with itself: lids lowered over a lopsided smile.
+    Smug,
+    /// Asking with its eyes: wide and shining, worried at the corners.
+    Pleading,
 }
 
 impl ExpressionKind {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 15] = [
         Self::Neutral,
         Self::Content,
         Self::Curious,
@@ -81,6 +87,9 @@ impl ExpressionKind {
         Self::Determined,
         Self::Bored,
         Self::Yawning,
+        Self::Grumpy,
+        Self::Smug,
+        Self::Pleading,
     ];
 
     pub const fn index(self) -> u32 {
@@ -275,6 +284,18 @@ impl AnimationSpec {
             Gesture::Stretch => (4, 3),
             // In, up, held, and down again, in a little under two seconds.
             Gesture::Yawn => (4, 2),
+            // A hmph, and again.
+            Gesture::Huff => (2, 3),
+            // Going, going, gone: played once and held at the bottom.
+            Gesture::Swoon => (3, 3),
+            // Bouncing on the spot.
+            Gesture::Beg => (2, 4),
+            // A flourish, held a beat, and again.
+            Gesture::Strut => (2, 3),
+            // Covered, then a peek.
+            Gesture::Peek => (2, 2),
+            // Tap, tap.
+            Gesture::Stomp => (2, 4),
         };
         Self {
             frames,
@@ -282,7 +303,7 @@ impl AnimationSpec {
             // A stretch and a yawn are done once, from the moment they start, and held at their
             // last frame until they are let go; every other gesture loops for as long as the
             // moment asks for it.
-            playback: if matches!(gesture, Gesture::Stretch | Gesture::Yawn) {
+            playback: if matches!(gesture, Gesture::Stretch | Gesture::Yawn | Gesture::Swoon) {
                 PlaybackMode::Hold
             } else {
                 PlaybackMode::Loop

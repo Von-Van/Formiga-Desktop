@@ -7,6 +7,14 @@ pub(super) fn eager_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDat
     eager_colony_of(seed, false)
 }
 
+/// The same fixture with its companions from a given generator, for comparing the two.
+pub(super) fn eager_colony_from(
+    seed: [u8; 32],
+    generator: Edition,
+) -> (World, DesktopSnapshot, OffsetDateTime) {
+    eager_colony_built(seed, false, generator)
+}
+
 /// The same fixture with the colony grown to the cap: every companion it can hold, on the one
 /// floor, which is what a colony that has been going a few weeks actually looks like.
 pub(super) fn eager_full_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
@@ -14,6 +22,14 @@ pub(super) fn eager_full_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, Offs
 }
 
 fn eager_colony_of(seed: [u8; 32], full: bool) -> (World, DesktopSnapshot, OffsetDateTime) {
+    eager_colony_built(seed, full, Edition::Original)
+}
+
+fn eager_colony_built(
+    seed: [u8; 32],
+    full: bool,
+    generator: Edition,
+) -> (World, DesktopSnapshot, OffsetDateTime) {
     let created = datetime!(2026-01-01 0:00 UTC);
     let now = created + Duration::days(40);
     let mut desktop = desktop();
@@ -41,7 +57,8 @@ fn eager_colony_of(seed: [u8; 32], full: bool) -> (World, DesktopSnapshot, Offse
             application_name: None,
         });
     }
-    let mut world = World::new(seed, created, &desktop);
+    // Tuned on the companions the original generator made for this seed.
+    let mut world = World::new_from_generator(seed, created, &desktop, generator);
     if full {
         // Arrivals are staged, so a colony only fills if it is given the days to fill in.
         for day in 1..=40 {

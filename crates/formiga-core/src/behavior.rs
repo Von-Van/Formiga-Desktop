@@ -201,7 +201,7 @@ pub fn choose_action<R: Rng + ?Sized>(
         let learned = (learned_modifier(creature, action)
             + routine
                 * p.routine_affinity
-                * (0.1 + (f32::from(creature.tendencies.routine) + 100.0) / 200.0 * 0.1))
+                * (0.1 + (creature.tendencies.routine + 100.0) / 200.0 * 0.1))
             .clamp(-0.35, 0.35);
         let commitment = if action == creature.state.action {
             0.35
@@ -350,7 +350,7 @@ fn learned_modifier(creature: &Creature, action: ActionKind) -> f32 {
 }
 
 fn ride_confidence(creature: &Creature) -> f32 {
-    let five_minute_blocks = (creature.memory.window_ride_seconds / (5 * 60)).min(100) as i8;
+    let five_minute_blocks = (creature.memory.window_ride_seconds / (5 * 60)).min(100) as f32;
     LearnedTendencies::utility(five_minute_blocks)
 }
 
@@ -532,13 +532,13 @@ mod tests {
         let (mut creature, desktop, mut context) = fixture();
         context.reachable_window_ledge = true;
         creature.personality.decision_temperature = 0.5;
-        creature.tendencies.climbing = -100;
+        creature.tendencies.climbing = -100.0;
         let low = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
-        creature.tendencies.climbing = 0;
+        creature.tendencies.climbing = 0.0;
         let neutral = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
-        creature.tendencies.climbing = 100;
+        creature.tendencies.climbing = 100.0;
         let high = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
-        creature.tendencies.climbing = -100;
+        creature.tendencies.climbing = -100.0;
         let reversed = selection_count_large(&creature, &desktop, context, ActionKind::Perch);
         assert!(
             low < neutral && neutral < high,
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn every_learned_modifier_is_bounded_and_has_a_contrary_direction() {
         let (mut creature, _, _) = fixture();
-        for value in [-100, 100] {
+        for value in [-100.0, 100.0] {
             creature.tendencies = crate::LearnedTendencies {
                 cursor_trust: value,
                 sociability: value,
@@ -639,9 +639,9 @@ mod tests {
                 assert!(learned_modifier(&creature, action).abs() <= 0.35);
             }
         }
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
         let trusting = learned_modifier(&creature, ActionKind::InvestigateCursor);
-        creature.tendencies.cursor_trust = -100;
+        creature.tendencies.cursor_trust = -100.0;
         let wary = learned_modifier(&creature, ActionKind::InvestigateCursor);
         assert!(trusting > 0.0 && wary < 0.0);
 

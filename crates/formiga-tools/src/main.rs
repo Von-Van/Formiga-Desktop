@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 
 mod accessory_sheet;
 mod colony_card;
+mod cuteness_sheet;
 mod habit_sheet;
 mod palette_sheet;
 mod postcard;
@@ -34,6 +35,17 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/classic-sheet.png",
         )),
+        Some("face-sheet") => cuteness_sheet::face_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/face-sheet.png",
+        )),
+        Some("temperament-sheet") => cuteness_sheet::temperament_sheet(
+            output_argument_with_default(&args, "docs/assets/temperament-sheet.png"),
+        ),
+        Some("cuteness-sheet") => cuteness_sheet::run(
+            output_argument_with_default(&args, "cuteness-sheet.png"),
+            cuteness_sheet::options(&args)?,
+        ),
         Some("home-yard-sheet") => home_yard_sheet(output_argument_with_default(
             &args,
             "docs/assets/home-yard-sheet.png",
@@ -136,7 +148,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -150,9 +162,9 @@ fn creature_card(path: PathBuf) -> Result<()> {
     let creature = &mut world.save.creatures[0];
     creature.name = "Mallow".into();
     creature.born_at_utc = time::macros::datetime!(2026-08-14 12:30 UTC);
-    creature.tendencies.climbing = 62;
-    creature.tendencies.exploration = 53;
-    creature.tendencies.sociability = 41;
+    creature.tendencies.climbing = 62.0;
+    creature.tendencies.exploration = 53.0;
+    creature.tendencies.sociability = 41.0;
     formiga_core::update_descriptor_flags(&mut creature.memory, creature.tendencies);
     let card = CreatureCardRenderer::render(creature);
     write_png(&path, CARD_WIDTH, CARD_HEIGHT, &card.rgba_bytes())?;
@@ -261,15 +273,15 @@ fn classic_sheet(path: PathBuf) -> Result<()> {
     );
     let mut creature =
         World::preview_adult([13; 32], OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
-    // A coat and accent far enough apart that every accent-coloured part shows against the body.
+    // A coat and accent far enough apart that every accent-coloured part shows against the body,
+    // on the plain modular recipe the original generator draws from the same seed: classic parts
+    // belong to that generator, and a layout would put its eyes over the arrangements this sheet
+    // is here to show.
     let base = CreatureDesign {
         classic: ClassicParts::default(),
         coat: [118, 172, 196],
         accent: [242, 168, 88],
-        ..creature
-            .appearance
-            .design
-            .expect("a generated companion carries its recipe")
+        ..CreatureDesign::generated_by(Edition::Original, [13; 32], 0, None)
     };
     let mut draw = |creature: &Creature, clip: BodyClip, frame: u8, column: u32, row: u32| {
         let state = FaceRenderState {
@@ -879,7 +891,7 @@ fn expression_sheet(path: PathBuf) -> Result<()> {
 
 /// The face a gesture is reviewed with. A pose and its face have to be judged together, since
 /// half of what a body says is said by where it is looking.
-fn gesture_face(gesture: Gesture) -> FaceRenderState {
+pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
     let (expression, eyelids) = match gesture {
         Gesture::Cheer | Gesture::Bop => (ExpressionKind::Joy, EyelidPose::Open),
         Gesture::Gasp => (ExpressionKind::Startled, EyelidPose::Open),
@@ -890,6 +902,12 @@ fn gesture_face(gesture: Gesture) -> FaceRenderState {
         // Shown as the desktop shows the top of it: eyes screwed shut.
         Gesture::Stretch => (ExpressionKind::Content, EyelidPose::Closed),
         Gesture::Yawn => (ExpressionKind::Yawning, EyelidPose::Closed),
+        Gesture::Huff | Gesture::Stomp => (ExpressionKind::Grumpy, EyelidPose::Open),
+        Gesture::Swoon => (ExpressionKind::Affectionate, EyelidPose::Closed),
+        Gesture::Beg => (ExpressionKind::Pleading, EyelidPose::Open),
+        // Pleased with itself: half-lidded and smiling.
+        Gesture::Strut => (ExpressionKind::Smug, EyelidPose::Half),
+        Gesture::Peek => (ExpressionKind::Worried, EyelidPose::Half),
     };
     FaceRenderState {
         expression,

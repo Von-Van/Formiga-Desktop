@@ -45,9 +45,9 @@ impl World {
         let route = self.topology.plan_route(
             start,
             RoutePreferences {
-                climbing: c.tendencies.climbing,
-                exploration: c.tendencies.exploration,
-                cursor_trust: c.tendencies.cursor_trust,
+                climbing: c.tendencies.climbing.round() as i8,
+                exploration: c.tendencies.exploration.round() as i8,
+                cursor_trust: c.tendencies.cursor_trust.round() as i8,
                 target_hint: hint,
                 max_rise,
                 max_drop,

@@ -1298,7 +1298,7 @@ impl World {
     }
 
     /// Let one member go without ending the scene for everyone else.
-    fn release_player(&mut self, id: CreatureId) {
+    pub(super) fn release_player(&mut self, id: CreatureId) {
         if let Some(plan) = self.attention.plans.remove(&id)
             && let Some(creature) = creature_mut(&mut self.save.creatures, id)
         {

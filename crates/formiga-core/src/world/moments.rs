@@ -112,6 +112,27 @@ fn moment_answer(
             BubbleIcon::Decline,
         ),
     };
+    // Its temperament has a say as well: a food-lover never misses a picnic and a sleepy one
+    // never a nap, a show-off loves a dance and a shy one would rather watch, and a stubborn one
+    // digs its heels in over anything.
+    let traits = creature.traits();
+    let has = |any: &[Trait]| traits.iter().any(|t| any.contains(t));
+    match moment {
+        VillageMoment::Picnic if has(&[Trait::FoodMotivated]) => reluctance = 0.0,
+        VillageMoment::Nap if has(&[Trait::Sleepy, Trait::Lazy]) => reluctance = 0.0,
+        VillageMoment::Dance
+            if has(&[Trait::Dramatic, Trait::AttentionSeeking, Trait::Confident]) =>
+        {
+            reluctance *= 0.4;
+        }
+        VillageMoment::Dance if has(&[Trait::Shy, Trait::Cautious, Trait::Stoic]) => {
+            reluctance += 0.2;
+        }
+        _ => {}
+    }
+    if has(&[Trait::Stubborn]) {
+        reluctance += 0.15;
+    }
     if asked {
         reluctance *= 0.5;
     }
@@ -223,6 +244,7 @@ impl World {
         for (creature_id, _, answer) in &answers {
             if let MomentAnswer::Declines(icon) = answer {
                 self.show_bubble(*creature_id, *icon);
+                self.antics.cue(antics::Cue::Declined(*creature_id));
             }
         }
         if joining.len() < MOMENT_MIN_COMPANIONS {

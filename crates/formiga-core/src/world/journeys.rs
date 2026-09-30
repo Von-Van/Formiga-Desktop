@@ -492,9 +492,9 @@ pub(super) fn planned_window_route(
     let route = topology.plan_route(
         start_window,
         RoutePreferences {
-            climbing: creature.tendencies.climbing,
-            exploration: creature.tendencies.exploration,
-            cursor_trust: creature.tendencies.cursor_trust,
+            climbing: creature.tendencies.climbing.round() as i8,
+            exploration: creature.tendencies.exploration.round() as i8,
+            cursor_trust: creature.tendencies.cursor_trust.round() as i8,
             target_hint,
             max_rise,
             max_drop,
@@ -656,7 +656,7 @@ pub(super) fn find_nearby_ledge(
                     },
                 );
             let island_bonus = if topology.island_windows().any(|key| key == window.key) {
-                42.0 + f32::from(creature.tendencies.exploration.max(0)) * 0.2
+                42.0 + creature.tendencies.exploration.max(0.0) * 0.2
             } else {
                 0.0
             };
@@ -740,8 +740,8 @@ pub(super) fn cursor_invitation_eligible(
 ) -> bool {
     creature.state.surface.monitor_id == invitation.monitor_id
         && creature.state.cursor_cooldown <= 0.0
-        && creature.tendencies.cursor_trust >= -20
-        && (creature.tendencies.cursor_trust >= 10
+        && creature.tendencies.cursor_trust >= -20.0
+        && (creature.tendencies.cursor_trust >= 10.0
             || creature.personality.cursor_interest + creature.personality.boldness >= 1.15)
 }
 

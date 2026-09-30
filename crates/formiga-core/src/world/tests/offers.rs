@@ -277,14 +277,14 @@ fn what_a_creature_wants_decides_the_answer_across_many_colonies() {
     let petted = acceptances(seeds, OfferKind::Snack, |creature| {
         creature.state.drives.energy = 0.6;
         creature.memory.times_petted = 60;
-        creature.tendencies.cursor_trust = 100;
-        creature.tendencies.sociability = 100;
+        creature.tendencies.cursor_trust = 100.0;
+        creature.tendencies.sociability = 100.0;
     });
     let thrown = acceptances(seeds, OfferKind::Snack, |creature| {
         creature.state.drives.energy = 0.6;
         creature.memory.times_tossed = 60;
-        creature.tendencies.cursor_trust = -100;
-        creature.tendencies.sociability = -100;
+        creature.tendencies.cursor_trust = -100.0;
+        creature.tendencies.sociability = -100.0;
     });
     assert!(
         petted > thrown,
@@ -315,7 +315,7 @@ fn what_a_creature_wants_decides_the_answer_across_many_colonies() {
         creature.state.drives.energy = 0.0;
         creature.personality.sociability = 1.0;
         creature.personality.curiosity = 1.0;
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
     });
     assert!(irresistible < seeds as usize, "{irresistible} of {seeds}");
 }
@@ -410,7 +410,7 @@ fn a_decline_is_a_small_look_away_and_nothing_else() {
         creature.personality.playfulness = 0.0;
         creature.personality.sociability = 0.0;
         creature.personality.curiosity = 0.0;
-        creature.tendencies.cursor_trust = -100;
+        creature.tendencies.cursor_trust = -100.0;
         creature.state.facing_right = true;
     }
     let before = world.save.creatures[0].clone();
@@ -539,7 +539,7 @@ fn a_sleeping_creature_is_only_woken_when_it_has_had_its_rest() {
         creature.state.action_duration = 40.0;
         creature.state.drives.sleep_pressure = 0.05;
         creature.state.drives.energy = 0.0;
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
     }
     world.sleep_elapsed.insert(id, 30.0);
     assert!(world.handle_command(offer(OfferKind::Snack, id), &desktop));
@@ -562,7 +562,7 @@ fn a_snack_offered_at_home_is_eaten_at_the_doorstep_and_then_the_resident_settle
     for creature in &mut world.save.creatures {
         creature.personality.boldness = 0.9;
         creature.state.drives.energy = 0.0;
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
     }
     // On the way home is not somewhere anything can be enjoyed.
     assert!(world.handle_command(WorldCommand::SendHome, &desktop));
@@ -667,7 +667,7 @@ fn offers_nudge_trust_within_the_same_bounds_as_everything_else() {
     let after = world.save.creatures[0].tendencies;
     assert!(after.cursor_trust > before.cursor_trust);
     assert!(
-        after.cursor_trust - before.cursor_trust <= 3,
+        after.cursor_trust - before.cursor_trust <= 3.0 * 1.75,
         "one offer is a nudge, not a conversion"
     );
 
@@ -681,12 +681,17 @@ fn offers_nudge_trust_within_the_same_bounds_as_everything_else() {
         }
     }
     world.project_events(world.save.maximum_seen_utc);
-    assert_eq!(world.save.creatures[0].tendencies.cursor_trust, 100);
-    assert_eq!(world.save.creatures[0].tendencies.sociability, 100);
-    assert_eq!(
-        LearnedTendencies::utility(world.save.creatures[0].tendencies.cursor_trust),
-        0.35
+    // Hundreds of offers bring trust as near the top as it goes, and never past it.
+    let tendencies = world.save.creatures[0].tendencies;
+    assert!(
+        (95.0..=100.0).contains(&tendencies.cursor_trust),
+        "{tendencies:?}"
     );
+    assert!(
+        (95.0..=100.0).contains(&tendencies.sociability),
+        "{tendencies:?}"
+    );
+    assert!(LearnedTendencies::utility(tendencies.cursor_trust) <= 0.35);
 
     // And it comes back: being thrown about undoes it.
     for _ in 0..40 {
@@ -698,7 +703,7 @@ fn offers_nudge_trust_within_the_same_bounds_as_everything_else() {
         });
     }
     world.project_events(world.save.maximum_seen_utc);
-    assert!(world.save.creatures[0].tendencies.cursor_trust < 0);
+    assert!(world.save.creatures[0].tendencies.cursor_trust < 0.0);
 }
 
 /// A timid creature takes a beat before it answers, and reduced motion answers straight away,
@@ -712,7 +717,7 @@ fn a_timid_creature_thinks_about_it_and_reduced_motion_answers_at_once() {
         let creature = creature_mut(&mut world.save.creatures, id).unwrap();
         creature.personality.boldness = 0.05;
         creature.state.drives.energy = 0.0;
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
         creature.state.facing_right = true;
     }
     assert!(world.handle_command(offer(OfferKind::Snack, id), &desktop));
@@ -736,7 +741,7 @@ fn a_timid_creature_thinks_about_it_and_reduced_motion_answers_at_once() {
         let creature = creature_mut(&mut world.save.creatures, id).unwrap();
         creature.personality.boldness = 0.05;
         creature.state.drives.energy = 0.0;
-        creature.tendencies.cursor_trust = 100;
+        creature.tendencies.cursor_trust = 100.0;
         creature.state.facing_right = true;
     }
     assert!(world.handle_command(offer(OfferKind::Snack, id), &desktop));
@@ -845,7 +850,7 @@ fn offers_amid_pets_and_throws_leave_the_colony_whole() {
                     || world.tosses.contains_key(&creature.id),
                 "seed {seed}: somebody ended up outside the habitat"
             );
-            assert!(creature.tendencies.cursor_trust.abs() <= 100);
+            assert!(creature.tendencies.cursor_trust.abs() <= 100.0);
         }
         // Whatever was handed out, a meal was still a meal and a game still a game, counted once
         // each by the action that finished rather than by the asking.

@@ -3,19 +3,56 @@
 use super::*;
 
 pub(super) const ATLAS_COLUMNS: u32 = 10;
-// There are exactly 27 eyelid/gaze combinations per expression. Keeping one expression per row
-// avoids padding slots and leaves enough texture budget for additional pre-baked body actions.
+/// Face cells to a row of the face texture: as many as there are eyelid and gaze combinations for
+/// one expression.
 pub(super) const FACE_ATLAS_COLUMNS: u32 = 27;
 
 pub(super) struct AtlasPixels {
     pub(super) body_width: u32,
     pub(super) body_height: u32,
     pub(super) body_pixels: Vec<u8>,
+    /// The cell of the body texture each baked frame is drawn from, by slot. Frames that come out
+    /// identical — a pose held across frames, a whole clip under reduced motion — share one cell.
+    pub(super) body_cells: Vec<u16>,
     pub(super) face_width: u32,
     pub(super) face_height: u32,
     pub(super) face_pixels: Vec<u8>,
+    /// The same for faces, by face slot: shut eyes, for one, look the same whichever way they
+    /// would be looking.
+    pub(super) face_cells: Vec<u16>,
     pub(super) face_anchors: Vec<PixelPoint>,
     pub(super) silhouette: Vec<(u8, u8)>,
+}
+
+/// Lays frames of `frame_size` pixels square into a texture `columns` cells wide, each distinct
+/// frame once, in the order they first appear. Returns the texture's width, height and pixels, and
+/// the cell each frame landed in.
+fn pack(frames: Vec<Vec<u8>>, frame_size: u32, columns: u32) -> (u32, u32, Vec<u8>, Vec<u16>) {
+    let mut distinct: Vec<Vec<u8>> = Vec::new();
+    let mut seen: std::collections::HashMap<Vec<u8>, u16> = std::collections::HashMap::new();
+    let cells = frames
+        .into_iter()
+        .map(|frame| {
+            *seen.entry(frame).or_insert_with_key(|frame| {
+                distinct.push(frame.clone());
+                (distinct.len() - 1) as u16
+            })
+        })
+        .collect();
+    let rows = (distinct.len() as u32).div_ceil(columns).max(1);
+    let (width, height) = (columns * frame_size, rows * frame_size);
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for (cell, frame) in (0_u32..).zip(&distinct) {
+        blit_atlas_frame(
+            &mut pixels,
+            width,
+            cell % columns * frame_size,
+            cell / columns * frame_size,
+            frame_size,
+            frame,
+        );
+    }
+    (width, height, pixels, cells)
 }
 
 /// The first and just-past-the-last rows a frame actually draws on, in art pixels. Measured after
@@ -34,10 +71,7 @@ pub(super) fn build_atlas_pixels(
     dress: Option<AccessoryArt>,
 ) -> AtlasPixels {
     let body_slots = total_animation_frames();
-    let body_rows = body_slots.div_ceil(ATLAS_COLUMNS);
-    let body_width = ATLAS_COLUMNS * FRAME_SIZE;
-    let body_height = body_rows * FRAME_SIZE;
-    let mut body_pixels = vec![0_u8; (body_width * body_height * 4) as usize];
+    let mut body_frames = vec![Vec::new(); body_slots as usize];
     let mut face_anchors = vec![PixelPoint::default(); body_slots as usize];
     let mut silhouette = vec![(0_u8, FRAME_SIZE as u8); body_slots as usize];
     for clip in BodyClip::baked() {
@@ -54,25 +88,16 @@ pub(super) fn build_atlas_pixels(
             if outline {
                 CreatureRenderer::outline_frame(&mut rendered.canvas);
             }
-            let slot = atlas_slot(clip, frame);
-            face_anchors[slot as usize] = rendered.face_anchor;
-            silhouette[slot as usize] = silhouette_rows(&rendered.canvas);
-            blit_atlas_frame(
-                &mut body_pixels,
-                body_width,
-                slot % ATLAS_COLUMNS * FRAME_SIZE,
-                slot / ATLAS_COLUMNS * FRAME_SIZE,
-                FRAME_SIZE,
-                &rendered.canvas.rgba_bytes(),
-            );
+            let slot = atlas_slot(clip, frame) as usize;
+            face_anchors[slot] = rendered.face_anchor;
+            silhouette[slot] = silhouette_rows(&rendered.canvas);
+            body_frames[slot] = rendered.canvas.rgba_bytes();
         }
     }
+    let (body_width, body_height, body_pixels, body_cells) =
+        pack(body_frames, FRAME_SIZE, ATLAS_COLUMNS);
 
-    let face_slots = face_slot_count();
-    let face_rows = (face_slots + 8).div_ceil(FACE_ATLAS_COLUMNS);
-    let face_width = FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE;
-    let face_height = face_rows * FACE_FRAME_SIZE;
-    let mut face_pixels = vec![0_u8; (face_width * face_height * 4) as usize];
+    let mut face_frames = vec![Vec::new(); face_slot_count() as usize];
     for expression in formiga_art::ExpressionKind::ALL {
         for eyelids in formiga_art::EyelidPose::ALL {
             for gaze_y in -1_i8..=1 {
@@ -83,38 +108,22 @@ pub(super) fn build_atlas_pixels(
                         gaze: formiga_art::GazeDirection::new(gaze_x, gaze_y),
                     };
                     let face = CreatureRenderer::render_face_frame(&creature.appearance, state);
-                    let slot = face_atlas_slot(state);
-                    blit_atlas_frame(
-                        &mut face_pixels,
-                        face_width,
-                        slot % FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE,
-                        slot / FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE,
-                        FACE_FRAME_SIZE,
-                        &face.rgba_bytes(),
-                    );
+                    face_frames[face_atlas_slot(state) as usize] = face.rgba_bytes();
                 }
             }
         }
     }
-    for variant in 0..8_u8 {
-        let trinket = CreatureRenderer::render_trinket(&creature.appearance, variant);
-        let slot = trinket_atlas_slot(variant);
-        blit_atlas_frame(
-            &mut face_pixels,
-            face_width,
-            slot % FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE,
-            slot / FACE_ATLAS_COLUMNS * FACE_FRAME_SIZE,
-            FACE_FRAME_SIZE,
-            &trinket.rgba_bytes(),
-        );
-    }
+    let (face_width, face_height, face_pixels, face_cells) =
+        pack(face_frames, FACE_FRAME_SIZE, FACE_ATLAS_COLUMNS);
     AtlasPixels {
         body_width,
         body_height,
         body_pixels,
+        body_cells,
         face_width,
         face_height,
         face_pixels,
+        face_cells,
         face_anchors,
         silhouette,
     }
@@ -175,11 +184,4 @@ pub(super) fn trinket_frame(body_frame: u8) -> u8 {
     } else {
         TRINKET_FRAME_REST
     }
-}
-
-/// The eight slots kept in each creature's face texture. Nothing samples them any more — the
-/// overlay and the scrapbook both draw from the colony atlas — but the layout, and the exact
-/// per-creature texture budget it produces, are unchanged.
-pub(super) fn trinket_atlas_slot(variant: u8) -> u32 {
-    face_slot_count() + u32::from(variant % 8)
 }
