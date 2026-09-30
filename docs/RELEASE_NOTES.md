@@ -4,6 +4,18 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.62.1
+
+Companions keep out of each other's faces again. The new companions 0.62.0 brought could end up
+standing over each other's faces for several seconds at a time: somebody watching a game of tag
+over a player, a dancer over a sleeper, a companion stepping out of a slow walker's way straight
+into its path. Now a game gives way when it keeps a face covered, a companion steps aside to the
+side the other is leaving rather than the side it is heading for, and one on its way to bed steps
+aside like anybody else. Over the same test sessions, the longest a face stays covered in a colony
+of four went from nearly eleven seconds to under five, and in a full colony from eighteen to under
+seven. It follows 0.62.0, which gave every companion a temperament of its own and new companions
+cuter faces; the release notes describe it.
+
 ## New in 0.62.0
 
 Companions have a temperament of their own. Each is one of ten kinds — a sweetheart, a

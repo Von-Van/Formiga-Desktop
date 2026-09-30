@@ -143,11 +143,20 @@ struct Shuffle {
     speed: f32,
 }
 
+/// A walk out of somebody's way that the resolver itself asked for. Runtime only.
+#[derive(Clone, Copy)]
+struct StepAside {
+    creature: CreatureId,
+    target_x: f32,
+}
+
 /// Bounded, runtime-only bookkeeping for overlap handling.
 #[derive(Default)]
 pub(super) struct OverlapWatch {
     pairs: [Option<PairWatch>; MAX_PAIRS],
     shuffles: [Option<Shuffle>; MAX_SHUFFLES],
+    /// One for every member, since each is only ever on one step aside at a time.
+    steps: [Option<StepAside>; crate::MAX_COLONY_CREATURES],
 }
 
 impl OverlapWatch {
@@ -200,6 +209,22 @@ impl OverlapWatch {
             if slot.is_some_and(|shuffle| !present.contains(&shuffle.creature)) {
                 *slot = None;
             }
+        }
+        for slot in &mut self.steps {
+            if slot.is_some_and(|step| !present.contains(&step.creature)) {
+                *slot = None;
+            }
+        }
+    }
+
+    fn start_step(&mut self, creature: CreatureId, target_x: f32) {
+        let index = self
+            .steps
+            .iter()
+            .position(|slot| slot.is_some_and(|step| step.creature == creature))
+            .or_else(|| self.steps.iter().position(Option::is_none));
+        if let Some(index) = index {
+            self.steps[index] = Some(StepAside { creature, target_x });
         }
     }
 
@@ -257,11 +282,14 @@ struct Placed {
     settled: bool,
     /// Which way, and how fast, it is going along its surface.
     velocity_x: f32,
+    facing_right: bool,
 }
 
 impl Placed {
+    /// Lying down asleep. One still walking to bed is a walker like any other: wriggling it over
+    /// in its sleep, at a sleeper's crawl, only holds it where it is while it walks on.
     fn asleep(&self) -> bool {
-        self.action == ActionKind::Sleep
+        self.action == ActionKind::Sleep && self.settled
     }
 
     /// Awake, on its feet, and simply standing about rather than doing anything with anybody.
@@ -358,12 +386,16 @@ impl World {
                 // Leaving a surface altogether is the last thing tried, so it waits out several
                 // graces first: a companion crowding a ledge is usually only passing through.
                 let pressing = hidden && covered >= COVER_GRACE_SECONDS * 5.0;
+                // A scene gets one more chance than a bystander: somebody free is asked first, and
+                // only a face still covered after that is taken as the scene's doing.
+                let insistent = hidden && covered >= COVER_GRACE_SECONDS * 3.0;
                 self.step_one_aside(
                     &back,
                     &front,
                     shared,
                     pressing,
                     patience_spent,
+                    insistent,
                     &placed,
                     desktop,
                 );
@@ -402,6 +434,7 @@ impl World {
                     hanging: creature.state.attention.map_or(0.0, |pose| pose.hanging),
                     settled: creature.state.velocity.x.abs() < 1.0,
                     velocity_x: creature.state.velocity.x,
+                    facing_right: creature.state.facing_right,
                 }
             })
             .collect()
@@ -454,7 +487,7 @@ impl World {
         // mark below, and is left to get there for the same reason: a shuffle is not registered as
         // a walk, so without this the sleeper would be asked again half way across and its partner
         // moved as well, when only one of the two ever needed to.
-        if self.overlaps.shuffling(id) || self.tows.involves(id) {
+        if self.overlaps.shuffling(id) || self.tows.involves(id) || self.stepping_aside(creature) {
             return true;
         }
         if patience_spent {
@@ -476,13 +509,34 @@ impl World {
             .is_some_and(|remaining| remaining <= SCENE_DEADLINE_SECONDS)
     }
 
+    /// Still on its way out of somebody's way, on the walk the resolver asked for. Patience does
+    /// not cut this one short, as it does a walk of the creature's own: the pair is waiting on
+    /// exactly this walk, and asking again part way — this one to go somewhere else, or the
+    /// other to move as well — only sends the two after each other.
+    fn stepping_aside(&self, creature: &Creature) -> bool {
+        self.overlaps.steps.iter().flatten().any(|step| {
+            step.creature == creature.id
+                && creature.state.action == ActionKind::Traverse
+                && self
+                    .action_choices
+                    .get(&creature.id)
+                    .and_then(|choice| choice.target_point)
+                    .is_some_and(|target| {
+                        (target.x - step.target_x).abs() < 0.5
+                            && (target.x - creature.state.position.x).abs() > ARRIVED_SLACK
+                    })
+        })
+    }
+
     /// What it would cost to ask this creature to move, or `None` if it cannot be asked at all.
     /// Lower moves first: awake before asleep, a bystander before the anchor of a pile, an empty
-    /// moment before one holding a prop, and an idle companion before one that is mid-scene.
+    /// moment before one holding a prop, and an idle companion before one that is mid-scene,
+    /// which can only be asked at all once `scene_yields`.
     fn step_aside_cost(
         &self,
         who: &Placed,
         patience_spent: bool,
+        scene_yields: bool,
         desktop: &DesktopSnapshot,
     ) -> Option<u32> {
         // Already on its way; asking again would only restart the same move.
@@ -492,13 +546,22 @@ impl World {
         {
             return None;
         }
-        // A scene that owns this creature is steering it somewhere of its own. Overlap
-        // handling never argues with that: it asks the other one, or waits for the scene to end,
-        // which every scene does on a deadline of its own.
-        if matches!(who.action, ActionKind::Homebound) || self.attention.owns(who.id) {
+        if matches!(who.action, ActionKind::Homebound) {
             return None;
         }
         let mut cost = 0;
+        // A scene that owns this creature is steering it somewhere of its own, and overlap
+        // handling leaves it to the scene: it asks the other one, or waits for the scene to end.
+        // Two players of one game are the game's business all the way through. But once patience
+        // is spent on anybody else — a watcher, a bystander, a sleeper — a face covered that long
+        // outweighs the scene, and the one it holds can be let go of it and asked after all:
+        // after anybody free, before a sleeper, and a watcher before a player.
+        if self.attention.owns(who.id) {
+            if !scene_yields {
+                return None;
+            }
+            cost += if self.attention.playing(who.id) { 5 } else { 4 };
+        }
         if who.asleep() {
             // Asleep is the last thing to disturb, and the longer a companion has been down the
             // less it is the one to ask: between two sleepers, the lighter one shuffles over.
@@ -537,17 +600,26 @@ impl World {
         shared: bool,
         pressing: bool,
         patience_spent: bool,
+        insistent: bool,
         placed: &[Placed],
         desktop: &DesktopSnapshot,
     ) -> bool {
+        let scene_yields = patience_spent && !self.attention.playing_together(back.id, front.id);
         let costs = (
-            self.step_aside_cost(back, patience_spent, desktop),
-            self.step_aside_cost(front, patience_spent, desktop),
+            self.step_aside_cost(back, patience_spent, scene_yields, desktop),
+            self.step_aside_cost(front, patience_spent, scene_yields, desktop),
         );
-        // Ties break on creature id, so the same pair always resolves the same way.
+        // Past a further grace, a face still covered beside a scene means the scene keeps
+        // bringing the two together — a chase running through a bystander however it steps
+        // aside — so the one the scene holds is the one moved. Otherwise the cheaper to ask moves,
+        // and ties break on creature id, so the same pair always resolves the same way.
+        let settled_by_scene =
+            |who: &Placed| u8::from(!(insistent && scene_yields && self.attention.owns(who.id)));
         let mover = match costs {
             (Some(back_cost), Some(front_cost)) => {
-                if (front_cost, front.id) < (back_cost, back.id) {
+                if (settled_by_scene(front), front_cost, front.id)
+                    < (settled_by_scene(back), back_cost, back.id)
+                {
                     front
                 } else {
                     back
@@ -557,6 +629,11 @@ impl World {
             (None, Some(_)) => front,
             (None, None) => return false,
         };
+        // A scene a creature is asked out of lets go of it first: a dance keeps a dancer over a
+        // sleeper, and a watcher over a player, for as long as either lasts.
+        if self.attention.owns(mover.id) {
+            self.let_go_of_scene(mover.id);
+        }
         // Somebody coming up from behind would only catch up again with whoever ran on ahead of
         // it, so the one in front stops for a moment and lets it past.
         let other = if mover.id == back.id { front } else { back };
@@ -666,16 +743,17 @@ impl World {
                 .find(|window| window.key == key && window.visible && !window.minimized)
                 .map(|window| window.bounds)
         });
-        // Step away from the companion first, so the two do not both pick the same side.
-        let away = placed
+        // Step away from the companion first, so the two do not both pick the same side — unless
+        // it is on its way somewhere. Then only the side it is leaving will do: a spot on the side
+        // it is heading for is one it walks straight back into, and with nothing free behind it
+        // the better thing is to stay put and let it go on.
+        let (away, one_way) = placed
             .iter()
             .find(|other| other.id != mover.id && face_is_covered(mover, other))
-            .map_or(1.0, |other| {
-                if mover.position.x >= other.position.x {
-                    1.0
-                } else {
-                    -1.0
-                }
+            .map_or((1.0, false), |other| match self.heading(other) {
+                heading if heading != 0.0 => (-heading, true),
+                _ if mover.position.x >= other.position.x => (1.0, false),
+                _ => (-1.0, false),
             });
         // How far the nearest companion sharing this row would be, from a given point.
         let elbow_room = |x: f32| {
@@ -728,8 +806,9 @@ impl World {
         let candidates: Vec<f32> = (1..=steps)
             .flat_map(|step| {
                 let offset = step as f32 * STEP_POINTS;
-                [away * offset, -away * offset]
+                [Some(away * offset), (!one_way).then_some(-away * offset)]
             })
+            .flatten()
             .map(|offset| mover.position.x + offset)
             .filter(|&x| standable(x))
             .collect();
@@ -749,6 +828,39 @@ impl World {
                     // that cannot manage even that is one to leave.
                     .filter(|&x| face_room(x) >= 1.0 && elbow_room(x) > here * 1.1)
             })
+    }
+
+    /// Which way along its surface a creature is going, -1 or 1, or 0 when it is going nowhere:
+    /// the way it is walking, or failing that the way to where it has set off for. A game runs
+    /// its players in bursts, so one can be on its way while standing still with nowhere set,
+    /// and then the way it faces is the way it is about to run.
+    fn heading(&self, who: &Placed) -> f32 {
+        if who.velocity_x.abs() > 1.0 {
+            return who.velocity_x.signum();
+        }
+        let destination = self
+            .attention
+            .reserved_spots()
+            .find(|(id, _)| *id == who.id)
+            .map(|(_, spot)| spot)
+            .or_else(|| {
+                self.action_choices
+                    .get(&who.id)
+                    .and_then(|choice| choice.target_point)
+            })
+            .map(|target| target.x - who.position.x)
+            .filter(|along| along.abs() > ARRIVED_SLACK);
+        match destination {
+            Some(along) => along.signum(),
+            None if self.attention.playing(who.id) => {
+                if who.facing_right {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            None => 0.0,
+        }
     }
 
     /// Nobody else has walked toward this point or planned to land on it.
@@ -857,8 +969,6 @@ impl World {
         }
     }
 
-    /// An awake companion takes an ordinary walk to the clear spot, after whatever was holding it
-    /// has been let go of through its own cancellation rules.
     /// Stands still for a moment to let somebody coming up from behind go past. Nothing is
     /// announced, for the same reason nothing is when stepping aside.
     fn let_past(&mut self, id: CreatureId) {
@@ -873,6 +983,9 @@ impl World {
         creature.state.velocity = Point::default();
     }
 
+    /// An awake companion takes an ordinary walk to the clear spot, after whatever was holding it
+    /// has been let go of through its own cancellation rules. The walk is noted, so the pair waits
+    /// on it rather than asking again part way.
     fn walk_aside(&mut self, id: CreatureId, target_x: f32) {
         self.bond_plans.remove(&id);
         let Some(creature) = creature_mut(&mut self.save.creatures, id) else {
@@ -893,6 +1006,7 @@ impl World {
             ((target_x - creature.state.position.x).abs() / speed + 0.3).clamp(0.4, 4.0);
         creature.state.facing_right = target_x >= creature.state.position.x;
         creature.state.velocity = Point::default();
+        self.overlaps.start_step(id, target_x);
         self.action_choices.insert(
             id,
             ActionChoice {

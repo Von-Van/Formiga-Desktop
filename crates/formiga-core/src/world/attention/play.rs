@@ -796,7 +796,7 @@ impl World {
         self.begin_attention(id, plan);
     }
 
-    fn finish_play(&mut self, session: Session) {
+    pub(super) fn finish_play(&mut self, session: Session) {
         let ids: Vec<_> = self
             .attention
             .plans

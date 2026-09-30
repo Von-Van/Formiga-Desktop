@@ -100,7 +100,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | The open habitat editor takes the pointer and leaves the overlay every other event, its redraw above all | CI | CI |
 | The ground the colony is founded on clears a Dock or taskbar at its factory size | CI | CI |
 | The overlap table holds every pair a full colony can make, and hands each pair its own record | CI | CI |
-| A full colony over sixteen seeded sessions leaves no face covered for something one could sit and watch; a colony of four still meets the tighter bound | CI | CI |
+| Colonies from both generators, four and six, leave no face covered for something one could sit and watch; colonies of four meet the tighter bound, including the three archetype sessions 0.62.0 left past it | CI | CI |
 | Keepsakes and belongings in the yards: sixteen hooks, one tree and one anchor each; the trees fill themselves until chosen, the first sixteen finds keeping their hooks; every hung keepsake drawn once inside its own tree's cell; four belongings to each yard fixed by slot, `BELONGING_CLEARANCE` held after the per-colony drift, and no resident standing on one | CI | CI |
 | Collection and scrapbook: the Journal lists only what has been found; the Your colony page shows all hundred and sixty in a wrapped grid, hangs one in the trees or takes it down, and lets the trees fill themselves again | CI | CI |
 | Every settings page, drawn whole 760 and 940 points wide at 100%, 125% and 150% text, leaves nothing drawn past the edge of the area that shows it, the navigation rail included | CI | CI |

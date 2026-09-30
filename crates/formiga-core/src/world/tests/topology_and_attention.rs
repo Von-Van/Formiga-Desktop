@@ -4,10 +4,10 @@ use super::*;
 /// here is typical; it is the most reactive colony the generator can be asked for, which is
 /// what the cadence claim has to survive.
 pub(super) fn eager_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
-    eager_colony_of(seed, false)
+    eager_colony_built(seed, false, Edition::Original)
 }
 
-/// The same fixture with its companions from a given generator, for comparing the two.
+/// The same fixture with its companions from a given generator.
 pub(super) fn eager_colony_from(
     seed: [u8; 32],
     generator: Edition,
@@ -16,13 +16,13 @@ pub(super) fn eager_colony_from(
 }
 
 /// The same fixture with the colony grown to the cap: every companion it can hold, on the one
-/// floor, which is what a colony that has been going a few weeks actually looks like.
-pub(super) fn eager_full_colony(seed: [u8; 32]) -> (World, DesktopSnapshot, OffsetDateTime) {
-    eager_colony_of(seed, true)
-}
-
-fn eager_colony_of(seed: [u8; 32], full: bool) -> (World, DesktopSnapshot, OffsetDateTime) {
-    eager_colony_built(seed, full, Edition::Original)
+/// floor, which is what a colony that has been going a few weeks actually looks like, and its
+/// companions from a given generator.
+pub(super) fn eager_full_colony_from(
+    seed: [u8; 32],
+    generator: Edition,
+) -> (World, DesktopSnapshot, OffsetDateTime) {
+    eager_colony_built(seed, true, generator)
 }
 
 fn eager_colony_built(
@@ -72,8 +72,8 @@ fn eager_colony_built(
     // One art pixel per desktop point, so the gap and spacing numbers below read directly.
     world.save.settings.display_scale = 2;
     // Four when the fixture is not asked to fill: one tick across forty days stages only the
-    // arrivals that tick earns. `eager_full_colony` is the same floor with every companion the
-    // colony can hold on it.
+    // arrivals that tick earns. `eager_full_colony_from` is the same floor with every companion
+    // the colony can hold on it.
     assert_eq!(
         world.save.creatures.len(),
         if full { crate::MAX_COLONY_CREATURES } else { 4 }

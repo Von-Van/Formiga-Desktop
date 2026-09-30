@@ -1246,13 +1246,33 @@ granted on the assumption the move worked. Coming apart is what clears the clock
 clearance margin is what stops a separated pair landing back on the threshold. A companion
 walking to a spot of its own, or on its way through a game, is left to carry on for a while; once a
 face has been covered for two graces, 2.5 seconds, neither excuses it any more and whichever of the
-two can be asked is asked. One caught up from behind by the other going the same way stops for
+two can be asked is asked. A step aside the resolver itself ordered is the exception: patience
+never cuts it short, and the pair waits on it until the mover arrives, because asking again part
+way — the mover to go somewhere else, or the other one to move as well — only sent the two after
+each other. One caught up from behind by the other going the same way stops for
 1.5 seconds to let it past rather than stepping on ahead of it, which only ends with it caught
 again — a sprinter on its way into a game had carried a playing friend's face behind its body for
-over seven seconds that way. Who moves is decided by cost: never someone dragged, tossed, airborne, climbing,
-hanging, homebound, or owned by a scene; +8 for being asleep and up to 4 more the longer it has
-slept, so the lighter sleeper moves; +7 for a ritual participant, +6 for a pile anchor, +5 for
-holding a prop, +2 for a bond plan; ties by id. An awake creature takes an ordinary short `Traverse`
+over seven seconds that way. And one stepping aside from a companion that is on its way somewhere —
+walking, set off for a spot, or a player in a game facing where it is about to run — steps only to
+the side that companion is leaving; with nothing free there it stays put and lets it go on, since a
+spot on the side it is heading for is one it walks straight back into. Who moves is decided by
+cost: never someone dragged, tossed, airborne, climbing, hanging, or homebound; +8 for being asleep
+and up to 4 more the longer it has slept, so the lighter sleeper moves; +7 for a ritual
+participant, +6 for a pile anchor, +5 for holding a prop, +2 for a bond plan; ties by id. Only a
+companion lying down counts as asleep: one still walking to bed is a walker, where it had been
+wriggled over at a sleeper's crawl while it walked on at full pace.
+
+A creature a scene owns is the scene's to move, and the resolver asks the other one or waits for
+the scene to end — until patience is spent, for anybody but two players of one game still playing
+it. Then a face covered that long outweighs the scene: the one it holds can be asked after all, +4
+for a watcher and +5 for a player, so after anybody free and before a sleeper, and past three
+graces, 3.75 seconds, it is the one asked first, since a face still covered after the free one has
+stepped aside is the scene's doing. `let_go_of_scene` ends a watcher's watching, or calls off a game
+for everybody in it the way a game that can no longer be played is called off, and scenes leave the
+creature alone for twenty seconds. Until 0.62.1 a scene was never argued with, so a game of tag held
+a player under a watcher's body for as long as the game lasted and a dance kept a dancer over a
+sleeper that could only wriggle away. In the crowded seeded sessions below, about one game in
+twelve is called off this way. An awake creature takes an ordinary short `Traverse`
 to the nearest spot that clears everybody, respecting habitat, ledge extent, and reservations;
 ritual participants get a quiet position-only shuffle, and a sleeper is towed: `world/tows.rs`
 finds a friend on the same surface within six widths who is awake, standing about or walking, and
@@ -1306,12 +1326,23 @@ chaser free to track a lead that keeps running. `nobody_shivers_on_the_spot_when
 pins the result at no more than six turns in any one second, and fails on each of the three causes
 on its own.
 
-The acceptance test runs four seeded four-creature colonies, minis included, on a synthetic desktop
-whose three windows slide and resize continuously, for 1,400 ticks each, sampled every tick. It
-asserts the bound the rule implies rather than a recorded number: the grace period plus four
-seconds, which is the longest an ordinary walk takes to carry a companion a frame and a half out of
-the way. When the work was done, the worst face-cover episode measured 5.55 seconds before and 2.20
-after — 3.60 with the source-site spacing alone — and the worst crowding episode 0.00.
+The acceptance test runs four seeded four-creature colonies from each generator, minis included, on
+a synthetic desktop whose three windows slide and resize continuously, for 1,400 ticks each,
+sampled every tick, and three more from the archetype generator: the sessions 0.62.0 left past the
+bound. It asserts the bound the rule implies rather than a recorded number: the grace period plus
+four seconds, which is the longest an ordinary walk takes to carry a companion a frame and a half
+out of the way. When the work was first done, the worst face-cover episode measured 5.55 seconds
+before and 2.20 after — 3.60 with the source-site spacing alone — and the worst crowding episode
+0.00. A full colony of six is held to twice the bound, over eight sessions from each generator.
+
+In 0.62.0 the test drew only the original generator's companions, and the archetypes' went past the
+bound: over ninety-six seeded colonies of four, six did, the worst at 10.85 seconds, and over
+thirty-two full colonies ten did, the worst at 18.00 and so past even the full colony's bound.
+0.62.1 brought the colonies of four to none past it, the worst at 4.75, and the full colonies' worst
+to 6.75. The original generator's colonies of four went from five past the bound to three, the
+worst from 6.70 to 6.25, and its full colonies from a worst of 5.80 to 4.60.
+`measure_face_cover_for_each_generator`, ignored by default, repeats the comparison over thirty-two
+colonies of four from each.
 
 ## Conditional discoveries
 

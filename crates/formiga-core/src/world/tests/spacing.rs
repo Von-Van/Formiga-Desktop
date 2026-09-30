@@ -30,8 +30,11 @@ fn stir_the_desktop(desktop: &mut DesktopSnapshot, step: u64) {
 ///
 /// The user is the only excuse: a creature being dragged or tossed is where the user put it, and
 /// covering a face while held is the user's business rather than the colony's.
-fn worst_episodes(seed: [u8; 32], steps: u64) -> (f32, f32) {
-    worst_episodes_in(super::topology_and_attention::eager_colony(seed), steps)
+fn worst_episodes(seed: [u8; 32], generator: Edition, steps: u64) -> (f32, f32) {
+    worst_episodes_in(
+        super::topology_and_attention::eager_colony_from(seed, generator),
+        steps,
+    )
 }
 
 fn worst_episodes_in(colony: (World, DesktopSnapshot, OffsetDateTime), steps: u64) -> (f32, f32) {
@@ -95,17 +98,26 @@ fn no_face_stays_covered_for_longer_than_a_moment_over_a_long_session() {
     // as many bodies on the same ground and is held to its own, looser bound just below — the
     // test after this one — because the extra company means far more of every meeting happens
     // while one of the two is busy with an errand nobody can interrupt.
-    for index in 0_u8..4 {
-        let seed = [index.wrapping_mul(37).wrapping_add(11); 32];
-        let (cover, touch) = worst_episodes(seed, 1_400);
-        assert!(
-            cover <= bound,
-            "seed {index}: a face stayed covered for {cover:.2}s, longer than {bound:.2}s"
-        );
-        assert!(
-            touch <= crowd_bound,
-            "seed {index}: two companions overlapped for {touch:.2}s, longer than {crowd_bound:.2}s"
-        );
+    // Companions from both generators: the bodies and temperaments the archetypes draw since
+    // 0.62.0 meet each other differently, and 0.62.0 shipped before this test drew them. The last
+    // three archetype sessions are the ones 0.62.0 left past the bound: a game of tag held over a
+    // watcher, a dance over a sleeper, and a companion stepping aside into a slow walker's way.
+    for (generator, sessions) in [
+        (Edition::Original, &[0_u8, 1, 2, 3][..]),
+        (Edition::Archetypes, &[0, 1, 2, 3, 17, 20, 23][..]),
+    ] {
+        for &index in sessions {
+            let seed = [index.wrapping_mul(37).wrapping_add(11); 32];
+            let (cover, touch) = worst_episodes(seed, generator, 1_400);
+            assert!(
+                cover <= bound,
+                "{generator:?} seed {index}: a face stayed covered for {cover:.2}s, longer than {bound:.2}s"
+            );
+            assert!(
+                touch <= crowd_bound,
+                "{generator:?} seed {index}: two companions overlapped for {touch:.2}s, longer than {crowd_bound:.2}s"
+            );
+        }
     }
 }
 
@@ -372,26 +384,32 @@ fn a_covered_sleeper_shuffles_over_without_waking() {
 /// to, so companions meet far more often and a good deal more of that meeting happens while one of
 /// them is busy with something of its own — which is time nobody can be asked to step aside.
 ///
-/// A full colony is not held to the four-body bound above and does not meet it: across sixteen
-/// seeded sessions the worst episode here measures 8.15 seconds against that bound of 5.25, and
-/// three of the sixteen run past it. What it is held to is that no face is ever left behind a body
-/// for something one could sit and watch. Before the pair table was sized for a colony this big
-/// the same sessions ran to 22.20 seconds, with five of the sixteen past even this bound.
+/// A full colony is not held to the four-body bound above and does not always meet it: across
+/// sixteen seeded sessions from each generator the worst episode here measures 6.50 seconds for
+/// the original generator and 5.55 for the archetypes, against that bound of 5.25, and three of
+/// the thirty-two run past it. What it is held to is that no face is ever left behind a body for
+/// something one could sit and watch. In 0.62.0 the same sessions ran to 8.75 and 13.85 seconds,
+/// one of them past even this bound: a game held its players over a bystander's face for as long
+/// as it lasted, a companion walking to bed was wriggled over as if asleep, and a step aside could
+/// be sent the way the other was going. Before the pair table was sized for a colony this big the
+/// original generator's sessions ran to 22.20 seconds, with five of the sixteen past this bound.
 #[test]
 fn a_full_colony_leaves_nobody_standing_on_a_face_for_something_you_could_watch() {
     let bound = (World::cover_grace() + 4.0) * 2.0;
-    for index in 0_u8..8 {
-        let seed = [index.wrapping_mul(37).wrapping_add(11); 32];
-        let colony = super::topology_and_attention::eager_full_colony(seed);
-        let (cover, touch) = worst_episodes_in(colony, 1_400);
-        assert!(
-            cover <= bound,
-            "seed {index}: a face stayed covered for {cover:.2}s, longer than {bound:.2}s"
-        );
-        assert!(
-            touch <= World::crowd_grace() + 4.0,
-            "seed {index}: two companions overlapped for {touch:.2}s"
-        );
+    for generator in [Edition::Original, Edition::Archetypes] {
+        for index in 0_u8..8 {
+            let seed = [index.wrapping_mul(37).wrapping_add(11); 32];
+            let colony = super::topology_and_attention::eager_full_colony_from(seed, generator);
+            let (cover, touch) = worst_episodes_in(colony, 1_400);
+            assert!(
+                cover <= bound,
+                "{generator:?} seed {index}: a face stayed covered for {cover:.2}s, longer than {bound:.2}s"
+            );
+            assert!(
+                touch <= World::crowd_grace() + 4.0,
+                "{generator:?} seed {index}: two companions overlapped for {touch:.2}s"
+            );
+        }
     }
 }
 

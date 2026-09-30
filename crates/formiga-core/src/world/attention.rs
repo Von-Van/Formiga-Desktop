@@ -255,6 +255,27 @@ impl AttentionRuntime {
             .filter_map(|(&id, plan)| plan.display_walk.is_some().then_some(id))
     }
 
+    /// Both still playing the same game, where the game itself decides how close they come.
+    /// Once it is over and they are only getting their breath back, it decides nothing more.
+    pub(super) fn playing_together(&self, a: CreatureId, b: CreatureId) -> bool {
+        let still_playing = |id: CreatureId| {
+            self.plans.get(&id).is_some_and(|plan| {
+                matches!(plan.role, Role::Play { stage, .. } if !matches!(stage, Stage::Recover(_)))
+            })
+        };
+        self.play.session.as_ref().is_some_and(|session| {
+            session.members.contains(&Some(a)) && session.members.contains(&Some(b))
+        }) && still_playing(a)
+            && still_playing(b)
+    }
+
+    /// Playing a game, rather than watching one or being about anything else.
+    pub(super) fn playing(&self, id: CreatureId) -> bool {
+        self.plans
+            .get(&id)
+            .is_some_and(|plan| matches!(plan.role, Role::Play { .. }))
+    }
+
     /// Off the ground, with the leap or crossing owning contact until it lands. Overlap handling
     /// leaves these alone: nothing can step aside mid-air.
     pub(super) fn airborne(&self, id: CreatureId) -> bool {
@@ -285,6 +306,30 @@ impl AttentionRuntime {
 }
 
 impl World {
+    /// Lets a creature go from the scene holding it, for when a face has stayed covered longer
+    /// than any scene is worth: a game it is playing is called off for everyone in it, as a game
+    /// that can no longer be played is, and anything else — watching, answering the cursor,
+    /// looking over a ledge — simply ends for it. Either way scenes leave it alone for a while.
+    pub(super) fn let_go_of_scene(&mut self, id: CreatureId) {
+        if self
+            .attention
+            .play
+            .session
+            .as_ref()
+            .is_some_and(|session| session.members.contains(&Some(id)))
+            && let Some(session) = self.attention.play.session.take()
+        {
+            self.finish_play(session);
+            return;
+        }
+        if let Some(plan) = self.attention.plans.remove(&id)
+            && let Some(creature) = creature_mut(&mut self.save.creatures, id)
+        {
+            release(creature, plan);
+        }
+        self.attention.cooldowns.insert(id, 20.0);
+    }
+
     pub(super) fn clear_attention(&mut self) {
         for creature in &mut self.save.creatures {
             if let Some(plan) = self.attention.plans.get(&creature.id) {

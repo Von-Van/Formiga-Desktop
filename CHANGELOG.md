@@ -2,6 +2,43 @@
 
 All notable changes are documented here.
 
+## [0.62.1] - 2026-09-30
+
+### Fixed
+
+- A face no longer stays behind another companion for long in a colony of the new companions. The
+  ones 0.62.0 makes meet each other in ways the spacing rules had never been tried against, and the
+  tests of those rules only ever drew the original generator's companions. Over ninety-six seeded
+  colonies of four, six of the new generator's left a face covered past the five and a quarter
+  seconds the rules allow, the worst for 10.85 seconds, and over thirty-two full colonies the worst
+  ran to 18.00. Four things did it:
+  - A game never gave way. A companion watching a game of tag stood over a player's face for as
+    long as the game lasted, a dance kept a dancer over a sleeper that could only wriggle away, and a
+    chase kept running through a bystander however it stepped aside, because nobody a scene held was
+    ever asked to move. Now, once a face has been covered for two and a half seconds, a scene gives
+    way for anybody but two of its own players still playing: the one it holds can be asked to step
+    aside after anybody free and before a sleeper, and first if the face is still covered at three
+    and three quarter seconds. A watcher stops watching, and a game is called off for everybody in
+    it. In the crowded sessions the tests run, about one game in twelve ends this way.
+  - A companion stepping out of the way of one on its way somewhere could step into its path, and a
+    slow walker kept catching up with the companion that had just moved ahead of it. It now steps
+    only to the side the other is leaving — judged by where it is walking, where it has set off for,
+    or for a player in a game the way it is facing — and with nothing free there it stays put and
+    lets the other go on.
+  - Once a face had been covered for two and a half seconds, the resolver asked again while a step
+    aside it had ordered was still under way, sending the mover somewhere else or the other
+    companion off as well, and the two went after each other. A step aside is now waited out.
+  - A companion walking to bed counted as asleep, so it was wriggled over at a sleeper's crawl while
+    it walked on at full pace, which also kept it from being asked properly for up to five seconds.
+    Only a companion lying down counts as asleep now.
+
+  Over the same sessions, no colony of four from the new generator leaves a face covered past the
+  bound, the worst for 4.75 seconds, and the full colonies' worst is 6.75. The original generator's
+  colonies improved too: three of the ninety-six past the bound rather than five, the worst 6.25
+  rather than 6.70, and its full colonies' worst 4.60 rather than 5.80. The face-cover tests now
+  draw colonies from both generators, including the three sessions 0.62.0 left past the bound, and
+  a tick costs what it did on `tick-bench`.
+
 ## [0.62.0] - 2026-09-30
 
 ### Added
