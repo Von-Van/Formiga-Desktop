@@ -1595,7 +1595,7 @@ fn tour_header(h: &Harness) -> Option<String> {
 }
 
 /// The page each step of the tour is shown on, in order: the desktop basics and the Your colony
-/// page, then every other page from the top of the rail to the bottom, and home again.
+/// page, then every other page from the top of the cover's tabs to the bottom, and home again.
 const TOURED: [SettingsTab; 18] = [
     SettingsTab::Colony,
     SettingsTab::Colony,
@@ -1733,7 +1733,7 @@ fn the_tour_waits_on_its_own_page_and_leads_back_to_it() {
     let mut h = Harness::new(SettingsTab::Colony);
     h.save.companion.onboarding_complete = false;
     h.frame(Vec::new());
-    // Another page chosen from the rail, part way through.
+    // Another page chosen from the cover, part way through.
     h.tab = SettingsTab::Journal;
     h.frame(Vec::new());
     assert!(
@@ -1774,4 +1774,69 @@ fn every_step_of_the_tour_fits_the_smallest_window_at_the_largest_text() {
             h.click("Next");
         }
     }
+}
+
+/// The window is a field notebook: a tab down the cover turns to its page, and one already turned
+/// past turns back to it.
+#[test]
+fn a_tab_on_the_cover_turns_to_its_page_and_back() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.click("Habitat");
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Habitat);
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text.starts_with("FIELD NOTES · Nº 05")),
+        "{:?}",
+        h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
+    h.click("Your colony");
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Colony);
+}
+
+/// Turning to another page turns the page for three quarters of a second, and not at all under
+/// Reduce motion.
+#[test]
+fn a_page_turns_when_the_notebook_opens_at_another_unless_motion_is_reduced() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.frame(Vec::new());
+    assert!(
+        h.clubhouse.page_turn.is_none(),
+        "opening at a page turns nothing"
+    );
+    h.tab = SettingsTab::Journal;
+    h.frame(Vec::new());
+    assert!(
+        h.clubhouse.page_turn.is_some(),
+        "turning to another page turns it"
+    );
+    for _ in 0..20 {
+        h.frame(Vec::new());
+    }
+    assert!(
+        h.clubhouse.page_turn.is_none(),
+        "a turn is over within a second"
+    );
+
+    h.save.settings.reduce_motion = true;
+    h.tab = SettingsTab::About;
+    h.frame(Vec::new());
+    assert!(
+        h.clubhouse.page_turn.is_none(),
+        "under Reduce motion the page is simply there"
+    );
+}
+
+/// At the size it was drawn for, the notebook is laid out as the design has it: a 196-point cover,
+/// a 712-point page and the binding beyond it; narrower, the page's margins give way first.
+#[test]
+fn the_notebook_keeps_its_proportions_and_gives_up_margins_before_room() {
+    let wide = crate::clubhouse::journal::Spread::of(940.0, 1.0);
+    assert_eq!(wide.cover, 196.0);
+    assert_eq!(940.0 - wide.cover - wide.binding, 712.0);
+    assert_eq!((wide.margin, wide.left, wide.right), (50.0, 70.0, 30.0));
+    let narrow = crate::clubhouse::journal::Spread::of(760.0, 1.5);
+    assert!(narrow.left < wide.left && narrow.binding < wide.binding);
 }

@@ -1,5 +1,5 @@
 use crate::clubhouse::tour::TourMark;
-use crate::clubhouse::{self, Clubhouse, forest, gold, ink, mint, paper, rail, rail_ink};
+use crate::clubhouse::{self, Clubhouse, forest, gold, ink, mint, paper};
 use crate::updater::{APP_VERSION, UpdateStatus};
 use anyhow::{Context as _, Result};
 use formiga_core::{
@@ -712,6 +712,26 @@ fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
     visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, ink());
     // A disabled control stays legible: dimmed, never invisible.
     visuals.widgets.noninteractive.weak_bg_fill = inactive;
+    // A field notebook has square, pixel edges: buttons and fields are outlined in the plum the
+    // creatures are, two pixels wide, with nothing rounded anywhere.
+    visuals.widgets.inactive.weak_bg_fill = clubhouse::card_fill();
+    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(2.0, clubhouse::line());
+    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(2.0, clubhouse::line());
+    visuals.widgets.active.bg_stroke = egui::Stroke::new(2.0, forest());
+    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, gold());
+    visuals.extreme_bg_color = clubhouse::field();
+    for widget in [
+        &mut visuals.widgets.noninteractive,
+        &mut visuals.widgets.inactive,
+        &mut visuals.widgets.hovered,
+        &mut visuals.widgets.active,
+        &mut visuals.widgets.open,
+    ] {
+        widget.corner_radius = egui::CornerRadius::ZERO;
+        widget.expansion = 0.0;
+    }
+    visuals.window_corner_radius = egui::CornerRadius::ZERO;
+    visuals.menu_corner_radius = egui::CornerRadius::ZERO;
     context.set_visuals(visuals);
     // Modest text scaling, applied to every style the window uses so nothing is left behind.
     let scale = f32::from(appearance.text_scale.clamp(100, 150)) / 100.0;
@@ -760,76 +780,67 @@ fn draw_settings(
     bulk_confirmation: &mut bool,
     outcome: &mut SettingsOutcome,
 ) {
-    // The rail grows with the text and scrolls if it still does not fit, so every page stays
-    // reachable at the smallest window the app allows and the largest text it offers. Its
-    // buttons grow with it and stop where it stops: a line is taller than its text, so the
-    // largest text scaled them past the rail's own limit and out beyond its edge.
-    let text_scale = (root.text_style_height(&egui::TextStyle::Body) / 14.0).clamp(1.0, 1.5);
-    egui::Panel::left("colony-navigation")
-        .exact_size(176.0 * text_scale)
+    // The window is a field notebook: a leather cover with the pages' tabs down its edge, the
+    // open page beside it, and the binding to its right. The cover grows with the text, and in a
+    // narrow window the page's margins give up their room before its contents do.
+    let text_scale = clubhouse::journal::text_scale(root);
+    let window = root.max_rect();
+    let spread = clubhouse::journal::Spread::of(window.width(), text_scale);
+    clubhouse::journal::paint_cover(root.painter(), window);
+    let unseen = creatures
+        .iter()
+        .any(|c| c.memory.profile_revision > c.memory.viewed_profile_revision);
+    let conditions = clubhouse::journal::conditions(save, monitors);
+    let page_left = window.left() + spread.cover;
+    let mut open_tab = egui::Rect::NOTHING;
+    egui::Panel::left("journal-cover")
+        .exact_size(spread.cover)
         .resizable(false)
-        .frame(egui::Frame::new().fill(rail()).inner_margin(18))
+        .frame(egui::Frame::NONE)
         .show(root, |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.add_space(12.0);
-                    ui.label(egui::RichText::new("FORMIGA").size(25.0).color(rail_ink()));
-                    ui.label(
-                        egui::RichText::new("A little life here.")
-                            .size(12.0)
-                            .color(rail_ink()),
-                    );
-                    ui.add_space(28.0);
-                    for (candidate, label) in [
-                        (SettingsTab::Colony, "Your colony"),
-                        (SettingsTab::Studio, "Creature studio"),
-                        (SettingsTab::Home, "Home & keepsakes"),
-                        (SettingsTab::Journal, "Journal"),
-                        (SettingsTab::Habitat, "Habitat"),
-                        (SettingsTab::Applications, "Applications"),
-                        (SettingsTab::General, "Preferences"),
-                        (SettingsTab::About, "About & backups"),
-                    ] {
-                        let active = *tab == candidate;
-                        let label = if candidate == SettingsTab::Colony
-                            && creatures.iter().any(|c| {
-                                c.memory.profile_revision > c.memory.viewed_profile_revision
-                            }) {
-                            format!("{label} •")
-                        } else {
-                            label.to_owned()
-                        };
-                        let button =
-                            egui::Button::new(egui::RichText::new(label).color(if active {
-                                ink()
-                            } else {
-                                rail_ink()
-                            }))
-                            .fill(if active { mint() } else { rail() })
-                            .stroke(egui::Stroke::NONE);
-                        if ui
-                            .add_sized([140.0 * text_scale, 38.0 * text_scale], button)
-                            .clicked()
-                        {
-                            *tab = candidate;
-                            *error = None;
-                        }
-                    }
-                    ui.add_space(24.0);
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} companions\nEntirely on your computer",
-                            creatures.len()
-                        ))
-                        .small()
-                        .color(rail_ink()),
-                    );
-                });
+            let cover = ui.max_rect();
+            let (rect, turned) = clubhouse::journal::cover_tabs(
+                ui,
+                cover,
+                page_left,
+                tab,
+                unseen,
+                &conditions,
+                text_scale,
+            );
+            open_tab = rect;
+            if turned {
+                *error = None;
+            }
         });
-    egui::Panel::bottom("settings-footer")
-        .frame(egui::Frame::new().fill(paper()).inner_margin(14))
+    egui::Panel::right("journal-binding")
+        .exact_size(spread.binding)
+        .resizable(false)
+        .frame(egui::Frame::NONE)
         .show(root, |ui| {
+            clubhouse::journal::paint_binding(ui.painter(), ui.max_rect());
+        });
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE.outer_margin(egui::Margin {
+            left: 0,
+            right: 0,
+            top: spread.top as i8,
+            bottom: 0,
+        }))
+        .show(root, |ui| {
+            let page = ui.max_rect();
+            // Painted for the whole window rather than for this panel, since the page's edge and
+            // its shadow fall just outside it, on the binding.
+            let window_painter = ui.ctx().layer_painter(egui::LayerId::background());
+            clubhouse::journal::paint_page(&window_painter, page, spread, page.bottom(), open_tab);
+            let footer = egui::Panel::bottom("settings-footer")
+                .frame(egui::Frame::NONE.fill(paper()).inner_margin(egui::Margin {
+                    left: spread.left as i8,
+                    right: spread.right as i8,
+                    top: 14,
+                    bottom: 12,
+                }))
+                .show(ui, |ui| {
             if let Some(message) = error.as_deref() {
                 ui.colored_label(egui::Color32::from_rgb(145, 58, 44), message);
             }
@@ -853,39 +864,98 @@ fn draw_settings(
             let adoption_footer =
                 *tab == SettingsTab::Studio && clubhouse.adoption_footer(ui, save, outcome);
             if !adoption_footer || settings != saved {
-                ui.horizontal(|ui| {
-                    let dirty = settings != saved;
-                    ui.label(if dirty {
-                        "Unapplied preferences"
-                    } else {
-                        "Preferences are saved"
-                    });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .add_enabled(
-                                dirty && !editor_active,
-                                egui::Button::new("Apply changes").fill(mint()),
-                            )
-                            .clicked()
-                        {
-                            match validate_habitat(&settings.habitat, monitors) {
-                                Ok(()) => {
-                                    outcome.applied = Some(settings.clone());
-                                    *error = None;
-                                }
-                                Err(message) => *error = Some(message.to_owned()),
+                let dirty = settings != saved;
+                let status = if dirty {
+                    "Unapplied preferences"
+                } else {
+                    "Preferences are saved"
+                };
+                // The status and its two buttons share a row where they fit; in a narrow window
+                // the buttons go to a row of their own rather than over the status.
+                let padding = 2.0 * ui.spacing().button_padding.x;
+                let needed = clubhouse::text_width(ui, status)
+                    + clubhouse::text_width(ui, "Apply changes")
+                    + clubhouse::text_width(ui, "Revert")
+                    + 2.0 * padding
+                    + 3.0 * ui.spacing().item_spacing.x;
+                let mut buttons = |ui: &mut egui::Ui| {
+                    if ui
+                        .add_enabled(
+                            dirty && !editor_active,
+                            egui::Button::new("Apply changes").fill(mint()),
+                        )
+                        .clicked()
+                    {
+                        match validate_habitat(&settings.habitat, monitors) {
+                            Ok(()) => {
+                                outcome.applied = Some(settings.clone());
+                                *error = None;
                             }
+                            Err(message) => *error = Some(message.to_owned()),
                         }
-                        if ui.add_enabled(dirty, egui::Button::new("Revert")).clicked() {
-                            *settings = saved.clone();
-                            *error = None;
-                            clubhouse.notify("Preferences reverted");
-                        }
+                    }
+                    if ui.add_enabled(dirty, egui::Button::new("Revert")).clicked() {
+                        *settings = saved.clone();
+                        *error = None;
+                        clubhouse.notify("Preferences reverted");
+                    }
+                };
+                if ui.available_width() >= needed {
+                    ui.horizontal(|ui| {
+                        ui.label(status);
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            &mut buttons,
+                        );
                     });
-                });
+                } else {
+                    ui.label(status);
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        &mut buttons,
+                    );
+                }
             }
-        });
-    egui::CentralPanel::default().frame(egui::Frame::new().fill(paper()).inner_margin(24)).show(root, |ui| {
+                })
+                .response
+                .rect;
+            // The margin line runs on down through the footer, under a dashed line across the
+            // top of it, and the page's number sits just above it.
+            {
+                let painter = ui.painter();
+                painter.rect_filled(
+                    egui::Rect::from_min_max(
+                        egui::pos2(page.left() + spread.margin, footer.top()),
+                        egui::pos2(page.left() + spread.margin + 2.0, page.bottom()),
+                    ),
+                    0.0,
+                    clubhouse::margin_line(),
+                );
+                clubhouse::journal::dashes(
+                    painter,
+                    egui::pos2(page.left() + 8.0, footer.top()),
+                    egui::pos2(page.right() - 8.0, footer.top()),
+                    6.0,
+                    5.0,
+                    2.0,
+                    gold(),
+                );
+                clubhouse::journal::paint_page_number(
+                    painter,
+                    page,
+                    footer.top(),
+                    clubhouse::journal::page_number(*tab),
+                    text_scale,
+                );
+            }
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                    left: spread.left as i8,
+                    right: spread.right as i8,
+                    top: 24,
+                    bottom: 22,
+                }))
+                .show(ui, |ui| {
         // The tour, above the page rather than on it, so it stays in view while the page scrolls
         // to whatever it is pointing at.
         clubhouse.tour_card(ui, save, tab, outcome);
@@ -903,7 +973,7 @@ fn draw_settings(
             }
             match tab {
                 SettingsTab::Colony => {
-                    clubhouse::title(ui, "Your colony", "Familiar faces. Small adventures. A home that grows.");
+                    clubhouse::journal::page_heading(ui, SettingsTab::Colony, "Your colony", &clubhouse::journal::colony_observation(creatures));
                     colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, clubhouse, outcome);
                 }
                 SettingsTab::Studio => clubhouse.studio(ui, save, selected_creature, outcome),
@@ -911,16 +981,16 @@ fn draw_settings(
                 SettingsTab::Journal => clubhouse::journal(ui, save, clubhouse, outcome),
                 SettingsTab::General => general_tab(ui, settings, save, clubhouse, outcome),
                 SettingsTab::Habitat => {
-                    clubhouse::title(ui, "Room to roam", "Choose where your companions feel at home.");
+                    clubhouse::journal::page_heading(ui, SettingsTab::Habitat, "Habitat", "Where the colony may wander. Mint is welcome; clay is not.");
                     clubhouse::habitat_map(ui, &settings.habitat, monitors);
                     habitat_tab(ui, settings, monitors, editor_active, outcome);
                 }
                 SettingsTab::Applications => {
-                    clubhouse::title(ui, "Space for your work", "Choose which windows can cover your companions.");
+                    clubhouse::journal::page_heading(ui, SettingsTab::Applications, "Applications", "Windows allowed to stand in front of the colony. They don't mind.");
                     applications_tab(ui, settings, windows, outcome);
                 }
                 SettingsTab::About => {
-                    clubhouse::title(ui, "Made for a quiet desktop", "Your colony belongs to you.");
+                    clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
                     clubhouse::card(ui, |ui| {
                         ui.strong("Colony backups");
                         ui.label("A full backup includes names, memories, relationships, the journal, and preferences. Keep it private or move it to another computer.");
@@ -933,7 +1003,23 @@ fn draw_settings(
                 }
             }
         });
-    });
+                });
+            clubhouse::journal::paint_open_tab(
+                &ui.ctx().layer_painter(egui::LayerId::background()),
+                open_tab,
+                *tab,
+                unseen,
+                text_scale,
+            );
+            clubhouse::journal::turn_page(
+                ui,
+                &mut clubhouse.page_turn,
+                &mut clubhouse.shown_page,
+                *tab,
+                page,
+                save.settings.reduce_motion,
+            );
+        });
 }
 
 fn general_tab(
@@ -943,10 +1029,11 @@ fn general_tab(
     clubhouse: &mut Clubhouse,
     outcome: &mut SettingsOutcome,
 ) {
-    clubhouse::title(
+    clubhouse::journal::page_heading(
         ui,
-        "At your own pace",
-        "A few gentle adjustments for your desktop.",
+        SettingsTab::General,
+        "Preferences",
+        "Conditions of study. Adjust gently; the specimens notice.",
     );
     let quiet = ui
         .scope(|ui| clubhouse::quiet_controls(ui, save, outcome))
@@ -983,7 +1070,7 @@ fn general_tab(
     ui.add_space(16.0);
     clubhouse::appearance_controls(ui, save, outcome);
     ui.add_space(18.0);
-    ui.strong("On your desktop");
+    clubhouse::journal::kicker(ui, "On your desktop");
     ui.checkbox(&mut settings.visible, "Show colony");
     ui.checkbox(&mut settings.paused, "Pause ambient behavior");
     ui.checkbox(
@@ -998,7 +1085,7 @@ fn general_tab(
     ui.checkbox(&mut settings.reduce_motion, "Reduce motion");
     ui.checkbox(&mut settings.launch_at_login, "Launch at login");
     ui.add_space(10.0);
-    ui.strong("Creature size");
+    clubhouse::journal::kicker(ui, "Creature size");
     ui.horizontal(|ui| {
         for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
             ui.selectable_value(&mut settings.display_scale, scale, name);
@@ -1025,9 +1112,32 @@ fn colony_tab(
 ) {
     let creatures = colony.creatures;
     let relationships = colony.relationships;
+    // Every specimen by its number in the register and its name.
     ui.horizontal_wrapped(|ui| {
-        for creature in creatures {
-            ui.selectable_value(selected_creature, Some(creature.id), &creature.name);
+        let scale = clubhouse::journal::text_scale(ui);
+        for (index, creature) in creatures.iter().enumerate() {
+            let mut entry = egui::text::LayoutJob::default();
+            entry.append(
+                &format!("{:02} ", index + 1),
+                0.0,
+                egui::TextFormat {
+                    font_id: egui::FontId::monospace(9.5 * scale),
+                    color: clubhouse::muted(),
+                    valign: egui::Align::Center,
+                    ..Default::default()
+                },
+            );
+            entry.append(
+                &creature.name,
+                0.0,
+                egui::TextFormat {
+                    font_id: egui::FontId::proportional(14.0 * scale),
+                    color: ink(),
+                    valign: egui::Align::Center,
+                    ..Default::default()
+                },
+            );
+            ui.selectable_value(selected_creature, Some(creature.id), entry);
         }
     });
     let Some(creature) = selected_creature
@@ -1039,9 +1149,21 @@ fn colony_tab(
     *selected_creature = Some(creature.id);
     outcome.viewed_profile = Some(creature.id);
     ui.add_space(16.0);
+    let number = creatures
+        .iter()
+        .position(|c| c.id == creature.id)
+        .map_or(1, |index| index + 1);
     ui.horizontal(|ui| {
-        clubhouse.portrait(ui, creature, 144.0);
         ui.vertical(|ui| {
+            clubhouse.portrait(ui, creature, 144.0);
+            ui.label(clubhouse::journal::label_job(
+                &format!("Fig. Nº {number:02}"),
+                9.0 * clubhouse::journal::text_scale(ui),
+                clubhouse::muted(),
+            ));
+        });
+        ui.vertical(|ui| {
+            clubhouse::journal::kicker(ui, &format!("Specimen Nº {number:02}"));
             ui.heading(&creature.name);
             // Who it is, then its three traits, then what it has come to lean toward more than
             // anyone else here.
@@ -1073,7 +1195,7 @@ fn colony_tab(
                 ));
             }
             ui.small(format!(
-                "{} · currently {}",
+                "Body: {} · observed {}",
                 creature.appearance.design.map_or_else(
                     || clubhouse::words(&format!("{:?}", creature.appearance.family)),
                     |d| d.body.label().to_owned(),
@@ -1090,11 +1212,19 @@ fn colony_tab(
                 ));
             }
             // Its own little ways: how it celebrates, and the habits it has picked up here.
-            ui.small(little_ways(creature));
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.label(
+                    egui::RichText::new("Habits:")
+                        .small()
+                        .color(clubhouse::muted()),
+                );
+                ui.small(little_ways(creature));
+            });
         });
     });
     ui.add_space(18.0);
-    ui.strong("Life here");
+    clubhouse::journal::kicker(ui, "Tally · Life here");
     let days_alive = (time::OffsetDateTime::now_utc() - creature.born_at_utc)
         .whole_days()
         .max(0);
@@ -1108,20 +1238,25 @@ fn colony_tab(
             ),
             (creature.memory.window_climbs.to_string(), "windows climbed"),
         ] {
-            // The number beside its label, and never narrower than 86.
-            let width = (clubhouse::text_width(ui, egui::RichText::new(&number).size(24.0))
-                + ui.spacing().item_spacing.x
-                + clubhouse::text_width(ui, egui::RichText::new(label).small()))
-            .max(86.0);
+            // The number over its label, a tally box no narrower than 96.
+            let width = clubhouse::text_width(ui, egui::RichText::new(&number).size(24.0))
+                .max(clubhouse::text_width(
+                    ui,
+                    egui::RichText::new(label).small(),
+                ))
+                .max(96.0);
             clubhouse::make_room(ui, width + clubhouse::CARD_EDGES);
             clubhouse::card(ui, |ui| {
-                ui.set_min_width(86.0);
-                ui.label(egui::RichText::new(number).size(24.0).color(forest()));
-                ui.small(label);
+                ui.vertical(|ui| {
+                    ui.set_min_width(96.0);
+                    ui.label(egui::RichText::new(number).size(24.0).color(ink()));
+                    ui.small(label);
+                });
             });
         }
     });
     ui.add_space(8.0);
+    clubhouse::journal::kicker(ui, "Observations");
     if let Some(preferred) = creature.memory.preferred_region {
         ui.label(format!(
             "Favorite region: {} on {}",
@@ -1722,8 +1857,9 @@ fn applications_tab(
     ui.label(
         "Enabled by default. Detection uses only window and display bounds, without reading application content.",
     );
-    ui.separator();
-    ui.label("Selected application windows visually cover creatures inside their visible area.");
+    ui.add_space(8.0);
+    clubhouse::journal::kicker(ui, "May cover companions");
+    ui.small("Selected application windows visually cover creatures inside their visible area.");
     let mut remove = None;
     for (index, rule) in settings.application_occlusion_rules.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -1793,7 +1929,7 @@ fn about_tab(
     }
     ui.add_space(6.0);
     ui.group(|ui| {
-        ui.strong("Updates");
+        clubhouse::journal::kicker(ui, "Updates");
         match update_status {
             UpdateStatus::Idle => {
                 ui.label("No update check has run in this session.");

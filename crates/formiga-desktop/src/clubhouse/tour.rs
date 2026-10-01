@@ -1,5 +1,5 @@
-//! The tour a new colony is given the first time the settings window opens: a card above each
-//! page in turn, walking through the desktop basics and then what every page is for. It turns the
+//! The tour a new colony is given the first time the settings window opens: a sticky note above
+//! each page in turn, walking through the desktop basics and then what every page is for. It turns the
 //! pages itself, outlines the part of the page it is talking about and brings it into view,
 //! notices when a companion is petted, carried or asked for something on the desktop, and can be
 //! skipped at any step or taken again from Preferences.
@@ -71,7 +71,7 @@ const fn tried(try_it: Try, title: &'static str, text: &'static str) -> Step {
 }
 
 /// The whole tour, in the order it is taken: the desktop first, then every page of this window
-/// from the top of the rail to the bottom, and back to where it began.
+/// from the top of the cover's tabs to the bottom, and back to where it began.
 const STEPS: [Step; 18] = [
     step(
         SettingsTab::Colony,
@@ -202,20 +202,6 @@ const STEPS: [Step; 18] = [
     ),
 ];
 
-/// What the rail calls each page, for pointing back to the one the tour is waiting on.
-fn page_name(page: SettingsTab) -> &'static str {
-    match page {
-        SettingsTab::Colony => "Your colony",
-        SettingsTab::Studio => "Creature studio",
-        SettingsTab::Home => "Home & keepsakes",
-        SettingsTab::Journal => "Journal",
-        SettingsTab::Habitat => "Habitat",
-        SettingsTab::Applications => "Applications",
-        SettingsTab::General => "Preferences",
-        SettingsTab::About => "About & backups",
-    }
-}
-
 /// How many times each thing a step can ask for has been done, all told.
 fn tried_counts(save: &SaveFile, menus_opened: u64) -> [u64; 3] {
     let total = |count: fn(&Creature) -> u32| {
@@ -314,15 +300,17 @@ impl Clubhouse {
                 ui.ctx().request_repaint();
             }
         }
-        card(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(
-                RichText::new(format!("TOUR · {} OF {}", index + 1, STEPS.len()))
-                    .small()
-                    .color(forest()),
-            );
+        journal::sticky_note(ui, |ui| {
+            ui.label(journal::label_job(
+                &format!("TOUR · {} OF {}", index + 1, STEPS.len()),
+                10.0 * journal::text_scale(ui),
+                forest(),
+            ));
             if *tab != step.page {
-                ui.label(format!("The tour is waiting on {}.", page_name(step.page)));
+                ui.label(format!(
+                    "The tour is waiting on {}.",
+                    journal::page_label(step.page)
+                ));
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .add(egui::Button::new("Back to the tour").fill(mint()))
@@ -382,12 +370,8 @@ impl Clubhouse {
         if self.tour.mark() != Some(mark) {
             return;
         }
-        ui.painter().rect_stroke(
-            rect.expand(4.0),
-            6.0,
-            egui::Stroke::new(2.0, forest()),
-            egui::StrokeKind::Outside,
-        );
+        // Dashed round in red, the way a researcher rings what a note is about.
+        journal::dashed_outline(ui.painter(), rect.expand(6.0), 6.0, 4.0, 2.0, stamp());
         if self.tour.scrolled != self.tour.step {
             self.tour.scrolled = self.tour.step;
             ui.scroll_to_rect(rect, Some(egui::Align::Min));

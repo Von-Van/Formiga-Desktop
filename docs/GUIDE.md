@@ -5,6 +5,10 @@ short version; [the release notes](RELEASE_NOTES.md) say when each piece arrived
 
 ## Getting started
 
+The settings window is a researcher's field notebook: its pages hang from tabs down a leather
+cover, and a page you have turned past waits pressed into the leather until you click it to turn
+back. A note under the tabs jots down how the colony is doing.
+
 The first time Formiga runs, its settings window opens with it, and a tour shows you round. It
 starts on the desktop — petting a companion, carrying one, its right-click menu, and the menu-bar
 or tray icon — and notices when you try each one, then walks through what every page of the window

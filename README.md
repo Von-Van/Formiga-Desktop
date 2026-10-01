@@ -1,4 +1,4 @@
-# Formiga · v0.63.1
+# Formiga · v0.64.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -93,7 +93,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.63.1-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.64.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -105,16 +105,18 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.63.1
+## New in 0.64.0
 
-Companions come in different sizes. Each one has a stature of its own, from 85% to 115% of the
-average: most are about average, and about one in five comes out noticeably small or large. A mini
-is its parent's size scaled down, so a large companion has large minis. Your companions take their
-sizes the first time 0.63.1 opens your colony, each from its own seed, and nothing else about them
-changes. The creature studio stands its large preview beside a village tree, so you can see how big
-a newcomer is before it joins. It follows 0.63.0, which made image imports read where a picture's
-colours are and offer four takes, and gave companions wing-nubs, horns, belly patches and tail
-tips; the release notes describe it.
+The settings window is a researcher's field notebook. Its pages hang from index tabs down a
+leather cover, a page already turned past is pressed into the leather and turns back when you click
+it, and each page is ruled paper with a margin line, headed "Field notes · Nº 0X" and written in a
+quiet, observing voice: the colony is a specimen register, the creature studio a sketchbook, the
+journal a daily log. Turning to another page turns the page, unless Reduce motion is on. A note
+tucked under the tabs jots down how the colony is doing, the tour is a sticky note taped to the
+page that rings what it is talking about in red, and every box has a stepped, pixel edge.
+Everything the window did it still does, in cream or charcoal, at every text size and in the
+smallest window. It follows 0.63.1, which gave companions sizes of their own; the release notes
+describe it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

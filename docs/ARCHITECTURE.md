@@ -1742,8 +1742,23 @@ there is something to take back.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
-The navigation rail and its buttons grow together with the height of a line of body text, both
-capped at half as large again, so the buttons never outgrow the rail.
+The window is drawn as a field notebook by `clubhouse/journal.rs`. `draw_settings` paints the
+leather over the whole window, then lays out a cover panel on the left with the patch, the eight
+index tabs and the conditions note; a binding panel on the right; and the page between them, which
+holds its own footer panel and the page's scroll area. `Spread::of` decides the geometry from the
+window's width and the text scale: at 940 points and 100% text the cover is 196 points and the page
+712, with the margin line 50 points in; where the page would be narrower than 640 points the
+margins and the binding give up their room before the page's contents do. The tabs share the
+cover's height below the patch, so all eight always fit, and the conditions note is left off a
+cover too short for it. The page's ruling, margin line, stepped edge and shadow are painted with
+the window-wide background painter, since the edge and shadow fall just outside the page's panel,
+and the open page's tab is painted after the page, over the edge it is joined to. A page turn is
+`journal::turn_page`: noticing the page shown change, it draws a ruled leaf over the new page for
+0.76 seconds, shrinking toward the binding going forward and toward the cover going back, with a
+shadow beside its free edge, and requests repaints only while it turns; under Reduce motion it
+never starts. Every box with a stepped edge — cards, tally boxes, tabs, the patch, the notes — is
+a fill and four edge rectangles that leave the corner pixels out; egui's own widgets are drawn
+square with a two-pixel outline.
 Every colour the pages draw reads from one palette so a single switch moves the whole window
 between cream and charcoal, and keyboard focus is drawn in the accent rather than the platform's
 fainter default. The existing egui font atlas and window/GPU resources are separate. Artwork is regenerated
@@ -2062,16 +2077,16 @@ retains stationary looks and expressions. No game writes a journal entry.
 
 A colony that has never finished or skipped the tour is given it the first time the settings
 window opens: `clubhouse/tour.rs`, eighteen steps in a fixed order — the desktop basics on the Your
-colony page first, then every page from the top of the rail to the bottom, and back. Each step
+colony page first, then every page from the top of the cover's tabs to the bottom, and back. Each step
 names its page, what it says, and optionally a `TourMark` (a part of the page it points at) and
 something it asks to be tried on the desktop.
 
-The card is drawn above the page's scroll area rather than on the page, so it stays in view while
-the page scrolls to whatever the step points at. As a step begins, the tour turns to its page; a
-page chosen from the rail part way through shows a short card saying which page the tour is
-waiting on, with a way back. Sections the tour can point at call `Clubhouse::tour_mark` with their
-rectangle after they are drawn: the one the step names is outlined and, once per step, scrolled
-into view.
+The tour is a sticky note (`journal::sticky_note`) drawn above the page's scroll area rather than
+on the page, so it stays in view while the page scrolls to whatever the step points at. As a step
+begins, the tour turns to its page; a page chosen from the cover part way through shows a short
+note saying which page the tour is waiting on, with a way back. Sections the tour can point at call `Clubhouse::tour_mark` with their
+rectangle after they are drawn: the one the step names is ringed in red dashes and, once per step,
+scrolled into view.
 
 The three desktop steps notice being tried — a pet, a companion set down or tossed, a right-click
 menu opened — by comparing the colony's own counters, and the app's count of menus opened, with

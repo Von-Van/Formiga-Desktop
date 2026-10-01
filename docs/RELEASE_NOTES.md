@@ -4,6 +4,19 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.64.0
+
+The settings window is a researcher's field notebook. Its pages hang from index tabs down a
+leather cover, a page already turned past is pressed into the leather and turns back when you click
+it, and each page is ruled paper with a margin line, headed "Field notes · Nº 0X" and written in a
+quiet, observing voice: the colony is a specimen register, the creature studio a sketchbook, the
+journal a daily log. Turning to another page turns the page, unless Reduce motion is on. A note
+tucked under the tabs jots down how the colony is doing, the tour is a sticky note taped to the
+page that rings what it is talking about in red, and every box has a stepped, pixel edge.
+Everything the window did it still does, in cream or charcoal, at every text size and in the
+smallest window. It follows 0.63.1, which gave companions sizes of their own; the release notes
+describe it.
+
 ## New in 0.63.1
 
 Companions come in different sizes. Each one has a stature of its own, from 85% to 115% of the

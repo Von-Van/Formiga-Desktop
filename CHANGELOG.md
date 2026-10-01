@@ -2,6 +2,40 @@
 
 All notable changes are documented here.
 
+## [0.64.0] - 2026-10-01
+
+### Changed
+
+- The settings window is a field notebook, after the "Researcher's journal" design in its ink on
+  ruled paper direction, by day and after dark. The navigation rail is a leather cover with the
+  notebook's name stitched on a patch and the eight pages' index tabs down its edge: the open
+  page's tab is cut from the page and joined to it, the pages still to come are tabs of faint
+  paper, and the pages already turned past are pressed into the leather and turn back when
+  clicked. Each page is ruled paper with a margin line, a stepped edge, the binding's shade down
+  its right side and its number at its foot, with the footer on the page below a dashed line.
+- Every page is headed "Field notes · Nº 0X" with what kind of note it is — specimen register,
+  sketchbook, the settlement, daily log, range survey, cover, conditions, colophon — and a line in
+  a neutral, observing voice; the Your colony page counts its specimens and how many are napping.
+  Section headings on the page are printed labels in spaced capitals.
+- Buttons, fields, chips and checkboxes are square with a two-pixel plum outline, and cards and
+  tally boxes have stepped corners; nothing in the window is rounded.
+- Your colony numbers its specimens, labels a companion's entry "Specimen Nº" and its portrait
+  "Fig. Nº", stacks each tally over its label, and gathers its favourite place and closest friend
+  under Observations. The creature studio's candidates are takes under "Sketches", and Discover is
+  its primary button. The journal is a log: a time, the moment, and Pin or Unpin at the end of the
+  line, under printed day headings, with kept moments dated.
+- The tour is a sticky note taped to the page, and it rings what it is pointing at in red dashes.
+- The habitat map's sand and clay follow the window into charcoal.
+
+### Added
+
+- Turning to another page turns the page: the old page lifts away toward the binding, or back
+  toward the cover, for 0.76 seconds, a single quad with its shadow. Under Reduce motion the page
+  is simply there.
+- A note tucked under the tabs jots down the colony's conditions: where it is out, who is up high
+  or napping, how many specimens there are, and that all of it is on this computer. It is left off
+  a cover too short to hold it.
+
 ## [0.63.1] - 2026-10-01
 
 ### Added

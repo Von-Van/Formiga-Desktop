@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 
 pub(crate) mod arrange;
 mod collection;
+pub(crate) mod journal;
 pub(crate) mod tour;
 
 /// The interface palette. Cream, forest, and mint by daylight; charcoal and sage after dark. The
@@ -62,21 +63,94 @@ pub fn card_fill() -> Color32 {
     shade((255, 248, 228), (38, 46, 42))
 }
 
-/// The navigation rail. By daylight it is the deep forest the interface is named for, with cream
-/// on it. After dark it steps back instead of forward: a panel a shade off the page, with sage on
-/// it, so the largest block on screen is not also the brightest thing in a dark room.
-pub fn rail() -> Color32 {
-    shade((28, 65, 55), (35, 43, 39))
+/// Text that is present but not being asked for attention.
+pub fn muted() -> Color32 {
+    shade((110, 119, 108), (150, 162, 148))
 }
 
-/// Anything read against `rail`.
-pub fn rail_ink() -> Color32 {
+/// The notebook's outlines: plum by daylight, as the creatures are outlined, and sage after dark.
+pub fn line() -> Color32 {
+    shade((59, 43, 58), (85, 100, 90))
+}
+
+/// The ruled lines across a page.
+pub fn rule() -> Color32 {
+    shade((233, 219, 178), (38, 46, 42))
+}
+
+/// The clay a habitat keeps companions out of.
+pub fn clay() -> Color32 {
+    shade((217, 159, 137), (138, 90, 76))
+}
+
+/// Sand: the part of a display outside the habitat.
+pub fn ground() -> Color32 {
+    shade((219, 210, 185), (43, 51, 47))
+}
+
+/// The page's margin line, a little quieter than clay after dark.
+pub fn margin_line() -> Color32 {
+    shade((217, 159, 137), (94, 64, 56))
+}
+
+/// A sticky note: the tour, and the conditions noted on the cover.
+pub fn note_fill() -> Color32 {
+    shade((246, 220, 154), (74, 68, 51))
+}
+
+/// The red of a rubber stamp, and of the dashes round whatever the tour points at.
+pub fn stamp() -> Color32 {
+    shade((181, 84, 63), (212, 140, 118))
+}
+
+/// Somewhere to write: a text field.
+pub fn field() -> Color32 {
+    shade((255, 250, 234), (23, 28, 26))
+}
+
+/// A page tab not yet turned to.
+pub fn faint() -> Color32 {
+    shade((239, 225, 188), (34, 42, 38))
+}
+
+/// The leather cover, its darker grain, and the stitching round it.
+pub fn leather() -> Color32 {
+    shade((91, 58, 39), (43, 31, 24))
+}
+
+pub fn leather_dark() -> Color32 {
+    shade((62, 39, 25), (23, 17, 13))
+}
+
+pub fn stitch() -> Color32 {
+    shade((205, 177, 122), (122, 106, 80))
+}
+
+/// The cloth patch on the cover with the notebook's name on it, and the name.
+pub fn patch() -> Color32 {
+    shade((28, 65, 55), (35, 59, 51))
+}
+
+pub fn patch_ink() -> Color32 {
     shade((249, 240, 212), (159, 196, 168))
 }
 
-/// Text that is present but not being asked for attention.
-pub fn muted() -> Color32 {
-    shade((140, 148, 138), (150, 162, 148))
+/// A tab already turned past, pressed into the leather, and the lettering pressed into it.
+pub fn indent() -> Color32 {
+    shade((74, 47, 31), (31, 22, 17))
+}
+
+pub fn deboss() -> Color32 {
+    shade((138, 106, 82), (90, 70, 54))
+}
+
+/// The tape holding a note to the cover.
+pub fn tape() -> Color32 {
+    if dark_interface() {
+        Color32::from_rgba_unmultiplied(150, 160, 140, 89)
+    } else {
+        Color32::from_rgba_unmultiplied(240, 230, 190, 209)
+    }
 }
 
 struct Candidate {
@@ -130,6 +204,9 @@ pub struct Clubhouse {
     pub last_edit: Option<String>,
     /// The village tree the large preview stands a companion beside, uploaded once.
     tree: Option<TextureHandle>,
+    /// The page being turned, while it turns, and the page shown last frame, to notice a new one.
+    pub(crate) page_turn: Option<journal::PageTurn>,
+    pub(crate) shown_page: Option<crate::settings::SettingsTab>,
     /// The picture the takes on show were read from, kept only while they are on show so that
     /// "Four more takes" can read it again. Only the path is kept, never the picture, and it is
     /// never saved.
@@ -336,21 +413,25 @@ impl Clubhouse {
         selected_creature: &mut Option<CreatureId>,
         outcome: &mut SettingsOutcome,
     ) {
-        title(
+        journal::page_heading(
             ui,
+            crate::settings::SettingsTab::Studio,
             "Creature studio",
-            "Find a companion that feels like yours.",
+            "Sketches of faces not yet met. Some of them may come to stay.",
         );
         let discover = ui.scope(|ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Discover four companions").clicked() {
+                if ui
+                    .add(egui::Button::new("Discover four companions").fill(mint()))
+                    .clicked()
+                {
                     outcome.request_random_creature = true;
                 }
                 if ui.button("Create from image…").clicked() {
                     outcome.request_reference_creature = true;
                 }
             });
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut self.lock_colors, "Keep selected colors");
                 ui.checkbox(&mut self.lock_body, "Keep selected body");
             });
@@ -397,9 +478,17 @@ impl Clubhouse {
         if self.reference.is_some() && ui.button("Four more takes").clicked() {
             outcome.request_reference_retry = true;
         }
+        let takes = self.candidates.len();
+        journal::kicker(
+            ui,
+            &format!(
+                "Sketches · {takes} {}",
+                if takes == 1 { "take" } else { "takes" }
+            ),
+        );
         ui.horizontal_wrapped(|ui| {
             for (index, candidate) in self.candidates.iter().enumerate() {
-                let label = format!("Companion {}", index + 1);
+                let label = format!("Take {}", index + 1);
                 // As wide as the picture or its label, whichever is wider, with room for the
                 // label's frame when it is pointed at or chosen.
                 let width = (text_width(ui, label.as_str()) + 2.0 * ui.spacing().button_padding.x)
@@ -437,17 +526,22 @@ impl Clubhouse {
         } else {
             6
         };
-        ui.horizontal(|ui| {
+        // Three screen pixels to an art pixel, as before, now standing beside the village tree
+        // the review sheets use, so a small or a large companion reads as one. Beside its
+        // details where there is room, and above them, smaller if it must be, where there is not.
+        let scene = formiga_art::tree_scene(48, candidate.floor);
+        let side_by_side = ui.available_width() >= scene.width as f32 * 3.0 + 20.0 + 240.0;
+        let unit = if side_by_side {
+            3.0
+        } else {
+            ((ui.available_width() - 20.0) / scene.width as f32).clamp(1.0, 3.0)
+        };
+        let preview = |ui: &mut Ui| {
             egui::Frame::new()
                 .fill(forest())
                 .stroke(egui::Stroke::new(2.0, gold()))
                 .inner_margin(8)
                 .show(ui, |ui| {
-                    // Three screen pixels to an art pixel, as before, now standing beside the
-                    // village tree the review sheets use, so a small or a large companion reads
-                    // as one.
-                    let unit = 3.0;
-                    let scene = formiga_art::tree_scene(48, candidate.floor);
                     let (rect, _) = ui.allocate_exact_size(
                         egui::vec2(scene.width as f32 * unit, scene.height as f32 * unit),
                         egui::Sense::hover(),
@@ -476,25 +570,35 @@ impl Clubhouse {
                         Color32::WHITE,
                     );
                 });
-            ui.vertical(|ui| {
-                ui.heading(&candidate.preview.creature.name);
-                ui.label(
-                    candidate
-                        .preview
-                        .creature
-                        .appearance
-                        .design
-                        .map_or("Classic companion", |d| d.body.label()),
-                );
-                ui.label(&candidate.preview.summary);
-                if let Some(similarity) = candidate.preview.similarity {
-                    ui.small(format!("Color & shape affinity: {similarity}%"));
-                }
-                ui.add_enabled_ui(!save.settings.reduce_motion, |ui| {
-                    ui.checkbox(&mut self.animate, "Preview movement & expressions");
-                });
+        };
+        let animate_choice = &mut self.animate;
+        let mut details = |ui: &mut Ui| {
+            ui.heading(&candidate.preview.creature.name);
+            ui.label(
+                candidate
+                    .preview
+                    .creature
+                    .appearance
+                    .design
+                    .map_or("Classic companion", |d| d.body.label()),
+            );
+            ui.label(&candidate.preview.summary);
+            if let Some(similarity) = candidate.preview.similarity {
+                ui.small(format!("Color & shape affinity: {similarity}%"));
+            }
+            ui.add_enabled_ui(!save.settings.reduce_motion, |ui| {
+                ui.checkbox(animate_choice, "Preview movement & expressions");
             });
-        });
+        };
+        if side_by_side {
+            ui.horizontal(|ui| {
+                preview(ui);
+                ui.vertical(details);
+            });
+        } else {
+            preview(ui);
+            details(ui);
+        }
         if animate {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(166));
@@ -571,10 +675,11 @@ impl Clubhouse {
         monitors: &[MonitorInfo],
         outcome: &mut SettingsOutcome,
     ) {
-        title(
+        journal::page_heading(
             ui,
-            "A place to call home",
-            "Arrange the village, dress its houses, and put out what the colony has collected.",
+            crate::settings::SettingsTab::Home,
+            "Home & keepsakes",
+            "The settlement as it stands. Somebody has moved the teapot again.",
         );
         let look = formiga_art::VillageLook::of(&save.home, &save.creatures);
         if self
@@ -917,17 +1022,6 @@ impl Clubhouse {
     }
 }
 
-pub fn title(ui: &mut Ui, heading: &str, description: &str) {
-    ui.label(
-        RichText::new("FORMIGA  /  A LITTLE LIFE HERE")
-            .color(forest())
-            .size(11.0),
-    );
-    ui.add_space(8.0);
-    ui.heading(RichText::new(heading).size(27.0));
-    ui.label(description);
-    ui.add_space(20.0);
-}
 /// A tile in a wrapped row: a space of its own, filled and edged, for whatever is painted into it,
 /// and something to click. A `Frame` works out where it goes before the row has decided whether it
 /// still fits, so a row of them never wraps and runs off the side of the page; a space allocated
@@ -995,14 +1089,16 @@ pub(crate) fn combo_width(ui: &Ui, selected: &str) -> f32 {
 }
 
 /// How much wider a [`card`] is than what is in it: its margin and its border, either side.
-pub(crate) const CARD_EDGES: f32 = 2.0 * (14.0 + 1.0);
+pub(crate) const CARD_EDGES: f32 = 2.0 * (14.0 + 2.0);
 
 pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
-    egui::Frame::new()
+    let shown = egui::Frame::new()
         .fill(card_fill())
-        .stroke(egui::Stroke::new(1.0, gold()))
         .inner_margin(14)
-        .show(ui, contents)
+        .show(ui, contents);
+    // A card in the notebook is a slip of paper with the stepped edge every box has.
+    journal::stepped_outline(ui.painter(), shown.response.rect, 2.0, line());
+    shown
 }
 pub fn words(value: &str) -> String {
     let mut result = String::new();
@@ -1093,24 +1189,58 @@ fn moment_card(
     offset: time::UtcOffset,
     outcome: &mut SettingsOutcome,
 ) {
+    // A line in the log: when, what, and whether it is kept. A kept moment is dated, since it
+    // stays long after its day; one under its day's heading needs only the time.
     let local = entry.at.to_offset(offset);
     let pinned = save.companion.pinned(entry);
-    card(ui, |ui| {
-        ui.small(format!(
-            "{} · {:02}:{:02}",
-            local.date(),
+    let scale = journal::text_scale(ui);
+    let when = if pinned {
+        format!(
+            "{:02} {} · {:02}:{:02}",
+            local.day(),
+            &format!("{:?}", local.month())[..3],
             local.hour(),
             local.minute()
-        ));
-        ui.strong(moment_text(save, entry));
-        ui.horizontal(|ui| {
+        )
+    } else {
+        format!("{:02}:{:02}", local.hour(), local.minute())
+    };
+    ui.horizontal(|ui| {
+        let when_width = if pinned { 104.0 } else { 46.0 } * scale;
+        ui.allocate_ui_with_layout(
+            egui::vec2(when_width, 0.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(when_width);
+                ui.label(journal::label_job(&when, 9.5 * scale, muted()));
+            },
+        );
+        let action = if pinned { "Unpin" } else { "Pin" };
+        let action_width = text_width(ui, RichText::new(action).small()) + 12.0;
+        let text_room =
+            (ui.available_width() - action_width - ui.spacing().item_spacing.x * 2.0).max(80.0);
+        ui.allocate_ui_with_layout(
+            egui::vec2(text_room, 0.0),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_width(text_room);
+                ui.add(egui::Label::new(moment_text(save, entry)).wrap());
+            },
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if pinned {
-                if ui.small_button("Unpin").clicked() {
+                if ui
+                    .add(egui::Button::new(RichText::new("Unpin").small()).frame(false))
+                    .clicked()
+                {
                     outcome.unpin_moment = Some(entry.clone());
                 }
             } else {
                 let room = save.companion.pins.len() < MAX_PINNED_ENTRIES;
-                let button = ui.add_enabled(room, egui::Button::new("Pin").small());
+                let button = ui.add_enabled(
+                    room,
+                    egui::Button::new(RichText::new("Pin").small()).frame(false),
+                );
                 if button.clicked() {
                     outcome.pin_moment = Some(entry.clone());
                 }
@@ -1122,7 +1252,7 @@ fn moment_card(
             }
         });
     });
-    ui.add_space(8.0);
+    ui.add_space(4.0);
 }
 
 fn label_was_shortened(name: &str) -> bool {
@@ -1491,7 +1621,12 @@ pub fn journal(
     clubhouse: &mut Clubhouse,
     outcome: &mut SettingsOutcome,
 ) {
-    title(ui, "The colony journal", "Small moments, kept close.");
+    journal::page_heading(
+        ui,
+        crate::settings::SettingsTab::Journal,
+        "Journal",
+        "Small moments, written down before anyone forgets them.",
+    );
     let offset = local_offset();
     let now = OffsetDateTime::now_utc();
     clubhouse.today_card(ui, save, offset);
@@ -1520,10 +1655,9 @@ pub fn journal(
         .collect();
     pinned.sort_by_key(|entry| std::cmp::Reverse(entry.at));
     if !pinned.is_empty() {
-        ui.label(
-            RichText::new(format!("KEPT · {} of {MAX_PINNED_ENTRIES}", pinned.len()))
-                .color(forest())
-                .size(11.0),
+        journal::kicker(
+            ui,
+            &format!("Kept · {} of {MAX_PINNED_ENTRIES}", pinned.len()),
         );
         ui.add_space(6.0);
         for entry in &pinned {
@@ -1598,7 +1732,7 @@ pub fn journal(
         let day = day_heading(entry.at, now, offset);
         if day != heading {
             ui.add_space(4.0);
-            ui.label(RichText::new(day.to_uppercase()).color(forest()).size(11.0));
+            journal::kicker(ui, &day);
             ui.add_space(6.0);
             heading = day;
         }
@@ -1829,8 +1963,7 @@ pub fn habitat_map(ui: &mut Ui, policy: &HabitatPolicy, monitors: &[MonitorInfo]
                 monitor.bounds.height * factor,
             ),
         );
-        ui.painter()
-            .rect_filled(rect, 0.0, Color32::from_rgb(219, 210, 185));
+        ui.painter().rect_filled(rect, 0.0, ground());
         for region in accessible_regions(policy, monitor) {
             let zone = egui::Rect::from_min_size(
                 rect.min
@@ -1858,13 +1991,12 @@ pub fn habitat_map(ui: &mut Ui, policy: &HabitatPolicy, monitors: &[MonitorInfo]
                     bounds.height * usable.height * factor,
                 ),
             );
-            ui.painter()
-                .rect_filled(zone.intersect(rect), 0.0, Color32::from_rgb(217, 159, 137));
+            ui.painter().rect_filled(zone.intersect(rect), 0.0, clay());
         }
         ui.painter().rect_stroke(
             rect,
             0.0,
-            egui::Stroke::new(2.0, forest()),
+            egui::Stroke::new(2.0, line()),
             egui::StrokeKind::Inside,
         );
         ui.painter().text(
