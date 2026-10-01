@@ -121,6 +121,18 @@ impl Clubhouse {
                 ui.selectable_value(view, CollectionView::StillToFind, "Still to find");
             });
             ui.add_space(6.0);
+            if found.is_empty() {
+                ui.label(
+                    "Nothing has turned up yet. Companions find things by themselves as they go \
+                     about — waking from a nap, up on a high window, after a visit — and bring \
+                     each one to show you. There is nothing to do but let them.",
+                );
+                ui.add_space(6.0);
+            } else if self.collection.view == CollectionView::StillToFind
+                && found.len() == usize::from(TRINKET_VARIANTS)
+            {
+                ui.label("Everything there is to find has been found. A remarkable colony.");
+            }
             ui.horizontal_wrapped(|ui| {
                 ui.label(format!(
                     "Hanging in the village trees: {hanging} of {TREE_HOOKS}"
@@ -157,11 +169,18 @@ impl Clubhouse {
                     } else {
                         Color32::from_rgba_unmultiplied(0, 0, 0, 70)
                     };
+                    let spoken = if record.is_some() {
+                        info.name.to_owned()
+                    } else {
+                        format!("Still to find: {}", info.hint)
+                    };
                     let (response, rect) = tile(
                         ui,
                         egui::vec2(42.0, 42.0),
                         if in_trees { mint() } else { card_fill() },
                         if in_trees { forest() } else { gold() },
+                        &spoken,
+                        in_trees,
                     );
                     ui.painter().image(
                         atlas.id(),
@@ -421,6 +440,8 @@ impl Clubhouse {
                                     egui::vec2(32.0, 32.0),
                                     if worn { mint() } else { card_fill() },
                                     gold(),
+                                    &pin.label(),
+                                    worn,
                                 );
                                 ui.painter().image(
                                     atlas.id(),

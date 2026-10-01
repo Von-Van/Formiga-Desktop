@@ -13,6 +13,7 @@ use time::OffsetDateTime;
 mod accessory_sheet;
 mod colony_card;
 mod cuteness_sheet;
+mod decoration_sheet;
 mod habit_sheet;
 mod palette_sheet;
 mod postcard;
@@ -61,6 +62,10 @@ fn main() -> Result<()> {
         Some("gesture-sheet") => gesture_sheet(output_argument_with_default(
             &args,
             "docs/assets/gesture-sheet.png",
+        )),
+        Some("decoration-sheet") => decoration_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/decoration-sheet.png",
         )),
         Some("village-life-sheet") => village_life_sheet::run(output_argument_with_default(
             &args,
@@ -148,7 +153,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -376,9 +381,10 @@ struct YardPanel {
     style_seed: u8,
 }
 
-/// Shelter pixels of ground each panel shows, how tall it is, and the blit scale.
-const YARD_STRIP: u32 = 560;
-const YARD_HEIGHT: u32 = 88;
+/// Shelter pixels of ground each panel shows, how tall it is, and the blit scale: a village cell
+/// tall and a little more, and a little wider than the widest village there is.
+const YARD_STRIP: u32 = 600;
+const YARD_HEIGHT: u32 = SHELTER_SIZE + 8;
 const YARD_SCALE: u32 = 2;
 
 fn home_yard_sheet(path: PathBuf) -> Result<()> {
@@ -505,7 +511,7 @@ fn home_yard_sheet(path: PathBuf) -> Result<()> {
                 &mut pixels,
                 width,
                 x,
-                y + panel_height - (YARD_HEIGHT - 80) * YARD_SCALE,
+                y + panel_height - (YARD_HEIGHT - SHELTER_SIZE) * YARD_SCALE,
                 panel_width,
                 YARD_SCALE,
                 [120, 134, 128, 140],
@@ -1603,8 +1609,8 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
                 FRAME_SIZE,
             ),
         ];
-        // Every dwelling cell stands on row 61 of its own 64px cell; a creature frame stands on
-        // its own last row. Lining those two up puts everything on one ground line.
+        // Every dwelling cell stands three rows above the foot of its own cell; a creature frame
+        // stands on its own last row. Lining those two up puts everything on one ground line.
         let baseline = style * row_height + (MARGIN + 20 + SHELTER_SIZE - 3) * SCALE;
         let mut pen = MARGIN;
         for (index, ((canvas, size), footprint)) in
@@ -1923,7 +1929,13 @@ fn blit_scaled_anchor(
     }
 }
 
-fn fill_gradient(target: &mut [u8], width: u32, height: u32, top: [u8; 4], bottom: [u8; 4]) {
+pub(crate) fn fill_gradient(
+    target: &mut [u8],
+    width: u32,
+    height: u32,
+    top: [u8; 4],
+    bottom: [u8; 4],
+) {
     for y in 0..height {
         let mix = y as f32 / height.max(1) as f32;
         let color = [
@@ -2018,7 +2030,7 @@ fn draw_cursor(target: &mut [u8], target_width: u32, x: u32, y: u32) {
     );
 }
 
-fn fill_rect(
+pub(crate) fn fill_rect(
     target: &mut [u8],
     target_width: u32,
     x: u32,

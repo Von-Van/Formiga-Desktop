@@ -50,11 +50,11 @@ const ROW_GAP: i32 = 20;
 /// village's rooflines and hide the home it is standing in front of.
 const MEMBER_CEILING: i32 = 176;
 
-/// The tallest the colony house may be drawn: roughly two thirds of a member, which reads as a
-/// village standing back behind the colony rather than crowding in beside it. It was 90, about
-/// half a member, until the houses were drawn a quarter larger in 0.61.0; raised by the same
-/// quarter, a village keeps the scale it was drawn at and its houses stand a quarter taller.
-const VILLAGE_HEIGHT_CEILING: i32 = 113;
+/// The tallest the colony house may be drawn: about four fifths of a member, which reads as a
+/// village standing back behind the colony rather than crowding in beside it. It was 90 until
+/// 0.61.0 and 113 until 0.65.0, raised each time by as much as the houses grew, so a village keeps
+/// the scale it was drawn at and its houses stand taller beside the colony, as on the desktop.
+const VILLAGE_HEIGHT_CEILING: i32 = 136;
 
 /// The furthest the village may slide from centre to clear the colony house of a member.
 const VILLAGE_NUDGE: i32 = 110;

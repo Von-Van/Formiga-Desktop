@@ -10,6 +10,7 @@ mod design;
 mod habitat;
 mod habits;
 mod model;
+mod observations;
 mod persistence;
 mod rng;
 mod seed_share;
@@ -35,20 +36,22 @@ pub use design::{
 };
 pub use habitat::{
     BELONGING_CLEARANCE, BELONGING_DEPTH, CREATURE_FRAME_WIDTH, Cottages, DWELLING_CELL,
-    DwellingKind, GroundItem, HANGOUT_WIDTH, HomeCommons, HouseOwners, MAX_HABITAT_ZONES,
-    OBJECT_WIDTH, REST_CLEAR_RATIO, REST_WALL_SLIVER, RESTING_WIDTH, TREE_OVERLAP, TREE_WIDTH,
-    TRINKETS_PER_TREE, TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot, accessible_regions,
-    colony_cottage_list, colony_cottages, habitat_contains, home_anchor, home_commons,
-    home_dwelling_position, home_ground_positions, home_guest_position, home_hangout_positions,
-    home_object_position, home_object_positions, home_resting_position, home_tree_position,
-    house_owners, house_roof_height, house_slot_for, nearest_habitat_point,
-    resolved_colony_object_position, resolved_home_anchor, validate_habitat, village_span,
+    DWELLING_DRAWN_HEIGHT, DwellingKind, GroundItem, HANGOUT_WIDTH, HomeCommons, HouseOwners,
+    MAX_HABITAT_ZONES, OBJECT_WIDTH, REST_CLEAR_RATIO, REST_WALL_SLIVER, RESTING_WIDTH,
+    TREE_OVERLAP, TREE_WIDTH, TRINKETS_PER_TREE, TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot,
+    accessible_regions, colony_cottage_list, colony_cottages, habitat_contains, home_anchor,
+    home_commons, home_dwelling_position, home_ground_positions, home_guest_position,
+    home_hangout_positions, home_lot_widths, home_object_position, home_object_positions,
+    home_resting_position, home_tree_position, house_owners, house_roof_height, house_slot_for,
+    nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, validate_habitat,
+    village_span,
 };
 pub use habits::{
     Celebration, FLOURISH_WAIT_SECS, Flourish, HABIT_PERFORMANCE_CHANCE, Habit, HabitCue,
     MAX_HABITS, habit_for, habit_to_learn, learning_chance,
 };
 pub use model::*;
+pub use observations::{Observation, observations_of, observe};
 pub use persistence::{
     PERIODIC_SAVE, PersistenceError, ROUTINE_CHECKPOINT, SaveStore, SaveUrgency, save_due,
 };
@@ -77,4 +80,4 @@ pub use visitor::{
 };
 pub use world::{BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, World};
 
-pub const SAVE_VERSION: u32 = 22;
+pub const SAVE_VERSION: u32 = 23;

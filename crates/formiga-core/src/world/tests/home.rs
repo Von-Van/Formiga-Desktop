@@ -57,6 +57,7 @@ fn house_spawn_preserves_position_then_walks_and_settles_at_both_corners() {
             .unwrap();
             let anchor = resolved_home_anchor(
                 &world.save.home,
+                &[],
                 &desktop.monitors[0],
                 world.save.settings.display_scale,
                 &world.save.settings.habitat,
@@ -271,8 +272,14 @@ fn village_strip(world: &World, desktop: &DesktopSnapshot) -> (f32, f32) {
     let cottages = colony_cottages(&world.save.creatures);
     let policy = &world.save.settings.habitat;
     let scale = world.save.settings.display_scale;
-    let anchor =
-        resolved_home_anchor(&world.save.home, &desktop.monitors[0], scale, policy).unwrap();
+    let anchor = resolved_home_anchor(
+        &world.save.home,
+        &cottages,
+        &desktop.monitors[0],
+        scale,
+        policy,
+    )
+    .unwrap();
     let mut span = (anchor.x, anchor.x);
     let mut widen = |x: f32| {
         span.0 = span.0.min(x);

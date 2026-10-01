@@ -7,7 +7,15 @@ short version; [the release notes](RELEASE_NOTES.md) say when each piece arrived
 
 The settings window is a researcher's field notebook: its pages hang from tabs down a leather
 cover, and a page you have turned past waits pressed into the leather until you click it to turn
-back. A note under the tabs jots down how the colony is doing.
+back. A note under the tabs jots down how the colony is doing. ⌘1 to ⌘9 turn straight to a page
+(Ctrl on Windows), ⌘[ and ⌘] turn one page back or on, Tab and Enter reach and turn every tab, and
+⌘W closes the notebook. It opens where you last left it.
+
+It opens on **Today**: anything noteworthy written in the journal since you last looked, the day so
+far, what each companion is doing right now, the last seven days, and what the notebook has noticed
+about the colony. A small dot on the Today and Journal tabs, and on the Formiga icon in the menu bar
+or notification area, means something new was written down — an arrival, a friendship, a new habit
+or way, a visitor — and it goes once you have read it. Nothing else ever asks for your attention.
 
 The first time Formiga runs, its settings window opens with it, and a tour shows you round. It
 starts on the desktop — petting a companion, carrying one, its right-click menu, and the menu-bar
@@ -122,13 +130,24 @@ in the journal on the day it picks them up.
 
 A journal keeps small moments — arrivals, discoveries, a preference a creature has settled into, a
 new close friendship, a completed ritual, a keepsake that turned up, something new for the
-village — grouped by Today, Yesterday, and the date, in your own local time. You can filter it to
-one companion, and keep up to eight moments pinned above the rest. A pin points at a moment the
+village — grouped by Today, Yesterday, and the date, in your own local time. Search it with ⌘F or
+Ctrl+F, filter it to one kind of moment or one companion, and keep up to eight moments pinned above
+the rest. Its milestones — who arrived, who grew close, who first came by — are gathered at the top
+and kept longer than everyday moments when the journal fills up. A pin points at a moment the
 journal already holds, so it can never say something that did not happen. Beneath it, the
 scrapbook lists every keepsake that has been found, newest first, with a drawing of it, the date,
 and who found it — still named even if that companion has since left. The Journal page also keeps
-a guest book: the last two dozen creatures who came by the houses, when each one visited, and a
-code that recreates it.
+a guest book: the last two dozen creatures who came by the houses, when each one visited, how many
+visits each has in the book, and a code that recreates it. A visitor who comes back is written down
+as coming back, and the companions who met it last time wave and say hello rather than eyeing a
+stranger.
+
+The notebook notices things. Companions keep track of what they do together — naps side by side,
+games, finds brought over, going to look for one another — and the Today page, and each companion's
+own page, set down what the colony's records show: who keeps to high places, who rides the
+windows, who finds the most, which two keep seeking each other out, who naps beside whom. Each
+observation is printed with the counts it rests on, and it appears only once those counts are
+there; nothing is guessed, and nothing from before Formiga started counting is filled in.
 
 The Your colony page has the whole Collection: all hundred and sixty keepsakes, the found ones in
 colour and the rest as the shadow of their shape with a hint about where they turn up — at night,

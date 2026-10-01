@@ -4,6 +4,22 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.65.0
+
+The notebook opens on a new Today page: what is new since you last looked, what everyone is doing
+right now, how the week has gone, and what the notebook has noticed about your colony. Each thing
+it has noticed is printed with the counts it rests on, and it notices only what really happened:
+who keeps to high places, which two keep seeking each other out, who naps beside whom. Companions
+now keep track of what they do together, and remember a visitor who has been before. When
+something noteworthy is written in the journal, a small dot appears on the notebook's tab and on
+the Formiga icon, and nothing else. The journal can be searched and filtered, and keeps its
+milestones longer. The houses are a fifth larger, and every decoration has been redrawn about twice
+the size with a clear outline, so a weather vane reads as a weather vane from across the desk. On a
+narrow display the village packs in snugly rather than leaving a house off the end. The notebook
+also remembers where you left its window, works from the keyboard, and says plainly what to do when
+something goes wrong, including the rare save that fails. It follows 0.64.0, which made the
+settings window a researcher's field notebook; the release notes describe it.
+
 ## New in 0.64.0
 
 The settings window is a researcher's field notebook. Its pages hang from index tabs down a

@@ -29,6 +29,85 @@ pub enum JournalMoment {
     Habit(Habit),
     /// Something new arrived for the village to choose from.
     Unlocked(VillageItem),
+    /// A visitor the guest book already knew came by again, and which visit of theirs this was,
+    /// counting the ones the book still holds.
+    Revisit(String, u16),
+}
+
+/// How many moments the journal holds on to past their turn to roll out because they are the
+/// colony's landmarks: arrivals, friendships and first visits. Inside the journal's own cap, not
+/// on top of it.
+pub const MAX_LANDMARK_ENTRIES: usize = 24;
+
+impl JournalMoment {
+    /// A landmark in the colony's history: who arrived, who grew close, and who first came by.
+    /// When the journal is full, everyday moments roll out before these do.
+    pub const fn is_landmark(&self) -> bool {
+        matches!(self, Self::Arrival | Self::Friendship(_) | Self::Visit(_))
+    }
+
+    /// Worth a small sign that something new was written: everything but the everyday finds,
+    /// shared moments and village news, which happen most days.
+    pub const fn is_noteworthy(&self) -> bool {
+        matches!(
+            self,
+            Self::Arrival
+                | Self::Friendship(_)
+                | Self::Preference(_)
+                | Self::Visit(_)
+                | Self::Revisit(..)
+                | Self::Habit(_)
+        )
+    }
+
+    /// The kind of moment, for the journal's filters.
+    pub const fn kind(&self) -> MomentKind {
+        match self {
+            Self::Arrival => MomentKind::Arrivals,
+            Self::Friendship(_) => MomentKind::Friendships,
+            Self::Discovery => MomentKind::Finds,
+            Self::Preference(_) | Self::Habit(_) => MomentKind::Ways,
+            Self::Ritual(_) => MomentKind::Together,
+            Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) => MomentKind::Village,
+            Self::Visit(_) | Self::Revisit(..) => MomentKind::Visitors,
+        }
+    }
+}
+
+/// What the journal can be filtered to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MomentKind {
+    Arrivals,
+    Friendships,
+    Finds,
+    Ways,
+    Together,
+    Village,
+    Visitors,
+}
+
+impl MomentKind {
+    pub const ALL: [Self; 7] = [
+        Self::Arrivals,
+        Self::Friendships,
+        Self::Ways,
+        Self::Together,
+        Self::Finds,
+        Self::Visitors,
+        Self::Village,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Arrivals => "Arrivals",
+            Self::Friendships => "Friendships",
+            Self::Finds => "Finds",
+            Self::Ways => "Ways & habits",
+            Self::Together => "Together",
+            Self::Village => "The village",
+            Self::Visitors => "Visitors",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -225,6 +304,13 @@ pub struct CompanionState {
     pub scrapbook: Vec<ScrapbookRecord>,
     pub appearance: AppearancePreferences,
     pub schedule: RoutineSchedule,
+    /// Everything written in the journal up to this moment has been read. A noteworthy moment
+    /// after it is what the notebook's tabs and the tray icon quietly mark.
+    #[serde(
+        with = "time::serde::rfc3339::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub journal_seen_until: Option<OffsetDateTime>,
 }
 impl Default for CompanionState {
     fn default() -> Self {
@@ -238,6 +324,7 @@ impl Default for CompanionState {
             scrapbook: Vec::new(),
             appearance: AppearancePreferences::default(),
             schedule: RoutineSchedule::default(),
+            journal_seen_until: None,
         }
     }
 }
@@ -280,15 +367,65 @@ impl CompanionState {
         }) {
             return;
         }
-        if self.journal.len() >= MAX_JOURNAL_ENTRIES {
-            self.journal
-                .drain(..self.journal.len() + 1 - MAX_JOURNAL_ENTRIES);
-        }
         self.journal.push(JournalEntry {
             at,
             creature,
             moment,
         });
+        self.trim_journal();
+    }
+
+    /// Bring the journal back within its cap. Everyday moments roll out oldest first; the
+    /// colony's landmarks are kept past their turn, up to [`MAX_LANDMARK_ENTRIES`] of them, and
+    /// only the oldest of those goes once there are more.
+    fn trim_journal(&mut self) {
+        while self.journal.len() > MAX_JOURNAL_ENTRIES {
+            let landmarks = self
+                .journal
+                .iter()
+                .filter(|entry| entry.moment.is_landmark())
+                .count();
+            let oldest = if landmarks > MAX_LANDMARK_ENTRIES {
+                self.journal
+                    .iter()
+                    .position(|entry| entry.moment.is_landmark())
+            } else {
+                self.journal
+                    .iter()
+                    .position(|entry| !entry.moment.is_landmark())
+            };
+            self.journal.remove(oldest.unwrap_or(0));
+        }
+    }
+
+    /// Whether an everyday moment has rolled out of the journal already: it is full, and the
+    /// oldest everyday moment it still holds is no older than `since`.
+    pub fn rolled_out_since(&self, since: OffsetDateTime) -> bool {
+        self.journal.len() >= MAX_JOURNAL_ENTRIES
+            && self
+                .journal
+                .iter()
+                .find(|entry| !entry.moment.is_landmark())
+                .is_some_and(|entry| entry.at >= since)
+    }
+
+    /// The noteworthy moments written since the journal was last read, newest first.
+    pub fn unread(&self) -> impl Iterator<Item = &JournalEntry> {
+        self.journal
+            .iter()
+            .rev()
+            .take_while(|entry| self.journal_seen_until.is_none_or(|seen| entry.at > seen))
+            .filter(|entry| entry.moment.is_noteworthy())
+    }
+
+    /// Everything written so far has been read.
+    pub fn mark_read(&mut self) -> bool {
+        let newest = self.journal.iter().map(|entry| entry.at).max();
+        if newest.is_some() && newest > self.journal_seen_until {
+            self.journal_seen_until = newest;
+            return true;
+        }
+        false
     }
     /// Keep a moment. A pin points at a journal entry; keeping one never invents a new moment.
     pub fn pin(&mut self, entry: &JournalEntry) -> bool {
@@ -329,10 +466,7 @@ impl CompanionState {
     }
 
     pub fn normalize(&mut self) {
-        if self.journal.len() > MAX_JOURNAL_ENTRIES {
-            self.journal
-                .drain(..self.journal.len() - MAX_JOURNAL_ENTRIES);
-        }
+        self.trim_journal();
         self.pins.truncate(MAX_PINNED_ENTRIES);
         self.scrapbook.retain(|r| r.variant < TRINKET_VARIANTS);
         self.scrapbook.sort_by_key(|record| record.variant);
@@ -373,6 +507,95 @@ mod tests {
             ],
             ..RoutineSchedule::default()
         }
+    }
+
+    fn entry(minutes: i64, moment: JournalMoment) -> (OffsetDateTime, JournalMoment) {
+        (
+            datetime!(2026-09-01 0:00 UTC) + Duration::minutes(minutes),
+            moment,
+        )
+    }
+
+    #[test]
+    fn a_full_journal_keeps_its_landmarks_past_their_turn() {
+        let mut state = CompanionState::default();
+        let (at, moment) = entry(0, JournalMoment::Arrival);
+        state.remember(Some(1), moment, at);
+        let (at, moment) = entry(1, JournalMoment::Friendship(2));
+        state.remember(Some(1), moment, at);
+        // Far more everyday moments than the journal holds, each its own so none is throttled.
+        for index in 0..200 {
+            let (at, moment) = entry(10 + index * 400, JournalMoment::Discovery);
+            state.remember(Some(1 + (index as u64 % 3)), moment, at);
+        }
+        assert_eq!(state.journal.len(), MAX_JOURNAL_ENTRIES);
+        assert_eq!(state.journal[0].moment, JournalMoment::Arrival);
+        assert_eq!(state.journal[1].moment, JournalMoment::Friendship(2));
+        assert!(
+            state
+                .journal
+                .windows(2)
+                .all(|pair| pair[0].at <= pair[1].at)
+        );
+        // Landmarks themselves are capped inside the journal, oldest first.
+        for index in 0..40 {
+            let (at, moment) = entry(100_000 + index, JournalMoment::Visit(format!("V{index}")));
+            state.remember(None, moment, at);
+        }
+        let landmarks = state
+            .journal
+            .iter()
+            .filter(|e| e.moment.is_landmark())
+            .count();
+        assert_eq!(landmarks, MAX_LANDMARK_ENTRIES);
+        assert_eq!(state.journal.len(), MAX_JOURNAL_ENTRIES);
+        assert!(
+            !state
+                .journal
+                .iter()
+                .any(|e| e.moment == JournalMoment::Arrival)
+        );
+    }
+
+    #[test]
+    fn only_noteworthy_moments_since_the_last_read_are_unread() {
+        let mut state = CompanionState::default();
+        let (at, moment) = entry(0, JournalMoment::Arrival);
+        state.remember(Some(1), moment, at);
+        assert_eq!(state.unread().count(), 1);
+        assert!(state.mark_read());
+        assert!(!state.mark_read());
+        assert_eq!(state.unread().count(), 0);
+        let (at, moment) = entry(10, JournalMoment::Discovery);
+        state.remember(Some(1), moment, at);
+        assert_eq!(state.unread().count(), 0, "a find is everyday news");
+        let (at, moment) = entry(20, JournalMoment::Revisit("Wren".into(), 2));
+        state.remember(None, moment, at);
+        assert_eq!(state.unread().count(), 1);
+    }
+
+    #[test]
+    fn a_tally_counts_who_sought_whom_and_remembers_only_warm_moments() {
+        let mut tally = RelationshipTally::default();
+        let at = datetime!(2026-09-01 0:00 UTC);
+        tally.count(Some(true), RelationshipExperience::Followed, at);
+        tally.count(Some(true), RelationshipExperience::HomecomingGreeting, at);
+        tally.count(Some(false), RelationshipExperience::BroughtDiscovery, at);
+        // A ritual greeting was nobody's choice.
+        tally.count(Some(false), RelationshipExperience::Greeting, at);
+        assert_eq!(tally.sought, [2, 1]);
+        assert_eq!(tally.greetings, 2);
+        assert_eq!(tally.gifts, 1);
+        let later = at + Duration::hours(1);
+        tally.count(None, RelationshipExperience::Squabble, later);
+        tally.count(None, RelationshipExperience::CalmProximity, later);
+        assert_eq!(tally.memory.map(|m| m.at), Some(at));
+        assert_eq!(tally.squabbles, 1);
+        assert_eq!(tally.calm_spells, 2);
+        for _ in 0..70_000 {
+            tally.count(None, RelationshipExperience::SharedRest, later);
+        }
+        assert_eq!(tally.shared_rests, u16::MAX);
     }
 
     #[test]

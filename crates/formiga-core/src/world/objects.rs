@@ -49,6 +49,7 @@ impl World {
         };
         let Some(anchor) = resolved_home_anchor(
             &self.save.home,
+            crate::colony_cottage_list(&self.save.creatures).as_slice(),
             monitor,
             self.save.settings.display_scale,
             &self.save.settings.habitat,

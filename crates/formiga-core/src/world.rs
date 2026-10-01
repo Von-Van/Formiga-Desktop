@@ -276,6 +276,7 @@ impl World {
             settings: Settings::default(),
             creatures: vec![creature],
             relationships: Vec::new(),
+            tallies: Vec::new(),
             ritual: RitualState {
                 next_at_utc: scheduled_ritual_at(colony_seed, 0, now),
                 ..RitualState::default()
@@ -1245,6 +1246,7 @@ impl World {
                             .and_then(|monitor| {
                                 resolved_home_anchor(
                                     &self.save.home,
+                                    &cottages,
                                     monitor,
                                     self.save.settings.display_scale,
                                     &self.save.settings.habitat,

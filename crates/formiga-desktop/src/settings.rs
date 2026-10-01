@@ -18,8 +18,9 @@ use winit::window::{Window, WindowId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum SettingsTab {
-    General,
     #[default]
+    Today,
+    General,
     Colony,
     Studio,
     Home,
@@ -113,6 +114,12 @@ pub struct SettingsOutcome {
     pub resume_routine: bool,
     pub pin_moment: Option<formiga_core::JournalEntry>,
     pub unpin_moment: Option<formiga_core::JournalEntry>,
+    /// The journal has been read up to its newest moment.
+    pub mark_journal_read: bool,
+    /// Try writing the colony again, after a save that failed.
+    pub retry_save: bool,
+    /// Close the notebook, as its window's close button would: ⌘W, or Ctrl+W.
+    pub close_notebook: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,18 +194,27 @@ impl SettingsWindow {
         creatures: &[Creature],
         relationships: &[CreatureRelationship],
         save_location: &std::path::Path,
+        placement: crate::notebook_window::Placement,
+        proxy: winit::event_loop::EventLoopProxy<crate::app::UserEvent>,
     ) -> Result<Self> {
+        let (min_width, min_height) = crate::notebook_window::MIN_SIZE;
+        let attributes = Window::default_attributes()
+            .with_title("Formiga · Field notebook")
+            .with_inner_size(placement.size)
+            .with_min_inner_size(LogicalSize::new(min_width, min_height))
+            .with_maximized(placement.maximized)
+            .with_visible(false);
         let window = Arc::new(
             event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("Formiga · Your colony")
-                        .with_inner_size(LogicalSize::new(940.0, 720.0))
-                        .with_min_inner_size(LogicalSize::new(760.0, 560.0))
-                        .with_visible(false),
-                )
+                .create_window(attributes)
                 .context("create settings window")?,
         );
+        // The remembered corner is the window's outer one, title bar and all. Set after the window
+        // exists, because on macOS a position given when it is created places the content's
+        // corner instead, which would walk the window down by a title bar every time it opened.
+        if let Some(position) = placement.position {
+            window.set_outer_position(position);
+        }
         let instance = wgpu::Instance::default();
         let surface = instance
             .create_surface(window.clone())
@@ -246,7 +262,7 @@ impl SettingsWindow {
         surface.configure(&device, &config);
         let context = egui::Context::default();
         configure_style(&context, AppearancePreferences::default());
-        let state = egui_winit::State::new(
+        let mut state = egui_winit::State::new(
             context.clone(),
             egui::ViewportId::ROOT,
             window.as_ref(),
@@ -254,6 +270,9 @@ impl SettingsWindow {
             window.theme(),
             Some(adapter.limits().max_texture_dimension_2d as usize),
         );
+        // Screen readers can read and work the notebook. The adapter is set up while the window
+        // is still hidden, as it has to be, and does nothing until an assistive app asks.
+        state.init_accesskit(event_loop, window.as_ref(), proxy);
         let renderer =
             egui_wgpu::Renderer::new(&device, format, egui_wgpu::RendererOptions::default());
         Ok(Self {
@@ -292,6 +311,29 @@ impl SettingsWindow {
 
     pub fn id(&self) -> WindowId {
         self.window.id()
+    }
+
+    /// Where the window is now and how large, to open it there next time. `None` while the
+    /// system cannot say, or while it is minimised to the Dock or taskbar.
+    pub fn geometry(&self) -> Option<crate::notebook_window::NotebookGeometry> {
+        if self.window.is_minimized() == Some(true) {
+            return None;
+        }
+        let position = self.window.outer_position().ok()?;
+        let size = self
+            .window
+            .inner_size()
+            .to_logical::<f64>(self.window.scale_factor());
+        let maximized = self.window.is_maximized();
+        (size.width > 0.0 && size.height > 0.0).then_some(
+            crate::notebook_window::NotebookGeometry {
+                x: position.x,
+                y: position.y,
+                width: size.width,
+                height: size.height,
+                maximized,
+            },
+        )
     }
 
     pub fn show(
@@ -434,6 +476,17 @@ impl SettingsWindow {
     pub fn copy_text(&mut self, text: String, notice: impl Into<String>) {
         self.pending_copy = Some(text);
         self.clubhouse.notify(notice);
+        self.window.request_redraw();
+    }
+
+    /// A screen reader asked for the notebook's contents or to use one of its controls.
+    pub fn on_accesskit(&mut self, event: egui_winit::accesskit_winit::WindowEvent) {
+        use egui_winit::accesskit_winit::WindowEvent as Ask;
+        match event {
+            Ask::InitialTreeRequested => self.context.enable_accesskit(),
+            Ask::ActionRequested(request) => self.state.on_accesskit_action_request(request),
+            Ask::AccessibilityDeactivated => self.context.disable_accesskit(),
+        }
         self.window.request_redraw();
     }
 
@@ -787,9 +840,40 @@ fn draw_settings(
     let window = root.max_rect();
     let spread = clubhouse::journal::Spread::of(window.width(), text_scale);
     clubhouse::journal::paint_cover(root.painter(), window);
-    let unseen = creatures
-        .iter()
-        .any(|c| c.memory.profile_revision > c.memory.viewed_profile_revision);
+    let marks = clubhouse::journal::TabMarks {
+        colony: creatures
+            .iter()
+            .any(|c| c.memory.profile_revision > c.memory.viewed_profile_revision),
+        journal: save.companion.unread().next().is_some()
+            && !matches!(*tab, SettingsTab::Today | SettingsTab::Journal),
+    };
+    if root
+        .ctx()
+        .input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::W))
+    {
+        outcome.close_notebook = true;
+    }
+    // A page can be turned from the keyboard, as well as by its tab.
+    if let Some(page) = clubhouse::journal::page_shortcut(root.ctx(), *tab) {
+        *tab = page;
+        *error = None;
+    }
+    // Turning to Today or the Journal reads the journal. What was new stays marked for as long
+    // as the reader stays on those two pages, and is let go of when they turn elsewhere.
+    if matches!(*tab, SettingsTab::Today | SettingsTab::Journal) {
+        if clubhouse.reading.is_none() {
+            clubhouse.reading = Some(clubhouse::today::Reading {
+                unread: save.companion.unread().cloned().collect(),
+            });
+        }
+        if save.companion.unread().next().is_some()
+            || save.companion.journal.iter().map(|e| e.at).max() > save.companion.journal_seen_until
+        {
+            outcome.mark_journal_read = true;
+        }
+    } else {
+        clubhouse.reading = None;
+    }
     let conditions = clubhouse::journal::conditions(save, monitors);
     let page_left = window.left() + spread.cover;
     let mut open_tab = egui::Rect::NOTHING;
@@ -804,7 +888,7 @@ fn draw_settings(
                 cover,
                 page_left,
                 tab,
-                unseen,
+                marks,
                 &conditions,
                 text_scale,
             );
@@ -865,11 +949,15 @@ fn draw_settings(
                 *tab == SettingsTab::Studio && clubhouse.adoption_footer(ui, save, outcome);
             if !adoption_footer || settings != saved {
                 let dirty = settings != saved;
-                let status = if dirty {
-                    "Unapplied preferences"
+                let pending = pending_changes(saved, settings);
+                let status_text = if !dirty {
+                    "Preferences are saved".to_owned()
+                } else if pending.is_empty() || pending.len() > 3 {
+                    "Unapplied preferences".to_owned()
                 } else {
-                    "Preferences are saved"
+                    format!("Not applied yet: {}", pending.join(", "))
                 };
+                let status = status_text.as_str();
                 // The status and its two buttons share a row where they fit; in a narrow window
                 // the buttons go to a row of their own rather than over the status.
                 let padding = 2.0 * ui.spacing().button_padding.x;
@@ -963,16 +1051,40 @@ fn draw_settings(
         egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
             if let Some(reason) = clubhouse.recovery.clone() {
                 clubhouse::card(ui, |ui| {
-                    ui.heading("Your saved colony needs attention");
-                    ui.label(reason);
-                    ui.label("Your original files are untouched. This temporary colony will not overwrite them. Restore a backup below, or preserve the files and start fresh.");
+                    clubhouse::journal::kicker(ui, "Your saved colony needs attention");
+                    ui.heading("Nothing has been lost");
+                    ui.label(format!("Formiga could not read the colony it saved last time: {reason}"));
+                    ui.label("Those files are kept exactly as they were, and nothing will be written over them. The colony on your desktop for now is a temporary one, and it will not be saved until you choose what to do.");
+                    ui.add_space(4.0);
+                    ui.strong("Choose one");
+                    ui.small("Restore a backup you exported earlier, or a copy of colony.json from another computer:");
                     if ui.button("Restore a colony backup…").clicked() { outcome.restore_colony = true; }
+                    ui.add_space(4.0);
+                    ui.small("Or keep the unreadable files as recovery copies beside the colony, and carry on with this new one:");
                     ui.checkbox(&mut clubhouse.fresh_confirmed, "Keep recovery copies and start a new colony");
                     if ui.add_enabled(clubhouse.fresh_confirmed, egui::Button::new("Start fresh with recovery copies")).clicked() { outcome.start_fresh_recovery = true; }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.small(format!("The files are in {save_location}"));
+                        if ui.small_button("Open diagnostic logs").clicked() { outcome.open_logs = true; }
+                    });
+                });
+                ui.add_space(16.0);
+            }
+            if let Some(trouble) = clubhouse.save_trouble.clone() {
+                clubhouse::card(ui, |ui| {
+                    clubhouse::journal::kicker(ui, "Saving has stopped for now");
+                    ui.label(trouble);
+                    ui.label("Your colony carries on as usual, and the last good save and its backup are untouched. Formiga keeps trying every few seconds and will say so here when it works again.");
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Try again now").clicked() { outcome.retry_save = true; }
+                        if ui.button("Export a backup elsewhere…").on_hover_text("Write the colony as it is now to another folder or drive.").clicked() { outcome.export_colony = true; }
+                        if ui.small_button("Open diagnostic logs").clicked() { outcome.open_logs = true; }
+                    });
                 });
                 ui.add_space(16.0);
             }
             match tab {
+                SettingsTab::Today => clubhouse.today(ui, save, monitors, tab),
                 SettingsTab::Colony => {
                     clubhouse::journal::page_heading(ui, SettingsTab::Colony, "Your colony", &clubhouse::journal::colony_observation(creatures));
                     colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, clubhouse, outcome);
@@ -992,7 +1104,7 @@ fn draw_settings(
                 }
                 SettingsTab::About => {
                     clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
-                    clubhouse::card(ui, |ui| {
+                    clubhouse::wide_card(ui, |ui| {
                         ui.strong("Colony backups");
                         ui.label("A full backup includes names, memories, relationships, the journal, and preferences. Keep it private or move it to another computer.");
                         if ui.button("Export full colony…").clicked() { outcome.export_colony = true; }
@@ -1009,7 +1121,7 @@ fn draw_settings(
                 &ui.ctx().layer_painter(egui::LayerId::background()),
                 open_tab,
                 *tab,
-                unseen,
+                marks,
                 text_scale,
             );
             clubhouse::journal::turn_page(
@@ -1021,6 +1133,106 @@ fn draw_settings(
                 save.settings.reduce_motion,
             );
         });
+}
+
+/// The preferences changed but not yet applied, by the names their controls go by.
+pub(crate) fn pending_changes(saved: &Settings, draft: &Settings) -> Vec<&'static str> {
+    let mut pending = Vec::new();
+    for (changed, name) in [
+        (saved.visible != draft.visible, "show colony"),
+        (saved.paused != draft.paused, "pause"),
+        (
+            saved.direct_manipulation != draft.direct_manipulation,
+            "petting",
+        ),
+        (saved.cursor_reactions != draft.cursor_reactions, "cursor"),
+        (saved.window_ledges != draft.window_ledges, "window ledges"),
+        (saved.reduce_motion != draft.reduce_motion, "reduce motion"),
+        (
+            saved.launch_at_login != draft.launch_at_login,
+            "launch at login",
+        ),
+        (saved.display_scale != draft.display_scale, "size"),
+        (saved.habitat != draft.habitat, "habitat"),
+        (
+            saved.application_occlusion_rules != draft.application_occlusion_rules
+                || saved.fullscreen_app_occlusion != draft.fullscreen_app_occlusion,
+            "applications",
+        ),
+    ] {
+        if changed {
+            pending.push(name);
+        }
+    }
+    pending
+}
+
+/// What applying preferences changes about how the colony behaves, said the way it will look on
+/// the desktop: "Applied · they'll keep off window ledges · they'll hold still". `None` when
+/// nothing the companions do changes.
+pub(crate) fn behavior_change_notice(before: &Settings, after: &Settings) -> Option<String> {
+    let mut said = Vec::new();
+    let mut say = |changed: bool, on: &'static str, off: &'static str, value: bool| {
+        if changed {
+            said.push(if value { on } else { off });
+        }
+    };
+    say(
+        before.visible != after.visible,
+        "the colony is back on your desktop",
+        "the colony is hidden; they carry on out of sight",
+        after.visible,
+    );
+    say(
+        before.paused != after.paused,
+        "everyone holds still until you resume",
+        "everyone is moving again",
+        after.paused,
+    );
+    say(
+        before.window_ledges != after.window_ledges,
+        "they may climb onto window ledges again",
+        "they'll keep off window ledges and come down",
+        after.window_ledges,
+    );
+    say(
+        before.cursor_reactions != after.cursor_reactions,
+        "they'll notice your cursor again",
+        "they'll ignore your cursor",
+        after.cursor_reactions,
+    );
+    say(
+        before.direct_manipulation != after.direct_manipulation,
+        "you can pet and carry them again",
+        "clicks pass straight through them",
+        after.direct_manipulation,
+    );
+    say(
+        before.reduce_motion != after.reduce_motion,
+        "motion is reduced: fewer bounces and no page turns",
+        "full motion is back",
+        after.reduce_motion,
+    );
+    say(
+        before.fullscreen_app_occlusion != after.fullscreen_app_occlusion,
+        "they'll hide behind full-screen apps",
+        "they'll stay visible over full-screen apps",
+        after.fullscreen_app_occlusion,
+    );
+    if before.display_scale != after.display_scale {
+        said.push(match after.display_scale {
+            2 => "they're drawn small",
+            4 => "they're drawn large",
+            _ => "they're drawn at medium size",
+        });
+    }
+    if before.habitat != after.habitat {
+        said.push("anyone outside the new habitat walks back inside");
+    }
+    if before.application_occlusion_rules != after.application_occlusion_rules {
+        said.push("the chosen apps' windows now cover them");
+    }
+    (!said.is_empty()).then(|| format!("Applied · {}", said.join(" · ")))
 }
 
 fn general_tab(
@@ -1043,7 +1255,10 @@ fn general_tab(
     clubhouse.tour_mark(ui, TourMark::Quiet, quiet);
     ui.add_space(16.0);
     clubhouse::card(ui, |ui| {
-        ui.strong("Saved routines");
+        ui.strong("Saved routines").on_hover_text(
+            "A routine is a snapshot of where the colony may go, whether it climbs windows, \
+             whether it reacts to the cursor, and whether motion is reduced.",
+        );
         ui.small("Keep a Work and Relax setup for habitat, movement, and cursor reactions. Loading a routine previews its preferences before Apply.");
         for (index, name) in ["Work", "Relax"].into_iter().enumerate() {
             ui.horizontal(|ui| {
@@ -1072,21 +1287,45 @@ fn general_tab(
     clubhouse::appearance_controls(ui, save, outcome);
     ui.add_space(18.0);
     clubhouse::journal::kicker(ui, "On your desktop");
-    ui.checkbox(&mut settings.visible, "Show colony");
-    ui.checkbox(&mut settings.paused, "Pause ambient behavior");
+    ui.small("Changes here take effect when you apply them, and the footer says what changed.");
+    ui.checkbox(&mut settings.visible, "Show colony")
+        .on_hover_text(
+            "Hidden, the colony carries on out of sight: it keeps its days, and the journal keeps \
+         writing.",
+        );
+    ui.checkbox(&mut settings.paused, "Pause ambient behavior")
+        .on_hover_text(
+            "Everyone holds still where they are. Nothing new happens, and nothing is replayed \
+         when you resume.",
+        );
     ui.checkbox(
         &mut settings.direct_manipulation,
         "Allow petting and dragging",
-    );
-    ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement");
+    )
+    .on_hover_text("Off, clicks pass straight through companions to whatever is underneath.");
+    ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement")
+        .on_hover_text(
+            "Companions notice the pointer: a curious one comes to look, a wary one steps aside. \
+             Only where the pointer is — never what it is pointing at.",
+        );
     ui.checkbox(
         &mut settings.window_ledges,
         "Explore application-window ledges",
+    )
+    .on_hover_text(
+        "Companions may climb onto the tops of your windows and ride along when one moves. \
+         Formiga sees only where windows are, never what is in them.",
     );
-    ui.checkbox(&mut settings.reduce_motion, "Reduce motion");
-    ui.checkbox(&mut settings.launch_at_login, "Launch at login");
+    ui.checkbox(&mut settings.reduce_motion, "Reduce motion")
+        .on_hover_text(
+            "Calmer movement on the desktop — no bounces, tosses or wiggles — and no page turns in \
+         this notebook.",
+        );
+    ui.checkbox(&mut settings.launch_at_login, "Launch at login")
+        .on_hover_text("Start Formiga when you sign in, so the colony is there when you are.");
     ui.add_space(10.0);
-    clubhouse::journal::kicker(ui, "Creature size");
+    clubhouse::journal::kicker(ui, "Creature size")
+        .on_hover_text("How large companions are drawn. It changes nothing about what they do.");
     ui.horizontal(|ui| {
         for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
             ui.selectable_value(&mut settings.display_scale, scale, name);
@@ -1287,6 +1526,42 @@ fn colony_tab(
     } else {
         ui.label("Closest friend: still getting acquainted");
     }
+    // What the notebook can say about this companion with evidence, and the moments it shared
+    // most recently, read from what was recorded and from nothing else.
+    let now = time::OffsetDateTime::now_utc();
+    let offset = clubhouse::local_offset();
+    if let Some(friend) = closest_friend {
+        let (low, high) = (creature.id.min(friend.id), creature.id.max(friend.id));
+        if let Some(grew_close) = colony.save.companion.journal.iter().find(|e| {
+            e.creature == Some(low) && e.moment == formiga_core::JournalMoment::Friendship(high)
+        }) {
+            ui.small(format!(
+                "Grew close to {} on {}, as the journal has it.",
+                friend.name,
+                grew_close.at.to_offset(offset).date()
+            ));
+        }
+        if let Some(memory) =
+            formiga_core::tally_between(&colony.save.tallies, creature.id, friend.id)
+                .and_then(|pair| pair.tally.memory)
+        {
+            ui.small(format!(
+                "Last time together: {} {}.",
+                clubhouse::today::shared_text(memory.kind),
+                clubhouse::today::ago_text(memory.at, now, offset)
+            ));
+        }
+    }
+    let noticed = formiga_core::observations_of(colony.save, creature.id);
+    if !noticed.is_empty() {
+        ui.add_space(6.0);
+        for observation in &noticed {
+            let (said, evidence) =
+                clubhouse::today::observation_text(colony.save, monitors, observation);
+            ui.label(said);
+            ui.small(egui::RichText::new(evidence).color(clubhouse::muted()));
+        }
+    }
     ui.add_space(18.0);
     let name = ui.group(|ui| {
         ui.strong("Name");
@@ -1459,7 +1734,7 @@ fn little_ways(creature: &Creature) -> String {
     ways.join(" · ")
 }
 
-fn activity_label(action: ActionKind) -> String {
+pub(crate) fn activity_label(action: ActionKind) -> String {
     match action {
         ActionKind::Idle => "taking a quiet moment".into(),
         ActionKind::Traverse => "exploring".into(),
@@ -1669,7 +1944,23 @@ fn together_label(
     }
 }
 
-fn display_label(display: formiga_core::DisplayKey, monitors: &[MonitorInfo]) -> String {
+/// What each habitat preset leaves companions, said on hover.
+fn habitat_preset_help(preset: HabitatPreset) -> &'static str {
+    match preset {
+        HabitatPreset::EntireDesktop => "Every display, edge to edge.",
+        HabitatPreset::PrimaryDisplay => "Only the main display; the others stay clear.",
+        HabitatPreset::BottomEdge => {
+            "A band along the bottom quarter of each display, just above the Dock or taskbar."
+        }
+        HabitatPreset::BottomCorners => "The two bottom corners of each display.",
+        HabitatPreset::LowerHalf => "The lower half of each display.",
+        HabitatPreset::Custom => {
+            "Regions you draw yourself, with Edit on desktop or the list below."
+        }
+    }
+}
+
+pub(crate) fn display_label(display: formiga_core::DisplayKey, monitors: &[MonitorInfo]) -> String {
     monitors
         .iter()
         .position(|monitor| monitor.display_key == display)
@@ -1679,7 +1970,7 @@ fn display_label(display: formiga_core::DisplayKey, monitors: &[MonitorInfo]) ->
         )
 }
 
-fn region_label(cell: u8) -> &'static str {
+pub(crate) fn region_label(cell: u8) -> &'static str {
     [
         "upper left",
         "upper center",
@@ -1730,7 +2021,8 @@ fn habitat_tab(
                     &mut settings.habitat.preset,
                     preset,
                     habitat_preset_label(preset),
-                );
+                )
+                .on_hover_text(habitat_preset_help(preset));
             }
         });
     if settings.habitat.preset != previous_preset
@@ -1739,7 +2031,16 @@ fn habitat_tab(
         settings.habitat.zones.clear();
     }
     ui.horizontal(|ui| {
-        if !editor_active && ui.button("Edit on desktop").clicked() {
+        if !editor_active
+            && ui
+                .button("Edit on desktop")
+                .on_hover_text(
+                    "Draw the habitat right on your screen: drag with the left button to welcome an \
+                     area, with the right to keep companions out of one. Enter applies, Escape \
+                     cancels.",
+                )
+                .clicked()
+        {
             outcome.edit_habitat = Some(settings.habitat.clone());
         }
         if editor_active && ui.button("Apply desktop edit").clicked() {
@@ -1751,7 +2052,11 @@ fn habitat_tab(
         if editor_active && ui.button("Reset").clicked() {
             outcome.reset_habitat_edit = true;
         }
-        if ui.button("Gather creatures here").clicked() {
+        if ui
+            .button("Gather creatures here")
+            .on_hover_text("Brings everyone back inside the habitat, wherever they have wandered.")
+            .clicked()
+        {
             outcome.gather = true;
         }
     });
@@ -1864,8 +2169,9 @@ fn applications_tab(
     let mut remove = None;
     for (index, rule) in settings.application_occlusion_rules.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            ui.checkbox(&mut rule.enabled, "");
-            ui.label(&rule.display_name);
+            // The application's own name is the checkbox's label, so a screen reader says which
+            // application it is about.
+            ui.checkbox(&mut rule.enabled, rule.display_name.as_str());
             if ui.small_button("Remove").clicked() {
                 remove = Some(index);
             }
@@ -1914,23 +2220,51 @@ fn about_tab(
     update_status: &UpdateStatus,
     automatic_update_checks: bool,
 ) {
-    ui.heading(format!("Formiga {APP_VERSION}"));
-    ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
-    ui.add_space(8.0);
-    ui.label(
-        "No accounts, screenshots, window titles, keystrokes, behavioral uploads, or telemetry.",
-    );
-    ui.label("Optional update checks contact only the public Formiga repository on GitHub.");
-    let mut automatic = automatic_update_checks;
-    if ui
-        .checkbox(&mut automatic, "Check GitHub for updates automatically")
-        .changed()
-    {
-        outcome.automatic_update_checks = Some(automatic);
-    }
-    ui.add_space(6.0);
-    ui.group(|ui| {
+    clubhouse::wide_card(ui, |ui| {
+        clubhouse::journal::kicker(ui, "Colophon");
+        ui.heading(format!("Formiga {APP_VERSION}"));
+        ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
+        ui.small(format!(
+            "A {} build for {}. MIT licensed; the versions of everything it is built from are \
+             recorded in Cargo.lock.",
+            if cfg!(debug_assertions) {
+                "development"
+            } else {
+                "release"
+            },
+            if cfg!(target_os = "macos") {
+                "macOS"
+            } else {
+                "Windows"
+            }
+        ));
+        ui.hyperlink_to(
+            "Project repository",
+            "https://github.com/Von-Van/Formiga-Desktop",
+        );
+    });
+    ui.add_space(12.0);
+    clubhouse::wide_card(ui, |ui| {
+        clubhouse::journal::kicker(ui, "Privacy");
+        ui.label(
+            "No accounts, screenshots, window titles, keystrokes, behavioral uploads, or \
+             telemetry. Formiga sees where windows are, never what is in them.",
+        );
+        ui.small("Optional update checks contact only the public Formiga repository on GitHub.");
+    });
+    ui.add_space(12.0);
+    clubhouse::wide_card(ui, |ui| {
         clubhouse::journal::kicker(ui, "Updates");
+        let mut automatic = automatic_update_checks;
+        if ui
+            .checkbox(&mut automatic, "Check GitHub for updates automatically")
+            .on_hover_text(
+                "At most once a day, when Formiga starts. Nothing is downloaded without asking.",
+            )
+            .changed()
+        {
+            outcome.automatic_update_checks = Some(automatic);
+        }
         match update_status {
             UpdateStatus::Idle => {
                 ui.label("No update check has run in this session.");
@@ -1944,8 +2278,17 @@ fn about_tab(
                     ui.label("Checking GitHub Releases…");
                 });
             }
-            UpdateStatus::UpToDate { .. } => {
-                ui.label("Formiga is up to date.");
+            UpdateStatus::UpToDate { checked_at_unix } => {
+                let checked = time::OffsetDateTime::from_unix_timestamp(*checked_at_unix)
+                    .map(|at| at.to_offset(clubhouse::local_offset()));
+                ui.label(match checked {
+                    Ok(at) => format!(
+                        "Formiga is up to date, as of {:02}:{:02}.",
+                        at.hour(),
+                        at.minute()
+                    ),
+                    Err(_) => "Formiga is up to date.".to_owned(),
+                });
                 if ui.button("Check Again").clicked() {
                     outcome.check_updates = true;
                 }
@@ -1962,7 +2305,14 @@ fn about_tab(
                     });
                 }
                 ui.hyperlink_to("View this release on GitHub", &release.page_url);
-                if ui.button("Download Verified Update").clicked() {
+                if ui
+                    .button("Download Verified Update")
+                    .on_hover_text(
+                        "Downloaded in the background and checked against the release's SHA-256 \
+                         before it can be opened. Your colony carries on meanwhile.",
+                    )
+                    .clicked()
+                {
                     outcome.download_update = true;
                 }
             }
@@ -1977,6 +2327,9 @@ fn about_tab(
                     "Formiga {} is downloaded and SHA-256 verified.",
                     downloaded.release.version
                 ));
+                ui.small(
+                    "Your colony is saved before the installer opens, and carries on afterwards.",
+                );
                 #[cfg(target_os = "windows")]
                 let install_label = "Run Update Installer and Quit Formiga";
                 #[cfg(target_os = "macos")]
@@ -1986,27 +2339,28 @@ fn about_tab(
                 }
             }
             UpdateStatus::Failed(message) => {
-                ui.colored_label(
-                    egui::Color32::from_rgb(241, 142, 119),
-                    format!("Update check failed: {message}"),
-                );
+                let (headline, advice) = crate::explain::update(message);
+                ui.colored_label(egui::Color32::from_rgb(196, 88, 64), headline);
+                ui.label(advice);
                 if ui.button("Try Again").clicked() {
                     outcome.check_updates = true;
                 }
             }
         }
     });
-    ui.add_space(8.0);
-    ui.label(format!("Save: {save_location}"));
-    ui.label("License: MIT. Third-party dependency versions are recorded in Cargo.lock.");
-    ui.hyperlink_to(
-        "Project repository",
-        "https://github.com/Von-Van/Formiga-Desktop",
-    );
-    ui.add_space(8.0);
-    if ui.button("Open diagnostic logs").clicked() {
-        outcome.open_logs = true;
-    }
+    ui.add_space(12.0);
+    clubhouse::wide_card(ui, |ui| {
+        clubhouse::journal::kicker(ui, "Where things are kept");
+        ui.label(format!("Colony: {save_location}"));
+        ui.small(
+            "A backup copy sits beside it, and the notebook remembers its own window position in \
+             a small file next to them. The logs say what Formiga did, never what was on your \
+             screen.",
+        );
+        if ui.button("Open diagnostic logs").clicked() {
+            outcome.open_logs = true;
+        }
+    });
 }
 
 #[cfg(test)]

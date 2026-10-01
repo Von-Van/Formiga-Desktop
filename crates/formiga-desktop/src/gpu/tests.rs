@@ -446,7 +446,7 @@ fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
     assert_eq!(
         (VILLAGE_ATLAS_WIDTH, VILLAGE_ATLAS_HEIGHT),
         (SHELTER_SIZE * 7, SHELTER_SIZE * 4),
-        "twenty-eight cells, one 560x320 texture"
+        "twenty-eight cells, one 672x384 texture"
     );
 }
 

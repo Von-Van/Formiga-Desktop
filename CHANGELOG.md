@@ -2,6 +2,133 @@
 
 All notable changes are documented here.
 
+## [0.65.0] - 2026-10-01
+
+### Added
+
+- The notebook opens on a new first page, **Today**: what is new since the journal was last read,
+  "Today in your colony", what each companion is doing right now, the last seven days counted by
+  kind with the week's milestones, what the notebook has observed, and the last warm moment each
+  pair shared in the past fortnight. A colony under a day old is welcomed first, with the three
+  things to try on the desktop, and every section says what will appear in it rather than standing
+  empty.
+- **Observations**, on the Today page and on each companion's own page: patterns the colony's own
+  records show, each printed with the counts it rests on — a companion that keeps to high places,
+  rides windows, finds the most, sleeps soundly, keeps to one corner of a display or plays the most;
+  the pair that keeps seeking each other out, one that follows another around, and the pairs that
+  nap, play, squabble or share finds the most; and regular visitors. Below its threshold, or tied
+  for the most, nothing is said, and only the standout pair is named for each kind.
+- Each pair keeps a **tally** of what it is seen doing together: calm spells, greetings, naps side
+  by side, games, finds brought over, squabbles, how often each went looking for the other of its
+  own accord, and the last warm moment they shared. A companion's page says when it grew close to
+  its closest friend, as the journal has it, and the last thing they did together.
+- The journal can be **searched** (⌘F or Ctrl+F) and filtered by kind of moment as well as by
+  companion, and says how much of it is showing. A **Milestones** card gathers its arrivals,
+  friendships and first visits, which are now set a little stronger in the log.
+- **A returning visitor** is written down as coming back, and which visit it is; the residents who
+  met it before wave and say hello instead of eyeing a stranger, while anyone who hatched since
+  greets it as the stranger it is to them. The guest book says how many visits each visitor has in
+  it, and the visiting card when a guest was last here.
+- **A quiet sign of news.** While something noteworthy in the journal — an arrival, a friendship, a
+  new preference or habit, a visit — has not been read, the Today and Journal tabs carry a dot and
+  the tray icon a small one in its corner. No sound, no count, nothing on the desktop; reading the
+  Today page or the Journal clears it, and what was new stays highlighted while you read.
+- The notebook **remembers where its window was** — position, size and whether it was zoomed — and
+  opens there again, or centred on the main display if that spot is no longer on any screen.
+- **Keyboard and screen readers.** ⌘1–⌘9 turn to a page (Ctrl on Windows), ⌘[ and ⌘] to the page
+  before and after, and ⌘W closes the notebook; every tab can be reached with Tab and turned to with
+  Enter or Space, shows a focus ring, and is named with its page number; the Collection's finds, the
+  pins and the Home page's shelves are named and ringed the same way, and each application rule's
+  checkbox is labelled with its application rather than left blank. egui's AccessKit support
+  is switched on for the notebook, so screen readers are offered its controls; it has not yet been
+  checked by hand with VoiceOver or Narrator.
+- An About Formiga item in the tray menu, and a colophon on the About page with the build, the
+  privacy promise, updates, and where everything is kept.
+- `formiga-tools decoration-sheet`: every house decoration on its own, on a cottage of each type,
+  and the four that light up, lit.
+
+### Changed
+
+- **The houses are a fifth larger** — half as large again as before 0.61.0 — beside the same
+  companions: the colony house draws at 36 twenty-fourths and a cottage at 30, the village atlas's
+  cells are 96 pixels, and the footprints are 84 and 68. A full village of six measures 539 shelter
+  pixels instead of 465; the keepsake trees keep their size and still stand in front of the end
+  houses. Roofs are a fifth higher, and companions still sit right on them.
+- **Every decoration is redrawn**, about twice the size, as one solid shape ringed with an outline,
+  so each reads at desktop scale as what it is: a four-pointed star, a weather vane with its arrow
+  and fletched tail, a pennant flying in two stripes, a round bird with its beak, a pinwheel's four
+  sails, bunting in three colours, fairy lights and paper lanterns that glow after dark, a wind
+  chime, a leaf garland, a wreath with a bow, a planter box in flower, ivy climbing from the ground,
+  a hanging sign with a painted heart, a bracket lamp, a clock, a birdhouse on its post, a lucky
+  horseshoe, a letterbox with its flag up, a doorstone, a woodpile, a watering can, a pair of
+  wellingtons, a rain barrel, a tall flower, a potted plant, a ribbed pumpkin, a pair of mushrooms
+  and a post lantern. Wall pieces sit between the wall's edge and the door and never cover it;
+  ground pieces stand half in front of the house's corners. Every colony's choices hang exactly
+  where they did.
+- The colony card and postcards keep the scale they drew a village at, so their houses are a fifth
+  taller too.
+- Applying preferences says what will change on the desktop ("they'll keep off window ledges and
+  come down"), the footer names what is waiting to be applied, and a quiet moment and a roaming
+  leaning say what they mean when they are set. The behaviour checkboxes, saved routines and update
+  checks explain themselves on hover.
+- Errors say what to do. A share code that will not read says which way it is wrong — part missing,
+  a character no code uses, a typo, or a code from a newer Formiga; a picture says whether it is too
+  large, not a PNG or JPEG, or damaged; an export says whether it was refused permission, the disk
+  is full, or the folder has gone; a backup says whether it is from a newer Formiga or not a colony
+  at all; an update says whether GitHub could not be reached, the download did not check out, or it
+  would not open. A failure you caused by asking for something — an export, a restore, opening an
+  update — is also shown in a native dialog; background failures stay on the About page.
+- The tour is nineteen steps and starts on the Today page.
+- The Journal, Collection and Guest Book say what will appear in them, and how, while they are empty.
+- The journal holds on to the colony's milestones: when it is full, an everyday moment rolls out
+  before an arrival, a friendship or a first visit does, up to 24 of them, inside its 64.
+
+### Fixed
+
+- A colony that cannot be saved — a full disk, a folder made read-only — no longer fails quietly.
+  It carries on, keeps trying at every checkpoint, says so in the tray icon's tooltip, and shows a
+  calm card on every page of the notebook with the reason, Try again now, a way to export the
+  colony elsewhere, and the logs, until a save works and the notebook says it is saving again.
+- Recovery from a colony that could not be read now says first that nothing has been lost, and
+  lays out the two choices.
+- A doorway test sampled the cell as it was before 0.61.0, so it could no longer fail; it reads the
+  real doorway again.
+
+### Compatibility
+
+- Save version 23 adds the pair tallies, the journal's read marker and the return-visit moment. A
+  colony from an earlier release keeps every companion, bond, journal moment, visitor and house
+  exactly as it was; every pair's tally starts at nothing, since nothing was counted before, and the
+  journal counts as read up to its newest moment. An older build refuses a version 23 colony rather
+  than dropping what it does not know.
+- The village is fitted to the room above the ground by how tall its houses are drawn, 80 pixels,
+  rather than by their 96-pixel cell, so a band along the bottom of a display that held the village
+  before still holds it.
+- On a display too narrow for every house laid out comfortably, the village is laid out snug: the
+  colony house tucks into the corner, the outward keepsake tree gives up its ground, and the houses
+  stand shoulder to shoulder on footprints only as wide as what is drawn on them. Every display and
+  size shows at least as many houses as 0.64.0 did — without it, a full colony at the default size on
+  a 1280- to 1440-point display at 100% would have lost a cottage — and a test holds it to 0.64.0's
+  numbers.
+- The notebook's window position is kept in `notebook-window.json`, not in the colony file, so a
+  backup does not carry it to another computer.
+- The notebook now includes egui-winit's AccessKit adapter, which does nothing until an assistive
+  app asks.
+
+### Measured
+
+- A tick costs what it did in 0.64.0 (six creatures on a quiet desktop 3.1 µs against 3.4, at home
+  4.0 against 4.1). As first written it was 12–15% dearer: the pair tallies lived inside the bond
+  records every decision copies, and choosing the village's fit laid the whole walk out dozens of
+  times a tick. Both were fixed before release, and tests now hold a bond record to 24 bytes and
+  the quick fit check to placing every house.
+- A presented frame costs the same, about 2.1 ms of process CPU. With the houses out, residents
+  walk a little more of the time across the wider village — 68.7% of ticks against 65.3% for the
+  owner's colony of five over twenty simulated minutes, about 5% more frames — and the
+  documented method measured that colony at home at 2.96% average CPU and 64.0 MB resident.
+- The village atlas is 1,032,192 bytes per display, from 716,800, and the app binary is 445 KB
+  larger, most likely the AccessKit adapter.
+
 ## [0.64.0] - 2026-10-01
 
 ### Changed

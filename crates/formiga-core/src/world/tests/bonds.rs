@@ -31,6 +31,77 @@ fn a_full_colony_has_exactly_one_canonical_bond_record_for_every_pair() {
     }
 }
 
+/// The tallies follow the bonds: counted the right way round as experiences arrive, kept one
+/// per pair in canonical order when a file has them otherwise, and gone with a companion who has
+/// left. Bond scores and tallies are kept apart, so neither ever changes the other.
+#[test]
+fn pair_tallies_are_counted_canonically_and_follow_the_colony() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut world = two_creature_world([56; 32], created);
+    let (a, b) = (world.save.creatures[0].id, world.save.creatures[1].id);
+    let (low, high) = (a.min(b), a.max(b));
+    let scores = *relationship_between(&world.save.relationships, a, b).unwrap();
+    // The higher id goes looking for the lower one, twice.
+    for _ in 0..2 {
+        World::emit(
+            &mut world.events,
+            WorldEvent::BondInteraction {
+                a: high,
+                b: low,
+                experience: RelationshipExperience::Followed,
+            },
+        );
+    }
+    world.project_events(created + Duration::hours(1));
+    let pair = tally_between(&world.save.tallies, a, b).expect("counted");
+    assert_eq!((pair.a, pair.b), (low, high));
+    assert_eq!(
+        pair.tally.sought,
+        [0, 2],
+        "the second of the pair did the seeking"
+    );
+    assert_eq!(pair.tally.calm_spells, 2);
+    // The bond moved as it always has; the tally is beside it, not in it.
+    let after = *relationship_between(&world.save.relationships, a, b).unwrap();
+    assert_ne!(after, scores);
+    assert_eq!(std::mem::size_of::<CreatureRelationship>(), 24);
+
+    // A file holding the pair the other way round, twice over, and a pair with somebody gone.
+    let mut save = world.save.clone();
+    save.tallies = vec![
+        PairTally {
+            a: high,
+            b: low,
+            tally: RelationshipTally {
+                sought: [5, 1],
+                ..Default::default()
+            },
+        },
+        PairTally {
+            a: low,
+            b: high,
+            tally: RelationshipTally::default(),
+        },
+        PairTally {
+            a: low,
+            b: 999_999,
+            tally: RelationshipTally {
+                shared_rests: 9,
+                ..Default::default()
+            },
+        },
+    ];
+    let reopened = World::from_save(save);
+    assert_eq!(reopened.save.tallies.len(), 1);
+    let pair = reopened.save.tallies[0];
+    assert_eq!((pair.a, pair.b), (low, high));
+    assert_eq!(
+        pair.tally.sought,
+        [1, 5],
+        "who sought whom stays with the right one"
+    );
+}
+
 #[test]
 fn five_calm_minutes_project_into_one_compact_bond_update() {
     let created = datetime!(2026-01-01 0:00 UTC);

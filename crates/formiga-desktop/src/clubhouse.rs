@@ -13,6 +13,7 @@ use time::OffsetDateTime;
 pub(crate) mod arrange;
 mod collection;
 pub(crate) mod journal;
+pub(crate) mod today;
 pub(crate) mod tour;
 
 /// The interface palette. Cream, forest, and mint by daylight; charcoal and sage after dark. The
@@ -172,6 +173,14 @@ pub struct Clubhouse {
     pub recovery: Option<String>,
     /// Which companion the journal is filtered to, if any. A view preference, never saved.
     pub journal_filter: Option<CreatureId>,
+    /// Which kind of moment the journal is filtered to, if any. Never saved.
+    pub journal_kind: Option<MomentKind>,
+    /// What the journal is being searched for. Never saved.
+    pub journal_search: String,
+    /// What was new when the reader turned to Today or the Journal, kept while they read it.
+    pub(crate) reading: Option<today::Reading>,
+    /// Why the colony could not be saved, while it cannot. Set by the app before every frame.
+    pub save_trouble: Option<String>,
     pub restore_confirmed: bool,
     pub fresh_confirmed: bool,
     pub replace_confirmed: bool,
@@ -464,7 +473,13 @@ impl Clubhouse {
                             }
                         }
                         Err(error) => {
-                            ui.colored_label(Color32::from_rgb(146, 61, 44), error.to_string());
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(crate::explain::share_code(&error))
+                                        .color(Color32::from_rgb(146, 61, 44)),
+                                )
+                                .wrap(),
+                            );
                         }
                     }
                 }
@@ -1026,13 +1041,21 @@ impl Clubhouse {
 /// and something to click. A `Frame` works out where it goes before the row has decided whether it
 /// still fits, so a row of them never wraps and runs off the side of the page; a space allocated
 /// whole does wrap, like a word.
+///
+/// `label` is what a screen reader calls it, and `selected` whether it is the one chosen; a tile
+/// with the keyboard on it is ringed in the accent, like every other control.
 pub(crate) fn tile(
     ui: &mut Ui,
     size: egui::Vec2,
     fill: Color32,
     edge: Color32,
+    label: &str,
+    selected: bool,
 ) -> (egui::Response, egui::Rect) {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label)
+    });
     let painter = ui.painter();
     painter.rect_filled(rect, 2.0, fill);
     painter.rect_stroke(
@@ -1041,6 +1064,14 @@ pub(crate) fn tile(
         egui::Stroke::new(1.0, edge),
         egui::StrokeKind::Inside,
     );
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect.expand(2.0),
+            0.0,
+            egui::Stroke::new(2.0, forest()),
+            egui::StrokeKind::Outside,
+        );
+    }
     (response, rect)
 }
 
@@ -1101,6 +1132,15 @@ pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerR
     journal::stepped_outline(&mut fills, shown.response.rect, 2.0, line());
     fills.paint(ui.painter());
     shown
+}
+/// A [`card`] as wide as the page, for a page whose sections should read as one column rather
+/// than a ragged stack of slips.
+pub fn wide_card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    let width = ui.available_width() - CARD_EDGES;
+    card(ui, |ui| {
+        ui.set_min_width(width.max(0.0));
+        contents(ui)
+    })
 }
 pub fn words(value: &str) -> String {
     let mut result = String::new();
@@ -1177,11 +1217,33 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
         ),
         // A visitor is never a colony member, so the moment carries the name it went by.
         JournalMoment::Visit(ref visitor) => format!("{visitor} came by the houses"),
+        JournalMoment::Revisit(ref visitor, visit) => format!(
+            "{visitor} came back to visit, for the {} time",
+            ordinal(u32::from(visit))
+        ),
         JournalMoment::Habit(habit) => format!(
             "{name} picked up a little habit: {}",
             habit.label().to_lowercase()
         ),
     }
+}
+
+/// "second", "third", … "12th".
+pub(crate) fn ordinal(n: u32) -> String {
+    const WORDS: [&str; 11] = [
+        "", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
+        "tenth",
+    ];
+    if let Some(word) = WORDS.get(n as usize).filter(|w| !w.is_empty()) {
+        return (*word).to_owned();
+    }
+    let suffix = match (n % 10, n % 100) {
+        (1, x) if x != 11 => "st",
+        (2, x) if x != 12 => "nd",
+        (3, x) if x != 13 => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 fn moment_card(
@@ -1190,6 +1252,7 @@ fn moment_card(
     entry: &JournalEntry,
     offset: time::UtcOffset,
     outcome: &mut SettingsOutcome,
+    new: bool,
 ) {
     // A line in the log: when, what, and whether it is kept. A kept moment is dated, since it
     // stays long after its day; one under its day's heading needs only the time.
@@ -1230,7 +1293,23 @@ fn moment_card(
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.set_width(text_room);
-                ui.add(egui::Label::new(moment_text(save, entry)).wrap());
+                let text = moment_text(save, entry);
+                // A landmark is set a little stronger, so arrivals and friendships stand out in a
+                // long run of everyday moments.
+                let text = if entry.moment.is_landmark() {
+                    RichText::new(text).strong()
+                } else {
+                    RichText::new(text)
+                };
+                let text = if new {
+                    text.background_color(note_fill())
+                } else {
+                    text
+                };
+                let label = ui.add(egui::Label::new(text).wrap());
+                if new {
+                    label.on_hover_text("New since the journal was last read");
+                }
             },
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1353,14 +1432,25 @@ fn guest_book(
     offset: time::UtcOffset,
 ) {
     let visiting = save.visitors.guest.as_ref();
+    journal::kicker(ui, "The guest book");
+    ui.add_space(6.0);
     if visiting.is_none()
         && save.visitors.guest_book.is_empty()
         && save.visitors.favorites.is_empty()
     {
+        card(ui, |ui| {
+            ui.strong("No visitors yet");
+            ui.label(
+                "Now and then someone passing through stops at the houses while they are out. \
+                 A friend can also send you their companion's code, which you paste into the \
+                 creature studio to invite them over for a day.",
+            );
+        });
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(8.0);
         return;
     }
-    ui.label(RichText::new("THE GUEST BOOK").color(forest()).size(11.0));
-    ui.add_space(6.0);
     if let Some(guest) = visiting {
         card(ui, |ui| {
             ui.strong(format!("{} is visiting", guest.creature.name));
@@ -1368,6 +1458,14 @@ fn guest_book(
                 VisitorSource::Invited => "Invited with a code, here for the day.",
                 VisitorSource::Wanderer => "Passing through, and stopped at the houses.",
             });
+            // A face the colony has seen before: how many times, and when it was last here.
+            if let Some((before, last)) = save.visitors.earlier_visits() {
+                ui.small(format!(
+                    "Back for a {} visit; last here {}. Whoever lived here then remembers them.",
+                    ordinal(u32::from(before) + 1),
+                    today::ago_text(last, OffsetDateTime::now_utc(), offset)
+                ));
+            }
             ui.horizontal_wrapped(|ui| {
                 let room = save.visitors.can_stay(&save.creatures);
                 let stay = ui.add_enabled(room, egui::Button::new("Ask to stay").fill(mint()));
@@ -1403,13 +1501,19 @@ fn guest_book(
             .show(ui, |ui| {
                 for entry in save.visitors.guest_book.iter().rev() {
                     let local = entry.visited_at_utc.to_offset(offset);
+                    let visits = save.visitors.visits_of(&entry.origin);
                     card(ui, |ui| {
                         ui.small(format!(
-                            "{} · {}",
+                            "{} · {}{}",
                             local.date(),
                             match entry.source {
                                 VisitorSource::Invited => "invited for a day",
                                 VisitorSource::Wanderer => "came by the houses",
+                            },
+                            if visits > 1 {
+                                format!(" · {visits} visits in the book")
+                            } else {
+                                String::new()
                             }
                         ));
                         ui.strong(&entry.name);
@@ -1464,10 +1568,12 @@ pub(crate) fn today<'a>(
             .filter(|record| on_date(record.first_at))
             .map(|record| record.variant)
             .collect(),
-        // A full journal whose oldest entry is itself from today has dropped whatever came
-        // before it, and some of that may have been today's too.
-        rolled_out: journal.len() >= MAX_JOURNAL_ENTRIES
-            && journal.first().is_some_and(|entry| on_date(entry.at)),
+        // A full journal whose oldest everyday moment is itself from today has dropped whatever
+        // came before it, and some of that may have been today's too. Milestones kept past their
+        // turn say nothing either way.
+        rolled_out: save
+            .companion
+            .rolled_out_since(date.midnight().assume_offset(offset)),
     }
 }
 
@@ -1541,17 +1647,13 @@ fn today_tally(moments: &[&JournalEntry]) -> Vec<String> {
 }
 
 impl Clubhouse {
-    /// Today at a glance, at the top of the journal: who the day was about, what kinds of thing
+    /// Today at a glance, on the Today page: who the day was about, what kinds of thing
     /// happened, what was found, and the latest few moments, all read from what was recorded.
-    fn today_card(&mut self, ui: &mut Ui, save: &SaveFile, offset: time::UtcOffset) {
+    pub(crate) fn today_card(&mut self, ui: &mut Ui, save: &SaveFile, offset: time::UtcOffset) {
         let date = OffsetDateTime::now_utc().to_offset(offset).date();
         let today = today(save, date, offset);
-        card(ui, |ui| {
-            ui.label(
-                RichText::new("TODAY IN YOUR COLONY")
-                    .color(forest())
-                    .size(11.0),
-            );
+        wide_card(ui, |ui| {
+            journal::kicker(ui, "Today in your colony");
             if today.moments.is_empty() && today.found.is_empty() {
                 ui.label(
                     "Nothing has been written down yet today. Moments appear here as they happen.",
@@ -1621,6 +1723,17 @@ impl Clubhouse {
     }
 }
 
+/// Whether a moment matches what the journal is being searched for: its words as the journal
+/// writes them, and the name of whoever it is about, ignoring case.
+pub(crate) fn moment_matches(save: &SaveFile, entry: &JournalEntry, search: &str) -> bool {
+    let search = search.trim().to_lowercase();
+    if search.is_empty() {
+        return true;
+    }
+    let text = moment_text(save, entry).to_lowercase();
+    search.split_whitespace().all(|word| text.contains(word))
+}
+
 pub fn journal(
     ui: &mut Ui,
     save: &SaveFile,
@@ -1635,16 +1748,78 @@ pub fn journal(
     );
     let offset = local_offset();
     let now = OffsetDateTime::now_utc();
-    clubhouse.today_card(ui, save, offset);
-    guest_book(ui, save, clubhouse, outcome, offset);
     if save.companion.journal.is_empty() && save.companion.pins.is_empty() {
         card(ui, |ui| {
             ui.heading("The story is just beginning");
-            ui.label("New arrivals, discoveries, learned preferences, and shared rituals will appear here as they happen.");
+            ui.label(
+                "Nothing has been written down yet. Arrivals, friendships, finds, new habits, \
+                 shared moments and visitors appear here as they happen — on their own time, \
+                 never on a schedule.",
+            );
+            ui.small(
+                "Leave Formiga running and come back later; the Today page will say what is new.",
+            );
         });
         ui.add_space(14.0);
+        guest_book(ui, save, clubhouse, outcome, offset);
         clubhouse.scrapbook(ui, save);
         return;
+    }
+    // The colony's landmarks, which the journal keeps past their turn to roll out: who arrived,
+    // who grew close, and who first came by.
+    let landmarks: Vec<&JournalEntry> = save
+        .companion
+        .journal
+        .iter()
+        .rev()
+        .filter(|entry| entry.moment.is_landmark())
+        .collect();
+    if !landmarks.is_empty() {
+        journal::kicker(ui, "Milestones").on_hover_text(
+            "Arrivals, friendships and first visits. The journal holds on to these when \
+             everyday moments roll out.",
+        );
+        ui.add_space(6.0);
+        wide_card(ui, |ui| {
+            for entry in landmarks.iter().take(8) {
+                let local = entry.at.to_offset(offset);
+                // The date and the moment as one line of type, so they share a baseline and the
+                // line wraps as a whole in a narrow window.
+                let mut line = journal::label_job(
+                    &format!(
+                        "{:02} {} {}   ",
+                        local.day(),
+                        &format!("{:?}", local.month())[..3],
+                        local.year()
+                    ),
+                    journal::label_size(journal::text_scale(ui)),
+                    muted(),
+                );
+                let body = ui
+                    .style()
+                    .text_styles
+                    .get(&egui::TextStyle::Body)
+                    .cloned()
+                    .unwrap_or_else(|| egui::FontId::proportional(14.0));
+                line.append(
+                    &moment_text(save, entry),
+                    0.0,
+                    egui::TextFormat {
+                        font_id: body,
+                        color: ink(),
+                        ..Default::default()
+                    },
+                );
+                ui.add(egui::Label::new(line).wrap());
+            }
+            if landmarks.len() > 8 {
+                ui.small(format!(
+                    "{} earlier milestones further down.",
+                    landmarks.len() - 8
+                ));
+            }
+        });
+        ui.add_space(12.0);
     }
     // Kept moments sit above the rolling journal and are not repeated inside it. They are read
     // from the pins themselves rather than from the journal, so keeping a moment still keeps it
@@ -1664,16 +1839,66 @@ pub fn journal(
         journal::kicker(
             ui,
             &format!("Kept · {} of {MAX_PINNED_ENTRIES}", pinned.len()),
-        );
+        )
+        .on_hover_text("Moments you pinned. They stay here however long ago they happened.");
         ui.add_space(6.0);
         for entry in &pinned {
-            moment_card(ui, save, entry, offset, outcome);
+            moment_card(ui, save, entry, offset, outcome, false);
         }
         ui.separator();
         ui.add_space(8.0);
     }
-    // One chip per companion the journal actually mentions, so the filter never offers an
-    // empty result. A moment about the whole colony belongs to everyone.
+    // Search, then the kinds of moment and the companions the journal actually mentions, so a
+    // filter never offers an empty result.
+    let search_id = egui::Id::new("journal-search");
+    if ui.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
+        ui.memory_mut(|memory| memory.request_focus(search_id));
+    }
+    ui.horizontal(|ui| {
+        let field = ui.add(
+            egui::TextEdit::singleline(&mut clubhouse.journal_search)
+                .id(search_id)
+                .hint_text(format!(
+                    "Search the journal ({}F)",
+                    journal::shortcut_modifier()
+                ))
+                .desired_width((ui.available_width() - 90.0).clamp(120.0, 360.0)),
+        );
+        if field.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+            clubhouse.journal_search.clear();
+        }
+        if !clubhouse.journal_search.is_empty() && ui.small_button("Clear").clicked() {
+            clubhouse.journal_search.clear();
+        }
+    });
+    ui.add_space(6.0);
+    let kinds: Vec<MomentKind> = MomentKind::ALL
+        .into_iter()
+        .filter(|kind| {
+            save.companion
+                .journal
+                .iter()
+                .any(|entry| entry.moment.kind() == *kind)
+        })
+        .collect();
+    if kinds.len() > 1 {
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .selectable_label(clubhouse.journal_kind.is_none(), "Every kind")
+                .clicked()
+            {
+                clubhouse.journal_kind = None;
+            }
+            for kind in kinds {
+                if ui
+                    .selectable_label(clubhouse.journal_kind == Some(kind), kind.label())
+                    .clicked()
+                {
+                    clubhouse.journal_kind = (clubhouse.journal_kind != Some(kind)).then_some(kind);
+                }
+            }
+        });
+    }
     let mut mentioned: Vec<CreatureId> = save
         .companion
         .journal
@@ -1712,8 +1937,14 @@ pub fn journal(
                 }
             }
         });
-        ui.add_space(10.0);
     }
+    ui.add_space(10.0);
+    let unpinned = save
+        .companion
+        .journal
+        .iter()
+        .filter(|entry| !save.companion.pinned(entry))
+        .count();
     let showing: Vec<&JournalEntry> = save
         .companion
         .journal
@@ -1725,15 +1956,39 @@ pub fn journal(
                 .journal_filter
                 .is_none_or(|id| entry.creature == Some(id))
         })
+        .filter(|entry| {
+            clubhouse
+                .journal_kind
+                .is_none_or(|kind| entry.moment.kind() == kind)
+        })
+        .filter(|entry| moment_matches(save, entry, &clubhouse.journal_search))
         .collect();
+    let filtering = clubhouse.journal_filter.is_some()
+        || clubhouse.journal_kind.is_some()
+        || !clubhouse.journal_search.trim().is_empty();
+    if filtering {
+        ui.small(format!("Showing {} of {unpinned} moments", showing.len()));
+        ui.add_space(4.0);
+    }
     if showing.is_empty() {
         card(ui, |ui| {
-            ui.strong("Nothing else here yet");
-            ui.label("Every moment about this companion is already kept above.");
+            if filtering {
+                ui.strong("No moments match");
+                ui.label("Nothing the journal still holds matches all of that.");
+                if ui.button("Clear the search and filters").clicked() {
+                    clubhouse.journal_search.clear();
+                    clubhouse.journal_kind = None;
+                    clubhouse.journal_filter = None;
+                }
+            } else {
+                ui.strong("Nothing else here yet");
+                ui.label("Every moment the journal holds is already kept above.");
+            }
         });
         ui.add_space(8.0);
     }
     let mut heading = String::new();
+    let reading = clubhouse.reading.clone().unwrap_or_default();
     for entry in showing {
         let day = day_heading(entry.at, now, offset);
         if day != heading {
@@ -1742,15 +1997,24 @@ pub fn journal(
             ui.add_space(6.0);
             heading = day;
         }
-        moment_card(ui, save, &entry.clone(), offset, outcome);
+        moment_card(
+            ui,
+            save,
+            &entry.clone(),
+            offset,
+            outcome,
+            reading.is_new(entry),
+        );
     }
     ui.small(format!(
-        "The most recent {MAX_JOURNAL_ENTRIES} moments stay on this computer, plus up to \
-         {MAX_PINNED_ENTRIES} you keep. Missed time is never replayed."
+        "The most recent {MAX_JOURNAL_ENTRIES} moments stay on this computer, holding on to up to \
+         {MAX_LANDMARK_ENTRIES} milestones longer, plus up to {MAX_PINNED_ENTRIES} you keep. \
+         Missed time is never replayed."
     ));
     ui.add_space(20.0);
     ui.separator();
     ui.add_space(14.0);
+    guest_book(ui, save, clubhouse, outcome, offset);
     clubhouse.scrapbook(ui, save);
 }
 /// Charcoal or cream, and how large the words are. These change the settings window only; the

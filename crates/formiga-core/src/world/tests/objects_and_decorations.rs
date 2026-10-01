@@ -222,7 +222,8 @@ fn village_lots_are_mirrored_scaled_separated_and_do_not_escape_restrictions() {
         for scale in 1..=4 {
             for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
                 home.corner = corner;
-                let anchor = resolved_home_anchor(&home, monitor, scale, &policy).unwrap();
+                let anchor =
+                    resolved_home_anchor(&home, cottages, monitor, scale, &policy).unwrap();
                 let unit = f32::from(scale) / monitor.scale_factor.max(1.0);
                 // Houses and trees share one walk, so no two houses' footprints overlap, and a
                 // tree reaches in over its end house by `TREE_OVERLAP` and no further.

@@ -263,6 +263,33 @@ impl VisitorState {
                 .any(|member| member.id == guest.creature.id)
     }
 
+    /// How many times the guest visiting now has been here before, and when it was last here,
+    /// read from the guest book alone. A day-long stay that has already signed the book is not
+    /// counted as an earlier visit of its own. `None` for a first visit, or with nobody visiting.
+    pub fn earlier_visits(&self) -> Option<(u16, OffsetDateTime)> {
+        let guest = self.guest.as_ref()?;
+        let mut visits: Vec<OffsetDateTime> = self
+            .guest_book
+            .iter()
+            .filter(|entry| entry.origin == guest.creature.origin)
+            .map(|entry| entry.visited_at_utc)
+            .collect();
+        visits.sort_unstable();
+        if guest.signed {
+            visits.pop();
+        }
+        let last = *visits.last()?;
+        Some((u16::try_from(visits.len()).unwrap_or(u16::MAX), last))
+    }
+
+    /// How many times the guest book has this visitor in it.
+    pub fn visits_of(&self, origin: &CreatureOrigin) -> usize {
+        self.guest_book
+            .iter()
+            .filter(|entry| entry.origin == *origin)
+            .count()
+    }
+
     /// Whether this visitor is kept as a favorite.
     pub fn is_favorite(&self, origin: &CreatureOrigin) -> bool {
         self.favorites

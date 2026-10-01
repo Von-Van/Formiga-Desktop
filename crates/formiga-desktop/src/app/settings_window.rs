@@ -3,6 +3,25 @@
 use super::*;
 
 impl FormigaApp {
+    /// Remember where the notebook window is, for the next time it opens. Failing to is only
+    /// logged: the notebook simply opens where it would have the first time.
+    pub(super) fn remember_notebook_geometry(&mut self) {
+        let Some(geometry) = self
+            .settings_window
+            .as_ref()
+            .and_then(SettingsWindow::geometry)
+        else {
+            return;
+        };
+        if self.notebook_geometry == Some(geometry) {
+            return;
+        }
+        match notebook_window::save(&self.data_dir, geometry) {
+            Ok(()) => self.notebook_geometry = Some(geometry),
+            Err(error) => tracing::warn!(%error, "could not remember the notebook window"),
+        }
+    }
+
     pub(super) fn show_settings(&mut self, event_loop: &ActiveEventLoop) {
         let Some((settings, creatures, relationships)) = self.world.as_ref().map(|world| {
             (
@@ -14,12 +33,34 @@ impl FormigaApp {
             return;
         };
         if self.settings_window.is_none() {
+            let screens: Vec<notebook_window::Screen> = {
+                let primary = event_loop.primary_monitor();
+                event_loop
+                    .available_monitors()
+                    .map(|monitor| {
+                        let (position, size) = (monitor.position(), monitor.size());
+                        notebook_window::Screen {
+                            x: position.x,
+                            y: position.y,
+                            width: size.width,
+                            height: size.height,
+                            scale: monitor.scale_factor(),
+                            primary: primary.as_ref().is_some_and(|main| {
+                                main.position() == position && main.size() == size
+                            }),
+                        }
+                    })
+                    .collect()
+            };
+            let placement = notebook_window::place(notebook_window::load(&self.data_dir), &screens);
             match pollster::block_on(SettingsWindow::new(
                 event_loop,
                 &settings,
                 &creatures,
                 &relationships,
                 self.save_store.path(),
+                placement,
+                self.event_proxy.clone(),
             )) {
                 Ok(window) => self.settings_window = Some(window),
                 Err(error) => {
@@ -92,11 +133,24 @@ impl FormigaApp {
                 }
             }
         }
+        if outcome.retry_save {
+            match self.save() {
+                Ok(()) => {}
+                Err(error) => tracing::warn!(%error, "colony save still failing"),
+            }
+        }
         let mut companion_changed = false;
+        // A change worth saying in its own words, rather than as a plain "saved".
+        let mut specific_notice: Option<String> = None;
         if let Some(world) = &mut self.world {
             if let Some(minutes) = outcome.quiet_minutes {
                 world.set_quiet_mode(minutes, OffsetDateTime::now_utc());
                 companion_changed = true;
+                specific_notice = Some(if minutes == 0 {
+                    "Quiet moment over · everyone is back to their usual adventures".to_owned()
+                } else {
+                    format!("Everyone is heading home to settle for {minutes} minutes")
+                });
             }
             if outcome.complete_onboarding {
                 world.save.companion.onboarding_complete = true;
@@ -210,6 +264,11 @@ impl FormigaApp {
                 world.resume_routine(OffsetDateTime::now_utc());
                 companion_changed = true;
             }
+            // Reading the journal changes nothing worth a notice: it is written with the next
+            // routine checkpoint, quietly.
+            if outcome.mark_journal_read && world.save.companion.mark_read() {
+                self.save_waiting = self.save_waiting.max(SaveUrgency::Routine);
+            }
             if let Some(entry) = &outcome.pin_moment {
                 companion_changed |= world.save.companion.pin(entry);
             }
@@ -234,12 +293,22 @@ impl FormigaApp {
             if let Some(origin) = &outcome.forget_favorite_visitor {
                 companion_changed |= world.save.visitors.forget_favorite(origin);
             }
-            if let Some((creature_id, leaning)) = outcome.set_roaming_leaning {
-                companion_changed |= world.set_roaming_leaning(creature_id, leaning);
+            if let Some((creature_id, leaning)) = outcome.set_roaming_leaning
+                && world.set_roaming_leaning(creature_id, leaning)
+            {
+                companion_changed = true;
+                if let Some(creature) = world.save.creatures.iter().find(|c| c.id == creature_id) {
+                    specific_notice = Some(format!(
+                        "{} · {}: {}",
+                        creature.name,
+                        leaning.label(),
+                        leaning.description().to_lowercase()
+                    ));
+                }
             }
         }
         if companion_changed {
-            self.save_with_feedback("Colony changes saved");
+            self.save_with_feedback(specific_notice.as_deref().unwrap_or("Colony changes saved"));
             self.redraw_due = Instant::now();
             for overlay in self.overlays.values() {
                 overlay.window.request_redraw();
@@ -258,9 +327,7 @@ impl FormigaApp {
             match export_to_selected_destination(creature, selected) {
                 Ok(Some(_)) => self.settings_notice("Creature card exported"),
                 Ok(None) => {}
-                Err(error) => {
-                    self.settings_error(format!("Could not export the creature card: {error}"))
-                }
+                Err(error) => self.export_failed("the creature card", &error),
             }
         }
         if let Some((creature_id, clip, scale)) = outcome.export_creature_sticker
@@ -277,7 +344,7 @@ impl FormigaApp {
             match export_sticker_to_selected_destination(creature, clip, scale, selected) {
                 Ok(Some(_)) => self.settings_notice("Sticker exported"),
                 Ok(None) => {}
-                Err(error) => self.settings_error(format!("Could not export the sticker: {error}")),
+                Err(error) => self.export_failed("the sticker", &error),
             }
         }
         if outcome.export_colony_card
@@ -287,9 +354,7 @@ impl FormigaApp {
             match export_colony_card_to_selected_destination(save, selected) {
                 Ok(Some(_)) => self.settings_notice("Colony portrait exported"),
                 Ok(None) => {}
-                Err(error) => {
-                    self.settings_error(format!("Could not export the colony portrait: {error}"))
-                }
+                Err(error) => self.export_failed("the colony portrait", &error),
             }
         }
         if let Some((scene, caption)) = outcome.export_postcard.as_ref()
@@ -299,9 +364,7 @@ impl FormigaApp {
             match export_postcard_to_selected_destination(save, *scene, caption, selected) {
                 Ok(Some(_)) => self.settings_notice("Postcard exported"),
                 Ok(None) => {}
-                Err(error) => {
-                    self.settings_error(format!("Could not export the postcard: {error}"))
-                }
+                Err(error) => self.export_failed("the postcard", &error),
             }
         }
         if let Some((creature_id, kept)) = outcome.set_creature_kept {
@@ -442,9 +505,7 @@ impl FormigaApp {
                         }
                         Err(error) => {
                             if let Some(window) = &mut self.settings_window {
-                                window.set_error(format!(
-                                    "Could not use that reference image: {error}"
-                                ));
+                                window.set_error(crate::explain::reference_image(&error));
                             }
                         }
                     }
@@ -635,7 +696,9 @@ impl FormigaApp {
                 .as_ref()
                 .map(|world| world.save.settings.launch_at_login)
                 .unwrap_or(false);
+            let mut notice = None;
             if let Some(world) = &mut self.world {
+                notice = crate::settings::behavior_change_notice(&world.save.settings, &settings);
                 world.save.settings = settings;
             }
             match self.finish_settings_change(previous_launch) {
@@ -643,11 +706,11 @@ impl FormigaApp {
                     if let (Some(window), Some(world)) = (&mut self.settings_window, &self.world) {
                         window.acknowledge_preferences(&world.save.settings);
                     }
-                    self.settings_notice(if self.recovery_pending {
-                        "Temporary preferences · finish recovery to save"
+                    if self.recovery_pending {
+                        self.settings_notice("Temporary preferences · finish recovery to save");
                     } else {
-                        "Changes applied"
-                    });
+                        self.settings_notice(notice.unwrap_or_else(|| "Changes applied".into()));
+                    }
                 }
                 Err(error) => self.settings_error(error.to_string()),
             }
@@ -691,8 +754,11 @@ impl FormigaApp {
                 Ok(_) => {}
                 Err(error) => {
                     tracing::error!(%error, "could not launch update installer");
-                    self.updates.fail(error.to_string());
+                    let message = format!("could not launch the update installer: {error}");
+                    let (headline, advice) = crate::explain::update(&message);
+                    self.updates.fail(message);
                     self.sync_update_ui();
+                    self.failure_dialog(headline, &advice);
                 }
             }
         }
@@ -731,6 +797,26 @@ impl FormigaApp {
         }
     }
 
+    /// Something the reader asked for went wrong and they need to know before carrying on: said
+    /// in a native dialog, since it answers what they just did, and kept on the notebook's footer
+    /// afterwards. Only ever for something the reader started, never for background work.
+    pub(super) fn failure_dialog(&mut self, title: &str, message: &str) {
+        self.settings_error(message.to_owned());
+        rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_title(title)
+            .set_description(message)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+
+    /// An export the reader chose a place for could not be written there.
+    pub(super) fn export_failed(&mut self, what: &str, error: &anyhow::Error) {
+        tracing::warn!(%error, what, "export failed");
+        let title = format!("Could not save {what}");
+        self.failure_dialog(&title, &crate::explain::export(what, error));
+    }
+
     pub(super) fn settings_error(&mut self, message: impl Into<String>) {
         if let Some(window) = &mut self.settings_window {
             window.set_error(message);
@@ -763,7 +849,10 @@ impl FormigaApp {
         };
         match SaveStore::new(&path).save(&world.save) {
             Ok(()) => self.settings_notice("Full colony backup exported"),
-            Err(error) => self.settings_error(format!("Could not export the colony: {error}")),
+            Err(error) => {
+                let error = anyhow::Error::from(error);
+                self.export_failed("the colony backup", &error);
+            }
         }
     }
 
@@ -777,7 +866,10 @@ impl FormigaApp {
         let mut save = match SaveStore::read_snapshot(&path) {
             Ok(save) => save,
             Err(error) => {
-                self.settings_error(format!("That backup could not be opened: {error}"));
+                self.failure_dialog(
+                    "That backup could not be opened",
+                    &crate::explain::colony_file(&error),
+                );
                 return;
             }
         };

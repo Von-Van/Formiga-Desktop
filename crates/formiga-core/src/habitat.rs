@@ -6,8 +6,19 @@ use crate::{
 pub const MAX_HABITAT_ZONES: usize = 32;
 const MIN_REGION_SIZE: f32 = 48.0;
 
+/// Where the colony house would stand in its corner of a display with all the room it wants:
+/// far enough in from the edge for the outward tree beside it.
 pub fn home_anchor(home: &ColonyHome, monitor: &MonitorInfo, display_scale: u8) -> Point {
-    let margin = HOME_EDGE_MARGIN * f32::from(display_scale) / monitor.scale_factor.max(1.0) + 8.0;
+    anchor_for(home, monitor, display_scale, VillageFit::Comfortable)
+}
+
+fn anchor_for(
+    home: &ColonyHome,
+    monitor: &MonitorInfo,
+    display_scale: u8,
+    fit: VillageFit,
+) -> Point {
+    let margin = fit.edge_margin() * f32::from(display_scale) / monitor.scale_factor.max(1.0) + 8.0;
     Point {
         x: match home.corner {
             HomeCorner::BottomLeft => monitor.usable_bounds.x + margin,
@@ -17,24 +28,24 @@ pub fn home_anchor(home: &ColonyHome, monitor: &MonitorInfo, display_scale: u8) 
     }
 }
 
+/// Where the colony house actually stands on this display, for a colony with these cottages: in
+/// its corner, inside the habitat, and tucked closer to the edge when the village is laid out
+/// snug to fit a narrow display. `None` when the habitat leaves it nowhere to stand.
 pub fn resolved_home_anchor(
     home: &ColonyHome,
+    cottages: &[DwellingKind],
     monitor: &MonitorInfo,
     display_scale: u8,
     policy: &HabitatPolicy,
 ) -> Option<Point> {
-    let desired = home_anchor(home, monitor, display_scale);
-    accessible_regions(policy, monitor)
-        .into_iter()
-        .map(|region| {
-            let point = Point {
-                x: desired.x.clamp(region.x + 8.0, region.right() - 8.0),
-                y: region.bottom() - 4.0,
-            };
-            (desired.distance(point), point)
-        })
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, point)| point)
+    VillageGround::resolve(
+        home,
+        cottages,
+        std::slice::from_ref(monitor),
+        policy,
+        display_scale,
+    )
+    .map(|ground| ground.anchor)
 }
 
 pub fn resolved_colony_object_position(
@@ -79,23 +90,35 @@ pub enum DwellingKind {
 }
 
 impl DwellingKind {
-    /// Ground footprint in shelter pixels: the drawn house plus its shadow and any decoration
-    /// that reaches past the wall, with a pixel or two of breathing room. Smaller than the 80px
+    /// Ground footprint in shelter pixels: the drawn house plus its shadow and the decorations
+    /// standing against its corners, with a pixel or two of breathing room. Smaller than the 96px
     /// atlas cell it is sampled from, so neighbours sit close without their artwork touching.
-    /// The houses are drawn a quarter larger than they were until 0.61.0, so a companion's house
-    /// is a little wider than a standing creature and reads plainly as its home; the colony house
-    /// stays plainly the largest building on the strip. The footprints grew less than the houses
-    /// did, from 60 and 46, because shadows and decorations did not grow with them.
+    /// The houses are drawn half as large again as they were until 0.61.0 — a quarter then, a
+    /// fifth more in 0.65.0 — so a companion's house stands plainly taller and wider than the
+    /// companion who keeps it, and the colony house stays plainly the largest building on the
+    /// strip. The footprints were 60 and 46 until 0.61.0 and 70 and 56 until 0.65.0; they grew by
+    /// the same fifth as the houses, since the larger decorations that stand against a house's
+    /// corners now stand half in front of its wall rather than out beside it.
     pub const fn width(self) -> f32 {
         match self {
-            Self::Main => 70.0,
-            Self::Cottage => 56.0,
+            Self::Main => 84.0,
+            Self::Cottage => 68.0,
+        }
+    }
+
+    /// The ground it claims when the village is laid out snug on a narrow display: only as wide
+    /// as the widest house of its kind is drawn, decorations, shadow and all, so neighbours stand
+    /// shoulder to shoulder without any drawing reaching over another's.
+    pub const fn snug_width(self) -> f32 {
+        match self {
+            Self::Main => 80.0,
+            Self::Cottage => 66.0,
         }
     }
 }
 
-/// Every dwelling is drawn from one 80px atlas cell, whatever its footprint.
-pub const DWELLING_CELL: f32 = 80.0;
+/// Every dwelling is drawn from one 96px atlas cell, whatever its footprint.
+pub const DWELLING_CELL: f32 = 96.0;
 
 /// How wide a creature's frame draws, in shelter pixels. The village mirrors
 /// `formiga_art::FRAME_SIZE` the same way `home_anchor` mirrors the shelter's own size.
@@ -165,6 +188,48 @@ pub enum VillageLot {
 /// fifty-five pixels of empty lane once the strip was laid end to end.
 const VILLAGE_GAP: f32 = 3.0;
 
+/// How closely the village is laid out on the display it is on. Comfortable is the village as it
+/// is drawn everywhere it fits: a seam between houses, a footprint round each that leaves its
+/// decorations room, and the outward tree's yard against the edge of the display. A display too
+/// narrow for every house that way — a 1280- to 1440-point laptop at 100%, at the default size,
+/// once the houses grew a fifth in 0.65.0 — lays it out snug instead, so that nobody's house is
+/// the one left off the end: the outward tree gives up its ground and is not shown, the colony
+/// house tucks into the corner, and the houses stand shoulder to shoulder on footprints that are
+/// only as wide as what is drawn on them. Snug is only ever used where it shows more houses than
+/// comfortable would.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum VillageFit {
+    #[default]
+    Comfortable,
+    Snug,
+}
+
+impl VillageFit {
+    /// The seam between two houses.
+    const fn gap(self) -> f32 {
+        match self {
+            Self::Comfortable => VILLAGE_GAP,
+            Self::Snug => 0.0,
+        }
+    }
+
+    /// The ground a house claims.
+    const fn width(self, kind: DwellingKind) -> f32 {
+        match self {
+            Self::Comfortable => kind.width(),
+            Self::Snug => kind.snug_width(),
+        }
+    }
+
+    /// How far the colony house's middle stands in from the edge of the display.
+    const fn edge_margin(self) -> f32 {
+        match self {
+            Self::Comfortable => HOME_EDGE_MARGIN,
+            Self::Snug => DwellingKind::Main.snug_width() / 2.0,
+        }
+    }
+}
+
 /// How far each tree's lot reaches in over the house beside it. The houses grew a quarter in
 /// 0.61.0 and the village only about a tenth, so the trees at either end stand a little in over
 /// the end houses' ground rather than a seam clear of it; where a tree's drawing and a house's
@@ -185,9 +250,9 @@ pub const TREE_WIDTH: f32 = 56.0;
 
 /// How much of a house's own footprint a resting frame may reach across: the outermost pixels of
 /// a wall or an eave, and the ground decoration standing against it. Every dwelling keeps its
-/// doorway far inside this — the narrowest, a companion's cottage, has more than eighteen pixels
-/// between its door's own middle and the edge of its lot, and its doorway is at most five of them
-/// — so a resident waiting at its door never stands in front of one.
+/// doorway far inside this — the narrowest, a companion's cottage, has thirty-four pixels between
+/// its door's own middle and the edge of its lot, and its doorway and frame are at most nine of
+/// them — so a resident waiting at its door never stands in front of one.
 pub const REST_WALL_SLIVER: f32 = 9.0;
 
 /// The ground a companion standing on the commons claims for itself. Less than the frame it
@@ -211,31 +276,46 @@ const HOME_EDGE_MARGIN: f32 = DwellingKind::Main.width() / 2.0 - TREE_OVERLAP + 
 /// It was 448 until 0.61.0, inherited from 0.58.5's four-companion village, which measured 445
 /// with a house and a standing place for each of them; six houses fit inside the same ground once
 /// the standing places came out of the strip. The houses then grew a quarter and the ground about
-/// a tenth: a full village measures 465, with each tree standing a little in over its end house.
-pub const VILLAGE_SPAN_LIMIT: f32 = 468.0;
+/// a tenth, to 465 with each tree standing a little in over its end house, and in 0.65.0 the
+/// houses grew a fifth more and their footprints with them: a full village measures 539. The
+/// trees keep their size, so the village grew by a little less than its houses did.
+pub const VILLAGE_SPAN_LIMIT: f32 = 540.0;
 
 /// Where the outward tree's lot sits on the walk, counting outward from the colony house: reaching
 /// `TREE_OVERLAP` in over the colony house's own footprint, on the negative side of the origin.
 /// The inward tree's place depends on how many cottages there are, so the walk works it out as it
 /// goes.
-const OUTWARD_TREE_CENTRE: f32 =
-    -(DwellingKind::Main.width() / 2.0 - TREE_OVERLAP + TREE_WIDTH / 2.0);
+const fn outward_tree_centre(fit: VillageFit) -> f32 {
+    -(fit.width(DwellingKind::Main) / 2.0 - TREE_OVERLAP + TREE_WIDTH / 2.0)
+}
 
 /// The ground each kind of lot claims, in shelter pixels.
-fn lot_width(lot: VillageLot, cottages: &[DwellingKind]) -> f32 {
+fn lot_width(lot: VillageLot, cottages: &[DwellingKind], fit: VillageFit) -> f32 {
     match lot {
         VillageLot::Tree(_) => TREE_WIDTH,
-        VillageLot::Dwelling(0) => DwellingKind::Main.width(),
-        VillageLot::Dwelling(index) => cottages
-            .get(index - 1)
-            .map_or(DwellingKind::Cottage.width(), |kind| kind.width()),
+        VillageLot::Dwelling(0) => fit.width(DwellingKind::Main),
+        VillageLot::Dwelling(index) => fit.width(
+            cottages
+                .get(index - 1)
+                .copied()
+                .unwrap_or(DwellingKind::Cottage),
+        ),
     }
 }
 
-/// How tall a lot's contents draw, for deciding whether the lot fits its region.
+/// How far above the ground line the tallest house is drawn, pennant and all: 78 shelter pixels
+/// since the houses grew in 0.65.0, held to the drawings by a test in the art crate. The lot
+/// fits by this rather than by the 96-pixel cell it is drawn from, whose top is empty air, so a
+/// band along the bottom of a display that had room for the village before the houses grew —
+/// above a Dock or a taskbar, say — has room for it still. It is the 80 the village allowed while
+/// the cell was 80 pixels tall.
+pub const DWELLING_DRAWN_HEIGHT: f32 = 80.0;
+
+/// How tall a lot's contents draw, for deciding whether the lot fits its region. A keepsake tree
+/// draws inside its own 64-pixel cell, well under a house.
 fn lot_height(lot: VillageLot) -> f32 {
     match lot {
-        VillageLot::Tree(_) | VillageLot::Dwelling(_) => DWELLING_CELL,
+        VillageLot::Tree(_) | VillageLot::Dwelling(_) => DWELLING_DRAWN_HEIGHT,
     }
 }
 
@@ -270,9 +350,9 @@ impl VillageWalk {
 ///
 /// The colony's belongings are not on the strip at all: they live in the two trees' yards, which
 /// is what took about a hundred shelter pixels out of the village.
-fn village_walk(cottages: &[DwellingKind]) -> VillageWalk {
+fn village_walk(cottages: &[DwellingKind], fit: VillageFit) -> VillageWalk {
     let mut walk = VillageWalk {
-        lots: [(VillageLot::Tree(TreeEnd::Outward), OUTWARD_TREE_CENTRE); MAX_VILLAGE_LOTS],
+        lots: [(VillageLot::Tree(TreeEnd::Outward), outward_tree_centre(fit)); MAX_VILLAGE_LOTS],
         len: 1,
     };
     let mut push = |lot: VillageLot, centre: f32| {
@@ -280,12 +360,12 @@ fn village_walk(cottages: &[DwellingKind]) -> VillageWalk {
         walk.len += 1;
     };
     push(VillageLot::Dwelling(0), 0.0);
-    let mut edge = DwellingKind::Main.width() / 2.0;
+    let mut edge = fit.width(DwellingKind::Main) / 2.0;
     for house in 1..=cottages.len().min(crate::MAX_COLONY_CREATURES - 1) {
         // Houses stand a seam apart, and nothing else is laid between them. The ground in front
         // of the whole row is the colony's own, walked rather than parcelled out.
-        edge += VILLAGE_GAP;
-        let width = lot_width(VillageLot::Dwelling(house), cottages);
+        edge += fit.gap();
+        let width = lot_width(VillageLot::Dwelling(house), cottages, fit);
         push(VillageLot::Dwelling(house), edge + width / 2.0);
         edge += width;
     }
@@ -300,13 +380,13 @@ fn village_walk(cottages: &[DwellingKind]) -> VillageWalk {
 /// How far the whole village reaches, in shelter pixels, measured end to end: from the outer edge
 /// of one tree's yard to the outer edge of the other's.
 pub fn village_span(cottages: &[DwellingKind]) -> f32 {
-    let (low, high) =
-        village_walk(cottages)
-            .iter()
-            .fold((f32::MAX, f32::MIN), |(low, high), (lot, centre)| {
-                let half = lot_width(lot, cottages) / 2.0;
-                ((centre - half).min(low), (centre + half).max(high))
-            });
+    let (low, high) = village_walk(cottages, VillageFit::Comfortable).iter().fold(
+        (f32::MAX, f32::MIN),
+        |(low, high), (lot, centre)| {
+            let half = lot_width(lot, cottages, VillageFit::Comfortable) / 2.0;
+            ((centre - half).min(low), (centre + half).max(high))
+        },
+    );
     high - low
 }
 
@@ -375,21 +455,95 @@ struct VillageGround<'a> {
     /// The one accessible region the village stands in, resolved with the anchor rather than kept
     /// as a list and searched again for every lot.
     region: Option<DesktopRect>,
+    /// How closely the village is laid out here.
+    fit: VillageFit,
 }
 
 impl<'a> VillageGround<'a> {
+    /// The village's ground on its display, laid out comfortably wherever every house fits that
+    /// way, and snug where that shows more of them.
     fn resolve(
+        home: &ColonyHome,
+        cottages: &[DwellingKind],
+        monitors: &'a [MonitorInfo],
+        policy: &HabitatPolicy,
+        display_scale: u8,
+    ) -> Option<Self> {
+        let comfortable = Self::resolve_fit(
+            home,
+            monitors,
+            policy,
+            display_scale,
+            VillageFit::Comfortable,
+        )?;
+        // The houses run outward from the colony house in one unbroken row of one height, so if
+        // the first and the last both fit, every one between them does: two lots decide the
+        // ordinary case, which the simulation and the overlay ask about many times a second.
+        if comfortable.shows_every_house(cottages) {
+            return Some(comfortable);
+        }
+        let shown = comfortable.houses_shown(cottages);
+        match Self::resolve_fit(home, monitors, policy, display_scale, VillageFit::Snug) {
+            Some(snug) if snug.houses_shown(cottages) > shown => Some(snug),
+            _ => Some(comfortable),
+        }
+    }
+
+    /// Whether this ground has room for every one of the colony's houses: the colony house's inner
+    /// edge and the last cottage's outer edge, worked out with the same arithmetic the walk lays
+    /// them out by, without laying out the walk. It is asked every time the ground is resolved.
+    fn shows_every_house(&self, cottages: &[DwellingKind]) -> bool {
+        let Some(region) = self.region else {
+            return false;
+        };
+        let main_half = self.fit.width(DwellingKind::Main) / 2.0;
+        let mut outer = main_half;
+        for kind in cottages.iter().take(crate::MAX_COLONY_CREATURES - 1) {
+            outer += self.fit.gap() + self.fit.width(*kind);
+        }
+        let inner_x = self.anchor.x - self.direction * main_half * self.scale;
+        let outer_x = self.anchor.x + self.direction * outer * self.scale;
+        let (low, high) = (inner_x.min(outer_x), inner_x.max(outer_x));
+        low >= region.x
+            && high <= region.right()
+            && self.anchor.y - DWELLING_DRAWN_HEIGHT * self.scale >= region.y
+            && self.anchor.y <= region.bottom()
+    }
+
+    /// How many of the colony's houses this ground has room for.
+    fn houses_shown(&self, cottages: &[DwellingKind]) -> usize {
+        self.walk(cottages)
+            .iter()
+            .filter(|(lot, centre)| {
+                matches!(lot, VillageLot::Dwelling(_))
+                    && self.place(*lot, *centre, cottages).is_some()
+            })
+            .count()
+    }
+
+    /// The walk along this ground, at the fit it is laid out at.
+    fn walk(&self, cottages: &[DwellingKind]) -> VillageWalk {
+        village_walk(cottages, self.fit)
+    }
+
+    /// The ground a lot claims here.
+    fn lot_width(&self, lot: VillageLot, cottages: &[DwellingKind]) -> f32 {
+        lot_width(lot, cottages, self.fit)
+    }
+
+    fn resolve_fit(
         home: &ColonyHome,
         monitors: &'a [MonitorInfo],
         policy: &HabitatPolicy,
         display_scale: u8,
+        fit: VillageFit,
     ) -> Option<Self> {
         let monitor = village_monitor(home, monitors)?;
         // One pass over the habitat's regions answers both questions the ground has: where the
         // corner ends up, and which region it ended up in. Asking twice used to cost this two
         // fresh lists of rectangles on a path the simulation walks several times a tick.
         let regions = accessible_regions(policy, monitor);
-        let desired = home_anchor(home, monitor, display_scale);
+        let desired = anchor_for(home, monitor, display_scale, fit);
         let (_, anchor) = regions
             .iter()
             .map(|region| {
@@ -415,6 +569,7 @@ impl<'a> VillageGround<'a> {
                     && anchor.y >= region.y
                     && anchor.y <= region.bottom()
             }),
+            fit,
         })
     }
 
@@ -444,7 +599,7 @@ impl<'a> VillageGround<'a> {
     /// Where a lot's contents stand, if the strip has room for the lot here.
     fn place(&self, lot: VillageLot, centre: f32, cottages: &[DwellingKind]) -> Option<Point> {
         let point = self.point(centre, 0.0);
-        self.fits(point, lot_width(lot, cottages) / 2.0, lot_height(lot))
+        self.fits(point, self.lot_width(lot, cottages) / 2.0, lot_height(lot))
             .then_some(point)
     }
 
@@ -466,8 +621,8 @@ fn village_position(
     policy: &HabitatPolicy,
     display_scale: u8,
 ) -> Option<(u64, Point)> {
-    let ground = VillageGround::resolve(home, monitors, policy, display_scale)?;
-    let centre = village_walk(cottages).centre_of(lot)?;
+    let ground = VillageGround::resolve(home, cottages, monitors, policy, display_scale)?;
+    let centre = ground.walk(cottages).centre_of(lot)?;
     let point = ground.place(lot, centre, cottages)?;
     Some((ground.monitor.id, point))
 }
@@ -543,14 +698,14 @@ pub fn home_commons(
     policy: &HabitatPolicy,
     display_scale: u8,
 ) -> Option<HomeCommons> {
-    let ground = VillageGround::resolve(home, monitors, policy, display_scale)?;
+    let ground = VillageGround::resolve(home, cottages, monitors, policy, display_scale)?;
     let region = ground.region()?;
     let (mut low, mut high) = (f32::MAX, f32::MIN);
-    for (lot, centre) in village_walk(cottages).iter() {
+    for (lot, centre) in ground.walk(cottages).iter() {
         let Some(point) = ground.place(lot, centre, cottages) else {
             continue;
         };
-        let half = lot_width(lot, cottages) / 2.0 * ground.scale;
+        let half = ground.lot_width(lot, cottages) / 2.0 * ground.scale;
         low = low.min(point.x - half);
         high = high.max(point.x + half);
     }
@@ -563,14 +718,14 @@ pub fn home_commons(
     // belong to the trees and to the belongings scattered under them, so a companion standing
     // still keeps off them — while roaming it may walk the whole thing.
     let (mut front_low, mut front_high) = (f32::MAX, f32::MIN);
-    for (lot, centre) in village_walk(cottages).iter() {
+    for (lot, centre) in ground.walk(cottages).iter() {
         let VillageLot::Dwelling(_) = lot else {
             continue;
         };
         let Some(point) = ground.place(lot, centre, cottages) else {
             continue;
         };
-        let half = lot_width(lot, cottages) / 2.0 * ground.scale;
+        let half = ground.lot_width(lot, cottages) / 2.0 * ground.scale;
         front_low = front_low.min(point.x - half);
         front_high = front_high.max(point.x + half);
     }
@@ -651,18 +806,19 @@ pub fn home_guest_position(
     policy: &HabitatPolicy,
     display_scale: u8,
 ) -> Option<(u64, Point)> {
-    let ground = VillageGround::resolve(home, monitors, policy, display_scale)?;
+    let ground = VillageGround::resolve(home, cottages, monitors, policy, display_scale)?;
     let region = ground.region()?;
     let half = GUEST_HALF_WIDTH * ground.scale;
     if region.width < half * 2.0 {
         return None;
     }
     let mut outer = ground.anchor.x;
-    for (lot, centre) in village_walk(cottages).iter() {
+    for (lot, centre) in ground.walk(cottages).iter() {
         let Some(point) = ground.place(lot, centre, cottages) else {
             continue;
         };
-        let reach = point.x + ground.direction * lot_width(lot, cottages) / 2.0 * ground.scale;
+        let reach =
+            point.x + ground.direction * ground.lot_width(lot, cottages) / 2.0 * ground.scale;
         outer = ground.outward_max(outer, reach);
     }
     // A guest keeps clear of a full colony's worth of resting places, whether or not every one
@@ -833,6 +989,27 @@ pub fn colony_cottages(creatures: &[Creature]) -> Vec<DwellingKind> {
     colony_cottage_list(creatures).as_slice().to_vec()
 }
 
+/// How much ground each house's lot claims where the village stands now, in shelter pixels, by
+/// house slot: its comfortable footprint, or its snug one on a display where the village is laid
+/// out snug. Worked out from one look at the ground for every house at once. `None` for a slot
+/// past the colony's houses, or everywhere when the village has nowhere to stand.
+pub fn home_lot_widths(
+    home: &ColonyHome,
+    cottages: &[DwellingKind],
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> [Option<f32>; crate::MAX_COLONY_CREATURES] {
+    let mut widths = [None; crate::MAX_COLONY_CREATURES];
+    if let Some(ground) = VillageGround::resolve(home, cottages, monitors, policy, display_scale) {
+        let houses = cottages.len().min(crate::MAX_COLONY_CREATURES - 1) + 1;
+        for (slot, width) in widths.iter_mut().enumerate().take(houses) {
+            *width = Some(ground.lot_width(VillageLot::Dwelling(slot), cottages));
+        }
+    }
+    widths
+}
+
 /// Position of one companion house in the village. Slot 0 is the colony house itself.
 pub fn home_dwelling_position(
     home: &ColonyHome,
@@ -909,10 +1086,11 @@ pub fn home_object_positions(
     display_scale: u8,
 ) -> [Option<(u64, Point)>; crate::MAX_COLONY_OBJECTS] {
     let mut places = [None; crate::MAX_COLONY_OBJECTS];
-    let Some(ground) = VillageGround::resolve(home, monitors, policy, display_scale) else {
+    let Some(ground) = VillageGround::resolve(home, cottages, monitors, policy, display_scale)
+    else {
         return places;
     };
-    let walk = village_walk(cottages);
+    let walk = ground.walk(cottages);
     // A yard is the ground its own tree stands on, so an end the region cannot take has nowhere
     // to put anything down.
     let mut yards = [None; TreeEnd::BOTH.len()];
@@ -943,7 +1121,7 @@ pub fn house_roof_height(
     style: crate::ShelterStyle,
     colony_house: bool,
 ) -> f32 {
-    let span = if colony_house { 30 } else { 25 };
+    let span = if colony_house { 36 } else { 30 };
     let height = (i32::from(shelter.height).clamp(27, 36) * span / 24).max(13);
     let unit = |value: i32| (value * span / 24).max(1);
     let top = match style {
@@ -1277,6 +1455,283 @@ mod tests {
         home
     }
 
+    /// Growing the houses a fifth in 0.65.0 must not cost anybody their home. On the displays
+    /// people actually have, at every creature size, a full six-companion colony shows at least
+    /// as many houses as it did in 0.64.0 — the numbers below are 0.64.0's own — laying the
+    /// village out snug where the comfortable layout would leave a house off the end. A snug
+    /// village gives up a keepsake tree before a house, never the other way round.
+    #[test]
+    fn a_full_colony_shows_every_house_it_did_before_the_houses_grew() {
+        let cottages = widest_colony();
+        // Width, usable height, scale factor, and the houses 0.64.0 showed at 2x, 3x and 4x.
+        let displays: [(f32, f32, f32, [usize; 3]); 9] = [
+            (1280.0, 760.0, 1.0, [6, 6, 4]),
+            (1366.0, 728.0, 1.0, [6, 6, 4]),
+            (1440.0, 860.0, 1.0, [6, 6, 5]),
+            (1536.0, 824.0, 1.0, [6, 6, 5]),
+            (1920.0, 1040.0, 1.0, [6, 6, 6]),
+            (1280.0, 775.0, 2.0, [6, 6, 6]),
+            (1440.0, 875.0, 2.0, [6, 6, 6]),
+            (1512.0, 950.0, 2.0, [6, 6, 6]),
+            (1280.0, 680.0, 1.5, [6, 6, 6]),
+        ];
+        for (width, height, scale_factor, before) in displays {
+            let monitor = MonitorInfo {
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width,
+                    height,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width,
+                    height,
+                },
+                ..wide_monitor(scale_factor)
+            };
+            let monitors = std::slice::from_ref(&monitor);
+            let policy = HabitatPolicy::default();
+            for (display_scale, shown_before) in (2_u8..=4).zip(before) {
+                for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+                    let home = village_home(&monitor, corner);
+                    let shown: Vec<usize> = (0..=cottages.len())
+                        .filter(|slot| {
+                            home_dwelling_position(
+                                &home,
+                                *slot,
+                                &cottages,
+                                monitors,
+                                &policy,
+                                display_scale,
+                            )
+                            .is_some()
+                        })
+                        .collect();
+                    assert!(
+                        shown.len() >= shown_before,
+                        "{width}x{height}@{scale_factor} at {display_scale}x, {corner:?}: \
+                         {} houses where 0.64.0 showed {shown_before}",
+                        shown.len()
+                    );
+                    // The houses shown are always the first ones along, never a gap in the row.
+                    assert_eq!(shown, (0..shown.len()).collect::<Vec<_>>());
+                    // And every lot that is shown is inside the display.
+                    let ground =
+                        VillageGround::resolve(&home, &cottages, monitors, &policy, display_scale)
+                            .unwrap();
+                    let unit = ground.scale;
+                    for slot in &shown {
+                        let (_, point) = home_dwelling_position(
+                            &home,
+                            *slot,
+                            &cottages,
+                            monitors,
+                            &policy,
+                            display_scale,
+                        )
+                        .unwrap();
+                        let half =
+                            ground.lot_width(VillageLot::Dwelling(*slot), &cottages) / 2.0 * unit;
+                        assert!(point.x - half >= -0.01 && point.x + half <= width + 0.01);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The shortcut that decides whether every house fits gives the same answer as laying the
+    /// walk out and placing each house, on every display, size, colony and corner tried.
+    #[test]
+    fn the_quick_fit_check_agrees_with_placing_every_house() {
+        let policy = HabitatPolicy::default();
+        for width in [
+            700.0_f32, 900.0, 1100.0, 1280.0, 1366.0, 1440.0, 1920.0, 3840.0,
+        ] {
+            for scale_factor in [1.0_f32, 1.5, 2.0] {
+                let monitor = MonitorInfo {
+                    bounds: DesktopRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width,
+                        height: 800.0,
+                    },
+                    usable_bounds: DesktopRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width,
+                        height: 800.0,
+                    },
+                    ..wide_monitor(scale_factor)
+                };
+                for houses in 0..crate::MAX_COLONY_CREATURES {
+                    let cottages = vec![DwellingKind::Cottage; houses];
+                    for display_scale in 1..=4 {
+                        for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+                            let home = village_home(&monitor, corner);
+                            for fit in [VillageFit::Comfortable, VillageFit::Snug] {
+                                let Some(ground) = VillageGround::resolve_fit(
+                                    &home,
+                                    std::slice::from_ref(&monitor),
+                                    &policy,
+                                    display_scale,
+                                    fit,
+                                ) else {
+                                    continue;
+                                };
+                                assert_eq!(
+                                    ground.shows_every_house(&cottages),
+                                    ground.houses_shown(&cottages) == houses + 1,
+                                    "{width}@{scale_factor} {houses} cottages at {display_scale}x \
+                                     {corner:?} {fit:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Laid out snug, the houses stand shoulder to shoulder and never on one another, and the
+    /// village is only snug where the comfortable layout would have left a house off.
+    #[test]
+    fn a_snug_village_keeps_its_houses_apart_and_is_only_snug_where_it_must_be() {
+        let cottages = widest_colony();
+        let narrow = MonitorInfo {
+            bounds: DesktopRect {
+                x: 0.0,
+                y: 0.0,
+                width: 1280.0,
+                height: 760.0,
+            },
+            usable_bounds: DesktopRect {
+                x: 0.0,
+                y: 0.0,
+                width: 1280.0,
+                height: 760.0,
+            },
+            ..wide_monitor(1.0)
+        };
+        let policy = HabitatPolicy::default();
+        for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+            let home = village_home(&narrow, corner);
+            let ground =
+                VillageGround::resolve(&home, &cottages, std::slice::from_ref(&narrow), &policy, 3)
+                    .unwrap();
+            assert_eq!(ground.fit, VillageFit::Snug, "{corner:?}");
+            let lots = placed_lots(&home, &cottages, &narrow, 3);
+            let houses: Vec<_> = lots
+                .iter()
+                .filter(|(lot, ..)| matches!(lot, VillageLot::Dwelling(_)))
+                .collect();
+            assert_eq!(houses.len(), cottages.len() + 1);
+            for pair in houses.windows(2) {
+                let ((_, a, a_half), (_, b, b_half)) = (pair[0], pair[1]);
+                assert!(
+                    a + a_half <= b - b_half + 0.01,
+                    "{corner:?}: houses overlap"
+                );
+            }
+            // The outward tree gave up its ground for the houses.
+            assert!(
+                home_tree_position(
+                    &home,
+                    TreeEnd::Outward,
+                    &cottages,
+                    std::slice::from_ref(&narrow),
+                    &policy,
+                    3
+                )
+                .is_none()
+            );
+            // A smaller colony on the same display has room enough to be comfortable.
+            let ground = VillageGround::resolve(
+                &home,
+                &small_colony(),
+                std::slice::from_ref(&narrow),
+                &policy,
+                3,
+            )
+            .unwrap();
+            assert_eq!(ground.fit, VillageFit::Comfortable, "{corner:?}");
+        }
+        // A wide display never lays a village out snug.
+        let wide = wide_monitor(1.0);
+        for scale in 1..=4 {
+            let ground = VillageGround::resolve(
+                &village_home(&wide, HomeCorner::BottomLeft),
+                &cottages,
+                std::slice::from_ref(&wide),
+                &policy,
+                scale,
+            )
+            .unwrap();
+            assert_eq!(ground.fit, VillageFit::Comfortable);
+        }
+    }
+
+    /// A band along the bottom of the display — the Bottom edge habitat, above a Dock or a
+    /// taskbar — that held a full village before the houses grew a fifth in 0.65.0 still holds
+    /// every house and both trees, at the sizes it did: Medium on a 1080p display, Small on a
+    /// 768-line laptop, and Large on a Retina laptop. The houses are fitted by how tall they are
+    /// drawn, not by the empty top of the cell they are drawn from.
+    #[test]
+    fn a_bottom_band_that_held_the_village_before_the_houses_grew_still_holds_it() {
+        for (width, height, scale_factor, display_scale) in [
+            (1920.0, 1040.0, 1.0, 3_u8),
+            (1366.0, 728.0, 1.0, 2),
+            (1440.0, 875.0, 2.0, 4),
+        ] {
+            let monitor = MonitorInfo {
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width,
+                    height,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width,
+                    height,
+                },
+                ..wide_monitor(scale_factor)
+            };
+            let monitors = std::slice::from_ref(&monitor);
+            let policy = HabitatPolicy {
+                preset: HabitatPreset::BottomEdge,
+                zones: Vec::new(),
+            };
+            let cottages = widest_colony();
+            for corner in [HomeCorner::BottomLeft, HomeCorner::BottomRight] {
+                let home = village_home(&monitor, corner);
+                for slot in 0..=cottages.len() {
+                    assert!(
+                        home_dwelling_position(
+                            &home,
+                            slot,
+                            &cottages,
+                            monitors,
+                            &policy,
+                            display_scale
+                        )
+                        .is_some(),
+                        "{width}x{height} at {display_scale}x, {corner:?}: house {slot} is hidden"
+                    );
+                }
+                for end in TreeEnd::BOTH {
+                    assert!(
+                        home_tree_position(&home, end, &cottages, monitors, &policy, display_scale)
+                            .is_some(),
+                        "{width}x{height} at {display_scale}x, {corner:?}: the {end:?} tree is hidden"
+                    );
+                }
+            }
+        }
+    }
+
     /// The widest village there is: four adults, every house at its full footprint. Every rule
     /// about ground and clearance is tightest here, so this is the colony the layout is checked
     /// against rather than every shape it can take.
@@ -1304,14 +1759,17 @@ mod tests {
     ) -> Vec<(VillageLot, f32, f32)> {
         let policy = HabitatPolicy::default();
         let monitors = std::slice::from_ref(monitor);
-        let anchor = resolved_home_anchor(home, monitor, display_scale, &policy).unwrap();
+        let anchor = resolved_home_anchor(home, cottages, monitor, display_scale, &policy).unwrap();
+        let ground =
+            VillageGround::resolve(home, cottages, monitors, &policy, display_scale).unwrap();
         let unit = f32::from(display_scale) / monitor.scale_factor.max(1.0);
         let direction = if home.corner == HomeCorner::BottomLeft {
             1.0
         } else {
             -1.0
         };
-        village_walk(cottages)
+        ground
+            .walk(cottages)
             .iter()
             .filter_map(|(lot, _)| {
                 let point = match lot {
@@ -1335,7 +1793,7 @@ mod tests {
                 Some((
                     lot,
                     (point.x - anchor.x) * direction,
-                    lot_width(lot, cottages) / 2.0 * unit,
+                    ground.lot_width(lot, cottages) / 2.0 * unit,
                 ))
             })
             .collect()
@@ -1629,10 +2087,11 @@ mod tests {
         monitor.usable_bounds.width = 800.0;
         let monitors = std::slice::from_ref(&monitor);
         // A habitat cut back to a band in the middle of the display: room for the houses, none
-        // for what stands past them against the edge.
+        // for what stands past them against the edge. Since 0.65.0 the two houses measure 155
+        // shelter pixels end to end, so the band is 200 of them at the 2x drawn here.
         for (corner, left) in [
             (HomeCorner::BottomLeft, 0.1_f32),
-            (HomeCorner::BottomRight, 0.5),
+            (HomeCorner::BottomRight, 0.4),
         ] {
             let policy = HabitatPolicy {
                 preset: HabitatPreset::Custom,
@@ -1642,7 +2101,7 @@ mod tests {
                     normalized_bounds: DesktopRect {
                         x: left,
                         y: 0.0,
-                        width: 0.4,
+                        width: 0.5,
                         height: 1.0,
                     },
                     kind: HabitatZoneKind::Allowed,
@@ -1763,7 +2222,8 @@ mod tests {
             } else {
                 -1.0
             };
-            let anchor = resolved_home_anchor(&home, &monitor, TIGHTEST_SCALE, &policy).unwrap();
+            let anchor =
+                resolved_home_anchor(&home, &cottages, &monitor, TIGHTEST_SCALE, &policy).unwrap();
             let (_, guest) = home_guest_position(
                 &home,
                 &cottages,
@@ -1775,8 +2235,9 @@ mod tests {
             .unwrap();
             assert_eq!(guest.y, anchor.y);
             let out = (guest.x - anchor.x) * direction;
-            for (lot, centre) in village_walk(&cottages).iter() {
-                let edge = (centre + lot_width(lot, &cottages) / 2.0) * unit;
+            for (lot, centre) in village_walk(&cottages, VillageFit::Comfortable).iter() {
+                let edge =
+                    (centre + lot_width(lot, &cottages, VillageFit::Comfortable) / 2.0) * unit;
                 assert!(
                     out >= edge - 0.01,
                     "{corner:?}: the guest stands on {lot:?}"
@@ -1822,15 +2283,36 @@ mod tests {
                 let home = village_home(&monitor, corner);
                 let ground = VillageGround::resolve(
                     &home,
+                    &widest_colony(),
                     std::slice::from_ref(&monitor),
                     &policy,
                     TIGHTEST_SCALE,
                 )
                 .unwrap();
+                // The corner clamped into the nearest region, worked out the long way round, for
+                // whichever fit the ground settled on: a corner region a quarter of the display
+                // wide lays a full village out snug.
+                let desired = anchor_for(&home, &monitor, TIGHTEST_SCALE, ground.fit);
+                let expected = accessible_regions(&policy, &monitor)
+                    .into_iter()
+                    .map(|region| {
+                        let point = Point {
+                            x: desired.x.clamp(region.x + 8.0, region.right() - 8.0),
+                            y: region.bottom() - 4.0,
+                        };
+                        (desired.distance(point), point)
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .map(|(_, point)| point);
                 assert_eq!(
                     Some(ground.anchor),
-                    resolved_home_anchor(&home, &monitor, TIGHTEST_SCALE, &policy),
+                    expected,
                     "{preset:?} {corner:?}: the ground drifted from the habitat's own answer"
+                );
+                assert_eq!(
+                    ground.fit == VillageFit::Snug,
+                    preset == HabitatPreset::BottomCorners,
+                    "{preset:?} {corner:?}"
                 );
                 assert_eq!(
                     ground.region(),

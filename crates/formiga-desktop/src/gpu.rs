@@ -600,6 +600,7 @@ impl OverlayRenderer {
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
+                formiga_core::colony_cottage_list(&save.creatures).as_slice(),
                 &self.monitor,
                 save.settings.display_scale,
                 &save.settings.habitat,
@@ -939,6 +940,7 @@ impl OverlayRenderer {
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
+                formiga_core::colony_cottage_list(&save.creatures).as_slice(),
                 &self.monitor,
                 save.settings.display_scale,
                 &save.settings.habitat,

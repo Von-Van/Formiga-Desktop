@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=21 => migrate_legacy(value, version),
+            1..=22 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -264,11 +264,20 @@ fn migrate_legacy(
     // v22 gives every companion a stature. Each one already in the colony takes the size its own
     // seed gives it, and a mini its parent's size scaled down, exactly as a new one would; nothing
     // else about it changes. Applied after the file is parsed, below.
+    //
+    // v23 adds a tally of what each pair has done together, the moment the journal was last
+    // read, and a journal moment for a visitor coming back. Every pair's tally starts at nothing,
+    // since nothing was counted before; the journal counts as read up to its newest moment, so
+    // an upgraded colony is not marked as having news it has already seen. Applied below.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
     if source_version <= 21 {
         crate::apply_statures(&mut save.creatures);
+    }
+    if source_version <= 22 {
+        save.tallies.clear();
+        save.companion.journal_seen_until = save.companion.journal.iter().map(|e| e.at).max();
     }
     if save.ritual.next_at_utc == time::OffsetDateTime::UNIX_EPOCH {
         save.ritual.next_at_utc =
@@ -673,7 +682,7 @@ mod tests {
     /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 264] = [
+    const SAVED_FIELDS: [&str; 275] = [
         "Decoration",
         "Friendship",
         "Garden",
@@ -684,6 +693,7 @@ mod tests {
         "Ornament",
         "Pin",
         "Preference",
+        "Revisit",
         "Ritual",
         "Unlocked",
         "Visit",
@@ -724,6 +734,7 @@ mod tests {
         "boredom",
         "born_at_utc",
         "brow_style",
+        "calm_spells",
         "cell",
         "cheek_style",
         "classic",
@@ -789,6 +800,8 @@ mod tests {
         "gardens",
         "gatherings",
         "generation",
+        "gifts",
+        "greetings",
         "guest",
         "guest_book",
         "habitat",
@@ -809,6 +822,7 @@ mod tests {
         "id",
         "impulsiveness",
         "journal",
+        "journal_seen_until",
         "keeper",
         "kept",
         "kept_at_utc",
@@ -863,6 +877,7 @@ mod tests {
         "play",
         "play_sessions",
         "playfulness",
+        "plays",
         "position",
         "preferred_region",
         "preset",
@@ -883,6 +898,7 @@ mod tests {
         "schedule",
         "scrapbook",
         "settings",
+        "shared_rests",
         "shelter",
         "signed",
         "size",
@@ -894,10 +910,12 @@ mod tests {
         "sociability",
         "social",
         "social_need",
+        "sought",
         "source",
         "source_colony_seed",
         "source_generation",
         "sprite_outline",
+        "squabbles",
         "state",
         "stays_until_utc",
         "strength",
@@ -907,6 +925,8 @@ mod tests {
         "tail",
         "tail_length",
         "tail_style",
+        "tallies",
+        "tally",
         "temperament",
         "tendencies",
         "tension",
@@ -1624,6 +1644,68 @@ mod tests {
         assert!(migrated.companion.onboarding_complete);
         assert!(migrated.companion.journal.is_empty());
     }
+    /// A colony written by 0.64, before pair tallies and the journal's read marker: every
+    /// companion, bond score and journal moment comes through exactly as it was, no pair is given
+    /// a single moment it was not seen sharing, and the journal reads as already read.
+    #[test]
+    fn a_v22_colony_keeps_its_bonds_and_journal_and_invents_no_shared_history() {
+        let desktop = crate::DesktopSnapshot::default();
+        let now = datetime!(2026-09-30 12:00 UTC);
+        let mut world = crate::World::new([61; 32], now, &desktop);
+        world.tick(now + time::Duration::days(12), 0.05, &desktop);
+        for (index, relationship) in world.save.relationships.iter_mut().enumerate() {
+            relationship.affinity = 200 - index as u8 * 9;
+            relationship.familiarity = 180;
+        }
+        world.save.companion.remember(
+            Some(world.save.creatures[0].id),
+            crate::JournalMoment::Discovery,
+            now + time::Duration::days(2),
+        );
+        let original = world.save;
+        assert!(original.relationships.len() >= 3);
+        let mut json = serde_json::to_value(&original).unwrap();
+        json["save_version"] = 22.into();
+        let text = json.to_string();
+        assert!(!text.contains("tally") && !text.contains("journal_seen_until"));
+        let migrated = migrate_legacy(json, 22).unwrap();
+        assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+        assert_eq!(migrated.creatures, original.creatures);
+        assert_eq!(migrated.companion.journal, original.companion.journal);
+        assert_eq!(migrated.relationships, original.relationships);
+        assert!(migrated.tallies.is_empty());
+        assert_eq!(
+            migrated.companion.journal_seen_until,
+            original.companion.journal.iter().map(|e| e.at).max()
+        );
+        assert_eq!(migrated.companion.unread().count(), 0);
+        // And back out again without gaining anything: an empty tally is not written at all.
+        let written = serde_json::to_string(&migrated).unwrap();
+        assert!(!written.contains("\"tallies\""), "{written}");
+        let reread: SaveFile = serde_json::from_str(&written).unwrap();
+        assert_eq!(reread, migrated);
+    }
+
+    /// A tally and a read marker survive a round trip exactly.
+    #[test]
+    fn a_counted_tally_and_the_read_marker_round_trip() {
+        let mut save = example_save();
+        let at = datetime!(2026-09-30 9:00 UTC);
+        let pair = crate::tally_mut_or_insert(&mut save.tallies, 7, 3).unwrap();
+        assert_eq!((pair.a, pair.b), (3, 7));
+        pair.tally
+            .count(Some(false), crate::RelationshipExperience::Followed, at);
+        pair.tally
+            .count(None, crate::RelationshipExperience::SharedRest, at);
+        save.companion.journal_seen_until = Some(at);
+        let text = serde_json::to_string(&save).unwrap();
+        let reread: SaveFile = serde_json::from_str(&text).unwrap();
+        assert_eq!(reread, save);
+        let tally = crate::tally_between(&reread.tallies, 7, 3).unwrap().tally;
+        assert_eq!(tally.sought, [0, 1]);
+        assert_eq!(tally.shared_rests, 1);
+    }
+
     /// A colony written by 0.61, before temperaments, archetypes and fractional leanings: every
     /// companion comes through exactly as it was, whole-number leanings read as the same values,
     /// nobody is given a temperament it did not have, and each reads one from its own values.
@@ -1790,6 +1872,7 @@ mod tests {
             settings: Settings::default(),
             creatures: Vec::new(),
             relationships: Vec::new(),
+            tallies: Vec::new(),
             ritual: crate::RitualState {
                 next_at_utc: datetime!(2026-01-02 0:00 UTC),
                 ..crate::RitualState::default()
@@ -1885,9 +1968,16 @@ mod tests {
         assert!(migrated.visitors.guest.is_none());
         assert!(migrated.visitors.guest_book.is_empty());
         assert_eq!(migrated.visitors.gatherings, 0);
-        // Everything the colony really did have is exactly as it was.
+        // Everything the colony really did have is exactly as it was, its journal counting as
+        // read up to its newest moment.
         assert_eq!(migrated.creatures, save.creatures);
-        assert_eq!(migrated.companion, save.companion);
+        assert_eq!(
+            migrated.companion,
+            crate::CompanionState {
+                journal_seen_until: save.companion.journal.iter().map(|e| e.at).max(),
+                ..save.companion.clone()
+            }
+        );
         assert_eq!(migrated.home, save.home);
         assert_eq!(migrated.settings, save.settings);
         assert_eq!(migrated.relationships, save.relationships);

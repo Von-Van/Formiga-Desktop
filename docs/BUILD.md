@@ -71,6 +71,7 @@ cargo run -p formiga-tools -- habit-sheet
 cargo run -p formiga-tools -- activity-sheet
 cargo run -p formiga-tools -- ambient-sheet
 cargo run -p formiga-tools -- shelter-sheet
+cargo run -p formiga-tools -- decoration-sheet
 cargo run -p formiga-tools -- village-palette-sheet
 cargo run -p formiga-tools -- home-yard-sheet
 cargo run -p formiga-tools -- prop-sheet
@@ -104,7 +105,10 @@ the one before 0.62.0 makes. Rate them in a text file of lines like
 which archetypes, faces and parts turn up among the ones rated bad more often than they turn up at
 all.
 
-Some of the sheets are review tools first and illustrations second. `ui-sheet` draws the whole
+Some of the sheets are review tools first and illustrations second. `decoration-sheet` draws every
+house decoration on its own, on a companion's cottage of each type — the narrowest house, where a
+decoration has the least room — in blocks by the place on a house it goes, and the four that light
+up, lit after dark; it is the sheet to judge a decoration's silhouette by. `ui-sheet` draws the whole
 interface atlas: every thought bubble, menu frame, icon state, and label tab. `prop-sheet` draws
 the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keepsakes held up the
 way the overlay holds them, and the toys, snacks and drinkware in the paws and mouths that hold

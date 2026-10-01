@@ -886,6 +886,8 @@ impl Clubhouse {
                         egui::vec2(96.0, 78.0),
                         if placed { mint() } else { card_fill() },
                         gold(),
+                        item.label(),
+                        placed,
                     );
                     if let Some(texture) = &texture {
                         ui.painter().image(

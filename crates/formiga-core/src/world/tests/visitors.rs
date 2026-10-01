@@ -1083,9 +1083,13 @@ fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
                 .iter()
                 .find(|creature| creature.id == *creature_id)
                 .expect("the colony is whole");
+            // Along the village and on its ground — or up on a roof for a sit, which village
+            // life does while a guest is round as much as at any other time — but never off
+            // below the ground line or away above the houses.
             assert!(
                 (resident.state.position.x - door.x).abs() <= VILLAGE_SPAN_LIMIT * 4.0
-                    && (resident.state.position.y - door.y).abs() <= 1.0,
+                    && resident.state.position.y <= door.y + 1.0
+                    && door.y - resident.state.position.y <= DWELLING_CELL * 4.0,
                 "{} left the village at {seconds}s",
                 resident.name
             );
@@ -1233,4 +1237,134 @@ fn a_favorite_visitor_outlasts_the_guest_book_and_comes_back_exactly_as_it_was()
     assert!(world.save.visitors.forget_favorite(&origin));
     assert!(!world.save.visitors.forget_favorite(&origin));
     assert!(world.save.visitors.guest.is_some());
+}
+
+/// A friend who comes back is written down as coming back, and the residents who met them before
+/// wave and say hello rather than greeting a stranger; nobody who arrived since pretends to know
+/// them. A day-long stay is still one visit, however many gatherings it spans.
+#[test]
+fn a_returning_friend_is_recognised_by_the_residents_who_met_them_and_by_the_journal() {
+    let desktop = desktop();
+    let created = datetime!(2026-04-02 9:00 UTC);
+    let mut world = colony_of_two([31; 32], created);
+    // A guardian and a timid one, who would otherwise watch or only look at a stranger.
+    world.save.creatures[0].personality.playfulness = 0.1;
+    world.save.creatures[0].personality.boldness = 0.1;
+    world.save.creatures[1].personality.playfulness = 0.1;
+    world.save.creatures[1].personality.boldness = 0.1;
+    let mut now = run(&mut world, created, 40.0, &desktop);
+    let friend = SharedCreatureSeed {
+        source_colony_seed: [77; 32],
+        source_generation: 0,
+        design: Some(CreatureDesign::generated([77; 32], 0, None)),
+    };
+    let invite = |world: &mut World, now: OffsetDateTime| {
+        world.dismiss_home(now, false);
+        world.tick(now, 0.0, &desktop);
+        assert_eq!(world.invite_visitor(friend, now, &desktop), Ok(()));
+    };
+    invite(&mut world, now);
+    assert_eq!(world.save.visitors.earlier_visits(), None);
+    now = run(&mut world, now, 40.0, &desktop);
+    assert_eq!(world.save.visitors.guest_book.len(), 1);
+    assert!(matches!(
+        world.save.companion.journal.last().map(|e| &e.moment),
+        Some(JournalMoment::Visit(_))
+    ));
+    // Signed already, the stay itself is not an earlier visit of its own.
+    assert_eq!(world.save.visitors.earlier_visits(), None);
+
+    // Two days on, the same friend is asked over again.
+    now += Duration::days(2);
+    world.save.visitors.guest = None;
+    invite(&mut world, now);
+    let (count, last) = world.save.visitors.earlier_visits().expect("seen before");
+    assert_eq!(count, 1);
+    assert!(last < now);
+    let mut answers = Vec::new();
+    for step in 1..=1_200_i64 {
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+        world.drain_events().for_each(drop);
+        if let Some(guest) = &world.save.visitors.guest {
+            answers.extend(guest.visit.answers.iter().copied());
+        }
+    }
+    let met_before = |id: CreatureId| {
+        world
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == id)
+            .is_some_and(|c| c.born_at_utc <= last)
+    };
+    assert!(
+        answers.iter().any(|a| met_before(a.creature_id)),
+        "the colony answered"
+    );
+    for answer in &answers {
+        if met_before(answer.creature_id) {
+            // Nobody watches, huffs at, hides from or merely looks at a friend.
+            assert!(
+                matches!(
+                    answer.gesture,
+                    Some(Gesture::Reach | Gesture::Strut | Gesture::Bop)
+                ),
+                "{answer:?}"
+            );
+            assert_eq!(answer.bubble, Some(BubbleIcon::Hello));
+        } else {
+            // Whoever hatched since has never met them, and greets a stranger.
+            assert_ne!(answer.bubble, Some(BubbleIcon::Hello), "{answer:?}");
+        }
+    }
+    assert_eq!(world.save.visitors.guest_book.len(), 2);
+    let name = world
+        .save
+        .visitors
+        .guest
+        .as_ref()
+        .unwrap()
+        .creature
+        .name
+        .clone();
+    assert!(
+        world
+            .save
+            .companion
+            .journal
+            .iter()
+            .any(|e| e.moment == JournalMoment::Revisit(name.clone(), 2)),
+        "{:?}",
+        world.save.companion.journal
+    );
+}
+
+/// A resident who arrived after the guest's last visit answers it as the stranger it is to them.
+#[test]
+fn only_residents_who_were_here_before_recognise_a_returning_guest() {
+    let answer = ResidentAnswer {
+        creature_id: 1,
+        after: 1.0,
+        hold: 2.0,
+        gesture: Some(Gesture::Watch),
+        bubble: Some(BubbleIcon::Watching),
+    };
+    let known = super::super::visitors::recognised(answer, false);
+    assert_eq!(known.gesture, Some(Gesture::Reach));
+    assert_eq!(known.bubble, Some(BubbleIcon::Hello));
+    assert_eq!((known.after, known.hold), (1.0, 2.0));
+    // Reduced motion keeps everyone still, as it always has, and only the hello is said.
+    let still = super::super::visitors::recognised(answer, true);
+    assert_eq!(still.gesture, None);
+    assert_eq!(still.bubble, Some(BubbleIcon::Hello));
+    // A playful bounce is its own warm answer already.
+    let bop = super::super::visitors::recognised(
+        ResidentAnswer {
+            gesture: Some(Gesture::Bop),
+            bubble: None,
+            ..answer
+        },
+        false,
+    );
+    assert_eq!(bop.gesture, Some(Gesture::Bop));
 }

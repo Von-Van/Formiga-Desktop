@@ -8,6 +8,7 @@ use crate::gpu::{
     MenuView, OverlayRenderer, OverlayUi, SideView, VillageScene, monitor_has_fullscreen_window,
 };
 use crate::interaction::{InteractionProxy, MenuProxy, ProxyRuntimeState};
+use crate::notebook_window;
 use crate::platform;
 use crate::reference_match::match_reference_file;
 use crate::settings::{
@@ -49,6 +50,14 @@ use habitat_editor::*;
 pub enum UserEvent {
     Menu(MenuEvent),
     Update(UpdateEvent),
+    /// A screen reader asking the notebook window for its contents, or to act on a control.
+    AccessKit(egui_winit::accesskit_winit::Event),
+}
+
+impl From<egui_winit::accesskit_winit::Event> for UserEvent {
+    fn from(event: egui_winit::accesskit_winit::Event) -> Self {
+        Self::AccessKit(event)
+    }
 }
 
 #[derive(Debug)]
@@ -102,6 +111,14 @@ pub struct FormigaApp {
     /// clock is read at most once a minute rather than every frame.
     night: bool,
     night_checked: Option<Instant>,
+    /// The data directory, for the files that sit beside the colony.
+    data_dir: PathBuf,
+    /// Where the notebook window was last remembered, so it is only written when it moves.
+    notebook_geometry: Option<notebook_window::NotebookGeometry>,
+    /// Why the colony could not be written last time it was tried, while that is still so. The
+    /// colony keeps being tried at every checkpoint, and this clears on the first write that
+    /// works.
+    save_trouble: Option<String>,
 }
 
 impl FormigaApp {
@@ -139,6 +156,9 @@ impl FormigaApp {
             recovery_pending: false,
             night: false,
             night_checked: None,
+            notebook_geometry: notebook_window::load(&data_dir),
+            data_dir,
+            save_trouble: None,
         })
     }
 
@@ -565,6 +585,7 @@ impl FormigaApp {
                     self.start_update_check();
                 }
             }
+            TrayAction::OpenAbout => self.show_update_settings(event_loop),
             TrayAction::None => {}
         }
     }
@@ -786,15 +807,69 @@ impl FormigaApp {
         if self.recovery_pending || self.habitat_editor.is_some() {
             return Ok(());
         }
-        if let Some(world) = &self.world {
-            if world.is_interacting() {
-                return Ok(());
-            }
-            self.save_store.save(&world.save)?;
-            self.last_save = Instant::now();
-            self.save_waiting = SaveUrgency::None;
+        let Some(world) = &self.world else {
+            return Ok(());
+        };
+        if world.is_interacting() {
+            return Ok(());
         }
-        Ok(())
+        match self.save_store.save(&world.save) {
+            Ok(()) => {
+                self.last_save = Instant::now();
+                self.save_waiting = SaveUrgency::None;
+                if self.save_trouble.take().is_some() {
+                    tracing::info!("colony saved again after a failed save");
+                    self.settings_notice("The colony is saving normally again");
+                    self.sync_save_trouble();
+                }
+                Ok(())
+            }
+            Err(error) => {
+                // Tried again at the next checkpoint rather than at once, so a full disk is not
+                // hammered every tick.
+                self.last_save = Instant::now();
+                let first = self.save_trouble.is_none();
+                self.save_trouble = Some(save_trouble_text(&error));
+                if first {
+                    self.sync_save_trouble();
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    /// Show save trouble, or its clearing, everywhere it is shown: the tray icon's tooltip and a
+    /// card in the notebook. Nothing interrupts: no dialog, no sound, nothing on the desktop.
+    fn sync_save_trouble(&mut self) {
+        if let Some(tray) = &mut self.tray {
+            tray.sync_trouble(self.save_trouble.is_some());
+        }
+        if let Some(window) = &mut self.settings_window {
+            window.clubhouse.save_trouble = self.save_trouble.clone();
+            window.window.request_redraw();
+        }
+    }
+}
+
+/// What went wrong writing the colony, said so that it can be acted on.
+fn save_trouble_text(error: &formiga_core::PersistenceError) -> String {
+    let detail = error.to_string();
+    let lower = detail.to_lowercase();
+    if lower.contains("no space") || lower.contains("disk full") || lower.contains("os error 28") {
+        format!(
+            "The disk is full, so the colony could not be written ({detail}). Free some space and \
+             it will be saved again on its own."
+        )
+    } else if lower.contains("permission")
+        || lower.contains("denied")
+        || lower.contains("read-only")
+    {
+        format!(
+            "Formiga is not allowed to write to its colony folder ({detail}). Check that the \
+             folder is not read-only or locked by another program."
+        )
+    } else {
+        format!("The colony could not be written ({detail}).")
     }
 }
 
@@ -810,6 +885,13 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         match event {
             UserEvent::Menu(event) => self.handle_menu(event_loop, &event),
             UserEvent::Update(event) => self.handle_update_event(event_loop, event),
+            UserEvent::AccessKit(event) => {
+                if let Some(window) = &mut self.settings_window
+                    && window.id() == event.window_id
+                {
+                    window.on_accesskit(event.window_event);
+                }
+            }
         }
     }
 
@@ -849,6 +931,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         {
             if matches!(event, WindowEvent::CloseRequested) {
                 self.finish_habitat_editor(false);
+                self.remember_notebook_geometry();
                 if let Some(window) = &mut self.settings_window {
                     window.hide();
                 }
@@ -862,6 +945,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             return;
                         };
                         window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
+                        window.clubhouse.save_trouble = self.save_trouble.clone();
                         window.clubhouse.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,
@@ -890,7 +974,15 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 }
             }
             if let Some(outcome) = outcome {
+                let close = outcome.close_notebook;
                 self.handle_settings_outcome(event_loop, outcome);
+                if close {
+                    self.finish_habitat_editor(false);
+                    self.remember_notebook_geometry();
+                    if let Some(window) = &mut self.settings_window {
+                        window.hide();
+                    }
+                }
             }
             return;
         }
@@ -986,6 +1078,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         let ticked = self.tick();
         if let (Some(tray), Some(world)) = (&mut self.tray, &self.world) {
             tray.sync_quiet(world.save.companion.quiet_until.is_some());
+            tray.sync_news(world.save.companion.unread().next().is_some());
         }
         if ticked {
             self.sync_interaction_proxies(event_loop);
@@ -1007,6 +1100,13 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.finish_habitat_editor(false);
+        if self
+            .settings_window
+            .as_ref()
+            .is_some_and(|window| window.window.is_visible() == Some(true))
+        {
+            self.remember_notebook_geometry();
+        }
         if let Some(world) = &mut self.world {
             world.handle_command(WorldCommand::CancelInteraction, &DesktopSnapshot::default());
         }

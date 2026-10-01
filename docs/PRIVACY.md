@@ -90,6 +90,21 @@ temperament — and nothing about the person who shared it, their computer, or t
 chose to invite again, each only a `kept_at_utc`, the `name` it went by, and the same `origin`; a
 favorite stays until it is forgotten and never grows past eight on its own.
 
+Save version 23 (0.65.0) adds three things, all about the colony and none about the desktop. Each
+pair of companions may have a **tally**, kept in a list beside the relationship records: six
+saturating counts of what the pair was seen doing together — calm spells, greetings, naps side by side, games, finds brought over, squabbles — how
+many times each went looking for the other, and the kind and timestamp of the last warm moment they
+shared. It is counted from the bond experiences the colony already had, holds no position, path,
+window or cursor, and an upgraded colony starts every pair at nothing rather than estimating the
+past. `journal_seen_until` is one timestamp: the newest journal moment the notebook has shown. And
+the journal has one more kind of moment, a visitor coming back, carrying the name it went by and
+which visit it was. Observations the notebook makes are worked out from the save each time and are
+never stored.
+
+The notebook remembers where its window was in a separate `notebook-window.json` beside the colony:
+a position, a size and whether it was zoomed, and nothing else. It is not part of the colony file,
+so a backup does not carry it to another computer.
+
 What a visit does *not* save is the visit itself: the scene's progress is `#[serde(skip)]`, so its
 phase, beat, elapsed time, doorway, the places a guest tours, whom it has already gone over to,
 and the residents' answers exist only while the program is running. The same is true of every other interaction added in 0.58.0 — thought bubbles, the open

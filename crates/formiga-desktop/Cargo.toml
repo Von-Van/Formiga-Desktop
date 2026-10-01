@@ -11,7 +11,7 @@ bytemuck.workspace = true
 directories.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true
-egui-winit.workspace = true
+egui-winit = { workspace = true, features = ["accesskit"] }
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
 image.workspace = true

@@ -4,9 +4,10 @@ use formiga_core::{ShelterDecorationKind, ShelterGenome, ShelterStyle};
 mod decorations;
 mod houses;
 
-/// One cell of the village atlas: room for the largest house drawn a quarter larger than it was
-/// until 0.61.0, standing on a ground line three pixels above the cell's foot.
-pub const SHELTER_SIZE: u32 = 80;
+/// One cell of the village atlas: room for the largest house, drawn a fifth larger again in
+/// 0.65.0 than the quarter-larger houses of 0.61.0, standing on a ground line three pixels above
+/// the cell's foot. It was 64 until 0.61.0 and 80 until 0.65.0.
+pub const SHELTER_SIZE: u32 = 96;
 
 /// Where a dwelling stands in its cell: across the middle, on the ground line the tree shares.
 const CELL_CENTRE: i32 = SHELTER_SIZE as i32 / 2;
@@ -34,11 +35,11 @@ pub const VILLAGE_DAY_HEIGHT: u32 = SHELTER_SIZE * 2;
 pub const DRAWN_SPAN: i32 = 24;
 
 /// How large each dwelling draws, in twenty-fourths of the colony house as it was drawn until
-/// 0.61.0: both a quarter larger now, beside the same 48px creatures, and a companion cottage
-/// still five-sixths of the colony house — small enough that the colony house is plainly the
-/// main building, big enough to read as a home.
-pub const MAIN_SPAN: i32 = 30;
-pub const COTTAGE_SPAN: i32 = 25;
+/// 0.61.0: half as large again now, beside the same 48px creatures — a quarter in 0.61.0 and a
+/// fifth more in 0.65.0 — and a companion cottage still five-sixths of the colony house, small
+/// enough that the colony house is plainly the main building, big enough to read as a home.
+pub const MAIN_SPAN: i32 = 36;
+pub const COTTAGE_SPAN: i32 = 30;
 
 /// One cell of the village atlas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -384,6 +385,9 @@ struct ShelterFrame {
     wall_half: i32,
     ground_y: i32,
     ground_half: i32,
+    /// How far either side of the middle the doorway and its frame reach, which a wall
+    /// decoration keeps clear of.
+    door_half: i32,
     /// A cottage, which keeps what stands beside it a little closer in: its lot is narrower than
     /// the colony house's.
     cottage: bool,
@@ -396,6 +400,8 @@ impl ShelterFrame {
         let half = width / 2;
         let unit = |value: i32| (value * span / DRAWN_SPAN).max(1);
         let cottage = span < MAIN_SPAN;
+        // The doorway `houses::House::door` draws, a quarter of the house wide, and its frame.
+        let door_half = (width / 4).clamp(5, width / 2) / 2 + 2;
         match genome.style {
             ShelterStyle::Tent => Self {
                 cx,
@@ -406,6 +412,7 @@ impl ShelterFrame {
                 wall_half: (half + unit(2)) * 7 / 10,
                 ground_y: bottom - unit(2),
                 ground_half: half + unit(2),
+                door_half,
                 cottage,
             },
             ShelterStyle::Mushroom => {
@@ -421,6 +428,7 @@ impl ShelterFrame {
                     wall_half: stem_half,
                     ground_y: bottom,
                     ground_half: stem_half + unit(2),
+                    door_half,
                     cottage,
                 }
             }
@@ -437,6 +445,7 @@ impl ShelterFrame {
                     wall_half: half,
                     ground_y: bottom - unit(1),
                     ground_half: half + unit(2),
+                    door_half,
                     cottage,
                 }
             }
@@ -451,30 +460,11 @@ impl ShelterFrame {
                     wall_half: half - unit(2),
                     ground_y: bottom,
                     ground_half: half,
+                    door_half,
                     cottage,
                 }
             }
         }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn fill_triangle(
-    canvas: &mut Canvas,
-    top_x: i32,
-    top_y: i32,
-    left_x: i32,
-    bottom_y: i32,
-    right_x: i32,
-    _right_y: i32,
-    color: Rgba,
-) {
-    let height = (bottom_y - top_y).max(1);
-    for y in top_y..=bottom_y {
-        let progress = (y - top_y) as f32 / height as f32;
-        let start = (top_x as f32 + (left_x - top_x) as f32 * progress).round() as i32;
-        let end = (top_x as f32 + (right_x - top_x) as f32 * progress).round() as i32;
-        canvas.fill_rect(start, y, end - start + 1, 1, color);
     }
 }
 
@@ -565,10 +555,10 @@ mod tests {
                 })
                 .collect();
             let village = ShelterRenderer::render_village(&genome, &dressed, &marks, &[], true);
-            // One 560x320 texture however full the village: every house by day and after dark,
+            // One 672x384 texture however full the village: every house by day and after dark,
             // with and without its resident home, and the tree.
-            assert_eq!(VILLAGE_ATLAS_WIDTH, 560);
-            assert_eq!(VILLAGE_ATLAS_HEIGHT, 320);
+            assert_eq!(VILLAGE_ATLAS_WIDTH, 672);
+            assert_eq!(VILLAGE_ATLAS_HEIGHT, 384);
             assert_eq!(village.width(), VILLAGE_ATLAS_WIDTH);
             assert_eq!(village.height(), VILLAGE_ATLAS_HEIGHT);
             for (lit, occupied) in [(false, false), (false, true), (true, false), (true, true)] {
@@ -822,12 +812,198 @@ mod tests {
         }
     }
 
+    /// Every decoration is big enough to read at desktop scale — since 0.65.0 each covers at least
+    /// thirty pixels of a cottage, outline and all — and no two that go in the same place on a
+    /// house draw alike, on any type of house.
+    #[test]
+    fn every_decoration_draws_a_shape_of_its_own_big_enough_to_read() {
+        for style in ShelterStyle::ALL {
+            let genome = ShelterGenome {
+                style,
+                palette_index: 3,
+                accent_index: 8,
+                width: 34,
+                height: 27,
+                detail_seed: 0x5eed_5eed_5eed_5eed,
+            };
+            let draw = |kinds: &[ShelterDecorationKind]| {
+                let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                draw_dwelling(
+                    &mut tile,
+                    &genome,
+                    kinds,
+                    dwelling(COTTAGE_SPAN, None, false),
+                );
+                tile
+            };
+            let bare = draw(&[]);
+            for place in formiga_core::DecorationSlot::ALL {
+                let mut drawings: Vec<(ShelterDecorationKind, Vec<Rgba>)> = Vec::new();
+                for kind in ShelterDecorationKind::ALL
+                    .into_iter()
+                    .filter(|kind| kind.slot() == place)
+                {
+                    let dressed = draw(&[kind]);
+                    let changed = dressed
+                        .pixels()
+                        .iter()
+                        .zip(bare.pixels())
+                        .filter(|(a, b)| a != b)
+                        .count();
+                    assert!(
+                        changed >= 30,
+                        "{style:?}: a {kind:?} changes only {changed} pixels of its cottage"
+                    );
+                    for (other, pixels) in &drawings {
+                        assert_ne!(
+                            pixels,
+                            dressed.pixels(),
+                            "{style:?}: a {kind:?} draws exactly as a {other:?}"
+                        );
+                    }
+                    drawings.push((kind, dressed.pixels().to_vec()));
+                }
+            }
+        }
+    }
+
+    /// On a display too narrow for the village laid out comfortably, the houses stand shoulder
+    /// to shoulder on their snug footprints. That only works if nothing a house wears — a
+    /// woodpile at one corner, a lantern at the other — reaches past half its snug footprint
+    /// either side of its middle, on any type, genome or decoration there is, lit or not.
+    #[test]
+    fn a_dressed_house_fits_its_snug_footprint_so_neighbours_never_overlap() {
+        use formiga_core::DwellingKind;
+        let mut widest = [0_i32; 2];
+        for style in ShelterStyle::ALL {
+            for (width, height) in [(34_u8, 27_u8), (38, 31), (42, 36)] {
+                let genome = ShelterGenome {
+                    style,
+                    palette_index: 5,
+                    accent_index: 2,
+                    width,
+                    height,
+                    detail_seed: 0xdead_beef_0bad_f00d,
+                };
+                for (index, (span, kind)) in [
+                    (MAIN_SPAN, DwellingKind::Main),
+                    (COTTAGE_SPAN, DwellingKind::Cottage),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let half = kind.snug_width() as i32 / 2;
+                    for choice in 0..5 {
+                        let dressed: Vec<ShelterDecorationKind> = formiga_core::DecorationSlot::ALL
+                            .into_iter()
+                            .filter_map(|place| {
+                                ShelterDecorationKind::ALL
+                                    .into_iter()
+                                    .filter(|kind| kind.slot() == place)
+                                    .nth(choice)
+                            })
+                            .collect();
+                        for lit in [false, true] {
+                            let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                            draw_dwelling(&mut tile, &genome, &dressed, dwelling(span, None, lit));
+                            let (x0, _, x1, _) = tile.alpha_bounds().expect("drawn");
+                            let reach = (CELL_CENTRE - x0 as i32).max(x1 as i32 + 1 - CELL_CENTRE);
+                            widest[index] = widest[index].max(reach);
+                            assert!(
+                                reach <= half,
+                                "{style:?} {width}x{height} {kind:?} dressed {dressed:?} reaches \
+                                 {reach} from its middle, past half its snug {}",
+                                kind.snug_width()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        // Snug means snug: no more than a couple of pixels of air either side of the widest.
+        for (index, kind) in [DwellingKind::Main, DwellingKind::Cottage]
+            .into_iter()
+            .enumerate()
+        {
+            assert!(
+                kind.snug_width() as i32 / 2 - widest[index] <= 2,
+                "{kind:?}: the widest house reaches {}, well inside {}",
+                widest[index],
+                kind.snug_width()
+            );
+        }
+    }
+
+    /// The village decides whether a house fits the room above the ground by how tall it is
+    /// drawn, not by its cell, so that a band along the bottom of a display that held the village
+    /// before the houses grew still holds it. Every house, at either size, of every type and
+    /// genome and with the tallest thing on its roof, stays inside that height.
+    #[test]
+    fn no_house_is_drawn_taller_than_the_village_makes_room_for() {
+        let room = formiga_core::DWELLING_DRAWN_HEIGHT as i32;
+        let mut tallest = 0;
+        for style in ShelterStyle::ALL {
+            for width in [34_u8, 38, 42] {
+                for height in [27_u8, 31, 36] {
+                    let genome = ShelterGenome {
+                        style,
+                        palette_index: 3,
+                        accent_index: 1,
+                        width,
+                        height,
+                        detail_seed: 0x1234_5678_9abc_def0,
+                    };
+                    for span in [MAIN_SPAN, COTTAGE_SPAN] {
+                        for roof in ShelterDecorationKind::ALL
+                            .into_iter()
+                            .filter(|kind| kind.slot() == formiga_core::DecorationSlot::Roof)
+                            .map(Some)
+                            .chain([None])
+                        {
+                            let dressed: Vec<_> = roof.into_iter().collect();
+                            for lit in [false, true] {
+                                let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                                draw_dwelling(
+                                    &mut tile,
+                                    &genome,
+                                    &dressed,
+                                    dwelling(span, None, lit),
+                                );
+                                let (_, top, _, _) = tile.alpha_bounds().expect("drawn");
+                                let reach = CELL_GROUND - top as i32;
+                                tallest = tallest.max(reach);
+                                assert!(
+                                    reach <= room,
+                                    "{style:?} {width}x{height} span {span} with {roof:?} \
+                                     reaches {reach} above the ground, past {room}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // And the allowance is not much more than it needs to be.
+        assert!(
+            tallest + 4 >= room,
+            "the tallest house reaches only {tallest}"
+        );
+    }
+
     /// The village keeps resting companions off every doorway by a fixed number of pixels, which
-    /// only works if no genome can draw a doorway wider than that number assumes. Seven pixels
-    /// either side of a dwelling's middle is what `habitat::tests::WIDEST_DOOR_HALF` promises.
+    /// only works if no genome can draw a doorway wider than that number assumes. Since 0.65.0 the
+    /// widest doorway reaches seven pixels either side of a dwelling's middle and nine with its
+    /// frame, far inside both what a resting frame may reach into a lot (`REST_WALL_SLIVER`, nine
+    /// pixels in from an edge at least thirty-four from the middle) and the half-frame the village
+    /// keeps clear in front of every door.
     #[test]
     fn no_dwelling_draws_a_doorway_wider_than_the_village_expects() {
-        const WIDEST_DOOR_HALF: i32 = 7;
+        const WIDEST_DOOR_HALF: i32 = 9;
+        const _: () = assert!(
+            (formiga_core::DwellingKind::Cottage.width() as i32) / 2
+                - formiga_core::REST_WALL_SLIVER as i32
+                > WIDEST_DOOR_HALF
+        );
         for style in [
             ShelterStyle::Tent,
             ShelterStyle::Mushroom,
@@ -851,9 +1027,15 @@ mod tests {
                         let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
                         draw_dwelling(&mut tile, &genome, &[], dwelling(span, None, false));
                         let doorway = Rgba::new(25, 23, 31, 255);
-                        let open = |x: i32| (55..=60).any(|y| tile.get(x, y) == doorway);
+                        // A few rows up from the threshold, where every style's doorway is
+                        // at its widest.
+                        let open = |x: i32| {
+                            (CELL_GROUND - 6..=CELL_GROUND - 2).any(|y| tile.get(x, y) == doorway)
+                        };
                         let reach = (0..=WIDEST_DOOR_HALF + 6)
-                            .filter(|offset| open(32 + offset) || open(32 - offset))
+                            .filter(|offset| {
+                                open(CELL_CENTRE + offset) || open(CELL_CENTRE - offset)
+                            })
                             .max()
                             .unwrap_or(0);
                         assert!(
@@ -1020,8 +1202,9 @@ mod tests {
             };
             let main = ShelterRenderer::roof_height(&genome, style, true);
             let cottage = ShelterRenderer::roof_height(&genome, style, false);
-            // A quarter taller than the 20 to 40 they reached until 0.61.0.
-            assert!((25..=50).contains(&main), "{style:?}: {main}");
+            // Half as tall again as the 20 to 40 they reached until 0.61.0: a quarter in 0.61.0
+            // and a fifth more in 0.65.0.
+            assert!((30..=60).contains(&main), "{style:?}: {main}");
             assert!(cottage < main, "{style:?}: {cottage} against {main}");
         }
     }

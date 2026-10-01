@@ -695,6 +695,140 @@ pub struct CreatureRelationship {
     pub avoidance: u8,
 }
 
+/// What one pair has actually been seen doing together since 0.65.0, kept beside the pair's bond
+/// scores rather than inside them: the scores are read by every companion's every decision, and
+/// copied with them, and the tally is read only by the notebook. Never filled in for time before
+/// it was kept: a colony from an earlier release starts every pair at nothing, however close they
+/// already are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairTally {
+    pub a: CreatureId,
+    pub b: CreatureId,
+    #[serde(default)]
+    pub tally: RelationshipTally,
+}
+
+/// The tally of what two companions have done together, if anything has been counted.
+pub fn tally_between(tallies: &[PairTally], a: CreatureId, b: CreatureId) -> Option<&PairTally> {
+    let (a, b) = canonical_creature_pair(a, b)?;
+    tallies.iter().find(|tally| tally.a == a && tally.b == b)
+}
+
+/// The tally for two companions, started at nothing if this is the first thing counted, with
+/// the pair in its canonical order. `None` for a companion and itself, or once every pair a full
+/// colony can have is already counted.
+pub fn tally_mut_or_insert(
+    tallies: &mut Vec<PairTally>,
+    a: CreatureId,
+    b: CreatureId,
+) -> Option<&mut PairTally> {
+    let (a, b) = canonical_creature_pair(a, b)?;
+    if let Some(index) = tallies.iter().position(|t| t.a == a && t.b == b) {
+        return tallies.get_mut(index);
+    }
+    if tallies.len() >= MAX_RELATIONSHIPS {
+        return None;
+    }
+    tallies.push(PairTally {
+        a,
+        b,
+        tally: RelationshipTally::default(),
+    });
+    tallies.last_mut()
+}
+
+/// The kinds of moment a pair's tally counts, and the one its memory names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SharedMomentKind {
+    /// Five calm minutes spent near one another.
+    Calm,
+    Greeting,
+    /// A nap side by side.
+    Rest,
+    Play,
+    /// A found treasure brought over to the other.
+    Gift,
+    Squabble,
+}
+
+/// The last warm thing a pair shared, and when: the moment a relationship memory names. Only ever
+/// written from a moment that happened, so a memory can never say something the colony did not do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairMemory {
+    #[serde(with = "time::serde::rfc3339")]
+    pub at: OffsetDateTime,
+    pub kind: SharedMomentKind,
+}
+
+/// Counts of what one pair has done together, each held at its ceiling rather than wrapping. The
+/// numbers an observation quotes as its evidence, so they only ever go up by a moment that
+/// happened.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RelationshipTally {
+    pub calm_spells: u16,
+    pub greetings: u16,
+    pub shared_rests: u16,
+    pub plays: u16,
+    pub gifts: u16,
+    pub squabbles: u16,
+    /// How often each went looking for the other on its own — followed it, went to greet it
+    /// coming home, or brought it a find — as `[a sought b, b sought a]`. A greeting a ritual
+    /// asked of everyone is not counted here, since nobody chose it.
+    pub sought: [u16; 2],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<PairMemory>,
+}
+
+impl RelationshipTally {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Every moment counted, of whatever kind.
+    pub fn total(&self) -> u32 {
+        [
+            self.calm_spells,
+            self.greetings,
+            self.shared_rests,
+            self.plays,
+            self.gifts,
+            self.squabbles,
+        ]
+        .into_iter()
+        .map(u32::from)
+        .sum()
+    }
+
+    /// Count one experience between `a` (who began it, where anyone did) and `b`, at `now`.
+    pub fn count(
+        &mut self,
+        a_began: Option<bool>,
+        experience: RelationshipExperience,
+        now: OffsetDateTime,
+    ) {
+        let kind = experience.shared_kind();
+        let field = match kind {
+            SharedMomentKind::Calm => &mut self.calm_spells,
+            SharedMomentKind::Greeting => &mut self.greetings,
+            SharedMomentKind::Rest => &mut self.shared_rests,
+            SharedMomentKind::Play => &mut self.plays,
+            SharedMomentKind::Gift => &mut self.gifts,
+            SharedMomentKind::Squabble => &mut self.squabbles,
+        };
+        *field = field.saturating_add(1);
+        if experience.sought_out()
+            && let Some(a_began) = a_began
+        {
+            let side = &mut self.sought[usize::from(!a_began)];
+            *side = side.saturating_add(1);
+        }
+        if !matches!(kind, SharedMomentKind::Calm | SharedMomentKind::Squabble) {
+            self.memory = Some(PairMemory { at: now, kind });
+        }
+    }
+}
+
 impl CreatureRelationship {
     pub fn new(a: CreatureId, b: CreatureId) -> Option<Self> {
         let (a, b) = canonical_creature_pair(a, b)?;
@@ -780,7 +914,7 @@ pub fn closest_companion(
         .and_then(|relationship| relationship.other(creature_id))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RelationshipExperience {
     CalmProximity,
     Followed,
@@ -793,6 +927,30 @@ pub enum RelationshipExperience {
     WatchedClimb,
     ConcernedAfterToss,
     Squabble,
+}
+
+impl RelationshipExperience {
+    /// Which count in a pair's tally this experience adds to.
+    pub const fn shared_kind(self) -> SharedMomentKind {
+        match self {
+            Self::CalmProximity | Self::Followed | Self::WatchedClimb => SharedMomentKind::Calm,
+            Self::Greeting | Self::HomecomingGreeting | Self::ConcernedAfterToss => {
+                SharedMomentKind::Greeting
+            }
+            Self::SharedRest => SharedMomentKind::Rest,
+            Self::PositivePlay | Self::StoleToy => SharedMomentKind::Play,
+            Self::BroughtDiscovery => SharedMomentKind::Gift,
+            Self::Squabble => SharedMomentKind::Squabble,
+        }
+    }
+
+    /// Whether the one who began it went looking for the other of its own accord.
+    pub const fn sought_out(self) -> bool {
+        matches!(
+            self,
+            Self::Followed | Self::HomecomingGreeting | Self::BroughtDiscovery
+        )
+    }
 }
 
 pub const MAX_ROUTINES: usize = 12;
@@ -2987,6 +3145,10 @@ pub struct SaveFile {
     pub creatures: Vec<Creature>,
     #[serde(default)]
     pub relationships: Vec<CreatureRelationship>,
+    /// What each pair has been seen doing together, one record per pair that has done anything.
+    /// Absent from the file while nothing has been counted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tallies: Vec<PairTally>,
     #[serde(default)]
     pub ritual: RitualState,
     #[serde(default)]

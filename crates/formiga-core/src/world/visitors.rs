@@ -511,8 +511,21 @@ impl World {
                     || creature.state.position.distance(spot) <= NOTICE_DISTANCE
             })
             .enumerate()
-            .map(|(index, creature)| resident_answer(creature, index, reduce_motion))
+            .map(|(index, creature)| self.answer_of(creature, index, reduce_motion))
             .collect()
+    }
+
+    /// How one resident answers the guest: as it would a stranger, or, for a guest it met on an
+    /// earlier visit, as a familiar face. Who it met is read from the guest book and when the
+    /// resident arrived; a companion who came to live here since the last visit never met them.
+    fn answer_of(&self, creature: &Creature, index: usize, reduce_motion: bool) -> ResidentAnswer {
+        let answer = resident_answer(creature, index, reduce_motion);
+        let last_visit = self.save.visitors.earlier_visits().map(|(_, at)| at);
+        if last_visit.is_some_and(|at| creature.born_at_utc <= at) {
+            recognised(answer, reduce_motion)
+        } else {
+            answer
+        }
     }
 
     /// One resident answers a hello said at a stop on the walk round. The colony's own machinery
@@ -528,7 +541,7 @@ impl World {
             .creatures
             .iter()
             .find(|creature| creature.id == creature_id)
-            .map(|creature| resident_answer(creature, 0, reduce_motion))
+            .map(|creature| self.answer_of(creature, 0, reduce_motion))
         else {
             return;
         };
@@ -572,15 +585,21 @@ impl World {
             guest.creature.origin,
             guest.source,
         );
+        // A guest the book already knows is written down as coming back, and which visit this is.
+        // The book only keeps its last two dozen, so a visitor it has forgotten is new again.
+        let before = self.save.visitors.visits_of(&origin);
         self.save.visitors.sign(GuestBookEntry {
             visited_at_utc: now,
             name: name.clone(),
             origin,
             source,
         });
-        self.save
-            .companion
-            .remember(None, JournalMoment::Visit(name), now);
+        let moment = if before == 0 {
+            JournalMoment::Visit(name)
+        } else {
+            JournalMoment::Revisit(name, u16::try_from(before + 1).unwrap_or(u16::MAX))
+        };
+        self.save.companion.remember(None, moment, now);
     }
 
     /// The guest is off the desktop, wherever the visit had got to.
@@ -724,6 +743,14 @@ impl World {
         }
 
         let mut houses = [None; MAX_COLONY_CREATURES];
+        // Each house's own lot as the village is laid out here, snug or comfortable.
+        let widths = home_lot_widths(
+            &self.save.home,
+            &cottages,
+            &desktop.monitors,
+            policy,
+            display_scale,
+        );
         for (slot, house) in houses.iter_mut().enumerate() {
             let Some((_, point)) = home_dwelling_position(
                 &self.save.home,
@@ -735,19 +762,13 @@ impl World {
             ) else {
                 continue;
             };
-            let kind = if slot == 0 {
-                DwellingKind::Main
-            } else {
-                match cottages.get(slot - 1) {
-                    Some(kind) => *kind,
-                    None => continue,
-                }
+            let Some(width) = widths[slot] else {
+                continue;
             };
             // As close to a house as a body may come without standing over its door: the
             // outermost sliver of wall a resting frame is allowed to reach across, and no more.
             // It is the same arithmetic that keeps a resting resident off its own door.
-            let reach =
-                (kind.width() / 2.0 + CREATURE_FRAME_WIDTH / 2.0 - REST_WALL_SLIVER) * scale;
+            let reach = (width / 2.0 + CREATURE_FRAME_WIDTH / 2.0 - REST_WALL_SLIVER) * scale;
             *house = Some((point, reach));
         }
         let mut resting = [None; MAX_COLONY_CREATURES];
@@ -982,6 +1003,20 @@ pub(super) fn resident_answer(
         hold: ANSWER_HOLD_SECS + creature.personality.sociability * 1.4,
         gesture: gesture.filter(|_| !reduce_motion),
         bubble,
+    }
+}
+
+/// A resident's answer to a guest it has met before: a familiar face is waved to rather than
+/// watched, huffed at or hidden from, and greeted with a hello. Its timing is its own, as ever.
+pub(super) fn recognised(answer: ResidentAnswer, reduce_motion: bool) -> ResidentAnswer {
+    let gesture = match answer.gesture {
+        Some(Gesture::Watch | Gesture::Huff | Gesture::Peek) | None => Some(Gesture::Reach),
+        other => other,
+    };
+    ResidentAnswer {
+        gesture: gesture.filter(|_| !reduce_motion),
+        bubble: Some(BubbleIcon::Hello),
+        ..answer
     }
 }
 

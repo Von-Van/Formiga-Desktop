@@ -30,7 +30,7 @@ pub(super) fn normalize_relationships(save: &mut SaveFile) {
             })
             .or_insert(relationship);
     }
-    let ids: Vec<_> = creature_ids.into_iter().collect();
+    let ids: Vec<_> = creature_ids.iter().copied().collect();
     for (index, a) in ids.iter().copied().enumerate() {
         for b in ids.iter().copied().skip(index + 1) {
             canonical
@@ -39,6 +39,25 @@ pub(super) fn normalize_relationships(save: &mut SaveFile) {
         }
     }
     save.relationships = canonical.into_values().take(MAX_RELATIONSHIPS).collect();
+    // The tallies follow the same pairs: one each, in canonical order, only for pairs who both
+    // still live here, with who sought whom kept with the right one of a pair stored the other way
+    // round.
+    let mut tallies = BTreeMap::new();
+    for mut pair in save.tallies.drain(..) {
+        let Some((a, b)) = canonical_creature_pair(pair.a, pair.b) else {
+            continue;
+        };
+        if !creature_ids.contains(&a) || !creature_ids.contains(&b) {
+            continue;
+        }
+        if pair.a != a {
+            pair.tally.sought.swap(0, 1);
+        }
+        pair.a = a;
+        pair.b = b;
+        tallies.entry((a, b)).or_insert(pair);
+    }
+    save.tallies = tallies.into_values().take(MAX_RELATIONSHIPS).collect();
 }
 
 pub(super) fn relationship_mut_or_insert(

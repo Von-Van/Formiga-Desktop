@@ -823,6 +823,7 @@ impl World {
         };
         let Some(anchor) = resolved_home_anchor(
             &self.save.home,
+            colony_cottage_list(&self.save.creatures).as_slice(),
             &monitor,
             self.save.settings.display_scale,
             &self.save.settings.habitat,
@@ -1634,6 +1635,14 @@ impl World {
         let mut resting = BTreeMap::new();
         let mut houses = BTreeMap::new();
         let residents = order.len().max(1);
+        // Each house's own lot as the village is laid out here, snug or comfortable.
+        let widths = home_lot_widths(
+            &self.save.home,
+            cottages,
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
         for (slot, (_, creature_id)) in order.into_iter().enumerate() {
             if let Some((_, point)) = home_resting_position(
                 &self.save.home,
@@ -1668,13 +1677,17 @@ impl World {
                 &self.save.settings.habitat,
                 self.save.settings.display_scale,
             ) {
-                let kind = if house == 0 {
-                    DwellingKind::Main
-                } else {
-                    DwellingKind::Cottage
-                };
+                let width = widths
+                    .get(house)
+                    .copied()
+                    .flatten()
+                    .unwrap_or(if house == 0 {
+                        DwellingKind::Main.width()
+                    } else {
+                        DwellingKind::Cottage.width()
+                    });
                 let unit = f32::from(self.save.settings.display_scale) / scale_factor;
-                houses.insert(creature_id, (point, kind.width() / 2.0 * unit, house));
+                houses.insert(creature_id, (point, width / 2.0 * unit, house));
             }
         }
         (resting, houses)

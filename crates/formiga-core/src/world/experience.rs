@@ -438,6 +438,12 @@ impl World {
                             );
                         }
                     }
+                    if let Some(pair) = crate::tally_mut_or_insert(&mut self.save.tallies, a, b) {
+                        // The event names whoever began it first, so whether that was the pair's
+                        // own first member says which way round it went.
+                        let a_began = pair.a == a;
+                        pair.tally.count(Some(a_began), experience, now);
+                    }
                 }
                 WorldEvent::HomeAppeared => {
                     for creature in self

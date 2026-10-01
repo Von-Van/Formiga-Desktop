@@ -6,7 +6,12 @@ use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuIt
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 pub struct TrayState {
-    _tray: TrayIcon,
+    tray: TrayIcon,
+    pub about: MenuItem,
+    /// Whether the icon carries its small dot for something new in the journal.
+    news: bool,
+    /// Whether the tooltip is saying the colony could not be saved.
+    trouble: bool,
     pub visible: CheckMenuItem,
     pub paused: CheckMenuItem,
     pub settings: MenuItem,
@@ -37,6 +42,7 @@ pub enum TrayAction {
     GatherCreatures,
     QuietMoment,
     CheckForUpdates,
+    OpenAbout,
     None,
 }
 
@@ -60,6 +66,7 @@ impl TrayState {
         let reset = MenuItem::new("Start a new colony…", true, None);
         let open_logs = MenuItem::new("Open diagnostic logs", true, None);
         let check_updates = MenuItem::new("Check for updates…", true, None);
+        let about = MenuItem::new("About Formiga", true, None);
         let quit = MenuItem::new("Quit Formiga", true, None);
         let separator_a = PredefinedMenuItem::separator();
         let separator_b = PredefinedMenuItem::separator();
@@ -81,7 +88,7 @@ impl TrayState {
         let more = Submenu::with_items(
             "More",
             true,
-            &[&check_updates, &open_logs, &separator_c, &reset],
+            &[&about, &check_updates, &open_logs, &separator_c, &reset],
         )?;
         let menu = Menu::with_items(&[
             &settings_item,
@@ -95,12 +102,15 @@ impl TrayState {
             &quit,
         ])?;
         let tray = TrayIconBuilder::new()
-            .with_tooltip("Formiga desktop ecosystem")
-            .with_icon(icon()?)
+            .with_tooltip(TOOLTIP)
+            .with_icon(icon(false)?)
             .with_menu(Box::new(menu))
             .build()?;
         Ok(Self {
-            _tray: tray,
+            tray,
+            about,
+            news: false,
+            trouble: false,
             visible,
             paused,
             settings: settings_item,
@@ -131,6 +141,9 @@ impl TrayState {
         }
         if event.id() == self.check_updates.id() {
             return TrayAction::CheckForUpdates;
+        }
+        if event.id() == self.about.id() {
+            return TrayAction::OpenAbout;
         }
         if event.id() == self.settings.id() {
             return TrayAction::OpenSettings;
@@ -214,6 +227,39 @@ impl TrayState {
         }
     }
 
+    /// A small dot on the icon while something noteworthy in the journal has not been read: no
+    /// sound, no badge count, nothing on the desktop. It is only redrawn when it changes.
+    pub fn sync_news(&mut self, news: bool) {
+        if news == self.news {
+            return;
+        }
+        self.news = news;
+        match icon(news) {
+            Ok(icon) => {
+                if let Err(error) = self.tray.set_icon(Some(icon)) {
+                    tracing::warn!(%error, "could not update the tray icon");
+                }
+            }
+            Err(error) => tracing::warn!(%error, "could not draw the tray icon"),
+        }
+    }
+
+    /// Say in the icon's tooltip that the colony could not be saved, for as long as that lasts.
+    pub fn sync_trouble(&mut self, trouble: bool) {
+        if trouble == self.trouble {
+            return;
+        }
+        self.trouble = trouble;
+        let text = if trouble {
+            "Formiga · could not save the colony just now; open the notebook for details"
+        } else {
+            TOOLTIP
+        };
+        if let Err(error) = self.tray.set_tooltip(Some(text)) {
+            tracing::warn!(%error, "could not update the tray tooltip");
+        }
+    }
+
     pub fn sync_update(&self, status: &UpdateStatus) {
         match status {
             UpdateStatus::Checking => {
@@ -245,7 +291,15 @@ impl TrayState {
     }
 }
 
-fn icon() -> Result<Icon> {
+const TOOLTIP: &str = "Formiga desktop ecosystem";
+
+fn icon(news: bool) -> Result<Icon> {
+    Ok(Icon::from_rgba(icon_pixels(news), 32, 32)?)
+}
+
+/// The icon's pixels: a mint companion face, and with `news` a small ink dot ringed in cream at
+/// its upper right.
+fn icon_pixels(news: bool) -> Vec<u8> {
     let size = 32;
     let mut rgba = vec![0_u8; size * size * 4];
     for y in 5..27 {
@@ -268,5 +322,45 @@ fn icon() -> Result<Icon> {
         let index = (y * size + x) * 4;
         rgba[index..index + 4].copy_from_slice(&[255, 255, 240, 255]);
     }
-    Ok(Icon::from_rgba(rgba, size as u32, size as u32)?)
+    if news {
+        for y in 0..10_i32 {
+            for x in 22..32_i32 {
+                let (dx, dy) = (x - 27, y - 5);
+                let distance = dx * dx + dy * dy;
+                let color = if distance <= 9 {
+                    [196, 88, 64, 255]
+                } else if distance <= 17 {
+                    [255, 250, 234, 255]
+                } else {
+                    continue;
+                };
+                let index = (y as usize * size + x as usize) * 4;
+                rgba[index..index + 4].copy_from_slice(&color);
+            }
+        }
+    }
+    rgba
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_news_dot_changes_only_its_corner_of_the_icon() {
+        let (plain, dotted) = (icon_pixels(false), icon_pixels(true));
+        assert_eq!(plain.len(), 32 * 32 * 4);
+        let mut changed = 0;
+        for (index, (a, b)) in plain.chunks(4).zip(dotted.chunks(4)).enumerate() {
+            if a != b {
+                changed += 1;
+                let (x, y) = (index % 32, index / 32);
+                assert!(x >= 22 && y < 10, "the dot reached ({x}, {y})");
+            }
+        }
+        assert!(
+            changed > 30,
+            "the dot is big enough to see: {changed} pixels"
+        );
+    }
 }

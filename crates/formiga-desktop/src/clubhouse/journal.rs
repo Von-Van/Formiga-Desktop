@@ -12,7 +12,8 @@ use crate::settings::SettingsTab;
 use egui::{Align2, FontId, Pos2, Rect, pos2, vec2};
 
 /// The pages in the order their tabs run down the cover.
-pub(crate) const PAGES: [SettingsTab; 8] = [
+pub(crate) const PAGES: [SettingsTab; 9] = [
+    SettingsTab::Today,
     SettingsTab::Colony,
     SettingsTab::Studio,
     SettingsTab::Home,
@@ -34,6 +35,7 @@ pub(crate) fn page_number(page: SettingsTab) -> usize {
 /// What a page's tab says.
 pub(crate) fn page_label(page: SettingsTab) -> &'static str {
     match page {
+        SettingsTab::Today => "Today",
         SettingsTab::Colony => "Your colony",
         SettingsTab::Studio => "Creature studio",
         SettingsTab::Home => "Home & keepsakes",
@@ -48,6 +50,7 @@ pub(crate) fn page_label(page: SettingsTab) -> &'static str {
 /// What kind of field note a page is.
 fn page_kind(page: SettingsTab) -> &'static str {
     match page {
+        SettingsTab::Today => "FIELD SUMMARY",
         SettingsTab::Colony => "SPECIMEN REGISTER",
         SettingsTab::Studio => "SKETCHBOOK",
         SettingsTab::Home => "THE SETTLEMENT",
@@ -56,6 +59,35 @@ fn page_kind(page: SettingsTab) -> &'static str {
         SettingsTab::Applications => "COVER",
         SettingsTab::General => "CONDITIONS",
         SettingsTab::About => "COLOPHON",
+    }
+}
+
+/// Which tabs carry a small dot: something on that page has not been looked at yet. A dot is
+/// the whole of it — no count, no colour, nothing that asks to be cleared.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TabMarks {
+    /// A companion's page has changed since it was last read.
+    pub(crate) colony: bool,
+    /// Something noteworthy was written in the journal since it was last read.
+    pub(crate) journal: bool,
+}
+
+impl TabMarks {
+    pub(crate) fn dotted(self, page: SettingsTab) -> bool {
+        match page {
+            SettingsTab::Colony => self.colony,
+            SettingsTab::Today | SettingsTab::Journal => self.journal,
+            _ => false,
+        }
+    }
+
+    /// What a page's tab says, with its dot if it has one.
+    pub(crate) fn label(self, page: SettingsTab) -> String {
+        if self.dotted(page) {
+            format!("{} •", page_label(page))
+        } else {
+            page_label(page).to_owned()
+        }
     }
 }
 
@@ -462,7 +494,7 @@ pub(crate) fn cover_tabs(
     cover: Rect,
     page_left: f32,
     tab: &mut SettingsTab,
-    unseen: bool,
+    marks: TabMarks,
     conditions: &[String],
     scale: f32,
 ) -> (Rect, bool) {
@@ -501,18 +533,36 @@ pub(crate) fn cover_tabs(
                 pos2(page_left - 6.0, y + pitch),
             ),
         };
-        let label = if page == SettingsTab::Colony && unseen {
-            format!("{} •", page_label(page))
+        let label = marks.label(page);
+        // Every tab is a control a keyboard can reach and a screen reader can name, the open one
+        // included, so the reader always knows which page they are on.
+        let id = ui.id().with(("journal-tab", number));
+        let mut response = ui.interact(rect, id, egui::Sense::click());
+        let spoken = if marks.dotted(page) {
+            format!("{}, page {number}, something new", page_label(page))
         } else {
-            page_label(page).to_owned()
+            format!("{}, page {number}", page_label(page))
         };
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                true,
+                state == TabState::Open,
+                &spoken,
+            )
+        });
         if state == TabState::Open {
             open_rect = rect;
         } else {
-            let id = ui.id().with(("journal-tab", number));
-            let mut response = ui.interact(rect, id, egui::Sense::click());
             if state == TabState::Behind {
                 response = response.on_hover_text(format!("Turn back to {}", page_label(page)));
+            } else {
+                response = response.on_hover_text(format!(
+                    "Turn to {} · {}{}",
+                    page_label(page),
+                    shortcut_modifier(),
+                    number
+                ));
             }
             paint_tab(
                 &painter,
@@ -521,12 +571,17 @@ pub(crate) fn cover_tabs(
                 number,
                 &label,
                 scale,
-                response.hovered(),
+                response.hovered() || response.has_focus(),
             );
             if response.clicked() {
                 *tab = page;
                 turned = true;
             }
+        }
+        if response.has_focus() {
+            let mut fills = Fills::default();
+            stepped_outline(&mut fills, rect.shrink(3.0), 2.0, forest());
+            fills.paint(&painter);
         }
         y += pitch;
     }
@@ -811,17 +866,13 @@ pub(crate) fn paint_open_tab(
     painter: &egui::Painter,
     rect: Rect,
     page: SettingsTab,
-    unseen: bool,
+    marks: TabMarks,
     scale: f32,
 ) {
     if !rect.is_positive() {
         return;
     }
-    let label = if page == SettingsTab::Colony && unseen {
-        format!("{} •", page_label(page))
-    } else {
-        page_label(page).to_owned()
-    };
+    let label = marks.label(page);
     paint_tab(
         painter,
         rect,
@@ -848,6 +899,55 @@ pub(crate) fn paint_page_number(
         FontId::monospace(label_size(scale)),
         muted(),
     );
+}
+
+/// The key held with a number to turn to a page: ⌘ on a Mac, Ctrl elsewhere.
+pub(crate) const fn shortcut_modifier() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "⌘"
+    } else {
+        "Ctrl+"
+    }
+}
+
+/// The page a keyboard shortcut turns to, if one was pressed this frame: ⌘1 to ⌘9 (Ctrl on
+/// Windows) for a page by its number, and ⌘[ and ⌘] (or Ctrl+Page Up and Page Down) for the page
+/// before and after. Nothing is turned while a text field has the keyboard, so typing a number
+/// into a name or a caption never changes the page.
+pub(crate) fn page_shortcut(ctx: &egui::Context, current: SettingsTab) -> Option<SettingsTab> {
+    if ctx.text_edit_focused() {
+        return None;
+    }
+    const NUMBERS: [egui::Key; 9] = [
+        egui::Key::Num1,
+        egui::Key::Num2,
+        egui::Key::Num3,
+        egui::Key::Num4,
+        egui::Key::Num5,
+        egui::Key::Num6,
+        egui::Key::Num7,
+        egui::Key::Num8,
+        egui::Key::Num9,
+    ];
+    let index = page_number(current) - 1;
+    ctx.input_mut(|input| {
+        for (number, key) in NUMBERS.into_iter().enumerate() {
+            if number < PAGES.len() && input.consume_key(egui::Modifiers::COMMAND, key) {
+                return Some(PAGES[number]);
+            }
+        }
+        let back = input.consume_key(egui::Modifiers::COMMAND, egui::Key::OpenBracket)
+            || input.consume_key(egui::Modifiers::COMMAND, egui::Key::PageUp);
+        let forward = input.consume_key(egui::Modifiers::COMMAND, egui::Key::CloseBracket)
+            || input.consume_key(egui::Modifiers::COMMAND, egui::Key::PageDown);
+        if back && index > 0 {
+            Some(PAGES[index - 1])
+        } else if forward && index + 1 < PAGES.len() {
+            Some(PAGES[index + 1])
+        } else {
+            None
+        }
+    })
 }
 
 /// How long a page takes to turn.

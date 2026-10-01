@@ -34,12 +34,13 @@ used to take them.
 | Build | Machine | State | Colony | CPU avg | CPU peak | RSS | Energy | Status | Notes |
 |---|---|---|---:|---:|---:|---:|---:|---|---|
 | v0.55.6 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display | uncontrolled, long-running session | 3 | 5.91% | 8.17% | 30.8 MB | 5.12 | reference only | 4× scale, not 3×; menu and occlusion state unknown; footprint 208 MB; 1.38% of one core averaged over its whole 2 d 12 h run. Not a gate result. |
+| v0.65.0 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display, on battery | five, houses out, strolling | 5 | 2.96% | 4.80% | 64.0 MB | — | recorded | 3×, a copy of the owner's colony in a scratch data folder, quiet moment holding the houses out; five-minute warm-up and ten-minute sample by `scripts/measure-macos.sh`; 13.6 frames a second, 2.17 ms of process CPU each. The 0.64.0 run that was to follow it, and the out-on-the-desktop and paused states, were not taken. |
 
 The one row above is a read-only sample of a session that happened to be running; it is above the
 four-moving budget, but the scale, colony size and menu state were all wrong for a gate, so it
 tells us where to start looking rather than whether the budget is met.
 
-Nothing else has been measured under the full procedure above. The states it asks for — one
+Apart from the one 0.65.0 state above, nothing else has been measured under the full procedure. The states it asks for — one
 creature resting and moving, four resting and moving, a busy desktop, spectatorship, the menu open
 and closed, occluded by a full-screen app, and paused — have not been put through it on a release
 machine for 0.57.0 or later, and no Windows machine has been available at all. From 0.59.0 on,
@@ -948,3 +949,94 @@ As first written the notebook drew its stitching, ruling, dashes and stepped edg
 hundred separate rectangles a frame, each tessellated on its own. They are now gathered into a mesh
 per piece of the window, a few dozen shapes in all, which also draws them with hard pixel edges. A
 page turn draws for 0.76 seconds, about 46 frames at 60 a second, and nothing afterwards.
+
+## 0.65.0
+
+### On the desktop
+
+Measured as for 0.63.0 — the owner's colony of five copied into a scratch data directory at 3×,
+here with a quiet moment holding the houses out so the residents stroll the village, a minute to
+settle and two minutes sampled by `scripts/measure-macos.sh` — with the two builds alternated in
+the same sitting, and a temporary counter of presented frames and of the process's CPU in each ten
+seconds. Two rounds: the first with 0.65.0 as first written, the second with the final build.
+
+| | average CPU | frames a second | process CPU per frame | RSS |
+|---|---:|---:|---:|---:|
+| 0.64.0, round one | 2.27%, 2.12% | 12.6, 12.8 | 1.78, 1.69 ms | 61.6, 61.3 MB |
+| 0.65.0 as first written | 2.60%, 2.35% | 15.8, 11.8 | 1.63, 2.01 ms | 63.6, 67.6 MB |
+| 0.64.0, round two | 2.72%, 2.68% | 12.2, 12.6 | 2.22, 2.09 ms | 61.5, 61.6 MB |
+| 0.65.0 | 3.28%, 3.61% | 15.4, 15.5 | 2.12, 2.31 ms | 62.2, 62.2 MB |
+
+A frame costs what it did. The averages are higher because the 0.65.0 runs presented more frames,
+and a frame is presented at twenty a second whenever anything moves. Each two-minute window
+follows nearly the same path from the same colony file, so which part of the colony's routine it
+catches decides most of its frame count; over longer runs the difference is much smaller. Without
+a display, from the same colony and from fresh ones, the share of ticks with somebody moving at
+home over twenty simulated minutes:
+
+| | 0.64.0 | 0.65.0 |
+|---|---:|---:|
+| the owner's five, four runs | 65.3% | 68.7% |
+| two companions, eight colonies | 2.0% | 35.0% |
+| three | 56.7% | 61.5% |
+| four | 67.4% | 69.3% |
+| five | 74.9% | 76.1% |
+| six | 76.4% | 80.3% |
+
+A stroll goes to a place anywhere along the commons, which is a sixth longer, at the same pace, so
+residents walk a little more of the time: for the owner's colony about 5% more frames at home,
+about a tenth of a point of CPU. The ten-minute run in the table above drew 13.6 frames a second,
+which is what that share predicts. A colony of two is the exception. Its two houses in 0.64.0
+left a frontage too short to stroll a step and a half from home, so it barely moved; its larger
+houses now leave room, and it strolls. Lengthening the rest between strolls by a fifth brought
+three to six back to 0.64.0's figures, but it made village life measurably quieter everywhere and
+three liveliness tests failed, so it was not kept.
+
+### The simulation
+
+`tick-bench`, 2,000 ticks after 200 of warm-up, the two builds alternated in one sitting.
+Microseconds of wall time per `World::tick`:
+
+| | 0.64.0 | 0.65.0 as first written | 0.65.0 |
+|---|---:|---:|---:|
+| six creatures, quiet desktop | 3.37, 3.44 | 3.46 | 3.10, 3.14 |
+| four creatures, homebound | 2.53, 2.55 | 2.87 | 2.45, 2.50 |
+| six creatures, homebound | 4.10, 4.04 | 4.58 | 4.01, 3.99 |
+| six creatures and a visitor, homebound | 5.53, 4.68 | 5.67 | 5.01, 4.97 |
+
+As first written, 0.65.0 was 15% dearer on a quiet desktop and 12% more with the houses out, for
+two reasons bisected through its work. The pair tallies lived inside each bond record, which every
+companion's every decision copies, so fifteen 24-byte records more than doubled in size for data
+only the notebook reads; they are now kept in a list of their own beside the bonds, and a test
+holds a bond record to 24 bytes. And choosing between the comfortable and snug layouts laid the
+village's walk out and placed every house each time the ground was resolved, dozens of times a
+tick; the ordinary case is now decided by arithmetic on the first and last houses, which a test
+holds to placing every house, and the lot widths are worked out once per look at the ground
+rather than once per house. The larger village on its own costs about 0.1 µs a tick with the
+houses out, the residents having more ground to work over.
+
+### Textures
+
+The houses grew a fifth, so the village atlas's cells grew from 80 pixels to 96. It is one texture
+per display, as before, and the overlay draws it with the same quads; only its size changed.
+
+| | 0.64.0 | 0.65.0 |
+|---|---:|---:|
+| village atlas, per display | 560×320, 716,800 bytes | 672×384, 1,032,192 bytes |
+| the Home page's row of it | 560×80, 179,200 bytes | 672×96, 258,048 bytes |
+| the settings window's artwork, at most | 823 KiB | 900 KiB |
+
+### The settings window
+
+Not re-measured for 0.65.0. Its artwork grows by the 77 KiB of the Home page's larger row of the
+village, and the Today page asks for a repaint every two seconds while it is the page on show, so
+that what everyone is doing stays current; every other page draws a frame only when something on
+it changes or moves.
+
+### Size
+
+The app binary, each release's own commit built for release on the development Mac (Apple silicon
+only, where the published app is universal): 15,881,664 bytes for 0.64.0 and 16,326,976 for 0.65.0,
+445 KB more. 0.65.0's one new dependency is egui-winit's AccessKit adapter for screen readers
+(`accesskit`, `accesskit_consumer`, `accesskit_macos` and `accesskit_winit` on macOS), which is
+likely most of it; a build without it was not measured.

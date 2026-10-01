@@ -72,14 +72,23 @@ const fn tried(try_it: Try, title: &'static str, text: &'static str) -> Step {
 
 /// The whole tour, in the order it is taken: the desktop first, then every page of this window
 /// from the top of the cover's tabs to the bottom, and back to where it began.
-const STEPS: [Step; 18] = [
+const STEPS: [Step; 19] = [
     step(
-        SettingsTab::Colony,
+        SettingsTab::Today,
         "Welcome to your colony",
         "Formiga is a small colony of companions who live on your desktop. They wander about, \
          climb onto your windows, and keep a village of little houses in the corner of your \
          screen. This tour shows you around in a few minutes. Skip it whenever you like, and \
          take it again any time from Preferences.",
+    ),
+    step(
+        SettingsTab::Today,
+        "Today, at a glance",
+        "The notebook opens here: what is new since you last looked, what everyone is doing, \
+         how the week has gone, and what the notebook has noticed about the colony from its own \
+         records. A small dot on this tab, and on the Formiga icon, means something new was \
+         written down. Turn pages with their tabs, or with the number keys while holding ⌘ \
+         (Ctrl on Windows).",
     ),
     tried(
         Try::Pet,
@@ -162,9 +171,9 @@ const STEPS: [Step; 18] = [
     step(
         SettingsTab::Journal,
         "The journal",
-        "The colony's days, written down as they happen: arrivals, finds, games and habits. Keep \
-         the moments you love, look through everything the colony has found, and see who has \
-         come to visit.",
+        "The colony's days, written down as they happen: arrivals, finds, games and habits. \
+         Search it or filter it by kind or by companion, keep the moments you love, look through \
+         everything the colony has found, and see who has come to visit.",
     ),
     step(
         SettingsTab::Habitat,
@@ -194,7 +203,7 @@ const STEPS: [Step; 18] = [
          move it, restore one, and check for updates.",
     ),
     step(
-        SettingsTab::Colony,
+        SettingsTab::Today,
         "Make yourself at home",
         "That's the tour. Your colony grows by itself: someone new arrives after the first hour \
          and more over the weeks that follow, along with keepsakes to find and new things for the \

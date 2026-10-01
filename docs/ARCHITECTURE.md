@@ -91,6 +91,7 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 | Plans in flight: journeys, attention scenes, games, visits, bubbles | Other fields of `World` | Runtime only. A test keeps runtime-only fields out of the save |
 | Displays, overlay windows, GPU atlases, proxies, open menus | `FormigaApp` and each `OverlayRenderer` | The life of the process |
 | Update preferences and the last check | `updates.json` | Written when changed |
+| Where the notebook window was | `notebook-window.json` | Written when the window closes or Formiga quits, if it moved |
 | Downloaded installers | `updates/` | Until the version they install is running |
 | Logs | `logs/formiga.log` and `formiga.previous.log` | Rotated at 1 MB |
 
@@ -718,11 +719,13 @@ water, what is picked from each garden, an apple, a leaf, a blossom, and the Z t
 a house somebody is asleep in. It rebuilds the ground's vertices only when object state, a garden's
 stage, cottages, home state, habitat, display geometry, or scale changes.
 
-Dwellings and trees come from one 560×320 village atlas of 80-pixel cells, seven across: the six
+Dwellings and trees come from one 672×384 village atlas of 96-pixel cells, seven across: the six
 houses by day and the keepsake tree in the top row, the same six with their residents at home in
 the second, and the same again lit from inside after dark in the two rows below. The cells grew
-from 64 pixels in 0.61.0, when the houses were drawn a quarter larger; the atlas lost the eighth
-column it had never drawn in, which had only kept its width a round 512. The tree stays the size it
+from 64 pixels to 80 in 0.61.0, when the houses were drawn a quarter larger and the atlas lost the
+eighth column it had never drawn in, which had only kept its width a round 512, and to 96 in
+0.65.0, when they were drawn a fifth larger again: 1,032,192 bytes on each display, against
+716,800. The tree stays the size it
 was, drawn in its own 64-pixel cell (`TREE_CELL`) and set into the middle of its village cell on
 the ground line the houses share (`TREE_INSET`), so its keepsake anchors are measured exactly as
 they always were. Every house has a
@@ -738,13 +741,14 @@ quads against one texture and bind group. A house being seen to by its keeper le
 while the chore lasts: the top of its quad moves a pixel or so, its foot never. The texture is keyed
 on `VillageLook` — the drawn genome, each house's kind, its decorations, and its curtain — so any of
 those changing redraws it once. The Home page only ever draws the houses by day with nobody home,
-so it holds just the top row, 560×80. Decorations resolve their attachment points from the style's
+so it holds just the top row, 672×96. Decorations resolve their attachment points from the style's
 own silhouette — peak, eaves, walls, and ground line — so a banner hangs from the real roof rather
 than a shared canvas height.
 
 Every drawing is written at the size the colony house had until 0.61.0, `DRAWN_SPAN` = 24
-twenty-fourths, and scaled from there: the colony house draws at `MAIN_SPAN` = 30, a quarter
-larger, and a companion's cottage at `COTTAGE_SPAN` = 25, still five-sixths of it. A style's
+twenty-fourths, and scaled from there: the colony house draws at `MAIN_SPAN` = 36, half as large
+again — a quarter in 0.61.0 and a fifth more in 0.65.0 — and a companion's cottage at
+`COTTAGE_SPAN` = 30, still five-sixths of it. A style's
 details scale through the same ratio, so a bigger house is the same house rather than a different
 one; single-pixel outlines stay a pixel.
 
@@ -809,7 +813,19 @@ the migration makes every earned decoration unlocked and hangs the ones that wer
 colony house, in their places.
 
 `ShelterRenderer` draws each house with its own decorations from `shelter/decorations.rs`, placed
-from the house's own silhouette and pulled in to stay inside the house's lot. The GPU shelter cache
+from the house's own silhouette and pulled in to stay inside the house's lot. Since 0.65.0 every
+decoration is drawn about twice the size it was, as one solid shape on a small sheet of its own,
+then ringed with a one-pixel outline — in the house's own outline colour, or a darker leaf or wood
+for a garland or a woodpile — before it is set onto the house, which is what gives each one a
+silhouette that holds against a cream wall, a coloured roof and the desktop alike. Strings, wires
+and poles are drawn straight onto the house afterwards, thin, so bunting hangs from a line rather
+than a bar. Roof pieces stand on a short pole from the peak; eave pieces hang along a gently
+sagging string; wall pieces sit between the wall's edge and the doorway and never over the door;
+ground pieces stand half in front of the house's corners. Lit pieces spill a little lamplight
+round themselves after dark, blended into the house and faint over the air beside it. Every kind
+keeps its place on the house, so a colony's choices carry over unchanged. `formiga-tools
+decoration-sheet` shows every one alone on a cottage of each type, and the four lit ones after
+dark. The GPU shelter cache
 key is the whole `VillageLook`, so a change to any house's decorations replaces the single village
 texture; presentation is still one quad per house, one bind group, and one draw call. Decorations
 have no world position, action, physics, or render loop of their own.
@@ -954,8 +970,8 @@ like to be anywhere spend 40–49% of their time up high on desktops with anythi
 
 ## The village yard
 
-A dwelling's ground footprint, in shelter pixels, is 60 for the colony house and 46 for a
-companion's. There is no mini's cottage: a house belongs to a full-size companion, and a mini
+A dwelling's ground footprint, in shelter pixels, is 84 for the colony house and 68 for a
+companion's — 60 and 46 until 0.61.0, 70 and 56 until 0.65.0. There is no mini's cottage: a house belongs to a full-size companion, and a mini
 lives in its big version's — `house_slot_for` answers which house any companion comes home to,
 and a mini keeps that answer if it ever grows full-size. `house_owners` lists the keepers in the
 order their houses stand: the founder in the colony house, then the cottages in the order the
@@ -987,13 +1003,45 @@ wall's edge or air a neighbour may reach over. `REST_WALL_SLIVER` is 9, `OBJECT_
 drawn width of a belonging, not the quad it is cut from), and `REST_CLEAR_RATIO` is unchanged and
 still const-asserted equal to `world::spacing::FACE_CLEAR_RATIO`.
 
-The widest village — six houses, eight belongings, both trees — measures 465 shelter pixels end to
-end, against a `VILLAGE_SPAN_LIMIT` of 468. Until 0.61.0 it measured 423 against 448, a limit
+The widest village — six houses, eight belongings, both trees — measures 539 shelter pixels end to
+end, against a `VILLAGE_SPAN_LIMIT` of 540. Until 0.61.0 it measured 423 against 448, a limit
 inherited from the four-companion village that used to take 445; then the houses were drawn a
 quarter larger and their footprints grew from 60 and 46 to 70 and 56 — less than the drawings,
-because shadows and decorations did not grow with them — and the village about a tenth. A village
-lays out only the houses it has: a founder on its own is 170, and three houses are 288. The 353
-between the trees is dwelling footprint and seam, and nothing else.
+because shadows and decorations did not grow with them — and the village about a tenth, to 465.
+In 0.65.0 the houses grew a fifth again, and this time their footprints grew with them, to 84 and
+68, because the larger decorations stand half in front of a house's corners rather than out beside
+it; the trees kept their size, so the village grew 16%. A village lays out only the houses it has:
+a founder on its own is 184, and three houses are 326. The 439 between the trees is dwelling
+footprint and seam, and nothing else.
+
+A lot fits its region by how tall its contents are drawn, `DWELLING_DRAWN_HEIGHT` = 80 shelter
+pixels, rather than by the 96-pixel cell it is cut from: the tallest house, pennant and all,
+reaches 78 above the ground, and a test in the art crate holds every type, genome and roof
+decoration to it. Fitting by the cell would have hidden the whole village, after 0.65.0's houses
+grew, in bands that held it before — the Bottom edge habitat at the default size on a 1080p
+display, say — and 80 is exactly the allowance the village had while the cell was 80 tall.
+
+Where the village stands is laid out at one of two fits, `VillageFit`. Comfortable is everything
+above: the seams, the full footprints, and the outward tree's yard reserved against the display's
+edge. On a display too narrow to show every house that way, `VillageGround::resolve` lays the
+village out snug instead, and keeps whichever shows more houses: the colony house tucks into the
+corner, so the outward tree has no ground and is not shown; the seams close; and each house stands
+on its `DwellingKind::snug_width`, 80 and 66, the widest any house of its kind is drawn with every
+decoration it can wear, which a second art test holds to. The fit is a property of the display
+and the colony, worked out each time the ground is resolved, never saved. Every placement —
+houses, trees, yards, the commons, resting places, a guest's spot and its tour — reads the same
+`VillageGround`, so they always agree; `resolved_home_anchor` takes the colony's cottages so that
+it answers with the anchor actually in use, and `home_lot_width` gives a house's lot at the fit in
+force. Without it, a full colony at the default size on a 1280-, 1366- or 1440-point display at
+100% would have lost a cottage once the houses grew; with it, every display and size shows at
+least as many houses as 0.64.0 did, which `a_full_colony_shows_every_house_it_did_before_the_houses_grew`
+checks against 0.64.0's own numbers. A snug village gives up a keepsake tree, never a house.
+Choosing the fit is on the simulation's hottest path — the ground is resolved dozens of times a
+tick — so the ordinary case is decided by arithmetic alone: the colony house's inner edge and the
+last cottage's outer edge, from the same widths and seams the walk would lay out, which a test
+holds to placing every house. As first written, laying the walk out and placing each house to
+decide made a tick with the houses out 12% dearer; and `home_lot_widths` looks at the ground once
+for every house rather than once a house.
 
 A keepsake tree stands at each end of the walk, claiming `TREE_WIDTH` = 56 shelter pixels of lot.
 The art reaches ±27 from the trunk across all nine lean-and-tilt combinations, so the lot is a
@@ -1700,14 +1748,15 @@ presentation. Four static portraits, four eight-frame candidate strips (six walk
 `render_studio_frame` pleased and eyes open rather than with a walk's focused look, and two of a
 wave), the top row of the village atlas, the object sheet, the resting half of the
 colony trinket sheet, a companion trying something on in four poses, and the one village tree the
-studio's large preview stands a companion beside fit within 823 KiB of artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
+studio's large preview stands a companion beside fit within 900 KiB of artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
 24 KiB more pixels in a single texture, 432 KiB until 0.59.0 gave every house a cell of its own, 496
 KiB until the object strip grew from eight cells to fourteen, and 500 KiB until 0.60.0 brought ten
 times the keepsakes (128 KiB more, even holding only the resting half), an object sheet with every
 garden stage, spot, ornament and village prop (98 KiB more), and the try-on poses (36 KiB); the Home
 page's village shrank to the one row it draws and cost nothing more. It was 760 KiB until 0.61.0
 drew the houses a quarter larger, and that row grew from 512×64 to 560×80 (47 KiB more), and
-807 KiB until 0.63.1 added the 64×64 tree (16 KiB). Tiles in a
+807 KiB until 0.63.1 added the 64×64 tree (16 KiB), and 823 KiB until 0.65.0 drew the houses a
+fifth larger again and that row grew to 672×96 (77 KiB more). Tiles in a
 wrapped row — the Collection, the pins, the shelves — are each allocated whole and painted into,
 because an egui `Frame` places itself before its row decides whether it still fits and so never
 wraps. A frame, a column or a combo box with text in it — the cards under Life here, a companion's
@@ -1743,13 +1792,13 @@ there is something to take back.
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
 The window is drawn as a field notebook by `clubhouse/journal.rs`. `draw_settings` paints the
-leather over the whole window, then lays out a cover panel on the left with the patch, the eight
+leather over the whole window, then lays out a cover panel on the left with the patch, the nine
 index tabs and the conditions note; a binding panel on the right; and the page between them, which
 holds its own footer panel and the page's scroll area. `Spread::of` decides the geometry from the
 window's width and the text scale: at 940 points and 100% text the cover is 196 points and the page
 712, with the margin line 50 points in; where the page would be narrower than 640 points the
 margins and the binding give up their room before the page's contents do. The tabs share the
-cover's height below the patch, so all eight always fit, and the conditions note is left off a
+cover's height below the patch, so all nine always fit, and the conditions note is left off a
 cover too short for it. The page's ruling, margin line, stepped edge and shadow are painted with
 the window-wide background painter, since the edge and shadow fall just outside the page's panel,
 and the open page's tab is painted after the page, over the edge it is joined to. A page turn is
@@ -1775,12 +1824,13 @@ enter the journal. A close friendship is recorded only when affinity crosses the
 threshold. Repeated equal moments are throttled for six hours. Quiet mode holds the existing home
 cycle until its deadline, then resumes ordinary behavior without rewriting preferences.
 
-The Journal page opens on "Today in your colony", read by `clubhouse::today` from nothing but the
-journal and the scrapbook: today's entries by the local date, newest first; portraits of the
-companions they name; a count of each kind of moment; the treasures first found today; and the
-latest four lines. It says nothing about time the app was not running, since nothing was written
-then, and when the journal is full and its oldest entry is itself from today it says that some of
-today's earlier moments have already rolled out. It stores nothing.
+"Today in your colony", on the Today page since 0.65.0 and at the top of the Journal before it, is
+read by `clubhouse::today` from nothing but the journal and the scrapbook: today's entries by the
+local date, newest first; portraits of the companions they name; a count of each kind of moment;
+the treasures first found today; and the latest four lines. It says nothing about time the app was
+not running, since nothing was written then, and when the journal is full and its oldest everyday
+moment is itself from today it says that some of today's earlier moments have already rolled out.
+It stores nothing.
 
 Save version 14 adds four bounded keepsakes to `CompanionState`. **Pins** are at most eight
 `PinnedMoment` records, each naming an existing journal entry by its timestamp, creature, and
@@ -1817,7 +1867,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–18: version 18 is read directly, versions 1 through 17 are
+Persistence accepts save versions 1–23: version 23 is read directly, versions 1 through 22 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -2073,11 +2123,112 @@ between 3.5 and seven depending on how steady the pair is; every scene is then f
 45-second play cooldown, and interruption never claims a completed interaction. Reduced motion
 retains stationary looks and expressions. No game writes a journal entry.
 
+## Colony history and the Today page (save v23)
+
+The notebook opens on Today, `clubhouse/today.rs`, page one of nine: what is new since the journal
+was last read, "Today in your colony", what each companion is doing right now, the last seven days
+counted by kind with the week's milestones, what the notebook has observed, and the last warm
+moment each pair shared in the past fortnight. A colony under a day old with nothing written but
+arrivals is welcomed first, with the three things to try on the desktop, and each section with
+nothing in it yet says what will appear there. Nothing on the page is
+a task, a score or a reminder, and all of it is read from what the colony recorded.
+
+**Landmarks.** The journal still holds 64 moments, but when it is full an everyday moment rolls out
+before one of the colony's landmarks — an arrival, a friendship or a first visit — which are kept
+past their turn, at most `MAX_LANDMARK_ENTRIES` = 24 of them, the oldest going first once there are
+more. Nothing is added to the file for this; it is which entry `trim_journal` removes. The Journal
+page gathers them under Milestones, sets them a little stronger in the log, and can be searched
+(⌘F or Ctrl+F; every word must appear in the moment as the journal writes it, names included) and
+filtered by kind as well as by companion, saying how many moments are showing.
+
+**What is new.** `CompanionState::journal_seen_until` is the newest moment read. A moment after it
+is unread if it is noteworthy — an arrival, a friendship, a new preference or habit, a visit or a
+return visit — and the everyday ones (finds, shared moments, village news) never are. While any are
+unread the Today and Journal tabs carry a dot and the tray icon a small one in its corner, drawn
+once when it changes; there is no sound, count or desktop sign. Turning to Today or the Journal
+asks the app to mark everything read, which it saves at the next routine checkpoint without a
+notice, and the page keeps what was new on show, highlighted, until the reader turns elsewhere.
+Migrating from v22 sets the marker to the newest moment already there, so an upgraded colony has
+no news it has already seen.
+
+**Pair tallies.** `SaveFile::tallies` holds a `PairTally` for each pair that has done anything
+together: its two ids in canonical order and a `RelationshipTally` of saturating `u16` counts —
+calm spells, greetings, naps side by side, games, finds brought over and squabbles — how often each
+went looking for the other of its own accord (`sought`, a follow, a homecoming greeting or a find
+brought over — a greeting a ritual asked of everyone is not counted), and the last warm moment
+they shared and when (`PairMemory`). It is counted where the bond experience is already applied,
+in `project_events`, and decides nothing the colony does. It is kept beside the bond records rather
+than inside them on purpose: every companion's every decision reads the bonds and copies them, and
+as first written, inside them, the tally made a tick on a quiet desktop 15% dearer for data only
+the notebook ever reads. `normalize_relationships` keeps the tallies to the same canonical pairs
+of companions who both still live here. An empty list is left out of the file.
+Migrating from v22 starts every pair at nothing, however close it already is: the counts are
+evidence, and there is none for time before they were kept. Fifteen pairs, every count at its
+ceiling, add about five kilobytes to a full colony's file as it is written.
+
+**Observations.** `formiga_core::observe` turns the colony's records into `Observation`s, each
+carrying the counts it rests on, which the notebook prints beneath it: a companion that spends the
+most time up on ledges and climbs to get there, rides windows the most, was first to find the most
+of the collection, sleeps long stretches, keeps to one part of a display, or plays the most; the
+standout pair that keeps seeking each other out, the one that follows another around, and the
+pairs that nap, play, squabble or share finds the most; and visitors the guest book has seen three
+times or more. Each has a fixed threshold, "the most" means strictly the most — a tie says nothing —
+and only the colony's standout pair is named for each kind, so the list stays short. A companion's
+own observations also appear on its page, under its closest friend, with when they grew close if
+the journal still has it and the last moment they shared. It is a pure function of the save: the
+same colony always gives the same observations, and nothing about them is stored.
+
+**Returning visitors.** A guest the guest book already knows is written down as `Revisit(name,
+visit)` — "came back to visit, for the third time" — and `VisitorState::earlier_visits` says how
+often and when it was last here, excluding a day-long stay's own signing. Residents who already
+lived here then answer its hello as a familiar face: a wave and a hello bubble rather than a
+guardian's watch, a grump's huff or a shy one's peek, with their own timing; a companion who
+arrived since greets it as the stranger it is to them. Reduced motion keeps everyone still, as ever.
+The guest book shows how many visits each line's visitor has in the book.
+
+## The notebook window
+
+**Where it was.** `notebook_window.rs` keeps the window's outer position, inner size and zoom in
+`notebook-window.json` beside the colony — not in the colony file, since it belongs to this
+computer's displays and should not travel in a backup. It is written when the window closes and
+when Formiga quits, only if it moved. `notebook_window::place` decides where it opens: the
+remembered spot if at least a grip of its title strip is on a display that is there now, sized no
+larger than that display allows and never under the 760×560 minimum; otherwise centred on the main
+display. A file that cannot be read is ignored.
+
+**Keyboard and screen readers.** ⌘1–⌘9 (Ctrl on Windows) turn to a page by its number and ⌘[ and
+⌘] (or Ctrl+Page Up and Page Down) to the one before or after, never while a text field has the
+keyboard; ⌘W closes the window. Every tab, the open one included, is a control Tab reaches and
+Enter or Space turns to, with a focus ring in the accent, and is named for assistive technology
+with its page number and whether it has something new. egui-winit's AccessKit adapter is set up
+while the window is still hidden and stays idle until VoiceOver or Narrator asks, so it costs
+nothing for everyone else.
+
+**When something goes wrong.** `explain.rs` turns a failure into a sentence someone can act on:
+each way a share code can fail to read, a picture that is too large, not a PNG or JPEG, or damaged,
+an export that could not be written (no permission, a full disk, a folder that has gone), a backup
+that is from a newer Formiga or is not a colony at all, and an update that could not be reached,
+did not check out, or would not open. A failure the reader caused by asking — an export, a
+restore, opening a downloaded update — is said in a native dialog as well as in the footer; a
+failure in the background, like a daily update check, is only ever shown on the About page. A
+routine save that fails keeps the colony running and keeps trying at each checkpoint: the tray
+tooltip says so, and every page shows a calm card with the reason, Try again now, a way to export
+the colony somewhere else, and the logs, until a save works and a notice says it is saving
+normally again. Recovery from a colony that could not be read says first that nothing has been
+lost, and lays out the two choices.
+
+**Saying what changed.** Applying preferences says, in the footer, what will look different on the
+desktop — "they'll keep off window ledges and come down", "everyone holds still until you resume"
+— and before it is applied the footer names what is waiting. A quiet moment and a companion's
+roaming leaning say what they mean when they are set. The behaviour checkboxes, routines and
+updates explain themselves on hover.
+
 ## The tour
 
 A colony that has never finished or skipped the tour is given it the first time the settings
-window opens: `clubhouse/tour.rs`, eighteen steps in a fixed order — the desktop basics on the Your
-colony page first, then every page from the top of the cover's tabs to the bottom, and back. Each step
+window opens: `clubhouse/tour.rs`, nineteen steps in a fixed order — a welcome and the Today page
+first, the desktop basics on the Your colony page, then every page from the top of the cover's tabs
+to the bottom, and back to Today. Each step
 names its page, what it says, and optionally a `TourMark` (a part of the page it points at) and
 something it asks to be tried on the desktop.
 

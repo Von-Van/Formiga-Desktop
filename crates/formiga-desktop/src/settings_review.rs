@@ -141,16 +141,7 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
         .into_iter()
         .flat_map(|appearance| [(appearance, (940, 720)), (appearance, (760, 560))])
     {
-        for page in [
-            SettingsTab::Colony,
-            SettingsTab::Studio,
-            SettingsTab::Home,
-            SettingsTab::Journal,
-            SettingsTab::Habitat,
-            SettingsTab::General,
-            SettingsTab::Applications,
-            SettingsTab::About,
-        ] {
+        for page in crate::clubhouse::journal::PAGES {
             let context = egui::Context::default();
             configure_style(&context, appearance);
             let mut clubhouse = Clubhouse::default();
@@ -244,8 +235,9 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
                         .map(|id| textures[id].0.pixels.len() * 4)
                         .sum();
                     // The Home page is the heaviest: 416 KiB until 0.61.0 drew the houses a
-                    // quarter larger and its row of the village grew by 47 KiB.
-                    assert!(bytes <= 463 * 1024, "UI artwork exceeded budget: {bytes}");
+                    // quarter larger and its row of the village grew by 47 KiB, and 463 KiB until
+                    // 0.65.0 drew them a fifth larger again and it grew to 672x96, 77 KiB more.
+                    assert!(bytes <= 524 * 1024, "UI artwork exceeded budget: {bytes}");
                     if let Some(path) = &output_dir {
                         let jobs = context.tessellate(output.shapes, output.pixels_per_point);
                         rasterize(&jobs, &textures, width, height)
@@ -728,11 +720,12 @@ fn a_kept_moment_outlives_the_journal_entry_it_was_taken_from() {
     let mut h = Harness::new(SettingsTab::Journal);
     let now = h.save.created_at_utc;
     let keeper = h.save.creatures[0].id;
-    // One arrival, kept, and then a long run of ordinary moments on top of it.
+    // One find, kept, and then a long run of ordinary moments on top of it. (An arrival would
+    // be held on to as a milestone, so a find is what a pin has to outlast.)
     let first = JournalEntry {
         at: now,
         creature: Some(keeper),
-        moment: JournalMoment::Arrival,
+        moment: JournalMoment::Discovery,
     };
     h.save.companion.journal.push(first.clone());
     assert!(h.save.companion.pin(&first));
@@ -745,11 +738,7 @@ fn a_kept_moment_outlives_the_journal_entry_it_was_taken_from() {
     }
     h.save.companion.normalize();
     assert!(
-        !h.save
-            .companion
-            .journal
-            .iter()
-            .any(|entry| entry.at == first.at),
+        !h.save.companion.journal.contains(&first),
         "the rolling journal has moved on past the kept moment"
     );
     assert_eq!(h.save.companion.pins.len(), 1, "but the pin is still held");
@@ -895,8 +884,9 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 /// the houses were drawn a quarter larger, so the Home page's row of the village is 560x80
 /// rather than 512x64 (175 KiB, 47 KiB more): 807 KiB. In 0.63.1 the creature studio stands its
 /// large preview beside a village tree, one 64x64 texture shared by every candidate (16 KiB):
-/// 823 KiB.
-const ARTWORK_BUDGET: usize = 823 * 1024;
+/// 823 KiB. In 0.65.0 the houses grew a fifth again and the Home page's row of the village with
+/// them, to 672x96 (252 KiB, 77 KiB more): 900 KiB.
+const ARTWORK_BUDGET: usize = 900 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -1308,7 +1298,12 @@ fn a_postcard_is_chosen_and_captioned_from_the_home_page() {
 /// there is one: the page asks, and the app is what undoes it.
 #[test]
 fn the_last_change_is_offered_back_on_every_page() {
-    for tab in [SettingsTab::Colony, SettingsTab::Home, SettingsTab::Journal] {
+    for tab in [
+        SettingsTab::Today,
+        SettingsTab::Colony,
+        SettingsTab::Home,
+        SettingsTab::Journal,
+    ] {
         let mut h = Harness::new(tab);
         h.frame(Vec::new());
         assert!(
@@ -1517,16 +1512,7 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
             },
         );
         for width in [760.0, 940.0] {
-            for page in [
-                SettingsTab::Colony,
-                SettingsTab::Studio,
-                SettingsTab::Home,
-                SettingsTab::Journal,
-                SettingsTab::Habitat,
-                SettingsTab::General,
-                SettingsTab::Applications,
-                SettingsTab::About,
-            ] {
+            for page in crate::clubhouse::journal::PAGES {
                 let mut settings = save.settings.clone();
                 let mut tab = page;
                 let mut names = BTreeMap::new();
@@ -1596,8 +1582,9 @@ fn tour_header(h: &Harness) -> Option<String> {
 
 /// The page each step of the tour is shown on, in order: the desktop basics and the Your colony
 /// page, then every other page from the top of the cover's tabs to the bottom, and home again.
-const TOURED: [SettingsTab; 18] = [
-    SettingsTab::Colony,
+const TOURED: [SettingsTab; 19] = [
+    SettingsTab::Today,
+    SettingsTab::Today,
     SettingsTab::Colony,
     SettingsTab::Colony,
     SettingsTab::Colony,
@@ -1614,7 +1601,7 @@ const TOURED: [SettingsTab; 18] = [
     SettingsTab::Applications,
     SettingsTab::General,
     SettingsTab::About,
-    SettingsTab::Colony,
+    SettingsTab::Today,
 ];
 
 #[test]
@@ -1643,16 +1630,7 @@ fn a_new_colony_is_shown_round_every_page_and_can_finish_the_tour() {
     // Finished, it does not start again, though this window's save has not been told yet.
     h.frame(Vec::new());
     assert_eq!(tour_header(&h), None);
-    for page in [
-        SettingsTab::Colony,
-        SettingsTab::Studio,
-        SettingsTab::Home,
-        SettingsTab::Journal,
-        SettingsTab::Habitat,
-        SettingsTab::Applications,
-        SettingsTab::General,
-        SettingsTab::About,
-    ] {
+    for page in crate::clubhouse::journal::PAGES {
         assert!(TOURED.contains(&page), "{page:?} is not on the tour");
     }
 }
@@ -1661,16 +1639,16 @@ fn a_new_colony_is_shown_round_every_page_and_can_finish_the_tour() {
 fn the_tour_goes_back_a_step_and_can_be_skipped_from_any() {
     let mut h = Harness::new(SettingsTab::Colony);
     h.save.companion.onboarding_complete = false;
-    for _ in 0..9 {
+    for _ in 0..10 {
         h.click("Next");
     }
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Studio);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 18"));
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 11 OF 19"));
     h.click("Back");
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Colony);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 9 OF 18"));
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 19"));
     assert!(h.click("Skip the tour").complete_onboarding);
     h.frame(Vec::new());
     assert_eq!(tour_header(&h), None);
@@ -1685,7 +1663,9 @@ fn the_tour_notices_a_companion_petted_carried_and_asked_for_something() {
             .iter()
             .any(|(text, _)| text == "Lovely — you've tried it!")
     };
-    // Say hello. The fixture's companions have been petted before; only a pet from now counts.
+    // Say hello, after the Today page's step. The fixture's companions have been petted before;
+    // only a pet from now counts.
+    h.click("Next");
     h.click("Next");
     h.frame(Vec::new());
     assert!(!tried(&h));
@@ -1724,8 +1704,8 @@ fn preferences_offers_the_tour_again() {
     h.click("Take the tour");
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert_eq!(h.tab, SettingsTab::Colony);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 1 OF 18"));
+    assert_eq!(h.tab, SettingsTab::Today);
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 1 OF 19"));
 }
 
 #[test]
@@ -1739,13 +1719,13 @@ fn the_tour_waits_on_its_own_page_and_leads_back_to_it() {
     assert!(
         h.labels
             .iter()
-            .any(|(text, _)| text == "The tour is waiting on Your colony."),
+            .any(|(text, _)| text == "The tour is waiting on Today."),
         "{:?}",
         h.labels.iter().map(|(text, _)| text).collect::<Vec<_>>()
     );
     h.click("Back to the tour");
     h.frame(Vec::new());
-    assert_eq!(h.tab, SettingsTab::Colony);
+    assert_eq!(h.tab, SettingsTab::Today);
     assert!(
         h.labels
             .iter()
@@ -1787,7 +1767,7 @@ fn a_tab_on_the_cover_turns_to_its_page_and_back() {
     assert!(
         h.labels
             .iter()
-            .any(|(text, _)| text.starts_with("FIELD NOTES · Nº 05")),
+            .any(|(text, _)| text.starts_with("FIELD NOTES · Nº 06")),
         "{:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
@@ -1907,5 +1887,277 @@ fn every_page_at_the_largest_text_fits_one_font_atlas() {
     assert!(
         width * height <= 2048 * 128,
         "the font atlas grew to {width}x{height}"
+    );
+}
+
+fn key(key: egui::Key, modifiers: egui::Modifiers) -> Vec<egui::Event> {
+    vec![
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        },
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers,
+        },
+    ]
+}
+
+fn shown(h: &Harness, wanted: &str) -> bool {
+    h.labels.iter().any(|(text, _)| text == wanted)
+}
+
+fn shown_starting(h: &Harness, wanted: &str) -> bool {
+    h.labels.iter().any(|(text, _)| text.starts_with(wanted))
+}
+
+/// The notebook opens on Today, and a page can be turned to by number or one at a time from the
+/// keyboard — but never while a text field has the keyboard.
+#[test]
+fn pages_turn_from_the_keyboard_but_not_while_typing() {
+    let mut h = Harness::new(SettingsTab::default());
+    assert_eq!(h.tab, SettingsTab::Today);
+    h.frame(key(egui::Key::Num5, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Journal);
+    h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Habitat);
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Home);
+    // The first page goes no further back, and the last no further on.
+    h.frame(key(egui::Key::Num1, egui::Modifiers::COMMAND));
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Today);
+    h.frame(key(egui::Key::Num9, egui::Modifiers::COMMAND));
+    h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::About);
+    // A number typed without the modifier is just a number.
+    h.frame(key(egui::Key::Num2, egui::Modifiers::NONE));
+    assert_eq!(h.tab, SettingsTab::About);
+    // Typing in the journal's search field leaves the page where it is.
+    h.frame(key(egui::Key::Num5, egui::Modifiers::COMMAND));
+    h.frame(key(egui::Key::F, egui::Modifiers::COMMAND));
+    h.frame(Vec::new());
+    assert!(
+        h.context.text_edit_focused(),
+        "⌘F puts the keyboard in the search field"
+    );
+    h.frame(key(egui::Key::Num2, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Journal);
+}
+
+/// Every tab can be reached with Tab and turned to with Enter or Space, so the notebook can be
+/// used without a pointer.
+#[test]
+fn every_tab_can_be_reached_and_turned_to_from_the_keyboard() {
+    let mut h = Harness::new(SettingsTab::Today);
+    h.frame(Vec::new());
+    let mut reached = std::collections::BTreeSet::new();
+    for _ in 0..120 {
+        h.frame(key(egui::Key::Tab, egui::Modifiers::NONE));
+        let before = h.tab;
+        h.frame(key(egui::Key::Enter, egui::Modifiers::NONE));
+        if h.tab != before {
+            reached.insert(crate::clubhouse::journal::page_number(h.tab));
+            // Back to the first page, and on to find the next tab along.
+            h.tab = SettingsTab::Today;
+        }
+        if reached.len() + 1 == crate::clubhouse::journal::PAGES.len() {
+            break;
+        }
+    }
+    assert_eq!(
+        reached.into_iter().collect::<Vec<_>>(),
+        (2..=crate::clubhouse::journal::PAGES.len()).collect::<Vec<_>>(),
+        "every other page's tab is reachable from Today"
+    );
+}
+
+/// A new colony's Today page says it has only just moved in, rather than showing empty boxes.
+#[test]
+fn a_brand_new_colony_is_welcomed_on_today_rather_than_shown_empty_sections() {
+    let now = time::OffsetDateTime::now_utc();
+    let desktop = DesktopSnapshot::default();
+    let mut h = Harness::new(SettingsTab::Today);
+    h.save = World::new([3; 32], now, &desktop).save;
+    h.save.companion.onboarding_complete = true;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        shown(&h, "Settling in"),
+        "{:?}",
+        h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
+    assert!(shown_starting(&h, "Nothing observed yet."));
+    assert!(shown_starting(&h, "Day 1 of the colony."));
+    h.click("Meet your companions");
+    h.frame(Vec::new());
+    assert_eq!(h.tab, SettingsTab::Colony);
+}
+
+/// Observations are only ever said with their evidence beside them.
+#[test]
+fn today_says_what_it_has_observed_and_why() {
+    let mut h = Harness::new(SettingsTab::Today);
+    let climber = h.save.creatures[0].name.clone();
+    h.save.creatures[0].memory.ledge_seconds = 2 * 60 * 60 + 15 * 60;
+    h.save.creatures[0].memory.window_climbs = 18;
+    for other in h.save.creatures.iter_mut().skip(1) {
+        other.memory.ledge_seconds = 0;
+    }
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, &format!("{climber} prefers high places.")));
+    assert!(shown_starting(&h, "2 h 15 min up on window ledges in all"));
+    assert!(!shown_starting(&h, "Nothing observed yet."));
+}
+
+/// What is new is marked on the cover and the reader asked to have it counted as read only once
+/// they turn to Today or the Journal; it stays on show while they read, and is let go of after.
+#[test]
+fn news_is_marked_until_it_is_read_and_stays_on_show_while_it_is() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    let now = time::OffsetDateTime::now_utc();
+    h.save.companion.journal_seen_until = h.save.companion.journal.iter().map(|e| e.at).max();
+    h.save.companion.journal.push(JournalEntry {
+        at: now,
+        creature: None,
+        moment: JournalMoment::Revisit("Wren".into(), 3),
+    });
+    let outcome = h.frame(Vec::new());
+    assert!(
+        !outcome.mark_journal_read,
+        "nothing is read from another page"
+    );
+    assert!(shown(&h, "Today •"), "the Today tab carries its dot");
+    assert!(shown(&h, "Journal •"));
+    h.click("Today •");
+    let outcome = h.frame(Vec::new());
+    assert!(outcome.mark_journal_read);
+    // The app marks it read; the page keeps showing what was new.
+    assert!(h.save.companion.mark_read());
+    h.frame(Vec::new());
+    assert!(shown(&h, "NEW SINCE YOU LAST LOOKED"));
+    assert!(shown(&h, "Wren came back to visit, for the third time"));
+    assert!(shown(&h, "Today"), "the dot goes once it is read");
+    // Turning elsewhere lets it go: coming back, there is nothing new.
+    h.click("Your colony");
+    h.click("Today");
+    h.frame(Vec::new());
+    assert!(!shown(&h, "NEW SINCE YOU LAST LOOKED"));
+}
+
+/// The journal can be searched and filtered by kind, says how much of it is showing, and offers
+/// a way out of a search that matches nothing.
+#[test]
+fn the_journal_is_searched_filtered_and_cleared() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    let name = h.save.creatures[0].name.clone();
+    let at = h.save.created_at_utc + time::Duration::days(3);
+    for (offset, moment) in [
+        (0, JournalMoment::Discovery),
+        (1, JournalMoment::Ritual(RitualKind::Dance)),
+        (2, JournalMoment::Habit(Habit::LooksFoodOver)),
+    ] {
+        h.save.companion.journal.push(JournalEntry {
+            at: at + time::Duration::hours(offset),
+            creature: Some(h.save.creatures[0].id),
+            moment,
+        });
+    }
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "MILESTONES"));
+    let dance = "The colony shared a dance";
+    assert!(shown(&h, dance));
+    h.clubhouse.journal_search = "treasure".into();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, &format!("{name} found a little treasure")));
+    assert!(!shown(&h, dance));
+    assert!(shown_starting(&h, "Showing 1 of "));
+    // A search that matches nothing says so, and clears in one click.
+    h.clubhouse.journal_search = "zebra".into();
+    h.click("Clear the search and filters");
+    h.frame(Vec::new());
+    assert!(h.clubhouse.journal_search.is_empty());
+    assert!(shown(&h, dance));
+    // By kind.
+    h.click("Together");
+    h.frame(Vec::new());
+    assert_eq!(h.clubhouse.journal_kind, Some(MomentKind::Together));
+    assert!(shown(&h, dance));
+    assert!(!shown(&h, &format!("{name} found a little treasure")));
+}
+
+/// Empty journals and guest books say what will appear there and how, instead of nothing.
+#[test]
+fn an_empty_journal_and_guest_book_explain_themselves() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    h.save.companion.journal.clear();
+    h.save.companion.pins.clear();
+    h.save.visitors = VisitorState::default();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "The story is just beginning"));
+    assert!(shown(&h, "No visitors yet"));
+}
+
+/// A save that fails is shown calmly on every page, with something to do about it; it is the
+/// app that clears it once a save works again.
+#[test]
+fn save_trouble_is_shown_with_ways_to_act_on_it() {
+    for tab in [SettingsTab::Today, SettingsTab::Home, SettingsTab::About] {
+        let mut h = Harness::new(tab);
+        h.frame(Vec::new());
+        assert!(!shown(&h, "SAVING HAS STOPPED FOR NOW"));
+        h.clubhouse.save_trouble =
+            Some("The disk is full, so the colony could not be written.".into());
+        h.frame(Vec::new());
+        assert!(shown(&h, "SAVING HAS STOPPED FOR NOW"));
+        assert!(h.click("Try again now").retry_save);
+        h.clubhouse.save_trouble = Some("x".into());
+        assert!(h.click("Export a backup elsewhere…").export_colony);
+    }
+}
+
+/// A returning visitor's line in the guest book says how often they have been.
+#[test]
+fn the_guest_book_remembers_how_often_a_visitor_has_come() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    let again = h.save.visitors.guest_book[5].clone();
+    h.save.visitors.guest_book.push(GuestBookEntry {
+        visited_at_utc: again.visited_at_utc + time::Duration::days(1),
+        ..again.clone()
+    });
+    h.click(&format!(
+        "Visitors before this · {}",
+        h.save.visitors.guest_book.len()
+    ));
+    h.frame(Vec::new());
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text.ends_with("· 2 visits in the book")),
+        "{:?}",
+        h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
+}
+
+/// ⌘W closes the notebook from any page, as a native window would.
+#[test]
+fn command_w_asks_for_the_notebook_to_close() {
+    let mut h = Harness::new(SettingsTab::Home);
+    h.frame(Vec::new());
+    assert!(!h.frame(Vec::new()).close_notebook);
+    assert!(
+        h.frame(key(egui::Key::W, egui::Modifiers::COMMAND))
+            .close_notebook
     );
 }
