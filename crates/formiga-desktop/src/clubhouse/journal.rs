@@ -64,6 +64,47 @@ pub(crate) fn text_scale(ui: &Ui) -> f32 {
     (ui.text_style_height(&egui::TextStyle::Body) / 14.0).clamp(1.0, 1.5)
 }
 
+/// The one size every printed label in the notebook is set at, for text scaled by `scale`: one
+/// size rather than a size for each kind of label, so the window's font atlas holds one set of
+/// these glyphs and not half a dozen.
+pub(crate) fn label_size(scale: f32) -> f32 {
+    10.5 * scale
+}
+
+/// Rectangles gathered into one mesh. The stitching, the ruling, the dashes and the stepped edges
+/// come to hundreds of little rectangles a frame; as one mesh they are a single shape to draw, with
+/// hard pixel edges, rather than hundreds to tessellate one at a time.
+#[derive(Default)]
+pub(crate) struct Fills(egui::Mesh);
+
+impl Fills {
+    pub(crate) fn rect(&mut self, rect: Rect, color: Color32) {
+        if rect.is_positive() && color.a() > 0 {
+            self.0.add_colored_rect(rect, color);
+        }
+    }
+
+    /// A band shading from `left` to `right` across `rect`.
+    pub(crate) fn shade(&mut self, rect: Rect, left: Color32, right: Color32) {
+        if !rect.is_positive() {
+            return;
+        }
+        let base = self.0.vertices.len() as u32;
+        self.0.colored_vertex(rect.left_top(), left);
+        self.0.colored_vertex(rect.right_top(), right);
+        self.0.colored_vertex(rect.right_bottom(), right);
+        self.0.colored_vertex(rect.left_bottom(), left);
+        self.0.add_triangle(base, base + 1, base + 2);
+        self.0.add_triangle(base, base + 2, base + 3);
+    }
+
+    pub(crate) fn paint(self, painter: &egui::Painter) {
+        if !self.0.is_empty() {
+            painter.add(egui::Shape::mesh(self.0));
+        }
+    }
+}
+
 /// A printed label: small spaced capitals, the way the notebook's headings are set.
 pub(crate) fn label_job(text: &str, size: f32, color: Color32) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
@@ -82,7 +123,7 @@ pub(crate) fn label_job(text: &str, size: f32, color: Color32) -> egui::text::La
 
 /// A section's printed label on a page: "TALLY · LIFE HERE", "ON YOUR DESKTOP".
 pub(crate) fn kicker(ui: &mut Ui, text: &str) -> egui::Response {
-    let size = 10.5 * text_scale(ui);
+    let size = label_size(text_scale(ui));
     ui.label(label_job(text, size, forest()))
 }
 
@@ -96,11 +137,17 @@ pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observ
             page_number(page),
             page_kind(page)
         ),
-        11.0 * scale,
+        label_size(scale),
         forest(),
     ));
     ui.add_space(2.0);
-    ui.label(RichText::new(heading).size(30.0 * scale).color(ink()));
+    // The name grows with the text, but not all the way: at the largest text its glyphs would be
+    // big enough to double the font atlas the whole window draws from.
+    ui.label(
+        RichText::new(heading)
+            .size(30.0 * scale.min(1.2))
+            .color(ink()),
+    );
     ui.label(RichText::new(observation).color(muted()));
     ui.add_space(12.0);
 }
@@ -164,18 +211,19 @@ pub(crate) fn sticky_note<R>(
             Color32::from_black_alpha(70),
         ),
     );
-    stepped_outline(ui.painter(), rect, 2.0, line());
-    ui.painter().rect_filled(
+    let mut fills = Fills::default();
+    stepped_outline(&mut fills, rect, 2.0, line());
+    fills.rect(
         Rect::from_center_size(pos2(rect.center().x, rect.top()), vec2(48.0, 14.0)),
-        0.0,
         tape(),
     );
+    fills.paint(ui.painter());
     shown
 }
 
 /// A two-pixel outline drawn outside `rect` with its corner pixels left out, the stepped edge every
 /// box in the notebook has instead of a rounded one.
-pub(crate) fn stepped_outline(painter: &egui::Painter, rect: Rect, width: f32, color: Color32) {
+pub(crate) fn stepped_outline(fills: &mut Fills, rect: Rect, width: f32, color: Color32) {
     let (l, r, t, b) = (rect.left(), rect.right(), rect.top(), rect.bottom());
     for edge in [
         Rect::from_min_max(pos2(l, t - width), pos2(r, t)),
@@ -183,19 +231,19 @@ pub(crate) fn stepped_outline(painter: &egui::Painter, rect: Rect, width: f32, c
         Rect::from_min_max(pos2(l - width, t), pos2(l, b)),
         Rect::from_min_max(pos2(r, t), pos2(r + width, b)),
     ] {
-        painter.rect_filled(edge, 0.0, color);
+        fills.rect(edge, color);
     }
 }
 
 /// A box with a stepped outline, filled.
-pub(crate) fn stepped_box(painter: &egui::Painter, rect: Rect, fill: Color32, outline: Color32) {
-    painter.rect_filled(rect, 0.0, fill);
-    stepped_outline(painter, rect, 2.0, outline);
+pub(crate) fn stepped_box(fills: &mut Fills, rect: Rect, fill: Color32, outline: Color32) {
+    fills.rect(rect, fill);
+    stepped_outline(fills, rect, 2.0, outline);
 }
 
 /// A dashed line from `from` to `to`, horizontal or vertical.
 pub(crate) fn dashes(
-    painter: &egui::Painter,
+    fills: &mut Fills,
     from: Pos2,
     to: Pos2,
     dash: f32,
@@ -223,33 +271,24 @@ pub(crate) fn dashes(
                 pos2(from.x + width / 2.0, from.y + end),
             )
         };
-        painter.rect_filled(piece, 0.0, color);
+        fills.rect(piece, color);
         at += dash + gap;
     }
 }
 
 /// A dashed outline round `rect`.
 pub(crate) fn dashed_outline(
-    painter: &egui::Painter,
+    fills: &mut Fills,
     rect: Rect,
     dash: f32,
     gap: f32,
     width: f32,
     color: Color32,
 ) {
-    let half = width / 2.0;
-    let r = rect.shrink(half);
+    let r = rect.shrink(width / 2.0);
+    dashes(fills, r.left_top(), r.right_top(), dash, gap, width, color);
     dashes(
-        painter,
-        r.left_top(),
-        r.right_top(),
-        dash,
-        gap,
-        width,
-        color,
-    );
-    dashes(
-        painter,
+        fills,
         r.left_bottom(),
         r.right_bottom(),
         dash,
@@ -258,7 +297,7 @@ pub(crate) fn dashed_outline(
         color,
     );
     dashes(
-        painter,
+        fills,
         r.left_top(),
         r.left_bottom(),
         dash,
@@ -267,7 +306,7 @@ pub(crate) fn dashed_outline(
         color,
     );
     dashes(
-        painter,
+        fills,
         r.right_top(),
         r.right_bottom(),
         dash,
@@ -275,18 +314,6 @@ pub(crate) fn dashed_outline(
         width,
         color,
     );
-}
-
-/// A band shading from `left` to `right` across `rect`.
-fn shaded(painter: &egui::Painter, rect: Rect, left: Color32, right: Color32) {
-    let mut mesh = egui::Mesh::default();
-    mesh.colored_vertex(rect.left_top(), left);
-    mesh.colored_vertex(rect.right_top(), right);
-    mesh.colored_vertex(rect.right_bottom(), right);
-    mesh.colored_vertex(rect.left_bottom(), left);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
-    painter.add(egui::Shape::mesh(mesh));
 }
 
 /// Where everything in the window goes for a window `width` wide with text scaled by `scale`.
@@ -339,34 +366,35 @@ const FIRST_RULE: f32 = 98.0;
 
 /// The leather all of the window is bound in, its stitching, and the brass at its corners.
 pub(crate) fn paint_cover(painter: &egui::Painter, window: Rect) {
-    painter.rect_filled(window, 0.0, leather());
-    // The grain: a darker band down the spine and along the foot.
-    painter.rect_filled(
+    let mut fills = Fills::default();
+    fills.rect(window, leather());
+    // The grain: a darker band down the spine.
+    fills.rect(
         Rect::from_min_max(
             pos2(window.right() - 8.0, window.top()),
             window.right_bottom(),
         ),
-        0.0,
         leather_dark(),
     );
-    dashed_outline(painter, window.shrink(10.0), 6.0, 5.0, 2.0, stitch());
+    dashed_outline(&mut fills, window.shrink(10.0), 6.0, 5.0, 2.0, stitch());
     // Brass corners on the cover's outer edge.
-    for (top, y) in [(true, window.top()), (false, window.bottom() - 22.0)] {
-        let corner = Rect::from_min_size(pos2(window.left(), y), vec2(22.0, 22.0));
-        let (bar, post) = if top {
-            (
-                Rect::from_min_size(corner.left_top(), vec2(22.0, 6.0)),
-                Rect::from_min_size(corner.left_top(), vec2(6.0, 22.0)),
-            )
+    for top in [true, false] {
+        let y = if top {
+            window.top()
         } else {
-            (
-                Rect::from_min_size(pos2(corner.left(), corner.bottom() - 6.0), vec2(22.0, 6.0)),
-                Rect::from_min_size(corner.left_top(), vec2(6.0, 22.0)),
-            )
+            window.bottom() - 22.0
         };
-        painter.rect_filled(bar, 0.0, stitch());
-        painter.rect_filled(post, 0.0, stitch());
+        let bar_y = if top { y } else { y + 16.0 };
+        fills.rect(
+            Rect::from_min_size(pos2(window.left(), bar_y), vec2(22.0, 6.0)),
+            stitch(),
+        );
+        fills.rect(
+            Rect::from_min_size(pos2(window.left(), y), vec2(6.0, 22.0)),
+            stitch(),
+        );
     }
+    fills.paint(painter);
 }
 
 /// The cloth patch with the notebook's name on it, at the top of the cover, and where it ends.
@@ -379,38 +407,36 @@ fn paint_patch(painter: &egui::Painter, origin: Pos2, scale: f32) -> f32 {
     );
     let sub = painter.layout_no_wrap(
         "FIELD NOTES".into(),
-        FontId::monospace(9.5 * scale.min(1.25)),
+        FontId::monospace(label_size(scale)),
         patch_ink(),
     );
     let height = 12.0 + name.size().y + 7.0 + 2.0 + 6.0 + sub.size().y + 11.0;
     let rect = Rect::from_min_size(origin, vec2(width, height));
-    painter.rect_filled(
+    let mut fills = Fills::default();
+    fills.rect(
         rect.translate(vec2(3.0, 4.0)),
-        0.0,
         Color32::from_black_alpha(90),
     );
-    stepped_box(painter, rect, patch(), leather_dark());
-    dashed_outline(painter, rect.shrink(4.0), 4.0, 4.0, 2.0, stitch());
-    let mut y = rect.top() + 12.0;
+    stepped_box(&mut fills, rect, patch(), leather_dark());
+    dashed_outline(&mut fills, rect.shrink(4.0), 4.0, 4.0, 2.0, stitch());
+    let name_y = rect.top() + 12.0;
     let name_x = rect.center().x - name.size().x / 2.0;
     for x in [name_x - 13.0, name_x + name.size().x + 7.0] {
-        painter.rect_filled(
-            Rect::from_min_size(pos2(x, y + name.size().y / 2.0 - 3.0), vec2(6.0, 6.0)),
-            0.0,
+        fills.rect(
+            Rect::from_min_size(pos2(x, name_y + name.size().y / 2.0 - 3.0), vec2(6.0, 6.0)),
             mint(),
         );
     }
-    painter.galley(pos2(name_x, y), name.clone(), patch_ink());
-    y += name.size().y + 7.0;
-    painter.rect_filled(
-        Rect::from_min_size(pos2(rect.left() + 12.0, y), vec2(width - 24.0, 2.0)),
-        0.0,
+    let rule_y = name_y + name.size().y + 7.0;
+    fills.rect(
+        Rect::from_min_size(pos2(rect.left() + 12.0, rule_y), vec2(width - 24.0, 2.0)),
         stitch().gamma_multiply(0.6),
     );
-    y += 2.0 + 6.0;
+    fills.paint(painter);
+    painter.galley(pos2(name_x, name_y), name, patch_ink());
     painter.galley(
-        pos2(rect.center().x - sub.size().x / 2.0, y),
-        sub.clone(),
+        pos2(rect.center().x - sub.size().x / 2.0, rule_y + 2.0 + 6.0),
+        sub,
         patch_ink(),
     );
     rect.bottom()
@@ -532,61 +558,47 @@ fn paint_tab(
         TabState::Ahead => (if hovered { paper() } else { faint() }, muted(), ink()),
         TabState::Behind => (indent(), deboss(), deboss()),
     };
-    painter.rect_filled(rect, 0.0, fill);
+    let mut fills = Fills::default();
+    fills.rect(rect, fill);
     match state {
         TabState::Behind => {
-            // Pressed in: shadow along the top and left, a glint along the bottom and right.
-            painter.rect_filled(
+            // Pressed in: shadow along the top and left, a glint along the bottom.
+            fills.rect(
                 Rect::from_min_size(rect.left_top(), vec2(rect.width(), 3.0)),
-                0.0,
                 Color32::from_black_alpha(97),
             );
-            painter.rect_filled(
+            fills.rect(
                 Rect::from_min_size(rect.left_top(), vec2(3.0, rect.height())),
-                0.0,
                 Color32::from_black_alpha(97),
             );
-            painter.rect_filled(
+            fills.rect(
                 Rect::from_min_max(pos2(rect.left(), rect.bottom() - 2.0), rect.right_bottom()),
-                0.0,
                 Color32::from_rgba_unmultiplied(255, 225, 190, 20),
             );
             if hovered {
-                painter.rect_filled(rect, 0.0, Color32::from_white_alpha(10));
+                fills.rect(rect, Color32::from_white_alpha(10));
             }
         }
         TabState::Open | TabState::Ahead => {
             // The page's ruling carries on across a tab cut from it.
             let mut rule_y = rect.top() + 27.0 * scale;
             while rule_y < rect.bottom() - 1.0 {
-                painter.rect_filled(
+                fills.rect(
                     Rect::from_min_size(pos2(rect.left(), rule_y), vec2(rect.width(), 2.0)),
-                    0.0,
                     rule(),
                 );
                 rule_y += RULE_PITCH;
             }
             let (l, r, t, b) = (rect.left(), rect.right(), rect.top(), rect.bottom());
-            painter.rect_filled(
-                Rect::from_min_max(pos2(l - 2.0, t), pos2(l, b)),
-                0.0,
-                line(),
-            );
-            painter.rect_filled(
-                Rect::from_min_max(pos2(l, t - 2.0), pos2(r, t)),
-                0.0,
-                line(),
-            );
-            painter.rect_filled(
-                Rect::from_min_max(pos2(l, b), pos2(r, b + 2.0)),
-                0.0,
-                line(),
-            );
+            fills.rect(Rect::from_min_max(pos2(l - 2.0, t), pos2(l, b)), line());
+            fills.rect(Rect::from_min_max(pos2(l, t - 2.0), pos2(r, t)), line());
+            fills.rect(Rect::from_min_max(pos2(l, b), pos2(r, b + 2.0)), line());
         }
     }
+    fills.paint(painter);
     let number = painter.layout_no_wrap(
         format!("{number:02}"),
-        FontId::monospace(10.0 * scale),
+        FontId::monospace(label_size(scale)),
         number_color,
     );
     let text = painter.layout_no_wrap(
@@ -595,14 +607,15 @@ fn paint_tab(
         label_color,
     );
     let x = rect.left() + 10.0;
+    let number_width = number.size().x;
     painter.galley(
         pos2(x, rect.center().y - number.size().y / 2.0),
-        number.clone(),
+        number,
         number_color,
     );
     painter.galley(
         pos2(
-            x + number.size().x + 8.0,
+            x + number_width + 8.0,
             rect.center().y - text.size().y / 2.0,
         ),
         text,
@@ -611,6 +624,7 @@ fn paint_tab(
 }
 
 /// The note tucked under the tabs: what a researcher would jot down about the colony right now.
+/// Its lines are set in the window's small text, so they share its glyphs.
 fn paint_conditions(
     painter: &egui::Painter,
     origin: Pos2,
@@ -621,7 +635,7 @@ fn paint_conditions(
 ) {
     let title = painter.layout_no_wrap(
         "CONDITIONS".into(),
-        FontId::monospace(9.0 * scale.min(1.25)),
+        FontId::monospace(label_size(scale)),
         forest(),
     );
     let body: Vec<_> = lines
@@ -629,7 +643,7 @@ fn paint_conditions(
         .map(|line| {
             painter.layout(
                 line.clone(),
-                FontId::proportional(12.0 * scale.min(1.25)),
+                FontId::proportional(10.5 * scale),
                 ink(),
                 width - 20.0,
             )
@@ -642,20 +656,21 @@ fn paint_conditions(
     if rect.bottom() > floor {
         return;
     }
-    painter.rect_filled(
+    let mut fills = Fills::default();
+    fills.rect(
         rect.translate(vec2(3.0, 4.0)),
-        0.0,
         Color32::from_black_alpha(77),
     );
-    stepped_box(painter, rect, card_fill(), leather_dark());
-    painter.rect_filled(
+    stepped_box(&mut fills, rect, card_fill(), leather_dark());
+    fills.rect(
         Rect::from_center_size(pos2(rect.center().x, rect.top()), vec2(36.0, 12.0)),
-        0.0,
         tape(),
     );
+    fills.paint(painter);
     let mut y = rect.top() + 10.0;
-    painter.galley(pos2(rect.left() + 10.0, y), title.clone(), forest());
-    y += title.size().y + 6.0;
+    let title_height = title.size().y;
+    painter.galley(pos2(rect.left() + 10.0, y), title, forest());
+    y += title_height + 6.0;
     for galley in body {
         let height = galley.size().y;
         painter.galley(pos2(rect.left() + 10.0, y), galley, ink());
@@ -718,25 +733,26 @@ pub(crate) fn paint_binding(painter: &egui::Painter, rect: Rect) {
     if rect.width() <= 0.0 {
         return;
     }
+    let mut fills = Fills::default();
     let spine = Rect::from_min_max(
         pos2(rect.right() - (rect.width() * 0.4).max(4.0), rect.top()),
         rect.right_bottom(),
     );
-    painter.rect_filled(spine, 0.0, leather_dark());
+    fills.rect(spine, leather_dark());
     let mut y = rect.top() + 80.0;
     while y < rect.bottom() - 40.0 {
-        painter.rect_filled(
+        fills.rect(
             Rect::from_min_size(pos2(spine.left() - 3.0, y), vec2(spine.width() + 3.0, 2.0)),
-            0.0,
             stitch().gamma_multiply(0.5),
         );
         y += 200.0;
     }
+    fills.paint(painter);
 }
 
-/// The page itself: paper with its ruling and margin line, the plain strip at its foot where the
-/// footer sits, a stepped edge, and the shade of the binding down its right side. `open_tab` is
-/// left out of the edge, since that tab is joined to the page.
+/// The page itself: paper with its ruling and margin line, a stepped edge, and the shade of the
+/// binding down its right side. `open_tab` is left out of the edge, since that tab is joined to
+/// the page.
 pub(crate) fn paint_page(
     painter: &egui::Painter,
     page: Rect,
@@ -744,75 +760,50 @@ pub(crate) fn paint_page(
     footer_top: f32,
     open_tab: Rect,
 ) {
-    painter.rect_filled(
+    let mut fills = Fills::default();
+    fills.rect(
         page.translate(vec2(6.0, 6.0)),
-        0.0,
         Color32::from_black_alpha(64),
     );
-    painter.rect_filled(page, 0.0, paper());
+    fills.rect(page, paper());
     let mut y = page.top() + FIRST_RULE;
     while y < footer_top - 2.0 {
-        painter.rect_filled(
+        fills.rect(
             Rect::from_min_max(pos2(page.left(), y), pos2(page.right(), y + 2.0)),
-            0.0,
             rule(),
         );
         y += RULE_PITCH;
     }
-    painter.rect_filled(
+    fills.rect(
         Rect::from_min_size(
             pos2(page.left() + spread.margin, page.top()),
             vec2(2.0, page.height()),
         ),
-        0.0,
         margin_line(),
     );
-    dashes(
-        painter,
-        pos2(page.left() + 8.0, footer_top),
-        pos2(page.right() - 8.0, footer_top),
-        6.0,
-        5.0,
-        2.0,
-        gold(),
-    );
-    shaded(
-        painter,
+    fills.shade(
         Rect::from_min_max(pos2(page.right() - 14.0, page.top()), page.right_bottom()),
         Color32::TRANSPARENT,
         Color32::from_rgba_unmultiplied(40, 25, 15, 46),
     );
     // The edge, but not where the open page's tab joins it.
     let (l, r, t, b) = (page.left(), page.right(), page.top(), page.bottom());
-    painter.rect_filled(
-        Rect::from_min_max(pos2(l, t - 2.0), pos2(r, t)),
-        0.0,
-        line(),
-    );
-    painter.rect_filled(
-        Rect::from_min_max(pos2(r, t), pos2(r + 2.0, b)),
-        0.0,
-        line(),
-    );
+    fills.rect(Rect::from_min_max(pos2(l, t - 2.0), pos2(r, t)), line());
+    fills.rect(Rect::from_min_max(pos2(r, t), pos2(r + 2.0, b)), line());
     let gap = open_tab.y_range();
     if open_tab.is_positive() {
-        painter.rect_filled(
+        fills.rect(
             Rect::from_min_max(pos2(l - 2.0, t), pos2(l, gap.min.max(t))),
-            0.0,
             line(),
         );
-        painter.rect_filled(
+        fills.rect(
             Rect::from_min_max(pos2(l - 2.0, gap.max.min(b)), pos2(l, b)),
-            0.0,
             line(),
         );
     } else {
-        painter.rect_filled(
-            Rect::from_min_max(pos2(l - 2.0, t), pos2(l, b)),
-            0.0,
-            line(),
-        );
+        fills.rect(Rect::from_min_max(pos2(l - 2.0, t), pos2(l, b)), line());
     }
+    fills.paint(painter);
 }
 
 /// The open page's tab, drawn over the page's edge it is joined to.
@@ -854,7 +845,7 @@ pub(crate) fn paint_page_number(
         pos2(page.right() - 26.0, footer_top - 8.0),
         Align2::RIGHT_BOTTOM,
         format!("P. {number:02}"),
-        FontId::monospace(9.5 * scale),
+        FontId::monospace(label_size(scale)),
         muted(),
     );
 }
@@ -911,37 +902,37 @@ pub(crate) fn turn_page(
         Rect::from_min_max(page.left_top(), pos2(page.left() + width, page.bottom()))
     };
     let painter = ui.painter_at(page);
+    let mut fills = Fills::default();
     // The shadow the leaf throws on the page it uncovers, beside its free edge.
     let shadow_width = 36.0 * (1.0 - eased);
-    let (shadow, from, to) = if current.forward {
-        (
+    if current.forward {
+        fills.shade(
             Rect::from_min_max(
                 pos2(leaf.left() - shadow_width, page.top()),
                 pos2(leaf.left(), page.bottom()),
             ),
             Color32::TRANSPARENT,
             Color32::from_black_alpha(70),
-        )
+        );
     } else {
-        (
+        fills.shade(
             Rect::from_min_max(
                 pos2(leaf.right(), page.top()),
                 pos2(leaf.right() + shadow_width, page.bottom()),
             ),
             Color32::from_black_alpha(70),
             Color32::TRANSPARENT,
-        )
-    };
-    shaded(&painter, shadow, from, to);
-    painter.rect_filled(leaf, 0.0, paper());
+        );
+    }
+    fills.rect(leaf, paper());
     let mut y = page.top() + FIRST_RULE;
     while y < page.bottom() {
-        painter.rect_filled(
+        fills.rect(
             Rect::from_min_max(pos2(leaf.left(), y), pos2(leaf.right(), y + 2.0)),
-            0.0,
             rule(),
         );
         y += RULE_PITCH;
     }
-    painter.rect_filled(leaf, 0.0, Color32::from_black_alpha((eased * 60.0) as u8));
+    fills.rect(leaf, Color32::from_black_alpha((eased * 60.0) as u8));
+    fills.paint(&painter);
 }

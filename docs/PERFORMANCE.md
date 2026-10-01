@@ -883,3 +883,68 @@ reuses them, cut the main thread's share of a frame from 574 to 502 µs (two run
 CPU timed around the frame). The process as a whole spent no less: 1.95 ms a frame for 0.62.5
 against 1.99 ms with the belt, over four alternated runs of each. The work moved to other threads
 rather than going away, so it is not in 0.63.0.
+
+## 0.64.0
+
+### Size
+
+The app binary is each release's own commit built for release on the development Mac (Apple
+silicon only, where the published app is universal); the packages are the published downloads.
+0.64.0 is not published yet; its CI packages came out 0.3% larger than 0.63.1's.
+
+| | 0.62.5 | 0.63.0 | 0.63.1 | 0.64.0 |
+|---|---:|---:|---:|---:|
+| app binary | 15,798,800 | 15,831,936 | 15,848,528 | 15,881,664 |
+| macOS DMG | 17,931,200 | 17,984,807 | 17,990,957 | — |
+| macOS ZIP | 16,589,923 | 16,646,682 | 16,650,974 | — |
+| Windows MSI | 7,577,600 | 7,602,176 | 7,602,176 | — |
+| Windows ZIP | 9,003,772 | 9,033,714 | 9,035,581 | — |
+
+Three releases added 83 KB to the binary: 33 KB for the details and the picture reader, 17 KB for
+the statures and the tree, and 33 KB for the notebook.
+
+### Memory
+
+A companion's sprite textures are the same size whatever its stature: a size changes what is drawn
+in a frame, not how many frames there are or how many of them come out alike. Built by the app's
+own `build_atlas_pixels` from a copy of the owner's colony of six, and from 120 new companions:
+
+| | 0.63.0 | 0.63.1 | 0.64.0 |
+|---|---:|---:|---:|
+| the owner's six | 7,879,680 bytes | 7,879,680 bytes | 7,879,680 bytes |
+| the same under reduced motion | 3,456,000 bytes | 3,456,000 bytes | 3,456,000 bytes |
+| a new companion, on average | 1,182,566 bytes | 1,182,566 bytes | 1,182,566 bytes |
+| baking a new companion, median | 1.41 ms | 1.40 ms | 1.45 ms |
+
+The settings window's own artwork grew by the 16 KiB of the tree the creature studio stands its
+preview beside, from 826,368 to 842,752 bytes at most, in 0.63.1, and not at all in 0.64.0. The
+font atlas the window draws its text from is 2048 by 128 pixels, a megabyte, at every text size.
+As first written, the notebook set its labels in half a dozen sizes and let its page names grow to
+45 points, which at 150% text doubled the atlas to two megabytes; its labels now share one size and
+its page names stop growing at 36 points, and a test holds every page at the largest text to the
+one atlas.
+
+### The settings window
+
+What it costs the window to build a frame of each page and tessellate it, with the colony's fixture
+open, in a release build: the median of sixty frames after forty to settle, at 940 by 720 points.
+The window draws a frame only when something on it changes or moves.
+
+| page, at 100% text | 0.63.1 | 0.64.0 as first written | 0.64.0 |
+|---|---:|---:|---:|
+| Your colony | 144 µs | 239 µs | 200 µs |
+| Creature studio | 48 µs | 80 µs | 49 µs |
+| Home & keepsakes | 110 µs | 137 µs | 118 µs |
+| Journal | 47 µs | 84 µs | 55 µs |
+| Habitat | 26 µs | 57 µs | 32 µs |
+| Preferences | 46 µs | 76 µs | 52 µs |
+| Applications | 24 µs | 57 µs | 30 µs |
+| About & backups | 31 µs | 63 µs | 34 µs |
+| mean | 60 µs | 99 µs | 71 µs |
+| at 150% text, mean | 49 µs | 83 µs | 56 µs |
+| a frame of a page turning | — | 159 µs | 130 µs |
+
+As first written the notebook drew its stitching, ruling, dashes and stepped edges as some six
+hundred separate rectangles a frame, each tessellated on its own. They are now gathered into a mesh
+per piece of the window, a few dozen shapes in all, which also draws them with hard pixel edges. A
+page turn draws for 0.76 seconds, about 46 frames at 60 a second, and nothing afterwards.

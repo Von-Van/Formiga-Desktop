@@ -1097,7 +1097,9 @@ pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerR
         .inner_margin(14)
         .show(ui, contents);
     // A card in the notebook is a slip of paper with the stepped edge every box has.
-    journal::stepped_outline(ui.painter(), shown.response.rect, 2.0, line());
+    let mut fills = journal::Fills::default();
+    journal::stepped_outline(&mut fills, shown.response.rect, 2.0, line());
+    fills.paint(ui.painter());
     shown
 }
 pub fn words(value: &str) -> String {
@@ -1212,7 +1214,11 @@ fn moment_card(
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
                 ui.set_min_width(when_width);
-                ui.label(journal::label_job(&when, 9.5 * scale, muted()));
+                ui.label(journal::label_job(
+                    &when,
+                    journal::label_size(scale),
+                    muted(),
+                ));
             },
         );
         let action = if pinned { "Unpin" } else { "Pin" };

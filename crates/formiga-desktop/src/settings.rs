@@ -923,16 +923,16 @@ fn draw_settings(
             // top of it, and the page's number sits just above it.
             {
                 let painter = ui.painter();
-                painter.rect_filled(
+                let mut fills = clubhouse::journal::Fills::default();
+                fills.rect(
                     egui::Rect::from_min_max(
                         egui::pos2(page.left() + spread.margin, footer.top()),
                         egui::pos2(page.left() + spread.margin + 2.0, page.bottom()),
                     ),
-                    0.0,
                     clubhouse::margin_line(),
                 );
                 clubhouse::journal::dashes(
-                    painter,
+                    &mut fills,
                     egui::pos2(page.left() + 8.0, footer.top()),
                     egui::pos2(page.right() - 8.0, footer.top()),
                     6.0,
@@ -940,6 +940,7 @@ fn draw_settings(
                     2.0,
                     gold(),
                 );
+                fills.paint(painter);
                 clubhouse::journal::paint_page_number(
                     painter,
                     page,
@@ -1121,7 +1122,7 @@ fn colony_tab(
                 &format!("{:02} ", index + 1),
                 0.0,
                 egui::TextFormat {
-                    font_id: egui::FontId::monospace(9.5 * scale),
+                    font_id: egui::FontId::monospace(clubhouse::journal::label_size(scale)),
                     color: clubhouse::muted(),
                     valign: egui::Align::Center,
                     ..Default::default()
@@ -1158,7 +1159,7 @@ fn colony_tab(
             clubhouse.portrait(ui, creature, 144.0);
             ui.label(clubhouse::journal::label_job(
                 &format!("Fig. Nº {number:02}"),
-                9.0 * clubhouse::journal::text_scale(ui),
+                clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
                 clubhouse::muted(),
             ));
         });

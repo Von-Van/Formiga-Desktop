@@ -303,7 +303,7 @@ impl Clubhouse {
         journal::sticky_note(ui, |ui| {
             ui.label(journal::label_job(
                 &format!("TOUR · {} OF {}", index + 1, STEPS.len()),
-                10.0 * journal::text_scale(ui),
+                journal::label_size(journal::text_scale(ui)),
                 forest(),
             ));
             if *tab != step.page {
@@ -371,7 +371,9 @@ impl Clubhouse {
             return;
         }
         // Dashed round in red, the way a researcher rings what a note is about.
-        journal::dashed_outline(ui.painter(), rect.expand(6.0), 6.0, 4.0, 2.0, stamp());
+        let mut fills = journal::Fills::default();
+        journal::dashed_outline(&mut fills, rect.expand(6.0), 6.0, 4.0, 2.0, stamp());
+        fills.paint(ui.painter());
         if self.tour.scrolled != self.tour.step {
             self.tour.scrolled = self.tour.step;
             ui.scroll_to_rect(rect, Some(egui::Align::Min));

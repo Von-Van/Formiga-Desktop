@@ -26,6 +26,11 @@ All notable changes are documented here.
   line, under printed day headings, with kept moments dated.
 - The tour is a sticky note taped to the page, and it rings what it is pointing at in red dashes.
 - The habitat map's sand and clay follow the window into charcoal.
+- The notebook's stitching, ruling, dashes and stepped edges are drawn as a mesh per piece of the
+  window rather than as hundreds of separate rectangles, which brings a frame of a page from 99 µs
+  back to 71 µs on average (0.63.1's plainer window took 60 µs), and its labels share one size and
+  its page names stop growing at 36 points, which keeps the window's font atlas at one megabyte at
+  150% text rather than two.
 
 ### Added
 

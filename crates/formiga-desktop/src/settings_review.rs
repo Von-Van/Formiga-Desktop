@@ -1840,3 +1840,72 @@ fn the_notebook_keeps_its_proportions_and_gives_up_margins_before_room() {
     let narrow = crate::clubhouse::journal::Spread::of(760.0, 1.5);
     assert!(narrow.left < wide.left && narrow.binding < wide.binding);
 }
+
+/// Every page of the notebook, at the largest text it offers, fits in the font atlas a single
+/// page's worth of text needs: 2048 by 128 glyph pixels. The notebook's labels share one size, and
+/// its page names stop growing before their glyphs would double the atlas.
+#[test]
+fn every_page_at_the_largest_text_fits_one_font_atlas() {
+    let (save, monitors) = fixture();
+    let context = egui::Context::default();
+    configure_style(
+        &context,
+        AppearancePreferences {
+            text_scale: 150,
+            ..Default::default()
+        },
+    );
+    let mut clubhouse = Clubhouse::default();
+    let mut settings = save.settings.clone();
+    let mut names = BTreeMap::new();
+    let mut selected = None;
+    let mut error = None;
+    let mut confirmation = None;
+    let mut bulk = false;
+    let mut time = 0.0;
+    for page in crate::clubhouse::journal::PAGES {
+        let mut tab = page;
+        for _ in 0..3 {
+            time += 1.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(940.0, 720.0),
+                )),
+                time: Some(time),
+                ..Default::default()
+            };
+            let mut outcome = SettingsOutcome::default();
+            let mut output = context.run_ui(input, |ui| {
+                draw_settings(
+                    ui,
+                    &mut settings,
+                    &mut tab,
+                    &mut error,
+                    &save.settings,
+                    "/example/colony.json",
+                    &monitors,
+                    &[],
+                    false,
+                    &UpdateStatus::Idle,
+                    false,
+                    &save.creatures,
+                    &save.relationships,
+                    &mut names,
+                    &mut selected,
+                    &mut clubhouse,
+                    &save,
+                    &mut confirmation,
+                    &mut bulk,
+                    &mut outcome,
+                )
+            });
+            output.textures_delta.clear();
+        }
+    }
+    let [width, height] = context.fonts(|fonts| fonts.font_image_size());
+    assert!(
+        width * height <= 2048 * 128,
+        "the font atlas grew to {width}x{height}"
+    );
+}
