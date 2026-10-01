@@ -20,7 +20,7 @@ fn ambient_cadence_is_deterministic_bounded_and_suspended() {
     assert_eq!(first.discovery_remaining, second.discovery_remaining);
     assert!((120.0..240.0).contains(&first_timers.inspect_remaining));
     assert!((240.0..480.0).contains(&first_timers.dangle_remaining));
-    assert!((600.0..1_200.0).contains(&first.discovery_remaining));
+    assert!((3_600.0..9_000.0).contains(&first.discovery_remaining));
 
     let_colony_wander(&mut first, created);
     first.save.settings.visible = false;
@@ -74,7 +74,7 @@ fn only_one_creature_begins_a_colony_discovery() {
             .count(),
         1
     );
-    assert!((600.0..1_200.0).contains(&world.discovery_remaining));
+    assert!((3_600.0..9_000.0).contains(&world.discovery_remaining));
 }
 
 #[test]

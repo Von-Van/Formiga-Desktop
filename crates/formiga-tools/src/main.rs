@@ -23,6 +23,7 @@ mod sticker;
 mod tick_bench;
 mod ui_sheet;
 mod village_life_sheet;
+mod wonder_sheet;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -58,6 +59,10 @@ fn main() -> Result<()> {
         Some("expression-sheet") => expression_sheet(output_argument_with_default(
             &args,
             "docs/assets/expression-sheet.png",
+        )),
+        Some("motion-sheet") => motion_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/motion-sheet.png",
         )),
         Some("gesture-sheet") => gesture_sheet(output_argument_with_default(
             &args,
@@ -110,6 +115,10 @@ fn main() -> Result<()> {
             output_argument_with_default(&args, "packaging/shared"),
             source_argument(&args),
         ),
+        Some("wonder-sheet") => wonder_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/wonder-sheet.png",
+        )),
         Some("prop-sheet") => prop_sheet::run(output_argument_with_default(
             &args,
             "docs/assets/prop-sheet.png",
@@ -153,7 +162,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools motion-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools wonder-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]"
             );
             Ok(())
         }
@@ -915,6 +924,8 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         // Pleased with itself: half-lidded and smiling.
         Gesture::Strut => (ExpressionKind::Smug, EyelidPose::Half),
         Gesture::Peek => (ExpressionKind::Worried, EyelidPose::Half),
+        Gesture::Sit => (ExpressionKind::Content, EyelidPose::Open),
+        Gesture::Pedal => (ExpressionKind::Joy, EyelidPose::Open),
     };
     FaceRenderState {
         expression,
@@ -951,6 +962,56 @@ fn gesture_subjects() -> Vec<AppearanceGenome> {
         subjects.push(appearance);
     }
     subjects
+}
+
+/// The loops a companion is seen in most — walking, running, resting, eating, sleeping — frame by
+/// frame for every body, one row each, at 3x. A loop that reads as the same picture twice in a
+/// row, or that hitches where it comes round, shows up here and nowhere else.
+fn motion_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 3;
+    const LOOPS: [ActionKind; 5] = [
+        ActionKind::Traverse,
+        ActionKind::Sprint,
+        ActionKind::Idle,
+        ActionKind::Eat,
+        ActionKind::Sleep,
+    ];
+    let subjects = gesture_subjects();
+    let cell = FRAME_SIZE * SCALE;
+    let columns: u32 = LOOPS
+        .iter()
+        .map(|action| u32::from(formiga_art::AnimationSpec::for_action(*action).frames))
+        .sum::<u32>()
+        + LOOPS.len() as u32
+        - 1;
+    let width = columns * cell;
+    let height = subjects.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    for (row, genome) in subjects.iter().enumerate() {
+        let mut column = 0_u32;
+        for action in LOOPS {
+            let spec = formiga_art::AnimationSpec::for_action(action);
+            for frame in 0..spec.frames {
+                let rendered = CreatureRenderer::render_frame(genome, action, frame, true);
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    row as u32 * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+                column += 1;
+            }
+            column += 1;
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
 }
 
 /// The two poses a body pose is most easily mistaken for: standing about, and the plain peer a
@@ -1394,12 +1455,16 @@ fn demo_colony() -> Vec<Creature> {
     world.save.creatures
 }
 
+/// The size of the icon the app puts in the menu bar or the notification area, in pixels.
+const TRAY_ICON_SIZE: u32 = 64;
+
 fn app_icon(directory: PathBuf, source: PathBuf) -> Result<()> {
     std::fs::create_dir_all(&directory)
         .with_context(|| format!("create {}", directory.display()))?;
     let png_path = directory.join("Formiga.png");
     let ico_path = directory.join("Formiga.ico");
     let icns_path = directory.join("Formiga.icns");
+    let tray_path = directory.join("Formiga-tray.png");
 
     let (source_width, source_height, source_pixels) = read_rgba_png(&source)?;
     anyhow::ensure!(
@@ -1457,11 +1522,17 @@ fn app_icon(directory: PathBuf, source: PathBuf) -> Result<()> {
     ico.write_all(&png_bytes)?;
     ico.flush()?;
 
+    // The menu bar on a Mac and the notification area on Windows show the same picture, small:
+    // the app embeds this and lets each system fit it to its own bar.
+    let tray_pixels = resize_rgba_square(&source_pixels, source_width, TRAY_ICON_SIZE);
+    write_png(&tray_path, TRAY_ICON_SIZE, TRAY_ICON_SIZE, &tray_pixels)?;
+
     println!(
-        "wrote {}, {}, and {}",
+        "wrote {}, {}, {}, and {}",
         png_path.display(),
         icns_path.display(),
-        ico_path.display()
+        ico_path.display(),
+        tray_path.display()
     );
     Ok(())
 }

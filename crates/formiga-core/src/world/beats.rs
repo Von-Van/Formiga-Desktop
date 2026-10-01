@@ -100,6 +100,7 @@ pub(super) fn free_for_a_beat(world: &World, creature: &Creature) -> bool {
         && !world.window_journeys.contains_key(&creature.id)
         && !world.home_moments.contains_key(&creature.id)
         && !world.village_life.contains_key(&creature.id)
+        && !world.wonders.owns(creature.id)
         && !world
             .interaction
             .as_ref()

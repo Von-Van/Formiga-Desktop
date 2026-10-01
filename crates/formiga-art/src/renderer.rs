@@ -296,6 +296,10 @@ impl AnimationSpec {
             Gesture::Peek => (2, 2),
             // Tap, tap.
             Gesture::Stomp => (2, 4),
+            // Feet swinging, slowly: a whole swing back and forth is a second and a third.
+            Gesture::Sit => (4, 3),
+            // Round and round.
+            Gesture::Pedal => (4, 8),
         };
         Self {
             frames,
@@ -457,6 +461,10 @@ impl BodyPresentation {
             if state.walking_to_sleep() {
                 return shown(BodyClip::Action(ActionKind::Traverse), state.action_elapsed);
             }
+            // Getting down to sleep rather than dropping into it: a crouch for a moment first.
+            if state.action == ActionKind::Sleep && state.action_elapsed < LIE_DOWN_SECS {
+                return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
+            }
             return shown(BodyClip::Action(state.action), state.action_elapsed);
         };
         match habit {
@@ -479,6 +487,9 @@ impl BodyPresentation {
         }
     }
 }
+
+/// How long a companion crouches as it gets down to sleep.
+const LIE_DOWN_SECS: f32 = 0.45;
 
 /// How many times faster a sleeper's breaths come while it wriggles over in its sleep.
 const WRIGGLE_RATE: f32 = 4.0;

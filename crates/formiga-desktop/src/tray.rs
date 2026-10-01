@@ -293,53 +293,48 @@ impl TrayState {
 
 const TOOLTIP: &str = "Formiga desktop ecosystem";
 
+/// The app's own icon, shrunk for the menu bar and the notification area by `formiga-tools
+/// app-icon` from the same picture the Dock, the Finder and the Start menu show.
+const TRAY_PNG: &[u8] = include_bytes!("../../../packaging/shared/Formiga-tray.png");
+const TRAY_SIZE: usize = 64;
+
 fn icon(news: bool) -> Result<Icon> {
-    Ok(Icon::from_rgba(icon_pixels(news), 32, 32)?)
+    Ok(Icon::from_rgba(
+        icon_pixels(news)?,
+        TRAY_SIZE as u32,
+        TRAY_SIZE as u32,
+    )?)
 }
 
-/// The icon's pixels: a mint companion face, and with `news` a small ink dot ringed in cream at
-/// its upper right.
-fn icon_pixels(news: bool) -> Vec<u8> {
-    let size = 32;
-    let mut rgba = vec![0_u8; size * size * 4];
-    for y in 5..27 {
-        for x in 4..28 {
-            let dx = x as i32 - 16;
-            let dy = y as i32 - 16;
-            if dx * dx * 4 + dy * dy * 5 <= 23 * 23 * 4 {
-                let index = (y * size + x) * 4;
-                rgba[index..index + 4].copy_from_slice(&[112, 196, 155, 255]);
-            }
-        }
-    }
-    for (x, y) in [(11, 14), (21, 14)] {
-        for oy in 0..5 {
-            for ox in 0..4 {
-                let index = ((y + oy) * size + x + ox) * 4;
-                rgba[index..index + 4].copy_from_slice(&[22, 34, 29, 255]);
-            }
-        }
-        let index = (y * size + x) * 4;
-        rgba[index..index + 4].copy_from_slice(&[255, 255, 240, 255]);
-    }
+/// The icon's pixels: the app icon, and with `news` a small ink dot ringed in cream at its upper
+/// right.
+fn icon_pixels(news: bool) -> Result<Vec<u8>> {
+    let image = image::load_from_memory(TRAY_PNG)?.to_rgba8();
+    anyhow::ensure!(
+        image.width() as usize == TRAY_SIZE && image.height() as usize == TRAY_SIZE,
+        "the tray icon is {}x{}, not {TRAY_SIZE}x{TRAY_SIZE}",
+        image.width(),
+        image.height()
+    );
+    let mut rgba = image.into_raw();
     if news {
-        for y in 0..10_i32 {
-            for x in 22..32_i32 {
-                let (dx, dy) = (x - 27, y - 5);
+        for y in 0..20_i32 {
+            for x in 44..64_i32 {
+                let (dx, dy) = (x - 54, y - 10);
                 let distance = dx * dx + dy * dy;
-                let color = if distance <= 9 {
+                let color = if distance <= 36 {
                     [196, 88, 64, 255]
-                } else if distance <= 17 {
+                } else if distance <= 68 {
                     [255, 250, 234, 255]
                 } else {
                     continue;
                 };
-                let index = (y as usize * size + x as usize) * 4;
+                let index = (y as usize * TRAY_SIZE + x as usize) * 4;
                 rgba[index..index + 4].copy_from_slice(&color);
             }
         }
     }
-    rgba
+    Ok(rgba)
 }
 
 #[cfg(test)]
@@ -348,18 +343,18 @@ mod tests {
 
     #[test]
     fn the_news_dot_changes_only_its_corner_of_the_icon() {
-        let (plain, dotted) = (icon_pixels(false), icon_pixels(true));
-        assert_eq!(plain.len(), 32 * 32 * 4);
+        let (plain, dotted) = (icon_pixels(false).unwrap(), icon_pixels(true).unwrap());
+        assert_eq!(plain.len(), TRAY_SIZE * TRAY_SIZE * 4);
         let mut changed = 0;
         for (index, (a, b)) in plain.chunks(4).zip(dotted.chunks(4)).enumerate() {
             if a != b {
                 changed += 1;
-                let (x, y) = (index % 32, index / 32);
-                assert!(x >= 22 && y < 10, "the dot reached ({x}, {y})");
+                let (x, y) = (index % TRAY_SIZE, index / TRAY_SIZE);
+                assert!(x >= 44 && y < 20, "the dot reached ({x}, {y})");
             }
         }
         assert!(
-            changed > 30,
+            changed > 120,
             "the dot is big enough to see: {changed} pixels"
         );
     }

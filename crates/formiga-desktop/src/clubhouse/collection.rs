@@ -275,6 +275,106 @@ impl Clubhouse {
         ui.small("Only the first find of each kind is recorded, and only on this computer.");
     }
 
+    /// One still picture of every kind of wonder in a row, cut from the frames the desktop draws.
+    fn wonder_sheet(&mut self, ui: &Ui, save: &SaveFile) -> TextureHandle {
+        if self
+            .wonder_sheet
+            .as_ref()
+            .is_none_or(|(seed, _)| *seed != save.colony_seed)
+        {
+            use formiga_art::{WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WonderRenderer};
+            let kinds = WonderKind::ALL.len() as u32;
+            let mut sheet = formiga_art::Canvas::new(WONDER_CELL_WIDTH * kinds, WONDER_CELL_HEIGHT);
+            for (index, kind) in WonderKind::ALL.into_iter().enumerate() {
+                let frames = WonderRenderer::render(kind, save.colony_seed);
+                // The level frame for a seesaw; the first for everything else.
+                let rest = if kind == WonderKind::Seesaw { 3 } else { 0 };
+                for y in 0..WONDER_CELL_HEIGHT as i32 {
+                    for x in 0..WONDER_CELL_WIDTH as i32 {
+                        let pixel = frames.get(rest * WONDER_CELL_WIDTH as i32 + x, y);
+                        if pixel.a > 0 {
+                            sheet.set(index as i32 * WONDER_CELL_WIDTH as i32 + x, y, pixel);
+                        }
+                    }
+                }
+            }
+            let texture = upload(ui.ctx(), "colony-wonders", &sheet);
+            self.wonder_sheet = Some((save.colony_seed, texture));
+        }
+        self.wonder_sheet.as_ref().unwrap().1.clone()
+    }
+
+    /// The notebook's page of wonders: every kind there is, the ones that have turned up drawn
+    /// with who first found it, when, and how many goes the colony has had since, and the rest as
+    /// a shadow with a hint. Nothing here can be placed or kept: a wonder turns up by itself.
+    pub fn wonders(&mut self, ui: &mut Ui, save: &SaveFile) {
+        let offset = local_offset();
+        let sheet = self.wonder_sheet(ui, save);
+        let found = &save.companion.wonders;
+        ui.add_space(14.0);
+        ui.label(
+            RichText::new(format!(
+                "WONDERS · {} of {} found",
+                found.len(),
+                WonderKind::ALL.len()
+            ))
+            .color(forest())
+            .size(11.0),
+        );
+        ui.small(
+            "Now and then something to play on turns up for a little while — a chair, a bike, a \
+             fountain — and whoever it turned up for goes straight over to have a go.",
+        );
+        ui.add_space(6.0);
+        let kinds = WonderKind::ALL.len() as f32;
+        for (index, kind) in WonderKind::ALL.into_iter().enumerate() {
+            let record = found.iter().find(|record| record.kind == kind);
+            card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let uv = egui::Rect::from_min_max(
+                        egui::pos2(index as f32 / kinds, 0.0),
+                        egui::pos2((index + 1) as f32 / kinds, 1.0),
+                    );
+                    // Something still to find is its own shape and nothing more.
+                    let tint = if record.is_some() {
+                        Color32::WHITE
+                    } else {
+                        Color32::from_rgba_unmultiplied(0, 0, 0, 70)
+                    };
+                    ui.add(
+                        egui::Image::new(&sheet)
+                            .uv(uv)
+                            .tint(tint)
+                            .maintain_aspect_ratio(false)
+                            .fit_to_exact_size(egui::vec2(112.0, 64.0)),
+                    );
+                    ui.vertical(|ui| match record {
+                        Some(record) => {
+                            ui.strong(kind.label());
+                            ui.label(kind.description());
+                            let finder = record
+                                .finder
+                                .and_then(|id| save.creatures.iter().find(|c| c.id == id))
+                                .map_or(record.finder_name.as_str(), |c| c.name.as_str());
+                            let at = record.first_at.to_offset(offset);
+                            ui.small(format!(
+                                "First found by {finder} · {} · {} {}",
+                                at.date(),
+                                record.goes,
+                                if record.goes == 1 { "go" } else { "goes" }
+                            ));
+                        }
+                        None => {
+                            ui.strong("Still to find");
+                            ui.label(kind.hint());
+                        }
+                    });
+                });
+            });
+            ui.add_space(6.0);
+        }
+    }
+
     /// The companion wearing `wearing`, drawn in each of the try-on poses, from the colony's own
     /// inks for the find it is made from. Drawn again only when who, how they look, or what they
     /// are trying on changes.

@@ -27,6 +27,9 @@ pub(super) struct Pose {
     /// attached to the head it grew on. Only a pose that is listening as well as looking asks
     /// for it, so no existing clip changes shape.
     pub(super) ear_perk: i32,
+    /// Feet set out to the sides, in art pixels: sat down on something with its legs out in
+    /// front. Only a seated pose asks for it, so no standing clip changes shape.
+    pub(super) splay: i32,
 }
 
 impl Pose {
@@ -58,37 +61,22 @@ impl Pose {
         let alternate: i32 = [1, 0, -1, 0, 1, 0][phase];
         let bob_amount = genome.gait_bob.max(0.2).round() as i32;
         let mut pose = match action {
-            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => Self {
-                bob: walk.abs() * bob_amount,
-                squash_x: 0,
-                squash_y: 0,
-                step_a: walk * 2,
-                step_b: alternate * 2,
-                play_lift: 0,
-                appendage_lift: walk,
-                tail_sway: alternate,
-                ..Self::default()
-            },
-            ActionKind::Sprint => Self {
-                bob: -walk.abs() * bob_amount.max(1),
-                squash_x: walk.abs(),
-                squash_y: -walk.abs(),
-                step_a: walk * 3,
-                step_b: alternate * 3,
-                play_lift: walk.abs(),
-                appendage_lift: walk * 2,
-                tail_sway: alternate * 2,
-                ..Self::default()
-            },
+            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
+                Self::stride(genome, phase, bob_amount, false)
+            }
+            ActionKind::Sprint => Self::stride(genome, phase, bob_amount.max(1), true),
+            // Curled up and breathing: a little fuller on the breath in, the ears drooping a
+            // touch further on the breath out.
             ActionKind::Sleep => Self {
                 bob: frame as i32 % 2,
-                squash_x: 3,
+                squash_x: 3 + i32::from(frame.is_multiple_of(2)),
                 squash_y: -3,
                 step_a: 0,
                 step_b: 0,
                 play_lift: 0,
                 appendage_lift: -1,
                 tail_sway: 0,
+                ear_perk: -i32::from(frame % 2 == 1),
                 ..Self::default()
             },
             ActionKind::Perch | ActionKind::Homebound => Self {
@@ -113,6 +101,8 @@ impl Pose {
                 tail_sway: walk * 2,
                 ..Self::default()
             },
+            // A nibble or a sip on every other frame: the head dips in to it, and the tail
+            // gives a happy flick.
             ActionKind::Eat | ActionKind::Drink => Self {
                 bob: i32::from(frame % 2),
                 squash_x: 1,
@@ -121,7 +111,21 @@ impl Pose {
                 step_b: 0,
                 play_lift: 0,
                 appendage_lift: 1,
-                tail_sway: if frame.is_multiple_of(3) { 1 } else { 0 },
+                tail_sway: if frame.is_multiple_of(3) { 2 } else { 0 },
+                lean: i32::from(frame % 2),
+                ..Self::default()
+            },
+            // Hello, or a pet: a wiggle on the spot, bouncing a little, ears up and the tail
+            // going.
+            ActionKind::Greet => Self {
+                bob: i32::from(frame.is_multiple_of(2)),
+                squash_x: i32::from(frame.is_multiple_of(2)),
+                squash_y: i32::from(frame % 2 == 1) - i32::from(frame.is_multiple_of(2)),
+                play_lift: i32::from(frame % 2 == 1),
+                appendage_lift: 1,
+                tail_sway: if frame.is_multiple_of(2) { 2 } else { -2 },
+                lean: [0, 1, 0, -1][usize::from(frame % 4)],
+                ear_perk: i32::from(frame % 2 == 1),
                 ..Self::default()
             },
             ActionKind::AvoidCursor | ActionKind::ReactToWindow => Self {
@@ -214,6 +218,74 @@ impl Pose {
         pose
     }
 
+    /// One frame of a walk or a run, `phase` of six.
+    ///
+    /// Each body walks the way it is drawn. The family bodies are drawn side on, so their legs
+    /// swing past each other, front and back, and the body dips as each foot comes down. A
+    /// modular body faces the screen, so it waddles: one foot lifts and steps out, comes down, and
+    /// then the other, with the body squashing as both feet land and rising as each one lifts.
+    /// A four-pawed body lifts one paw at a time, near hind, near fore, far hind, far fore, so
+    /// three are always down.
+    ///
+    /// Until 0.66.0 every walk took its stride from a four-step pattern played over six frames,
+    /// so the same leg stepped twice where the loop came round: a hitch once a second.
+    fn stride(genome: &AppearanceGenome, phase: usize, bob: i32, running: bool) -> Self {
+        let run = i32::from(running);
+        if genome.design.is_none() {
+            // Side on: the legs swing through each other, a footfall at each end of the swing.
+            let swing = [2, 1, -1, -2, -1, 1][phase] * (1 + run);
+            let footfall = phase.is_multiple_of(3);
+            return Self {
+                bob: if footfall { bob } else { -run },
+                squash_x: i32::from(footfall),
+                squash_y: -i32::from(footfall) + i32::from(!footfall && running),
+                step_a: swing.clamp(-3, 3),
+                step_b: -swing.clamp(-3, 3),
+                play_lift: i32::from(running && !footfall),
+                appendage_lift: i32::from(!footfall) + run,
+                tail_sway: [1, 2, 1, -1, -2, -1][phase],
+                lean: run,
+                ..Self::default()
+            };
+        }
+        if stretches_long(genome) {
+            // One paw up at a time; all four down on the second and fifth frames, where the
+            // body dips.
+            let near_hind = [1, 0, 0, -1, 0, 0][phase];
+            let near_fore = [0, 0, 1, 0, 0, -1][phase];
+            let down = phase % 3 == 1;
+            return Self {
+                bob: if down { bob } else { 0 },
+                squash_x: i32::from(down),
+                squash_y: -i32::from(down),
+                step_a: near_hind * (1 + run),
+                step_b: near_fore * (1 + run),
+                play_lift: i32::from(running && !down),
+                appendage_lift: run,
+                tail_sway: [1, 2, 1, -1, -2, -1][phase],
+                ..Self::default()
+            };
+        }
+        // Facing the screen: left foot up and out, down; right foot up and out, down.
+        let left = [-1, -2, 0, 0, 0, 0][phase] * (1 + run);
+        let right = [0, 0, 0, 1, 2, 0][phase] * (1 + run);
+        let landed = phase % 3 == 2;
+        let top = phase % 3 == 1;
+        Self {
+            bob: if landed { bob } else { -i32::from(top) },
+            squash_x: i32::from(landed) - i32::from(top),
+            squash_y: i32::from(top) - i32::from(landed),
+            step_a: left.clamp(-3, 3),
+            step_b: right.clamp(-3, 3),
+            play_lift: i32::from(running && top),
+            appendage_lift: i32::from(top) + run,
+            tail_sway: [1, 2, 1, -1, -2, -1][phase],
+            lean: 1 + run,
+            ear_perk: i32::from(top),
+            ..Self::default()
+        }
+    }
+
     /// The rest a companion holds when it has nothing else to do: settle, shift its weight, look
     /// off at something, settle back.
     ///
@@ -261,6 +333,7 @@ impl Pose {
             crouch: i32::from(slouch) * [0, 1, 1, 0, 0, 0][beat],
             // Ears up for the look and down again, which is what tells a look from a sway.
             ear_perk: [0, 0, 1, 2, 1, 0][beat],
+            splay: 0,
         }
     }
 
@@ -390,6 +463,7 @@ impl Pose {
                 crouch: 0,
                 // Ears up the whole time, with a single flick on the fourth frame.
                 ear_perk: [2, 2, 2, 1, 2, 2][slow],
+                splay: 0,
             },
             // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
             // mouth, held at the top, and settling down a little lower than it began. Played once:
@@ -464,6 +538,34 @@ impl Pose {
                 lean: -1,
                 ..Self::default()
             },
+            // Sat down low with its feet out at its sides, swinging them in turn, its tail
+            // swishing along: settled, and pleased about it.
+            Gesture::Sit => Self {
+                squash_x: 1,
+                squash_y: -1,
+                step_a: beat,
+                step_b: -beat,
+                tail_sway: beat,
+                crouch: 3,
+                splay: 2,
+                ..Self::default()
+            },
+            // Sat forward over the handlebars, the feet going round one after the other and the
+            // body bobbing with each push.
+            Gesture::Pedal => {
+                let round = [2, 1, 0, 1];
+                Self {
+                    bob: tick,
+                    step_a: round[usize::from(frame % 4)],
+                    step_b: round[usize::from((frame + 2) % 4)],
+                    appendage_lift: 1,
+                    tail_sway: -1 - tick,
+                    lean: 1,
+                    crouch: 2,
+                    splay: 1,
+                    ..Self::default()
+                }
+            }
             // Square and stiff, one foot lifting and coming down again.
             Gesture::Stomp => Self {
                 bob: 1 - tick,

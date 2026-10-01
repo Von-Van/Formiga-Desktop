@@ -878,8 +878,13 @@ pub(super) fn gesture_limb_targets(
             at(middle - 3, left.y - 2),
             at(middle + 3, right.y - 2 + tick * 4),
         ),
-        // Where they rest: the foot does the talking.
-        Gesture::Stomp => resting(),
+        // Where they rest: the foot does the talking, and in a seat the feet do the swinging.
+        Gesture::Stomp | Gesture::Sit => resting(),
+        // Both out ahead on the handlebars.
+        Gesture::Pedal => (
+            at(right.x + 2, right.y + 1),
+            at(right.x + length + 3, right.y - tick),
+        ),
     }
 }
 

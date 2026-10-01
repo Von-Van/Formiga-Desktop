@@ -2,6 +2,45 @@
 
 All notable changes are documented here.
 
+## [0.66.0] - 2026-10-01
+
+### Added
+
+- **Wonders.** Every ten to twenty minutes of visible time something to play on turns up for a
+  little while — a little chair, a tiny bike, a fountain, a tightrope, a stump table, an arrow sign,
+  a hammock, a stack of books or a seesaw — somewhere a companion can get to: along the floor or the
+  window it is on, down on the floor below, or up on a window it climbs to. While the houses are out
+  it only ever turns up on the village's own ground. Whoever it turned up for goes straight over,
+  and a wonder for two sends both at once. Each has its own play: sitting back and swinging feet,
+  pedalling out and back, splashing, crossing the rope with a wobble in the middle while a friend
+  watches, cards at the stump, spinning the sign and pointing where it stops, a doze in the
+  hammock, reading on top of the books while a friend peeks round them, going up and down on the
+  seesaw. Picking a player up, on the way or mid-play, sends the wonder away.
+- The first of each kind is marvelled at, written in the journal, and kept on the notebook's new
+  **Wonders** page with who found it, when, and how many goes the colony has had on it since. That
+  is all that is kept: a wonder is never stored, placed or shown anywhere else.
+- Two new poses, **sitting** and **pedalling**, for every body, and hops on and off whatever a
+  companion sits on, with a crouch to get ready.
+- `formiga-tools wonder-sheet` draws every wonder and companions playing on it through its script;
+  `formiga-tools motion-sheet` draws every body's walk, run, rest, meal and sleep loops frame by
+  frame.
+
+### Changed
+
+- **A few finds a day.** A colony now finds one to five trinkets a day, three on average, however
+  many companions it has — on the desktop and at home alike — where it used to find a few an hour.
+- **Walking reads as walking.** Every walk and run took its stride from a pattern that repeated a
+  step where the loop came round, a hitch once a second, and on the modular bodies barely moved the
+  feet. Each body now walks the way it is drawn: the family bodies swing their legs past each
+  other, the modular ones step out one foot then the other and rise and land with each step, and
+  four-pawed ones still lift one paw at a time.
+- Livelier small loops: a wiggle and a wagging tail for a hello or a pet, a nibbling lean over a
+  meal, a visible breath while asleep, and a crouch before lying down.
+- The village's **bench and swing** are sat on, the **hammock** lain in at the cloth's own height,
+  and the **book nook** sat beside with a book, instead of each being stood at.
+- The **menu bar and tray icon** is the app's own icon, with its small dot for news.
+- Save version 24. Older builds refuse a colony that has found wonders or counted its finds today.
+
 ## [0.65.0] - 2026-10-01
 
 ### Added

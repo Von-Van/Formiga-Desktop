@@ -225,7 +225,7 @@ pub(super) fn draw(
         four_legs(c, p, d, body, pose, clip, limbs, true);
     } else {
         for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
-            let fx = x + side * (rx - 4) + step.clamp(-2, 2);
+            let fx = x + side * (rx - 4 + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
             let lift = step.abs().min(2);
             // Stick legs are drawn in shade, so they read as thin legs rather than coat.
             let leg = if k.limbs == 2 { p.shadow } else { p.coat };
@@ -886,6 +886,12 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
         BodyClip::Gesture(Gesture::Peek) => [to(hx - 3, hy - 1), to(hx + 3, hy - 1 + tick * 4)],
         // Paws stiff at the sides: the foot does the talking.
         BodyClip::Gesture(Gesture::Stomp) => [Limb::Rest; 2],
+        // Paws in its lap: the swinging feet are the whole of it.
+        BodyClip::Gesture(Gesture::Sit) => [Limb::Rest; 2],
+        // Wings stay folded on a bike, out of the way of the wheels.
+        BodyClip::Gesture(Gesture::Pedal) if plan == BodyPlan::Winged => [Limb::Rest; 2],
+        // Both paws out ahead on the handlebars, the far one a little further along.
+        BodyClip::Gesture(Gesture::Pedal) => [to(x + rx + 3, y - 1), to(x + rx + 6, y - 2 + tick)],
         // Wings open up and out as far as they go.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Winged => {
             let up = [0, 1, 2, 2][usize::from(frame.min(3))];
@@ -1148,8 +1154,16 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         BodyClip::Gesture(Gesture::Peek) => [rest, to(hx + 3, hy - 1 + tick * 4)],
         BodyClip::Gesture(Gesture::Huff) => [rest, lift(near, 3, room / 2)],
         BodyClip::Gesture(
-            Gesture::Crouch | Gesture::Watch | Gesture::Yawn | Gesture::Stomp | Gesture::Stretch,
+            Gesture::Crouch
+            | Gesture::Watch
+            | Gesture::Yawn
+            | Gesture::Stomp
+            | Gesture::Stretch
+            | Gesture::Sit,
         ) => [rest; 2],
+        // Standing to it on all fours, the near forepaw up on the handlebars, no higher than
+        // the chin: three paws down even on a bike.
+        BodyClip::Gesture(Gesture::Pedal) => [rest, lift(near, 7, 1 + tick)],
     }
 }
 

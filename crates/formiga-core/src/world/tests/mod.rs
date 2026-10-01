@@ -30,6 +30,7 @@ mod undo;
 mod village;
 mod village_life;
 mod visitors;
+mod wonders;
 
 pub(super) fn desktop() -> DesktopSnapshot {
     DesktopSnapshot {

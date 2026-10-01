@@ -166,8 +166,8 @@ belong to none of the themes. Everything else lives in a child module named afte
 `world/arrivals.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`, `discovery.rs`,
 `experience.rs`, `generation.rs`, `habits.rs`, `home.rs`, `interaction.rs`, `journeys.rs`,
 `moments.rs`, `movement.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`,
-`spacing.rs`, `surfaces.rs`, `tows.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, and the
-`attention/` family. Each module adds
+`spacing.rs`, `surfaces.rs`, `tows.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`,
+and the `attention/` family. Each module adds
 methods to the one `World` type rather than owning state of its own, so there is still a single
 simulation object and a single tick.
 
@@ -175,7 +175,7 @@ Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bon
 `colony_management`, `companion`, `discovery`, `experience`, `habits`, `hangouts`, `home`,
 `interaction`, `journeys`, `misc`, `moments`, `objects_and_decorations`, `offers`, `perches`,
 `rituals`, `spacing`, `topology_and_attention`, `tows`, `undo`, `village`, `village_life`,
-`visitors` — with the
+`visitors`, `wonders` — with the
 shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
 behaviour-preserving: a differential harness ran five seeds for 18,000 ticks each against 0.57.1
 and compared the event streams and serialized saves byte for byte.
@@ -263,8 +263,8 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 147 frames: 92 for actions, because
-`Tossed` reuses the dragged body clip, and 55 for eighteen gesture poses. Since 0.62.0 a frame or a
+directions and three eyelid states. The body atlas holds 155 frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 63 for twenty gesture poses. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -273,9 +273,10 @@ trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a r
 companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
-adds one or two from the object sheet. A new companion's textures come to about 1.24 MB, and about
+adds one or two from the object sheet. A new companion's textures come to about 1.34 MB — 1.24 MB
+until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating frames — and about
 0.5 MB under reduced motion, where every creature's cost 1,649,664 bytes in 0.61.0. With no two
-frames alike they would be 1,797,120 bytes, which is what the budgets hold: below a 4,500,000-byte
+frames alike they would be 1,889,280 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.
@@ -1485,6 +1486,76 @@ Journal's scrapbook lists only what has been found, and the Collection on the Yo
 shows all hundred and sixty, those still to find as the shadow of their shape with the
 catalogue's hint.
 
+### A few finds a day
+
+Since 0.66.0 a colony finds one to five trinkets on each local day, three on average, whatever its
+size. `daily_trinket_target` draws the day's number from the colony seed and the date, so nothing
+about it is stored; `SaveFile::finds_today` keeps only the date and how many have been found on it.
+`World::trinket_find_allowed` counts what has been written down today and whatever is still being
+held up, or has turned up on a village errand and is about to be, so two finds in progress can never
+both be the last. The desktop's find, a village errand's one in seven, and the group presentation
+ritual all ask it; once the day is spent, nothing more turns up until tomorrow. The desktop's own
+cooldown between finds is one to two and a half visible hours, so a day's finds are spread across
+it rather than found in its first hour.
+
+## Wonders
+
+`formiga-core::wonders` is the catalogue: nine `WonderKind`s, each with a label, a description for
+the notebook, a hint for one still to find, how many it seats (one, one or two, or always two), the
+ground it stands on and the run of ground a turn on it covers, in art pixels. `world/wonders.rs` is
+the runtime: at most one wonder at a time, nothing about it saved but the notebook's
+`WonderRecord`s — kind, first found, finder and the finder's name, and a count of goes.
+
+Every 10–20 visible minutes, while the colony is visible, unpaused, not in quiet mode or reduced
+motion, and in no ritual or village moment, one turns up. The lead is a free companion — awake, on
+its own feet, and owned by no scene, journey, offer, beat, tow or village plan — chosen with weight
+to the playful and the curious. The kind is one the colony has not had yet three times in four
+while there are any, and never one for two with nobody to share it. Where it goes is a run of
+ground that holds its whole room: the floor of the lead's display, the ledge it is on, or the top
+edge of a window it could climb — wide enough, inside the habitat, in plain view along its whole
+length, with headroom under the menu bar. While the houses are out it is the village commons and
+nothing else. It turns up 1.6 to 5 frames from the lead, turned so the lead's side faces it.
+
+Its players drop what they were doing and set off at once, both of them for a wonder for two. Each
+one's way is a list of legs: a walk along the ground it is on, or a hop down off a window first,
+and a climb up a window by the same `build_window_journey` any trip up takes, which the wonder
+advances itself. While they are its players the colony's ordinary choices pass them by — the
+desktop and the homebound ticks skip them — and attention, play, beats, antics, tows and offers
+leave them alone; spacing treats the two as a formation and excuses them from being moved.
+Somebody a way off runs rather than walks. Thirty seconds to gather, or it gives up; a partner
+who is late is let go and the lead plays alone, unless it takes two.
+
+Once everyone is there, a first find stops for 2.2 seconds while its finder gasps and cheers and the
+wonder bounces, and then the script plays. A script is a pure function of the kind, the role, whether
+there is a pair, the seconds in, and a coin toss: a `Stance` of where the player is relative to the
+wonder in art pixels, which way it faces, its action, a gesture, a feeling and where it looks.
+Getting on or off anything is `hop`, a crouch and then an arc, so nobody appears in a seat. The
+wonder's own moving part — a seesaw's tilt, a hammock's sway, the arrow's spin, the fountain's
+splash, the rope's wobble, the cards down, the wheels turning — and how far a bike has ridden are
+read from the same clock. Every script starts and ends on the ground. When it is over, a pair's
+players have one `PositivePlay` bond experience and a heart each, everyone is let go where it
+stands, and the wonder shrinks away over 0.6 seconds.
+
+Picking a player up gives it to the hand at once — back on its feet on the wonder's ground if it
+was seated — and the wonder goes on the next tick, letting the others go; settling the colony
+(`clear_runtime_plans`), hiding, pausing, reduced motion, quiet mode, a ritual or a village moment
+send it away too, and so does the window under it moving or closing, or the houses coming or going
+under one at home.
+
+`formiga-art::wonders` draws each kind as a strip of 112×64 frames standing on one ground row, in
+timber, stone, water and rope with the colony's colours for the made parts, ringed in one outline.
+The overlay bakes only the kind out now, the moment it appears, draws it as one quad behind its
+players, growing up out of the ground as it comes and sinking as it goes, and drops the texture
+once it has gone, so an overlay with no wonder out holds nothing for one. The colony is ticked and
+drawn at 20 Hz while one is out. The notebook's journal ends with a Wonders page drawn from the same
+frames. `formiga-tools wonder-sheet` shows every kind and its script played out by companions
+placed exactly as the simulation places them.
+
+The village's bench, swing, hammock and book nook use the same stances: a companion that walks to
+one hops up onto the plank or the board, or into the hammock at the cloth's own height, and sits or
+dozes there, hopping down at the end; at the book nook it sits on the ground with its eyes on its
+lap. The sprites themselves stay still.
+
 ## Exact offline seed sharing
 
 `CreatureOrigin` remains separate from mutable colony order. Its 256-bit source seed and original
@@ -1666,7 +1737,9 @@ remain minis.
 - The colony picture each creature answers against — the creature and relationship views — is two
   buffers reused between ticks rather than two clones of the whole colony made afresh each tick.
 - Ambient countdowns: inspection 2–4 minutes per creature, dangling 4–8 minutes per perched
-  creature, and discovery 10–20 minutes per colony; countdowns stop while paused or hidden.
+  creature, and discovery one to two and a half hours per colony, within a daily allowance of one
+  to five finds; countdowns stop while paused or hidden. A wonder every 10–20 visible minutes, and
+  20 Hz only while one is out.
 - Experience observations: one summary per creature per 60 active visible seconds; no new loop.
 - Calm proximity: accumulated from those same summaries and projected once per five active minutes;
   no separate pair polling loop. It does not accumulate at all while the home is out, and the
@@ -2145,7 +2218,8 @@ filtered by kind as well as by companion, saying how many moments are showing.
 is unread if it is noteworthy — an arrival, a friendship, a new preference or habit, a visit or a
 return visit — and the everyday ones (finds, shared moments, village news) never are. While any are
 unread the Today and Journal tabs carry a dot and the tray icon a small one in its corner, drawn
-once when it changes; there is no sound, count or desktop sign. Turning to Today or the Journal
+once when it changes — the tray icon is the app's own, shrunk to 64 pixels by `formiga-tools
+app-icon` and embedded; there is no sound, count or desktop sign. Turning to Today or the Journal
 asks the app to mark everything read, which it saves at the next routine checkpoint without a
 notice, and the page keeps what was new on show, highlighted, until the reader turns elsewhere.
 Migrating from v22 sets the marker to the newest moment already there, so an upgraded colony has

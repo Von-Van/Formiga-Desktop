@@ -398,12 +398,22 @@ pub(super) struct HomeMoment {
     /// A neighbour waving back, or a moment the person at the desk asked for. Neither counts
     /// against "one resident busy at a time", and the scheduler never displaces either.
     courtesy: bool,
+    /// The hangout spot it is sitting on, lying in, or sitting by once it gets there.
+    seat: Option<HangoutKind>,
+    /// Seconds it has been holding still at its spot.
+    held: f32,
     /// What a walk to a hangout spot is for: done where the walk ends, instead of a poke at a
     /// belonging and a walk back.
     visit: Option<HangoutVisit>,
 }
 
 impl HomeMoment {
+    /// The spot it sits on, lies in or sits by, for tests that check a pose ends with its moment.
+    #[cfg(test)]
+    pub(super) const fn seat(&self) -> Option<HangoutKind> {
+        self.seat
+    }
+
     /// Where this moment keeps its resident a while: wherever it is holding still, or the spot a
     /// visit is walking to. An errand's few steps to a belonging and back keep it nowhere long.
     fn spot(&self) -> Option<Point> {
@@ -423,6 +433,8 @@ struct HangoutVisit {
     /// Which way to face once there: out over the desktop at a lookout, and otherwise however
     /// the walk left it.
     facing_right: Option<bool>,
+    /// The spot itself, for the ones that are sat on or lain in.
+    seat: Option<HangoutKind>,
 }
 
 /// The longest a walk across the village to a hangout spot may take before the companion gives
@@ -444,6 +456,7 @@ fn advance_home_moment(
     moment.remaining -= dt;
     match moment.phase {
         MomentPhase::Hold => {
+            moment.held += dt;
             if moment.remaining <= 0.0 {
                 return None;
             }
@@ -468,6 +481,8 @@ fn advance_home_moment(
             {
                 // At the hangout spot, or as near as the walk got: its thing, done right here.
                 moment.phase = MomentPhase::Hold;
+                moment.seat = visit.seat;
+                moment.held = 0.0;
                 moment.action = visit.action;
                 moment.remaining = visit.seconds;
                 moment.rest = creature.state.position;
@@ -526,6 +541,57 @@ fn hangout_moment(kind: HangoutKind, creature: &Creature) -> (bool, ActionKind, 
             20.0,
         ),
     }
+}
+
+/// Whether a spot is sat on, lain in or sat beside, rather than stood at.
+const fn seated_at(kind: HangoutKind) -> bool {
+    matches!(
+        kind,
+        HangoutKind::Bench | HangoutKind::Swing | HangoutKind::Hammock | HangoutKind::BookNook
+    )
+}
+
+/// How high the seat of a spot is above the ground, in art pixels, as the village's object
+/// sheet draws it: the bench's plank, the swing's board, the middle of the hammock. A book nook
+/// is sat beside, on the ground.
+const fn seat_height(kind: HangoutKind) -> f32 {
+    match kind {
+        HangoutKind::Bench => 7.0,
+        HangoutKind::Swing | HangoutKind::Hammock => 5.0,
+        _ => 0.0,
+    }
+}
+
+/// How a companion on a spot it sits on is placed and posed, `held` seconds into its time there
+/// with `remaining` to go: a crouch and a hop up, sat there (or asleep, in a hammock), and a hop
+/// down again at the end, all as offsets in art pixels from where it stands to use the spot.
+fn seated_stance(kind: HangoutKind, held: f32, remaining: f32) -> wonders::Stance {
+    use wonders::{HOP_SECS, Stance, hop};
+    let lift = seat_height(kind);
+    let seat = (0.0, -lift);
+    let settled = if kind == HangoutKind::Hammock {
+        Stance::at(seat.0, seat.1, true).doing(ActionKind::Sleep)
+    } else if kind == HangoutKind::BookNook {
+        // Sat down by the books with its eyes on the one in its lap.
+        Stance::at(0.0, 0.0, true)
+            .pose(Gesture::Sit)
+            .looking(4.0, 0.0)
+            .feeling(AttentionEmotion::Curious)
+    } else {
+        Stance::at(seat.0, seat.1, true).pose(Gesture::Sit)
+    };
+    if lift <= 0.0 {
+        return settled;
+    }
+    if let Some(stance) = hop(held, (0.0, 0.0), seat, true) {
+        return stance;
+    }
+    if remaining < HOP_SECS
+        && let Some(stance) = hop(HOP_SECS - remaining, seat, (0.0, 0.0), true)
+    {
+        return stance;
+    }
+    settled
 }
 
 /// Where a companion stands to use a spot: on it, or beside it and turned toward it.
@@ -658,10 +724,13 @@ fn choose_home_moment(
                 rest,
                 errand: Some(stand),
                 courtesy: false,
+                seat: None,
+                held: 0.0,
                 visit: Some(HangoutVisit {
                     action,
                     seconds,
                     facing_right,
+                    seat: seated_at(hangout.kind).then_some(hangout.kind),
                 }),
             },
             None,
@@ -696,6 +765,8 @@ fn choose_home_moment(
             rest,
             errand: walking.then_some(errand).flatten(),
             courtesy: false,
+            seat: None,
+            held: 0.0,
             visit: None,
         },
         answering,
@@ -1020,12 +1091,18 @@ impl World {
             .filter_map(|creature| Some((creature.id, *resting.get(&creature.id)?)))
             .collect();
         let mut answering: Vec<(CreatureId, Point, f32)> = Vec::new();
+        let find_allowed = self.trinket_find_allowed(now);
         for creature in &mut self.save.creatures {
             if self
                 .interaction
                 .as_ref()
                 .is_some_and(|interaction| interaction.creature_id == creature.id)
             {
+                self.home_moments.remove(&creature.id);
+                continue;
+            }
+            // Off to a wonder, or playing on one: it has its feet until it is over.
+            if self.wonders.owns(creature.id) {
                 self.home_moments.remove(&creature.id);
                 continue;
             }
@@ -1083,6 +1160,7 @@ impl World {
                     with_visitor,
                     onlookers: &onlookers,
                     frame,
+                    find_allowed,
                 };
                 if village_life::advance(activity, creature, dt, &mut context) {
                     continue;
@@ -1137,10 +1215,52 @@ impl World {
 
             // A quiet moment in progress holds the creature where it is, or walks the two or
             // three steps of an errand. Anything that moves the village ends it at once.
+            let was_seated = self
+                .home_moments
+                .get(&creature.id)
+                .is_some_and(|moment| moment.seat.is_some());
             let held = self
                 .home_moments
                 .get_mut(&creature.id)
                 .and_then(|moment| advance_home_moment(moment, creature, target, dt));
+            // Sat on a bench or a swing, in a hammock, or down by the books: placed and posed
+            // there for as long as it lasts, and back on its feet on the ground once it is over.
+            let seated = held.and_then(|(action, remaining)| {
+                let moment = self.home_moments.get(&creature.id)?;
+                let kind = moment.seat.filter(|_| moment.phase == MomentPhase::Hold)?;
+                let stance = seated_stance(kind, moment.held, remaining);
+                let unit = frame / CREATURE_ART_WIDTH;
+                creature.state.position.y = moment.rest.y + stance.dy * unit;
+                creature.state.attention = Some(AttentionPose {
+                    target: Point {
+                        x: creature.state.position.x
+                            + stance.look.map_or(0.0, |look| look.0)
+                                * unit
+                                * if creature.state.facing_right {
+                                    1.0
+                                } else {
+                                    -1.0
+                                },
+                        y: moment.rest.y + stance.look.map_or(-16.0, |look| look.1) * unit,
+                    },
+                    emotion: stance.emotion,
+                    hanging: 0.0,
+                    gesture: stance.gesture,
+                });
+                Some((
+                    if stance.action == ActionKind::Idle {
+                        action
+                    } else {
+                        stance.action
+                    },
+                    remaining,
+                ))
+            });
+            if seated.is_none() && was_seated {
+                creature.state.attention = None;
+                creature.state.position.y = target.y;
+            }
+            let held = seated.or(held);
             if let Some((action, remaining)) = held {
                 if creature.state.action != action {
                     creature.state.action = action;
@@ -1544,6 +1664,8 @@ impl World {
                     rest,
                     errand: None,
                     courtesy: true,
+                    seat: None,
+                    held: 0.0,
                     visit: None,
                 },
             );
@@ -1778,6 +1900,8 @@ impl World {
                 rest,
                 errand: None,
                 courtesy: true,
+                seat: None,
+                held: 0.0,
                 visit: None,
             },
         );

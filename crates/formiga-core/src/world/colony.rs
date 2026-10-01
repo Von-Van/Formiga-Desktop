@@ -439,6 +439,7 @@ impl World {
         self.clear_attention();
         self.end_village_life();
         self.clear_beats();
+        self.send_wonder_away(None);
     }
 
     pub(super) fn register_creature_runtime(&mut self, creature: &Creature) {
@@ -456,6 +457,7 @@ impl World {
 
     pub(super) fn remove_creature_runtime(&mut self, creature_id: CreatureId) {
         self.forget_tows_of(creature_id);
+        self.wonders.grab(creature_id, 0.0);
         self.cancel_creature_attention(creature_id);
         let mut interrupted: BTreeSet<_> = self
             .action_choices

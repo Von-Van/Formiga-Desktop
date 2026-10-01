@@ -1044,6 +1044,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             night: self.night,
                             menu,
                             village,
+                            wonder: world.wonder(),
                         },
                     )
                 {
@@ -1228,6 +1229,8 @@ fn world_event_category(event: &WorldEvent) -> &'static str {
         WorldEvent::ColonyObjectAdded { .. } => "colony_object_added",
         WorldEvent::VillageUnlocked { .. } => "village_unlocked",
         WorldEvent::HabitLearned { .. } => "habit_learned",
+        WorldEvent::WonderAppeared { .. } => "wonder_appeared",
+        WorldEvent::WonderFound { .. } => "wonder_found",
     }
 }
 

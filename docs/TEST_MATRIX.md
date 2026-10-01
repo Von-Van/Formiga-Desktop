@@ -313,6 +313,10 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | A data folder made read-only shows the save-trouble card and tooltip, and both clear once it is writable again | pending | pending | pending | pending |
 | Native failure dialogs: an export to a read-only folder, a restore from a file that is not a colony, and a downloaded update that will not open | pending | pending | pending | pending |
 | The larger houses on a real desktop: decorations legible at Small, Medium and Large, the snug layout on a 1280- or 1366-point display at 100%, and the village clear of the Dock and taskbar with the Bottom edge habitat | pending | pending | pending | pending |
+| A real v23 colony migrated to v24 with every companion and find unchanged, two hours of life with a wonder every 90 seconds — all nine kinds turning up, found, and played through — the day's finds held to its allowance, and a write and read back (a copy of the development Mac's colony, in tests) | pass (2026-10-01, copy) | pending | pending | pending |
+| Wonders on a real desktop: on the floor, on a window ledge reached by a climb, and on the village ground; a pick-up on the way and mid-play sending it away; both players of a wonder for two setting off together; hidden behind chosen apps like the colony | pending | pending | pending | pending |
+| The new walk, run, greeting, meal and sleep loops at 20 Hz on every body, and the bench, swing, hammock and book nook sat on at home | pending | pending | pending | pending |
+| The menu bar icon (light and dark menu bars) and the Windows tray icon at 100–200% are the app icon, with the news dot | pending | pending | pending | pending |
 | Manual and automatic GitHub update check | pending | pending | pending | pending |
 | Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
 | DMG/MSI handoff without silent installation | pending | pending | pending | pending |

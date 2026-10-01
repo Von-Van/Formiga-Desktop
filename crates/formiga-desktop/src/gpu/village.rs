@@ -697,3 +697,59 @@ impl OverlayRenderer {
         ]
     }
 }
+
+impl OverlayRenderer {
+    /// The wonder out now, one quad: its frame for the moment, its middle over where it stands
+    /// and its ground row on the ground, turned round if it is. It grows up out of the ground as
+    /// it appears and sinks back as it goes, and gives a little bounce while it is being marvelled
+    /// at for the first time.
+    pub(super) fn wonder_vertices(&self, wonder: WonderView, display_scale: u8) -> [Vertex; 6] {
+        let unit = f32::from(display_scale);
+        let frames = wonder_frames(wonder.kind);
+        let frame = wonder_frame(wonder.kind, wonder.elapsed, wonder.motion);
+        let local_x = self.snap((wonder.at.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let ground = self.snap((wonder.at.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        // Ease out with a slight overshoot, so it pops up rather than sliding.
+        let p = wonder.presence.clamp(0.0, 1.0);
+        let pop = 1.0 - (1.0 - p).powi(3) + (p * std::f32::consts::PI).sin() * 0.08;
+        let bounce = if wonder.glint {
+            1.0 + (wonder.elapsed * 9.0).sin().abs() * 0.06
+        } else {
+            1.0
+        };
+        let width = WONDER_CELL_WIDTH as f32 * unit * (0.6 + 0.4 * pop);
+        let height = WONDER_CELL_HEIGHT as f32 * unit * pop * bounce;
+        let middle = WONDER_MIDDLE as f32 / WONDER_CELL_WIDTH as f32;
+        let below = (WONDER_CELL_HEIGHT as i32 - WONDER_GROUND) as f32 / WONDER_CELL_HEIGHT as f32;
+        let (left_px, right_px) = if wonder.mirrored {
+            (local_x - width * (1.0 - middle), local_x + width * middle)
+        } else {
+            (local_x - width * middle, local_x + width * (1.0 - middle))
+        };
+        let bottom_px = ground + height * below;
+        let top_px = bottom_px - height;
+        let x = |px: f32| px / self.layout.width as f32 * 2.0 - 1.0;
+        let y = |px: f32| 1.0 - px / self.layout.height as f32 * 2.0;
+        let (mut u_left, mut u_right) = (
+            frame as f32 / frames as f32,
+            (frame + 1) as f32 / frames as f32,
+        );
+        if wonder.mirrored {
+            std::mem::swap(&mut u_left, &mut u_right);
+        }
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        let (left, right, top, bottom) = (x(left_px), x(right_px), y(top_px), y(bottom_px));
+        [
+            vertex([left, top], [u_left, 0.0]),
+            vertex([right, top], [u_right, 0.0]),
+            vertex([right, bottom], [u_right, 1.0]),
+            vertex([left, top], [u_left, 0.0]),
+            vertex([right, bottom], [u_right, 1.0]),
+            vertex([left, bottom], [u_left, 1.0]),
+        ]
+    }
+}

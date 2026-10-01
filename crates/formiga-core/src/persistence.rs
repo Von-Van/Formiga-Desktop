@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=22 => migrate_legacy(value, version),
+            1..=23 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -269,6 +269,10 @@ fn migrate_legacy(
     // read, and a journal moment for a visitor coming back. Every pair's tally starts at nothing,
     // since nothing was counted before; the journal counts as read up to its newest moment, so
     // an upgraded colony is not marked as having news it has already seen. Applied below.
+    //
+    // v24 adds the notebook's page of wonders and a journal moment for finding one. Nothing is
+    // migrated: an older colony has found none. The version moved so an older build refuses a
+    // colony whose wonders it would quietly drop and whose journal it could not read.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -1882,6 +1886,7 @@ mod tests {
                 ..crate::ColonyObjectState::default()
             },
             visitors: crate::VisitorState::default(),
+            finds_today: crate::FindsToday::default(),
         }
     }
 

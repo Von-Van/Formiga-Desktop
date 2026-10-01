@@ -1,4 +1,4 @@
-# Formiga · v0.65.0
+# Formiga · v0.66.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.65.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.66.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,21 +107,22 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.65.0
+## New in 0.66.0
 
-The notebook opens on a new Today page: what is new since you last looked, what everyone is doing
-right now, how the week has gone, and what the notebook has noticed about your colony. Each thing
-it has noticed is printed with the counts it rests on, and it notices only what really happened:
-who keeps to high places, which two keep seeking each other out, who naps beside whom. Companions
-now keep track of what they do together, and remember a visitor who has been before. When
-something noteworthy is written in the journal, a small dot appears on the notebook's tab and on
-the Formiga icon, and nothing else. The journal can be searched and filtered, and keeps its
-milestones longer. The houses are a fifth larger, and every decoration has been redrawn about twice
-the size with a clear outline, so a weather vane reads as a weather vane from across the desk. On a
-narrow display the village packs in snugly rather than leaving a house off the end. The notebook
-also remembers where you left its window, works from the keyboard, and says plainly what to do when
-something goes wrong, including the rare save that fails. It follows 0.64.0, which made the
-settings window a researcher's field notebook; the release notes describe it.
+Every so often something to play on now turns up for a little while: a wonder. It might be a
+little chair, a tiny bike, a fountain, a tightrope, a stump table set for cards, a spinning arrow
+sign, a hammock, a stack of books or a seesaw, somewhere your companions can get to — on the floor,
+on a window, or along the village while the houses are out. Whoever it turned up for heads
+straight over to have a go, two at once for the ones that take two, and then it is gone again.
+Picking a player up sends it away early. The first of each kind is written in the journal and kept
+on the notebook's new Wonders page, and that is all that is kept. Animations read more clearly
+too: walking was hitching once a second and barely moving the feet, and now every body steps,
+rises and lands; a hello or a pet gets a wiggle and a wagging tail, meals a nibble, and naps a
+breath and a crouch to settle down. In the village the bench and the swing are sat on, the hammock
+lain in and the book nook read beside. Trinkets are rarer and so more of an event: one to five a
+day, about three, however big the colony. The menu bar and tray icon is now the app's own icon.
+It follows 0.65.0, which opened the notebook on a Today page that notices what your colony does;
+the release notes describe it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
@@ -141,7 +142,7 @@ hardware are not done yet.
 | macOS 14+ | Tested in CI on Apple silicon and packaged as a universal app. Used day to day on Apple silicon |
 | Windows 10/11 x64 | Built, tested, and packaged in CI. **Not yet checked by hand on Windows hardware** |
 | Performance budgets | Measured on one Mac only. **Not yet measured on Windows** |
-| [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **One recorded** on macOS (a real colony's migration, on a copy); the rest **not yet** for any platform |
+| [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Two recorded** on macOS (real colonies' migrations, on copies); the rest **not yet** for any platform |
 | Code signing | **Not signed.** Gatekeeper and SmartScreen warn on first launch |
 
 ## Build from source

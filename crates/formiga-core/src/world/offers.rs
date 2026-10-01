@@ -206,6 +206,10 @@ impl World {
         {
             return false;
         }
+        // So is a wonder: whoever is off to one, or playing on it, has better things to do.
+        if self.wonders.owns(creature_id) {
+            return false;
+        }
         // A colony ritual is the colony's own moment. It is left alone.
         if self.colony_plan.as_ref().is_some_and(|plan| {
             plan.participants

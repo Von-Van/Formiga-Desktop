@@ -308,6 +308,7 @@ impl World {
                 || (following && c.state.action == ActionKind::Follow))
             && !self.window_journeys.contains_key(&c.id)
             && !self.tosses.contains_key(&c.id)
+            && !self.wonders.owns(c.id)
             && !self
                 .interaction
                 .as_ref()

@@ -19,6 +19,7 @@ mod temperament;
 mod topology;
 mod trinkets;
 mod visitor;
+mod wonders;
 mod world;
 
 pub use accessories::{
@@ -78,6 +79,10 @@ pub use visitor::{
     MAX_TOUR_STOPS, ResidentAnswer, TourInterest, TourMoment, TourStop, VisitPhase, VisitProgress,
     Visitor, VisitorError, VisitorSource, VisitorState,
 };
-pub use world::{BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, World};
+pub use wonders::{WonderKind, WonderRecord, WonderSeats, WonderView};
+pub use world::{
+    BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, WonderPose, World, wonder_length,
+    wonder_motion, wonder_poses,
+};
 
-pub const SAVE_VERSION: u32 = 23;
+pub const SAVE_VERSION: u32 = 24;

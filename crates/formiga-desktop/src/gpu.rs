@@ -9,13 +9,14 @@ use formiga_art::{
     PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT,
     TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor,
     TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT,
-    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook,
+    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH,
+    WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_core::{
     ActionKind, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature, CreatureId,
     CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, HouseMotion,
     HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble, VillageProp,
-    accessible_regions, resolved_home_anchor,
+    WonderKind, WonderView, accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -124,6 +125,8 @@ pub struct OverlayUi<'a> {
     pub menu: Option<MenuView<'a>>,
     /// What the village is up to this frame.
     pub village: VillageScene<'a>,
+    /// A wonder out somewhere for somebody to play on.
+    pub wonder: Option<WonderView>,
 }
 
 /// What the village is up to this frame beyond where everyone stands: the houses somebody is
@@ -173,6 +176,15 @@ struct TrinketAtlasGpu {
     key: TrinketAtlasKey,
 }
 
+/// The wonder out now: its frames, baked when it appears and dropped once it has gone, so an
+/// overlay with no wonder out holds nothing for one.
+struct WonderGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    kind: WonderKind,
+    colony_seed: [u8; 32],
+}
+
 /// The rope a friend tows a sleeper on: two texels, the rope itself and the shade under it,
 /// made the first time one is drawn and kept for the life of the overlay.
 struct RopeGpu {
@@ -209,6 +221,7 @@ pub struct OverlayRenderer {
     colony_objects: Option<ColonyObjectsGpu>,
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
+    wonder: Option<WonderGpu>,
     tree_vertex_cache_key: Option<TreeVertexCacheKey>,
     tree_vertices: Vec<Vertex>,
     object_vertex_cache_key: Option<ObjectVertexCacheKey>,
@@ -480,6 +493,7 @@ impl OverlayRenderer {
             colony_objects: None,
             trinkets: None,
             rope: None,
+            wonder: None,
             tree_vertex_cache_key: None,
             tree_vertices: Vec::new(),
             object_vertex_cache_key: None,
@@ -688,6 +702,20 @@ impl OverlayRenderer {
         if rope_vertex_count > 0 {
             self.ensure_rope();
         }
+        // A wonder stands behind whoever is playing on it.
+        let wonder_start = vertices.len();
+        match ui
+            .wonder
+            .filter(|wonder| wonder.monitor_id == self.monitor.id && !monitor_fully_occluded)
+        {
+            Some(wonder) => {
+                self.ensure_wonder(wonder.kind, save.colony_seed);
+                vertices
+                    .extend_from_slice(&self.wonder_vertices(wonder, save.settings.display_scale));
+            }
+            None => self.wonder = None,
+        }
+        let wonder_vertex_count = vertices.len() - wonder_start;
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state(
@@ -849,6 +877,16 @@ impl OverlayRenderer {
                 && let Some(rope) = &self.rope
             {
                 draw(&mut pass, &rope.bind_group, rope_start, rope_vertex_count);
+            }
+            if wonder_vertex_count > 0
+                && let Some(wonder) = &self.wonder
+            {
+                draw(
+                    &mut pass,
+                    &wonder.bind_group,
+                    wonder_start,
+                    wonder_vertex_count,
+                );
             }
             for (creature_id, start, has_trinket) in creature_draws {
                 if let Some(sprite) = self.sprites.get(&creature_id) {

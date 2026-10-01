@@ -645,3 +645,50 @@ fn a_find_in_the_right_circumstances_reaches_the_scrapbook_with_its_trinket_and_
         "journal throttling still applies"
     );
 }
+
+/// A colony finds one to five trinkets a day, three on average, whatever its size: every find
+/// on the desktop and at home comes out of the same day's allowance, and a new day starts afresh.
+#[test]
+fn a_colony_finds_a_few_trinkets_a_day_whatever_its_size() {
+    let seed = [91; 32];
+    let targets: Vec<u8> = (2_461_000..2_462_000)
+        .map(|day| daily_trinket_target(seed, day))
+        .collect();
+    assert!(targets.iter().all(|target| (1..=5).contains(target)));
+    let mean = targets.iter().map(|t| f32::from(*t)).sum::<f32>() / targets.len() as f32;
+    assert!((2.8..3.2).contains(&mean), "about three a day: {mean}");
+    for size in [1, 6] {
+        let created = datetime!(2026-03-02 9:00 UTC);
+        let desktop = desktop();
+        let mut world = World::new([92; 32], created, &desktop);
+        while world.save.creatures.len() < size {
+            let mut grown = world.save.creatures[0].clone();
+            grown.id = 100 + world.save.creatures.len() as u64;
+            grown.state.position.x += 60.0 * world.save.creatures.len() as f32;
+            world.register_creature_runtime(&grown);
+            world.save.creatures.push(grown);
+        }
+        let_colony_wander(&mut world, created);
+        let day = local_time_or_utc(created).date().to_julian_day();
+        let target = daily_trinket_target(world.save.colony_seed, day);
+        // A long day out on the desktop with nothing holding finds back but the allowance.
+        let mut now = created;
+        for _ in 0..(14 * 3_600 * 4) {
+            world.discovery_remaining = 0.0;
+            world.tick(now, 0.25, &desktop);
+            now += Duration::milliseconds(250);
+            if local_time_or_utc(now).date().to_julian_day() != day {
+                break;
+            }
+        }
+        // With nothing else holding finds back, the day's allowance is used exactly.
+        assert_eq!(
+            world.save.finds_today.on(day),
+            target,
+            "{size} companions against an allowance of {target}"
+        );
+        // Tomorrow is a new allowance.
+        let tomorrow = created + Duration::days(1);
+        assert!(world.trinket_find_allowed(tomorrow));
+    }
+}

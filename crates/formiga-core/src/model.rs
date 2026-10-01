@@ -3155,6 +3155,38 @@ pub struct SaveFile {
     pub objects: ColonyObjectState,
     #[serde(default)]
     pub visitors: crate::VisitorState,
+    /// How many trinkets have turned up on the local day it names. A colony finds only a few a
+    /// day, however many companions it has: see `daily_trinket_target`.
+    #[serde(default, skip_serializing_if = "FindsToday::is_empty")]
+    pub finds_today: FindsToday,
+}
+
+/// The trinkets found so far on one local day.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FindsToday {
+    /// The local day, as a Julian day number.
+    pub day: i32,
+    pub count: u8,
+}
+
+impl FindsToday {
+    pub const fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    /// How many have been found on `day`.
+    pub const fn on(&self, day: i32) -> u8 {
+        if self.day == day { self.count } else { 0 }
+    }
+}
+
+/// How many trinkets a colony finds on one local day: one to five, three on average, drawn
+/// from the colony's seed and the date, so the same colony always has the same day.
+pub fn daily_trinket_target(colony_seed: [u8; 32], day: i32) -> u8 {
+    use rand::Rng;
+    crate::SeedStream::new(colony_seed)
+        .rng("daily-finds", u64::from(day.unsigned_abs()))
+        .random_range(1..=5)
 }
 
 /// What the person at the desk is holding out. Runtime-only: an offer is a moment, not a record.
@@ -3168,6 +3200,15 @@ pub enum OfferKind {
 pub enum WorldEvent {
     CreatureSpawned {
         creature_id: CreatureId,
+    },
+    /// A wonder turned up for somebody to play on.
+    WonderAppeared {
+        kind: crate::WonderKind,
+    },
+    /// The colony's first wonder of a kind, and who it turned up for.
+    WonderFound {
+        creature_id: CreatureId,
+        kind: crate::WonderKind,
     },
     ActionStarted {
         creature_id: CreatureId,
@@ -3293,7 +3334,8 @@ impl WorldEvent {
             | Self::RitualInterrupted { .. }
             | Self::ColonyObjectAdded { .. }
             | Self::VillageUnlocked { .. }
-            | Self::HabitLearned { .. } => crate::SaveUrgency::Prompt,
+            | Self::HabitLearned { .. }
+            | Self::WonderFound { .. } => crate::SaveUrgency::Prompt,
             Self::ActionStarted { .. } | Self::SurfaceChanged { .. } => crate::SaveUrgency::Routine,
             _ => crate::SaveUrgency::None,
         }

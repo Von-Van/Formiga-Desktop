@@ -904,6 +904,7 @@ impl World {
                     | ActionKind::RideWindow
             )
             && !self.attention.plans.contains_key(&creature.id)
+            && !self.wonders.owns(creature.id)
             && (familiar_loss || !self.attention.cooldowns.contains_key(&creature.id))
             && !self.window_journeys.contains_key(&creature.id)
             && !self.tosses.contains_key(&creature.id)

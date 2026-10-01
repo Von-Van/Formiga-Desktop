@@ -184,6 +184,17 @@ impl World {
             return false;
         };
         self.drop_village_activity(creature_id);
+        // Picking up somebody on the way to a wonder, or playing on one, sends it away.
+        let held_at = self.save.creatures[creature_index].state.position.x;
+        if let Some((ground_y, surface)) = self.wonders.grab(creature_id, held_at) {
+            let creature = &mut self.save.creatures[creature_index];
+            creature.state.position.y = ground_y;
+            creature.state.surface = surface;
+            creature.state.attention = None;
+            creature.state.action = ActionKind::Idle;
+            creature.state.action_elapsed = 0.0;
+            creature.state.action_duration = 2.5;
+        }
         let interrupted_journey = self.window_journeys.remove(&creature_id).is_some();
         self.cancel_creature_attention(creature_id);
         self.window_routes.remove(&creature_id);

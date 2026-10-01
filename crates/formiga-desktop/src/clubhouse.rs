@@ -196,6 +196,8 @@ pub struct Clubhouse {
     /// The colony's own sheet of found things: one texture the scrapbook cuts every slot out of,
     /// and the very same sheet the desktop samples when a companion holds one up.
     trinket_atlas: Option<([u8; 32], TextureHandle)>,
+    /// One still picture of every kind of wonder, side by side, for the notebook's page of them.
+    wonder_sheet: Option<([u8; 32], TextureHandle)>,
     /// What the Home page's village preview has picked out, and whatever is being carried across
     /// it in Arrange mode.
     pub(crate) arrange: arrange::ArrangeState,
@@ -263,6 +265,7 @@ impl Clubhouse {
             .chain(self.home_texture.iter().map(|home| home.texture.id()))
             .chain(self.object_texture.iter().map(|(_, t)| t.id()))
             .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
+            .chain(self.wonder_sheet.iter().map(|(_, t)| t.id()))
             .chain(self.collection.texture_ids())
             .collect()
     }
@@ -272,6 +275,7 @@ impl Clubhouse {
         self.home_texture = None;
         self.object_texture = None;
         self.trinket_atlas = None;
+        self.wonder_sheet = None;
         self.tree = None;
         self.collection.release_images();
     }
@@ -1225,6 +1229,9 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
             "{name} picked up a little habit: {}",
             habit.label().to_lowercase()
         ),
+        JournalMoment::Wonder(kind) => {
+            format!("{name} found a wonder: the {}", kind.label().to_lowercase())
+        }
     }
 }
 
@@ -1638,6 +1645,11 @@ fn today_tally(moments: &[&JournalEntry]) -> Vec<String> {
             "new habit",
             "new habits",
         ),
+        (
+            count(&|m| matches!(m, JournalMoment::Wonder(_))),
+            "new wonder",
+            "new wonders",
+        ),
     ] {
         if n > 0 {
             tally.push(plural(n, one, many));
@@ -1763,6 +1775,7 @@ pub fn journal(
         ui.add_space(14.0);
         guest_book(ui, save, clubhouse, outcome, offset);
         clubhouse.scrapbook(ui, save);
+        clubhouse.wonders(ui, save);
         return;
     }
     // The colony's landmarks, which the journal keeps past their turn to roll out: who arrived,
@@ -2016,6 +2029,7 @@ pub fn journal(
     ui.add_space(14.0);
     guest_book(ui, save, clubhouse, outcome, offset);
     clubhouse.scrapbook(ui, save);
+    clubhouse.wonders(ui, save);
 }
 /// Charcoal or cream, and how large the words are. These change the settings window only; the
 /// creatures on the desktop are untouched by either.

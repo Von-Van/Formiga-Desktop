@@ -121,6 +121,8 @@ impl World {
                 RitualKind::HatchDay | RitualKind::Dance => false,
                 RitualKind::QuietDayHuddle => quiet_day,
                 RitualKind::LateNightSleepPile => late_night,
+                // Holding a find up for everybody is one of the day's finds.
+                RitualKind::GroupPresentation => self.trinket_find_allowed(now),
                 _ => true,
             })
             .collect()

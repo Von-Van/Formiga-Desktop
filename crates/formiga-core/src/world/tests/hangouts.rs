@@ -259,3 +259,53 @@ fn spots_are_kept_with_the_village() {
     let back: ColonyHome = serde_json::from_str(&text).unwrap();
     assert_eq!(back.hangouts, home.hangouts);
 }
+
+/// A companion at the bench or the swing hops up and sits on it, and is back on its feet on the
+/// ground, with no pose left on it, once it is done.
+#[test]
+fn a_bench_and_a_swing_are_sat_on() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    for kind in [HangoutKind::Bench, HangoutKind::Swing] {
+        let mut world = settled_colony([74; 32], 3, created, &desktop);
+        for creature in &mut world.save.creatures {
+            creature.personality.sociability = 1.0;
+            creature.personality.playfulness = 1.0;
+        }
+        world.save.home.unlocks.hangouts.push(kind);
+        assert!(world.save.home.set_hangout(kind, Some(0.5)));
+        let cottages = colony_cottage_list(&world.save.creatures);
+        let (_, _, spot) = home_hangout_positions(
+            &world.save.home,
+            cottages.as_slice(),
+            &desktop.monitors,
+            &world.save.settings.habitat,
+            world.save.settings.display_scale,
+        )[0];
+        let ground = spot.y;
+        let mut sat = 0;
+        for _ in 0..80_000 {
+            world.tick(created, 0.05, &desktop);
+            world.save.home.active_since_utc = Some(created);
+            for creature in &world.save.creatures {
+                let sitting = creature
+                    .state
+                    .attention
+                    .is_some_and(|pose| pose.gesture == Some(Gesture::Sit));
+                if !sitting || world.wonders.owns(creature.id) {
+                    continue;
+                }
+                let moment = world.home_moments.get(&creature.id);
+                assert!(
+                    moment.is_some_and(|moment| moment.seat() == Some(kind)),
+                    "{kind:?}: a sitting pose outlived the moment"
+                );
+                assert!((creature.state.position.x - spot.x).abs() < 1.0);
+                if creature.state.position.y < ground - 0.5 {
+                    sat += 1;
+                }
+            }
+        }
+        assert!(sat > 0, "nobody ever sat on the {kind:?}");
+    }
+}

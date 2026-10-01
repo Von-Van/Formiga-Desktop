@@ -466,7 +466,10 @@ impl World {
         });
         let bonded = self.bond_plans.get(&a).is_some_and(|plan| plan.target == b)
             || self.bond_plans.get(&b).is_some_and(|plan| plan.target == a);
-        ritual || bonded || (self.attention.owns(a) && self.attention.owns(b))
+        ritual
+            || bonded
+            || (self.attention.owns(a) && self.attention.owns(b))
+            || self.wonders.together(a, b)
     }
 
     /// Contact nobody should interrupt: the user has hold of this creature, it is off the ground,
@@ -493,6 +496,7 @@ impl World {
             .interaction
             .as_ref()
             .is_some_and(|session| session.creature_id == id)
+            || self.wonders.owns(id)
             || self.tosses.contains_key(&id)
             || self.window_journeys.contains_key(&id)
             || self.attention.airborne(id)

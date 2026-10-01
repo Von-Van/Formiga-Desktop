@@ -33,6 +33,7 @@ mod tows;
 mod undo;
 mod village_life;
 mod visitors;
+mod wonders;
 use attention::{AttentionRuntime, DisplayAttention};
 use bonds::*;
 pub use bubbles::{BubbleGrowth, ThoughtBubble};
@@ -48,6 +49,7 @@ pub(crate) use rituals::scheduled_ritual_at;
 use rituals::*;
 use surfaces::SurfaceMemory;
 pub use undo::{ColonyEdit, UndoError};
+pub use wonders::{WonderPose, wonder_length, wonder_motion, wonder_poses};
 
 /// Width of a creature's art frame, matching `formiga_art::FRAME_SIZE`. The simulation crate
 /// cannot depend on the art crate, so shelter layout mirrors the constant the way `home_anchor`
@@ -55,7 +57,9 @@ pub use undo::{ColonyEdit, UndoError};
 const CREATURE_ART_WIDTH: f32 = crate::CREATURE_FRAME_WIDTH;
 const INSPECT_INTERVAL_SECS: std::ops::Range<f32> = 120.0..240.0;
 const DANGLE_INTERVAL_SECS: std::ops::Range<f32> = 240.0..480.0;
-const DISCOVERY_INTERVAL_SECS: std::ops::Range<f32> = 600.0..1_200.0;
+/// Visible time between one find out on the desktop and the next: long enough that a day's few
+/// finds are spread across it rather than found in its first hour.
+const DISCOVERY_INTERVAL_SECS: std::ops::Range<f32> = 3_600.0..9_000.0;
 /// The chance, each time it chooses something to do up on a ledge, that a companion comes down
 /// to do it on the floor instead, and how long it stays down before it thinks of climbing again.
 const ANYWHERE_COMES_DOWN: f64 = 0.35;
@@ -125,6 +129,9 @@ pub struct World {
     /// like the moments'.
     village_life_rng: ChaCha12Rng,
     colony_plan: Option<ColonyPlan>,
+    /// A wonder out somewhere for a companion or two to play on, and when the next is due.
+    /// Runtime only: the notebook's page of them is all a save keeps.
+    wonders: wonders::Wonders,
     topology: DesktopTopology,
     geometry_observer: crate::attention::GeometryObserver,
     attention: AttentionRuntime,
@@ -286,6 +293,7 @@ impl World {
                 ..ColonyObjectState::default()
             },
             visitors: VisitorState::default(),
+            finds_today: FindsToday::default(),
         };
         let mut world = Self::from_save(save);
         world.generator = generator;
@@ -404,6 +412,7 @@ impl World {
             village_life_rng: streams.rng("village-life", 0),
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
+            wonders: wonders::Wonders::new(&streams),
             creature_views: Vec::new(),
             relationship_views: Vec::new(),
             generator: Edition::LATEST,
@@ -558,6 +567,7 @@ impl World {
         }
         if home_active {
             self.advance_village_moment(dt);
+            self.advance_wonders(dt, desktop, true);
             self.tick_homebound_creatures(timeline_now, dt, desktop);
             self.tick_visitor(timeline_now, dt, desktop);
             self.advance_flourishes();
@@ -615,6 +625,7 @@ impl World {
         self.surface_memory
             .update(&self.save.creatures, desktop, dt, observations_ready);
         self.advance_attention(desktop, dt, observations_ready);
+        self.advance_wonders(dt, desktop, false);
         self.creature_views.clear();
         self.creature_views.extend_from_slice(&self.save.creatures);
         self.relationship_views.clear();
@@ -633,12 +644,17 @@ impl World {
             })
         });
         let cottages = colony_cottages(&self.save.creatures);
+        let finds_allowed = self.trinket_find_allowed(timeline_now);
         for creature in &mut self.save.creatures {
             if self
                 .interaction
                 .as_ref()
                 .is_some_and(|interaction| interaction.creature_id == creature.id)
             {
+                continue;
+            }
+            // A wonder's players are its own until it is over.
+            if self.wonders.owns(creature.id) {
                 continue;
             }
             if creature.state.arrival_delay_secs > 0.0 {
@@ -1029,6 +1045,7 @@ impl World {
                     .get_mut(&creature.id)
                     .expect("creature RNG exists");
                 let discovery_available = self.save.settings.visible
+                    && finds_allowed
                     && self.discovery_remaining <= 0.0
                     && !creature_views.iter().any(|other| {
                         other.id != creature.id
@@ -1575,6 +1592,7 @@ impl World {
             .chain(self.window_journeys.keys().copied())
             .chain(self.tosses.keys().copied())
             .chain(self.attention.crossing_ids())
+            .chain(self.wonders.players())
             .collect();
         keep_creatures_in_habitat(
             &mut self.save.creatures,

@@ -32,6 +32,8 @@ pub enum JournalMoment {
     /// A visitor the guest book already knew came by again, and which visit of theirs this was,
     /// counting the ones the book still holds.
     Revisit(String, u16),
+    /// The first wonder of a kind turned up.
+    Wonder(crate::WonderKind),
 }
 
 /// How many moments the journal holds on to past their turn to roll out because they are the
@@ -57,6 +59,7 @@ impl JournalMoment {
                 | Self::Visit(_)
                 | Self::Revisit(..)
                 | Self::Habit(_)
+                | Self::Wonder(_)
         )
     }
 
@@ -65,7 +68,7 @@ impl JournalMoment {
         match self {
             Self::Arrival => MomentKind::Arrivals,
             Self::Friendship(_) => MomentKind::Friendships,
-            Self::Discovery => MomentKind::Finds,
+            Self::Discovery | Self::Wonder(_) => MomentKind::Finds,
             Self::Preference(_) | Self::Habit(_) => MomentKind::Ways,
             Self::Ritual(_) => MomentKind::Together,
             Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) => MomentKind::Village,
@@ -302,6 +305,9 @@ pub struct CompanionState {
     pub pins: Vec<PinnedMoment>,
     /// One record per trinket variant: the first find of each.
     pub scrapbook: Vec<ScrapbookRecord>,
+    /// One record per kind of wonder: the first of each, and how many goes the colony has had.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wonders: Vec<crate::WonderRecord>,
     pub appearance: AppearancePreferences,
     pub schedule: RoutineSchedule,
     /// Everything written in the journal up to this moment has been read. A noteworthy moment
@@ -322,6 +328,7 @@ impl Default for CompanionState {
             modes: [None, None],
             pins: Vec::new(),
             scrapbook: Vec::new(),
+            wonders: Vec::new(),
             appearance: AppearancePreferences::default(),
             schedule: RoutineSchedule::default(),
             journal_seen_until: None,
@@ -348,6 +355,9 @@ impl CompanionState {
             WorldEvent::VillageUnlocked { item } => (None, JournalMoment::Unlocked(item)),
             WorldEvent::HabitLearned { creature_id, habit } => {
                 (Some(creature_id), JournalMoment::Habit(habit))
+            }
+            WorldEvent::WonderFound { creature_id, kind } => {
+                (Some(creature_id), JournalMoment::Wonder(kind))
             }
             _ => return,
         };

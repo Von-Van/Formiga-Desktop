@@ -816,7 +816,7 @@ covered in 0.61.0 is not known; that dropping it cost so little suggests not muc
 
 A frame or a face that comes out the same as one already baked shares its cell, and the eight
 trinket cells nothing sampled are gone from the face texture. A new companion's pair of textures
-comes to 1,244,160 bytes and 506,880 under reduced motion; the owner's six:
+came to 1,244,160 bytes and 506,880 under reduced motion; the owner's six:
 
 | | 0.61.0 | 0.62.0 |
 |---|---:|---:|
@@ -1040,3 +1040,15 @@ only, where the published app is universal): 15,881,664 bytes for 0.64.0 and 16,
 445 KB more. 0.65.0's one new dependency is egui-winit's AccessKit adapter for screen readers
 (`accesskit`, `accesskit_consumer`, `accesskit_macos` and `accesskit_winit` on macOS), which is
 likely most of it; a build without it was not measured.
+
+## 0.66.0: wonders and walking
+
+Measured with the atlas budget test, not on a running app. The sitting and pedalling poses add eight
+body frames, 155 in all, and a walk, a run, a greeting and a meal that no longer repeat frames add
+ten cells a real companion used to share: the reference companion's textures go from 1,244,160 to
+1,336,320 bytes, and the most one can cost, with no two frames alike, from 1,797,120 to 1,889,280,
+still far inside the 4,500,000-byte limit and, six of them, the 15 MiB colony ceiling. A wonder's
+texture is baked only while one is out — 112×64 pixels a frame, one to eight frames, at most 229,376
+bytes on a display that shows it — and dropped once it has gone. While one is out, for half a
+minute every ten minutes or more, the colony is ticked and drawn at 20 Hz. Live CPU was not
+re-measured for this release.

@@ -32,6 +32,11 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     if world.save.settings.paused {
         return false;
     }
+    // A wonder is out for half a minute at most, every ten minutes or more, and everything on it
+    // moves: a seesaw tipping, a hammock swaying, its players hopping on and off.
+    if world.wonder().is_some() {
+        return true;
+    }
     world.save.creatures.iter().any(|creature| {
         creature.state.velocity.x.abs() > 0.1
             || creature.state.velocity.y.abs() > 0.1

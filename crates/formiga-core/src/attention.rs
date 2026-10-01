@@ -73,10 +73,15 @@ pub enum Gesture {
     Peek,
     /// Stiff and square, one foot tapping.
     Stomp,
+    /// Sat down on something with its feet out in front, swinging them: a chair, a stool, a
+    /// seesaw, the top of a stack of books. Belongs to wonders; no attention scene strikes it.
+    Sit,
+    /// Sat forward with its paws out ahead and its feet going round: riding a bike.
+    Pedal,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 20] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -95,6 +100,8 @@ impl Gesture {
         Self::Strut,
         Self::Peek,
         Self::Stomp,
+        Self::Sit,
+        Self::Pedal,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -110,6 +117,8 @@ impl Gesture {
                 | Self::Strut
                 | Self::Peek
                 | Self::Stomp
+                | Self::Sit
+                | Self::Pedal
         )
     }
 }

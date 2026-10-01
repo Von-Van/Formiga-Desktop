@@ -119,6 +119,8 @@ pub(super) fn draw_gesture_effects(
         i32::from(frame % 2)
     };
     match gesture {
+        // A seat and a bike are drawn by the wonder itself; the body needs nothing more.
+        Gesture::Sit | Gesture::Pedal => {}
         Gesture::Cheer => draw_motif(
             canvas,
             if genome.effect_motif == EffectMotif::None {

@@ -4,6 +4,23 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.66.0
+
+Every so often something to play on now turns up for a little while: a wonder. It might be a
+little chair, a tiny bike, a fountain, a tightrope, a stump table set for cards, a spinning arrow
+sign, a hammock, a stack of books or a seesaw, somewhere your companions can get to — on the floor,
+on a window, or along the village while the houses are out. Whoever it turned up for heads
+straight over to have a go, two at once for the ones that take two, and then it is gone again.
+Picking a player up sends it away early. The first of each kind is written in the journal and kept
+on the notebook's new Wonders page, and that is all that is kept. Animations read more clearly
+too: walking was hitching once a second and barely moving the feet, and now every body steps,
+rises and lands; a hello or a pet gets a wiggle and a wagging tail, meals a nibble, and naps a
+breath and a crouch to settle down. In the village the bench and the swing are sat on, the hammock
+lain in and the book nook read beside. Trinkets are rarer and so more of an event: one to five a
+day, about three, however big the colony. The menu bar and tray icon is now the app's own icon.
+It follows 0.65.0, which opened the notebook on a Today page that notices what your colony does;
+the release notes describe it.
+
 ## New in 0.65.0
 
 The notebook opens on a new Today page: what is new since you last looked, what everyone is doing

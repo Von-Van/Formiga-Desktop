@@ -128,6 +128,11 @@ impl World {
                 self.save
                     .companion
                     .remember_discovery(variant, creature_id, name, now);
+                let day = local_time_or_utc(now).date().to_julian_day();
+                self.save.finds_today = FindsToday {
+                    day,
+                    count: self.save.finds_today.on(day).saturating_add(1),
+                };
             }
             self.save.companion.record(&event, now);
             // What a companion's temperament might make something of, for the next tick.

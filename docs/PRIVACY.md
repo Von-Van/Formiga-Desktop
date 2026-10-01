@@ -90,6 +90,11 @@ temperament — and nothing about the person who shared it, their computer, or t
 chose to invite again, each only a `kept_at_utc`, the `name` it went by, and the same `origin`; a
 favorite stays until it is forgotten and never grows past eight on its own.
 
+Save version 24 (0.66.0) adds two: a record for each kind of wonder the colony has found — the
+kind, when, which companion and its name, and how many goes it has had — and the local date with a
+count of the trinkets found on it. Neither says anything about the desktop: where a wonder stood,
+on which window, is never kept.
+
 Save version 23 (0.65.0) adds three things, all about the colony and none about the desktop. Each
 pair of companions may have a **tally**, kept in a list beside the relationship records: six
 saturating counts of what the pair was seen doing together — calm spells, greetings, naps side by side, games, finds brought over, squabbles — how

@@ -75,6 +75,8 @@ cargo run -p formiga-tools -- decoration-sheet
 cargo run -p formiga-tools -- village-palette-sheet
 cargo run -p formiga-tools -- home-yard-sheet
 cargo run -p formiga-tools -- prop-sheet
+cargo run -p formiga-tools -- wonder-sheet
+cargo run -p formiga-tools -- motion-sheet
 cargo run -p formiga-tools -- accessory-sheet
 cargo run -p formiga-tools -- village-life-sheet
 cargo run -p formiga-tools -- ui-sheet
@@ -88,7 +90,8 @@ cargo run -p formiga-tools -- app-icon
 ```
 
 Without `--output`, each subcommand writes to its own file under `docs/assets/`, except
-`itch-cover` (`packaging/itch/cover.png`) and `app-icon` (the icons in `packaging/shared/`).
+`itch-cover` (`packaging/itch/cover.png`) and `app-icon` (the icons in `packaging/shared/`, among
+them `Formiga-tray.png`, the 64-pixel copy the app embeds for its menu bar and tray icon).
 `contact-sheet` and `animation-preview` are the exceptions: they default to a scratch file in the
 repository root, which Git ignores, so pass `--output` to replace the documentation copy. Every
 image is deterministic, so regenerating one that nothing has changed gives back identical pixels.
@@ -112,7 +115,9 @@ up, lit after dark; it is the sheet to judge a decoration's silhouette by. `ui-s
 interface atlas: every thought bubble, menu frame, icon state, and label tab. `prop-sheet` draws
 the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keepsakes held up the
 way the overlay holds them, and the toys, snacks and drinkware in the paws and mouths that hold
-them. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
+them. `wonder-sheet` draws every wonder's frames and its script played out at six moments, alone and for
+two, by the reference companions; `motion-sheet` draws every body's walk, run, rest, meal and sleep
+loops frame by frame, where a loop that hitches or repeats itself shows. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
 walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
 moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
 on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them.

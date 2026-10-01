@@ -115,6 +115,11 @@ pub(super) struct VillageActivity {
 }
 
 impl VillageActivity {
+    /// Whether this plan has turned something up that is not yet written down.
+    pub(super) const fn finding(&self) -> bool {
+        self.find.is_some()
+    }
+
     pub(super) fn new(plan: Plan) -> Self {
         Self {
             plan,
@@ -228,6 +233,8 @@ pub(super) struct VillageContext<'a> {
     pub(super) with_visitor: bool,
     pub(super) onlookers: &'a [Onlooker],
     pub(super) frame: f32,
+    /// Whether the colony has a find left today.
+    pub(super) find_allowed: bool,
 }
 
 impl VillageContext<'_> {
@@ -257,7 +264,7 @@ impl VillageContext<'_> {
 
     /// Whether this visit turns something up, and in what circumstances.
     fn maybe_find(&mut self, garden: bool, roof: bool) -> Option<DiscoveryCircumstances> {
-        if !self.rng.random_ratio(1, FIND_IN) {
+        if !self.rng.random_ratio(1, FIND_IN) || !self.find_allowed {
             return None;
         }
         Some(DiscoveryCircumstances {

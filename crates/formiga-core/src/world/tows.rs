@@ -179,6 +179,7 @@ impl World {
             && !self.tosses.contains_key(&id)
             && !self.window_journeys.contains_key(&id)
             && !self.attention.owns(id)
+            && !self.wonders.owns(id)
             && !self.bond_plans.contains_key(&id)
             && !self.bond_plans.values().any(|plan| plan.target == id)
             && !self.colony_plan.as_ref().is_some_and(|plan| {

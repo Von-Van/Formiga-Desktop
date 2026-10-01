@@ -21,6 +21,31 @@ const MORNING_HOUR: u8 = 6;
 /// The early part of the day, when the morning finds turn up: from first light until ten.
 const LATE_MORNING_HOUR: u8 = 10;
 
+impl World {
+    /// Whether the colony may turn up another trinket today. A day's finds are shared by the
+    /// whole colony, on the desktop and at home alike, so a big colony finds no more than a
+    /// small one.
+    ///
+    /// A find is written down when its finder has finished holding it up, so the ones still being
+    /// held up, or about to be at home, count against the day as well.
+    pub(super) fn trinket_find_allowed(&self, now: OffsetDateTime) -> bool {
+        let day = local_time_or_utc(now).date().to_julian_day();
+        let under_way = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.action == ActionKind::PresentDiscovery)
+            .count()
+            + self
+                .village_life
+                .values()
+                .filter(|activity| activity.finding())
+                .count();
+        usize::from(self.save.finds_today.on(day)) + under_way
+            < usize::from(daily_trinket_target(self.save.colony_seed, day))
+    }
+}
+
 /// How far down the nearest thing that would catch a fall has to be, in logical desktop points,
 /// before a ledge counts as high. The floor-is-lava game calls 90 points far enough to be worth
 /// not falling into; something found high up asks for more than that — about a window's worth of
