@@ -2,6 +2,31 @@
 
 All notable changes are documented here.
 
+## [0.66.1] - 2026-10-01
+
+### Changed
+
+- The tiny bike is now a **leaf sled**: a big leaf with its tip rolled up at the front, sat in and
+  scooted along by paw and back again, in place of a bike that did not belong in a garden. A colony
+  that found the bike has found the sled, and its count of goes carries over. The pedalling pose
+  is now a scoot, sat low with one paw pushing at the ground and then the other.
+- At the **stump table** the players sit on their own stools out beside it, low, rather than
+  perched in front of it with the table hidden behind them, so the table and the cards on it stay
+  in view; the stools are bigger to match.
+- The **fountain** is drawn with depth: a round basin seen a little from above, its front wall in
+  courses of stone lit from the left, water lying inside the rim with rings spreading over it, a
+  column up to a bowl, and two streams curving back down into the basin. It plays in six frames
+  and splashes in six more, throwing water out over the rim.
+
+### Fixed
+
+- The **colony portrait** came out a whole size smaller for some colonies in 0.66.0: it scales the
+  row to the largest whole size that fits, and the livelier greeting it shows is a pixel or two
+  wider. The row is sized from everyone standing plainly again, and drawn greeting at that size.
+- The documentation's review sheets, cards and previews are drawn again from the current art.
+  Several had not been, because a check meant to keep unchanged images untouched compared only
+  their transparency.
+
 ## [0.66.0] - 2026-10-01
 
 ### Added

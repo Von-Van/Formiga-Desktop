@@ -322,7 +322,7 @@ impl Clubhouse {
             .size(11.0),
         );
         ui.small(
-            "Now and then something to play on turns up for a little while — a chair, a bike, a \
+            "Now and then something to play on turns up for a little while — a chair, a leaf sled, a \
              fountain — and whoever it turned up for goes straight over to have a go.",
         );
         ui.add_space(6.0);

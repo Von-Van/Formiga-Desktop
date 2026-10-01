@@ -583,9 +583,11 @@ fn blit_cell(
 struct Member<'a> {
     creature: &'a Creature,
     canvas: Canvas,
-    /// The drawn pixels inside the 48x48 frame.
+    /// The drawn pixels inside the 48x48 frame: the greeting, and the plain stand it is sized by.
     left: i32,
     width: i32,
+    /// How wide and tall it stands plainly, which is what decides how large the row is drawn.
+    standing_width: i32,
     height: i32,
 }
 
@@ -619,26 +621,44 @@ fn member_row(save: &SaveFile) -> Vec<Placed<'_>> {
         .map(|(index, creature)| {
             // Everyone turns a little toward the middle, so the row reads as a group portrait.
             let facing_right = (index as i32) * 2 < count;
+            let face = FaceRenderState {
+                expression: ExpressionKind::Affectionate,
+                eyelids: EyelidPose::Open,
+                gaze: GazeDirection::new(if facing_right { 1 } else { -1 }, 0),
+            };
             let drawn = CreatureRenderer::render_composited_frame(
                 &creature.appearance,
                 ActionKind::Greet,
                 greeting_frame(creature),
                 facing_right,
                 false,
-                FaceRenderState {
-                    expression: ExpressionKind::Affectionate,
-                    eyelids: EyelidPose::Open,
-                    gaze: GazeDirection::new(if facing_right { 1 } else { -1 }, 0),
-                },
+                face,
             );
-            let (left, top, right, bottom) = drawn
-                .alpha_bounds()
-                .map_or((0, 0, FRAME_SIZE - 1, FRAME_SIZE - 1), |bounds| bounds);
+            // The row is sized from each member standing plainly, its first frame of resting,
+            // and drawn greeting at that size. A greeting wiggles, and a wiggle a pixel wider
+            // than the last must not make the whole portrait a size smaller.
+            let standing = CreatureRenderer::render_composited_frame(
+                &creature.appearance,
+                ActionKind::Idle,
+                0,
+                facing_right,
+                false,
+                face,
+            );
+            let bounds = |canvas: &Canvas| {
+                canvas
+                    .alpha_bounds()
+                    .map_or((0, 0, FRAME_SIZE - 1, FRAME_SIZE - 1), |bounds| bounds)
+            };
+            let (left, _, right, _) = bounds(&drawn);
+            let (stand_left, top, stand_right, bottom) = bounds(&standing);
+            let (left, right) = (left.min(stand_left), right.max(stand_right));
             Member {
                 creature,
                 canvas: drawn,
                 left: left as i32,
                 width: (right - left + 1) as i32,
+                standing_width: (stand_right - stand_left + 1) as i32,
                 height: (bottom - top + 1) as i32,
             }
         })
@@ -646,6 +666,7 @@ fn member_row(save: &SaveFile) -> Vec<Placed<'_>> {
 
     let room = SCENE_RIGHT - SCENE_LEFT - ROW_PADDING * 2;
     let art_width: i32 = members.iter().map(|member| member.width).sum();
+    let standing_width: i32 = members.iter().map(|member| member.standing_width).sum();
     let tallest = members
         .iter()
         .map(|member| member.height)
@@ -653,10 +674,14 @@ fn member_row(save: &SaveFile) -> Vec<Placed<'_>> {
         .unwrap_or(1);
     // Room is counted against the gaps a row needs on both sides as well as between neighbours,
     // so the largest scale that fits is one the row can actually breathe at.
+    // The size comes from everyone standing plainly; the greeting only has to fit inside the
+    // row at that size, with at least half the usual space round each member.
     let scale = (2..=7)
         .rev()
         .find(|scale| {
-            art_width * scale + ROW_GAP * (count + 1) <= room && tallest * scale <= MEMBER_CEILING
+            standing_width * scale + ROW_GAP * (count + 1) <= room
+                && art_width * scale + ROW_GAP / 2 * (count + 1) <= room
+                && tallest * scale <= MEMBER_CEILING
         })
         .unwrap_or(2);
 

@@ -880,11 +880,15 @@ pub(super) fn gesture_limb_targets(
         ),
         // Where they rest: the foot does the talking, and in a seat the feet do the swinging.
         Gesture::Stomp | Gesture::Sit => resting(),
-        // Both out ahead on the handlebars.
-        Gesture::Pedal => (
-            at(right.x + 2, right.y + 1),
-            at(right.x + length + 3, right.y - tick),
-        ),
+        // One paw pushing at the ground beside it, and then the other.
+        Gesture::Scoot => {
+            let (resting_left, resting_right) = resting();
+            if tick == 0 {
+                (at(left.x - 2, left.y + length + 2), resting_right)
+            } else {
+                (resting_left, at(right.x + 2, right.y + length + 2))
+            }
+        }
     }
 }
 

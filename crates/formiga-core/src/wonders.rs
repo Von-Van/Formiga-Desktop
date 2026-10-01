@@ -2,7 +2,7 @@
 //!
 //! A wonder appears somewhere a companion can get to — on the floor, up on a window, or along the
 //! village's ground while the houses are out — and whoever it turned up for goes straight over to
-//! it: a little chair to sit in, a bike to ride, a fountain to splash in, a tightrope to cross. Once
+//! it: a little chair to sit in, a leaf to sled on, a fountain to splash in, a tightrope to cross. Once
 //! they have had their go it is gone, and if one of them is picked up on the way, or in the middle
 //! of it, it is gone sooner.
 //!
@@ -21,8 +21,11 @@ use time::OffsetDateTime;
 pub enum WonderKind {
     /// A little wooden chair to climb into, sit back in and swing its feet.
     Chair,
-    /// A small bike to pedal along and back.
-    Bike,
+    /// A curled-up leaf to sit in and scoot along on, and back. It took the place of a bike in
+    /// 0.66.1, and a save still calls it by the bike's name, so a colony that found the bike has
+    /// found the sled, and either build reads the other's file.
+    #[serde(rename = "Bike")]
+    LeafSled,
     /// A stone fountain with a spout, to splash about in.
     Fountain,
     /// A rope strung between two posts, to walk across with its arms out.
@@ -53,7 +56,7 @@ pub enum WonderSeats {
 impl WonderKind {
     pub const ALL: [Self; 9] = [
         Self::Chair,
-        Self::Bike,
+        Self::LeafSled,
         Self::Fountain,
         Self::Tightrope,
         Self::StumpTable,
@@ -70,7 +73,7 @@ impl WonderKind {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Chair => "Little chair",
-            Self::Bike => "Tiny bike",
+            Self::LeafSled => "Leaf sled",
             Self::Fountain => "Fountain",
             Self::Tightrope => "Tightrope",
             Self::StumpTable => "Stump table",
@@ -85,7 +88,7 @@ impl WonderKind {
     pub const fn description(self) -> &'static str {
         match self {
             Self::Chair => "Just the right size. Best sat in with both feet swinging.",
-            Self::Bike => "Pedalled along, turned round with care, and pedalled back.",
+            Self::LeafSled => "Sat in, curled up at the front, and scooted along and back by paw.",
             Self::Fountain => "A spout of water and a stone rim, for splashing.",
             Self::Tightrope => "Crossed slowly, arms out, with a wobble in the middle.",
             Self::StumpTable => "A stump for a table and a stool each side. Cards are dealt.",
@@ -101,7 +104,7 @@ impl WonderKind {
     pub const fn hint(self) -> &'static str {
         match self {
             Self::Chair => "Something with four legs, just the right height.",
-            Self::Bike => "Two wheels and a bell.",
+            Self::LeafSled => "Something green to go for a ride in.",
             Self::Fountain => "Somewhere wet that is not a puddle.",
             Self::Tightrope => "A long way across, and not much to stand on.",
             Self::StumpTable => "A table that grew where it stands.",
@@ -114,7 +117,7 @@ impl WonderKind {
 
     pub const fn seats(self) -> WonderSeats {
         match self {
-            Self::Chair | Self::Bike | Self::Hammock => WonderSeats::One,
+            Self::Chair | Self::LeafSled | Self::Hammock => WonderSeats::One,
             Self::Fountain
             | Self::Tightrope
             | Self::StumpTable
@@ -129,10 +132,10 @@ impl WonderKind {
     pub const fn span(self) -> f32 {
         match self {
             Self::Chair => 22.0,
-            Self::Bike => 30.0,
+            Self::LeafSled => 30.0,
             Self::Fountain => 40.0,
             Self::Tightrope => 96.0,
-            Self::StumpTable => 60.0,
+            Self::StumpTable => 76.0,
             Self::ArrowSign => 28.0,
             Self::Hammock => 80.0,
             Self::BookStack => 22.0,
@@ -141,10 +144,10 @@ impl WonderKind {
     }
 
     /// The whole run of ground a turn on it covers, players and all, in art pixels: the span,
-    /// a frame of room either side for whoever stands beside it, and the ride for a bike.
+    /// a frame of room either side for whoever stands beside it, and the ride for a sled.
     pub const fn room(self) -> f32 {
         match self {
-            Self::Bike => 180.0,
+            Self::LeafSled => 180.0,
             Self::Tightrope => 150.0,
             Self::Fountain | Self::ArrowSign | Self::BookStack => self.span() + 96.0,
             _ => self.span() + 48.0,
@@ -185,7 +188,7 @@ pub struct WonderView {
     pub elapsed: f32,
     /// What its moving part is doing, from -1 to 1, as if it were not turned round: a seesaw's
     /// tilt, a hammock's sway, the arrow's spin, a fountain's splash, the rope's wobble, the
-    /// cards down on the table, the wheels going round. Zero for one standing still.
+    /// cards down on the table, a sled sliding along. Zero for one standing still.
     pub motion: f32,
     /// Just found for the first time, and glinting for it.
     pub glint: bool,

@@ -925,7 +925,7 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Strut => (ExpressionKind::Smug, EyelidPose::Half),
         Gesture::Peek => (ExpressionKind::Worried, EyelidPose::Half),
         Gesture::Sit => (ExpressionKind::Content, EyelidPose::Open),
-        Gesture::Pedal => (ExpressionKind::Joy, EyelidPose::Open),
+        Gesture::Scoot => (ExpressionKind::Joy, EyelidPose::Open),
     };
     FaceRenderState {
         expression,

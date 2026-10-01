@@ -4,6 +4,17 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.66.1
+
+The tiny bike is now a leaf sled, which suits a garden better: a big leaf with its tip rolled up
+at the front, sat in and scooted along by paw and back again. A colony that found the bike has
+found the sled. At the stump table the players sit on their own stools beside it, so the cards stay
+in view, and the fountain is drawn with depth: a stone basin seen a little from above, water lying
+inside its rim with rings spreading out, and streams falling back from a bowl on top. It follows
+0.66.0, which brought wonders — something to play on that turns up for a little while — clearer
+walking, a few trinkets a day, and the app's own icon in the menu bar; the release notes describe
+it.
+
 ## New in 0.66.0
 
 Every so often something to play on now turns up for a little while: a wonder. It might be a

@@ -298,8 +298,8 @@ impl AnimationSpec {
             Gesture::Stomp => (2, 4),
             // Feet swinging, slowly: a whole swing back and forth is a second and a third.
             Gesture::Sit => (4, 3),
-            // Round and round.
-            Gesture::Pedal => (4, 8),
+            // Push, and push: one paw and then the other.
+            Gesture::Scoot => (4, 6),
         };
         Self {
             frames,

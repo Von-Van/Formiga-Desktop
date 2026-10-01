@@ -888,10 +888,17 @@ fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
         BodyClip::Gesture(Gesture::Stomp) => [Limb::Rest; 2],
         // Paws in its lap: the swinging feet are the whole of it.
         BodyClip::Gesture(Gesture::Sit) => [Limb::Rest; 2],
-        // Wings stay folded on a bike, out of the way of the wheels.
-        BodyClip::Gesture(Gesture::Pedal) if plan == BodyPlan::Winged => [Limb::Rest; 2],
-        // Both paws out ahead on the handlebars, the far one a little further along.
-        BodyClip::Gesture(Gesture::Pedal) => [to(x + rx + 3, y - 1), to(x + rx + 6, y - 2 + tick)],
+        // Wings stay folded in a sled: the leaning does the work.
+        BodyClip::Gesture(Gesture::Scoot) if plan == BodyPlan::Winged => [Limb::Rest; 2],
+        // One paw down at the ground beside it and pushing, and then the other.
+        BodyClip::Gesture(Gesture::Scoot) => {
+            let push = |side: i32| to(x + side * (rx + 2), floor - 2);
+            if tick == 0 {
+                [push(-1), Limb::Rest]
+            } else {
+                [Limb::Rest, push(1)]
+            }
+        }
         // Wings open up and out as far as they go.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Winged => {
             let up = [0, 1, 2, 2][usize::from(frame.min(3))];
@@ -1159,11 +1166,10 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
             | Gesture::Yawn
             | Gesture::Stomp
             | Gesture::Stretch
-            | Gesture::Sit,
+            | Gesture::Sit
+            // Four paws down in the leaf, leaning into it: the dip of each push is the scoot.
+            | Gesture::Scoot,
         ) => [rest; 2],
-        // Standing to it on all fours, the near forepaw up on the handlebars, no higher than
-        // the chin: three paws down even on a bike.
-        BodyClip::Gesture(Gesture::Pedal) => [rest, lift(near, 7, 1 + tick)],
     }
 }
 

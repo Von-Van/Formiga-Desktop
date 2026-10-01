@@ -246,7 +246,7 @@ fn at_home_a_wonder_stays_on_the_village_ground() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     for kind in [
-        WonderKind::Bike,
+        WonderKind::LeafSled,
         WonderKind::Fountain,
         WonderKind::Tightrope,
     ] {
@@ -384,4 +384,24 @@ fn every_script_starts_and_ends_on_the_ground() {
             }
         }
     }
+}
+
+/// The leaf sled took the bike's place in 0.66.1 and keeps its name in a save, so a colony that
+/// found the bike in 0.66.0 has found the sled, and a 0.66.0 build still reads a newer file.
+#[test]
+fn the_leaf_sled_is_saved_under_the_bikes_name() {
+    assert_eq!(
+        serde_json::to_string(&WonderKind::LeafSled).unwrap(),
+        "\"Bike\""
+    );
+    assert_eq!(
+        serde_json::from_str::<WonderKind>("\"Bike\"").unwrap(),
+        WonderKind::LeafSled
+    );
+    let record: crate::WonderRecord = serde_json::from_str(
+        r#"{"kind":"Bike","first_at":"2026-10-01T18:00:00Z","finder":7,"finder_name":"Poppy","goes":3}"#,
+    )
+    .unwrap();
+    assert_eq!(record.kind, WonderKind::LeafSled);
+    assert_eq!(record.goes, 3);
 }

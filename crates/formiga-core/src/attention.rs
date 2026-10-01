@@ -76,8 +76,9 @@ pub enum Gesture {
     /// Sat down on something with its feet out in front, swinging them: a chair, a stool, a
     /// seesaw, the top of a stack of books. Belongs to wonders; no attention scene strikes it.
     Sit,
-    /// Sat forward with its paws out ahead and its feet going round: riding a bike.
-    Pedal,
+    /// Sat low with its feet out in front, leaning in and pushing at the ground with one paw and
+    /// then the other: scooting a leaf sled along.
+    Scoot,
 }
 
 impl Gesture {
@@ -101,7 +102,7 @@ impl Gesture {
         Self::Peek,
         Self::Stomp,
         Self::Sit,
-        Self::Pedal,
+        Self::Scoot,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -118,7 +119,7 @@ impl Gesture {
                 | Self::Peek
                 | Self::Stomp
                 | Self::Sit
-                | Self::Pedal
+                | Self::Scoot
         )
     }
 }

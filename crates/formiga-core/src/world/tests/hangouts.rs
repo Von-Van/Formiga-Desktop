@@ -182,7 +182,10 @@ fn a_lookout_is_looked_out_of_toward_the_open_desktop() {
     let middle =
         desktop.monitors[0].usable_bounds.x + desktop.monitors[0].usable_bounds.width / 2.0;
     // The village has more to do than stand at the lookout — its gardens, its houses, its roofs
-    // — so it is given a long afternoon to get round to it.
+    // — so it is given a long afternoon to get round to it. A lookout is a rare choice even so,
+    // a visit or two an hour, so no wonder turns up to take anybody away from it: which one turned
+    // up, and when, would decide whether the hour held a visit at all.
+    world.wonders.hold_off();
     let mut looked = 0;
     for _ in 0..80_000 {
         world.tick(created, 0.05, &desktop);

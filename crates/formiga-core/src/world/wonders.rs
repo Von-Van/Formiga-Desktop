@@ -114,6 +114,11 @@ impl Wonders {
     }
 
     #[cfg(test)]
+    pub(super) fn hold_off(&mut self) {
+        self.next_in = f32::MAX;
+    }
+
+    #[cfg(test)]
     pub(super) fn leaving(&self) -> bool {
         self.active.as_ref().is_some_and(Active::leaving)
     }
@@ -364,12 +369,12 @@ pub(super) fn hop(t: f32, from: (f32, f32), to: (f32, f32), facing_right: bool) 
 /// How long the crouch and the hop together take.
 pub(super) const HOP_SECS: f32 = 0.7;
 
-/// How far the moving part of a wonder has moved along, in art pixels: a bike's ride. Zero for
+/// How far the moving part of a wonder has moved along, in art pixels: a sled's ride. Zero for
 /// everything that stays where it was put.
 pub(super) fn carried(kind: WonderKind, t: Option<f32>, length: f32) -> f32 {
     let Some(t) = t else { return 0.0 };
     match kind {
-        WonderKind::Bike => {
+        WonderKind::LeafSled => {
             let ride = t - HOP_SECS;
             let out = (length - 2.0 * HOP_SECS - 0.8) / 2.0;
             if ride < 0.0 {
@@ -441,8 +446,8 @@ pub(super) fn motion(kind: WonderKind, t: Option<f32>, length: f32, toss: bool) 
                 0.0
             }
         }
-        WonderKind::Bike => {
-            // Wheels turning: forward on the way out, back on the way home.
+        WonderKind::LeafSled => {
+            // Sliding: forward on the way out, back on the way home.
             let a = carried(kind, Some(t), length);
             let b = carried(kind, Some(t + 0.05), length);
             ((b - a) * 4.0).clamp(-1.0, 1.0)
@@ -463,7 +468,7 @@ pub(super) fn motion(kind: WonderKind, t: Option<f32>, length: f32, toss: bool) 
 pub(super) const fn script_length(kind: WonderKind) -> f32 {
     match kind {
         WonderKind::Chair => 13.0,
-        WonderKind::Bike => 13.0,
+        WonderKind::LeafSled => 13.0,
         WonderKind::Fountain => 13.0,
         WonderKind::Tightrope => 14.0,
         WonderKind::StumpTable => 15.0,
@@ -479,7 +484,7 @@ pub(super) const fn start_offset(kind: WonderKind, role: Role) -> f32 {
     let lead = matches!(role, Role::Lead);
     match kind {
         WonderKind::Chair => -22.0,
-        WonderKind::Bike => -20.0,
+        WonderKind::LeafSled => -20.0,
         WonderKind::Fountain => {
             if lead {
                 -30.0
@@ -496,9 +501,9 @@ pub(super) const fn start_offset(kind: WonderKind, role: Role) -> f32 {
         }
         WonderKind::StumpTable => {
             if lead {
-                -38.0
+                -44.0
             } else {
-                38.0
+                44.0
             }
         }
         WonderKind::ArrowSign => {
@@ -562,8 +567,9 @@ pub(super) fn stance(
                 base
             }
         }
-        WonderKind::Bike => {
-            let seat = (0.0, -14.0);
+        // Sat down low in the curl of the leaf, scooting it along by paw and back again.
+        WonderKind::LeafSled => {
+            let seat = (0.0, -5.0);
             if let Some(stance) = hop(t, (start, 0.0), seat, true) {
                 return stance;
             }
@@ -573,7 +579,7 @@ pub(super) fn stance(
                     .unwrap_or_else(|| Stance::at(22.0, 0.0, true));
             }
             let going_out = carried(kind, Some(t + 0.05), length) >= ride;
-            Stance::at(seat.0 + ride, seat.1, going_out).pose(Gesture::Pedal)
+            Stance::at(seat.0 + ride, seat.1, going_out).pose(Gesture::Scoot)
         }
         WonderKind::Fountain => {
             let facing_right = lead;
@@ -642,7 +648,9 @@ pub(super) fn stance(
             }
         }
         WonderKind::StumpTable => {
-            let seat = (if lead { -20.0 } else { 20.0 }, -6.0);
+            // Low stools out beside the table: sat on with the feet near the ground, and far
+            // enough out that the table stands clear between the two players.
+            let seat = (if lead { -28.0 } else { 28.0 }, -4.0);
             let facing_right = lead;
             if let Some(stance) = hop(t, (start, 0.0), seat, facing_right) {
                 return stance;
@@ -1682,7 +1690,7 @@ pub fn wonder_poses(kind: WonderKind, players: usize, t: f32, toss: bool) -> Vec
         .collect()
 }
 
-/// What a wonder's moving part is doing `t` seconds into its script, and how far a bike has
+/// What a wonder's moving part is doing `t` seconds into its script, and how far a sled has
 /// ridden, as the overlay is told it.
 pub fn wonder_motion(kind: WonderKind, t: f32, toss: bool) -> (f32, f32) {
     let length = script_length(kind);

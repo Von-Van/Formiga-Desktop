@@ -550,22 +550,19 @@ impl Pose {
                 splay: 2,
                 ..Self::default()
             },
-            // Sat forward over the handlebars, the feet going round one after the other and the
-            // body bobbing with each push.
-            Gesture::Pedal => {
-                let round = [2, 1, 0, 1];
-                Self {
-                    bob: tick,
-                    step_a: round[usize::from(frame % 4)],
-                    step_b: round[usize::from((frame + 2) % 4)],
-                    appendage_lift: 1,
-                    tail_sway: -1 - tick,
-                    lean: 1,
-                    crouch: 2,
-                    splay: 1,
-                    ..Self::default()
-                }
-            }
+            // Sat low with its feet out in front, leaning in, and dipping with each push of a paw
+            // at the ground.
+            Gesture::Scoot => Self {
+                bob: tick,
+                squash_x: tick,
+                squash_y: -tick,
+                appendage_lift: -1,
+                tail_sway: -1 - tick,
+                lean: 1,
+                crouch: 3,
+                splay: 2,
+                ..Self::default()
+            },
             // Square and stiff, one foot lifting and coming down again.
             Gesture::Stomp => Self {
                 bob: 1 - tick,

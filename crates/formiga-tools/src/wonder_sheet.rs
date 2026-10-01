@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 const SCALE: u32 = 2;
 const MOMENTS: u32 = 6;
-/// Wide enough for a bike's whole ride and a tightrope's watcher at the far end.
+/// Wide enough for a sled's whole ride and a tightrope's watcher at the far end.
 const ROOM: u32 = 200;
 const PAD: i32 = ((ROOM - WONDER_CELL_WIDTH) / 2) as i32;
 const CELL_W: u32 = ROOM * SCALE;

@@ -273,8 +273,9 @@ trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a r
 companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
-adds one or two from the object sheet. A new companion's textures come to about 1.34 MB — 1.24 MB
-until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating frames — and about
+adds one or two from the object sheet. A new companion's textures come to about 1.24 MB — 1.34 MB
+in 0.66.0 alone, when the walk, the run, the greeting and the meal stopped repeating frames, and
+back under that row of cells once a leaf sled's scoot replaced pedalling in 0.66.1 — and about
 0.5 MB under reduced motion, where every creature's cost 1,649,664 bytes in 0.61.0. With no two
 frames alike they would be 1,889,280 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
@@ -1504,7 +1505,9 @@ it rather than found in its first hour.
 the notebook, a hint for one still to find, how many it seats (one, one or two, or always two), the
 ground it stands on and the run of ground a turn on it covers, in art pixels. `world/wonders.rs` is
 the runtime: at most one wonder at a time, nothing about it saved but the notebook's
-`WonderRecord`s — kind, first found, finder and the finder's name, and a count of goes.
+`WonderRecord`s — kind, first found, finder and the finder's name, and a count of goes. The leaf sled
+took the place of 0.66.0's bike in 0.66.1 and is still written to a save under the bike's name, so a
+colony that found the bike has found the sled and either build reads the other's file.
 
 Every 10–20 visible minutes, while the colony is visible, unpaused, not in quiet mode or reduced
 motion, and in no ritual or village moment, one turns up. The lead is a free companion — awake, on
@@ -1531,7 +1534,7 @@ there is a pair, the seconds in, and a coin toss: a `Stance` of where the player
 wonder in art pixels, which way it faces, its action, a gesture, a feeling and where it looks.
 Getting on or off anything is `hop`, a crouch and then an arc, so nobody appears in a seat. The
 wonder's own moving part — a seesaw's tilt, a hammock's sway, the arrow's spin, the fountain's
-splash, the rope's wobble, the cards down, the wheels turning — and how far a bike has ridden are
+splash, the rope's wobble, the cards down, a sled sliding — and how far a sled has gone are
 read from the same clock. Every script starts and ends on the ground. When it is over, a pair's
 players have one `PositivePlay` bond experience and a heart each, everyone is let go where it
 stands, and the wonder shrinks away over 0.6 seconds.
@@ -1624,7 +1627,12 @@ chips for the member count and the number of family lines, and the village behin
 a notional 1:1 desktop so no screen information enters the card. It contains no seeds, memories,
 relationship scores, journal, display keys, visitors, or guest book, and the encoder adds no PNG
 text chunks; a test maxes out memories, tendencies, and relationships and asserts the card comes out
-pixel-identical. The default filename is `Formiga-colony.png`.
+pixel-identical. The row is drawn at the largest whole scale it fits at, and that scale is chosen
+from each member standing plainly — its first frame of resting — rather than from the greeting it
+is drawn in: since 0.66.0 a greeting wiggles, hops and pricks its ears, and a pose a pixel taller or
+wider must not make the whole portrait a size smaller. Each member's place in the row is still as
+wide as its greeting, so the drawing stays inside it. The default filename is
+`Formiga-colony.png`.
 
 `PostcardRenderer::render(&SaveFile, PostcardScene, caption) -> Canvas` produces a 960×600 opaque
 postcard of the whole colony in one of four scenes the sender picks: a nap on a patchwork quilt one

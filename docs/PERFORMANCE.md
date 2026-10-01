@@ -1044,11 +1044,15 @@ likely most of it; a build without it was not measured.
 ## 0.66.0: wonders and walking
 
 Measured with the atlas budget test, not on a running app. The sitting and pedalling poses add eight
-body frames, 155 in all, and a walk, a run, a greeting and a meal that no longer repeat frames add
-ten cells a real companion used to share: the reference companion's textures go from 1,244,160 to
-1,336,320 bytes, and the most one can cost, with no two frames alike, from 1,797,120 to 1,889,280,
+body frames, 155 in all, and a walk, a run, a greeting and a meal that no longer repeat frames
+grow the reference companion's textures by a row of ten cells, from 1,244,160 to 1,336,320 bytes, and the most one can cost, with no two frames alike, from 1,797,120 to 1,889,280,
 still far inside the 4,500,000-byte limit and, six of them, the 15 MiB colony ceiling. A wonder's
 texture is baked only while one is out — 112×64 pixels a frame, one to eight frames, at most 229,376
 bytes on a display that shows it — and dropped once it has gone. While one is out, for half a
 minute every ten minutes or more, the colony is ticked and drawn at 20 Hz. Live CPU was not
 re-measured for this release.
+
+In 0.66.1 the leaf sled's scoot, which repeats two of its four frames where pedalling repeated
+none, brings the reference companion back under that row, to 1,244,160 bytes again; the most one
+can cost is unchanged at 1,889,280. The fountain is drawn in twelve frames rather than eight, so a
+wonder's texture is now at most 344,064 bytes, still only while one is out.

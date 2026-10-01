@@ -553,7 +553,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 63 gesture frames — eight of them the seat and the bike wonders
+    // 92 action frames and 63 gesture frames — eight of them the seat and the sled wonders
     // brought in 0.66.0 — and fifteen expressions' faces in every eyelid pose
     // and gaze. Until 0.62.0 every one had a cell of its own, ten columns of 48px bodies and
     // twenty-seven of 16px faces to a row, and the face texture ended in eight trinket cells
@@ -562,13 +562,15 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
     assert_eq!(total_animation_frames(), 155);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
-    // frames they had shared: a walk that steps rather than shuffles costs ten more cells.
-    assert_eq!(total_bytes, 1_336_320);
+    // frames they had shared and the texture grew by a row of ten cells, to 1,336,320; and
+    // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
+    // frames where pedalling a bike repeated none, which brings it back under that row.
+    assert_eq!(total_bytes, 1_244_160);
     assert_eq!(full_layout_bytes(), 1_889_280);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);
-    // A full colony of six like this one: 8,017,920 bytes. Even with no two frames alike it
+    // A full colony of six like this one: 7,464,960 bytes. Even with no two frames alike it
     // would be 11,335,680, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0.
     assert!(
         full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 15 * 1024 * 1024,
