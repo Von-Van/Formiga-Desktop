@@ -894,14 +894,14 @@ mod tests {
                 world.save.home.last_disappeared_utc = None;
             },
             |world| {
-                // Everyone is at its own door: standing still there, or partway through one of
-                // the small quiet things residents do while the home is out.
+                // Everyone has come home: at its own place or door, strolling the commons, or
+                // partway through one of the small things residents do while the home is out.
                 world.save.home.is_active()
                     && world
                         .save
                         .creatures
                         .iter()
-                        .all(|creature| world.resting_at_home(creature.id))
+                        .all(|creature| world.come_home(creature.id))
             },
             4,
         ),

@@ -826,8 +826,9 @@ moment does:
   eats what it picked, or carries something from a patch at its fullest over to a resting friend,
   who looks on pleased.
 - **A chore at its own house**, in the way the house's kind asks: retying a tent's flap, plumping a
-  pillow fort, patting a mushroom's cap, tidying a leaf house's leaves. `World::house_motions`
-  reports it with how far through it is, and the overlay leans or settles the house to answer.
+  pillow fort, patting a mushroom's cap, tidying a leaf house's leaves, on whichever side of the
+  door nobody is standing. `World::house_motions` reports it with how far through it is, and the
+  overlay leans or settles the house to answer.
 - **Indoors** for a spell, pottering or napping: the resident is marked `indoors`, drawn nowhere and
   out of reach of the pointer, and `World::house_occupancy` names the house so the overlay draws its
   occupied cell and, for a nap, the Zs. At most `max_indoors(residents)` are in at once — none while
@@ -835,9 +836,9 @@ moment does:
 - **Up on its own roof**, in a little hop to the height `house_roof_height` gives: measured from the
   house's proportions the way it is drawn, since the simulation cannot draw a house, and held to the
   drawing within a pixel for every kind at every height by a test in the art crate.
-- **A mishap**: a leaf on the face, a snack that rolls away and is chased, or sitting down beside
-  the nap cushion and shuffling onto it. `World::loose_props` reports the leaf or the apple and
-  where it is.
+- **A mishap**: a leaf on the face, a snack that rolls away — the clear way, if one is — and is
+  chased and carried back to be finished, or sitting down beside the nap cushion and shuffling onto
+  it. `World::loose_props` reports the leaf or the apple and where it is.
 
 Only one plan out and about runs at a time, beside the one quiet moment the village already
 allowed, and a spell indoors counts against its own limit instead. Watering or looking in on a
@@ -1044,9 +1045,9 @@ then its own resting place. From there `roam_target` in `world/home.rs` sends it
 somewhere along the commons at least a step and a half from home, a look about for
 `STROLL_PAUSE`, back to its own place, and a rest of `STROLL_REST` before the next. Its place is
 kept for it while it is out, so the village always has somewhere clear to come back to, and only
-the far end of a stroll is chosen: `stroll_to` considers `ROAM_TRIES` places, preferring one clear
-of everybody standing or headed there and not square in a doorway, and where none is clear it is
-only a place to turn round, with a pause short enough never to stand on anybody's face. At most
+the far end of a stroll is chosen: `Stroll::to` considers `ROAM_TRIES` places, preferring one clear
+of everybody standing, busy or headed there and not square in a doorway, and where none is clear it
+is only a place to turn round, with a pause short enough never to stand on anybody's face. At most
 `MAX_STROLLING` residents are out at once; the rest wait their turn. A stroll goes at
 `STROLL_PACE` of the companion's walk, and its walk cycle is slowed to match so its feet keep up
 with the ground; the walk home stays at full pace. Until 0.59.2 every destination had to be clear
@@ -1057,6 +1058,37 @@ its small thing is not also walking somewhere. A hidden colony and one under red
 stroll at all. Stroll state is runtime-only and cleared each time the houses go or come, so every
 visit starts with the walk home. A stroll is ticked and drawn at 20 Hz like every other movement;
 from 0.59.2 until 0.62.0 it ran at 10.
+
+Nothing at home is moved out of anybody's way — the overlap resolver does not run while the colony
+is home — so the village keeps faces clear by how it goes about things:
+
+- **At the door.** Whoever reaches a doorstep first keeps it, and the next stands a face-clear step
+  further out, trying `DOORSTEP_STEPS` places before going straight to its own; a mini no longer
+  stands on its big version. A stop at a door, or at the far end of a stroll, ends as soon as
+  somebody comes to stand at their own place beside it.
+- **Passing.** A stroll going past anybody picks up to the ordinary walk until it is by, easing up
+  and back down over `BRISK_EASE_SECS`, and any walk close behind somebody going the same way drops
+  back to `FALLING_BEHIND` of that one's speed until there is room.
+- **Busy spots.** Where somebody is busy, or on the way to be — a moment held somewhere, a visit to
+  a hangout spot, a nap on the cushion, a turn in the garden — is taken. A resident whose own place
+  is within face-clear of one keeps out of it: `Stroll::waiting_spot` sends it to the nearest place
+  clear of everybody, often the busy one's own empty place, to the trees' yards when the front has
+  none, and otherwise to the roomiest spot going, and it comes home once the spot is free. Nothing
+  new starts in front of somebody busy or standing there, and quiet moments start only at a
+  resident's own place or its door. A chore is brief: it takes whichever side of the door is clear,
+  and goes ahead in a moment if neither is.
+- **Counting.** Somebody indoors is drawn nowhere, so it neither covers a face nor has one covered,
+  and two companions placed exactly face-clear apart are clear: `spacing::closer_than` allows
+  `SPACING_SLACK`, where a rounding error used to flag every pair of neighbouring places.
+
+On the owner's colony of six over forty simulated minutes at home, faces behind somebody for longer
+than 5.25 seconds went from 208 episodes (1,607 seconds in all, the worst 30.9) in 0.62.1 to 7 (44
+seconds, the worst 7.5). Over six seeded colonies each of four and of six from both generators,
+eight minutes apiece, they went from 231–385 episodes a group (the worst 35–47 seconds) to 7–26 (the
+worst 8.4–9.5), most of what is left being chores and passes; an afternoon has as many quiet
+moments and plans as before. Somebody sitting on a roof is counted by the box rule against whoever
+stands below, but the art keeps them apart — checked on the owner's companions for every roof from
+28 pixels up — so the tests measure the village ground.
 
 A visit is a tour rather than a stand. `plan_tour` asks the same layout functions where everything
 is, turns each house, resting resident and belonging into a span of ground the guest may not
@@ -1084,7 +1116,8 @@ rest 60–180 seconds apart per creature, with at most one resident busy at a ti
 answering a wave. The moments are Eat (6–12 s), Drink (5–10 s), SoloPlay (8–16 s), InspectScreen
 (5–9 s, turning to look at its own house), Greet (4–7 s, with a neighbour within four frames waving
 back), Sleep (60–150 s), and an errand: walk to the nearest belonging within 1.5 frames, pause 2.5
-seconds, and walk back. None starts under reduced motion or while hidden, and one is cancelled at
+seconds, and walk back. One starts only at a resident's own place or its door, never in front of
+somebody busy or standing there. None starts under reduced motion or while hidden, and one is cancelled at
 once by a pet or a pick-up, by dismissal, by pause or hide, and by a changed display, habitat, or
 scale. They are cosmetic by construction: a moment emits only `ActionStarted`, so no tendency,
 counter, bond, or journal line moves, and petting a dozing resident at home costs it no sleep
@@ -1631,8 +1664,9 @@ deliberately no history database or telemetry layer. Update preferences live in 
 `clubhouse.rs` holds only on-demand UI artwork and interaction state, with the Home page's preview
 and shelves in `clubhouse/arrange.rs` and the Collection, the Journal's scrapbook and each
 companion's wardrobe in `clubhouse/collection.rs`; `settings.rs` owns its egui window and
-presentation. Four static portraits, four eight-frame candidate strips (six walk frames and two
-expressions each), the top row of the village atlas, the object sheet, the resting half of the
+presentation. Four static portraits, four eight-frame candidate strips (six walk frames, drawn by
+`render_studio_frame` pleased and eyes open rather than with a walk's focused look, and two of a
+wave), the top row of the village atlas, the object sheet, the resting half of the
 colony trinket sheet, and a companion trying something on in four poses fit within 807 KiB of
 artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
 24 KiB more pixels in a single texture, 432 KiB until 0.59.0 gave every house a cell of its own, 496

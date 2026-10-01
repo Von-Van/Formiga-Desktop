@@ -729,6 +729,284 @@ fn nobody_shivers_on_the_spot_when_a_companion_is_near() {
     }
 }
 
+/// Every pair of residents whose faces are covered on the village ground itself. Somebody up on
+/// a roof is drawn clear of whoever stands below it, so only the ground is measured.
+fn covered_on_the_ground(
+    world: &World,
+    desktop: &DesktopSnapshot,
+) -> Vec<(CreatureId, CreatureId)> {
+    let y = |id: CreatureId| {
+        world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == id)
+            .map(|creature| creature.state.position.y)
+    };
+    world
+        .covered_faces(desktop)
+        .into_iter()
+        .filter(|(a, b)| y(*a) == y(*b))
+        .collect()
+}
+
+/// Nothing moves anybody aside at home, so the village keeps faces clear by how it goes about
+/// things: a stroll hurries past whoever it passes, a stop at the door or at the far end of a
+/// stroll gives way to whoever settles beside it, and a spot somebody is busy at is left to them.
+/// Over whole afternoons in full colonies from both generators, a face behind somebody on the
+/// village ground is over within moments.
+#[test]
+fn a_full_village_keeps_every_face_clear_but_for_a_moment() {
+    const WORST_SECONDS: f32 = 12.0;
+    for (generator, seed_byte) in [(Edition::Original, 11_u8), (Edition::Archetypes, 48)] {
+        let (mut world, desktop, now) =
+            super::topology_and_attention::eager_full_colony_from([seed_byte; 32], generator);
+        assert!(world.send_home(&desktop));
+        let mut runs: BTreeMap<(CreatureId, CreatureId), f32> = BTreeMap::new();
+        let mut worst: f32 = 0.0;
+        for step in 1..=(4 * 60 * 20) {
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            world.drain_events().for_each(drop);
+            let covered = covered_on_the_ground(&world, &desktop);
+            runs.retain(|pair, _| covered.contains(pair));
+            for pair in covered {
+                let run = runs.entry(pair).or_default();
+                *run += 0.05;
+                worst = worst.max(*run);
+            }
+        }
+        assert!(world.save.home.is_active());
+        assert!(
+            worst <= WORST_SECONDS,
+            "{generator:?}: a face stayed covered at home for {worst:.2}s"
+        );
+    }
+}
+
+/// Coming home, everybody stops beside its own door first — a mini at its big version's — and
+/// nobody makes that stop on somebody's face: whoever got there first keeps the spot, and the
+/// next stands a step further out, or goes straight to its own place.
+#[test]
+fn nobody_stops_at_a_door_on_top_of_somebody_already_there() {
+    let (mut world, desktop, now) =
+        super::topology_and_attention::eager_full_colony_from([11; 32], Edition::Original);
+    assert!(
+        world
+            .save
+            .creatures
+            .iter()
+            .any(|creature| matches!(creature.role, CreatureRole::Mini { .. })),
+        "the colony has a mini sharing its big version's house"
+    );
+    assert!(world.send_home(&desktop));
+    world.tick(now, 0.05, &desktop);
+    let (resting, _) = world.village_places(&desktop);
+    let stops: Vec<(CreatureId, Point)> = world
+        .save
+        .creatures
+        .iter()
+        .map(|creature| {
+            (
+                creature.id,
+                world.home_stop(creature.id).expect("a first stop"),
+            )
+        })
+        .collect();
+    let clear = frame_width(world.save.settings.display_scale, 2.0) * FACE_CLEAR_RATIO;
+    for (index, (id, stop)) in stops.iter().enumerate() {
+        for (other, other_stop) in &stops[index + 1..] {
+            let at_own_place =
+                resting.get(id) == Some(stop) || resting.get(other) == Some(other_stop);
+            assert!(
+                at_own_place || (stop.x - other_stop.x).abs() >= clear - 0.01,
+                "two stops at the door {:.1} apart",
+                (stop.x - other_stop.x).abs()
+            );
+        }
+    }
+}
+
+/// A stroll is unhurried, but it does not dawdle in front of anybody: going past somebody at its
+/// place, it picks up to its ordinary walk until it is by, and eases back down after.
+#[test]
+fn a_stroll_goes_briskly_past_somebody_standing_there() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = super::home::settled_colony([23; 32], 2, created, &desktop);
+    let (resting, _) = world.village_places(&desktop);
+    let (walker, standing) = (world.save.creatures[0].id, world.save.creatures[1].id);
+    let place = resting[&standing];
+    world.keep_resting(standing, place, 600.0);
+    let cottages = colony_cottages(&world.save.creatures);
+    let commons = crate::habitat::home_commons(
+        &world.save.home,
+        &cottages,
+        &desktop.monitors,
+        &world.save.settings.habitat,
+        world.save.settings.display_scale,
+    )
+    .unwrap();
+    let frame = frame_width(world.save.settings.display_scale, 2.0);
+    let (low, high) = (commons.low_x + frame / 2.0, commons.high_x - frame / 2.0);
+    let clear = frame * FACE_CLEAR_RATIO;
+    // The slowest walker there is, from out by the trees on one side to the open on the other.
+    world.save.creatures[0].personality.activity = 0.0;
+    let (from, to) = if place.x - low > high - place.x {
+        (low, (place.x + clear * 1.5).min(high))
+    } else {
+        (high, (place.x - clear * 1.5).max(low))
+    };
+    assert!(
+        (from - place.x).abs() > clear * 2.0,
+        "room in the open to stroll"
+    );
+    let at_ground = |x: f32| Point { x, y: place.y };
+    world.send_strolling(walker, at_ground(from));
+    let walk_to = |world: &mut World, goal: Point, mut track: Option<&mut [f32; 3]>| {
+        for _ in 0..2_400 {
+            world.tick(created, 0.05, &desktop);
+            let creature = world
+                .save
+                .creatures
+                .iter()
+                .find(|c| c.id == walker)
+                .unwrap();
+            if let Some(track) = track.as_deref_mut() {
+                let speed = creature.state.velocity.x.abs();
+                if (creature.state.position.x - place.x).abs() < clear {
+                    track[0] += 0.05;
+                    track[1] = track[1].max(speed);
+                } else if (creature.state.position.x - place.x).abs() > clear + frame * 0.5 {
+                    track[2] = track[2].max(speed);
+                }
+            }
+            if creature.state.position == goal {
+                return;
+            }
+        }
+        panic!("never got there");
+    };
+    walk_to(&mut world, at_ground(from), None);
+    world.send_strolling(walker, at_ground(to));
+    // How long in front of that face, the fastest step going past it, and out in the open.
+    let mut track = [0.0_f32; 3];
+    walk_to(&mut world, at_ground(to), Some(&mut track));
+    let [beside, passing, open] = track;
+    assert!(
+        open > 0.0 && passing > open * 1.8,
+        "out in the open at {open:.1}, past somebody at {passing:.1}"
+    );
+    // At its own stroll pace it would have been in front of that face for over ten seconds.
+    assert!(
+        beside < 2.0 * clear / super::super::home::WALK_SPEED + 1.0,
+        "in front of a face for {beside:.2}s"
+    );
+}
+
+/// Somebody busy right beside a resident's own place — napping on a cushion there — has it to
+/// themselves: the resident goes and waits somewhere clear meanwhile, and comes back once the
+/// other is up and away.
+#[test]
+fn a_nap_beside_somebodys_place_is_given_room_until_it_is_over() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = super::home::settled_colony([29; 32], 3, created, &desktop);
+    let (resting, _) = world.village_places(&desktop);
+    let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+    let (napper, neighbour, other) = (ids[0], ids[1], ids[2]);
+    world.keep_resting(neighbour, resting[&neighbour], 600.0);
+    world.keep_resting(other, resting[&other], 600.0);
+    let frame = frame_width(world.save.settings.display_scale, 2.0);
+    let clear = frame * FACE_CLEAR_RATIO;
+    let place = resting[&neighbour];
+    let side = if resting[&napper].x < place.x {
+        -1.0
+    } else {
+        1.0
+    };
+    let cushion = Point {
+        x: place.x + side * clear * 0.4,
+        y: place.y,
+    };
+    world.village_life.insert(
+        napper,
+        super::super::village_life::VillageActivity::new(
+            super::super::village_life::Plan::MissedCushion {
+                beside: Point {
+                    x: cushion.x + side * frame * 0.3,
+                    y: cushion.y,
+                },
+                cushion,
+                nap: 20.0,
+            },
+        ),
+    );
+    let (mut covered, mut worst, mut napped) = (0.0_f32, 0.0_f32, false);
+    for _ in 0..1_200 {
+        world.tick(created, 0.05, &desktop);
+        let at = |id: CreatureId| world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        if at(napper).state.action == ActionKind::Sleep {
+            napped = true;
+        }
+        if (at(napper).state.position.x - at(neighbour).state.position.x).abs() < clear - 0.01 {
+            covered += 0.05;
+            worst = worst.max(covered);
+        } else {
+            covered = 0.0;
+        }
+        if napped && !world.village_life.contains_key(&napper) {
+            break;
+        }
+    }
+    assert!(napped, "the napper got onto the cushion");
+    assert!(
+        worst < 3.0,
+        "the neighbour stood over the nap for {worst:.2}s"
+    );
+    // Once the napper is up and gone, the neighbour has its own place back.
+    for _ in 0..600 {
+        world.tick(created, 0.05, &desktop);
+    }
+    let neighbour_at = world
+        .save
+        .creatures
+        .iter()
+        .find(|c| c.id == neighbour)
+        .unwrap();
+    assert_eq!(neighbour_at.state.position, place, "back at its own place");
+}
+
+/// The village, like every line-up, puts companions exactly the face-clear distance apart, and
+/// two companions placed that far apart are clear of one another, rounding and all.
+#[test]
+fn companions_placed_exactly_face_clear_apart_are_clear() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    for members in [2, 4, 6] {
+        let world = super::home::settled_colony([31; 32], members, created, &desktop);
+        assert!(
+            world.covered_faces(&desktop).is_empty(),
+            "{members} at their places at home"
+        );
+    }
+}
+
+/// Somebody inside its house is behind the drawn curtain: nobody's face is behind it, and its
+/// own is behind nobody.
+#[test]
+fn nobody_indoors_covers_a_face_or_has_one_covered() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = two_creature_world([151; 32], created);
+    world.save.creatures[1].state.position = world.save.creatures[0].state.position;
+    assert_eq!(world.covered_faces(&desktop).len(), 1);
+    for inside in [0, 1] {
+        world.save.creatures[inside].state.indoors = true;
+        assert!(world.covered_faces(&desktop).is_empty());
+        world.save.creatures[inside].state.indoors = false;
+    }
+}
+
 /// The same measurement as above over thirty-two colonies from each generator, for comparing them
 /// rather than for holding either to a bound. Run with
 /// `cargo test -p formiga-core --release measure_face_cover_for_each_generator -- --ignored --nocapture`.

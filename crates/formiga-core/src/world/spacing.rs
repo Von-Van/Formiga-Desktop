@@ -34,6 +34,18 @@ const FACE_BAND_RATIO: f32 = 0.75;
 /// The same reach for body against body: two 44-pixel bodies stop meeting at 44 of 48 pixels.
 const BODY_BAND_RATIO: f32 = 0.92;
 
+/// How far short of a spacing a pair may measure and still count as spaced by it, in points.
+/// The village and every line-up place companions exactly the face-clear distance apart, and the
+/// distance between two such positions can come back a rounding error under the one they were
+/// placed at; a pair placed exactly clear is clear, as the art the ratios were measured from is.
+const SPACING_SLACK: f32 = 0.01;
+
+/// Whether two contact points `gap` apart are closer than `spacing`, counting a pair placed
+/// exactly that far apart as spaced by it.
+pub(super) fn closer_than(gap: f32, spacing: f32) -> bool {
+    gap.abs() < spacing - SPACING_SLACK
+}
+
 /// How long a face may stay covered before somebody steps aside. Long enough that a tag, a vault,
 /// or a hand-off reads as contact rather than a mistake; short enough to be over in a moment.
 const COVER_GRACE_SECONDS: f32 = 1.25;
@@ -309,7 +321,10 @@ impl Placed {
 fn face_is_covered(covered: &Placed, coverer: &Placed) -> bool {
     let width = covered.width.max(coverer.width);
     covered.monitor == coverer.monitor
-        && (covered.position.x - coverer.position.x).abs() < width * FACE_CLEAR_RATIO
+        && closer_than(
+            covered.position.x - coverer.position.x,
+            width * FACE_CLEAR_RATIO,
+        )
         && (covered.position.y - coverer.position.y).abs() < width * FACE_BAND_RATIO
 }
 
@@ -317,7 +332,7 @@ fn face_is_covered(covered: &Placed, coverer: &Placed) -> bool {
 fn bodies_overlap(a: &Placed, b: &Placed) -> bool {
     let width = a.width.max(b.width);
     a.monitor == b.monitor
-        && (a.position.x - b.position.x).abs() < width * FULL_CLEAR_RATIO
+        && closer_than(a.position.x - b.position.x, width * FULL_CLEAR_RATIO)
         && (a.position.y - b.position.y).abs() < width * BODY_BAND_RATIO
 }
 
@@ -417,7 +432,8 @@ impl World {
         self.save
             .creatures
             .iter()
-            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            // Not here yet, or inside its house behind the drawn curtain: nothing of it is drawn.
+            .filter(|creature| creature.state.arrival_delay_secs <= 0.0 && !creature.state.indoors)
             .map(|creature| {
                 let monitor_scale = desktop
                     .monitors

@@ -196,11 +196,10 @@ impl Clubhouse {
             } else {
                 (ActionKind::Greet, frame - 6)
             };
-            let tile = CreatureRenderer::render_frame(
+            let tile = CreatureRenderer::render_studio_frame(
                 &preview.creature.appearance,
                 action,
                 index as u8,
-                true,
             );
             for y in 0..48 {
                 for x in 0..48 {

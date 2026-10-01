@@ -39,6 +39,11 @@ fn a_yawn_travels_to_a_friend_and_now_and_then_to_a_third_who_holds_out_first() 
     let (mut caught, mut resisted) = (0, 0);
     for seed in 0..40_u8 {
         let mut world = settled_colony([seed; 32], 4, created, &desktop);
+        // Nobody's own pastimes come due while the yawn goes round, so only the yawn is seen.
+        let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+        for id in ids {
+            world.home_moment_timers.insert(id, 60.0);
+        }
         world.beats.yawn_now();
         let started = record_beats(&mut world, created, &desktop, 200);
         let yawns: Vec<(CreatureId, f32)> = started
@@ -430,8 +435,8 @@ fn a_leaf_on_the_face_is_a_start_a_shake_and_carrying_on() {
     assert!(lowest <= world.save.creatures[1].state.position.y + 0.01);
 }
 
-/// A snack gets away: eaten, dropped with a start, chased to where it stopped rolling, picked up
-/// and eaten on with.
+/// A snack gets away: eaten, dropped with a start, chased to where it stopped rolling, picked up,
+/// and brought back to be eaten on with where it was.
 #[test]
 fn a_dropped_snack_is_chased_picked_up_and_eaten_on_with() {
     let created = datetime!(2026-01-01 0:00 UTC);
@@ -450,12 +455,15 @@ fn a_dropped_snack_is_chased_picked_up_and_eaten_on_with() {
             before: 1.0,
             from,
             to,
+            back: from,
             eat: 2.0,
         },
     );
     let mut actions: Vec<ActionKind> = Vec::new();
     let mut beats: Vec<BeatKind> = Vec::new();
     let mut apple: Vec<f32> = Vec::new();
+    let mut picked_up_at = None;
+    let mut finished_at = from.x;
     for _ in 0..600 {
         world.tick(created, 0.05, &desktop);
         let creature = world.save.creatures.iter().find(|c| c.id == id).unwrap();
@@ -466,6 +474,9 @@ fn a_dropped_snack_is_chased_picked_up_and_eaten_on_with() {
             && beats.last() != Some(&beat.kind)
         {
             beats.push(beat.kind);
+            if beat.kind == BeatKind::Retrieve {
+                picked_up_at = Some(creature.state.position.x);
+            }
         }
         if let Some((prop, at)) = world.loose_props(&desktop.monitors).first().copied() {
             assert_eq!(prop, VillageProp::Apple);
@@ -476,6 +487,7 @@ fn a_dropped_snack_is_chased_picked_up_and_eaten_on_with() {
         if !world.village_life.contains_key(&id) {
             break;
         }
+        finished_at = creature.state.position.x;
     }
     assert!(
         !world.village_life.contains_key(&id),
@@ -487,8 +499,18 @@ fn a_dropped_snack_is_chased_picked_up_and_eaten_on_with() {
         .iter()
         .position(|a| *a == ActionKind::Traverse)
         .unwrap();
-    let again = actions.iter().rposition(|a| *a == ActionKind::Eat).unwrap();
-    assert!(eat < chase && chase < again, "{actions:?}");
+    // After it, a moment picking it up, back with it, and eating again.
+    assert_eq!(
+        actions[chase..chase + 4],
+        [
+            ActionKind::Traverse,
+            ActionKind::Idle,
+            ActionKind::Traverse,
+            ActionKind::Eat
+        ],
+        "{actions:?}"
+    );
+    assert!(eat < chase, "{actions:?}");
     assert!(
         apple.windows(2).all(|pair| pair[1] >= pair[0] - 0.01),
         "rolled one way"
@@ -497,8 +519,17 @@ fn a_dropped_snack_is_chased_picked_up_and_eaten_on_with() {
         (apple.last().unwrap() - to.x).abs() < 0.5,
         "stopped where it rolled to"
     );
-    let creature = world.save.creatures.iter().find(|c| c.id == id).unwrap();
-    assert!((creature.state.position.x - to.x).abs() < 20.0, "chased it");
+    // Picked up from beside where it stopped, a third of a frame short of it.
+    assert!(
+        picked_up_at.is_some_and(|x: f32| (x - to.x).abs() < 24.0),
+        "chased it: picked up at {picked_up_at:?}, from {} to {}",
+        from.x,
+        to.x
+    );
+    assert!(
+        (finished_at - from.x).abs() < 0.5,
+        "and brought it back to finish"
+    );
 }
 
 /// Sat down just off the cushion, a start at finding the ground, a shuffle across onto it, and a

@@ -2,6 +2,49 @@
 
 All notable changes are documented here.
 
+## [0.62.2] - 2026-09-30
+
+### Fixed
+
+- The creature studio's first look at a new companion is a friendly one. Its candidates were shown
+  walking, and a walk wears the focused face: on the faces new companions have had since 0.62.0,
+  that cut the top off each eye flat, which read as sunglasses or a glare over a straight mouth. The
+  studio now shows a new face walking along pleased with itself — eyes open with their shine, a
+  small smile, a beak tipped up — and then the wave it always ended on. Out on the desktop the
+  focused look keeps its eyes open too, their shine moved ahead to where the walk is going, and a
+  face whose mouth is a smile now smiles at rest instead of drawing a straight line. Companions from
+  before 0.62.0 are drawn exactly as they were: every body frame and every face of the owner's six,
+  and of the three reference creatures, is identical to 0.62.1's.
+- Residents at home keep out of each other's faces. Nothing moves anybody aside while the colony is
+  home, and the village's own ways let faces stay covered for long stretches: on the owner's colony
+  of six, over forty simulated minutes at home, 208 times for more than five and a quarter seconds,
+  1,607 seconds in all and the worst for 30.9. What did it, and what changed:
+  - A stroll dawdled at its own slow pace past whoever stood at their place, and the places stand
+    shoulder to shoulder, so a resident strolling home passed face after face for seconds each. A
+    stroll now picks up to the ordinary walk while it goes past somebody and eases back once it is
+    by, and anybody walking close behind somebody going the same way drops back to give them room.
+  - Everybody's first stop is beside its own door, and neighbouring doors are less than a face
+    apart: a mini stood exactly on its big version, and neighbours on each other. Whoever gets
+    there first keeps the spot and the next stands a step further out, or goes straight to its own
+    place, and a stop at a door or at the far end of a stroll ends as soon as somebody settles
+    beside it.
+  - A nap on a cushion or a turn in the garden could happen right beside somebody's place, for as
+    long as it took, and a dropped snack was finished wherever it had rolled. Somebody busy now has
+    the spot to themselves: a resident whose place is right beside it waits somewhere clear — often
+    the busy one's own empty place — and comes back once they are done; nothing settles in front of
+    somebody standing there; quiet moments start only at a resident's own place or door; a chore
+    takes whichever side of the door is clear; and a snack that rolls away is chased and carried
+    back to be finished.
+  - Two companions placed exactly a face apart, as the village's places and every line-up are,
+    could count as covering each other by a rounding error. They no longer do.
+
+  Over the same forty minutes, faces stay covered past five and a quarter seconds 7 times, 44
+  seconds in all, the worst for 7.5. Over six seeded colonies each of four and of six from both
+  generators, eight minutes apiece, that went from 231–385 times a group, the worst 35–47 seconds,
+  to 7–26, the worst 8.4–9.5, most of what is left being chores and passing. An afternoon at home
+  has as many quiet moments and plans as before, and a tick at home costs about 0.3 µs more on
+  `tick-bench`, nothing beside drawing a frame.
+
 ## [0.62.1] - 2026-09-30
 
 ### Fixed

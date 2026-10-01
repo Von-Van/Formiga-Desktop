@@ -1,4 +1,4 @@
-# Formiga · v0.62.1
+# Formiga · v0.62.2
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -93,7 +93,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.62.1-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.62.2-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -105,17 +105,19 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.62.1
+## New in 0.62.2
 
-Companions keep out of each other's faces again. The new companions 0.62.0 brought could end up
-standing over each other's faces for several seconds at a time: somebody watching a game of tag
-over a player, a dancer over a sleeper, a companion stepping out of a slow walker's way straight
-into its path. Now a game gives way when it keeps a face covered, a companion steps aside to the
-side the other is leaving rather than the side it is heading for, and one on its way to bed steps
-aside like anybody else. Over the same test sessions, the longest a face stays covered in a colony
-of four went from nearly eleven seconds to under five, and in a full colony from eighteen to under
-seven. It follows 0.62.0, which gave every companion a temperament of its own and new companions
-cuter faces; the release notes describe it.
+A first look at a new companion is a friendly one, and residents at home keep out of each other's
+faces. The creature studio used to show its new faces walking with the focused look, which on the
+faces 0.62.0 brought cut the eyes off flat into something like sunglasses over a straight mouth;
+now they walk along pleased with themselves, eyes bright and a small smile, before they wave. Out
+on the desktop that focused look keeps its eyes open, and a face whose mouth is a smile smiles at
+rest. At home, a stroll hurries past whoever it passes, a mini stops beside its big version rather
+than on top of it, and somebody napping on the cushion or tending the garden next to a neighbour's
+spot is given room until they are done. On a colony of six over forty minutes at home, faces stayed
+covered for more than five and a quarter seconds 7 times rather than 208. Companions from before 0.62.0 look
+exactly as they did. It follows 0.62.1, which kept the new companions out of each other's faces
+out on the desktop; the release notes describe it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

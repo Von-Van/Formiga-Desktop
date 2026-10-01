@@ -4,6 +4,20 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.62.2
+
+A first look at a new companion is a friendly one, and residents at home keep out of each other's
+faces. The creature studio used to show its new faces walking with the focused look, which on the
+faces 0.62.0 brought cut the eyes off flat into something like sunglasses over a straight mouth;
+now they walk along pleased with themselves, eyes bright and a small smile, before they wave. Out
+on the desktop that focused look keeps its eyes open, and a face whose mouth is a smile smiles at
+rest. At home, a stroll hurries past whoever it passes, a mini stops beside its big version rather
+than on top of it, and somebody napping on the cushion or tending the garden next to a neighbour's
+spot is given room until they are done. On a colony of six over forty minutes at home, faces stayed
+covered for more than five and a quarter seconds 7 times rather than 208. Companions from before 0.62.0 look
+exactly as they did. It follows 0.62.1, which kept the new companions out of each other's faces
+out on the desktop; the release notes describe it.
+
 ## New in 0.62.1
 
 Companions keep out of each other's faces again. The new companions 0.62.0 brought could end up

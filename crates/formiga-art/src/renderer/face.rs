@@ -429,7 +429,6 @@ impl EyeLook {
             // Wide open for a fright, as round as it goes: the outline stays dark and the rest
             // shows white round the pupil.
             E::Startled if eyelids == EyelidPose::Open => return Self::Wide(mask.rounder()),
-            E::Focused => mask.lid(1),
             // Down to a slit: heavy lids are thin, or they read as dark glasses.
             E::Sleepy => mask.lid(mask.height - 2),
             E::Bored => mask.lid(third),
@@ -621,7 +620,12 @@ fn draw_layout_eye(
                 (open.width - 1) / 2,
                 (open.height - 1) / 2 + i32::from(open.height < 5),
             );
-            let (gaze_x, gaze_y) = (i32::from(state.gaze.x), i32::from(state.gaze.y));
+            // Focused looks where it is going: ahead, unless something has its eye.
+            let gaze_x = match state.gaze.x {
+                0 if state.expression == ExpressionKind::Focused => 1,
+                x => i32::from(x),
+            };
+            let gaze_y = i32::from(state.gaze.y);
             let mut spots: Vec<(i32, i32)> = match face.highlight_style {
                 HighlightStyle::Single => vec![(0, -1)],
                 HighlightStyle::Double => vec![(0, -1), (1, 1)],
@@ -823,7 +827,7 @@ fn draw_layout_mouth(
         }
         E::Neutral | E::Sleepy => match face.mouth_style {
             MouthStyle::Tiny | MouthStyle::Beak => put(canvas, &[(0, 0)], ink),
-            MouthStyle::Smile => put(canvas, &[(-1, -1), (0, -1), (1, -1)], ink),
+            MouthStyle::Smile => put(canvas, &[(-2, -1), (-1, 0), (0, 0), (1, 0), (2, -1)], ink),
             MouthStyle::Cat => put(canvas, &[(-1, -1), (0, 0), (1, -1)], ink),
         },
     }

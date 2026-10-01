@@ -615,6 +615,21 @@ impl CreatureRenderer {
         Self::render_composited_frame(genome, action, frame, facing_right, reduce_motion, state)
     }
 
+    /// One frame of how a new face is first shown in the creature studio: out for a walk and
+    /// pleased about it, eyes open, and then a wave. Out on the desktop a walk is focused on
+    /// where it is going; a first look should show the face at its friendliest.
+    pub fn render_studio_frame(genome: &AppearanceGenome, action: ActionKind, frame: u8) -> Canvas {
+        let state = FaceRenderState {
+            expression: match action {
+                ActionKind::Traverse => ExpressionKind::Content,
+                action => expression_for_action(action),
+            },
+            eyelids: EyelidPose::Open,
+            gaze: GazeDirection::new(0, 0),
+        };
+        Self::render_composited_frame(genome, action, frame, true, false, state)
+    }
+
     /// One whole frame of an action with whatever the creature is wearing, looking ahead: how
     /// the colony page shows something being tried on, in each of a few poses.
     pub fn render_dressed_frame(

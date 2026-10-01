@@ -1,4 +1,4 @@
-# Modular creature generation · v0.62.1
+# Modular creature generation · v0.62.2
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -191,8 +191,10 @@ The modular renderer lives beside the legacy renderer in `formiga-art`. It uses 
 body frames, 16×16 face frames, poses, fifteen expressions, and animation atlases. A face drawn
 from an authored layout carries most of its expression in the eyes' own shape — a lid lowered flat
 for sleepy or bored, a top corner cut on a slant for a scowl or worry, a shut curve for joy and
-affection, white round a shrunken pupil for a fright — and draws brows, where the face has them,
-only while they move, a clear row above the eyes. Every other face is drawn as it always was. Tail/ear geometry sits
+affection, white round a shrunken pupil for a fright, the eyes left open with their shine moved
+ahead for focus — and draws brows, where the face has them, only while they move, a clear row above
+the eyes. A layout's smiling mouth smiles even at rest. The creature studio shows a new face first
+walking along pleased with itself, eyes open, and then waving. Every other face is drawn as it always was. Tail/ear geometry sits
 behind the body; gestures keep the reserved face area covered and never draw over the layered face;
 outlines connect paws to bodies, and each side has exactly one limb that a gesture carries out. The palette
 resolver softens colors once during atlas construction and guarantees dark facial contrast. There

@@ -73,11 +73,13 @@ pub(super) enum Plan {
     },
     /// A leaf came down onto its face.
     LeafOnFace,
-    /// Its snack rolled away; after it, pick it up, and carry on eating.
+    /// Its snack rolled away; after it, pick it up, and back with it to carry on eating.
     DroppedSnack {
         before: f32,
         from: Point,
         to: Point,
+        /// Where it was eating, and goes back to.
+        back: Point,
         eat: f32,
     },
     /// Sat down beside the cushion, and shuffled across onto it.
@@ -578,6 +580,7 @@ pub(super) fn advance(
             before,
             from,
             to,
+            back,
             eat,
         } => match activity.step {
             // Eating, until it gets away.
@@ -619,6 +622,15 @@ pub(super) fn advance(
             3 => {
                 if beat_done(creature) {
                     creature.state.beat = None;
+                    activity.next();
+                }
+                true
+            }
+            // Back to where it was: wherever the snack ran off to, somebody else is likely
+            // standing, and the rest of it is eaten at its own spot.
+            4 => {
+                show(creature, ActionKind::Traverse, context.events);
+                if walk(creature, back, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
                     show(creature, ActionKind::Eat, context.events);
                     activity.next();
                 }
@@ -787,6 +799,9 @@ pub(super) struct VillageOptions<'a> {
     /// Cushions nobody is on.
     pub(super) cushions: &'a [Point],
     pub(super) onlookers: &'a [Onlooker],
+    /// Where everybody else is busy or standing just now: no plan settles in for a while in
+    /// front of any of them.
+    pub(super) taken: &'a [Point],
     /// Whether one more can go indoors without leaving the village looking empty.
     pub(super) may_go_in: bool,
     /// Whether nobody is up on its roof already.
@@ -960,6 +975,14 @@ pub(super) fn choose(
     let (low, high) = options.commons.standing_span();
     // The side of `x` this resident is coming from.
     let side_of = |x: f32| if at.x > x { 1.0 } else { -1.0 };
+    // Somebody already standing or busy right there.
+    let face_clear = options.frame * spacing::FACE_CLEAR_RATIO;
+    let spoken_for = |x: f32| {
+        options
+            .taken
+            .iter()
+            .any(|busy| spacing::closer_than(busy.x - x, face_clear))
+    };
     let plan = match (pick, house) {
         (0, _) => return Choice::Moment,
         (1, _) => match garden {
@@ -967,11 +990,19 @@ pub(super) fn choose(
             None => return Choice::Wait,
         },
         (2, Some(house)) => {
+            // On the side of the door it comes from, or the other side if somebody is standing
+            // or busy there. A chore is over in a moment, so with both taken it goes ahead.
+            let stand_at = |side: f32| house.at.x + side * house.half * 0.55;
             let side = side_of(house.at.x);
+            let side = if spoken_for(stand_at(side)) && !spoken_for(stand_at(-side)) {
+                -side
+            } else {
+                side
+            };
             Plan::Chore {
                 slot: house.slot,
                 stand: Point {
-                    x: house.at.x + side * house.half * 0.55,
+                    x: stand_at(side),
                     y: ground,
                 },
                 face_right: side < 0.0,
@@ -1014,11 +1045,18 @@ pub(super) fn choose(
                 x: at.x + ahead * options.frame * 0.2,
                 y: ground,
             };
-            let mut to = from.x + ahead * rng.random_range(0.9..1.6) * options.frame;
-            if !(low..=high).contains(&to) {
-                // No room ahead: it rolls the other way instead.
-                to = from.x - ahead * rng.random_range(0.9..1.6) * options.frame;
-            }
+            // No room ahead, or somebody standing or busy where it would stop: it rolls the other
+            // way instead.
+            let roll = rng.random_range(0.9..1.6) * options.frame;
+            let ways = [from.x + ahead * roll, from.x - ahead * roll];
+            let to = ways
+                .into_iter()
+                .find(|x| (low..=high).contains(x) && !spoken_for(*x))
+                .unwrap_or(if (low..=high).contains(&ways[0]) {
+                    ways[0]
+                } else {
+                    ways[1]
+                });
             Plan::DroppedSnack {
                 before: rng.random_range(2.0..4.0),
                 from,
@@ -1026,6 +1064,7 @@ pub(super) fn choose(
                     x: to.clamp(low, high),
                     y: ground,
                 },
+                back: Point { x: at.x, y: ground },
                 eat: rng.random_range(4.0..8.0),
             }
         }
@@ -1052,10 +1091,31 @@ pub(super) fn choose(
         }
         _ => return Choice::Wait,
     };
+    // Never settling in for a while in front of somebody standing or busy there: it waits its
+    // turn instead.
+    if plan.spot().is_some_and(|spot| spoken_for(spot.x)) {
+        return Choice::Wait;
+    }
     Choice::Plan(plan)
 }
 
 impl Plan {
+    /// Where on the ground this plan keeps its resident a while, from the moment it sets off: the
+    /// spot everybody else keeps clear of until it is done. A chore, a leaf on its face and the
+    /// chase after a snack are over in a moment, and indoors and up on the roof it is nowhere
+    /// anybody could stand in front of it.
+    pub(super) fn spot(&self) -> Option<Point> {
+        match *self {
+            Self::Garden { stand, .. } => Some(stand),
+            Self::MissedCushion { cushion, .. } => Some(cushion),
+            Self::Chore { .. }
+            | Self::DroppedSnack { .. }
+            | Self::Indoors { .. }
+            | Self::Roof { .. }
+            | Self::LeafOnFace => None,
+        }
+    }
+
     /// Roughly how long this plan takes, for spacing out the resident's next turn.
     pub(super) fn rough_length(&self) -> f32 {
         match *self {
