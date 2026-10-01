@@ -852,3 +852,34 @@ check for a prank or a tapping foot; who is a troublemaker and who is impatient 
 per companion, and a companion's traits are otherwise read only when something happens. The
 benchmark's colony file is 56,543 bytes against 53,308, the temperaments and fractional leanings,
 and a save of it takes 5.65 ms against 5.17. The app binary is 15.8 MB against 15.6.
+
+## 0.63.0
+
+### On the desktop
+
+Measured as for 0.62.0 — the owner's colony of six copied into a scratch data directory, a minute
+to settle and two minutes sampled by `scripts/measure-macos.sh` — with the two builds alternated in
+the same sitting, and a temporary counter of presented frames and of the process's CPU in each ten
+seconds:
+
+| | average CPU | frames a second | process CPU per frame | RSS |
+|---|---:|---:|---:|---:|
+| 0.62.5, first run | 3.74% | 19.5 | 1.90 ms | 62.3 MB |
+| 0.63.0, first run | 3.71% | 19.6 | 1.95 ms | 62.2 MB |
+| 0.62.5, second run | 3.02% | 15.8 | 2.05 ms | 63.7 MB |
+| 0.63.0, second run | 2.54% | 11.8 | 2.10 ms | 61.8 MB |
+
+The average follows how much of the time the colony is on the move, and so how many frames are
+drawn; what a frame costs is the same for both, about 2 ms of the process's CPU. A single
+earlier pair, not alternated, read 2.94% and 3.92% for the same two builds, which is how far one
+run's activity can move the average. 0.63.0 costs what 0.62.5 does. A companion's details are drawn
+into the frames it already bakes, so its textures have the same number of cells and the same budget.
+
+### Staging the vertices, tried and dropped
+
+0.59.2 found `queue.write_buffer` creating and mapping a fresh Metal buffer for every frame's
+vertices. Staging them through `wgpu::util::StagingBelt` instead, which keeps a few chunks mapped and
+reuses them, cut the main thread's share of a frame from 574 to 502 µs (two runs of each, thread
+CPU timed around the frame). The process as a whole spent no less: 1.95 ms a frame for 0.62.5
+against 1.99 ms with the belt, over four alternated runs of each. The work moved to other threads
+rather than going away, so it is not in 0.63.0.

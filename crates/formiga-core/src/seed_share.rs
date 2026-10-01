@@ -1,4 +1,4 @@
-use crate::{CreatureDesign, CreatureOrigin, Edition};
+use crate::{CreatureDesign, CreatureOrigin, DetailParts, Edition};
 use sha2::{Digest, Sha256};
 
 const FORMAT_VERSION: u8 = 1;
@@ -39,7 +39,9 @@ impl From<SharedCreatureSeed> for CreatureOrigin {
 pub enum SeedCodeError {
     #[error("seed code must begin with FORMIGA")]
     Prefix,
-    #[error("seed code must contain fifteen or twenty-three groups of four characters")]
+    #[error(
+        "seed code must contain fifteen, twenty-three, or twenty-six groups of four characters"
+    )]
     Format,
     #[error("seed code has an unsupported format version")]
     Version,
@@ -58,37 +60,33 @@ pub enum SeedCodeError {
 /// Version 1 carries a seed alone, version 2 a seed and a modular recipe, and version 3 a recipe
 /// with classic parts in the four bytes version 2 keeps at zero. Version 4 is a recipe drawn since
 /// 0.62.0, whose archetype and face fill the last of those four bytes; the companion it brings
-/// back has the temperament the current generator gives it. A recipe without classic parts or an
-/// archetype is still written as version 2, so every version since v0.55.0 can import it.
+/// back has the temperament the current generator gives it. Version 5, since 0.63.0, is a recipe
+/// with details, carried in eight more bytes, so it is twenty-six groups long rather than
+/// twenty-three. A recipe without classic parts or an archetype is still written as version 2, so
+/// every version since v0.55.0 can import it, and a recipe without details as version 4.
 pub fn encode_creature_seed(origin: CreatureOrigin) -> String {
     debug_assert!(origin.source_generation <= 3);
     let version = match origin.design {
+        Some(design) if design.edition() == Edition::Details => 5,
         Some(design) if design.edition() == Edition::Archetypes => 4,
         Some(design) if !design.classic.is_modular() => 3,
         Some(_) => 2,
         None => FORMAT_VERSION,
     };
-    let mut payload = vec![
-        0_u8;
-        if origin.design.is_some() {
-            57
-        } else {
-            PAYLOAD_BYTES
-        }
-    ];
+    let mut payload = vec![0_u8; payload_bytes(version)];
     payload[0] = (version << 4) | origin.source_generation.min(3);
     payload[1..33].copy_from_slice(&origin.source_colony_seed);
     if let Some(design) = origin.design {
         payload[33..53].copy_from_slice(&design.to_bytes());
+        if version == 5 {
+            payload[53..61].copy_from_slice(&design.details.to_bytes());
+        }
     }
     let checksum_start = payload.len() - 4;
     let digest = checksum(&payload[..checksum_start]);
     payload[checksum_start..].copy_from_slice(&digest);
     let encoded = encode_base32(&payload);
-    debug_assert_eq!(
-        encoded.len(),
-        if version == 1 { ENCODED_CHARACTERS } else { 92 }
-    );
+    debug_assert_eq!(encoded.len(), encoded_characters(version));
     let grouped = encoded
         .as_bytes()
         .chunks(4)
@@ -107,19 +105,19 @@ pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeEr
         return Err(SeedCodeError::Prefix);
     };
     let groups: Vec<_> = body.split('-').collect();
-    if ![GROUPS, 23].contains(&groups.len()) || groups.iter().any(|group| group.len() != 4) {
+    if ![GROUPS, 23, 26].contains(&groups.len()) || groups.iter().any(|group| group.len() != 4) {
         return Err(SeedCodeError::Format);
     }
     let encoded = groups.concat();
-    if ![ENCODED_CHARACTERS, 92].contains(&encoded.len()) {
+    if ![ENCODED_CHARACTERS, 92, 104].contains(&encoded.len()) {
         return Err(SeedCodeError::Length);
     }
     let payload = decode_base32(&encoded)?;
     let version = payload[0] >> 4;
-    if ![FORMAT_VERSION, 2, 3, 4].contains(&version) {
+    if ![FORMAT_VERSION, 2, 3, 4, 5].contains(&version) {
         return Err(SeedCodeError::Version);
     }
-    if payload.len() != if version == 1 { PAYLOAD_BYTES } else { 57 } {
+    if payload.len() != payload_bytes(version) {
         return Err(SeedCodeError::Length);
     }
     let generation = payload[0] & 0x0f;
@@ -133,10 +131,22 @@ pub fn decode_creature_seed(code: &str) -> Result<SharedCreatureSeed, SeedCodeEr
     let design = if version == 1 {
         None
     } else {
-        let design = CreatureDesign::from_bytes(&payload[33..53]).ok_or(SeedCodeError::Design)?;
-        // Version 2 reserves the classic bytes, version 3 exists only to fill them, and version 4
-        // only to carry an archetype, which neither of the others may.
+        let mut design =
+            CreatureDesign::from_bytes(&payload[33..53]).ok_or(SeedCodeError::Design)?;
+        if version == 5 {
+            let details = DetailParts::from_bytes(&payload[53..61]).ok_or(SeedCodeError::Design)?;
+            let detailed = CreatureDesign { details, ..design };
+            // Only details the recipe can carry, written the one way it carries them.
+            if detailed != detailed.bounded() {
+                return Err(SeedCodeError::Design);
+            }
+            design = detailed;
+        }
+        // Version 2 reserves the classic bytes, version 3 exists only to fill them, version 4
+        // only to carry an archetype, which neither of the others may, and version 5 only to
+        // carry details.
         let fits = match version {
+            5 => design.edition() == Edition::Details,
             4 => design.edition() == Edition::Archetypes,
             3 => design.edition() == Edition::Original && !design.classic.is_modular(),
             _ => design.edition() == Edition::Original && design.classic.is_modular(),
@@ -169,12 +179,34 @@ pub fn derive_imported_colony_seed(shared: SharedCreatureSeed) -> [u8; 32] {
         } else {
             &bytes[..]
         });
+        // Details hash after, and only when there are some, so every earlier colony is unchanged.
+        if !design.details.is_none() {
+            hash.update(design.details.to_bytes());
+        }
     }
     let mut derived: [u8; 32] = hash.finalize().into();
     if derived == shared.source_colony_seed {
         derived[0] ^= 0x80;
     }
     derived
+}
+
+/// The bytes a version's payload has: a version byte, the seed, the recipe from version 2, the
+/// details in version 5, and a four-byte checksum.
+const fn payload_bytes(version: u8) -> usize {
+    match version {
+        1 => PAYLOAD_BYTES,
+        5 => 65,
+        _ => 57,
+    }
+}
+
+const fn encoded_characters(version: u8) -> usize {
+    match version {
+        1 => ENCODED_CHARACTERS,
+        5 => 104,
+        _ => 92,
+    }
 }
 
 fn checksum(payload: &[u8]) -> [u8; 4] {
@@ -213,7 +245,11 @@ fn decode_base32(value: &str) -> Result<Vec<u8>, SeedCodeError> {
             bits.push(((index >> shift) & 1) as u8);
         }
     }
-    let payload_bytes = if value.len() == 92 { 57 } else { PAYLOAD_BYTES };
+    let payload_bytes = match value.len() {
+        104 => 65,
+        92 => 57,
+        _ => PAYLOAD_BYTES,
+    };
     let data_bits = payload_bytes * 8;
     if bits.len() < data_bits || bits[data_bits..].iter().any(|bit| *bit != 0) {
         return Err(SeedCodeError::Length);
@@ -235,7 +271,12 @@ mod tests {
             let shared = SharedCreatureSeed {
                 source_colony_seed: [63; 32],
                 source_generation: generation,
-                design: Some(CreatureDesign::generated([63; 32], generation, None)),
+                design: Some(CreatureDesign::generated_by(
+                    Edition::Archetypes,
+                    [63; 32],
+                    generation,
+                    None,
+                )),
             };
             let code = encode_creature_seed(shared.into());
             assert_eq!(code.split('-').skip(1).count(), 23);
@@ -343,7 +384,7 @@ mod tests {
     fn an_archetype_travels_in_a_version_4_code_and_nowhere_else() {
         for index in 0..32_u64 {
             let seed = crate::SeedStream::new([29; 32]).bytes("v4-codes", index);
-            let design = CreatureDesign::generated(seed, 0, None);
+            let design = CreatureDesign::generated_by(Edition::Archetypes, seed, 0, None);
             assert_eq!(design.edition(), Edition::Archetypes);
             let shared = SharedCreatureSeed {
                 design: Some(design),
@@ -437,6 +478,70 @@ mod tests {
         assert_ne!(first, shared.source_colony_seed);
     }
 
+    /// A recipe with details travels in a version 5 code, eight bytes longer; a version 5 code
+    /// without details, or with details the recipe cannot carry, is refused, and details are part
+    /// of the lineage an imported colony grows from.
+    #[test]
+    fn details_travel_in_a_version_5_code_and_nowhere_else() {
+        let mut found = 0;
+        for index in 0..256_u64 {
+            let seed = crate::SeedStream::new([31; 32]).bytes("v5-codes", index);
+            let design = CreatureDesign::generated(seed, 0, None);
+            if design.details.is_none() {
+                assert_eq!(design.edition(), Edition::Archetypes);
+                continue;
+            }
+            found += 1;
+            assert_eq!(design.edition(), Edition::Details);
+            let shared = SharedCreatureSeed {
+                design: Some(design),
+                source_colony_seed: seed,
+                source_generation: 0,
+            };
+            let code = encode_creature_seed(shared.into());
+            assert_eq!(code.split('-').skip(1).count(), 26);
+            assert_eq!(decode_creature_seed(&code), Ok(shared));
+            let encoded = code.strip_prefix("FORMIGA-").unwrap().replace('-', "");
+            let payload = decode_base32(&encoded).unwrap();
+            assert_eq!(payload[0] >> 4, 5);
+            let resign = |payload: &mut Vec<u8>| {
+                let end = payload.len() - 4;
+                let digest = checksum(&payload[..end]);
+                payload[end..].copy_from_slice(&digest);
+            };
+            // No details at all, and an out-of-range part, are both refused.
+            let mut empty = payload.clone();
+            empty[53..61].copy_from_slice(&[0; 8]);
+            resign(&mut empty);
+            assert_eq!(
+                decode_creature_seed(&group_payload(&empty)),
+                Err(SeedCodeError::Design)
+            );
+            let mut wild = payload.clone();
+            wild[53] = 0x0f;
+            resign(&mut wild);
+            assert_eq!(
+                decode_creature_seed(&group_payload(&wild)),
+                Err(SeedCodeError::Design)
+            );
+            // A version 4 header cannot carry the longer payload.
+            let mut disguised = payload.clone();
+            disguised[0] = (4 << 4) | (disguised[0] & 0x0f);
+            resign(&mut disguised);
+            assert_eq!(
+                decode_creature_seed(&group_payload(&disguised)),
+                Err(SeedCodeError::Length)
+            );
+            let mut plain = shared;
+            plain.design.as_mut().unwrap().details = crate::DetailParts::default();
+            assert_ne!(
+                derive_imported_colony_seed(shared),
+                derive_imported_colony_seed(plain)
+            );
+        }
+        assert!(found > 20, "details are common enough to test: {found}");
+    }
+
     #[test]
     fn every_seed_code_boundary_is_validated_before_import() {
         let valid = encode_creature_seed(
@@ -477,7 +582,7 @@ mod tests {
 
         let encoded = valid.strip_prefix("FORMIGA-").unwrap().replace('-', "");
         let mut payload = decode_base32(&encoded).unwrap();
-        payload[0] = 5 << 4;
+        payload[0] = 6 << 4;
         let digest = checksum(&payload[..33]);
         payload[33..].copy_from_slice(&digest);
         assert_eq!(

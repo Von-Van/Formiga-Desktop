@@ -95,6 +95,8 @@ pub struct SettingsOutcome {
     pub remove_creature: Option<CreatureId>,
     pub request_random_creature: bool,
     pub request_reference_creature: bool,
+    /// Four more takes on the picture the ones on show came from.
+    pub request_reference_retry: bool,
     pub accept_creature_preview: Option<PreviewAcceptance>,
     /// A friend's code, asked over for a day.
     pub invite_visitor: Option<SharedCreatureSeed>,

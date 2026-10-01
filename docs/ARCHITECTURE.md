@@ -1532,12 +1532,21 @@ time it is linked into the shipped application.
 
 The desktop host opens a user-selected PNG or JPEG only after an explicit Creature Studio action.
 Decoding is capped at 16 MB, 4096 pixels per dimension, and 16 million pixels. The image is reduced
-to a maximum 64×64 analysis surface without distorting aspect ratio. Alpha-aware foreground cues
-summarize aspect, occupancy, symmetry, and upper/lower/side extensions. A fixed 512-bin color
-histogram chooses dominant coat and contrasting accent colors. Exactly 512 named-stream candidate
-recipes are adapted to these cues, rendered, and scored. The chosen preview contains its generated
-creature, seed, recipe, and display-only affinity score; image bytes, path, metadata,
-analysis pixels, and feature vectors leave scope after matching. This is not semantic recognition.
+to a maximum 64×64 analysis surface without distorting aspect ratio. The subject is its opaque
+pixels where the picture has transparency, and otherwise everything not flood-filled in from the
+edges in the commonest edge colour. Alpha-aware foreground cues summarize aspect, occupancy,
+symmetry, upper/lower/side extensions, and the mean colour of each ninth of the subject's box. A
+fixed 512-bin histogram, read by place with outline ink left out, gives the coat down the middle and
+the cues for a belly, wings high on both sides, a tail tip out to a side or up, and narrow points
+over the head (`Cues`), which are horns only on a picture with wings or a tip and otherwise
+pointed ears; the wings' colour becomes the accent.
+Exactly 512 named-stream candidate recipes — three in four shaped by the cues, trying the plausible
+body plans in turn, and one in four exploratory — are rendered and scored. `takes` returns four:
+the closest shaped candidate, the most coherent of the 24 closest, the closest on another body plan,
+and the closest exploratory one. Each preview contains its generated creature, seed, recipe, and
+display-only affinity score; image bytes, analysis pixels, and feature vectors leave scope after
+matching. The Studio keeps only the file path, in memory and only while the takes are on show, so
+"Four more takes" can search again with a new seed. This is not semantic recognition.
 
 Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
 generation uses an independent `modular-design-v1` stream, leaving legacy gene streams intact.
@@ -1562,6 +1571,17 @@ tinted near-black ink, a desaturated shade, a bright highlight — with coat lig
 eyes stay readable. The lit top moves the fill inside an unchanged outlined silhouette, classic nubs
 cover the same resting spot as modular paws, and stick legs lift the body over unmoved feet, so the
 reserved face, one limb per side, and the spacing boxes hold for every combination.
+
+Save version 21 adds `DetailParts` to the recipe — wing-nubs, horns, a belly patch and a tail tip,
+with a belly and a tip colour — absent from the file while there are none, so every earlier recipe
+reads unchanged. `Edition::Details` is the generator since 0.63.0: `CreatureDesign::detailed` takes
+the archetype recipe exactly as `drawn` makes it and then draws details from a
+`creature-details-v1` stream, each at about one in eight, leaning by archetype. `bounded` clears a
+detail that would double a part the recipe already has and the colour of a part it lacks, so a
+recipe has one form. Minis copy their parent's details. The renderer draws wings and horns before
+the body and head that cover their roots, the belly over the coat, and the tip at the end of a
+tapering tail, all inside the extents earlier parts already reach. A recipe with details needs a
+version 5 code, 65 payload bytes and twenty-six groups.
 
 Save version 11 gives every creature a typed adult or mini role, a persistent Keep flag, and a
 two-bit adult mini-arrival projection. Total colony size remains four, adult count is capped at
@@ -1609,7 +1629,8 @@ remain minis.
 - Creature cards: the save dialog, CPU canvas, font atlas, and PNG writer exist only during an
   explicit export; cancellation performs no render.
 - Reference matching: one bounded synchronous decode and 512-candidate procedural search occurs
-  only after file selection; no reference worker, cache, texture, or idle task persists.
+  only after file selection or "Four more takes"; no reference worker, cache, texture, or idle
+  task persists.
 - Thought bubbles: aged on the ordinary world tick; each lives 2.4 seconds and at most five exist,
   so there is no bubble timer or wakeup of its own.
 - Creature menu: the host's tick interval drops to 50 ms only while a menu is open, and a menu is

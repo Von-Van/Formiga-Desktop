@@ -4,6 +4,24 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.63.0
+
+A picture makes a better companion. Choose **Create from image…** in the creature studio and
+Formiga now reads where a picture's colours are — its coat, a lighter belly, wings high at its
+sides, a bright tip at the end of a tail — and whether it has horns or pointed ears, then offers
+four takes of its own to choose from: the closest, the cutest, one on another body, and a wildcard
+in the picture's colours. **Four more takes** looks again. A picture on a plain white background no
+longer turns into a white companion with the picture's colour only on its ears. The takes are
+clearly inspired by the picture but always Formiga companions, with Formiga's own faces and parts;
+nothing is traced.
+
+Companions can carry four new details: little wing-nubs, horns, a belly patch, and a flame or a
+bobble at the tip of the tail. Each turns up on about one new companion in eight, more often where
+it suits — wings and horns on whelps, a tip on bodies with a tail — and a mini keeps its parent's.
+Every companion you already have looks exactly as it did. A code for a companion with details needs
+0.63.0 or newer to import. It follows 0.62.5, which put critters and whelps on four legs; the
+release notes describe it.
+
 ## New in 0.62.5
 
 Four-pawed companions look like they are standing on four legs. Critters and whelps used to read as

@@ -1,4 +1,4 @@
-# Modular creature generation · v0.62.5
+# Modular creature generation · v0.63.0
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -41,11 +41,29 @@ companion with no recipe at all is one of the originals, and its minis are drawn
 from its own genes rather than given a recipe unrelated to it.
 
 Image generation analyzes at most 64×64 temporary pixels with aspect ratio preserved. Transparency
-or border contrast separates foreground; fixed color bins identify dominant and contrasting colors.
-Aspect and appendage cues adapt a fixed 512 candidates, with a quarter left exploratory. The
-candidate's rendered color and shape are compared to the summary. The affinity score is not a
-confidence that Formiga recognized the subject. Source images, paths, and feature vectors are
-discarded; only the accepted parts/proportions/colors become durable state.
+separates the subject where the picture has it; otherwise the commonest colour along the edges is
+the background, and everything joined to the edges in about that colour is filled in as background
+too. The commonest edge colour rather than the average keeps a subject that touches the edge — a
+wingtip, a tail — from tinting the background into something the subject's own pale parts then
+match, and filling in from the edges keeps a white belly or the shine in an eye inside the subject.
+
+The coat is the commonest colour down the middle of the subject, where the body is. Colours are
+then read by place, with near-black outline ink left out: a lighter second colour down the lower
+middle is a belly; a colour of their own high up on both sides are wings; a small saturated patch
+of another colour far out to a side or above the middle, where a tail goes, is a tip, while one
+below it, like a pair of feet, is not; and two or more narrow points across the top of the head are
+pointed ears, or on a picture that already has wings or a tip, horns in half the candidates and
+ears in the rest, since a picture cannot say which they are. The wings' colour becomes the
+accent. A tall picture with nothing at its sides that reads as a wing is not tried on the winged
+body. Aspect, appendage cues and these reads
+shape three in four of a fixed 512 candidates, which try the bodies the picture could be in turn;
+the rest are left exploratory. Each candidate is rendered and compared with the picture overall and
+in each ninth of its box, so colours count where they are. Four takes are offered: the closest of
+the shaped candidates, the cutest of the close ones by the generator's own coherence score, the
+closest on another body, and a wildcard from the exploratory ones. "Four more takes" searches again
+with a new seed. The affinity score is not a confidence that Formiga recognized the subject.
+Source images and feature vectors are discarded once the takes are drawn, and the path only while
+they are on show; only the accepted parts, proportions and colours become durable state.
 
 ## Classic parts
 
@@ -160,6 +178,28 @@ as 8 and 11 as 9, a row lower, and wears large eyes no wider set than the button
 
 ![The twelve face layouts, one to a column, in every expression and a blink](assets/face-sheet.png)
 
+## Details
+
+Since 0.63.0 a recipe can carry four small details over its body, each in the place a body of its
+plan has room for: **wing-nubs** folded up off the shoulders (or the back of a four-pawed body), a
+membrane over two ribs or three rounded feathers, in the accent colour; **horns** between the ears,
+short nubs or a longer pair swept back, pale like horn; a **belly** patch down the front, or along
+the underside of a four-pawed body, in a colour of its own; and a **tip** to a tapering tail, a
+flame flickering up from it or a round bobble, in another. Wings, horns and the tip grow from behind
+the body and the head, which are drawn over their roots, so the silhouette stays one connected
+shape and the reserved face is never crossed, and none of them reaches further out of the frame than
+the parts that came before them. A recipe never doubles a part it already has: a winged body grows
+no wing-nubs, antennae or sprouts no horns, and a classic tail no tip.
+
+A new companion draws its details last, from a `creature-details-v1` stream of their own, so the
+recipe under them is exactly the one the archetypes alone would draw. Each detail comes to about
+one companion in eight on its own, leaning toward the archetypes it suits — wings and horns toward
+whelps, a tip toward the bodies that carry a tail — so about four in ten have at least one and very
+few have all four. A tip brings the tapering tail it sits on. A belly is cream or a pale shade of the
+coat; a flame is a warm orange to gold, a bobble a brighter accent. A mini keeps its parent's
+details, and a mini of a parent without any is drawn exactly as before. Pictures reach the same
+details, in the picture's own colours, with a tip made vivid enough to stand out from the coat.
+
 ## Temperament
 
 A companion made by the new generator is given a temperament from a `temperament-v1` stream. It
@@ -225,7 +265,11 @@ classic parts it would otherwise quietly drop. A recipe the archetype generator 
 version 4 code, whose last reserved byte holds its archetype and face layout, a nibble each; the
 companion it brings back has the temperament that generator gives it. Neither older version may
 carry an archetype, a version 4 code must, and a version 4 code needs v0.62.0 or newer. Save
-version 20 adds temperaments and archetype recipes and migrates nothing, for the same reason. Incompatible recipe changes require a new format,
+version 20 adds temperaments and archetype recipes and migrates nothing, for the same reason. A
+recipe with details travels as a version 5 code, eight bytes longer — the four parts two to a byte,
+then the belly and tip colours — so it is twenty-six groups rather than twenty-three; a version 5
+code without details is rejected, and one needs v0.63.0 or newer. A recipe without details is still
+written as version 4 or older exactly as before. Save version 21 adds details and migrates nothing. Incompatible recipe changes require a new format,
 not reinterpretation of existing codes. Source provenance duplicates the bounded recipe so sharing
 does not depend on a reference file or a temporary preview.
 

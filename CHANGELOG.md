@@ -2,6 +2,48 @@
 
 All notable changes are documented here.
 
+## [0.63.0] - 2026-10-01
+
+### Added
+
+- Four details a companion can carry over its body: wing-nubs folded up off the shoulders (or the
+  back of a four-pawed body), as a membrane or as feathers, in the accent colour; horns between the
+  ears, short or swept back; a belly patch in a colour of its own; and a flame or a round bobble at
+  the tip of a tapering tail. Each comes to about one new companion in eight on its own, leaning
+  toward the archetypes it suits, from a `creature-details-v1` stream drawn after everything else,
+  so the recipe under them is exactly the one 0.62's generator draws. A tip brings the tapering tail
+  it sits on. A recipe never doubles a part it has: no wing-nubs on a winged body, no horns among
+  antennae or sprouts, no tip on a classic tail. Minis keep their parent's details. Every part stays
+  one connected shape with the face clear, inside the extents earlier parts already reach.
+- The creature studio offers four takes on a picture — the closest, the cutest of the close ones,
+  the closest on another body, and a wildcard in the picture's colours — and **Four more takes**
+  to search again. The file's path is kept in memory only while those takes are on show.
+- Version 5 seed codes, twenty-six groups long, carry a recipe with details; a code without details
+  is written exactly as before. Save version 21 adds details and migrates nothing.
+
+### Changed
+
+- The picture reader reads colours by place. The coat is the commonest colour down the middle; a
+  lighter colour down the lower middle is a belly; a colour of their own high on both sides are
+  wings, whose colour becomes the accent; a small saturated patch out to a side or above, where a
+  tail goes, is a tip; and narrow points over the head are pointed ears, or horns on a picture that
+  already has wings or a tip. Candidates try each body the picture could be in turn, and are
+  compared with the picture in each ninth of its box as well as overall.
+- `formiga-tools cuteness-sheet` draws from the 0.63 generator by default; `--edition archetypes`
+  draws what 0.62 made from the same seeds.
+
+### Fixed
+
+- A picture on a plain background whose subject touched the edge of the picture — a wingtip, a
+  tail — was read with the background averaged into a pale grey, so white counted as part of the
+  subject and became the coat. The background is now the commonest colour along the edges, filled
+  in from them, so a white belly or the shine in an eye still counts as the subject.
+
+### Removed
+
+- Two functions nothing called, `FixedClock::set_utc` and `World::forget_last_edit`, and a copy of
+  the colour conversions the generator already has.
+
 ## [0.62.5] - 2026-10-01
 
 ### Fixed

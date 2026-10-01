@@ -404,11 +404,18 @@ impl FormigaApp {
                 }
             }
         }
-        if outcome.request_reference_creature
-            && let Some(path) = rfd::FileDialog::new()
+        let reference = if outcome.request_reference_retry {
+            self.settings_window
+                .as_ref()
+                .and_then(|window| window.clubhouse.reference.clone())
+        } else if outcome.request_reference_creature {
+            rfd::FileDialog::new()
                 .add_filter("Character image", &["png", "jpg", "jpeg"])
                 .pick_file()
-        {
+        } else {
+            None
+        };
+        if let Some(path) = reference {
             match new_colony_seed() {
                 Ok(search_seed) => {
                     let desktop = self.snapshot();
@@ -418,16 +425,19 @@ impl FormigaApp {
                         OffsetDateTime::now_utc(),
                         &desktop,
                     ) {
-                        Ok(reference) => {
+                        Ok(takes) => {
                             if let Some(window) = &mut self.settings_window {
                                 window.clear_generation_preview();
-                                window.set_generation_preview(GenerationPreview {
-                                    shared: None,
-                                    creature: reference.creature,
-                                    source_seed: reference.source_seed,
-                                    similarity: Some(reference.similarity),
-                                    summary: reference.summary.to_owned(),
-                                });
+                                for take in takes {
+                                    window.set_generation_preview(GenerationPreview {
+                                        shared: None,
+                                        creature: take.creature,
+                                        source_seed: take.source_seed,
+                                        similarity: Some(take.similarity),
+                                        summary: take.summary.to_owned(),
+                                    });
+                                }
+                                window.clubhouse.reference = Some(path);
                             }
                         }
                         Err(error) => {

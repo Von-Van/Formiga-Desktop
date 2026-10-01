@@ -60,10 +60,6 @@ impl FixedClock {
         inner.monotonic += duration;
         inner.utc += time::Duration::try_from(duration).expect("duration fits time::Duration");
     }
-
-    pub fn set_utc(&self, utc: OffsetDateTime) {
-        self.inner.lock().expect("fixed clock poisoned").utc = utc;
-    }
 }
 
 impl Clock for FixedClock {

@@ -29,8 +29,8 @@ pub use bubble::BubbleIcon;
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use companion::*;
 pub use design::{
-    BODY_ARCHETYPES, BodyArchetype, BodyPlan, ClassicParts, CreatureDesign, EarStyle, Edition,
-    FACE_TEMPLATES, Strangeness, apply_creature_design,
+    BODY_ARCHETYPES, BodyArchetype, BodyPlan, ClassicParts, CreatureDesign, DetailParts, EarStyle,
+    Edition, FACE_TEMPLATES, Strangeness, apply_creature_design, hsl, to_hsl,
 };
 pub use habitat::{
     BELONGING_CLEARANCE, BELONGING_DEPTH, CREATURE_FRAME_WIDTH, Cottages, DWELLING_CELL,
@@ -72,4 +72,4 @@ pub use visitor::{
 };
 pub use world::{BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, World};
 
-pub const SAVE_VERSION: u32 = 20;
+pub const SAVE_VERSION: u32 = 21;

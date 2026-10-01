@@ -164,6 +164,141 @@ impl ClassicParts {
     }
 }
 
+/// Small details a recipe drawn since 0.63.0 can carry on top of its body: wing-nubs on a body
+/// that is not already winged, horns, a belly patch, and a tip to a tapering tail, with the two
+/// colours the patch and the tip are drawn in. All zero, which every earlier recipe reads as, is
+/// a recipe with none, so nothing drawn before them changes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DetailParts {
+    /// 0 none; 1 membrane wing-nubs; 2 feathered wing-nubs. Both in the accent colour.
+    pub wings: u8,
+    /// 0 none; 1 short nubs; 2 horns swept back.
+    pub horns: u8,
+    /// 0 none; 1 a patch down the front in `belly_color`.
+    pub belly: u8,
+    /// 0 none; 1 a flame; 2 a round bobble. Either in `tip_color`, on a tapering tail.
+    pub tip: u8,
+    pub belly_color: [u8; 3],
+    pub tip_color: [u8; 3],
+}
+
+impl DetailParts {
+    /// The largest value each part takes: wings, horns, belly, tip.
+    const LIMITS: [u8; 4] = [2, 2, 1, 2];
+
+    pub fn is_none(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Bounded, with the colours of a part it does not have cleared, so one recipe has one form.
+    pub fn bounded(self) -> Self {
+        let [wings, horns, belly, tip] = Self::LIMITS;
+        let mut d = Self {
+            wings: self.wings.min(wings),
+            horns: self.horns.min(horns),
+            belly: self.belly.min(belly),
+            tip: self.tip.min(tip),
+            ..self
+        };
+        if d.belly == 0 {
+            d.belly_color = [0; 3];
+        }
+        if d.tip == 0 {
+            d.tip_color = [0; 3];
+        }
+        d
+    }
+
+    /// The eight bytes a version 5 code carries after the recipe: two parts to a byte, then the
+    /// belly and tip colours.
+    pub fn to_bytes(self) -> [u8; 8] {
+        let d = self.bounded();
+        [
+            d.wings | (d.horns << 4),
+            d.belly | (d.tip << 4),
+            d.belly_color[0],
+            d.belly_color[1],
+            d.belly_color[2],
+            d.tip_color[0],
+            d.tip_color[1],
+            d.tip_color[2],
+        ]
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != 8 {
+            return None;
+        }
+        let d = Self {
+            wings: bytes[0] & 0x0f,
+            horns: bytes[0] >> 4,
+            belly: bytes[1] & 0x0f,
+            tip: bytes[1] >> 4,
+            belly_color: bytes[2..5].try_into().ok()?,
+            tip_color: bytes[5..8].try_into().ok()?,
+        };
+        (d == d.bounded()).then_some(d)
+    }
+
+    /// Details for a new companion of `archetype`, each part on its own at about one in eight,
+    /// leaning toward the archetypes they suit: wings and horns toward whelps, a tail tip toward
+    /// the bodies that carry a tail. A part that the recipe already has something in the place of
+    /// (wings on a winged body, horns among antennae or sprouts, a tip on a classic tail) is
+    /// skipped, and a tip brings the tapering tail it sits on.
+    fn generated(design: &mut CreatureDesign, archetype: BodyArchetype, rng: &mut impl Rng) {
+        use BodyArchetype as A;
+        let (wings, horns, belly, tip) = match archetype {
+            A::Mochi => (0.10, 0.08, 0.14, 0.05),
+            A::Critter => (0.10, 0.12, 0.12, 0.20),
+            A::Bean => (0.12, 0.12, 0.14, 0.06),
+            A::Puff => (0.10, 0.06, 0.12, 0.06),
+            A::Sprite => (0.16, 0.10, 0.10, 0.10),
+            A::Whelp => (0.22, 0.24, 0.14, 0.26),
+            A::Birb => (0.0, 0.06, 0.12, 0.06),
+            A::Goober => (0.14, 0.14, 0.10, 0.14),
+        };
+        let mut d = DetailParts::default();
+        if chance(rng, wings) {
+            d.wings = weighted(rng, &[(1, 3.0), (2, 1.0)]);
+        }
+        if chance(rng, horns) {
+            d.horns = weighted(rng, &[(1, 1.0), (2, 1.0)]);
+        }
+        if chance(rng, belly) {
+            d.belly = 1;
+            let (hue, saturation, _) = to_hsl(design.coat);
+            d.belly_color = if rng.random_bool(0.5) {
+                // Cream.
+                hsl(
+                    rng.random_range(36.0..52.0),
+                    rng.random_range(0.55..0.8),
+                    0.86,
+                )
+            } else {
+                hsl(hue, saturation * 0.6, 0.87)
+            };
+        }
+        if design.classic.tail == 0 && chance(rng, tip) {
+            d.tip = weighted(rng, &[(1, 2.0), (2, 1.0)]);
+            if !matches!(design.tail, 2 | 3) {
+                design.tail = 2;
+            }
+            d.tip_color = if d.tip == 1 {
+                hsl(rng.random_range(14.0..48.0), 0.88, 0.6)
+            } else {
+                let (hue, saturation, lightness) = to_hsl(design.accent);
+                hsl(
+                    hue,
+                    (saturation + 0.15).min(0.9),
+                    (lightness + 0.1).min(0.85),
+                )
+            };
+        }
+        design.details = d;
+        *design = design.bounded();
+    }
+}
+
 /// Coat and accent pairs from the original palettes. A new companion wearing candy colours starts
 /// from one of these, nudged a little, so it keeps their contrast without repeating them exactly.
 const CANDY: [([u8; 3], [u8; 3]); 12] = [
@@ -191,11 +326,14 @@ pub enum Edition {
     /// Since 0.62.0: a body archetype and an authored face for the recipe, and a temperament
     /// the personality values are drawn from.
     Archetypes,
+    /// Since 0.63.0: the same, and then the small details of [`DetailParts`] from a stream of
+    /// their own, so everything the archetypes draw is drawn exactly as before.
+    Details,
 }
 
 impl Edition {
     /// What a companion made today comes from.
-    pub const LATEST: Self = Self::Archetypes;
+    pub const LATEST: Self = Self::Details;
 }
 
 /// The number of authored face layouts a recipe can wear.
@@ -389,7 +527,7 @@ fn weighted<T: Copy>(rng: &mut impl Rng, choices: &[(T, f32)]) -> T {
 }
 
 /// A colour from hue in degrees, saturation and lightness.
-fn hsl(hue: f32, saturation: f32, lightness: f32) -> [u8; 3] {
+pub fn hsl(hue: f32, saturation: f32, lightness: f32) -> [u8; 3] {
     let hue = hue.rem_euclid(360.0) / 360.0;
     let (s, l) = (saturation.clamp(0.0, 1.0), lightness.clamp(0.0, 1.0));
     let q = if l < 0.5 {
@@ -419,7 +557,7 @@ fn hsl(hue: f32, saturation: f32, lightness: f32) -> [u8; 3] {
 }
 
 /// Hue in degrees, saturation and lightness of a colour.
-fn to_hsl(rgb: [u8; 3]) -> (f32, f32, f32) {
+pub fn to_hsl(rgb: [u8; 3]) -> (f32, f32, f32) {
     let [r, g, b] = rgb.map(|channel| f32::from(channel) / 255.0);
     let (max, min) = (r.max(g).max(b), r.min(g).min(b));
     let lightness = (max + min) / 2.0;
@@ -538,6 +676,10 @@ pub struct CreatureDesign {
     /// before 0.62.0 wears. A recipe has both or neither. Absent from the file while it is 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub face_template: u8,
+    /// Wing-nubs, horns, a belly patch and a tail tip, for a recipe drawn since 0.63.0 or guided
+    /// by a picture. Absent from every recipe saved before them, which reads as none.
+    #[serde(default, skip_serializing_if = "DetailParts::is_none")]
+    pub details: DetailParts,
 }
 
 impl CreatureDesign {
@@ -568,15 +710,32 @@ impl CreatureDesign {
                 other => other,
             };
         }
+        self.details = self.details.bounded();
+        // Details belong to the archetype recipes, and never double a part the body already has.
+        if self.archetype == 0 {
+            self.details = DetailParts::default();
+        }
+        if self.body == BodyPlan::Winged {
+            self.details.wings = 0;
+        }
+        if self.classic.crown > 0 {
+            self.details.horns = 0;
+        }
+        if self.classic.tail > 0 || !matches!(self.tail, 2 | 3) {
+            self.details.tip = 0;
+        }
+        self.details = self.details.bounded();
         self
     }
 
     /// Which generator drew this recipe.
-    pub const fn edition(&self) -> Edition {
+    pub fn edition(&self) -> Edition {
         if self.archetype == 0 {
             Edition::Original
-        } else {
+        } else if self.details.is_none() {
             Edition::Archetypes
+        } else {
+            Edition::Details
         }
     }
 
@@ -595,8 +754,11 @@ impl CreatureDesign {
     ) -> Self {
         match (parent.map_or(generator, |parent| parent.edition()), parent) {
             (Edition::Original, _) => Self::generated_original(seed, generation, parent),
-            (Edition::Archetypes, Some(parent)) => Self::mini_of(parent, seed, generation),
+            (Edition::Archetypes | Edition::Details, Some(parent)) => {
+                Self::mini_of(parent, seed, generation)
+            }
             (Edition::Archetypes, None) => Self::drawn(seed, generation).0,
+            (Edition::Details, None) => Self::detailed(seed, generation).0,
         }
     }
 
@@ -663,6 +825,16 @@ impl CreatureDesign {
         (chosen, strangeness)
     }
 
+    /// A new companion's recipe as [`Self::drawn`] makes it, then its details from a stream of their
+    /// own, so the recipe itself is exactly the one the archetypes alone would draw.
+    pub fn detailed(seed: [u8; 32], generation: u8) -> (Self, Strangeness) {
+        let (mut design, strangeness) = Self::drawn(seed, generation);
+        let archetype = design.body_archetype().unwrap_or(BodyArchetype::Mochi);
+        let mut rng = SeedStream::new(seed).rng("creature-details-v1", u64::from(generation));
+        DetailParts::generated(&mut design, archetype, &mut rng);
+        (design, strangeness)
+    }
+
     /// A mini of a parent drawn since 0.62.0: its parent's archetype, body, face and accent, usually
     /// its ears, a coat a few shades off its parent's, and proportions of its own from the
     /// archetype's odds.
@@ -682,6 +854,17 @@ impl CreatureDesign {
             .coat
             .map(|channel| (i16::from(channel) + rng.random_range(-18..=18)).clamp(0, 255) as u8);
         design.classic = parent.classic.inherited(&mut rng);
+        // Details come after every draw, so a mini of a parent without them is drawn exactly as
+        // before; a mini with a tip on its parent's tail keeps the tail it sits on.
+        design.details = parent.details;
+        // A tip keeps the tail it sits on, and horns the bare head they grow from.
+        if parent.details.tip > 0 {
+            design.tail = parent.tail;
+            design.classic.tail = parent.classic.tail;
+        }
+        if parent.details.horns > 0 {
+            design.classic.crown = parent.classic.crown;
+        }
         design.bounded()
     }
 
@@ -940,6 +1123,7 @@ impl CreatureDesign {
             classic,
             archetype: archetype.number(),
             face_template,
+            details: DetailParts::default(),
         }
         .bounded()
     }
@@ -1083,6 +1267,7 @@ impl CreatureDesign {
             classic: ClassicParts::default(),
             archetype: 0,
             face_template: 0,
+            details: DetailParts::default(),
         };
         if let Some(parent) = parent {
             design.body = parent.body;
@@ -1176,6 +1361,7 @@ impl CreatureDesign {
             classic: ClassicParts::from_bytes([bytes[16], bytes[17], bytes[18], 0])?,
             archetype: bytes[19] >> 4,
             face_template: bytes[19] & 0x0f,
+            details: DetailParts::default(),
         };
         (d == d.bounded()).then_some(d)
     }
@@ -1197,8 +1383,8 @@ mod tests {
     #[test]
     fn recipes_are_compact_bounded_deterministic_and_varied() {
         // Sixteen modular bytes, six classic parts, an archetype and a face template, which a
-        // shared code packs into four.
-        assert_eq!(std::mem::size_of::<CreatureDesign>(), 24);
+        // shared code packs into four, and ten bytes of details, which it packs into eight.
+        assert_eq!(std::mem::size_of::<CreatureDesign>(), 34);
         let mut recipes = std::collections::HashSet::new();
         for index in 0..1024_u64 {
             let seed = SeedStream::new([23; 32]).bytes("test-design", index);
@@ -1229,7 +1415,7 @@ mod tests {
             );
         }
         assert_eq!(BodyPlan::ALL[4], BodyPlan::Blob);
-        let mut design = CreatureDesign::generated([7; 32], 0, None);
+        let mut design = CreatureDesign::generated_by(Edition::Archetypes, [7; 32], 0, None);
         design.body = BodyPlan::Blob;
         let bytes = design.to_bytes();
         assert_eq!(bytes[0], 4);
@@ -1574,12 +1760,89 @@ mod tests {
         }
     }
 
+    /// Each detail comes to about one companion in eight, on its own, and the recipe under them is
+    /// exactly the one the archetypes alone draw, but for the tail a tip brings with it.
+    #[test]
+    fn details_are_semi_rare_independent_and_leave_the_recipe_under_them_alone() {
+        let count = 4000;
+        let mut parts = [0_u32; 4];
+        let mut any = 0;
+        for index in 0..count {
+            let seed = SeedStream::new([47; 32]).bytes("details", index);
+            let (detailed, strangeness) = CreatureDesign::detailed(seed, 0);
+            let (drawn, drawn_strangeness) = CreatureDesign::drawn(seed, 0);
+            assert_eq!(strangeness, drawn_strangeness);
+            assert_eq!(detailed, CreatureDesign::generated(seed, 0, None));
+            assert_eq!(detailed, detailed.bounded());
+            let d = detailed.details;
+            assert_eq!(
+                CreatureDesign {
+                    details: DetailParts::default(),
+                    tail: drawn.tail,
+                    ..detailed
+                },
+                drawn,
+                "only the details and a tip's tail differ"
+            );
+            if d.tip > 0 {
+                assert!(matches!(detailed.tail, 2 | 3));
+            } else {
+                assert_eq!(detailed.tail, drawn.tail);
+            }
+            if detailed.body == BodyPlan::Winged {
+                assert_eq!(d.wings, 0);
+            }
+            for (part, value) in [d.wings, d.horns, d.belly, d.tip].into_iter().enumerate() {
+                parts[part] += u32::from(value > 0);
+            }
+            any += u32::from(!d.is_none());
+            assert_eq!(Some(d), DetailParts::from_bytes(&d.to_bytes()));
+        }
+        for (part, n) in ["wings", "horns", "belly", "tip"].into_iter().zip(parts) {
+            let share = f64::from(n) / count as f64;
+            assert!(
+                (0.08..=0.16).contains(&share),
+                "{part} on {:.1}% of companions",
+                share * 100.0
+            );
+        }
+        let share = f64::from(any) / count as f64;
+        assert!(
+            (0.3..=0.5).contains(&share),
+            "{:.1}% have any",
+            share * 100.0
+        );
+    }
+
+    /// A mini keeps its parent's details, and a mini of a parent without any is drawn exactly as
+    /// it was before details existed.
+    #[test]
+    fn a_mini_keeps_its_parents_details() {
+        for index in 0..256 {
+            let seed = SeedStream::new([53; 32]).bytes("detail-minis", index);
+            let parent = CreatureDesign::generated(seed, 0, None);
+            let mini = CreatureDesign::generated(seed, 1, Some(parent));
+            assert_eq!(mini.details, parent.details);
+            if parent.details.tip > 0 {
+                assert_eq!(mini.tail, parent.tail);
+            }
+            let plain = CreatureDesign::generated_by(Edition::Archetypes, seed, 0, None);
+            assert_eq!(
+                CreatureDesign::generated(seed, 1, Some(plain)),
+                CreatureDesign::generated_by(Edition::Archetypes, seed, 1, Some(plain))
+            );
+        }
+    }
+
     #[test]
     fn a_new_recipe_is_a_pure_function_of_its_seed_and_travels_whole() {
         for (index, (design, strangeness)) in drawn_population(512).into_iter().enumerate() {
             let seed = SeedStream::new([43; 32]).bytes("archetypes", index as u64);
             assert_eq!((design, strangeness), CreatureDesign::drawn(seed, 0));
-            assert_eq!(design, CreatureDesign::generated(seed, 0, None));
+            assert_eq!(
+                design,
+                CreatureDesign::generated_by(Edition::Archetypes, seed, 0, None)
+            );
             assert_eq!(design, design.bounded());
             assert_eq!(design.edition(), Edition::Archetypes);
             assert_eq!(Some(design), CreatureDesign::from_bytes(&design.to_bytes()));

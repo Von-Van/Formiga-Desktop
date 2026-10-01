@@ -139,11 +139,6 @@ impl World {
         self.last_edit.as_ref().map(|point| &point.edit)
     }
 
-    /// Forget the change that could have been taken back, when the colony itself is replaced.
-    pub fn forget_last_edit(&mut self) {
-        self.last_edit = None;
-    }
-
     /// Take back the last change.
     ///
     /// A companion that was removed or replaced comes back exactly as it left — its memories, its

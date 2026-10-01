@@ -31,6 +31,19 @@ pub fn palette_for(genome: &formiga_core::AppearanceGenome) -> Palette {
     }
 }
 
+/// A detail's own colour — a belly patch or a tail tip — softened the way the recipe's coat is, so
+/// it sits in the same light: toward white for a soft coat, and for a candy coat held inside the
+/// lightness band the candy palettes use.
+pub(crate) fn detail_color(design: &formiga_core::CreatureDesign, rgb: [u8; 3]) -> Rgba {
+    let value = if design.classic.coat > 0 {
+        let (hue, saturation, lightness) = to_hsl(Rgba::new(rgb[0], rgb[1], rgb[2], 255));
+        from_hsl(hue, saturation, lightness.clamp(0.55, 0.9))
+    } else {
+        rgb.map(|c| ((u16::from(c) * 3 + 220) / 4) as u8)
+    };
+    Rgba::new(value[0], value[1], value[2], 255)
+}
+
 /// Candy colours, built the way the original hand-made palettes are: the coat and accent at full
 /// strength, a shade that keeps the coat's hue but drops most of its saturation, a bright tinted
 /// highlight, and an outline and eyes that are near-black tinted toward the coat instead of one

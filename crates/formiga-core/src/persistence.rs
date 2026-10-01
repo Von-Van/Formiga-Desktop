@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=19 => migrate_legacy(value, version),
+            1..=20 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -256,6 +256,10 @@ fn migrate_legacy(
     // was, and whole-number leanings read as the same values. The version moved so an older build
     // refuses a colony whose temperaments and recipes it would quietly drop and whose leanings it
     // could not read.
+    //
+    // v21 adds details to recipes. Nothing is migrated: a recipe without them has none, which is
+    // what every earlier recipe is. The version moved so an older build refuses a colony whose
+    // details it would quietly drop.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
@@ -662,7 +666,7 @@ mod tests {
     /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
     /// has one of everything. The list is long on purpose: an observation that reached the save
     /// would have to bring a name with it, and this is what notices.
-    const SAVED_FIELDS: [&str; 257] = [
+    const SAVED_FIELDS: [&str; 264] = [
         "Decoration",
         "Friendship",
         "Garden",
@@ -704,6 +708,8 @@ mod tests {
         "axes",
         "b",
         "behavior_seed",
+        "belly",
+        "belly_color",
         "body",
         "body_height",
         "body_width",
@@ -739,6 +745,7 @@ mod tests {
         "descriptor_flags",
         "design",
         "detail_seed",
+        "details",
         "direct_manipulation",
         "discoveries_found",
         "display",
@@ -790,6 +797,7 @@ mod tests {
         "home_affinity",
         "home_visits",
         "hooks",
+        "horns",
         "house_styles",
         "id",
         "impulsiveness",
@@ -900,6 +908,8 @@ mod tests {
         "thickness",
         "times_petted",
         "times_tossed",
+        "tip",
+        "tip_color",
         "tip_style",
         "transitions",
         "tree_keepsakes",
@@ -917,6 +927,7 @@ mod tests {
         "window_ledges",
         "window_ride_seconds",
         "window_tolerance",
+        "wings",
         "x",
         "y",
         "zones",

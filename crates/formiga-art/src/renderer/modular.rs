@@ -52,7 +52,10 @@ pub(super) fn draw(
                 let ty = y - 3 + pose.tail_sway.clamp(-2, 2);
                 c.line(tx, y + 3, (tx - 6).max(3), ty, 3, p.outline);
                 c.line(tx, y + 3, (tx - 6).max(3), ty, 2, p.accent);
-                if d.tail == 3 {
+                if d.details.tip > 0 {
+                    let tip = crate::palette::detail_color(&d, d.details.tip_color);
+                    tail_tip(c, p, d.details.tip, tip, (tx - 6).max(4), ty);
+                } else if d.tail == 3 {
                     oval(c, p, (tx - 6).max(4), ty - 2, 2, 3, p.accent);
                 }
             }
@@ -64,6 +67,52 @@ pub(super) fn draw(
     let ear = (f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2);
     if k.crown > 0 {
         classic_crown(c, p, k.crown, ear_cx, ear_span, ear_top, ear, pose);
+    }
+    // Wing-nubs and horns grow from behind the body and the head, which are drawn over their
+    // roots, so they stay joined to the silhouette and never reach the reserved face.
+    if d.details.wings > 0 {
+        if long {
+            for (dx, near) in [(1, false), (-2, true)] {
+                let root = PixelPoint {
+                    x: x + dx,
+                    y: y - ry + 3 - pose.appendage_lift.clamp(-1, 2),
+                };
+                wing_nub(c, p, d.details.wings, root, -1, near);
+            }
+        } else {
+            // From the shoulders, low enough that they spread beside the body rather than the
+            // head, where they would read as a second pair of ears.
+            for side in [-1, 1] {
+                let root = PixelPoint {
+                    x: x + side * (rx - 2),
+                    y: y - 1 - pose.appendage_lift.clamp(-1, 2),
+                };
+                wing_nub(c, p, d.details.wings, root, side, true);
+            }
+        }
+    }
+    if d.details.horns > 0 {
+        // Inside the ears, so the two never cover one another, and in the belly's cream where
+        // there is one.
+        let reach = (ear_span - 4).max(2);
+        let shade = if d.details.belly > 0 {
+            crate::palette::detail_color(&d, d.details.belly_color)
+        } else {
+            p.highlight
+        };
+        for side in [-1, 1] {
+            horn(
+                c,
+                p,
+                shade,
+                d.details.horns,
+                PixelPoint {
+                    x: ear_cx + side * reach,
+                    y: ear_top,
+                },
+                side,
+            );
+        }
     }
     for side in [-1, 1] {
         let ex = ear_cx + side * ear_span;
@@ -140,6 +189,15 @@ pub(super) fn draw(
             c.fill_circle(x + 4, y + 4, 2, p.highlight);
         }
         _ => {}
+    }
+    if d.details.belly > 0 {
+        let belly = crate::palette::detail_color(&d, d.details.belly_color);
+        if long {
+            // Along the underside, toward the chest.
+            c.fill_ellipse(x + 2, y + ry / 2, (rx - 4).max(3), (ry / 3).max(2), belly);
+        } else {
+            c.fill_ellipse(x, y + 2, (rx - 4).max(3), (ry - 3).max(3), belly);
+        }
     }
     let shoulder = |side: i32| shoulder(body, pose, side);
     if long {
@@ -241,6 +299,95 @@ pub(super) fn draw(
         }
     }
     PixelPoint { x: hx, y: hy }
+}
+
+/// A small wing folded up off the back, reaching up and out to `side`: a membrane over two ribs,
+/// or three rounded feathers. Every outline goes down before any fill, so the parts read as one
+/// shape. The far wing of a four-pawed body is drawn in shade behind the near one.
+fn wing_nub(c: &mut Canvas, p: Palette, style: u8, root: PixelPoint, side: i32, near: bool) {
+    let fill = if near { p.accent } else { p.shadow };
+    let lobes: [(i32, i32, i32, i32); 3] = if style == 2 {
+        [(2, -1, 3, 2), (4, -4, 2, 2), (6, -6, 1, 2)]
+    } else {
+        [(2, -1, 3, 3), (4, -5, 2, 3), (6, -8, 1, 2)]
+    };
+    let at = |dx: i32, dy: i32| (root.x + side * dx, root.y + dy);
+    for (dx, dy, rx, ry) in lobes {
+        let (cx, cy) = at(dx, dy);
+        c.fill_ellipse(cx, cy, rx + 1, ry + 1, p.outline);
+    }
+    for (dx, dy, rx, ry) in lobes {
+        let (cx, cy) = at(dx, dy);
+        c.fill_ellipse(cx, cy, rx, ry, fill);
+    }
+    if !near {
+        return;
+    }
+    let (tip_x, tip_y) = at(6, -8);
+    if style == 2 {
+        // Feathered: a lit leading edge and a line between each feather.
+        let (lx, ly) = at(1, -3);
+        c.line(lx, ly, tip_x - side, tip_y + 1, 1, p.highlight);
+        for (dx, dy) in [(3, -1), (4, -4)] {
+            let (fx, fy) = at(dx, dy);
+            c.line(fx, fy, fx + side, fy + 1, 1, p.shadow);
+        }
+    } else {
+        // Membrane: two ribs from the root out to the trailing edge.
+        let (rx0, ry0) = at(1, -2);
+        for (dx, dy) in [(4, 1), (5, -4)] {
+            let (ex, ey) = at(dx, dy);
+            c.line(rx0, ry0, ex, ey, 1, p.shadow);
+        }
+    }
+}
+
+/// A horn on top of the head, its root hidden under the head drawn after it: a short nub, or a
+/// longer horn swept back and out to `side`. Horns are drawn pale, the way horn reads against a
+/// coat of any colour.
+fn horn(c: &mut Canvas, p: Palette, shade: Rgba, style: u8, root: PixelPoint, side: i32) {
+    let rows = if style == 2 { 6 } else { 4 };
+    for row in 0..=rows {
+        // Widest at the root, a point at the tip; a swept horn leans out as it rises.
+        let half = (row + 1) / 2;
+        let lean = if style == 2 {
+            side * (rows - row) / 2
+        } else {
+            0
+        };
+        let cx = root.x + lean;
+        let cy = root.y - rows + row;
+        c.fill_rect(cx - half - 1, cy, half * 2 + 3, 1, p.outline);
+        if row > 0 {
+            c.fill_rect(cx - half, cy, half * 2 + 1, 1, shade);
+        }
+    }
+    c.fill_rect(
+        root.x + if style == 2 { side * 2 } else { 0 },
+        root.y - rows,
+        1,
+        1,
+        p.outline,
+    );
+}
+
+/// The tip of a tapering tail: a flame flickering up from it, or a round bobble.
+fn tail_tip(c: &mut Canvas, p: Palette, style: u8, color: Rgba, x: i32, y: i32) {
+    if style == 2 {
+        oval(c, p, x, y - 1, 3, 3, color);
+        c.fill_rect(x - 1, y - 3, 2, 1, lighter(color));
+        return;
+    }
+    oval(c, p, x, y - 2, 2, 3, color);
+    oval(c, p, x + 1, y - 5, 1, 2, color);
+    c.fill_ellipse(x, y - 1, 2, 2, color);
+    // A bright core low in the flame.
+    c.fill_rect(x, y - 2, 1, 2, lighter(color));
+}
+
+fn lighter(color: Rgba) -> Rgba {
+    let lift = |v: u8| ((u16::from(v) + 255 * 2) / 3) as u8;
+    Rgba::new(lift(color.r), lift(color.g), lift(color.b), color.a)
 }
 
 /// A mass lit from above, the way the original bodies are drawn: the fill is carried a row up
@@ -1300,6 +1447,52 @@ mod tests {
                         let size = if small { 0.55 } else { 1.05 };
                         let (c, anchor, _) = render(&creature, d, clip, frame, size);
                         assert_whole(&c, anchor, &format!("{body:?} {clip:?} {frame} {small}"));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Wing-nubs, horns, a belly and a tail tip, every style of each together, on every body at
+    /// both extremes of size and through every action and gesture.
+    #[test]
+    fn every_detail_keeps_one_connected_body_and_a_reserved_face_through_every_clip() {
+        let creature = preview();
+        for body in BodyPlan::ALL {
+            for style in 1..=2 {
+                for small in [false, true] {
+                    let mut d = creature.appearance.design.unwrap();
+                    d.archetype = d.archetype.max(1);
+                    d.face_template = d.face_template.max(1);
+                    d.body = body;
+                    d.classic = ClassicParts::default();
+                    d.tail = 3;
+                    d.ears = EarStyle::Pointed;
+                    d.ear_size = 7;
+                    d.width = if small { 8 } else { 12 };
+                    d.height = if small { 7 } else { 11 };
+                    d.head = if small { 7 } else { 9 };
+                    d.legs = if small { 3 } else { 6 };
+                    d.details = formiga_core::DetailParts {
+                        wings: style,
+                        horns: style,
+                        belly: 1,
+                        tip: style,
+                        belly_color: [250, 228, 160],
+                        tip_color: [255, 170, 40],
+                    };
+                    let d = d.bounded();
+                    assert_eq!(d.details.horns, style, "{d:?}");
+                    for clip in BodyClip::baked() {
+                        for frame in 0..AnimationSpec::for_clip(clip).frames {
+                            let size = if small { 0.55 } else { 1.05 };
+                            let (c, anchor, _) = render(&creature, d, clip, frame, size);
+                            assert_whole(
+                                &c,
+                                anchor,
+                                &format!("{body:?} style {style} {clip:?} {frame} {small}"),
+                            );
+                        }
                     }
                 }
             }

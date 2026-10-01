@@ -156,10 +156,13 @@ starts with three, and something new arrives every day or two.
 ## Making creatures your own
 
 In **Settings → Colony → Creature studio** you can preview a fresh creature, or choose
-**Create from PNG or JPEG…** for a cute reinterpretation of a picture you have. Dominant colors,
-contrasting accents, proportions, and appendage cues steer the result. It is an interpretation, not
-object recognition — clear subjects on plain or transparent backgrounds work best. Try another
-preview for a different take, then add it or replace a creature you have not kept.
+**Create from image…** for a reinterpretation of a picture you have. Formiga reads where its
+colours are — a coat, a lighter belly, wings at the sides, a bright tip at the end of a tail — and
+whether it has horns, and offers four takes of its own: the closest, the cutest, one on another
+body, and a wildcard in the picture's colours. They are clearly inspired by the picture but always
+Formiga companions, with Formiga's own faces and parts; nothing is traced. Clear subjects on plain
+or transparent backgrounds work best. **Four more takes** looks again, then add one or replace a
+creature you have not kept.
 
 Changed your mind? The settings window keeps your last change to the colony — a companion removed,
 replaced, started over or welcomed, or the village rearranged — and its footer offers to undo it
@@ -167,8 +170,9 @@ for as long as Formiga is running. A companion brought back returns exactly as i
 memories, friendships, minis, and cottage.
 
 There is no AI model, cloud service, or background image processing behind this. The picture is read
-once, in memory, to pick parts from Formiga's own bounded set; the pixels, path, and everything
-measured from them are discarded as soon as the preview is drawn.
+in memory to pick parts from Formiga's own bounded set; the pixels and everything measured from
+them are discarded as soon as the takes are drawn. Only the file's path is kept, so Four more takes
+can read it again, and only while those takes are on show.
 
 Any creature can be copied as a checksummed `FORMIGA-…` seed code. Importing one recreates its
 appearance and personality entirely offline and starts it with a fresh life and history. Names,

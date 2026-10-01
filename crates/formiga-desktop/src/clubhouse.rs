@@ -126,6 +126,10 @@ pub struct Clubhouse {
     /// The last change to the colony that can still be taken back, as the footer names it. Set
     /// by the app before every frame, from the world, which is where the change is kept.
     pub last_edit: Option<String>,
+    /// The picture the takes on show were read from, kept only while they are on show so that
+    /// "Four more takes" can read it again. Only the path is kept, never the picture, and it is
+    /// never saved.
+    pub reference: Option<std::path::PathBuf>,
 }
 
 /// The village the Home page last drew, and what it was drawn from, so it is only drawn again
@@ -156,6 +160,7 @@ impl Clubhouse {
     }
     pub fn clear_previews(&mut self) {
         self.candidates.clear();
+        self.reference = None;
         self.selected = 0;
         self.replace_confirmed = false;
     }
@@ -334,7 +339,10 @@ impl Clubhouse {
                 ui.checkbox(&mut self.lock_colors, "Keep selected colors");
                 ui.checkbox(&mut self.lock_body, "Keep selected body");
             });
-            ui.small("Locks guide the next random set. Images are interpreted locally and discarded after preview.");
+            ui.small(
+                "Locks guide the next random set. A picture is read on this computer for its \
+                 colors and shape, and becomes four companions of their own, never a copy of it.",
+            );
         });
         self.tour_mark(ui, tour::TourMark::Discover, discover.response.rect);
         ui.add_space(16.0);
@@ -371,6 +379,9 @@ impl Clubhouse {
             return;
         }
         ui.add_space(18.0);
+        if self.reference.is_some() && ui.button("Four more takes").clicked() {
+            outcome.request_reference_retry = true;
+        }
         ui.horizontal_wrapped(|ui| {
             for (index, candidate) in self.candidates.iter().enumerate() {
                 let label = format!("Companion {}", index + 1);
