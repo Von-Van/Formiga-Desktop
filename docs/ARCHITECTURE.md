@@ -291,8 +291,11 @@ creature's own journey or a toss still moves it this tick; what actually moves t
 that, rather than its velocity, because an approach that has handed over to a journey leaves the
 last stride on the books. Both renderers draw one limb per side: a gesture carries the resting paw, nub, or wing out
 to where it points, rather than drawing another limb beside the one already there. A wing opens in
-its own colors and texture; a long body lifts its near front paw off the ground. Covering the face
-also closes the eyes, which the layered face still draws over the paws.
+its own colors and texture. A long body stands on four legs and does with one forepaw what another
+body does with a hand, lifted a little forward and never above the chin, so it always stands on
+three paws; a walk lifts one leg at a time, and only hanging from or climbing a window takes both
+forepaws, which go up the front and the back of the head so the face between them stays clear.
+Covering the face also closes the eyes, which the layered face still draws over the paws.
 
 `PetReaction` maps to the existing greeting body clip, so lived experience does not grow that atlas.
 A newly earned profile descriptor may allocate one small sprout thought-bubble texture for five

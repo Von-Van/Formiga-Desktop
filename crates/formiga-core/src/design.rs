@@ -840,12 +840,14 @@ impl CreatureDesign {
             },
         );
         classic.coat = u8::from(candy);
+        // Four paws read best small, so a four-pawed body keeps to round-ended legs or nubs and
+        // is never put up on stick legs and their big forked feet.
         let (nubs, sticks) = match archetype {
             A::Mochi | A::Puff => (0.3, 0.0),
             A::Bean => (0.25, 0.03),
             A::Sprite => (0.35, 0.2),
             A::Birb => (0.2, 0.0),
-            A::Critter | A::Whelp => (0.1, 0.05),
+            A::Critter | A::Whelp => (0.1, 0.0),
             A::Goober => (0.3, 0.3),
         };
         let limbs_roll: f64 = rng.random();
@@ -1613,6 +1615,29 @@ mod tests {
         for body in BodyPlan::ALL {
             assert!(designs.iter().any(|(d, _)| d.body == body), "{body:?}");
         }
+    }
+
+    /// Four paws read best small: a four-pawed companion stands on round-ended legs or nubs and
+    /// is never put up on stick legs and their big forked feet. Every other body still can be.
+    #[test]
+    fn a_four_pawed_companion_is_never_put_up_on_stick_legs() {
+        let designs = drawn_population(4000);
+        let long: Vec<_> = designs
+            .iter()
+            .filter(|(d, _)| d.body == BodyPlan::Long)
+            .collect();
+        assert!(long.len() > 500, "{} four-pawed of 4000", long.len());
+        assert!(long.iter().all(|(d, _)| d.classic.limbs != 2));
+        assert!(
+            long.iter().any(|(d, _)| d.classic.limbs == 1),
+            "nubs still turn up"
+        );
+        assert!(
+            designs
+                .iter()
+                .any(|(d, _)| d.body != BodyPlan::Long && d.classic.limbs == 2),
+            "other bodies still stand on stick legs"
+        );
     }
 
     /// Parts that clash are drawn together less often than parts that suit each other, though

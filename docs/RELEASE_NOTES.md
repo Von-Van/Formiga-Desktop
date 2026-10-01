@@ -4,6 +4,18 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.62.5
+
+Four-pawed companions look like they are standing on four legs. Critters and whelps used to read as
+a round creature on two stubby legs, and whatever they did with a paw they did with a long tube of
+an arm, sometimes a back leg. Now they have a longer, lower body with the head held up off the
+chest and four short round-ended legs, the far pair in shade and set the way the face looks. They
+wave, cheer and reach with one forepaw lifted under the chin and stand on the other three, walk one
+leg at a time, and reach up both sides of the head to hang from or climb a window. New four-pawed
+companions are never put up on stick legs with big forked feet. Every other body looks exactly as
+it did. It follows 0.62.2, which gave new faces a friendly first look in the creature studio and
+gave residents at home room to keep out of each other's faces; the release notes describe it.
+
 ## New in 0.62.2
 
 A first look at a new companion is a friendly one, and residents at home keep out of each other's

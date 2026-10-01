@@ -2,6 +2,33 @@
 
 All notable changes are documented here.
 
+## [0.62.5] - 2026-10-01
+
+### Fixed
+
+- Four-pawed companions look like they stand on four legs. A Critter or a Whelp, and any recipe
+  with the four-pawed body, was drawn as a short round body with its head over the front of it and
+  its legs in two pairs a pixel apart, so it read as a round creature on two stubby legs, and
+  whatever it did with a paw it did with a long tube of an arm out of its side — out of its back
+  end as well, for anything that took both. It now has a longer, lower body with its head held up
+  off the chest, on four short legs shaped like a letter U and rounded off at the foot: the near
+  pair in its coat colour and the far pair in shade, each far leg a step toward the head, as on a
+  body turned a little toward whoever is looking, which is the way its face looks.
+  - It does with one forepaw what another body does with a hand — a wave, a cheer, a reach,
+    something to show — lifted a little forward and never above the chin, so the paw is seen under
+    the face rather than drawn across it, and it stands on the other three while it does. A walk
+    lifts one leg at a time.
+  - Hanging from a window ledge or climbing one still takes both forepaws, which now go up the front
+    and the back of the head so the face between them is clear.
+  - Every other body is drawn exactly as before: every frame of the round, upright, winged and blob
+    bodies is identical to 0.62.2's, and none of the owner's six companions is four-pawed.
+
+### Changed
+
+- Four paws read best small, so a new Critter or Whelp is never put up on stick legs and their big
+  forked feet. It stands on round-ended legs, now and then tipped with accent nubs. Companions
+  already in a colony keep the legs they have.
+
 ## [0.62.2] - 2026-09-30
 
 ### Fixed

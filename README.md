@@ -1,4 +1,4 @@
-# Formiga · v0.62.2
+# Formiga · v0.62.5
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -93,7 +93,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.62.2-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.62.5-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -105,19 +105,17 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.62.2
+## New in 0.62.5
 
-A first look at a new companion is a friendly one, and residents at home keep out of each other's
-faces. The creature studio used to show its new faces walking with the focused look, which on the
-faces 0.62.0 brought cut the eyes off flat into something like sunglasses over a straight mouth;
-now they walk along pleased with themselves, eyes bright and a small smile, before they wave. Out
-on the desktop that focused look keeps its eyes open, and a face whose mouth is a smile smiles at
-rest. At home, a stroll hurries past whoever it passes, a mini stops beside its big version rather
-than on top of it, and somebody napping on the cushion or tending the garden next to a neighbour's
-spot is given room until they are done. On a colony of six over forty minutes at home, faces stayed
-covered for more than five and a quarter seconds 7 times rather than 208. Companions from before 0.62.0 look
-exactly as they did. It follows 0.62.1, which kept the new companions out of each other's faces
-out on the desktop; the release notes describe it.
+Four-pawed companions look like they are standing on four legs. Critters and whelps used to read as
+a round creature on two stubby legs, and whatever they did with a paw they did with a long tube of
+an arm, sometimes a back leg. Now they have a longer, lower body with the head held up off the
+chest and four short round-ended legs, the far pair in shade and set the way the face looks. They
+wave, cheer and reach with one forepaw lifted under the chin and stand on the other three, walk one
+leg at a time, and reach up both sides of the head to hang from or climb a window. New four-pawed
+companions are never put up on stick legs with big forked feet. Every other body looks exactly as
+it did. It follows 0.62.2, which gave new faces a friendly first look in the creature studio and
+gave residents at home room to keep out of each other's faces; the release notes describe it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

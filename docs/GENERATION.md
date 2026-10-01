@@ -1,4 +1,4 @@
-# Modular creature generation · v0.62.2
+# Modular creature generation · v0.62.5
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -17,6 +17,15 @@ The blob plan is a single soft mass: it draws no separate head, carries the face
 keeps a rounder minimum footprint, and stands on stubby feet. It occupies index 4 so recipes and
 version 2 codes written before it decode exactly as they did. A code carrying a blob needs v0.55.5
 or newer to import.
+
+The long plan is four-pawed: a long, low body with the head held up off the chest at its front,
+standing on four short legs shaped like a letter U, rounded off at the foot. The near pair is drawn
+in the coat colour and the far pair in shade, each far leg a step toward the head from its near
+partner, as on a body turned a little toward whoever is looking at it, which is the way its face
+looks. It walks one leg at a time, and for anything another body does with a hand it lifts one
+forepaw a little forward and never above the chin, so it always stands on three paws. Only hanging
+from a ledge or climbing a window takes both forepaws, and they go up the front and the back of the
+head. Accent nubs tip the near legs in the accent colour.
 
 The winged plan draws a membrane with a lit leading edge, a shaded underside, and a tip carried past
 the shoulder, plus one of three structures: feathered quills, ribs to a drawn-down tip, or a pale
@@ -105,7 +114,8 @@ Each part is drawn after the ones it has to suit, and its odds lean away from wh
 them: big ears make a big tail less likely, wings keep ears and tail simple, a tiny body keeps
 everything that sticks out small, a busy outline keeps the markings plain, a bright coat keeps the
 accent colour to a few places, and busy markings keep the face plain. Nothing is ruled out; the
-odds only lean. Coat and accent start from a harmonious pair — close, opposite, or a third of the
+odds only lean, with one exception: four paws read best small, so a Critter or a Whelp is never put
+up on stick legs and their big forked feet. Coat and accent start from a harmonious pair — close, opposite, or a third of the
 way round the wheel — nudged a little.
 
 `CreatureDesign::drawn` draws the archetype from a `creature-archetype-v1` stream, then how strange

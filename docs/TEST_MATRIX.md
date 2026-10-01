@@ -12,6 +12,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cat and rabbit ears drawn for every appendage style and size, inside the frame margin | CI | CI |
 | Raised cat tail and visible rabbit puff for every tail style | CI | CI |
 | Resting cats plant all four paws on the same contact row as walking; gesture paws cap long generated reaches | CI | CI |
+| Four-pawed bodies: both hind paws down through every clip and gesture, three paws or more down in all but hanging and climbing, a forepaw in use held beside or below the face and, reaching for a ledge, up the front and the back of the head; a four-pawed companion is never drawn on stick legs | CI | CI |
 | v1–v19→v20 migration, creature/object/bond preservation, names, births, rituals, and top-12 routines | CI | CI |
 | A v18 colony keeps what it earned: its decorations unlocked, the ones showing hung on the colony house in their places and the hidden ones taken down, every category topped up to three; one that never earned any hangs nothing and waits a day or two for its first new thing | CI | CI |
 | A v19 colony keeps every companion exactly as it was: whole-number leanings read as the same values, nobody is given a temperament it did not have, and each reads one from its own values | CI | CI |
