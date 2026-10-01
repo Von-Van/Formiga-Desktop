@@ -155,6 +155,10 @@ starts with three, and something new arrives every day or two.
 
 ## Making creatures your own
 
+Companions come in different sizes: most are about average, and now and then one is small or
+large. A mini is its parent's size scaled down. In **Settings → Colony → Creature studio** the
+large preview stands each one beside a village tree, so you can see how big it is before it joins.
+
 In **Settings → Colony → Creature studio** you can preview a fresh creature, or choose
 **Create from image…** for a reinterpretation of a picture you have. Formiga reads where its
 colours are — a coat, a lighter belly, wings at the sides, a bright tip at the end of a tail — and

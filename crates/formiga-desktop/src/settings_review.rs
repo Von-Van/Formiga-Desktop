@@ -893,8 +893,10 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 /// props (112 KiB, 98 KiB more); the Home page's village shrank to the one row it draws (128 KiB,
 /// no change); and a companion trying something on shows four poses (36 KiB): 760 KiB. In 0.61.0
 /// the houses were drawn a quarter larger, so the Home page's row of the village is 560x80
-/// rather than 512x64 (175 KiB, 47 KiB more): 807 KiB.
-const ARTWORK_BUDGET: usize = 807 * 1024;
+/// rather than 512x64 (175 KiB, 47 KiB more): 807 KiB. In 0.63.1 the creature studio stands its
+/// large preview beside a village tree, one 64x64 texture shared by every candidate (16 KiB):
+/// 823 KiB.
+const ARTWORK_BUDGET: usize = 823 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -962,9 +964,10 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
         bytes <= ARTWORK_BUDGET,
         "UI artwork exceeded budget: {bytes}"
     );
-    // Four portraits, four candidate strips, the village atlas, the object atlas, one sheet
-    // holding every trinket, and the last companion looked at trying something on in four poses.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 4);
+    // Four portraits, four candidate strips and the tree the large preview stands beside, the
+    // village atlas, the object atlas, one sheet holding every trinket, and the last companion
+    // looked at trying something on in four poses.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 4);
 }
 
 #[test]

@@ -2,6 +2,24 @@
 use super::*;
 use formiga_core::{BodyPlan, CreatureDesign, EarStyle};
 
+/// The largest a body is drawn, against the average: a companion of the greatest stature.
+const MAX_SIZE: f32 = formiga_core::STATURE_MAX as f32 / 100.0 + 0.01;
+
+/// The largest a four-pawed body is drawn. It is the longest plan, its head out in front and its
+/// tail behind, and past this it would not fit its frame with a cup in its paws, so a large one
+/// stops growing here.
+const LONG_MAX_SIZE: f32 = 1.10;
+
+/// The size `d` is drawn at, between the smallest a mini is drawn and the largest its plan allows.
+fn drawn_size(d: CreatureDesign, size: f32) -> f32 {
+    let largest = if d.body == BodyPlan::Long {
+        LONG_MAX_SIZE
+    } else {
+        MAX_SIZE
+    };
+    size.clamp(0.55, largest)
+}
+
 fn oval(c: &mut Canvas, p: Palette, x: i32, y: i32, rx: i32, ry: i32, color: Rgba) {
     c.fill_ellipse(x, y, rx + 1, ry + 1, p.outline);
     c.fill_ellipse(x, y, rx, ry, color);
@@ -33,7 +51,7 @@ pub(super) fn draw(
         head,
         floor,
     } = body;
-    let size = size.clamp(0.55, 1.05);
+    let size = drawn_size(d, size);
     // Ears ride the top of a blob's mass; every other plan hangs them off the head.
     let (ear_cx, ear_span, ear_top) = if blob {
         (x, rx - 4, y - ry + 2)
@@ -54,7 +72,10 @@ pub(super) fn draw(
                 c.line(tx, y + 3, (tx - 6).max(3), ty, 2, p.accent);
                 if d.details.tip > 0 {
                     let tip = crate::palette::detail_color(&d, d.details.tip_color);
-                    tail_tip(c, p, d.details.tip, tip, (tx - 6).max(4), ty);
+                    // A bobble is a pixel rounder than a flame, so it keeps a pixel further in
+                    // from the edge of the frame.
+                    let end = (tx - 6).max(if d.details.tip == 2 { 5 } else { 4 });
+                    tail_tip(c, p, d.details.tip, tip, end, ty);
                 } else if d.tail == 3 {
                     oval(c, p, (tx - 6).max(4), ty - 2, 2, 3, p.accent);
                 }
@@ -659,7 +680,7 @@ struct Body {
 fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     let long = d.body == BodyPlan::Long;
     let blob = d.body == BodyPlan::Blob;
-    let size = size.clamp(0.55, 1.05);
+    let size = drawn_size(d, size);
     let mut rx = ((f32::from(d.width) * size).round() as i32 + pose.squash_x).clamp(6, 13);
     let mut ry = ((f32::from(d.height) * size).round() as i32 + pose.squash_y).clamp(5, 11);
     if blob {
@@ -697,8 +718,11 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     // than pressing its body down through the floor it is standing on.
     let sink = pose.bob.clamp(-2, 2).min(stance);
     let y = floor - stance - ry + sink - pose.play_lift.clamp(0, 3);
+    // A large four-pawed body carries its head no further forward than the largest did before
+    // statures, so a face turned to watch something stays inside the box the simulation keeps
+    // faces clear by; the head itself still grows.
     let hx = if long {
-        x + 2 + (8.0 * size).round() as i32
+        x + 2 + (8.0 * size.min(1.05)).round() as i32
     } else {
         x
     } + if blob {
@@ -721,6 +745,10 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     // it hangs from the body's centre. Like everything else, it stops at the ground; its outline
     // reaches `head` rows below its centre.
     let hy = hy.min(feet_reach(d, floor) - head);
+    // A floppy or round ear hangs three pixels out from the side of the head, so a large head
+    // carried to the front of a long body, or leaning, stops where its ears still clear the
+    // edge of the frame.
+    let hx = hx.clamp(head + 4, FRAME_SIZE as i32 - 5 - head);
     Body {
         x,
         y,

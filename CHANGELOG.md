@@ -2,6 +2,34 @@
 
 All notable changes are documented here.
 
+## [0.63.1] - 2026-10-01
+
+### Added
+
+- Companions vary in size. Every adult has a stature from 85% to 115% of the average, drawn from a
+  `creature-stature-v1` stream of its own seed: four in five within five points of the average,
+  one in ten small and one in ten large. A mini is its parent's size scaled to its generation's
+  share. The appearance stream still makes the size draw it always made, so nothing else a seed
+  draws changes.
+- The generation and cuteness sheets, and the creature studio's large preview, stand each companion
+  beside the same village tree, so its size reads against something that never changes. The
+  cuteness sheet's table gains a size column.
+
+### Changed
+
+- Save version 22 gives every companion already in a colony the size its seed gives it, and a mini
+  of a companion adopted from a code its parent's size scaled down; nothing else changes.
+- The modular renderer draws bodies up to 116% of the average size, a four-pawed body up to 110%.
+  A large four-pawed body carries its head no further forward than before, so its face stays where
+  the simulation spaces faces.
+
+### Fixed
+
+- A long curled or tufted tail on an original blob, a bobble tail tip on a long four-pawed body,
+  and a large head with floppy ears could touch the edge of their frame, where the drawing is cut
+  off or slid inward a pixel. Each now stops a pixel short of it, and a test keeps every body at the
+  largest stature off the frame's outermost rows and columns.
+
 ## [0.63.0] - 2026-10-01
 
 ### Added

@@ -19,7 +19,7 @@
 //! above, ending a pixel inside where its keepsake's own drawing begins.
 
 use crate::{Canvas, PALETTES, Rgba};
-use formiga_core::{ShelterGenome, TreeEnd};
+use formiga_core::{ShelterGenome, ShelterStyle, TreeEnd};
 
 /// The tree's own cell, which its keepsake anchors are measured in. It stays the size it always
 /// was when the houses grew a quarter in 0.61.0, and stands in the middle of its larger village
@@ -139,6 +139,77 @@ pub const ANCHOR_CLEARANCE: i32 = 9;
 /// one pixel inside the keepsake's own top so the two always meet.
 const CORD_TOP: i32 = 8;
 const CORD_BOTTOM: i32 = 5;
+
+/// The tree companions are measured against on the review sheets and in the creature studio: a
+/// mint-leaved village tree on a brown trunk, the same every time.
+const REFERENCE_TREE: ShelterGenome = ShelterGenome {
+    style: ShelterStyle::Tent,
+    palette_index: 2,
+    accent_index: 11,
+    width: 40,
+    height: 40,
+    detail_seed: 0,
+};
+
+/// How far right of the companion's frame the reference tree's trunk stands, in art pixels.
+const REFERENCE_TREE_X: i32 = 70;
+
+/// Where a companion's frame and the reference tree go when they stand side by side: the size of
+/// the scene, and the top-left corner of the tree's cell and of the frame in it, in art pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TreeScene {
+    pub width: u32,
+    pub height: u32,
+    pub tree: (i32, i32),
+    pub frame: (i32, i32),
+}
+
+/// The layout of a `frame_height`-tall frame whose companion stands on `floor_row`, beside the
+/// reference tree: both on one ground line, the tree to the right.
+pub fn tree_scene(frame_height: u32, floor_row: u32) -> TreeScene {
+    let top = GROUND_Y - floor_row as i32;
+    TreeScene {
+        width: (REFERENCE_TREE_X + TREE_CELL as i32 / 2) as u32,
+        height: (top + frame_height as i32).max(TREE_CELL as i32) as u32,
+        tree: (REFERENCE_TREE_X - CENTRE_X, 0),
+        frame: (0, top),
+    }
+}
+
+/// The reference tree alone, in its own cell.
+pub fn reference_tree() -> Canvas {
+    KeepsakeTreeRenderer::render(&REFERENCE_TREE)
+}
+
+/// A companion's frame standing beside a village tree, on one ground line and in the same art
+/// pixels the village draws both in, so how big a companion is reads against something that never
+/// changes size. `floor_row` is the row of the frame the companion stands on; [`standing_row`]
+/// finds it in a resting frame.
+pub fn beside_tree(frame: &Canvas, floor_row: u32) -> Canvas {
+    let layout = tree_scene(frame.height(), floor_row);
+    let mut scene = Canvas::new(layout.width, layout.height);
+    paste(&mut scene, &reference_tree(), layout.tree.0, layout.tree.1);
+    paste(&mut scene, frame, layout.frame.0, layout.frame.1);
+    scene
+}
+
+/// The lowest row anything is drawn on in a frame: where a resting companion stands.
+pub fn standing_row(frame: &Canvas) -> u32 {
+    frame
+        .alpha_bounds()
+        .map_or(frame.height() - 1, |bounds| bounds.3)
+}
+
+fn paste(target: &mut Canvas, source: &Canvas, x: i32, y: i32) {
+    for row in 0..source.height() as i32 {
+        for column in 0..source.width() as i32 {
+            let pixel = source.get(column, row);
+            if pixel.a > 0 {
+                target.set(x + column, y + row, pixel);
+            }
+        }
+    }
+}
 
 pub struct KeepsakeTreeRenderer;
 

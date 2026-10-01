@@ -85,6 +85,11 @@ pub(super) fn generate_mini_for_parent(
         )
     };
     mini.colony_order = next_colony_order(creatures);
+    // A mini drawn from its parent's seed is already its parent's size scaled down; one of a
+    // companion adopted from a code was drawn from the colony's seed, so it follows its parent.
+    if imported_root {
+        mini.appearance.logical_size = crate::size_after_parent(parent, mini.display_scale_percent);
+    }
     mini.role = CreatureRole::Mini { parent_id };
     mini.kept = true;
     mini.mini_arrivals = MiniArrivalState::default();
@@ -158,11 +163,19 @@ fn generate_creature(
     let palette_index = parent
         .map(|value| value.appearance.palette_index)
         .unwrap_or_else(|| appearance_rng.random_range(0..12));
+    // A companion's size comes from its stature, and a mini's from its parent's size, but the
+    // appearance stream still draws the size it always drew, so every draw after it is unchanged.
+    let logical_size = parent.map_or_else(
+        || crate::size_for(crate::stature_percent(colony_seed), scale_percent),
+        |parent| crate::size_after_parent(parent, scale_percent),
+    );
     let appearance = AppearanceGenome {
         design: None,
         family,
-        logical_size: ((appearance_rng.random_range(34..=40) as f32) * scale_percent as f32 / 100.0)
-            .round() as u8,
+        logical_size: {
+            let _former_size: u8 = appearance_rng.random_range(34..=40);
+            logical_size
+        },
         body_width: mutate_parent(
             parent.map(|p| p.appearance.body_width),
             &mut appearance_rng,

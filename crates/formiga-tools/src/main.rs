@@ -174,10 +174,11 @@ fn creature_card(path: PathBuf) -> Result<()> {
 
 fn generation_sheet(path: PathBuf) -> Result<()> {
     let scale = 4;
-    let cell = FRAME_SIZE * scale;
+    // Each companion stands beside the same village tree, so their sizes read against it.
+    let (cell_width, cell_height) = (SCENE_CELL.0 * scale, SCENE_CELL.1 * scale);
     let (width, height) = (
-        cell * EarStyle::ALL.len() as u32,
-        cell * BodyPlan::ALL.len() as u32,
+        cell_width * EarStyle::ALL.len() as u32,
+        cell_height * BodyPlan::ALL.len() as u32,
     );
     let mut pixels = vec![0; (width * height * 4) as usize];
     fill_gradient(
@@ -200,13 +201,13 @@ fn generation_sheet(path: PathBuf) -> Result<()> {
             apply_creature_design(&mut creature, Some(design));
             let canvas =
                 CreatureRenderer::render_frame(&creature.appearance, ActionKind::Idle, 0, true);
-            blit_scaled_square_alpha(
+            let scene = formiga_art::beside_tree(&canvas, formiga_art::standing_row(&canvas));
+            blit_canvas_scaled(
                 &mut pixels,
                 width,
-                column as u32 * cell,
-                row as u32 * cell,
-                &canvas.rgba_bytes(),
-                FRAME_SIZE,
+                column as u32 * cell_width,
+                row as u32 * cell_height,
+                &scene,
                 scale,
             );
         }
@@ -1658,6 +1659,45 @@ fn shelter_sheet(path: PathBuf) -> Result<()> {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// A canvas of any size drawn `scale` times over at `(origin_x, origin_y)`, blended over what is
+/// there.
+pub(crate) fn blit_canvas_scaled(
+    target: &mut [u8],
+    target_width: u32,
+    origin_x: u32,
+    origin_y: u32,
+    canvas: &formiga_art::Canvas,
+    scale: u32,
+) {
+    let target_height = (target.len() / 4) as u32 / target_width;
+    for sy in 0..canvas.height() {
+        for sx in 0..canvas.width() {
+            let pixel = canvas.get(sx as i32, sy as i32);
+            if pixel.a == 0 {
+                continue;
+            }
+            for oy in 0..scale {
+                for ox in 0..scale {
+                    let (x, y) = (origin_x + sx * scale + ox, origin_y + sy * scale + oy);
+                    if x < target_width && y < target_height {
+                        blend_pixel(
+                            target,
+                            target_width,
+                            x,
+                            y,
+                            [pixel.r, pixel.g, pixel.b, pixel.a],
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The size of a cell that holds a companion beside the reference tree, in art pixels: the tree's
+/// width past the frame, and its height with a little room under the ground.
+pub(crate) const SCENE_CELL: (u32, u32) = (102, 66);
+
 fn blit_scaled_square_alpha(
     target: &mut [u8],
     target_width: u32,

@@ -1,4 +1,4 @@
-# Formiga · v0.63.0
+# Formiga · v0.63.1
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -93,7 +93,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.63.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.63.1-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -105,23 +105,16 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.63.0
+## New in 0.63.1
 
-A picture makes a better companion. Choose **Create from image…** in the creature studio and
-Formiga now reads where a picture's colours are — its coat, a lighter belly, wings high at its
-sides, a bright tip at the end of a tail — and whether it has horns or pointed ears, then offers
-four takes of its own to choose from: the closest, the cutest, one on another body, and a wildcard
-in the picture's colours. **Four more takes** looks again. A picture on a plain white background no
-longer turns into a white companion with the picture's colour only on its ears. The takes are
-clearly inspired by the picture but always Formiga companions, with Formiga's own faces and parts;
-nothing is traced.
-
-Companions can carry four new details: little wing-nubs, horns, a belly patch, and a flame or a
-bobble at the tip of the tail. Each turns up on about one new companion in eight, more often where
-it suits — wings and horns on whelps, a tip on bodies with a tail — and a mini keeps its parent's.
-Every companion you already have looks exactly as it did. A code for a companion with details needs
-0.63.0 or newer to import. It follows 0.62.5, which put critters and whelps on four legs; the
-release notes describe it.
+Companions come in different sizes. Each one has a stature of its own, from 85% to 115% of the
+average: most are about average, and about one in five comes out noticeably small or large. A mini
+is its parent's size scaled down, so a large companion has large minis. Your companions take their
+sizes the first time 0.63.1 opens your colony, each from its own seed, and nothing else about them
+changes. The creature studio stands its large preview beside a village tree, so you can see how big
+a newcomer is before it joins. It follows 0.63.0, which made image imports read where a picture's
+colours are and offer four takes, and gave companions wing-nubs, horns, belly patches and tail
+tips; the release notes describe it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

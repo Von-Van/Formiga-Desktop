@@ -4,6 +4,17 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.63.1
+
+Companions come in different sizes. Each one has a stature of its own, from 85% to 115% of the
+average: most are about average, and about one in five comes out noticeably small or large. A mini
+is its parent's size scaled down, so a large companion has large minis. Your companions take their
+sizes the first time 0.63.1 opens your colony, each from its own seed, and nothing else about them
+changes. The creature studio stands its large preview beside a village tree, so you can see how big
+a newcomer is before it joins. It follows 0.63.0, which made image imports read where a picture's
+colours are and offer four takes, and gave companions wing-nubs, horns, belly patches and tail
+tips; the release notes describe it.
+
 ## New in 0.63.0
 
 A picture makes a better companion. Choose **Create from image…** in the creature studio and

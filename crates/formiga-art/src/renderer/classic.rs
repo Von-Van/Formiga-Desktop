@@ -992,6 +992,14 @@ pub(super) fn draw_tail(
     let length = ((genome.tail_length as f32 * s).round() as i32)
         .clamp(2, 10)
         .min((root_x - 4).max(2));
+    // A tuft or a curl ends in a ring drawn three pixels round its end, which reaches a pixel
+    // further than the end itself, so a long one on a large body keeps its end five pixels in
+    // from the edge of the frame rather than four, where it would be cut off.
+    let length = if matches!(genome.tail_style, TailStyle::Tuft | TailStyle::Curl) {
+        length.min((root_x - 5).max(0))
+    } else {
+        length
+    };
     match genome.family {
         // Both families always carry a tail; the style gene shapes it instead of removing it.
         BodyFamily::SoftQuadruped => {

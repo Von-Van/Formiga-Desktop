@@ -1583,6 +1583,14 @@ the body and head that cover their roots, the belly over the coat, and the tip a
 tapering tail, all inside the extents earlier parts already reach. A recipe with details needs a
 version 5 code, 65 payload bytes and twenty-six groups.
 
+Save version 22 gives every companion a stature (`formiga_core::stature`). An adult's logical size
+is `size_for(stature_percent(source seed), 100)`, from 32 to 44 around the average 38; a mini's is
+its parent's size scaled to its generation's share, which for a mini drawn from its parent's seed
+is the same number. The appearance stream still makes the draw it made for the size, so every
+draw after it is unchanged. `apply_statures` runs once while a v21 or older colony is migrated and
+adds no field. The modular renderer allows sizes up to 116%, a four-pawed body up to 110%, and an
+art test keeps every body at the largest stature off the frame's outermost rows and columns.
+
 Save version 11 gives every creature a typed adult or mini role, a persistent Keep flag, and a
 two-bit adult mini-arrival projection. Total colony size remains four, adult count is capped at
 three, and normal generation limits each adult to two minis. Parent assignment is deterministic and
@@ -1691,14 +1699,15 @@ companion's wardrobe in `clubhouse/collection.rs`; `settings.rs` owns its egui w
 presentation. Four static portraits, four eight-frame candidate strips (six walk frames, drawn by
 `render_studio_frame` pleased and eyes open rather than with a walk's focused look, and two of a
 wave), the top row of the village atlas, the object sheet, the resting half of the
-colony trinket sheet, and a companion trying something on in four poses fit within 807 KiB of
-artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
+colony trinket sheet, a companion trying something on in four poses, and the one village tree the
+studio's large preview stands a companion beside fit within 823 KiB of artwork textures. It was 416 KiB until the trinket sheet replaced eight separate 16×16 drawings with
 24 KiB more pixels in a single texture, 432 KiB until 0.59.0 gave every house a cell of its own, 496
 KiB until the object strip grew from eight cells to fourteen, and 500 KiB until 0.60.0 brought ten
 times the keepsakes (128 KiB more, even holding only the resting half), an object sheet with every
 garden stage, spot, ornament and village prop (98 KiB more), and the try-on poses (36 KiB); the Home
 page's village shrank to the one row it draws and cost nothing more. It was 760 KiB until 0.61.0
-drew the houses a quarter larger, and that row grew from 512×64 to 560×80 (47 KiB more). Tiles in a
+drew the houses a quarter larger, and that row grew from 512×64 to 560×80 (47 KiB more), and
+807 KiB until 0.63.1 added the 64×64 tree (16 KiB). Tiles in a
 wrapped row — the Collection, the pins, the shelves — are each allocated whole and painted into,
 because an egui `Frame` places itself before its row decides whether it still fits and so never
 wraps. A frame, a column or a combo box with text in it — the cards under Life here, a companion's

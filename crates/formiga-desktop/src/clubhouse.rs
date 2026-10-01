@@ -82,6 +82,8 @@ pub fn muted() -> Color32 {
 struct Candidate {
     preview: GenerationPreview,
     texture: TextureHandle,
+    /// The row of its frames it stands on, so the large preview can stand it beside the tree.
+    floor: u32,
 }
 #[derive(Default)]
 pub struct Clubhouse {
@@ -126,6 +128,8 @@ pub struct Clubhouse {
     /// The last change to the colony that can still be taken back, as the footer names it. Set
     /// by the app before every frame, from the world, which is where the change is kept.
     pub last_edit: Option<String>,
+    /// The village tree the large preview stands a companion beside, uploaded once.
+    tree: Option<TextureHandle>,
     /// The picture the takes on show were read from, kept only while they are on show so that
     /// "Four more takes" can read it again. Only the path is kept, never the picture, and it is
     /// never saved.
@@ -169,6 +173,7 @@ impl Clubhouse {
             .values()
             .map(|(_, t)| t.id())
             .chain(self.candidates.iter().map(|c| c.texture.id()))
+            .chain(self.tree.iter().map(|t| t.id()))
             .chain(self.home_texture.iter().map(|home| home.texture.id()))
             .chain(self.object_texture.iter().map(|(_, t)| t.id()))
             .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
@@ -181,6 +186,7 @@ impl Clubhouse {
         self.home_texture = None;
         self.object_texture = None;
         self.trinket_atlas = None;
+        self.tree = None;
         self.collection.release_images();
     }
     pub fn locks(&self) -> (Option<CreatureDesign>, bool, bool) {
@@ -195,6 +201,7 @@ impl Clubhouse {
     pub fn push_preview(&mut self, context: &egui::Context, preview: GenerationPreview) {
         // Eight tiny pre-baked frames, not a full desktop animation atlas.
         let mut strip = Canvas::new(48 * 8, 48);
+        let mut tiles = Vec::with_capacity(8);
         for frame in 0..8 {
             let (action, index) = if frame < 6 {
                 (ActionKind::Traverse, frame)
@@ -211,12 +218,20 @@ impl Clubhouse {
                     strip.set(frame * 48 + x, y, tile.get(x, y));
                 }
             }
+            tiles.push(tile);
         }
         let texture = upload(context, "studio-candidate", &strip);
+        // Every frame stands on the ground the first one stands on, so a step or a wave lifts the
+        // companion off it the way it does on the desktop.
+        let floor = formiga_art::standing_row(&tiles[0]);
         if self.candidates.len() == 4 {
             self.candidates.remove(0);
         }
-        self.candidates.push(Candidate { preview, texture });
+        self.candidates.push(Candidate {
+            preview,
+            texture,
+            floor,
+        });
         self.selected = self.candidates.len() - 1;
         self.replace_confirmed = false;
     }
@@ -411,6 +426,10 @@ impl Clubhouse {
             }
         });
         ui.separator();
+        let tree = self
+            .tree
+            .get_or_insert_with(|| upload(ui.ctx(), "studio-tree", &formiga_art::reference_tree()))
+            .id();
         let candidate = &self.candidates[self.selected];
         let animate = self.animate && !save.settings.reduce_motion;
         let frame = if animate {
@@ -424,14 +443,37 @@ impl Clubhouse {
                 .stroke(egui::Stroke::new(2.0, gold()))
                 .inner_margin(8)
                 .show(ui, |ui| {
-                    ui.add(
-                        egui::Image::new(&candidate.texture)
-                            .uv(egui::Rect::from_min_max(
-                                egui::pos2(frame as f32 / 8.0, 0.0),
-                                egui::pos2((frame + 1) as f32 / 8.0, 1.0),
-                            ))
-                            .maintain_aspect_ratio(false)
-                            .fit_to_exact_size(egui::vec2(144.0, 144.0)),
+                    // Three screen pixels to an art pixel, as before, now standing beside the
+                    // village tree the review sheets use, so a small or a large companion reads
+                    // as one.
+                    let unit = 3.0;
+                    let scene = formiga_art::tree_scene(48, candidate.floor);
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(scene.width as f32 * unit, scene.height as f32 * unit),
+                        egui::Sense::hover(),
+                    );
+                    let at = |(x, y): (i32, i32), size: f32| {
+                        egui::Rect::from_min_size(
+                            rect.min + egui::vec2(x as f32 * unit, y as f32 * unit),
+                            egui::vec2(size * unit, size * unit),
+                        )
+                    };
+                    let whole =
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                    ui.painter().image(
+                        tree,
+                        at(scene.tree, formiga_art::TREE_CELL as f32),
+                        whole,
+                        Color32::WHITE,
+                    );
+                    ui.painter().image(
+                        candidate.texture.id(),
+                        at(scene.frame, 48.0),
+                        egui::Rect::from_min_max(
+                            egui::pos2(frame as f32 / 8.0, 0.0),
+                            egui::pos2((frame + 1) as f32 / 8.0, 1.0),
+                        ),
+                        Color32::WHITE,
                     );
                 });
             ui.vertical(|ui| {

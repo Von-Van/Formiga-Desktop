@@ -5,7 +5,10 @@
 //!
 //! Everything is drawn from fixed seeds, so the same arguments always make the same sheet.
 
-use crate::{blit_scaled_square_alpha, fill_gradient, fixture_desktop, write_png};
+use crate::{
+    SCENE_CELL, blit_canvas_scaled, blit_scaled_square_alpha, fill_gradient, fixture_desktop,
+    write_png,
+};
 use anyhow::{Context, Result, bail};
 use formiga_art::{
     BodyClip, CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE, FaceRenderState,
@@ -60,11 +63,13 @@ pub(crate) fn options(args: &[String]) -> Result<Options> {
     })
 }
 
-/// One companion on the sheet: its number, its recipe, and how the generator came to pick it.
+/// One companion on the sheet: its number, its recipe, how the generator came to pick it, and the
+/// size its seed gives it.
 struct Entry {
     number: u32,
     design: CreatureDesign,
     strangeness: Option<Strangeness>,
+    size: u8,
 }
 
 fn entries(options: &Options) -> Vec<Entry> {
@@ -90,6 +95,7 @@ fn entries(options: &Options) -> Vec<Entry> {
                 number: index + 1,
                 design,
                 strangeness,
+                size: formiga_core::size_for(formiga_core::stature_percent(seed), 100),
             }
         })
         .collect()
@@ -98,8 +104,8 @@ fn entries(options: &Options) -> Vec<Entry> {
 pub(crate) fn run(path: PathBuf, options: Options) -> Result<()> {
     let entries = entries(&options);
     let rows = options.count.div_ceil(COLUMNS);
-    let cell_width = FRAME_SIZE * SCALE;
-    let cell_height = cell_width + LABEL;
+    let cell_width = SCENE_CELL.0 * SCALE;
+    let cell_height = SCENE_CELL.1 * SCALE + LABEL;
     let (width, height) = (cell_width * COLUMNS, cell_height * rows);
     let mut pixels = vec![0; (width * height * 4) as usize];
     fill_gradient(
@@ -118,6 +124,7 @@ pub(crate) fn run(path: PathBuf, options: Options) -> Result<()> {
     };
     for entry in &entries {
         apply_creature_design(&mut creature, Some(entry.design));
+        creature.appearance.logical_size = entry.size;
         let canvas = CreatureRenderer::render_composited_frame(
             &creature.appearance,
             BodyClip::Action(ActionKind::Idle),
@@ -128,21 +135,15 @@ pub(crate) fn run(path: PathBuf, options: Options) -> Result<()> {
         );
         let index = entry.number - 1;
         let (x, y) = (index % COLUMNS * cell_width, index / COLUMNS * cell_height);
-        blit_scaled_square_alpha(
-            &mut pixels,
-            width,
-            x,
-            y,
-            &canvas.rgba_bytes(),
-            FRAME_SIZE,
-            SCALE,
-        );
+        // Beside the same village tree as every other, so its size reads against it.
+        let scene = formiga_art::beside_tree(&canvas, formiga_art::standing_row(&canvas));
+        blit_canvas_scaled(&mut pixels, width, x, y, &scene, SCALE);
         crate::social_preview::draw_text(
             &mut pixels,
             width as i32,
             height as i32,
             x as i32 + 6,
-            (y + cell_width + 4) as i32,
+            (y + SCENE_CELL.1 * SCALE + 4) as i32,
             &entry.number.to_string(),
             2,
             [52, 64, 58, 255],
@@ -150,16 +151,19 @@ pub(crate) fn run(path: PathBuf, options: Options) -> Result<()> {
     }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {} companions to {}", entries.len(), path.display());
-    println!("#\tclass\tarchetype\tcoherence\tbody\tears\tear size\ttail\tface\tmarking\tclassic");
+    println!(
+        "#\tclass\tarchetype\tcoherence\tsize\tbody\tears\tear size\ttail\tface\tmarking\tclassic"
+    );
     for entry in &entries {
         let d = entry.design;
         println!(
-            "{}\t{}\t{}\t{:.2}\t{:?}\t{:?}\t{}\t{}\t{}\t{}\t{:?}",
+            "{}\t{}\t{}\t{:.2}\t{}%\t{:?}\t{:?}\t{}\t{}\t{}\t{}\t{:?}",
             entry.number,
             entry.strangeness.map_or("original", Strangeness::label),
             d.body_archetype()
                 .map_or("-", |archetype| archetype.label()),
             d.coherence(),
+            (f32::from(entry.size) / formiga_core::AVERAGE_SIZE * 100.0).round(),
             d.body,
             d.ears,
             d.ear_size,

@@ -79,6 +79,59 @@ fn every_family_renders_inside_frame() {
     }
 }
 
+/// A companion of the greatest stature still fits its frame: nothing it draws, in any clip, reaches
+/// the outermost row or column, where it would be cut off. Every original family at the extremes
+/// of its genes, and two thousand recipes from the current generator.
+#[test]
+fn the_largest_stature_never_reaches_the_edge_of_the_frame() {
+    let largest = formiga_core::size_for(formiga_core::STATURE_MAX, 100);
+    let check = |genome: &AppearanceGenome, label: &str| {
+        for clip in BodyClip::baked() {
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let rendered = CreatureRenderer::render_body_frame(genome, clip, frame, false);
+                let bounds = rendered.canvas.alpha_bounds().expect("a body is drawn");
+                assert!(
+                    bounds.0 > 0
+                        && bounds.1 > 0
+                        && bounds.2 < FRAME_SIZE - 1
+                        && bounds.3 < FRAME_SIZE - 1,
+                    "{label} {clip:?} {frame}: {bounds:?}"
+                );
+            }
+        }
+    };
+    for family in [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ] {
+        for wide in [false, true] {
+            let mut g = genome(family);
+            g.logical_size = largest;
+            g.body_width = if wide { 27 } else { 16 };
+            g.body_height = if wide { 24 } else { 13 };
+            g.leg_length = if wide { 8 } else { 2 };
+            g.head_appendages.size = 7;
+            g.tail_length = 10;
+            for style in [
+                HeadAppendageStyle::Pointed,
+                HeadAppendageStyle::Round,
+                HeadAppendageStyle::Droop,
+            ] {
+                g.head_appendages.style = style;
+                check(&g, &format!("{family:?} wide={wide} {style:?}"));
+            }
+        }
+    }
+    let mut g = genome(BodyFamily::Blob);
+    g.logical_size = largest;
+    for index in 0..600_u64 {
+        let seed = formiga_core::SeedStream::new([67; 32]).bytes("largest-stature", index);
+        g.design = Some(formiga_core::CreatureDesign::generated(seed, 0, None));
+        check(&g, &format!("{:?}", g.design));
+    }
+}
+
 #[test]
 fn atlas_is_deterministic() {
     let first =
@@ -488,7 +541,7 @@ fn every_face_layout_keeps_two_eyes_and_sits_on_its_head() {
     for body in formiga_core::BodyPlan::ALL {
         for head in 7..=9 {
             for width in [8, 10, 12] {
-                for size in [19, 21, 22, 24, 25, 28, 34, 40] {
+                for size in [18, 19, 21, 22, 24, 25, 28, 32, 34, 40, 44] {
                     genome.logical_size = size;
                     genome.design = Some(formiga_core::CreatureDesign {
                         body,
@@ -924,9 +977,9 @@ fn every_face_and_body_stays_inside_the_boxes_the_simulation_spaces_by() {
         design.body = plan;
         design.classic = classic;
         creature.appearance.design = Some(design);
-        // An adult sits at the top of the range and the smallest mini at the bottom, so these
-        // four values bracket every `logical_size` a colony can hold.
-        for logical_size in [19_u8, 25, 34, 40] {
+        // The largest adult sits at the top of the range and the smallest mini of the smallest
+        // adult at the bottom, so these values bracket every `logical_size` a colony can hold.
+        for logical_size in [18_u8, 25, 32, 38, 44] {
             creature.appearance.logical_size = logical_size;
             let genome = &creature.appearance;
             // How far the drawn face spreads from the middle of its own 16x16 tile, at its

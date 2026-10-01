@@ -95,8 +95,9 @@ image is deterministic, so regenerating one that nothing has changed gives back 
 `cuteness-sheet` is for judging the generator rather than illustrating it. It draws 150 freshly
 generated companions (`--count` takes 1 to 400) on a numbered sheet, to `cuteness-sheet.png` in the
 repository root unless `--output` says otherwise, and prints a table of what each is made of: how
-it was chosen (cute, weird-cute or oddball), its archetype, coherence score, body, ears, tail, face
-layout and markings. `--seed NUMBER` draws a different sheet, `--edition archetypes` draws what the
+it was chosen (cute, weird-cute or oddball), its archetype, coherence score, size, body, ears,
+tail, face layout and markings. Each companion stands beside the same village tree, as on the
+generation sheet, so their sizes can be compared. `--seed NUMBER` draws a different sheet, `--edition archetypes` draws what the
 generator before 0.63.0 makes from the same seeds, without details, and `--edition original` what
 the one before 0.62.0 makes. Rate them in a text file of lines like
 `good: 1 4 9`, `ok: 2, 3` and `bad: 12`, pass it back with `--ratings FILE`, and the report shows

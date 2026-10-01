@@ -13,6 +13,7 @@ mod model;
 mod persistence;
 mod rng;
 mod seed_share;
+mod stature;
 mod temperament;
 mod topology;
 mod trinkets;
@@ -56,6 +57,10 @@ pub use seed_share::{
     SeedCodeError, SharedCreatureSeed, decode_creature_seed, derive_imported_colony_seed,
     encode_creature_seed,
 };
+pub use stature::{
+    AVERAGE_SIZE, STATURE_MAX, STATURE_MIN, apply_statures, size_after_parent, size_for,
+    stature_percent,
+};
 pub use temperament::{Axes, Temperament, TemperamentKind, Tension, Trait, Valence};
 pub use topology::{
     CursorInvitation, DesktopTopology, MAX_TOPOLOGY_LANDMARKS, MAX_TOPOLOGY_WINDOWS,
@@ -72,4 +77,4 @@ pub use visitor::{
 };
 pub use world::{BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, World};
 
-pub const SAVE_VERSION: u32 = 21;
+pub const SAVE_VERSION: u32 = 22;

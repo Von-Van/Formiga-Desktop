@@ -1,4 +1,4 @@
-# Modular creature generation · v0.63.0
+# Modular creature generation · v0.63.1
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -200,6 +200,28 @@ coat; a flame is a warm orange to gold, a bobble a brighter accent. A mini keeps
 details, and a mini of a parent without any is drawn exactly as before. Pictures reach the same
 details, in the picture's own colours, with a tip made vivid enough to stand out from the coat.
 
+## Size
+
+Since 0.63.1 companions come in different sizes. Every adult has a stature, from 85% to 115% of the
+average, drawn from a `creature-stature-v1` stream of the seed it came from: four in five land
+within five points of the average, one in ten comes out small and one in ten large. A stature is a
+logical size — 38 is the average adult, so they run from 32 to 44 — and the art draws every body
+plan at that size inside the same 48-pixel frame, growing its body, head, ears and legs and leaving
+the face its readable size. A four-pawed body, the longest plan, stops growing at 110%, where it
+would no longer fit its frame with a cup in its paws, and a large one carries its head no further
+forward than the largest did before statures, so its face stays inside the box the simulation keeps
+faces clear by. Nothing any body draws, in any clip, reaches the edge of its frame.
+
+A mini is its parent's size scaled down to the share its generation is drawn at — 70%, 62% or 55% —
+so a large companion has large minis. A mini born in the colony was drawn from its parent's seed and
+so shares its stature; one born to a companion adopted from a code follows that parent directly.
+Every companion made before 0.63.1 takes, when its colony is first opened, exactly the size it
+would have been made with; nothing else about it changes.
+
+The generation and cuteness sheets stand every companion beside the same village tree, and the
+creature studio stands its large preview beside it too, so a size reads against something that
+never changes. The cuteness sheet's table lists each companion's size.
+
 ## Temperament
 
 A companion made by the new generator is given a temperament from a `temperament-v1` stream. It
@@ -269,7 +291,8 @@ version 20 adds temperaments and archetype recipes and migrates nothing, for the
 recipe with details travels as a version 5 code, eight bytes longer — the four parts two to a byte,
 then the belly and tip colours — so it is twenty-six groups rather than twenty-three; a version 5
 code without details is rejected, and one needs v0.63.0 or newer. A recipe without details is still
-written as version 4 or older exactly as before. Save version 21 adds details and migrates nothing. Incompatible recipe changes require a new format,
+written as version 4 or older exactly as before. Save version 21 adds details and migrates nothing. Save version 22 gives every companion already
+in a colony its stature, as above; it adds no field. Incompatible recipe changes require a new format,
 not reinterpretation of existing codes. Source provenance duplicates the bounded recipe so sharing
 does not depend on a reference file or a temporary preview.
 

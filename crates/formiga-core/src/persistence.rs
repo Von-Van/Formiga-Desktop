@@ -171,7 +171,7 @@ impl SaveStore {
             .unwrap_or_default();
         match version {
             crate::SAVE_VERSION => Ok(serde_json::from_value(value)?),
-            1..=20 => migrate_legacy(value, version),
+            1..=21 => migrate_legacy(value, version),
             unsupported => Err(PersistenceError::UnsupportedVersion(unsupported)),
         }
     }
@@ -260,9 +260,16 @@ fn migrate_legacy(
     // v21 adds details to recipes. Nothing is migrated: a recipe without them has none, which is
     // what every earlier recipe is. The version moved so an older build refuses a colony whose
     // details it would quietly drop.
+    //
+    // v22 gives every companion a stature. Each one already in the colony takes the size its own
+    // seed gives it, and a mini its parent's size scaled down, exactly as a new one would; nothing
+    // else about it changes. Applied after the file is parsed, below.
     value["save_version"] = serde_json::Value::from(crate::SAVE_VERSION);
     let mut save: SaveFile = serde_json::from_value(value)?;
     save.save_version = crate::SAVE_VERSION;
+    if source_version <= 21 {
+        crate::apply_statures(&mut save.creatures);
+    }
     if save.ritual.next_at_utc == time::OffsetDateTime::UNIX_EPOCH {
         save.ritual.next_at_utc =
             crate::world::scheduled_ritual_at(save.colony_seed, 0, save.maximum_seen_utc);
@@ -2837,7 +2844,13 @@ mod tests {
             assert_eq!(actual.name, expected.1);
             assert_eq!(actual.memory, expected.2);
             assert_eq!(actual.tendencies, expected.3);
-            assert_eq!(actual.appearance, expected.4);
+            // Each takes the size its own seed gives it, and its appearance is otherwise as it was.
+            let mut appearance = expected.4.clone();
+            appearance.logical_size = crate::size_for(
+                crate::stature_percent(actual.origin.source_colony_seed),
+                actual.display_scale_percent,
+            );
+            assert_eq!(actual.appearance, appearance);
             assert!(actual.kept);
             assert!(!actual.mini_arrivals.enabled);
             assert_eq!(actual.role.is_adult(), index == 0);
