@@ -208,6 +208,7 @@ fn the_snapshot_holds_nothing_about_the_desktop_or_the_colony_file() {
             "version",
             "min_reader_version",
             "session_id",
+            "colony_id",
             "created_at_utc",
             "desktop_version",
             "capabilities",

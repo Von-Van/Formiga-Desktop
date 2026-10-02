@@ -18,21 +18,34 @@ const SNAPSHOT_READER: u32 = 1;
 /// The title every reason for not leaving is shown under.
 const STAYING_HOME: &str = "The colony is staying home";
 
+/// For development only: with [`formiga_travel::discovery::PATH_OVERRIDE_ENV`] naming a stand-in
+/// Hill, the colony leaves this many seconds after Desktop starts, once, as if the tray had been
+/// used. Ignored without the override, so it can never send a colony to an installed Hill.
+const TRIP_AFTER_ENV: &str = "FORMIGA_HILL_TRIP_AFTER";
+
 /// The trip's own state, files and Hill, as the app keeps them.
 pub(super) struct HillLink {
     pub(super) trip: TripState,
     pub(super) files: TravelFiles,
     pub(super) install: Option<HillInstall>,
     checked: Option<Instant>,
+    /// When a development run sends the colony by itself; see [`TRIP_AFTER_ENV`].
+    trip_at: Option<Instant>,
 }
 
 impl HillLink {
     pub(super) fn new(data_dir: &std::path::Path) -> Self {
+        let trip_at = std::env::var_os(formiga_travel::discovery::PATH_OVERRIDE_ENV)
+            .and(std::env::var(TRIP_AFTER_ENV).ok())
+            .and_then(|seconds| seconds.parse::<f32>().ok())
+            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+            .map(|seconds| Instant::now() + Duration::from_secs_f32(seconds));
         Self {
             trip: TripState::Idle,
             files: TravelFiles::new(data_dir),
             install: None,
             checked: None,
+            trip_at,
         }
     }
 }
@@ -42,6 +55,16 @@ impl FormigaApp {
     /// colony is home: a trip under way keeps the Hill it started with.
     pub(super) fn check_for_hill(&mut self, now: bool) {
         if self.hill.trip.holds_world() {
+            return;
+        }
+        if self
+            .hill
+            .trip_at
+            .is_some_and(|at| Instant::now() >= at && !self.recovery_pending)
+        {
+            self.hill.trip_at = None;
+            tracing::info!("sending the colony to the stand-in Hill, as {TRIP_AFTER_ENV} asks");
+            self.go_to_hill();
             return;
         }
         if !now
@@ -147,32 +170,46 @@ impl FormigaApp {
                 return;
             }
         };
-        let launched = launch_formiga_hill(&install, &open.dir).and_then(|child| {
-            crate::hill::watch(
-                child,
-                open.seal.session_id.clone(),
-                self.event_proxy.clone(),
-            )
-        });
-        if let Err(error) = launched {
-            self.hill.files.recall(&open, RecallReason::Other, now);
-            self.hill.files.close(&open);
-            self.failure_dialog(
-                STAYING_HOME,
-                &format!("Formiga Hill could not be opened: {error}"),
-            );
-            return;
-        }
         tracing::info!(
             travelers = snapshot.travelers.len(),
-            "the colony left for Formiga Hill"
+            "the colony is leaving for Formiga Hill"
         );
-        let scene = TrainScene::departure(&world.save, &self.monitors);
-        self.hill.trip = match scene {
-            Some(scene) => TripState::Departing { open, scene },
-            None => TripState::Away { open },
-        };
+        // With the train to watch, Hill opens as it pulls away; with nothing on the desktop to
+        // see, at once.
+        match TrainScene::departure(&world.save, &self.monitors) {
+            Some(scene) => {
+                self.hill.trip = TripState::Departing {
+                    open,
+                    scene,
+                    hill: Some(install),
+                };
+            }
+            None => {
+                if let Err(error) = self.launch_hill(&install, &open) {
+                    self.hill.files.recall(&open, RecallReason::Other, now);
+                    self.hill.files.close(&open);
+                    self.failure_dialog(STAYING_HOME, &error);
+                    return;
+                }
+                self.hill.trip = TripState::Away { open };
+            }
+        }
         self.enter_trip();
+    }
+
+    /// Start Hill for this trip, with a thread waiting for it to exit.
+    fn launch_hill(&self, install: &HillInstall, open: &session::OpenTrip) -> Result<(), String> {
+        launch_formiga_hill(install, &open.dir)
+            .and_then(|child| {
+                crate::hill::watch(
+                    child,
+                    open.seal.session_id.clone(),
+                    self.event_proxy.clone(),
+                )
+            })
+            .map_err(|error| format!("Formiga Hill could not be opened: {error}"))?;
+        tracing::info!("the colony left for Formiga Hill");
+        Ok(())
     }
 
     /// The owner asked for the colony back before Hill was done with it.
@@ -302,6 +339,29 @@ impl FormigaApp {
         for overlay in self.overlays.values() {
             if overlay.is_visible() {
                 overlay.window.request_redraw();
+            }
+        }
+        // Everyone is aboard and the train is pulling away: now Hill opens. If it cannot, the train
+        // stops where it is and everyone gets off again.
+        if let TripState::Departing {
+            open,
+            scene,
+            hill: hill @ Some(_),
+        } = &mut self.hill.trip
+            && scene.pulling_away()
+        {
+            let (install, open) = (hill.take().expect("matched Some"), open.clone());
+            if let Err(error) = self.launch_hill(&install, &open) {
+                tracing::warn!(%error, "Formiga Hill could not be started");
+                self.hill
+                    .files
+                    .recall(&open, RecallReason::Other, OffsetDateTime::now_utc());
+                self.hill.files.close(&open);
+                self.come_home(Some(HomecomingNote {
+                    text: error,
+                    asked_for: true,
+                }));
+                return;
             }
         }
         if !finished {

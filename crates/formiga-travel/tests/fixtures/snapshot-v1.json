@@ -3,6 +3,7 @@
   "version": 1,
   "min_reader_version": 1,
   "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "colony_id": "601f2179d0b45400",
   "created_at_utc": "2026-10-02T09:30:00Z",
   "desktop_version": "0.66.1",
   "capabilities": [
@@ -692,6 +693,8 @@
     }
   ],
   "presentation": {
-    "reduce_motion": false
+    "reduce_motion": false,
+    "theme": "system",
+    "text_scale_percent": 100
   }
 }

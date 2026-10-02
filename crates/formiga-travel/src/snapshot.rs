@@ -3,7 +3,7 @@
 //! desktop, what was open on it, or how Desktop runs them.
 
 use crate::appearance::{DesignRecipe, TravelAppearance, mirror};
-use crate::document::{Document, TravelError, header_ok};
+use crate::document::{Document, TravelError, header_ok, unhex};
 use crate::ids::{SessionId, TravelerId};
 use crate::limits::*;
 use crate::text::is_sanitized;
@@ -88,10 +88,39 @@ pub enum Capability {
     Unknown,
 }
 
+mirror!(
+    Theme = core::ThemeChoice {
+        System,
+        Light,
+        Dark
+    }
+);
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
 /// How the owner likes things shown, as far as both apps share it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Presentation {
     pub reduce_motion: bool,
+    /// The notebook's light or dark paper, or whatever the system uses.
+    pub theme: Theme,
+    /// The notebook's text size, in percent: 100 to 150.
+    pub text_scale_percent: u8,
+}
+
+impl Default for Presentation {
+    fn default() -> Self {
+        Self {
+            reduce_motion: false,
+            theme: Theme::System,
+            text_scale_percent: 100,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -280,6 +309,10 @@ pub struct TravelSnapshot {
     pub version: u32,
     pub min_reader_version: u32,
     pub session_id: SessionId,
+    /// The same colony on every trip, as 16 lowercase hex digits: a one-way digest of what makes
+    /// it that colony, so Hill can keep its own record of each colony it has hosted without
+    /// learning anything it could rebuild the colony from.
+    pub colony_id: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at_utc: OffsetDateTime,
     pub desktop_version: String,
@@ -295,6 +328,7 @@ impl TravelSnapshot {
     /// An empty snapshot with this build's header, for the projection to fill.
     pub(crate) fn new(
         session_id: SessionId,
+        colony_id: String,
         created_at_utc: OffsetDateTime,
         desktop_version: String,
     ) -> Self {
@@ -303,6 +337,7 @@ impl TravelSnapshot {
             version: TRAVEL_FORMAT_VERSION,
             min_reader_version: 1,
             session_id,
+            colony_id,
             created_at_utc,
             desktop_version,
             capabilities: vec![Capability::VisitRecord],
@@ -339,6 +374,12 @@ impl Document for TravelSnapshot {
         }
         if !is_sanitized(&self.desktop_version, MAX_VERSION_CHARS) {
             return Err(invalid("the Desktop version is not plain text"));
+        }
+        if unhex::<8>(&self.colony_id).is_none() {
+            return Err(invalid("a colony id is 16 lowercase hex digits"));
+        }
+        if !(100..=150).contains(&self.presentation.text_scale_percent) {
+            return Err(invalid("a text size out of range"));
         }
         if self.capabilities.len() > MAX_CAPABILITIES {
             return Err(invalid("too many capabilities"));

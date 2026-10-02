@@ -50,6 +50,7 @@ mod document;
 mod ids;
 mod projection;
 mod receipt;
+pub mod sample;
 mod snapshot;
 mod text;
 
@@ -70,7 +71,7 @@ pub use receipt::{
 };
 pub use snapshot::{
     AccessoryColors, AccessoryItem, AccessoryKind, Band, Capability, Habit, Presentation,
-    TemperamentKind, Tension, TravelAccessory, TravelAxes, TravelCharacter, TravelMotion,
+    TemperamentKind, Tension, Theme, TravelAccessory, TravelAxes, TravelCharacter, TravelMotion,
     TravelRelationship, TravelRole, TravelSnapshot, Traveler,
 };
 pub use text::{is_sanitized, sanitize_text};

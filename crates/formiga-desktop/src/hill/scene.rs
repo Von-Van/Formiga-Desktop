@@ -347,6 +347,11 @@ impl TrainScene {
         self.elapsed >= self.ends_at
     }
 
+    /// Whether everyone is aboard and the train is on its way.
+    pub fn pulling_away(&self) -> bool {
+        self.leg == Leg::Departure && self.elapsed >= self.leave_at
+    }
+
     /// Seconds the whole scene takes.
     #[cfg(test)]
     pub fn length(&self) -> f32 {

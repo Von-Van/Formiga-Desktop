@@ -35,8 +35,14 @@ pub fn project_colony(
     if save.creatures.is_empty() {
         return Err(ProjectionError::Empty);
     }
+    let colony: [u8; 32] = Sha256::new()
+        .chain_update(b"formiga-travel-colony-v1")
+        .chain_update(save.colony_seed)
+        .finalize()
+        .into();
     let mut snapshot = TravelSnapshot::new(
         session_id,
+        crate::document::hex(&colony[..8]),
         created_at_utc
             .replace_nanosecond(0)
             .unwrap_or(created_at_utc),
@@ -72,6 +78,8 @@ pub fn project_colony(
     snapshot.relationships = relationships;
     snapshot.presentation = Presentation {
         reduce_motion: save.settings.reduce_motion,
+        theme: save.companion.appearance.theme.into(),
+        text_scale_percent: save.companion.appearance.text_scale.clamp(100, 150),
     };
     snapshot.validate()?;
     Ok(snapshot)

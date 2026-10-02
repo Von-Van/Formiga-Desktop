@@ -7,8 +7,8 @@
 //! | State | What Desktop does |
 //! |---|---|
 //! | Idle | Lives as always. |
-//! | Preparing | Lets go of whatever anyone was in the middle of, saves the colony, writes the travel snapshot, and starts Hill. Any failure leaves the colony home, untouched. |
-//! | Departing | The train pulls in and everyone gets on. The world does not tick. |
+//! | Preparing | Lets go of whatever anyone was in the middle of, saves the colony and writes the travel snapshot. Any failure leaves the colony home, untouched. |
+//! | Departing | The train pulls in and everyone gets on. The world does not tick. As the train pulls away Hill is started, so its own arrival follows on; if it cannot be, the train stops and everyone gets off again. |
 //! | Away | Nothing of the colony is on the desktop and the world does not tick. The tray offers to bring it home. |
 //! | Returning | Hill has gone, or the owner asked for the colony back: what Hill sent is checked, the little that may be kept is, the trip's files are cleared, and the train brings everyone home. |
 //!
@@ -25,6 +25,7 @@ pub mod scene;
 pub mod session;
 
 use crate::app::UserEvent;
+use crate::platform::hill::HillInstall;
 use formiga_travel::SessionId;
 use scene::TrainScene;
 use session::OpenTrip;
@@ -51,8 +52,13 @@ pub struct HomecomingNote {
 pub enum TripState {
     #[default]
     Idle,
-    /// The train is in, and the colony is getting on. Hill has been started.
-    Departing { open: OpenTrip, scene: TrainScene },
+    /// The train is in, and the colony is getting on. `hill` is the Hill to start as the train
+    /// pulls away, until it has been.
+    Departing {
+        open: OpenTrip,
+        scene: TrainScene,
+        hill: Option<HillInstall>,
+    },
     /// The colony is at Hill.
     Away { open: OpenTrip },
     /// The colony is home again and getting off the train. The trip is already closed.
