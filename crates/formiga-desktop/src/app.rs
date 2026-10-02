@@ -945,6 +945,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             return;
                         };
                         window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
+                        window.clubhouse.earlier_edits = world.undoable_edits().saturating_sub(1);
                         window.clubhouse.save_trouble = self.save_trouble.clone();
                         window.clubhouse.tour.menus_opened = self.menus_opened;
                         match window.render(

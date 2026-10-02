@@ -210,9 +210,11 @@ pub struct Clubhouse {
     /// is only ever the file it is exported to.
     pub postcard_scene: formiga_art::PostcardScene,
     pub postcard_caption: String,
-    /// The last change to the colony that can still be taken back, as the footer names it. Set
-    /// by the app before every frame, from the world, which is where the change is kept.
+    /// The last change to the colony that can still be taken back, as the footer names it, and
+    /// how many earlier ones can be taken back after it. Set by the app before every frame, from
+    /// the world, which is where the changes are kept.
     pub last_edit: Option<String>,
+    pub earlier_edits: usize,
     /// The village tree the large preview stands a companion beside, uploaded once.
     tree: Option<TextureHandle>,
     /// The page being turned, while it turns, and the page shown last frame, to notice a new one.

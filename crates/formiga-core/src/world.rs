@@ -108,7 +108,8 @@ pub struct World {
     moment_rng: ChaCha12Rng,
     /// The last change made to the colony from the settings window, kept so it can be taken
     /// back. Never saved: it lasts as long as the app runs.
-    last_edit: Option<undo::UndoPoint>,
+    /// The changes that can still be taken back, oldest first.
+    undo_history: VecDeque<undo::UndoPoint>,
     /// Sleepers being towed out of somebody's way by a friend on a little rope.
     tows: tows::TowTable,
     /// When the colony next yawns, and the yawns and looks still waiting to start.
@@ -365,7 +366,7 @@ impl World {
             home_roam_rng: streams.rng("home-roaming", 0),
             habit_rng: streams.rng("habits", 0),
             village_moment: None,
-            last_edit: None,
+            undo_history: VecDeque::new(),
             tows: tows::TowTable::default(),
             beats: beats::Beats::new(&streams),
             antics: antics::Antics::new(&streams),

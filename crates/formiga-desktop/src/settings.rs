@@ -941,7 +941,10 @@ fn draw_settings(
             // The last change to who lives here or how the village is laid out, while it can
             // still be taken back: on every page, since a change on one page shows on another.
             if let Some(change) = clubhouse.last_edit.clone()
-                && ui.button(format!("Undo {change}")).clicked()
+                && ui
+                    .button(format!("Undo {change}"))
+                    .on_hover_text(undo_hint(clubhouse.earlier_edits))
+                    .clicked()
             {
                 outcome.undo_last_edit = true;
             }
@@ -1133,6 +1136,15 @@ fn draw_settings(
                 save.settings.reduce_motion,
             );
         });
+}
+
+/// What the undo button says about the changes behind the one it takes back.
+pub(crate) fn undo_hint(earlier: usize) -> String {
+    match earlier {
+        0 => "The only change kept. Changes are kept until Formiga quits.".to_owned(),
+        1 => "One earlier change can be undone after this one.".to_owned(),
+        n => format!("{n} earlier changes can be undone after this one, newest first."),
+    }
 }
 
 /// The preferences changed but not yet applied, by the names their controls go by.

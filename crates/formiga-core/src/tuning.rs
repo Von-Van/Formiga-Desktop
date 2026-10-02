@@ -321,3 +321,12 @@ pub const OBSERVATIONS: Observations = Observations {
     squabbles: 8,
     regular_visits: 3,
 };
+
+/// Taking back changes made from the settings window (`world/undo.rs`).
+pub struct Undo {
+    /// How many changes to who lives here and how the village is laid out can be taken back,
+    /// newest first. They are kept only while the app runs, never in the colony file.
+    pub depth: usize,
+}
+
+pub const UNDO: Undo = Undo { depth: 8 };

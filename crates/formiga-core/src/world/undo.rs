@@ -1,8 +1,8 @@
-//! Taking back the last change made to the colony from the settings window.
+//! Taking back changes made to the colony from the settings window.
 //!
-//! Only one change is ever kept, and only for as long as the app runs: it is a way out of a
-//! misclick, not a history. It covers the changes that decide who lives here and how the village
-//! is laid out — a companion removed, replaced, started over or welcomed from the studio, and the
+//! The last few changes are kept — `tuning::UNDO.depth` of them — newest first, and only for as
+//! long as the app runs: a way to try an arrangement and step back out of it, never part of the
+//! colony file. It covers the changes that decide who lives here and how the village is laid out — a companion removed, replaced, started over or welcomed from the studio, and the
 //! cottages, colours, gardens, spots, corner, display, decorations and keepsakes arranged on the
 //! Home page. Everything else the colony did in the meantime is kept: undoing a removal brings the
 //! companion back exactly as it left, and leaves everyone else as they are now.
@@ -99,9 +99,9 @@ pub(super) struct UndoPoint {
 
 impl World {
     /// Make a change that can be taken back: `change` is applied, and if it changed who lives
-    /// here or how the village is laid out, the colony as it stood before is kept, in place of any
-    /// earlier change, until it is undone or the app quits. A change that fails, or that changes
-    /// nothing, leaves the earlier one to undo.
+    /// here or how the village is laid out, the colony as it stood before is kept, after any
+    /// earlier changes, until it is undone, pushed out by newer ones, or the app quits. A change
+    /// that fails, or that changes nothing, keeps nothing.
     pub fn edit<T>(&mut self, edit: ColonyEdit, change: impl FnOnce(&mut World) -> T) -> T {
         let before = UndoPoint {
             edit,
@@ -129,17 +129,25 @@ impl World {
                 .map(|creature| creature.id)
                 .filter(|id| !before.creatures.iter().any(|old| old.id == *id))
                 .collect();
-            self.last_edit = Some(UndoPoint { added, ..before });
+            self.undo_history.push_back(UndoPoint { added, ..before });
+            while self.undo_history.len() > crate::tuning::UNDO.depth {
+                self.undo_history.pop_front();
+            }
         }
         result
     }
 
-    /// The change the colony can take back, if there is one.
+    /// The change the colony would take back next, if there is one.
     pub fn last_edit(&self) -> Option<&ColonyEdit> {
-        self.last_edit.as_ref().map(|point| &point.edit)
+        self.undo_history.back().map(|point| &point.edit)
     }
 
-    /// Take back the last change.
+    /// How many changes can still be taken back, one at a time, newest first.
+    pub fn undoable_edits(&self) -> usize {
+        self.undo_history.len()
+    }
+
+    /// Take back the newest change still kept. The one before it is then the next to go.
     ///
     /// A companion that was removed or replaced comes back exactly as it left — its memories, its
     /// bonds with everyone still here, its minis, and its cottage — with the same id, standing
@@ -147,10 +155,13 @@ impl World {
     /// Everyone else keeps everything they have done since, and anyone who arrived on their own
     /// in the meantime stays. A layout change puts back exactly the arrangement it changed.
     pub fn undo_last_edit(&mut self) -> Result<ColonyEdit, UndoError> {
-        let point = self.last_edit.take().ok_or(UndoError::NothingToUndo)?;
+        let point = self
+            .undo_history
+            .pop_back()
+            .ok_or(UndoError::NothingToUndo)?;
         if point.edit.is_about_companions() {
             if let Err(error) = self.restore_companions(&point) {
-                self.last_edit = Some(point);
+                self.undo_history.push_back(point);
                 return Err(error);
             }
             self.save.home.cottage_order = point.home.cottage_order.clone();
