@@ -527,10 +527,12 @@ impl SettingsWindow {
         // The window follows the saved preference, and re-reads the system's appearance with it,
         // so "match system" keeps up without anything polling for it.
         let appearance = colony.save.companion.appearance;
-        if self.applied_appearance != Some(appearance)
-            || (appearance.theme == ThemeChoice::System
-                && self.applied_system_theme != self.context.system_theme())
-        {
+        if appearance_changed(
+            self.applied_appearance,
+            self.applied_system_theme,
+            appearance,
+            self.context.system_theme(),
+        ) {
             configure_style(&self.context, appearance);
             self.applied_appearance = Some(appearance);
             self.applied_system_theme = self.context.system_theme();
@@ -705,6 +707,18 @@ impl SettingsWindow {
         }
         Ok(outcome)
     }
+}
+
+/// Whether the notebook has to apply its appearance again: the preference changed, or it follows
+/// the system and the system's own appearance changed since it was last applied — the system
+/// switching to dark at dusk, say, while the notebook is open.
+pub(crate) fn appearance_changed(
+    applied: Option<AppearancePreferences>,
+    applied_system: Option<egui::Theme>,
+    wanted: AppearancePreferences,
+    system: Option<egui::Theme>,
+) -> bool {
+    applied != Some(wanted) || (wanted.theme == ThemeChoice::System && applied_system != system)
 }
 
 /// Apply the reader's chosen appearance. Called whenever the preference or the system's own

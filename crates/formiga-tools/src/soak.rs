@@ -28,9 +28,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{Context, bail};
 use formiga_core::{
-    ColonyEdit, CursorSnapshot, DesktopRect, DesktopSnapshot, DesktopWindow, DisplayKey,
-    GardenKind, HabitatPreset, HangoutKind, HomeCorner, MonitorInfo, Point, RoamingLeaning,
-    SaveFile, SaveStore, ValidatedSave, VillagePalette, World, WorldCommand, violations,
+    BehaviorPreset, ColonyEdit, CursorSnapshot, DesktopRect, DesktopSnapshot, DesktopWindow,
+    DisplayKey, GardenKind, HabitatPreset, HangoutKind, HomeCorner, MonitorInfo, Point,
+    RoamingLeaning, RoutineSchedule, SaveFile, SaveStore, ScheduledTransition, ValidatedSave,
+    VillagePalette, World, WorldCommand, violations,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -62,7 +63,9 @@ fn options(args: &[String]) -> anyhow::Result<Options> {
         colonies: 24,
         days: 2,
         seed: 0x0663,
-        threads: std::thread::available_parallelism().map_or(1, |n| n.get()),
+        // Half the machine unless asked for more: a soak run left to take every core makes the
+        // rest of a working computer crawl. The scheduled workflow asks for the whole runner.
+        threads: std::thread::available_parallelism().map_or(1, |n| (n.get() / 2).max(1)),
         damage: 0,
         only: None,
         out: std::env::temp_dir().join("formiga-soak"),
@@ -100,6 +103,8 @@ struct Lived {
     undos: u32,
     damaged: u32,
     refused: u32,
+    /// Weekly routines that came round while the colony was away.
+    transitions: u32,
     /// The most ticks a colony took to bring everybody back within reach after a change.
     slowest_settle: u32,
 }
@@ -128,7 +133,7 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
     let started = std::time::Instant::now();
     let next = AtomicUsize::new(0);
     let failures = Mutex::new(Vec::new());
-    let totals = Mutex::new((0u64, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32));
+    let totals = Mutex::new((0u64, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32));
     // A panic is reported as a failure of the colony it happened in, not printed as it happens.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
@@ -156,6 +161,7 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
                             totals.4 += lived.damaged;
                             totals.5 += lived.refused;
                             totals.6 = totals.6.max(lived.slowest_settle);
+                            totals.7 += lived.transitions;
                             None
                         }
                         Ok(Err(error)) => Some(format!("{error:#}")),
@@ -182,10 +188,11 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
     });
     std::panic::set_hook(default_hook);
     let failures = failures.into_inner().unwrap();
-    let (ticks, reloads, edits, undos, damaged, refused, slowest) = totals.into_inner().unwrap();
+    let (ticks, reloads, edits, undos, damaged, refused, slowest, transitions) =
+        totals.into_inner().unwrap();
     println!(
-        "# lived {ticks} ticks ({:.1} simulated hours) with {reloads} reloads, {edits} edits and \
-         {undos} undos; {damaged} damaged files, {refused} refused, the rest repaired; the \
+        "# lived {ticks} ticks ({:.1} simulated hours) with {reloads} reloads, {edits} edits, \
+         {undos} undos and {transitions} routine changes come round while away; {damaged} damaged files, {refused} refused, the rest repaired; the \
          slowest return within reach after a change took {:.2} s; {:.0} s",
         ticks as f64 * f64::from(DT) / 3600.0,
         f64::from(slowest) * f64::from(DT),
@@ -487,6 +494,7 @@ fn live(
         undos: 0,
         damaged: 0,
         refused: 0,
+        transitions: 0,
         slowest_settle: 0,
     };
     std::fs::create_dir_all(scratch)?;
@@ -512,6 +520,9 @@ fn live(
         let _ = world.add_designed_adult(rng.random(), None, now, &desktop);
     }
     randomize_preferences(&mut world, &mut rng);
+    if rng.random_bool(0.35) {
+        weekly_routine(&mut world, &mut rng);
+    }
     check(&world, &desktop, "founded")?;
 
     for day in 0..options.days {
@@ -520,6 +531,7 @@ fn live(
             let minutes = rng.random_range(4..=30);
             let ticks = minutes * 60 * 20;
             let mut carrying: Option<u32> = None;
+            let applied_before = world.save.companion.schedule.applied;
             for tick in 0..ticks {
                 now += Duration::milliseconds(50);
                 // The desktop goes on around the colony.
@@ -593,6 +605,15 @@ fn live(
                 world.tick(now, DT, &desktop);
                 world.drain_events().for_each(drop);
                 lived.ticks += 1;
+                if tick == 0 {
+                    // Back from being away: the routine is the one the week says it is now,
+                    // whatever was missed, and a change that came round says so in the settings.
+                    routine_holds(&world, now, applied_before)
+                        .with_context(|| format!("day {day}, start of session {session}"))?;
+                    if world.save.companion.schedule.applied != applied_before {
+                        lived.transitions += 1;
+                    }
+                }
                 if tick % CHECK_EVERY == CHECK_EVERY - 1 {
                     check(
                         &world,
@@ -632,6 +653,13 @@ fn live(
             }
             if rng.random_bool(0.3) {
                 randomize_preferences(&mut world, &mut rng);
+                // Preferences changed by hand hold until the routine's next change.
+                world.override_routine();
+            }
+            if rng.random_bool(0.1) {
+                world.resume_routine(now);
+                routine_holds(&world, now, world.save.companion.schedule.applied)
+                    .context("just after the routine was resumed")?;
             }
             if rng.random_bool(0.2) {
                 world.set_quiet_mode(rng.random_range(0..=60), now);
@@ -675,13 +703,70 @@ fn live(
     let final_save = world.save.clone();
     *last_save.lock().unwrap() = Some(final_save.clone());
     for round in 0..options.damage {
-        let (opened, refused) = damage_round(&final_save, &mut rng, &desktop)
+        let refused = damage_round(&final_save, &mut rng, &desktop)
             .with_context(|| format!("damage round {round}"))?;
         lived.damaged += 1;
         lived.refused += u32::from(refused);
-        let _ = opened;
     }
     Ok(lived)
+}
+
+/// A weekly routine between two saved sets of preferences, changing one to four times a week at
+/// random minutes on random days.
+fn weekly_routine(world: &mut World, rng: &mut ChaCha8Rng) {
+    let mut work = BehaviorPreset::capture(&world.save.settings);
+    work.window_ledges = true;
+    work.reduce_motion = false;
+    let mut relax = work.clone();
+    relax.window_ledges = false;
+    relax.cursor_reactions = !work.cursor_reactions;
+    relax.habitat.preset = HabitatPreset::BottomEdge;
+    world.save.companion.modes = [Some(work), Some(relax)];
+    world.save.companion.schedule = RoutineSchedule {
+        enabled: true,
+        transitions: (0..rng.random_range(1..=4))
+            .map(|_| ScheduledTransition {
+                days: rng.random_range(1..=0b111_1111),
+                minute: rng.random_range(0..1440),
+                preset: rng.random_range(0..2),
+            })
+            .collect(),
+        ..RoutineSchedule::default()
+    };
+}
+
+/// The weekly routine is the one the week says it is at `now`, in local time, and if it changed
+/// since `before`, the preferences are that routine's.
+fn routine_holds(world: &World, now: OffsetDateTime, before: Option<u8>) -> anyhow::Result<()> {
+    let companion = &world.save.companion;
+    let schedule = &companion.schedule;
+    if !schedule.enabled {
+        return Ok(());
+    }
+    let local =
+        now.to_offset(time::UtcOffset::local_offset_at(now).unwrap_or(time::UtcOffset::UTC));
+    let Some(intended) = schedule.intended(local) else {
+        return Ok(());
+    };
+    let Some(preset) = companion.modes[usize::from(intended)].as_ref() else {
+        return Ok(());
+    };
+    if schedule.applied != Some(intended) {
+        bail!(
+            "the routine at {local} should be {intended} but {:?} is in place",
+            schedule.applied
+        );
+    }
+    let settings = &world.save.settings;
+    if schedule.applied != before
+        && (settings.window_ledges != preset.window_ledges
+            || settings.cursor_reactions != preset.cursor_reactions
+            || settings.reduce_motion != preset.reduce_motion
+            || settings.habitat.preset != preset.habitat.preset)
+    {
+        bail!("routine {intended} came round at {local} but the preferences are not its own");
+    }
+    Ok(())
 }
 
 /// Random preferences, as the person at the desk might set them.
@@ -781,14 +866,14 @@ fn damage_round(
     save: &SaveFile,
     rng: &mut ChaCha8Rng,
     desktop: &DesktopSnapshot,
-) -> anyhow::Result<(bool, bool)> {
+) -> anyhow::Result<bool> {
     let mut value = serde_json::to_value(save)?;
     for _ in 0..rng.random_range(1..=3) {
         formiga_core::damage(&mut value, rng);
     }
     let bytes = serde_json::to_vec(&value)?;
     match formiga_core::decode(&bytes) {
-        Err(_) => Ok((false, true)),
+        Err(_) => Ok(true),
         Ok(read) => {
             let broken = violations(&read);
             if !broken.is_empty() {
@@ -799,7 +884,7 @@ fn damage_round(
             for step in 1..=20 {
                 opened.tick(now + Duration::milliseconds(50 * step), DT, desktop);
             }
-            Ok((true, false))
+            Ok(false)
         }
     }
 }

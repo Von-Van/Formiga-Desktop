@@ -2232,3 +2232,45 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
         )
     ));
 }
+
+/// The notebook follows the system's own appearance while it is open: when the preference is to
+/// match the system and the system turns dark, the notebook applies it on its next frame, and the
+/// palette with it; a fixed preference ignores the system. The native appearance switch itself
+/// stays a manual check; this is the notebook's half of it.
+#[test]
+fn the_notebook_follows_the_system_into_the_dark_and_back() {
+    let system = AppearancePreferences {
+        theme: ThemeChoice::System,
+        ..AppearancePreferences::default()
+    };
+    let light = Some(egui::Theme::Light);
+    let dark = Some(egui::Theme::Dark);
+    assert!(appearance_changed(None, None, system, light), "first frame");
+    assert!(!appearance_changed(Some(system), light, system, light));
+    assert!(
+        appearance_changed(Some(system), light, system, dark),
+        "the system turned dark"
+    );
+    let fixed = AppearancePreferences {
+        theme: ThemeChoice::Light,
+        ..AppearancePreferences::default()
+    };
+    assert!(!appearance_changed(Some(fixed), light, fixed, dark));
+    // And applying it really does move the palette both ways.
+    let context = egui::Context::default();
+    for (theme, want_dark) in [(dark, true), (light, false), (dark, true)] {
+        let mut input = egui::RawInput {
+            system_theme: theme,
+            ..egui::RawInput::default()
+        };
+        input.screen_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 600.0),
+        ));
+        let mut output = context.run_ui(input, |_| {});
+        output.textures_delta.clear();
+        configure_style(&context, system);
+        assert_eq!(crate::clubhouse::dark_interface(), want_dark, "{theme:?}");
+    }
+    configure_style(&context, AppearancePreferences::default());
+}

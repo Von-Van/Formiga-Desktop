@@ -327,6 +327,9 @@ impl World {
         } else {
             self.clear_attention();
             self.cursor_observer.reset();
+            // A wonder stands where the displays were, and holds its players to it: it goes, and
+            // they are recovered below like anybody else.
+            self.send_wonder_away(Some(desktop));
         }
         // Stable display keys distinguish real removal from native identifier/DPI churn.
         for (index, creature) in self
@@ -935,6 +938,7 @@ mod tests {
                 surface: creature.state.surface.clone(),
                 elapsed: 0.5,
                 duration: 2.0,
+                lift: 0.0,
             }),
         );
         world.window_routes.insert(

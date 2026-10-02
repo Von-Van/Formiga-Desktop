@@ -472,3 +472,51 @@ fn at_home_a_wonder_never_sends_anyone_where_no_display_reaches() {
         }
     }
 }
+
+/// A display made smaller while a wonder is out on it sends the wonder away, so neither it nor
+/// its players are left where the display no longer reaches. Found by the long simulated runs.
+#[test]
+fn a_display_that_shrinks_under_a_wonder_sends_it_away() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    desktop.monitors[0].bounds.width = 2560.0;
+    desktop.monitors[0].usable_bounds.width = 2560.0;
+    let mut world = settled_colony([24; 32], 3, created, &desktop);
+    awake(&mut world);
+    // The village in the far corner of the wide display, so shrinking it leaves the wonder out.
+    world.save.home.corner = HomeCorner::BottomRight;
+    for _ in 0..200 {
+        world.tick(created, 0.05, &desktop);
+    }
+    assert!(bring_one_out(
+        &mut world,
+        created,
+        &desktop,
+        Some(WonderKind::LeafSled)
+    ));
+    for _ in 0..40 {
+        world.tick(created, 0.05, &desktop);
+    }
+    let out_at = world.wonder().unwrap().at;
+    assert!(
+        out_at.x > 1440.0,
+        "the wonder is out beyond where the display will end"
+    );
+    desktop.monitors[0].bounds.width = 1440.0;
+    desktop.monitors[0].usable_bounds.width = 1440.0;
+    for _ in 0..60 {
+        world.tick(created, 0.05, &desktop);
+    }
+    assert!(
+        world.wonder().is_none_or(|wonder| wonder.at.x <= 1440.0),
+        "the wonder went"
+    );
+    for creature in &world.save.creatures {
+        assert!(
+            creature.state.position.x <= 1440.0 + 48.0,
+            "{} is left at {:?}",
+            creature.name,
+            creature.state.position
+        );
+    }
+}

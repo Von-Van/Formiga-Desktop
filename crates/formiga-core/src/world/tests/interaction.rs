@@ -583,3 +583,81 @@ fn grabbing_a_toss_in_flight_cancels_back_to_its_last_safe_state() {
     assert_eq!(world.save.creatures[0].state.position, original);
     assert_eq!(world.save.creatures[0].state.action, ActionKind::Idle);
 }
+
+/// A companion caught in the air stays under the hand that caught it and is carried from there,
+/// rather than snapping back to where it was thrown from and hanging a throw's length from the
+/// cursor; let go without moving, it comes down from where it was caught. Found by the long
+/// simulated runs, where a catch carried one thousands of points off every display.
+#[test]
+fn a_toss_caught_in_flight_is_held_where_it_was_caught() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([40; 32], created, &desktop);
+    let creature_id = world.save.creatures[0].id;
+    let original = world.save.creatures[0].state.position;
+    world.handle_command(
+        WorldCommand::BeginInteraction {
+            creature_id,
+            cursor: original,
+        },
+        &desktop,
+    );
+    world.handle_command(
+        WorldCommand::EndInteraction {
+            cursor: Point {
+                x: original.x + 80.0,
+                y: original.y - 80.0,
+            },
+            velocity: Point {
+                x: 700.0,
+                y: -500.0,
+            },
+        },
+        &desktop,
+    );
+    for _ in 0..4 {
+        world.tick(created, 0.05, &desktop);
+    }
+    let airborne = world.save.creatures[0].state.position;
+    assert!(airborne.distance(original) > 60.0, "it is well on its way");
+    assert!(world.handle_command(
+        WorldCommand::BeginInteraction {
+            creature_id,
+            cursor: airborne,
+        },
+        &desktop,
+    ));
+    assert_eq!(world.save.creatures[0].state.position, airborne);
+    assert_eq!(world.save.creatures[0].state.action, ActionKind::Dragged);
+    let moved = Point {
+        x: airborne.x - 30.0,
+        y: airborne.y + 10.0,
+    };
+    world.handle_command(
+        WorldCommand::UpdateInteraction {
+            cursor: moved,
+            velocity: Point::default(),
+        },
+        &desktop,
+    );
+    assert_eq!(
+        world.save.creatures[0].state.position, moved,
+        "carried under the cursor"
+    );
+    world.handle_command(
+        WorldCommand::EndInteraction {
+            cursor: moved,
+            velocity: Point::default(),
+        },
+        &desktop,
+    );
+    // Let go without a throw, it comes down from where it was let go, never from anywhere else.
+    let mut was = world.save.creatures[0].state.position;
+    assert_eq!(was.x, moved.x);
+    for _ in 0..40 {
+        world.tick(created, 0.05, &desktop);
+        let now = world.save.creatures[0].state.position;
+        assert!(now.distance(was) < 40.0, "{was:?} to {now:?} in one step");
+        was = now;
+    }
+}

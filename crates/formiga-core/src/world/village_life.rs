@@ -1138,22 +1138,51 @@ impl Plan {
     }
 }
 
-/// Puts a resident whose plan has ended early back on its own feet outside: out of doors, down
-/// off a roof, with nothing in its hands, and resting.
-pub(super) fn settle(activity: &VillageActivity, creature: &mut Creature) {
+/// How long getting down off a roof takes when a sit up there ends early: the same as the end of
+/// a sit that runs its course.
+const ROOF_HOP_DOWN_SECS: f32 = 0.45;
+
+/// Puts a resident whose plan has ended early back on its own feet outside: out of doors, with
+/// nothing in its hands, and resting. One up on its roof is not set down on the ground — that is
+/// a jump of a house's height between two frames — but gets down the way it went up: the spot it
+/// lands on is returned, and the caller starts the hop there with [`roof_hop_down`].
+pub(super) fn settle(activity: &VillageActivity, creature: &mut Creature) -> Option<Point> {
     creature.state.indoors = false;
     creature.state.beat = None;
     creature.state.velocity = Point::default();
-    match activity.plan {
-        Plan::Roof { beside, .. } if activity.step >= 1 => creature.state.position = beside,
-        Plan::Indoors { door, .. } if activity.step >= 1 => creature.state.position = door,
-        _ => {}
-    }
+    let landing = match activity.plan {
+        Plan::Roof { beside, .. } if activity.step >= 1 => Some(beside),
+        Plan::Indoors { door, .. } if activity.step >= 1 => {
+            creature.state.position = door;
+            None
+        }
+        _ => None,
+    };
     if creature.state.action != ActionKind::PetReaction {
         creature.state.action = ActionKind::Homebound;
         creature.state.action_elapsed = 0.0;
         creature.state.action_duration = super::home::HOME_DURATION.whole_seconds() as f32;
     }
+    landing.filter(|beside| creature.state.position.distance(*beside) > 0.5)
+}
+
+/// A little hop from wherever `creature` is up on its roof down to `landing` on the village
+/// ground, arcing like the roof plan's own way down.
+pub(super) fn roof_hop_down(creature: &Creature, landing: Point) -> WindowJourney {
+    let start = creature.state.position;
+    WindowJourney::Hop(HopJourney {
+        start,
+        target: landing,
+        surface: SurfaceAttachment {
+            kind: SurfaceKind::ScreenFloor,
+            monitor_id: creature.state.surface.monitor_id,
+            window_key: None,
+            relative_x: creature.state.surface.relative_x,
+        },
+        elapsed: 0.0,
+        duration: ROOF_HOP_DOWN_SECS,
+        lift: (landing.y - start.y).abs().max(6.0) * 0.5 + 6.0,
+    })
 }
 
 /// The most residents indoors at once for a village of `residents`: nobody while there is only
@@ -1181,14 +1210,15 @@ impl World {
         }
     }
 
-    /// Ends one resident's plan, if it has one, and puts it back on the ground outside.
-    pub(super) fn end_village_activity(&mut self, creature_id: CreatureId) {
-        let Some(activity) = self.village_life.remove(&creature_id) else {
-            return;
-        };
-        if let Some(creature) = creature_mut(&mut self.save.creatures, creature_id) {
-            settle(&activity, creature);
-        }
+    /// Ends one resident's plan, if it has one, and puts it back on the ground outside — in a
+    /// hop, from up on a roof. Returns where that hop lands, if there is one.
+    pub(super) fn end_village_activity(&mut self, creature_id: CreatureId) -> Option<Point> {
+        let activity = self.village_life.remove(&creature_id)?;
+        let creature = creature_mut(&mut self.save.creatures, creature_id)?;
+        let landing = settle(&activity, creature)?;
+        let hop = roof_hop_down(creature, landing);
+        self.window_journeys.insert(creature_id, hop);
+        Some(landing)
     }
 
     /// Lets go of one resident's plan, if it has one, leaving it exactly where it is: somebody

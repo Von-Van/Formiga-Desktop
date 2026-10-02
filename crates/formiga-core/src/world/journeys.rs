@@ -15,6 +15,9 @@ pub(super) struct HopJourney {
     pub(super) surface: SurfaceAttachment,
     pub(super) elapsed: f32,
     pub(super) duration: f32,
+    /// How high above the straight line the middle of the hop goes, in points, besides the arc a
+    /// hop onto a window ledge always has. Zero for every hop but getting down off a roof.
+    pub(super) lift: f32,
 }
 
 #[derive(Clone)]
@@ -232,10 +235,20 @@ impl WindowJourney {
                         .distance(journey.target)
                         .mul_add(0.12, 24.0)
                         .min(90.0);
+                // A lifted hop eases its height in and out as the roof plan's own hops do; every
+                // other hop keeps the straight line it always had.
+                let (rise, lift) = if journey.lift > 0.0 {
+                    (
+                        progress * progress * (3.0 - 2.0 * progress),
+                        journey.lift * 4.0 * progress * (1.0 - progress),
+                    )
+                } else {
+                    (progress, 0.0)
+                };
                 JourneyStep {
                     position: Point {
                         x: lerp(journey.start.x, journey.target.x, progress),
-                        y: lerp(journey.start.y, journey.target.y, progress) - arc,
+                        y: lerp(journey.start.y, journey.target.y, rise) - arc - lift,
                     },
                     action: ActionKind::Landing,
                     complete: progress >= 1.0,
@@ -368,6 +381,7 @@ pub(super) fn build_window_journey(
             surface,
             elapsed: 0.0,
             duration: (distance / 280.0).clamp(1.0, 2.6),
+            lift: 0.0,
         });
     };
 

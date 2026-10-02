@@ -26,6 +26,90 @@ All notable changes are documented here.
 - Save version 26 adds the trip count, the last trip, and the journal moment for coming home. A
   version 25 colony opens unchanged, having been nowhere.
 
+## [0.66.3] - 2026-10-02
+
+### Added
+
+- **Today, compared.** The Today page compares today with the rest of the week in a few lines, each
+  printed with the counts it rests on: two companions who sought each other out, or one who kept
+  going looking for another; a first sit up on a roof this week; a garden patch that came round to
+  its third or fourth stage today; more time at home, or more play, than the whole of yesterday.
+  They come from a small **day book** the colony now keeps: for each of its last eight local days,
+  how long the houses were out, who sat up on a roof, and what each pair did together. Nothing is
+  compared with a day before the book began counting, so an upgraded colony has no yesterday until
+  tomorrow.
+- **Undo, several steps back.** The notebook keeps the last eight changes to who lives here and how
+  the village is laid out, and takes them back newest first; the undo button says on hover how many
+  more are behind it. They are still kept only while Formiga runs. A companion brought back by undo
+  now returns with its shared history — the pair tallies and the day book's counts — as well as its
+  bonds.
+- **Saying what a change will do.** A change that alters what the companions do now says so once, in
+  the footer, in the notebook's words: a new roaming leaning ("Moss will now wander farther from
+  home"), a weekly routine saved ("Relax begins at 22:00 today · until then, the preferences stay as
+  they are") or resumed, a routine kept from the current preferences, a quiet while ("Everyone is
+  heading home to settle until 22:05"), a spot or a garden put out or put away, and the village
+  moved to another corner or display.
+- **Long simulated runs.** `formiga-tools soak` lives many randomized colonies through days of
+  sessions and gaps — displays plugged in, unplugged and rescaled, windows moving, preferences and
+  weekly routines, changes made and undone, companions carried, tossed and offered things, the
+  colony written and read back as a relaunch would, and damaged files — and checks what must always
+  hold. A new `soak` workflow runs 1,500 colonies of three simulated days each, in each of three
+  time zones, every night, and keeps the save of any colony that fails so it can be replayed.
+
+### Fixed
+
+- **Frozen, then a jump, in the village.** A resident setting off from rest at home — often to step
+  out of somebody's way — was drawn on its resting schedule, two frames a second, until the next of
+  those came round: it walked up to half a second unseen, and seemed to freeze and then reappear up
+  to half its own width along. Frames now follow a colony that starts moving from its first step.
+  Measured over ten display setups and fifteen simulated hours, the most anyone moves between two
+  frames fell from 26 points to under 9.
+- **A drop off the roof.** A resident sitting up on its roof whose sit was cut short — the houses
+  going, a shared moment, an offer, the village rearranged, the colony paused — was set down on the
+  ground between two frames, a fall of up to 145 points. It now hops down the way it went up; a
+  paused colony keeps it up there until it carries on.
+- **Catching a throw.** A companion caught in mid-air snapped back to where it had been thrown
+  from, then hung that far from the cursor for the whole carry. It is now held where it was caught,
+  under the cursor, and let go without a throw comes down from there.
+- **Nowhere on screen.** A colony opened on a smaller arrangement of displays than it was closed on
+  left anyone standing where no display reaches there for as long as it stayed paused; a companion
+  brought back by undo returned to where it last stood, even on a display unplugged since; a wonder
+  out when the displays changed stayed where they had been, holding its players with it; and at
+  home a wonder could choose a resident still on its way home from another display and send it
+  running at the village floor's height, below the display it was on. Each now ends on a display.
+- **The same colony after a relaunch.** Opening a colony could give a mini a different grown-up
+  every time, and put its pair tallies in another order; minis keep their own grown-up, and tallies
+  are kept in pair order throughout.
+- **Damaged colony files.** A file damaged in certain ways opened with a nameless companion,
+  companions repeated past six, a routine table claiming more than it holds, or a number too large
+  for any field. Each is now repaired, or refused as damaged so the backup is used. A restore from a
+  file that is not a whole colony was explained as "larger than any colony file can be"; it now
+  says what is missing.
+
+### Changed
+
+- **Save version 25**, which adds the day book. Older builds refuse a colony that has kept one. A
+  copy of the development Mac's five-companion colony migrated with nothing changed but its version,
+  lived an hour with its day book counting, and was written and read back.
+- **A stronger boundary around saves.** A colony file is read as plain JSON, brought forward one
+  version at a time by a table holding exactly one step per version, parsed into the current shape,
+  and validated: every limit, reference and schedule the running colony relies on is enforced in one
+  place, and a colony is opened from nothing else. A restored backup that is not a whole colony is
+  refused with the reason.
+- **Notebook pages keep their own state.** Today, the Journal, Your colony, the Studio, Home, and the
+  recovery cards each keep and draw their own state, and share only the portraits, the sheet of
+  finds, the tour and the footer. Nothing looks different.
+- **Design values in one place.** How often, how long, how far and how likely, for wonders, finds,
+  roaming, village life, visits, offers and the notebook's observations, live in
+  `formiga_core::tuning`, grouped by feature. The colony behaves exactly as before.
+- **Measured:** the owner's colony on 0.66.1, sampled for ten minutes with the menu closed, ran at
+  2.71% CPU and 61 MB resident with an energy impact of 2.51 — the first energy figure from the
+  procedure's own sample (`docs/PERFORMANCE.md`). `World::tick` costs the same as in 0.66.1 within
+  the noise of `tick-bench`.
+- **Windows 11 has been used by hand**, with several displays, and the README and test matrix say
+  so. Known gaps and the remaining hands-on checks are tracked as GitHub issues, with the labels
+  `native-qa`, `simulation`, `notebook`, `accessibility`, `performance` and `polish`.
+
 ## [0.66.1] - 2026-10-01
 
 ### Changed

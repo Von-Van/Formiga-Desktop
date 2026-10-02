@@ -1509,6 +1509,19 @@ fn wonder_route(
 ) -> Option<VecDeque<Leg>> {
     let mut legs = VecDeque::new();
     if ground.holds(creature) {
+        // Up on its own roof at home: down in a hop first, the way it went up, rather than
+        // dropped to the ground between two frames.
+        if let Ground::Village { .. } = ground
+            && creature.state.position.y < start.y - 1.0
+        {
+            let landing = Point {
+                x: creature.state.position.x,
+                y: start.y,
+            };
+            legs.push_back(Leg::Journey(super::village_life::roof_hop_down(
+                creature, landing,
+            )));
+        }
         legs.push_back(Leg::Walk);
         return Some(legs);
     }
@@ -1538,6 +1551,7 @@ fn wonder_route(
             surface: surface.clone(),
             elapsed: 0.0,
             duration: (from.state.position.distance(floor) / 180.0).max(0.25),
+            lift: 0.0,
         })));
         from.state.position = floor;
         from.state.surface = surface;

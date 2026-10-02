@@ -1147,7 +1147,15 @@ impl World {
                     },
                 });
                 if !activity.still_on(ground) {
-                    village_life::settle(activity, creature);
+                    if let Some(landing) = village_life::settle(activity, creature) {
+                        // The house it was sitting on has moved: straight down from where it is.
+                        let landing = Point {
+                            x: creature.state.position.x,
+                            y: landing.y,
+                        };
+                        self.window_journeys
+                            .insert(creature.id, village_life::roof_hop_down(creature, landing));
+                    }
                     self.village_life.remove(&creature.id);
                     continue;
                 }
@@ -1332,6 +1340,7 @@ impl World {
                         },
                         elapsed: 0.0,
                         duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
+                        lift: 0.0,
                     }),
                 );
             }
@@ -1896,7 +1905,7 @@ impl World {
         // An offer outranks an idle fidget, and the scheduler leaves a requested moment alone.
         // Whatever it was about in the village — the garden, a chore, indoors, up on the roof —
         // it leaves off, back on the ground outside, to take what is held out.
-        self.end_village_activity(creature_id);
+        let landing = self.end_village_activity(creature_id);
         let Some(creature) = self
             .save
             .creatures
@@ -1905,7 +1914,10 @@ impl World {
         else {
             return false;
         };
-        let rest = resting.map_or(creature.state.position, |moment| moment.rest);
+        // Down off a roof first, if it was up on one, and what is held out is taken there.
+        let rest = resting.map_or(landing.unwrap_or(creature.state.position), |moment| {
+            moment.rest
+        });
         // Taking what is held out means stepping out of a shared moment, which carries on without
         // it for as long as there are still two.
         if let Some(plan) = &mut self.village_moment {

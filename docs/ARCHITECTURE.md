@@ -40,10 +40,10 @@ Dependencies run one way: `formiga-art` depends on `formiga-core`, `formiga-trav
 
 | Crate | Start with | Then |
 |---|---|---|
-| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for the save file and migrations; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
+| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
 | `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus |
-| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` and `clubhouse.rs` for the settings window; `tray.rs`; `updater.rs`; `platform/` for the macOS and Windows adapters |
-| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `bin/formiga-hill-stub.rs`, a stand-in for Formiga Hill |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `platform/` for the macOS and Windows adapters |
+| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs`, a stand-in for Formiga Hill |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 
 ### How the app starts
@@ -90,6 +90,7 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 |---|---|---|
 | The colony: creatures, genomes, memories, bonds, village, journal, settings | `SaveFile` (`formiga-core` `model.rs`), held as `World::save` | Written to `colony.json`, with `colony.json.bak` beside it |
 | Plans in flight: journeys, attention scenes, games, visits, bubbles | Other fields of `World` | Runtime only. A test keeps runtime-only fields out of the save |
+| The last eight changes that can be taken back | `World`, in `world/undo.rs` | Runtime only |
 | Displays, overlay windows, GPU atlases, proxies, open menus | `FormigaApp` and each `OverlayRenderer` | The life of the process |
 | Update preferences and the last check | `updates.json` | Written when changed |
 | Where the notebook window was | `notebook-window.json` | Written when the window closes or Formiga quits, if it moved |
@@ -108,7 +109,10 @@ Most features touch the layers in the same order.
 1. **Behaviour, in `formiga-core`.** Find the `world/<theme>.rs` module the feature belongs to, or
    add one: a child module adds methods to `World` rather than owning state. Runtime state goes on
    `World`. Anything that must survive a relaunch goes in the save, and then needs a
-   `SAVE_VERSION` bump, a migration in `persistence.rs`, and a migration test. A new thing a
+   `SAVE_VERSION` bump, its `Step` in `persistence/migrations.rs` — a test fails until every version
+   has exactly one — any new limit enforced in `persistence/validation.rs` and named in
+   `violations`, and a migration test. A value that decides how often, how long, how far or how
+   likely goes in `tuning.rs`, beside its feature's others. A new thing a
    creature can do is usually an `ActionKind`, and one the desktop can trigger is a `WorldCommand`.
 2. **Art, in `formiga-art`.** A new pose or clip is authored against the rig in `renderer.rs` and
    baked into the atlas with everything else, so drawing it costs nothing extra at runtime. The
@@ -161,6 +165,43 @@ keep them in place.
 - **Updates are never silent.** The updater verifies SHA-256 and hands the installer to the OS;
   Formiga never replaces itself.
 
+## The colony file
+
+`persistence.rs` turns a file into a running colony in four steps, each in one place.
+
+1. **Raw JSON.** At most `MAX_SAVE_BYTES` (2 MiB) is read and parsed as plain JSON, and nothing is
+   assumed about it except the `save_version` it names. A number past the range of an `f32` — no
+   build writes one, since an infinite `f32` is written as `null` — means the file was damaged, and
+   it is refused like any other file that does not parse.
+2. **One migration per version.** `persistence/migrations.rs` holds a table with exactly one `Step`
+   for every version before the current one; a test fails if `SAVE_VERSION` moves without one. A
+   step's `raw` half changes the JSON while it is still in the older shape — the only time a field
+   since removed can be read — and its `settle` half finishes what needs the colony's own rules once
+   the file is in the current shape, such as drawing a home from the seed. Every `raw` half runs,
+   oldest first, then the file is parsed once, then every `settle` half runs in the same order. Most
+   versions only added something an older colony never had, and their steps do nothing: they are
+   in the table anyway, so it reads as the whole history.
+3. **The persisted shape.** Only a file in the current version's shape is parsed into `SaveFile`,
+   which is also exactly what is written.
+4. **Validation.** `persistence/validation.rs` brings the colony inside every limit and makes it
+   agree with itself — each companion once and at most six, names that can be names, a mini's
+   grown-up present, bonds and tallies only between companions who are here, caps on every list,
+   the day book's days in order, positions somewhere, unscheduled timers scheduled from the seed —
+   and wraps it as a `ValidatedSave`. `World::from_save` takes nothing else: a `SaveFile` handed to
+   it is validated on the way in. The colony's own file is repaired wherever it can be, so it is
+   never lost to the recovery screen over something that can be put right; a snapshot chosen to
+   restore from is refused with the reason (`ImportRefusal`) when it is not a whole colony.
+
+`violations(save)` lists what a validated colony never holds. It is empty for a colony fresh from
+validation and for a running one at any moment it could be saved, and the long simulated runs check
+exactly that. `a_damaged_file_is_refused_or_repaired_never_half_read` damages a busy colony's file
+600 ways — a value of the wrong kind, a list repeated, a field removed — and every one is either
+refused or comes back with nothing `violations` names, and opens and runs.
+
+Opening a colony then resumes it in `World::from_save`: interrupted actions, motion and attention
+reset, and a visitor found waiting between gatherings. Those are about resuming, not validity, so
+they are not part of validation.
+
 ## How the simulation is laid out
 
 `world.rs` holds `World` itself: its fields, `new`, `from_save`, `tick`, and the small helpers that
@@ -172,6 +213,14 @@ belong to none of the themes. Everything else lives in a child module named afte
 and the `attention/` family. Each module adds
 methods to the one `World` type rather than owning state of its own, so there is still a single
 simulation object and a single tick.
+
+The values that decide how a feature feels — how often something happens, how long it lasts, how
+far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
+`WONDERS`, `FINDS`, `ROAMING`, `VILLAGE_LIFE`, `VISITS`, `OFFERS`, `OBSERVATIONS`, `UNDO` and
+`TODAY_NOTES`. Retuning a feature is a change to that file alone. Limits the save or memory depend
+on stay beside the data they bound, and the shape of an animation stays with the motion it draws.
+Gathering them there was behaviour-preserving: six colonies of three simulated hours each produced
+the same saves, byte for byte, before and after.
 
 Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bonds`, `bubbles`,
 `colony_management`, `companion`, `discovery`, `experience`, `habits`, `hangouts`, `home`,
@@ -875,7 +924,10 @@ changes, so a cottage carried along the row or a corner changed never leaves som
 wrong house or sitting on a roof that has moved away. Every plan is runtime only: ending a visit,
 pausing, hiding, reduced motion, an offer, a shared village moment, or picking the resident up ends
 it, and puts the resident back on the ground outside — or, picked up off a roof, leaves it where it
-was taken from, to hop down once it is let go.
+was taken from, to hop down once it is let go. A resident up on its roof is not set down on the
+ground when its plan ends: `settle` returns where it would land, and `roof_hop_down` gets it there
+in the same eased little hop the plan comes down by, as a `HopJourney` with a lift, which both the
+village and the desktop animate. Set down at once, it fell a house's height between two frames.
 
 ## Beats, and a yawn going round
 
@@ -1739,6 +1791,9 @@ remain minis.
 
 - Simulation and cursor sampling: adaptive 4–20 Hz; spatial movement remains 20 Hz.
 - Presentation: 20 Hz for movement and each authored clip's native 2–12 Hz for pose-only activity.
+  `cadence::frame_due` keeps the next frame within one interval, at the colony's current rate, of
+  the last: a resident setting off from rest is drawn from its first step, where before it could
+  walk half a second unseen on its resting schedule and seem to freeze and then jump.
 - Full-screen or empty monitor overlays stop presenting until they become visible or dirty again.
 - Window geometry: 4 Hz while active, 1 Hz at rest.
 - Behavior selection: action boundaries, capped at 2 Hz. The most expensive question an action
@@ -1824,10 +1879,19 @@ deliberately no history database or telemetry layer. Update preferences live in 
 
 ## Native colony interface (save v14)
 
-`clubhouse.rs` holds only on-demand UI artwork and interaction state, with the Home page's preview
-and shelves in `clubhouse/arrange.rs` and the Collection, the Journal's scrapbook and each
-companion's wardrobe in `clubhouse/collection.rs`; `settings.rs` owns its egui window and
-presentation. Four static portraits, four eight-frame candidate strips (six walk frames, drawn by
+`settings.rs` owns the notebook's egui window and presentation, and `Clubhouse` in `clubhouse.rs` is
+its shell. A `Shell` holds what every page shares — the portraits companions are drawn with, the
+colony's sheet of found things, the tour, and the footer's line of feedback — and each page has a
+state of its own that draws it: `TodayState` (`clubhouse/today.rs`), `JournalState`
+(`clubhouse/journal_page.rs`, with the guest book, the scrapbook and the page of wonders),
+`ColonyState` (`clubhouse/collection.rs`: the Collection, each companion's wardrobe, the sticker),
+`StudioState` (`clubhouse/studio.rs`), `HomeState` (`clubhouse/home.rs`, with the village preview
+and arranging in `clubhouse/arrange.rs`), and `RecoveryState` (`clubhouse/recovery.rs`: the cards
+for a colony that could not be read or cannot be saved, and the About page's backups). A page is
+drawn as `state.show(ui, &mut shell, …)`, so it can change itself and what every page shares, and
+nothing that belongs to another page. What was new when the reader turned to Today or the Journal
+is kept by the shell and handed to those two pages alone. The textures each holds are listed and
+released through the shell and every page together. Four static portraits, four eight-frame candidate strips (six walk frames, drawn by
 `render_studio_frame` pleased and eyes open rather than with a walk's focused look, and two of a
 wave), the top row of the village atlas, the object sheet, the resting half of the
 colony trinket sheet, a companion trying something on in four poses, and the one village tree the
@@ -1855,22 +1919,26 @@ atlases the desktop already samples, positioned by the very layout functions the
 complete village costs the same three textures whatever its size and nothing about looking at it
 calls the colony home or moves a creature.
 
-The last change to who lives here or how the village is laid out can be taken back. The app makes
-each such change through `World::edit(ColonyEdit, change)`, which applies it and, if it changed the
-members, the home, or the keepsakes' order, keeps one `UndoPoint` in the world: the creatures,
-bonds, home, and keepsakes as they stood before, and the ids of any companion the change itself
-brought in. It is runtime only and holds one change; a later one replaces it, and a failed or empty
-one leaves it. `undo_last_edit` puts back what the change touched and nothing else. For a companion
+The last eight changes to who lives here or how the village is laid out can be taken back, newest
+first. The app makes each such change through `World::edit(ColonyEdit, change)`, which applies it
+and, if it changed the members, the home, or the keepsakes' order, keeps an `UndoPoint`: the
+creatures, bonds, pair tallies, day book, home, and keepsakes as they stood before, and the ids of
+any companion the change itself brought in. The points are runtime only, kept oldest first in a
+history `tuning::UNDO.depth` long, so a ninth change lets the oldest go, and a failed or empty
+change keeps nothing. `undo_last_edit` takes the newest point and puts back what that change
+touched and nothing else; each point is the colony exactly as that change found it, so taking them
+back one after another walks the colony back through them in order. For a companion
 removed, replaced, started over, or welcomed from the studio, the membership is rebuilt from the
 old list: everyone still here keeps their current self, with the role they had, so a mini has its
-own big version back; anyone gone comes back exactly as saved, with its id, memories, and bonds
-with those still here, standing where it or its stand-in last stood; whoever the change brought in
+own big version back; anyone gone comes back exactly as saved, with its id, memories, bonds and shared history with those
+still here, standing where it or its stand-in last stood — and the next tick looks at the displays
+afresh, as a colony just opened does, in case that was on a display unplugged since; whoever the change brought in
 goes, runtime and all; anyone who arrived on their own since stays; and the cottage order goes back
 with them. A colony with no room to bring everyone back refuses and keeps the change to try again.
 For a layout change — cottages, colours, gardens, spots, corner, display, decorations, keepsakes —
 exactly those fields go back, with keepsakes found since kept after the rest. Renames, keeps, and
 preferences are not part of it. The settings window's footer offers "Undo …" on every page while
-there is something to take back.
+there is something to take back, and says on hover how many earlier changes are behind it.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
@@ -2270,6 +2338,26 @@ guardian's watch, a grump's huff or a shy one's peek, with their own timing; a c
 arrived since greets it as the stranger it is to them. Reduced motion keeps everyone still, as ever.
 The guest book shows how many visits each line's visitor has in the book.
 
+### Today, compared (save v25)
+
+`daybook.rs` keeps a `DayBook` in the save: for each of the last eight local days (`DAYS_KEPT`), the
+seconds the houses were out (counted by the clock between ticks, a few seconds at a time, and never
+across a gap of more than five seconds, so a sleeping machine counts nothing), who sat up on a roof,
+and for each pair how often each went looking for the other, rested, played and gave. It is counted
+beside the pair tallies and the village's plans, and remembers `since`, the first day it counted.
+Like the tallies it holds counts of things that happened and nothing else, and like them it is
+pruned when a companion leaves and restored with one brought back by undo.
+
+`day_notes(save, local)` reads it, and the garden as it grows, into at most four `DayNote`s, most
+personal first: two who sought each other out, or one who kept going looking for another; a first
+sit up on a roof this week; a patch that came round to its third or fourth stage today (found from
+when it was planted, not stored); more time at home, or more play, than the whole of yesterday.
+Nothing is compared with a day the book did not count, so "first this week" needs the whole week
+counted and an upgraded colony has no yesterday until tomorrow. The thresholds are
+`tuning::TODAY_NOTES`. The Today page's "Today, compared" section prints each note with the counts
+it rests on, reading them again every half minute (`TodayState`) so a line does not come and go as
+its counts tick over.
+
 ## The notebook window
 
 **Where it was.** `notebook_window.rs` keeps the window's outer position, inner size and zoom in
@@ -2301,10 +2389,13 @@ the colony somewhere else, and the logs, until a save works and a notice says it
 normally again. Recovery from a colony that could not be read says first that nothing has been
 lost, and lays out the two choices.
 
-**Saying what changed.** Applying preferences says, in the footer, what will look different on the
-desktop — "they'll keep off window ledges and come down", "everyone holds still until you resume"
-— and before it is applied the footer names what is waiting. A quiet moment and a companion's
-roaming leaning say what they mean when they are set. The behaviour checkboxes, routines and
+**Saying what changed.** Whatever changes what the companions will do says so once, in the footer,
+in the notebook's own words, from `notices.rs`: applying preferences ("they'll keep off window
+ledges and come down", "everyone holds still until you resume"), a companion's new roaming leaning
+("Moss will now wander farther from home"), a weekly routine saved ("Relax begins at 22:00 today"),
+or resumed, or a routine kept from the current preferences, a quiet while ("until 22:05"), a spot or
+a garden put out or put away, and the village moved. Before preferences are applied the footer
+names what is waiting. Every sentence is a pure function of what changed, and each is tested. The behaviour checkboxes, routines and
 updates explain themselves on hover.
 
 ## The tour

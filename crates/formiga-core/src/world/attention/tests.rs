@@ -1249,6 +1249,7 @@ fn attention_walks_keep_clear_of_an_existing_landing_reservation() {
             surface: world.save.creatures[0].state.surface.clone(),
             elapsed: 0.0,
             duration: 3.0,
+            lift: 0.0,
         }),
     );
     new_window(&mut world, &mut desktop, now);

@@ -12,8 +12,12 @@ back. A note under the tabs jots down how the colony is doing. ⌘1 to ⌘9 turn
 ⌘W closes the notebook. It opens where you last left it.
 
 It opens on **Today**: anything noteworthy written in the journal since you last looked, the day so
-far, what each companion is doing right now, the last seven days, and what the notebook has noticed
-about the colony. A small dot on the Today and Journal tabs, and on the Formiga icon in the menu bar
+far, how today compares with the rest of the week — two companions who sought each other out, a
+first sit up on a roof this week, a garden coming round to its third stage, more time at home than
+yesterday, each with the counts it rests on — what each companion is doing right now, the last seven
+days, and what the notebook has noticed about the colony. The comparisons only start once the colony
+has been counting its days: a colony that has just moved in, or just updated, has no yesterday to
+compare with until tomorrow. A small dot on the Today and Journal tabs, and on the Formiga icon in the menu bar
 or notification area, means something new was written down — an arrival, a friendship, a new habit
 or way, a visitor — and it goes once you have read it. Nothing else ever asks for your attention.
 
@@ -191,10 +195,15 @@ Formiga companions, with Formiga's own faces and parts; nothing is traced. Clear
 or transparent backgrounds work best. **Four more takes** looks again, then add one or replace a
 creature you have not kept.
 
-Changed your mind? The settings window keeps your last change to the colony — a companion removed,
-replaced, started over or welcomed, or the village rearranged — and its footer offers to undo it
-for as long as Formiga is running. A companion brought back returns exactly as it left: its name,
-memories, friendships, minis, and cottage.
+Changed your mind? The settings window keeps your last eight changes to the colony — a companion
+removed, replaced, started over or welcomed, or the village rearranged — and its footer offers to
+undo them one at a time, newest first, for as long as Formiga is running. A companion brought back
+returns exactly as it left: its name, memories, friendships and what it had done with each friend,
+minis, and cottage.
+
+Whenever a change you make alters what the companions will do, the footer says so once, in a
+sentence: a new leaning ("Moss will now wander farther from home"), a weekly routine ("Relax begins
+at 22:00 today"), a quiet while, a spot or a garden put out or put away, or the village moved.
 
 There is no AI model, cloud service, or background image processing behind this. The picture is read
 in memory to pick parts from Formiga's own bounded set; the pixels and everything measured from

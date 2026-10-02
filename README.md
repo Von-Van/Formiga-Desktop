@@ -1,4 +1,4 @@
-# Formiga · v0.66.1
+# Formiga · v0.66.3
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.66.1-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.66.3-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,36 +107,45 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.66.1
+## New in 0.66.3
 
-The tiny bike is now a leaf sled, which suits a garden better: a big leaf with its tip rolled up
-at the front, sat in and scooted along by paw and back again. A colony that found the bike has
-found the sled. At the stump table the players sit on their own stools beside it, so the cards stay
-in view, and the fountain is drawn with depth: a stone basin seen a little from above, water lying
-inside its rim with rings spreading out, and streams falling back from a bowl on top. It follows
-0.66.0, which brought wonders — something to play on that turns up for a little while — clearer
-walking, a few trinkets a day, and the app's own icon in the menu bar; the release notes describe
-it.
+The Today page now says how today compares with the rest of the week, in a few lines that each show
+what they rest on — two companions who sought each other out, a first sit up on a roof this week, a
+garden coming round to its third stage, more time at home than yesterday — from a small day book
+the colony keeps for its last eight days. Undo goes back up to eight changes instead of one, and a
+change that alters what the companions will do says so in the notebook's own words: "Moss will now
+wander farther from home", "Relax begins at 22:00 today".
+
+A resident setting off from rest in the village no longer seems to freeze and then jump half a body
+along: frames follow it from its first step, and one whose sit on the roof is cut short hops down
+instead of dropping. A companion caught in mid-air stays under the cursor, and several ways a
+companion could be left where no display reaches — a colony reopened on smaller displays, an undo
+after a display was unplugged, a wonder out when the displays changed — are fixed. Most of those were
+found by a new long simulated run, now nightly in CI, that lives thousands of randomized colonies
+through days of displays, routines, relaunches and damaged files. Underneath, a colony file is read
+one version step at a time through a single validation boundary, and each notebook page keeps its
+own state.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
 
 ## Status
 
-Formiga is a working preview. It runs for days at a time on the Mac it is developed on, but it is
-still at 0.x, its releases are published as unsigned prereleases, and the manual checks on real
-hardware are not done yet.
+Formiga is a working preview. It runs for days at a time on the Mac it is developed on and has been
+used by hand on Windows 11, but it is still at 0.x, its releases are published as unsigned
+prereleases, and most of the manual checks on real hardware are not done yet.
 
 | Area | Status |
 |---|---|
 | Behaviour, art, the village, the settings window | **Preview**: working and shipped, still changing between releases |
-| Save format and migrations | **Stable**: each release reads every save an earlier one wrote, and CI tests the migrations |
+| Save format and migrations | **Stable**: each release reads every save an earlier one wrote, one version step at a time, and validates it; CI tests the migrations and 600 damaged files |
 | Seed codes | **Stable**: versioned and checksummed, and codes from earlier releases decode exactly as before |
 | Privacy model | **Stable**: what is read, stored, and sent is fixed by design and listed in [PRIVACY.md](docs/PRIVACY.md) |
 | macOS 14+ | Tested in CI on Apple silicon and packaged as a universal app. Used day to day on Apple silicon |
-| Windows 10/11 x64 | Built, tested, and packaged in CI. **Not yet checked by hand on Windows hardware** |
+| Windows 10/11 x64 | Built, tested, and packaged in CI. **Used by hand on Windows 11** (2026-10-02), with several displays; not yet on Windows 10 |
 | Performance budgets | Measured on one Mac only. **Not yet measured on Windows** |
-| [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Two recorded** on macOS (real colonies' migrations, on copies); the rest **not yet** for any platform |
+| [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Five recorded**: three on macOS (real colonies' migrations, on copies) and two on Windows 11 (everyday use, with several displays); the rest **not yet**, each tracked as a [`native-qa` issue](https://github.com/Von-Van/Formiga-Desktop/issues?q=label%3Anative-qa) |
+| Long simulated runs | **Nightly** in CI: 4,500 randomized colonies, three simulated days each, across three time zones |
 | Code signing | **Not signed.** Gatekeeper and SmartScreen warn on first launch |
 
 ## Build from source
