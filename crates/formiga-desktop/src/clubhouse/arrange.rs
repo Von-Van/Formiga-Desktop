@@ -6,6 +6,8 @@
 //! until something is let go, and every change goes through the same outcomes the rest of the
 //! page uses, so each one can be taken back.
 
+use super::home::{HomeState, swatch};
+use super::shell::Shell;
 use super::*;
 use formiga_core::{DecorationSlot, GroundItem, OrnamentKind, ShelterDecorationKind};
 
@@ -161,18 +163,19 @@ fn picked_label(save: &SaveFile, picked: Picked) -> String {
     }
 }
 
-impl Clubhouse {
+impl HomeState {
     /// The village as it stands, drawn from the very functions the desktop places it with, and —
     /// in Arrange mode — something to take hold of. Looking at it never calls the colony home or
     /// changes what any creature is doing.
     pub(super) fn village_preview(
         &mut self,
+        shell: &mut Shell,
         ui: &mut Ui,
         save: &SaveFile,
         monitors: &[MonitorInfo],
         outcome: &mut SettingsOutcome,
     ) {
-        let trinkets = self.trinket_atlas(ui, save);
+        let trinkets = shell.trinket_atlas(ui, save);
         let (Some(home), Some((_, objects_texture))) = (&self.home_texture, &self.object_texture)
         else {
             return;
@@ -234,7 +237,7 @@ impl Clubhouse {
                             ),
                         egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32),
                     ),
-                    uv: Self::trinket_uv(*variant),
+                    uv: Shell::trinket_uv(*variant),
                     layer: VillageLayer::Trinket,
                     picks: None,
                     slot: None,

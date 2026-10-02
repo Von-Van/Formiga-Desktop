@@ -328,7 +328,7 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
     );
     let text_scale = companion.appearance.text_scale;
     check(
-        (100..=150).contains(&text_scale) && text_scale % 10 == 0,
+        (100..=150).contains(&text_scale) && text_scale.is_multiple_of(10),
         &|| format!("text at {text_scale}%"),
     );
     check(
@@ -434,14 +434,15 @@ mod tests {
     /// Each thing a colony cannot hold is noticed, and repairing the colony puts it right.
     #[test]
     fn every_violation_is_noticed_and_repaired() {
-        let breakages: [(&str, fn(&mut SaveFile)); 8] = [
+        type Breakage = (&'static str, fn(&mut SaveFile));
+        let breakages: [Breakage; 8] = [
             ("text", |save| save.companion.appearance.text_scale = 233),
             ("bond", |save| {
-                let first = save.relationships[0].clone();
+                let first = save.relationships[0];
                 save.relationships.push(first);
             }),
             ("stranger", |save| {
-                let mut stranger = save.relationships[0].clone();
+                let mut stranger = save.relationships[0];
                 stranger.b = 999_999;
                 save.relationships.push(stranger);
             }),

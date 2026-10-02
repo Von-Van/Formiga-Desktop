@@ -188,7 +188,7 @@ impl FormigaApp {
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
-                window.clubhouse.recovery = recovery_reason;
+                window.clubhouse.recovery.reason = recovery_reason;
             }
         }
         if self
@@ -845,7 +845,7 @@ impl FormigaApp {
             tray.sync_trouble(self.save_trouble.is_some());
         }
         if let Some(window) = &mut self.settings_window {
-            window.clubhouse.save_trouble = self.save_trouble.clone();
+            window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
             window.window.request_redraw();
         }
     }
@@ -946,8 +946,8 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         };
                         window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
                         window.clubhouse.earlier_edits = world.undoable_edits().saturating_sub(1);
-                        window.clubhouse.save_trouble = self.save_trouble.clone();
-                        window.clubhouse.tour.menus_opened = self.menus_opened;
+                        window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
+                        window.clubhouse.shell.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,
                             &self.monitors,

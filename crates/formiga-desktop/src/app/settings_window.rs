@@ -122,7 +122,7 @@ impl FormigaApp {
                 Ok(_) => {
                     self.recovery_pending = false;
                     if let Some(window) = &mut self.settings_window {
-                        window.clubhouse.recovery = None;
+                        window.clubhouse.recovery.reason = None;
                     }
                     self.save_with_feedback(
                         "New colony saved · original files preserved as recovery copies",
@@ -423,7 +423,7 @@ impl FormigaApp {
             let (locked, lock_colors, lock_body) = self
                 .settings_window
                 .as_ref()
-                .map(|w| w.clubhouse.locks())
+                .map(|w| w.clubhouse.studio.locks())
                 .unwrap_or((None, false, false));
             let desktop = self.snapshot();
             let seeds: Result<Vec<_>, _> = (0..4).map(|_| new_colony_seed()).collect();
@@ -470,7 +470,7 @@ impl FormigaApp {
         let reference = if outcome.request_reference_retry {
             self.settings_window
                 .as_ref()
-                .and_then(|window| window.clubhouse.reference.clone())
+                .and_then(|window| window.clubhouse.studio.reference.clone())
         } else if outcome.request_reference_creature {
             rfd::FileDialog::new()
                 .add_filter("Character image", &["png", "jpg", "jpeg"])
@@ -500,7 +500,7 @@ impl FormigaApp {
                                         summary: take.summary.to_owned(),
                                     });
                                 }
-                                window.clubhouse.reference = Some(path);
+                                window.clubhouse.studio.reference = Some(path);
                             }
                         }
                         Err(error) => {
@@ -899,8 +899,8 @@ impl FormigaApp {
         self.recovery_pending = false;
         self.milestone_notice = None;
         if let (Some(window), Some(world)) = (&mut self.settings_window, &self.world) {
-            window.clubhouse.recovery = None;
-            window.clubhouse.restore_confirmed = false;
+            window.clubhouse.recovery.reason = None;
+            window.clubhouse.recovery.restore_confirmed = false;
             window.clear_generation_preview();
             window.show(
                 &world.save.settings,
