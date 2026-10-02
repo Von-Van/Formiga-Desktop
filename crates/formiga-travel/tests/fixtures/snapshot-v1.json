@@ -1,0 +1,697 @@
+{
+  "format": "formiga.travel.snapshot",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "created_at_utc": "2026-10-02T09:30:00Z",
+  "desktop_version": "0.66.1",
+  "capabilities": [
+    "visit_record"
+  ],
+  "travelers": [
+    {
+      "id": "876a55d6a17221ef",
+      "name": "Mochi",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "0300000b0a0903030000bcd18f7ad2870000007c"
+        },
+        "family": "blob",
+        "logical_size": 37,
+        "body_width": 25,
+        "body_height": 13,
+        "head_ratio": 0.67133456,
+        "roundness": 0.78652555,
+        "leg_length": 5,
+        "foot_size": 5,
+        "head_appendages": {
+          "style": "droop",
+          "size": 3
+        },
+        "tail": {
+          "style": "none",
+          "length": 5
+        },
+        "face": {
+          "eye_shape": "round",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": 0,
+          "pupil": "wide",
+          "highlight": "double",
+          "brow": "soft",
+          "mouth": "beak",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "soft_nub",
+          "length": 4,
+          "thickness": 1,
+          "tip": "round",
+          "rest_pose": "together"
+        },
+        "effect_motif": "leaf",
+        "palette_index": 5,
+        "pattern": "patches",
+        "pattern_density": 0.6479941,
+        "marking_seed": "465568b953d40634",
+        "gait_bob": 0.7812724,
+        "face_signature": 458422880
+      },
+      "stature_percent": 97,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "wallflower",
+        "axes": {
+          "social": 0.16553476,
+          "energy": 0.24074684,
+          "boldness": 0.21814881,
+          "playfulness": 0.5044405,
+          "curiosity": 0.3669005,
+          "feistiness": 0.15188114,
+          "impulsiveness": 0.3082601,
+          "suspicion": 0.7024214,
+          "affection": 0.5133249
+        },
+        "traits": [
+          "Shy",
+          "Wary",
+          "Mellow"
+        ],
+        "phrase": "A shy wallflower"
+      },
+      "motion": {
+        "activity": 0.38056013,
+        "playfulness": 0.5535524,
+        "boldness": 0.2854265
+      },
+      "habits": [
+        "waves_hello",
+        "circles_before_naps"
+      ],
+      "accessory": {
+        "item": {
+          "kind": "worn",
+          "item": "flower_crown"
+        },
+        "colors": {
+          "outline": [
+            42,
+            36,
+            51
+          ],
+          "deep": [
+            49,
+            18,
+            151
+          ],
+          "body": [
+            75,
+            27,
+            228
+          ],
+          "light": [
+            172,
+            156,
+            221
+          ],
+          "accent": [
+            240,
+            60,
+            246
+          ]
+        }
+      }
+    },
+    {
+      "id": "a5cdeae193601ce1",
+      "name": "Biscuit",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "010402080809040300006edac437de3c10000037",
+          "details": "0010000000f3bb3f"
+        },
+        "family": "soft_quadruped",
+        "logical_size": 41,
+        "body_width": 19,
+        "body_height": 13,
+        "head_ratio": 0.8283738,
+        "roundness": 0.83071274,
+        "leg_length": 5,
+        "foot_size": 2,
+        "head_appendages": {
+          "style": "pointed",
+          "size": 6
+        },
+        "tail": {
+          "style": "stub",
+          "length": 2
+        },
+        "face": {
+          "eye_shape": "tall",
+          "eye_size": 1,
+          "eye_spacing": 6,
+          "vertical_offset": -1,
+          "pupil": "dot",
+          "highlight": "double",
+          "brow": "none",
+          "mouth": "cat",
+          "cheek": "blush"
+        },
+        "forelimbs": {
+          "style": "front_paw",
+          "length": 6,
+          "thickness": 1,
+          "tip": "paw",
+          "rest_pose": "folded"
+        },
+        "effect_motif": "dot",
+        "palette_index": 3,
+        "pattern": "stripes",
+        "pattern_density": 0.5457996,
+        "marking_seed": "b746b07ae6c166e8",
+        "gait_bob": 0.42092627,
+        "face_signature": 1777620417
+      },
+      "stature_percent": 108,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "troublemaker",
+        "axes": {
+          "social": 0.7034724,
+          "energy": 0.80365026,
+          "boldness": 0.7592883,
+          "playfulness": 0.7759025,
+          "curiosity": 0.59703803,
+          "feistiness": 0.7017637,
+          "impulsiveness": 0.8115414,
+          "suspicion": 0.17826334,
+          "affection": 0.9366232
+        },
+        "traits": [
+          "Excitable",
+          "Mischievous",
+          "Reckless"
+        ],
+        "phrase": "An excitable scamp"
+      },
+      "motion": {
+        "activity": 0.80273765,
+        "playfulness": 0.77072203,
+        "boldness": 0.74539506
+      },
+      "habits": [
+        "looks_food_over"
+      ],
+      "accessory": {
+        "item": {
+          "kind": "pin",
+          "trinket": 17
+        },
+        "colors": {
+          "outline": [
+            42,
+            36,
+            51
+          ],
+          "deep": [
+            18,
+            141,
+            151
+          ],
+          "body": [
+            27,
+            214,
+            228
+          ],
+          "light": [
+            156,
+            217,
+            221
+          ],
+          "accent": [
+            60,
+            97,
+            246
+          ]
+        }
+      }
+    },
+    {
+      "id": "d9d41613046adffe",
+      "name": "Fig",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "00030109090805040001d6cb56f2787501201386"
+        },
+        "family": "hopper",
+        "logical_size": 38,
+        "body_width": 18,
+        "body_height": 17,
+        "head_ratio": 0.5864742,
+        "roundness": 0.7621352,
+        "leg_length": 4,
+        "foot_size": 4,
+        "head_appendages": {
+          "style": "pointed",
+          "size": 4
+        },
+        "tail": {
+          "style": "none",
+          "length": 7
+        },
+        "face": {
+          "eye_shape": "tall",
+          "eye_size": 1,
+          "eye_spacing": 4,
+          "vertical_offset": 1,
+          "pupil": "dot",
+          "highlight": "diagonal",
+          "brow": "none",
+          "mouth": "tiny",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "mitten_arm",
+          "length": 7,
+          "thickness": 2,
+          "tip": "mitten",
+          "rest_pose": "at_sides"
+        },
+        "effect_motif": "none",
+        "palette_index": 10,
+        "pattern": "socks",
+        "pattern_density": 0.15094744,
+        "marking_seed": "b73acfcb3eac0868",
+        "gait_bob": 0.31037286,
+        "face_signature": 1621771899
+      },
+      "stature_percent": 100,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "lazybones",
+        "axes": {
+          "social": 0.40325674,
+          "energy": 0.1945937,
+          "boldness": 0.41058034,
+          "playfulness": 0.5277537,
+          "curiosity": 0.5370698,
+          "feistiness": 0.62,
+          "impulsiveness": 0.36295336,
+          "suspicion": 0.92514324,
+          "affection": 0.76944077
+        },
+        "tension": "lazy_but_competitive",
+        "traits": [
+          "Lazy",
+          "Competitive",
+          "Affectionate"
+        ],
+        "phrase": "A competitive napper"
+      },
+      "motion": {
+        "activity": 0.3459453,
+        "playfulness": 0.5722029,
+        "boldness": 0.44899327
+      }
+    },
+    {
+      "id": "db8acad9ace9f7a2",
+      "name": "Tansy",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "0204020b080904030206b84c9d68539100000000"
+        },
+        "family": "blob",
+        "logical_size": 40,
+        "body_width": 24,
+        "body_height": 19,
+        "head_ratio": 0.5510985,
+        "roundness": 0.9929807,
+        "leg_length": 8,
+        "foot_size": 4,
+        "head_appendages": {
+          "style": "droop",
+          "size": 3
+        },
+        "tail": {
+          "style": "tuft",
+          "length": 4
+        },
+        "face": {
+          "eye_shape": "soft_square",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": -1,
+          "pupil": "wide",
+          "highlight": "single",
+          "brow": "soft",
+          "mouth": "tiny",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "soft_nub",
+          "length": 5,
+          "thickness": 1,
+          "tip": "round",
+          "rest_pose": "folded"
+        },
+        "effect_motif": "spark",
+        "palette_index": 11,
+        "pattern": "stripes",
+        "pattern_density": 0.44652903,
+        "marking_seed": "f9ebedaddc93ab83",
+        "gait_bob": 0.7318264,
+        "face_signature": 1875357436
+      },
+      "stature_percent": 105,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "explorer",
+        "axes": {
+          "social": 0.5722185,
+          "energy": 0.7149233,
+          "boldness": 0.72095716,
+          "playfulness": 0.016265512,
+          "curiosity": 0.88883394,
+          "feistiness": 0.40063554,
+          "impulsiveness": 0.62409747,
+          "suspicion": 0.31943673,
+          "affection": 0.9281132
+        },
+        "traits": [
+          "Serious",
+          "Curious",
+          "Affectionate"
+        ],
+        "phrase": "A serious explorer"
+      },
+      "motion": {
+        "activity": 0.73619246,
+        "playfulness": 0.16301242,
+        "boldness": 0.71281356
+      }
+    },
+    {
+      "id": "66cd447617ba3991",
+      "name": "Button",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "family": "hopper",
+        "logical_size": 38,
+        "body_width": 22,
+        "body_height": 24,
+        "head_ratio": 0.7581961,
+        "roundness": 0.85026443,
+        "leg_length": 3,
+        "foot_size": 5,
+        "head_appendages": {
+          "style": "leaf",
+          "size": 5
+        },
+        "tail": {
+          "style": "none",
+          "length": 8
+        },
+        "face": {
+          "eye_shape": "soft_square",
+          "eye_size": 2,
+          "eye_spacing": 4,
+          "vertical_offset": 0,
+          "pupil": "spark",
+          "highlight": "diagonal",
+          "brow": "bold",
+          "mouth": "cat",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "mitten_arm",
+          "length": 7,
+          "thickness": 1,
+          "tip": "mitten",
+          "rest_pose": "folded"
+        },
+        "effect_motif": "dot",
+        "palette_index": 11,
+        "pattern": "patches",
+        "pattern_density": 0.6628492,
+        "marking_seed": "3c4238ab9cada22a",
+        "gait_bob": 0.61300963,
+        "face_signature": 2024248359
+      },
+      "stature_percent": 101,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "explorer",
+        "axes": {
+          "social": 0.63182133,
+          "energy": 0.7012922,
+          "boldness": 0.82865894,
+          "playfulness": 0.4540892,
+          "curiosity": 1.0,
+          "feistiness": 0.5,
+          "impulsiveness": 0.5,
+          "suspicion": 0.5,
+          "affection": 0.5
+        },
+        "traits": [
+          "Curious",
+          "Brave",
+          "Energetic"
+        ],
+        "phrase": "A curious explorer"
+      },
+      "motion": {
+        "activity": 0.72596914,
+        "playfulness": 0.51327133,
+        "boldness": 0.8043601
+      }
+    },
+    {
+      "id": "876a55d6fb287bb5",
+      "name": "Pip",
+      "role": {
+        "kind": "mini",
+        "parent_id": "876a55d6a17221ef"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "0300000b0a0903030000bcd18f7ad2870000007c"
+        },
+        "family": "blob",
+        "logical_size": 23,
+        "body_width": 25,
+        "body_height": 13,
+        "head_ratio": 0.67133456,
+        "roundness": 0.78652555,
+        "leg_length": 5,
+        "foot_size": 5,
+        "head_appendages": {
+          "style": "droop",
+          "size": 3
+        },
+        "tail": {
+          "style": "none",
+          "length": 5
+        },
+        "face": {
+          "eye_shape": "round",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": 0,
+          "pupil": "wide",
+          "highlight": "double",
+          "brow": "soft",
+          "mouth": "beak",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "soft_nub",
+          "length": 4,
+          "thickness": 1,
+          "tip": "round",
+          "rest_pose": "together"
+        },
+        "effect_motif": "leaf",
+        "palette_index": 5,
+        "pattern": "patches",
+        "pattern_density": 0.6479941,
+        "marking_seed": "465568b953d40634",
+        "gait_bob": 0.7812724,
+        "face_signature": 458422880
+      },
+      "stature_percent": 97,
+      "scale_percent": 62,
+      "character": {
+        "temperament": "wallflower",
+        "axes": {
+          "social": 0.16553476,
+          "energy": 0.24074684,
+          "boldness": 0.21814881,
+          "playfulness": 0.5044405,
+          "curiosity": 0.3669005,
+          "feistiness": 0.15188114,
+          "impulsiveness": 0.3082601,
+          "suspicion": 0.7024214,
+          "affection": 0.5133249
+        },
+        "traits": [
+          "Shy",
+          "Wary",
+          "Mellow"
+        ],
+        "phrase": "A shy little wallflower"
+      },
+      "motion": {
+        "activity": 0.38056013,
+        "playfulness": 0.5535524,
+        "boldness": 0.2854265
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "a": "66cd447617ba3991",
+      "b": "876a55d6a17221ef",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "66cd447617ba3991",
+      "b": "876a55d6fb287bb5",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "66cd447617ba3991",
+      "b": "a5cdeae193601ce1",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "66cd447617ba3991",
+      "b": "d9d41613046adffe",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "66cd447617ba3991",
+      "b": "db8acad9ace9f7a2",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "876a55d6a17221ef",
+      "b": "876a55d6fb287bb5",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "876a55d6a17221ef",
+      "b": "a5cdeae193601ce1",
+      "affinity": "none",
+      "familiarity": "high",
+      "playfulness": "none",
+      "avoidance": "low"
+    },
+    {
+      "a": "876a55d6a17221ef",
+      "b": "d9d41613046adffe",
+      "affinity": "low",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "876a55d6a17221ef",
+      "b": "db8acad9ace9f7a2",
+      "affinity": "medium",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "876a55d6fb287bb5",
+      "b": "a5cdeae193601ce1",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "876a55d6fb287bb5",
+      "b": "d9d41613046adffe",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "876a55d6fb287bb5",
+      "b": "db8acad9ace9f7a2",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "a5cdeae193601ce1",
+      "b": "d9d41613046adffe",
+      "affinity": "low",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "a5cdeae193601ce1",
+      "b": "db8acad9ace9f7a2",
+      "affinity": "medium",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "d9d41613046adffe",
+      "b": "db8acad9ace9f7a2",
+      "affinity": "medium",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    }
+  ],
+  "presentation": {
+    "reduce_motion": false
+  }
+}

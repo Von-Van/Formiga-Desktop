@@ -1,0 +1,16 @@
+{
+  "format": "formiga.travel.receipt",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "snapshot_sha256": "38be9f8ae774c9ca8d8b996d2fce8d78d73eff6587c41dbcb2d07d822fb8abd9",
+  "returned_at_utc": "2026-10-02T11:05:00Z",
+  "hill_version": "0.1.0",
+  "effects": [
+    {
+      "kind": "visit",
+      "arrived_at_utc": "2026-10-02T09:31:00Z",
+      "left_at_utc": "2026-10-02T11:04:00Z"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ members = [
     "crates/formiga-art",
     "crates/formiga-desktop",
     "crates/formiga-tools",
+    "crates/formiga-travel",
 ]
 resolver = "2"
 

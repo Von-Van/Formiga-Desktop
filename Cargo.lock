@@ -1328,6 +1328,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-travel"
+version = "0.66.1"
+dependencies = [
+ "formiga-art",
+ "formiga-core",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+ "time",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
