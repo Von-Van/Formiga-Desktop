@@ -150,7 +150,7 @@ fn a_trip_that_brings_nothing_back_leaves_the_colony_file_as_it_was() {
         "stay=0,silent",
         "stay=0,garbage",
         "stay=0,stranger",
-        "crash",
+        "stay=0,crash",
     ] {
         let world = colony();
         let before = serde_json::to_vec_pretty(&world.save).unwrap();
@@ -163,7 +163,7 @@ fn a_trip_that_brings_nothing_back_leaves_the_colony_file_as_it_was() {
             usable.is_none(),
             "{behaviour} left a receipt Desktop would use"
         );
-        if behaviour == "crash" {
+        if behaviour.ends_with("crash") {
             assert_eq!(code, Some(101));
             assert!(ack(&session).accepted, "it got as far as taking the colony");
         }
@@ -231,4 +231,35 @@ fn a_directory_that_is_not_a_session_is_not_used() {
     std::fs::rename(&session.dir, &misnamed).unwrap();
     assert_ne!(visit(&misnamed, "stay=0"), Some(0));
     assert!(!misnamed.join(RECEIPT_FILE).exists());
+}
+
+#[test]
+fn a_session_cleared_away_ends_the_visit() {
+    let world = colony();
+    let session = pack(&world, "cleared");
+    let mut stub = Command::new(env!("CARGO_BIN_EXE_formiga-hill-stub"))
+        .arg(LAUNCH_ARGUMENT)
+        .arg(&session.dir)
+        .env("FORMIGA_HILL_STUB", "stay=30")
+        .spawn()
+        .unwrap();
+    // Once it has read the snapshot, take the whole session away, as a sweep would.
+    let started = std::time::Instant::now();
+    while !session.dir.join(ACK_FILE).exists() {
+        assert!(
+            started.elapsed().as_secs() < 10,
+            "the stub never acknowledged"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::fs::remove_dir_all(&session.dir).unwrap();
+    let cleared = std::time::Instant::now();
+    loop {
+        if let Some(status) = stub.try_wait().unwrap() {
+            assert!(status.success());
+            break;
+        }
+        assert!(cleared.elapsed().as_secs() < 5, "the stub stayed on");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }

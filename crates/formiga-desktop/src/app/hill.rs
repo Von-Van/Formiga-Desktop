@@ -186,7 +186,6 @@ impl FormigaApp {
             }
             None => {
                 if let Err(error) = self.launch_hill(&install, &open) {
-                    self.hill.files.recall(&open, RecallReason::Other, now);
                     self.hill.files.close(&open);
                     self.failure_dialog(STAYING_HOME, &error);
                     return;
@@ -217,10 +216,15 @@ impl FormigaApp {
         let Some(open) = self.hill.trip.open().cloned() else {
             return;
         };
-        self.hill
-            .files
-            .recall(&open, RecallReason::OwnerAsked, OffsetDateTime::now_utc());
-        self.hill.files.close(&open);
+        let started = !matches!(self.hill.trip, TripState::Departing { hill: Some(_), .. });
+        if started {
+            self.hill
+                .files
+                .call_home(&open, RecallReason::OwnerAsked, OffsetDateTime::now_utc());
+        } else {
+            // Still boarding, and Hill not yet started: there is nobody to tell.
+            self.hill.files.close(&open);
+        }
         tracing::info!("the colony was called home from Formiga Hill");
         self.come_home(None);
     }
@@ -268,6 +272,10 @@ impl FormigaApp {
                 if let Some(problem) = &problem {
                     tracing::warn!(%problem, "Formiga Hill's receipt was not used");
                 }
+                tracing::info!(
+                    refused = refusal.is_some(),
+                    "the colony came home from Formiga Hill without a receipt"
+                );
                 Some(match refusal {
                     Some(refusal) => session::refusal_text(&refusal),
                     None => "Formiga Hill closed before the trip was over, so everyone came \
@@ -353,9 +361,6 @@ impl FormigaApp {
             let (install, open) = (hill.take().expect("matched Some"), open.clone());
             if let Err(error) = self.launch_hill(&install, &open) {
                 tracing::warn!(%error, "Formiga Hill could not be started");
-                self.hill
-                    .files
-                    .recall(&open, RecallReason::Other, OffsetDateTime::now_utc());
                 self.hill.files.close(&open);
                 self.come_home(Some(HomecomingNote {
                     text: error,
@@ -382,26 +387,29 @@ impl FormigaApp {
     /// with what it may keep; without one, Hill is told the trip is over and the colony comes home
     /// as it left. Either way it comes home now: Desktop never waits on Hill to show the colony.
     pub(super) fn resume_open_trip(&mut self) {
-        if let Some(open) = self.hill.files.open_trip() {
-            let now = OffsetDateTime::now_utc();
-            if self.recovery_pending {
-                // The colony that left could not be opened, so there is nothing to bring it home
-                // to; recovery decides what happens to it.
-                self.hill
-                    .files
-                    .recall(&open, RecallReason::DesktopRestarted, now);
-            } else if let Some(problem) = self.read_homecoming(&open) {
-                tracing::info!(%problem, "finishing a trip after a restart without a receipt");
-                self.hill
-                    .files
-                    .recall(&open, RecallReason::DesktopRestarted, now);
-            }
-            self.hill.files.close(&open);
-            if !self.recovery_pending {
-                self.come_home(None);
-            }
-        }
+        // Whatever earlier trips left behind goes first; the open trip, if any, is kept.
         self.hill.files.sweep();
+        let Some(open) = self.hill.files.open_trip() else {
+            return;
+        };
+        let now = OffsetDateTime::now_utc();
+        if self.recovery_pending {
+            // The colony that left could not be opened, so there is nothing to bring it home to;
+            // recovery decides what happens to it. Hill may still be running, so it is told.
+            self.hill
+                .files
+                .call_home(&open, RecallReason::DesktopRestarted, now);
+            return;
+        }
+        if self.read_homecoming(&open).is_some() {
+            tracing::info!("finishing a trip after a restart, without a receipt");
+            self.hill
+                .files
+                .call_home(&open, RecallReason::DesktopRestarted, now);
+        } else {
+            self.hill.files.close(&open);
+        }
+        self.come_home(None);
     }
 
     /// The colony as the overlay draws it this frame, while a trip has it: the platform's copy

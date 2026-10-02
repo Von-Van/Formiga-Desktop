@@ -13,14 +13,15 @@
 //!
 //! - `stay=SECONDS` stays that long before coming home (default 8);
 //! - `refuse=version|busy|invalid` refuses the colony and exits at once;
-//! - `crash` acknowledges and then exits abnormally, writing nothing more;
+//! - `crash` stays, and then exits abnormally without a receipt;
 //! - `silent` stays and then exits without a receipt;
 //! - `garbage` writes a receipt that is not a receipt;
 //! - `stranger` writes a receipt for some other trip;
 //! - `souvenir` asks for a souvenir as well as the visit;
 //! - `sheet=PATH` draws every traveler into a PNG at PATH.
 //!
-//! A recall from Desktop ends the visit early, without a receipt, as Hill should.
+//! A recall from Desktop, or the session directory disappearing, ends the visit early without a
+//! receipt, as Hill should.
 
 use anyhow::{Context, Result, bail};
 use formiga_art::{BodyClip, Canvas, CreatureRenderer, FRAME_SIZE};
@@ -139,18 +140,19 @@ fn main() -> Result<()> {
         &dir.join(ACK_FILE),
         &Acknowledgement::accepted(&seal, VERSION),
     )?;
-    if options.crash {
-        eprintln!("formiga-hill-stub: crashing on purpose");
-        std::process::exit(101);
-    }
     let stay = Duration::from_secs_f32(options.stay.unwrap_or(8.0).max(0.0));
     let since = Instant::now();
     while since.elapsed() < stay {
-        if dir.join(RECALL_FILE).exists() {
+        // Called home, or the trip cleared away: either way the visit is over.
+        if dir.join(RECALL_FILE).exists() || !dir.join(SNAPSHOT_FILE).exists() {
             println!("Desktop called the colony home; closing without a receipt");
             return Ok(());
         }
         std::thread::sleep(Duration::from_millis(200));
+    }
+    if options.crash {
+        eprintln!("formiga-hill-stub: crashing on purpose");
+        std::process::exit(101);
     }
     if options.silent {
         println!("leaving without a receipt");

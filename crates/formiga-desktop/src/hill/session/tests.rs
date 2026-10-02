@@ -277,12 +277,17 @@ fn closing_a_trip_leaves_nothing_and_sweeping_leaves_only_the_open_one() {
 }
 
 #[test]
-fn a_recall_tells_hill_the_trip_is_over() {
+fn calling_the_colony_home_closes_the_trip_and_leaves_hill_its_recall() {
     let scratch = Scratch::new("recall");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
-    files.recall(&trip, RecallReason::OwnerAsked, LEFT + Duration::minutes(3));
+    files.call_home(&trip, RecallReason::OwnerAsked, LEFT + Duration::minutes(3));
+    assert_eq!(files.open_trip(), None, "the trip is over for Desktop");
     let recall: Recall = read_document(&trip.dir.join(RECALL_FILE)).unwrap();
     assert_eq!(recall.session_id, trip.seal.session_id);
     assert_eq!(recall.reason, RecallReason::OwnerAsked);
+    // The next trip, or the next start, sweeps it away.
+    let next = files.open(&snapshot()).unwrap();
+    assert!(!trip.dir.exists());
+    assert!(next.dir.exists());
 }

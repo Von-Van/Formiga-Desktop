@@ -8,9 +8,11 @@
 //! - `travel/<session>/`, the session directory Hill is given: the snapshot Desktop wrote, and
 //!   whatever Hill writes back.
 //!
-//! A trip is closed by deleting both, whether the colony came home with a receipt or without one.
-//! Anything else found under `travel/` is left over from a trip that could not be closed, and is
-//! swept away when Desktop starts.
+//! Once Hill has gone, a trip is closed by deleting both. A trip Desktop calls home while Hill may
+//! still be running is closed by deleting only the marker: its session directory stays, holding the
+//! recall, for Hill to find. Anything under `travel/` that is not the open trip — a called-home
+//! session, or one left by a trip that could not be closed — is swept away when Desktop starts and
+//! before each new trip, so at most one such directory is ever kept.
 
 use formiga_travel::{
     ACK_FILE, AckRefusal, Acknowledgement, Capability, RECALL_FILE, RECEIPT_FILE, Recall,
@@ -105,6 +107,7 @@ impl TravelFiles {
     /// trip is open. Either everything is written or nothing is left behind.
     pub fn open(&self, snapshot: &TravelSnapshot) -> Result<OpenTrip, TravelError> {
         fs::create_dir_all(&self.root)?;
+        self.sweep();
         let dir = self.session_dir(&snapshot.session_id);
         // A fresh directory every time: an existing one is never reused or trusted.
         fs::create_dir(&dir)?;
@@ -172,21 +175,29 @@ impl TravelFiles {
         Answer::Silent { refusal, problem }
     }
 
-    /// Tell Hill the trip is over without a receipt. Best effort: the colony is home either way.
-    pub fn recall(&self, trip: &OpenTrip, reason: RecallReason, now: OffsetDateTime) {
+    /// Close a trip while Hill may still be running: tell Hill it is over, and forget the trip, but
+    /// leave its directory where Hill can see the recall. Best effort: the colony is home either
+    /// way, and Hill also takes its directory disappearing as a recall.
+    pub fn call_home(&self, trip: &OpenTrip, reason: RecallReason, now: OffsetDateTime) {
         let recall = Recall::new(trip.seal.session_id.clone(), now, reason);
         if let Err(error) = write_document(&trip.dir.join(RECALL_FILE), &recall) {
             tracing::warn!(%error, "could not leave Formiga Hill a recall");
         }
+        self.forget();
     }
 
-    /// Close a trip: the marker goes first, so a trip is never half-closed and then reopened.
-    pub fn close(&self, trip: &OpenTrip) {
+    fn forget(&self) {
         if let Err(error) = fs::remove_file(self.marker_path())
             && error.kind() != io::ErrorKind::NotFound
         {
             tracing::warn!(%error, "could not close the trip's marker");
         }
+    }
+
+    /// Close a trip once Hill has gone, or was never started: the marker goes first, so a trip is
+    /// never half-closed and then reopened, and then everything that was written for it.
+    pub fn close(&self, trip: &OpenTrip) {
+        self.forget();
         if let Err(error) = fs::remove_dir_all(&trip.dir)
             && error.kind() != io::ErrorKind::NotFound
         {
