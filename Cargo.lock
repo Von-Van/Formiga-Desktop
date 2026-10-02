@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.1"
+version = "0.66.3"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1262,7 +1262,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.1"
+version = "0.66.3"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.66.1"
+version = "0.66.3"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1313,13 +1313,16 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.66.1"
+version = "0.66.3"
 dependencies = [
  "anyhow",
  "formiga-art",
  "formiga-core",
  "gif",
  "png",
+ "rand",
+ "rand_chacha",
+ "serde_json",
  "sha2",
  "time",
 ]

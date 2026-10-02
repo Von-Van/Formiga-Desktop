@@ -35,6 +35,7 @@ used to take them.
 |---|---|---|---:|---:|---:|---:|---:|---|---|
 | v0.55.6 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display | uncontrolled, long-running session | 3 | 5.91% | 8.17% | 30.8 MB | 5.12 | reference only | 4× scale, not 3×; menu and occlusion state unknown; footprint 208 MB; 1.38% of one core averaged over its whole 2 d 12 h run. Not a gate result. |
 | v0.65.0 release | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display, on battery | five, houses out, strolling | 5 | 2.96% | 4.80% | 64.0 MB | — | recorded | 3×, a copy of the owner's colony in a scratch data folder, quiet moment holding the houses out; five-minute warm-up and ten-minute sample by `scripts/measure-macos.sh`; 13.6 frames a second, 2.17 ms of process CPU each. The 0.64.0 run that was to follow it, and the out-on-the-desktop and paused states, were not taken. |
+| v0.66.1 release (installed) | Apple M5, 10 core, 16 GB, macOS 26.5.1, one Retina display | the owner's colony as it was running, menu closed | 5 | 2.71% | 5.17% | 61.0 MB | 2.51 | reference only | 2× scale, not 3×, so not a gate result; read-only sample of the running app, no warm-up needed after hours of running; ten-minute sample by `scripts/measure-macos.sh`; footprint 182 MB; energy impact peaked at 7.60. The first energy figure from the script's ten-minute sample. |
 
 The one row above is a read-only sample of a session that happened to be running; it is above the
 four-moving budget, but the scale, colony size and menu state were all wrong for a gate, so it
@@ -43,8 +44,9 @@ tells us where to start looking rather than whether the budget is met.
 Apart from the one 0.65.0 state above, nothing else has been measured under the full procedure. The states it asks for — one
 creature resting and moving, four resting and moving, a busy desktop, spectatorship, the menu open
 and closed, occluded by a full-screen app, and paused — have not been put through it on a release
-machine for 0.57.0 or later, and no Windows machine has been available at all. From 0.59.0 on,
-releases that change what the application costs have been measured as a whole process on the
+machine for 0.57.0 or later, and nothing has been measured on Windows: Windows 11 has been used by
+hand since 2026-10-02, and measuring it there is
+[#6](https://github.com/Von-Van/Formiga-Desktop/issues/6). From 0.59.0 on, releases that change what the application costs have been measured as a whole process on the
 development Mac instead, in shorter comparisons against the previous release made in the same
 sitting; those tables are in the release sections below. The remaining figures are storage and
 per-tick costs, which are asserted by tests or measured with `formiga-tools tick-bench`; they are
@@ -1056,3 +1058,36 @@ In 0.66.1 the leaf sled's scoot, which repeats two of its four frames where peda
 none, brings the reference companion back under that row, to 1,244,160 bytes again; the most one
 can cost is unchanged at 1,889,280. The fountain is drawn in twelve frames rather than eight, so a
 wonder's texture is now at most 344,064 bytes, still only while one is out.
+
+## 0.66.3: frames that follow, and a day book
+
+### Frames
+
+A resident setting off from rest at home used to walk unseen until its resting schedule's next
+frame — up to half a second at two frames a second — and then appear up to half its width along.
+`cadence::frame_due` keeps the next frame within one interval, at the colony's current rate, of the
+last, so the first frame of a walk comes when the walk does. It adds no frames while the colony is
+still and none while it moves: at most it brings one frame forward each time somebody sets off,
+which at home is a few dozen times an hour against the tens of thousands of frames a moving colony
+already draws in that time. Replaying the app's own tick and frame schedule headlessly over ten
+display setups and fifteen simulated hours, the most anyone moved between two frames, outside a hop,
+fell from 26 points to under 9.
+
+### The simulation
+
+The day book adds one clock difference to every tick and writes the book every ten seconds the
+houses are out, and pair counting adds a few integer increments to the bond events that already
+happen. Measured with `formiga-tools tick-bench`, 0.66.1 and 0.66.3 run alternately twice each in
+one sitting, `World::tick` costs the same within the noise: the eleven scenarios moved between 17%
+faster and 7% slower, in both directions, never by as much as half a microsecond. The share of ticks spent moving rose a little in the scenarios that spend time at home,
+where a resident's sit on its roof cut short is now a hop of a few frames instead of no frames at
+all.
+
+### Energy
+
+The table above has the first energy figure from the script's ten-minute sample: the owner's
+five-companion colony, as it was running on the development Mac with the menu closed, sampled read-only for ten
+minutes — 2.71% CPU, 61 MB resident, and an energy impact of 2.51 on average and 7.60 at its peak.
+It is 0.66.1, at the 2× scale the owner uses rather than the 3× the budgets are set at, so it is a
+reference rather than a gate result. Energy with the menu open, and anything at all on Windows, is
+still to be measured ([#6](https://github.com/Von-Van/Formiga-Desktop/issues/6)).

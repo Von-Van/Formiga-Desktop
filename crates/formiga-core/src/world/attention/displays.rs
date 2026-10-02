@@ -228,6 +228,12 @@ impl DisplayWalk {
 }
 
 impl World {
+    /// Look at the displays afresh on the next tick, as a colony just opened does: anybody
+    /// standing where no display reaches then is brought back onto one.
+    pub(in crate::world) fn look_again_at_displays(&mut self) {
+        self.display_attention.initialized = false;
+    }
+
     pub(in crate::world) fn prepare_display_attention(
         &mut self,
         desktop: &DesktopSnapshot,
@@ -287,13 +293,45 @@ impl World {
             self.display_attention.discovery = None;
             self.display_attention.reorient.fill(None);
         }
-        if !initialized || old == shapes {
+        let opening = !initialized;
+        if !opening && old == shapes {
             return;
         }
-        self.clear_attention();
-        self.cursor_observer.reset();
-        // Stable display keys distinguish real removal from native identifier/DPI churn.
         let mut affected = [None; MAX_COLONY_CREATURES];
+        if opening {
+            // A colony just opened has no arrangement of displays to compare this one with. It
+            // may have been closed on a display since unplugged or made smaller, so anybody
+            // standing where no display reaches now is brought back exactly as if that display
+            // had just changed — paused or not, since a paused colony is still on show.
+            for (index, creature) in self
+                .save
+                .creatures
+                .iter()
+                .take(MAX_COLONY_CREATURES)
+                .enumerate()
+            {
+                let p = creature.state.position;
+                let reached = desktop.monitors.iter().any(|m| {
+                    p.x >= m.bounds.x
+                        && p.x <= m.bounds.right()
+                        && p.y >= m.bounds.y
+                        && p.y <= m.bounds.bottom()
+                });
+                if !reached {
+                    affected[index] = Some(creature.id);
+                }
+            }
+            if affected.iter().all(Option::is_none) {
+                return;
+            }
+        } else {
+            self.clear_attention();
+            self.cursor_observer.reset();
+            // A wonder stands where the displays were, and holds its players to it: it goes, and
+            // they are recovered below like anybody else.
+            self.send_wonder_away(Some(desktop));
+        }
+        // Stable display keys distinguish real removal from native identifier/DPI churn.
         for (index, creature) in self
             .save
             .creatures
@@ -301,6 +339,9 @@ impl World {
             .take(MAX_COLONY_CREATURES)
             .enumerate()
         {
+            if opening {
+                break;
+            }
             let Some(previous) = old
                 .iter()
                 .flatten()
@@ -432,7 +473,7 @@ impl World {
                 );
             }
         }
-        if !active {
+        if opening || !active {
             return;
         }
         self.display_attention.next_origin = self.display_attention.next_origin.wrapping_add(1);
@@ -897,6 +938,7 @@ mod tests {
                 surface: creature.state.surface.clone(),
                 elapsed: 0.5,
                 duration: 2.0,
+                lift: 0.0,
             }),
         );
         world.window_routes.insert(

@@ -171,6 +171,16 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Save trouble: shown on every page with Try again, Export elsewhere and the logs; the tray news dot changes only its corner of the icon | CI | CI |
 | The village at 0.65.0's size: no house drawn taller than the 80 pixels it is fitted by; a dressed house of every type inside its snug footprint either side of its middle; every doorway no wider than the village keeps clear; a Bottom edge band that held the village before the houses grew still holds every house and tree; a full colony shows at least as many houses as 0.64.0 on nine common displays at every size; a snug village keeps its houses apart, gives up the outward tree, and is snug only where it must be | CI | CI |
 | Universal app / x64 package | CI | CI |
+| A colony file is read one version step at a time — exactly one step per version, each moving the file one version — then parsed once and validated; validating twice is validating once, and every way a colony can break is noticed and repaired | CI | CI |
+| 600 damaged colony files are each refused or read back holding nothing `violations` names, and open and run; a snapshot that is not a whole colony is refused with its reason, said in words | CI | CI |
+| Undo takes back up to eight changes newest first, a removal under rearrangements included, and a companion comes back with its shared history | CI | CI |
+| The day book keeps a week in order, who went looking for whom with the right one of a pair, time at home by the clock and never across a gap, and roof sits; nothing is compared with an uncounted day; a garden stage reached today is noted; the Today page prints each line with its counts | CI | CI |
+| What a change will do is said for every leaning, a routine saved or resumed (today, tomorrow, or a weekday), a quiet while, spots and gardens | CI | CI |
+| Frames follow a colony that sets off: between any two frames the app presents, nobody at home moves more than 10 points outside a hop | CI | CI |
+| A roof-sitter whose sit is cut short, however it ends, hops down rather than dropping; a wonder player above the ground hops down to it | CI | CI |
+| A toss caught in flight is held where it was caught and carried under the cursor; a cancelled catch goes back to its last safe place | CI | CI |
+| Nobody is left where no display reaches: a colony opened paused on a smaller display, a companion brought back by undo after its display shrank, a wonder out when its display shrinks, or a wonder at home with a resident on another display | CI | CI |
+| The notebook follows the system's appearance into the dark and back | CI | CI |
 
 ## Companion interface checks (0.57.0)
 
@@ -246,12 +256,15 @@ it, matching the contact anchor the tests assert numerically. Nothing in those s
 change. The three geometry games have no sheet of their own; they are covered by the assertions
 below.
 
-Native follow-up checks remain pending on macOS and Windows: the tour's pet, drag and menu observations,
-open/close/minimize during preview playback, multi-display home edits and reconnects, native
-export/restore cancellation and dialogs, tray quiet-mode expiry, keyboard navigation, the dark
-palette and text scaling under each platform's own appearance setting and its system-appearance
-changes, the sprite outline over bright and busy wallpaper, a scheduled routine transition across
-sleep and a timezone change, and energy measurements with the menu open and closed.
+Every manual check still pending is tracked as a GitHub issue labelled
+[`native-qa`](https://github.com/Von-Van/Formiga-Desktop/issues?q=label%3Anative-qa), linked from its
+row below: native file dialogs [#1](https://github.com/Von-Van/Formiga-Desktop/issues/1), keyboard navigation and screen readers [#2](https://github.com/Von-Van/Formiga-Desktop/issues/2), the system's
+appearance and the menu bar and tray icon [#3](https://github.com/Von-Van/Formiga-Desktop/issues/3), updates and installation [#4](https://github.com/Von-Van/Formiga-Desktop/issues/4), weekly routines
+across sleep and a time-zone change [#5](https://github.com/Von-Van/Formiga-Desktop/issues/5), energy with the menu open and closed and measurements on
+Windows [#6](https://github.com/Von-Van/Formiga-Desktop/issues/6), direct manipulation [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7), several displays [#8](https://github.com/Von-Van/Formiga-Desktop/issues/8), sleep, wake and long sessions
+[#9](https://github.com/Von-Van/Formiga-Desktop/issues/9), the village, visits and wonders [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10), the creature menu strip [#11](https://github.com/Von-Van/Formiga-Desktop/issues/11), Windows 10 [#12](https://github.com/Von-Van/Formiga-Desktop/issues/12),
+life on the desktop [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13), and the notebook's pages with a real colony [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14). Windows 11 has been
+used by hand, several displays included (2026-10-02, below).
 
 ## Manual release gates
 
@@ -259,70 +272,94 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 
 | Scenario | macOS 14 arm64 | macOS x64/Rosetta | Windows 10 22H2 | Windows 11 |
 |---|---|---|---|---|
-| One-hour unrelated-click test | pending | pending | pending | pending |
-| No focus activation while dragging | pending | pending | pending | pending |
-| Opaque-pixel hit test at 100/150/200% | pending | pending | pending | pending |
-| Drag release/cancel/pause/reduce-motion | pending | pending | pending | pending |
-| Slow placement, fast toss, soft bounce, and mid-flight re-grab | pending | pending | pending | pending |
-| Pet click, drag-out-and-back, shelter pet, and visible reaction at supported scales | pending | pending | pending | pending |
-| House appearance: immediate walking, ledge descent, spaced resting, pause, pet, and drag dismissal during approach | pending | pending | pending | pending |
-| Smooth climb/mantle, raised dangle contact, downward hop, inspection, and discovery | pending | pending | pending | pending |
-| Colony names, descriptors, unread badges, age, places, and wordless milestone bubble | pending | pending | pending | pending |
-| Bond profile labels and closest-companion changes remain read-only except for the name | pending | pending | pending | pending |
-| Clearly separated follow, sleep-beside, gift, toy steal, shelter greet, climb watch, toss concern, and harmless squabble playback | pending | pending | pending | pending |
-| Bond sequence cancellation when a target moves, sleeps, enters shelter, is tossed, or disappears | pending | pending | pending | pending |
-| Picnic, group nap, floor race, shelter gathering, catch, presentation, hatch day, quiet huddle, and sleep pile playback | pending | pending | pending | pending |
-| Ritual interruption by hide, pause, drag, toss, geometry change, and reduced-motion substitution | pending | pending | pending | pending |
-| Chase, procession, dance, pile, leapfrog, keep-away, tug, tag, gap turns, copied route, ledge contest, window race, the-floor-is-lava, and hide-and-seek playback | pending | pending | pending | pending |
-| Habitat create/move/resize/toggle/delete | pending | pending | pending | pending |
-| The desktop editor draws the region under the cursor, the settings window stays in front of it throughout, and Apply, Cancel and Reset all remain clickable | pending | pending | pending | pending |
-| Creature menus, petting and dragging all still work after an edit is applied and after one is cancelled | pending | pending | pending | pending |
-| The village and a creature resting at the foot of the screen stand clear of the Dock, shown and auto-hidden, and of the taskbar | pending | pending | pending | pending |
-| A colony of six out on the desktop: nobody is left drawn through anybody for more than a moment, stepping aside reads as walking rather than twitching, and a sleeper shuffles without waking | pending | pending | pending | pending |
-| Invalid habitat cannot replace valid policy | pending | pending | pending | pending |
-| Selected app occlusion and rule removal | pending | pending | pending | pending |
-| Window ordering/minimize/close | pending | pending | pending | pending |
-| Moving/minimized/closed supporting window during climb or dangle | pending | pending | pending | pending |
-| Window islands, exposed-corner peeks, slow platform rides, and calm cursor invitations | pending | pending | pending | pending |
-| Four-tier constructions, narrow-gap squeeze playback, and route cancellation during window motion | pending | pending | pending | pending |
-| Eight object kinds, multi-display placement, habitat recovery, static rendering, and no downtime flood | pending | pending | pending | pending |
-| Six shelter decoration kinds, history-reflective choice, overdue behavior, and unchanged single-quad rendering | pending | pending | pending | pending |
-| Copy seed, mixed-case paste, invalid/corrupted refusal, explicit replacement, relaunch, and one-hour companion arrival | pending | pending | pending | pending |
-| Creature-card save/cancel, visual legibility, Unicode name, PNG dimensions, metadata inspection, and reopen in native image viewer | pending | pending | pending | pending |
-| Random/reference preview, PNG/JPEG matching, add/replace/remove, Keep, bulk regeneration, and preview cleanup | pending | pending | pending | pending |
-| Two-adult even minis, three-adult oldest tie-break, one-month full-size arrival, relaunch, and removal reparenting | pending | pending | pending | pending |
-| Multi-display, negative coordinates, hot-plug | pending | pending | pending | pending |
-| Toss across monitor seams, negative coordinates, and custom habitat boundaries | pending | pending | pending | pending |
-| Spaces/virtual desktops and default full-screen hiding | automated geometry; native pending | automated geometry; native pending | pending | pending |
-| Sleep/wake and lock/unlock | pending | pending | pending | pending |
-| Two- and six-creature rendering for one hour without disappearance; automatic surface recovery | pending | pending | pending | pending |
-| Right-click and, on macOS, Control-click open the strip without stealing activation or focus; icon clicks act while the border and gaps do nothing | pending | pending | pending | pending |
-| The notch, label tab, and everything around the strip stay click-through; on Windows the region clips to the strip body and WM_RBUTTONDOWN reaches the no-activate tool window without a taskbar flash | pending | pending | pending | pending |
-| The menu survives a Space switch, hides under a full-screen application, sizes correctly on mixed DPI (100/125/150/200%), and closes when the creature is dragged between displays | pending | pending | pending | pending |
-| Thought bubbles read over real wallpaper at every creature size, sit at the crown for adults and minis alike, and clamp inside the display | pending | pending | pending | pending |
-| A full visit on a real desktop: arrival, greeting, residents answering, the calm beats, the farewell, and departure before the houses close | pending | pending | pending | pending |
-| Ask to stay and Copy code from both the menu and the Journal page, including a full colony refusing a stay | pending | pending | pending | pending |
-| Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once | pending | pending | pending | pending |
-| The village on a real desktop: both trees bookending the houses, keepsakes filling the branches as they are found, the belongings scattered in the two yards, and the whole corner on screen at every scale in both corners | pending | pending | pending | pending |
-| Sticker, colony-portrait, and postcard export dialogs: save, cancel, Unicode names and captions, and reopening every file in a native viewer | pending | pending | pending | pending |
-| Package install, relaunch, v18 round trip, and representative v1–v17 migration without creature loss | pending | pending | pending | pending |
-| A real v22 colony migrated to v23 with every companion, bond, journal moment, visitor and house unchanged, an hour of life, and a write and read back (a copy of the development Mac's colony, in tests) | pass (2026-10-01, copy) | pending | pending | pending |
-| Today page, journal dot on the tabs and the tray icon, and both clearing once read | pending | pending | pending | pending |
-| The notebook reopens where it was after a relaunch, on a second display, and centred again once that display is unplugged | pending | pending | pending | pending |
-| ⌘1–⌘9, ⌘[ ⌘], ⌘W, Tab and Enter in the notebook; VoiceOver (macOS) and Narrator (Windows) read the tabs, buttons and checkboxes and can turn a page | pending | pending | pending | pending |
-| A data folder made read-only shows the save-trouble card and tooltip, and both clear once it is writable again | pending | pending | pending | pending |
-| Native failure dialogs: an export to a read-only folder, a restore from a file that is not a colony, and a downloaded update that will not open | pending | pending | pending | pending |
-| The larger houses on a real desktop: decorations legible at Small, Medium and Large, the snug layout on a 1280- or 1366-point display at 100%, and the village clear of the Dock and taskbar with the Bottom edge habitat | pending | pending | pending | pending |
-| A real v23 colony migrated to v24 with every companion and find unchanged, two hours of life with a wonder every 90 seconds — all nine kinds turning up, found, and played through — the day's finds held to its allowance, and a write and read back (a copy of the development Mac's colony, in tests) | pass (2026-10-01, copy) | pending | pending | pending |
-| Wonders on a real desktop: on the floor, on a window ledge reached by a climb, and on the village ground; a pick-up on the way and mid-play sending it away; both players of a wonder for two setting off together; hidden behind chosen apps like the colony | pending | pending | pending | pending |
-| The new walk, run, greeting, meal and sleep loops at 20 Hz on every body, and the bench, swing, hammock and book nook sat on at home | pending | pending | pending | pending |
-| The menu bar icon (light and dark menu bars) and the Windows tray icon at 100–200% are the app icon, with the news dot | pending | pending | pending | pending |
-| Manual and automatic GitHub update check | pending | pending | pending | pending |
-| Verified update download; corrupt checksum refusal | pending | pending | pending | pending |
-| DMG/MSI handoff without silent installation | pending | pending | pending | pending |
+| Everyday use: install, first launch, the colony on the desktop and at home, and the notebook [#12](https://github.com/Von-Van/Formiga-Desktop/issues/12) | pending | pending | pending | pass (2026-10-02, by hand) |
+| Everyday use with two or more displays [#8](https://github.com/Von-Van/Formiga-Desktop/issues/8) | pending | pending | pending | pass (2026-10-02, by hand) |
+| One-hour unrelated-click test [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7) | pending | pending | pending | pending |
+| No focus activation while dragging [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7) | pending | pending | pending | pending |
+| Opaque-pixel hit test at 100/150/200% [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7) | pending | pending | pending | pending |
+| Drag release/cancel/pause/reduce-motion [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7) | pending | pending | pending | pending |
+| Slow placement, fast toss, soft bounce, and mid-flight re-grab [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7) | pending | pending | pending | pending |
+| Pet click, drag-out-and-back, shelter pet, and visible reaction at supported scales [#7](https://github.com/Von-Van/Formiga-Desktop/issues/7) | pending | pending | pending | pending |
+| House appearance: immediate walking, ledge descent, spaced resting, pause, pet, and drag dismissal during approach [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| Smooth climb/mantle, raised dangle contact, downward hop, inspection, and discovery [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Colony names, descriptors, unread badges, age, places, and wordless milestone bubble [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| Bond profile labels and closest-companion changes remain read-only except for the name [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| Clearly separated follow, sleep-beside, gift, toy steal, shelter greet, climb watch, toss concern, and harmless squabble playback [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Bond sequence cancellation when a target moves, sleeps, enters shelter, is tossed, or disappears [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Picnic, group nap, floor race, shelter gathering, catch, presentation, hatch day, quiet huddle, and sleep pile playback [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Ritual interruption by hide, pause, drag, toss, geometry change, and reduced-motion substitution [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Chase, procession, dance, pile, leapfrog, keep-away, tug, tag, gap turns, copied route, ledge contest, window race, the-floor-is-lava, and hide-and-seek playback [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Habitat create/move/resize/toggle/delete [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| The desktop editor draws the region under the cursor, the settings window stays in front of it throughout, and Apply, Cancel and Reset all remain clickable [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Creature menus, petting and dragging all still work after an edit is applied and after one is cancelled [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| The village and a creature resting at the foot of the screen stand clear of the Dock, shown and auto-hidden, and of the taskbar [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| A colony of six out on the desktop: nobody is left drawn through anybody for more than a moment, stepping aside reads as walking rather than twitching, and a sleeper shuffles without waking [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Invalid habitat cannot replace valid policy [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Selected app occlusion and rule removal [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Window ordering/minimize/close [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Moving/minimized/closed supporting window during climb or dangle [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Window islands, exposed-corner peeks, slow platform rides, and calm cursor invitations [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Four-tier constructions, narrow-gap squeeze playback, and route cancellation during window motion [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Eight object kinds, multi-display placement, habitat recovery, static rendering, and no downtime flood [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Six shelter decoration kinds, history-reflective choice, overdue behavior, and unchanged single-quad rendering [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Copy seed, mixed-case paste, invalid/corrupted refusal, explicit replacement, relaunch, and one-hour companion arrival [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| Creature-card save/cancel, visual legibility, Unicode name, PNG dimensions, metadata inspection, and reopen in native image viewer [#1](https://github.com/Von-Van/Formiga-Desktop/issues/1) | pending | pending | pending | pending |
+| Random/reference preview, PNG/JPEG matching, add/replace/remove, Keep, bulk regeneration, and preview cleanup [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| Two-adult even minis, three-adult oldest tie-break, one-month full-size arrival, relaunch, and removal reparenting [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| Multi-display, negative coordinates, hot-plug [#8](https://github.com/Von-Van/Formiga-Desktop/issues/8) | pending | pending | pending | pending |
+| Toss across monitor seams, negative coordinates, and custom habitat boundaries [#8](https://github.com/Von-Van/Formiga-Desktop/issues/8) | pending | pending | pending | pending |
+| Spaces/virtual desktops and default full-screen hiding [#8](https://github.com/Von-Van/Formiga-Desktop/issues/8) | automated geometry; native pending | automated geometry; native pending | pending | pending |
+| Sleep/wake and lock/unlock [#9](https://github.com/Von-Van/Formiga-Desktop/issues/9) | pending | pending | pending | pending |
+| Two- and six-creature rendering for one hour without disappearance; automatic surface recovery [#9](https://github.com/Von-Van/Formiga-Desktop/issues/9) | pending | pending | pending | pending |
+| Right-click and, on macOS, Control-click open the strip without stealing activation or focus; icon clicks act while the border and gaps do nothing [#11](https://github.com/Von-Van/Formiga-Desktop/issues/11) | pending | pending | pending | pending |
+| The notch, label tab, and everything around the strip stay click-through; on Windows the region clips to the strip body and WM_RBUTTONDOWN reaches the no-activate tool window without a taskbar flash [#11](https://github.com/Von-Van/Formiga-Desktop/issues/11) | pending | pending | pending | pending |
+| The menu survives a Space switch, hides under a full-screen application, sizes correctly on mixed DPI (100/125/150/200%), and closes when the creature is dragged between displays [#11](https://github.com/Von-Van/Formiga-Desktop/issues/11) | pending | pending | pending | pending |
+| Thought bubbles read over real wallpaper at every creature size, sit at the crown for adults and minis alike, and clamp inside the display [#11](https://github.com/Von-Van/Formiga-Desktop/issues/11) | pending | pending | pending | pending |
+| A full visit on a real desktop: arrival, greeting, residents answering, the calm beats, the farewell, and departure before the houses close [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| Ask to stay and Copy code from both the menu and the Journal page, including a full colony refusing a stay [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| Doorstep moments at the houses: each kind plays, only one resident is busy at a time, and a pet or pick-up cancels one at once [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| The village on a real desktop: both trees bookending the houses, keepsakes filling the branches as they are found, the belongings scattered in the two yards, and the whole corner on screen at every scale in both corners [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| Sticker, colony-portrait, and postcard export dialogs: save, cancel, Unicode names and captions, and reopening every file in a native viewer [#1](https://github.com/Von-Van/Formiga-Desktop/issues/1) | pending | pending | pending | pending |
+| Package install, relaunch, v18 round trip, and representative v1–v17 migration without creature loss [#4](https://github.com/Von-Van/Formiga-Desktop/issues/4) | pending | pending | pending | pending |
+| A real v22 colony migrated to v23 with every companion, bond, journal moment, visitor and house unchanged, an hour of life, and a write and read back (a copy of the development Mac's colony, in tests) [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pass (2026-10-01, copy) | pending | pending | pending |
+| Today page, journal dot on the tabs and the tray icon, and both clearing once read [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pending | pending | pending | pending |
+| The notebook reopens where it was after a relaunch, on a second display, and centred again once that display is unplugged [#8](https://github.com/Von-Van/Formiga-Desktop/issues/8) | pending | pending | pending | pending |
+| ⌘1–⌘9, ⌘[ ⌘], ⌘W, Tab and Enter in the notebook; VoiceOver (macOS) and Narrator (Windows) read the tabs, buttons and checkboxes and can turn a page [#2](https://github.com/Von-Van/Formiga-Desktop/issues/2) | pending | pending | pending | pending |
+| A data folder made read-only shows the save-trouble card and tooltip, and both clear once it is writable again [#9](https://github.com/Von-Van/Formiga-Desktop/issues/9) | pending | pending | pending | pending |
+| Native failure dialogs: an export to a read-only folder, a restore from a file that is not a colony, and a downloaded update that will not open [#1](https://github.com/Von-Van/Formiga-Desktop/issues/1) | pending | pending | pending | pending |
+| The larger houses on a real desktop: decorations legible at Small, Medium and Large, the snug layout on a 1280- or 1366-point display at 100%, and the village clear of the Dock and taskbar with the Bottom edge habitat [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| A real v23 colony migrated to v24 with every companion and find unchanged, two hours of life with a wonder every 90 seconds — all nine kinds turning up, found, and played through — the day's finds held to its allowance, and a write and read back (a copy of the development Mac's colony, in tests) [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pass (2026-10-01, copy) | pending | pending | pending |
+| A real v24 colony migrated to v25 with every companion, bond, tally, journal moment, visitor and house unchanged, an hour of life with the day book counting, and a write and read back (a copy of the development Mac's colony, in tests) [#14](https://github.com/Von-Van/Formiga-Desktop/issues/14) | pass (2026-10-02, copy) | pending | pending | pending |
+| Wonders on a real desktop: on the floor, on a window ledge reached by a climb, and on the village ground; a pick-up on the way and mid-play sending it away; both players of a wonder for two setting off together; hidden behind chosen apps like the colony [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| The new walk, run, greeting, meal and sleep loops at 20 Hz on every body, and the bench, swing, hammock and book nook sat on at home [#10](https://github.com/Von-Van/Formiga-Desktop/issues/10) | pending | pending | pending | pending |
+| The menu bar icon (light and dark menu bars) and the Windows tray icon at 100–200% are the app icon, with the news dot [#3](https://github.com/Von-Van/Formiga-Desktop/issues/3) | pending | pending | pending | pending |
+| Manual and automatic GitHub update check [#4](https://github.com/Von-Van/Formiga-Desktop/issues/4) | pending | pending | pending | pending |
+| Verified update download; corrupt checksum refusal [#4](https://github.com/Von-Van/Formiga-Desktop/issues/4) | pending | pending | pending | pending |
+| DMG/MSI handoff without silent installation [#4](https://github.com/Von-Van/Formiga-Desktop/issues/4) | pending | pending | pending | pending |
 
 Unsigned preview status must remain explicit until signing credentials are configured.
 
+
+### Long simulated runs
+
+`formiga-tools soak` runs nightly in the `soak` workflow: 1,500 randomized colonies of three
+simulated days each, in each of UTC, Pacific/Auckland and America/Los_Angeles, so local midnights and
+weekly routines fall at different moments. Each colony is checked after every simulated minute and
+every change: nothing `violations` names, everyone somewhere a display reaches (within ten seconds of
+the displays changing), the weekly routine the one the week says it is after every gap, and the
+colony read back from disk the colony written — the saved file compared, since what a colony holds
+only while it runs is never written. Each one's last file is also damaged five ways and read back. A
+failure uploads `soak-failure-<seed>-<colony>.json`, and `formiga-tools soak --seed S --only N --days D`
+replays exactly that life (see [BUILD.md](BUILD.md#long-simulated-runs)).
+
+Its first runs, before 0.66.3 shipped, found eight faults that ordinary tests had not: companions
+left off every display by a paused reopen, by an undo after a display was unplugged, by a wonder out
+when the displays changed, and by a wonder at home choosing a resident on another display; a toss
+caught in flight carried a throw's length from the cursor; a mini given a new grown-up on every
+reopen; pair tallies reordered by a reload; and a companion's day book counts kept after it left.
+The damage test beside it found four ways a damaged file opened half read: an empty name, more than
+six companions, an overlong routine table, and a number out of any field's range. Each now has a test
+of its own.
 
 ### Environmental attention coverage
 

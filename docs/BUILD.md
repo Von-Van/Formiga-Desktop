@@ -51,6 +51,33 @@ for the procedure in `PERFORMANCE.md` and prints a row for that document's table
 sudo and no dependencies. The Windows equivalents are `Get-Counter '\Process(formiga)\% Processor
 Time'` for CPU and `Get-Process formiga | Select WorkingSet64` for resident memory.
 
+## Long simulated runs
+
+```sh
+taskpolicy -b cargo run --release -p formiga-tools -- soak --colonies 40 --days 2 --threads 2
+cargo run --release -p formiga-tools -- soak --seed 7 --only 514 --days 3
+```
+
+`soak` lives many randomized colonies through days of sessions and gaps: twenty ticks a second
+while Formiga would be running, and the clock jumping ahead overnight, across weekends and through
+coffee breaks. Between sessions displays are plugged in, unplugged and rescaled, preferences are
+toggled, a weekly routine is followed, the village is rearranged and changes are undone, companions
+arrive and leave, and the colony is written to disk and read back the way a relaunch reads it.
+During a session windows open, move and close, the cursor wanders, and companions are petted,
+carried, tossed and offered things. At every checkpoint each colony must hold nothing
+`formiga_core::violations` names, every companion must be somewhere a display reaches, a weekly
+routine must be the one the week says it is, and a colony read back must be the colony written.
+`--damage N` also damages each colony's last file N ways and reads it back. A colony that fails
+writes `soak-failure-<seed>-<colony>.json`, with its last good save, to `--out`, and the run prints
+the command that replays exactly that life.
+
+It uses half the machine's cores unless `--threads` says otherwise; on a Mac someone is working at,
+run it small and under `taskpolicy -b`, which keeps it on the efficiency cores. The `soak` workflow
+runs it in full every night — 1,500 colonies of three simulated days each, in each of three time
+zones (UTC, Pacific/Auckland and America/Los_Angeles), so local midnights and weekly routines fall
+at different moments — and uploads any failure files. It can also be started by hand from the
+Actions tab with other numbers and a seed.
+
 ## Review sheets and documentation images
 
 `formiga-tools` draws every reference image in the repository. These commands regenerate all of
@@ -183,7 +210,8 @@ Then:
 
 1. Regenerate the documentation images if anything they draw has changed, and run the full check.
 2. Push the release commit to `main` and wait for `build-and-test` to pass on macOS **and**
-   Windows. That run is the only Windows build a change gets before it ships.
+   Windows. That run is the only Windows build a change gets before it ships; what has been tried
+   by hand on Windows hardware is recorded in `docs/TEST_MATRIX.md`.
 3. Tag the commit and push the tag. `release.yml` packages both platforms and publishes an
    unsigned prerelease with eight files: the DMG, the MSI, two portable ZIPs, and a `.sha256` for
    each. The in-app updater sees it from then on.

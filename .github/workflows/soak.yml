@@ -1,0 +1,59 @@
+name: soak
+
+# Long simulated lives for thousands of randomized colonies, every night and on demand. Not on
+# every push: a night's run takes a quarter of an hour on each of three runners. Each job lives in
+# its own time zone, so local midnights, weekly routines and the day book are crossed at different
+# moments of simulated time. See `formiga-tools soak` and docs/BUILD.md.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      colonies:
+        description: "Colonies per time zone"
+        default: "1500"
+      days:
+        description: "Simulated days each colony lives"
+        default: "3"
+      seed:
+        description: "Seed (blank: the run number)"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    strategy:
+      fail-fast: false
+      matrix:
+        tz: [UTC, Pacific/Auckland, America/Los_Angeles]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      TZ: ${{ matrix.tz }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p formiga-tools
+      - name: Soak
+        shell: bash
+        run: |
+          seed="${{ inputs.seed }}"
+          if [ -z "$seed" ]; then
+            seed=$(( ${{ github.run_number }} * 10 + ${{ strategy.job-index }} ))
+          fi
+          ./target/release/formiga-tools soak \
+            --colonies "${{ inputs.colonies || '1500' }}" \
+            --days "${{ inputs.days || '3' }}" \
+            --seed "$seed" \
+            --damage 5 \
+            --threads "$(nproc)" \
+            --out soak-out
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-failures-${{ strategy.job-index }}
+          path: soak-out/soak-failure-*.json
+          if-no-files-found: ignore

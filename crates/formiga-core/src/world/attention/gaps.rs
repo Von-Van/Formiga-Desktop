@@ -409,6 +409,7 @@ impl World {
                     } else {
                         (start.distance(target) / (170.0 * unit)).clamp(0.5, 1.2)
                     },
+                    lift: 0.0,
                 };
                 let regions = accessible_regions(&self.save.settings.habitat, monitor);
                 // A fixed sample count, once at selection. Each actual step is validated again.

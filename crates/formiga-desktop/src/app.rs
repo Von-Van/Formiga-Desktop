@@ -84,6 +84,9 @@ pub struct FormigaApp {
     /// The most urgent thing waiting to be written since the last save.
     save_waiting: SaveUrgency,
     redraw_due: Instant,
+    /// When a frame was last asked for, so a colony that starts moving is drawn from its first
+    /// step: see `cadence::frame_due`.
+    last_frame: Option<Instant>,
     cached_windows: Vec<DesktopWindow>,
     last_window_scan: Instant,
     observation_epoch: Instant,
@@ -136,6 +139,7 @@ impl FormigaApp {
             last_save: Instant::now(),
             save_waiting: SaveUrgency::None,
             redraw_due: Instant::now(),
+            last_frame: None,
             cached_windows: Vec::new(),
             last_window_scan: Instant::now() - Duration::from_secs(2),
             observation_epoch: Instant::now(),
@@ -188,7 +192,7 @@ impl FormigaApp {
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
-                window.clubhouse.recovery = recovery_reason;
+                window.clubhouse.recovery.reason = recovery_reason;
             }
         }
         if self
@@ -476,7 +480,9 @@ impl FormigaApp {
             .as_ref()
             .map(world_redraw_interval)
             .unwrap_or(Duration::from_millis(250));
+        self.redraw_due = frame_due(self.redraw_due, self.last_frame, interval);
         if now >= self.redraw_due {
+            self.last_frame = Some(now);
             if let Some(world) = &self.world {
                 let habitat_editor = self.habitat_editor.as_ref().map(|editor| &editor.draft);
                 let ui_active = self.creature_menu.is_some() || !world.thought_bubbles().is_empty();
@@ -845,7 +851,7 @@ impl FormigaApp {
             tray.sync_trouble(self.save_trouble.is_some());
         }
         if let Some(window) = &mut self.settings_window {
-            window.clubhouse.save_trouble = self.save_trouble.clone();
+            window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
             window.window.request_redraw();
         }
     }
@@ -945,8 +951,9 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             return;
                         };
                         window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
-                        window.clubhouse.save_trouble = self.save_trouble.clone();
-                        window.clubhouse.tour.menus_opened = self.menus_opened;
+                        window.clubhouse.earlier_edits = world.undoable_edits().saturating_sub(1);
+                        window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
+                        window.clubhouse.shell.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,
                             &self.monitors,

@@ -405,3 +405,118 @@ fn the_leaf_sled_is_saved_under_the_bikes_name() {
     assert_eq!(record.kind, WonderKind::LeafSled);
     assert_eq!(record.goes, 3);
 }
+
+/// A wonder at home is only for residents down on the village's own display. One still on its way
+/// home from a shorter display beside it is not sent running along the village floor's height,
+/// through the space below that display where nothing is drawn. Found by the long simulated runs.
+#[test]
+fn at_home_a_wonder_never_sends_anyone_where_no_display_reaches() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    let main = desktop.monitors[0].bounds;
+    let mut beside = desktop.monitors[0].clone();
+    beside.id = 2;
+    beside.display_key = DisplayKey([2; 16]);
+    beside.primary = false;
+    beside.bounds = DesktopRect {
+        x: main.right(),
+        y: 0.0,
+        width: 1280.0,
+        height: 600.0,
+    };
+    beside.usable_bounds = DesktopRect {
+        y: 24.0,
+        height: 576.0,
+        ..beside.bounds
+    };
+    desktop.monitors.push(beside.clone());
+    let reached = |p: Point| {
+        desktop.monitors.iter().any(|m| {
+            p.x >= m.bounds.x - 48.0
+                && p.x <= m.bounds.right() + 48.0
+                && p.y >= m.bounds.y - 48.0
+                && p.y <= m.bounds.bottom() + 48.0
+        })
+    };
+    for kind in [
+        WonderKind::Seesaw,
+        WonderKind::Tightrope,
+        WonderKind::LeafSled,
+    ] {
+        let mut world = settled_colony([24; 32], 3, created, &desktop);
+        awake(&mut world);
+        // Two of them still out on the display beside, on its floor.
+        for (index, creature) in world.save.creatures.iter_mut().enumerate().skip(1) {
+            creature.state.position = Point {
+                x: beside.bounds.x + 200.0 + 300.0 * index as f32,
+                y: beside.usable_bounds.bottom() - 4.0,
+            };
+            creature.state.surface = SurfaceAttachment {
+                kind: SurfaceKind::ScreenFloor,
+                monitor_id: 2,
+                window_key: None,
+                relative_x: 0.5,
+            };
+        }
+        world.wonders.due_now(Some(kind));
+        for _ in 0..1_200 {
+            world.tick(created, 0.05, &desktop);
+            for creature in &world.save.creatures {
+                assert!(
+                    reached(creature.state.position),
+                    "{kind:?}: {} is at {:?}, which no display reaches",
+                    creature.name,
+                    creature.state.position
+                );
+            }
+        }
+    }
+}
+
+/// A display made smaller while a wonder is out on it sends the wonder away, so neither it nor
+/// its players are left where the display no longer reaches. Found by the long simulated runs.
+#[test]
+fn a_display_that_shrinks_under_a_wonder_sends_it_away() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    desktop.monitors[0].bounds.width = 2560.0;
+    desktop.monitors[0].usable_bounds.width = 2560.0;
+    let mut world = settled_colony([24; 32], 3, created, &desktop);
+    awake(&mut world);
+    // The village in the far corner of the wide display, so shrinking it leaves the wonder out.
+    world.save.home.corner = HomeCorner::BottomRight;
+    for _ in 0..200 {
+        world.tick(created, 0.05, &desktop);
+    }
+    assert!(bring_one_out(
+        &mut world,
+        created,
+        &desktop,
+        Some(WonderKind::LeafSled)
+    ));
+    for _ in 0..40 {
+        world.tick(created, 0.05, &desktop);
+    }
+    let out_at = world.wonder().unwrap().at;
+    assert!(
+        out_at.x > 1440.0,
+        "the wonder is out beyond where the display will end"
+    );
+    desktop.monitors[0].bounds.width = 1440.0;
+    desktop.monitors[0].usable_bounds.width = 1440.0;
+    for _ in 0..60 {
+        world.tick(created, 0.05, &desktop);
+    }
+    assert!(
+        world.wonder().is_none_or(|wonder| wonder.at.x <= 1440.0),
+        "the wonder went"
+    );
+    for creature in &world.save.creatures {
+        assert!(
+            creature.state.position.x <= 1440.0 + 48.0,
+            "{} is left at {:?}",
+            creature.name,
+            creature.state.position
+        );
+    }
+}

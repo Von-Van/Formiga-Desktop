@@ -1,4 +1,5 @@
 use super::*;
+use crate::tuning::ROAMING;
 
 impl World {
     pub fn rename_creature(
@@ -448,8 +449,8 @@ impl World {
         self.ambient_timers.insert(
             creature.id,
             AmbientTimers {
-                inspect_remaining: self.ambient_rng.random_range(INSPECT_INTERVAL_SECS),
-                dangle_remaining: self.ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+                inspect_remaining: self.ambient_rng.random_range(ROAMING.inspect_interval_secs),
+                dangle_remaining: self.ambient_rng.random_range(ROAMING.dangle_interval_secs),
                 climb_rest: 0.0,
             },
         );
@@ -557,7 +558,7 @@ impl World {
     }
 }
 
-pub(super) fn normalize_colony_roles(save: &mut SaveFile) {
+pub(crate) fn normalize_colony_roles(save: &mut SaveFile) {
     if save.creatures.is_empty() {
         return;
     }
@@ -568,7 +569,19 @@ pub(super) fn normalize_colony_roles(save: &mut SaveFile) {
     {
         save.creatures[0].role = CreatureRole::Adult;
     }
-    rebalance_minis(&mut save.creatures);
+    // Only a mini whose grown-up is not here is given another: one that has its own keeps it,
+    // so a colony opened again is the colony that was closed.
+    let orphaned = save.creatures.iter().any(|creature| {
+        creature.role.parent_id().is_some_and(|parent| {
+            !save
+                .creatures
+                .iter()
+                .any(|adult| adult.id == parent && adult.role.is_adult())
+        })
+    });
+    if orphaned {
+        rebalance_minis(&mut save.creatures);
+    }
 }
 
 pub(super) fn adult_count(creatures: &[Creature]) -> usize {

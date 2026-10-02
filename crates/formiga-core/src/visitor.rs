@@ -340,8 +340,7 @@ impl VisitorState {
         }
     }
 
-    /// Settle a colony that has just been opened. A visit is a scene, not a saved position: any
-    /// guest is found waiting between gatherings, and walks in again when the houses next appear.
+    /// Bring the guest book and the favourites inside their limits, each favourite once.
     pub fn normalize(&mut self) {
         self.trim();
         let mut seen = Vec::with_capacity(self.favorites.len());
@@ -351,6 +350,11 @@ impl VisitorState {
             first
         });
         self.favorites.truncate(MAX_FAVORITE_VISITORS);
+    }
+
+    /// Settle a colony that has just been opened. A visit is a scene, not a saved position: any
+    /// guest is found waiting between gatherings, and walks in again when the houses next appear.
+    pub fn settle_after_opening(&mut self) {
         if let Some(guest) = &mut self.guest {
             guest.on_stage = false;
             guest.visit = VisitProgress::default();

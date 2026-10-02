@@ -723,18 +723,22 @@ pub fn tally_mut_or_insert(
     b: CreatureId,
 ) -> Option<&mut PairTally> {
     let (a, b) = canonical_creature_pair(a, b)?;
-    if let Some(index) = tallies.iter().position(|t| t.a == a && t.b == b) {
-        return tallies.get_mut(index);
+    // Kept in the pairs' own order, which is the order a colony read back from disk has them in.
+    match tallies.binary_search_by_key(&(a, b), |t| (t.a, t.b)) {
+        Ok(index) => tallies.get_mut(index),
+        Err(_) if tallies.len() >= MAX_RELATIONSHIPS => None,
+        Err(index) => {
+            tallies.insert(
+                index,
+                PairTally {
+                    a,
+                    b,
+                    tally: RelationshipTally::default(),
+                },
+            );
+            tallies.get_mut(index)
+        }
     }
-    if tallies.len() >= MAX_RELATIONSHIPS {
-        return None;
-    }
-    tallies.push(PairTally {
-        a,
-        b,
-        tally: RelationshipTally::default(),
-    });
-    tallies.last_mut()
 }
 
 /// The kinds of moment a pair's tally counts, and the one its memory names.
@@ -1390,6 +1394,9 @@ pub enum ColonyManagementError {
     DuplicateIdentity,
 }
 
+/// The longest a companion's name can be, in characters.
+pub const MAX_NAME_CHARACTERS: usize = 24;
+
 pub fn validate_creature_name(value: &str) -> Result<String, CreatureNameError> {
     if value.chars().any(char::is_control) {
         return Err(CreatureNameError::ControlCharacter);
@@ -1398,7 +1405,7 @@ pub fn validate_creature_name(value: &str) -> Result<String, CreatureNameError> 
     if trimmed.is_empty() {
         return Err(CreatureNameError::Empty);
     }
-    if trimmed.chars().count() > 24 {
+    if trimmed.chars().count() > MAX_NAME_CHARACTERS {
         return Err(CreatureNameError::TooLong);
     }
     Ok(trimmed.to_owned())
@@ -3159,6 +3166,10 @@ pub struct SaveFile {
     /// day, however many companions it has: see `daily_trinket_target`.
     #[serde(default, skip_serializing_if = "FindsToday::is_empty")]
     pub finds_today: FindsToday,
+    /// A few counts for each of the last week's days, for the Today page to compare. Absent from
+    /// the file until anything is counted.
+    #[serde(default, skip_serializing_if = "crate::DayBook::is_empty")]
+    pub day_book: crate::DayBook,
 }
 
 /// The trinkets found so far on one local day.
@@ -3186,7 +3197,7 @@ pub fn daily_trinket_target(colony_seed: [u8; 32], day: i32) -> u8 {
     use rand::Rng;
     crate::SeedStream::new(colony_seed)
         .rng("daily-finds", u64::from(day.unsigned_abs()))
-        .random_range(1..=5)
+        .random_range(crate::tuning::FINDS.per_day)
 }
 
 /// What the person at the desk is holding out. Runtime-only: an offer is a moment, not a record.

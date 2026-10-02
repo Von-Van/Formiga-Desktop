@@ -214,8 +214,14 @@ impl World {
         } else {
             creature.state.action
         };
-        if interrupted_journey || interrupted_toss.is_some() {
-            creature.state.position = original_position;
+        // Caught in the air, it stays where the hand caught it — under the cursor — and is held
+        // from then on. Only a cancelled catch goes back to where it was last safe; putting it
+        // there at the catch left it a throw's length from the cursor for the whole carry.
+        let caught_in_flight = interrupted_toss.is_some();
+        if interrupted_journey || caught_in_flight {
+            if !caught_in_flight {
+                creature.state.position = original_position;
+            }
             creature.state.surface = original_surface.clone();
             creature.state.action = ActionKind::Idle;
             creature.state.action_elapsed = 0.0;
@@ -239,6 +245,9 @@ impl World {
             velocity_sample_count: 0,
             next_velocity_sample: 0,
         });
+        if caught_in_flight {
+            self.start_drag_motion();
+        }
         true
     }
 

@@ -367,3 +367,142 @@ fn a_layout_change_puts_back_what_it_changed() {
     assert_eq!(ids, [0, 1, 2, 9]);
     assert_ne!(world.save.home.corner, corner);
 }
+
+/// Changes are taken back one at a time, newest first, each putting back the village exactly as
+/// that change found it, and only the newest `UNDO.depth` are kept.
+#[test]
+fn changes_are_taken_back_newest_first_as_far_as_the_history_goes() {
+    let (mut world, _, _) = colony();
+    let depth = crate::tuning::UNDO.depth;
+    let edits = depth + 2;
+    let mut alongs = Vec::new();
+    for step in 1..=edits {
+        let along = step as f32 / (edits + 1) as f32;
+        world.edit(ColonyEdit::Hangout(HangoutKind::Blanket), |world| {
+            world
+                .save
+                .home
+                .set_hangout(HangoutKind::Blanket, Some(along))
+        });
+        alongs.push(along);
+        assert_eq!(world.undoable_edits(), step.min(depth));
+    }
+    let blanket = |world: &World| {
+        world
+            .save
+            .home
+            .hangouts
+            .iter()
+            .find(|spot| spot.kind == HangoutKind::Blanket)
+            .map(|spot| spot.along)
+    };
+    for undone in 1..=depth {
+        assert_eq!(
+            world.undo_last_edit(),
+            Ok(ColonyEdit::Hangout(HangoutKind::Blanket))
+        );
+        assert_eq!(
+            blanket(&world),
+            Some(alongs[edits - undone - 1]),
+            "undo {undone} puts back where the blanket was before it"
+        );
+    }
+    assert_eq!(world.undo_last_edit(), Err(UndoError::NothingToUndo));
+    assert_eq!(
+        blanket(&world),
+        Some(alongs[edits - depth - 1]),
+        "the oldest changes were let go"
+    );
+}
+
+/// A removal followed by rearrangements comes undone in order: the rearrangements first, then the
+/// companion comes back to its own cottage, and the village stands as it did before any of it.
+#[test]
+fn a_removal_under_rearrangements_comes_back_in_order() {
+    let (mut world, _, _) = colony();
+    let before = world.save.home.clone();
+    let target = adults(&world)[1];
+    let name = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == target)
+        .unwrap()
+        .name
+        .clone();
+    world
+        .edit(ColonyEdit::Removed { name: name.clone() }, |world| {
+            world.remove_colony_creature(target)
+        })
+        .unwrap();
+    world.edit(ColonyEdit::PaintedVillage, |world| {
+        world.save.home.palette = Some(VillagePalette::Autumn);
+    });
+    world.edit(ColonyEdit::Hangout(HangoutKind::Blanket), |world| {
+        world.save.home.set_hangout(HangoutKind::Blanket, Some(0.3))
+    });
+    assert_eq!(world.undoable_edits(), 3);
+    assert_eq!(
+        world.undo_last_edit(),
+        Ok(ColonyEdit::Hangout(HangoutKind::Blanket))
+    );
+    assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::PaintedVillage));
+    assert_eq!(world.save.home.palette, None);
+    assert!(!world.save.creatures.iter().any(|c| c.id == target));
+    assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::Removed { name }));
+    assert!(world.save.creatures.iter().any(|c| c.id == target));
+    assert_eq!(world.save.home.cottage_order, before.cottage_order);
+    assert_eq!(world.save.home.hangouts, before.hangouts);
+    assert_eq!(world.save.home.palette, before.palette);
+    assert_eq!(world.undoable_edits(), 0);
+}
+
+/// A companion removed on a big display and brought back by undo after the display has been made
+/// smaller, with everything paused: it comes back somewhere the display reaches, not where it
+/// stood before. Found by the long simulated runs.
+#[test]
+fn a_companion_brought_back_after_its_display_shrank_lands_on_the_display() {
+    let (mut world, mut desktop, now) = colony();
+    let target = adults(&world)[1];
+    let name = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == target)
+        .unwrap()
+        .name
+        .clone();
+    let width = desktop.monitors[0].bounds.width;
+    world
+        .save
+        .creatures
+        .iter_mut()
+        .find(|creature| creature.id == target)
+        .unwrap()
+        .state
+        .position
+        .x = width - 20.0;
+    world
+        .edit(ColonyEdit::Removed { name: name.clone() }, |world| {
+            world.remove_colony_creature(target)
+        })
+        .unwrap();
+    world.save.settings.paused = true;
+    desktop.monitors[0].bounds.width = width / 2.0;
+    desktop.monitors[0].usable_bounds.width = width / 2.0;
+    world.tick(now + Duration::seconds(1), 0.05, &desktop);
+    assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::Removed { name }));
+    world.tick(now + Duration::seconds(2), 0.05, &desktop);
+    let back = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == target)
+        .unwrap();
+    assert!(
+        back.state.position.x <= width / 2.0,
+        "brought back at {} on a display {} wide",
+        back.state.position.x,
+        width / 2.0
+    );
+}

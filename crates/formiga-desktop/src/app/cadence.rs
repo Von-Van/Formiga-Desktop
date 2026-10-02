@@ -86,6 +86,19 @@ pub(super) fn world_redraw_interval(world: &World) -> Duration {
     Duration::from_secs_f32(1.0 / f32::from(fps))
 }
 
+/// When the next frame is due, given when it was due and when the last one was asked for, now
+/// that the colony wants one every `interval`.
+///
+/// A colony at rest is drawn only as often as its slowest-moving poses need — twice a second for
+/// residents resting at home. When one of them sets off, its ticks speed up to twenty a second at
+/// once, and so must its frames: left on the resting schedule, the next frame could be up to half
+/// a second away, and the walk would happen unseen in between — a companion that looks frozen and
+/// then reappears a body's width along. So a frame is never further than one interval, at the
+/// colony's current rate, from the last.
+pub(super) fn frame_due(due: Instant, last: Option<Instant>, interval: Duration) -> Instant {
+    last.map_or(due, |last| due.min(last + interval))
+}
+
 pub(super) fn world_tick_interval(world: &World) -> Duration {
     if world.is_interacting() {
         return Duration::from_millis(50);
@@ -119,5 +132,110 @@ pub(super) fn world_tick_interval(world: &World) -> Duration {
         Duration::from_millis(100)
     } else {
         Duration::from_millis(200)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use formiga_core::{DesktopRect, DesktopSnapshot, DisplayKey, MonitorInfo, Point};
+    use time::macros::datetime;
+
+    /// The biggest move any companion makes between two frames the app would present, over
+    /// `minutes` of a colony of six living at home on `desktop`, ticked and drawn exactly as the app
+    /// schedules it. Hops and tosses travel in arcs and are left out.
+    fn largest_step_between_frames(seed: u8, desktop: &DesktopSnapshot, minutes: f64) -> f32 {
+        let start = datetime!(2026-05-02 10:00 UTC);
+        let mut world = World::new([seed; 32], start, desktop);
+        for extra in 0..5u8 {
+            let _ =
+                world.add_designed_adult([seed.wrapping_add(40 + extra); 32], None, start, desktop);
+        }
+        let base = Instant::now();
+        let mut last_tick = base;
+        let mut redraw_due = base;
+        let mut last_frame = None;
+        let mut shown: Option<Vec<(Point, ActionKind)>> = None;
+        let mut largest = 0.0f32;
+        while last_tick.duration_since(base).as_secs_f64() < minutes * 60.0 {
+            let now = last_tick + world_tick_interval(&world);
+            let dt = now.duration_since(last_tick).as_secs_f32().min(0.2);
+            last_tick = now;
+            if !world.save.home.is_active() {
+                world.handle_command(WorldCommand::SendHome, desktop);
+            }
+            world.tick(
+                start + time::Duration::seconds_f64(now.duration_since(base).as_secs_f64()),
+                dt,
+                desktop,
+            );
+            world.drain_events().for_each(drop);
+            let interval = world_redraw_interval(&world);
+            redraw_due = frame_due(redraw_due, last_frame, interval);
+            if now >= redraw_due {
+                last_frame = Some(now);
+                let frame: Vec<(Point, ActionKind)> = world
+                    .save
+                    .creatures
+                    .iter()
+                    .map(|creature| (creature.state.position, creature.state.action))
+                    .collect();
+                if let Some(before) = &shown
+                    && before.len() == frame.len()
+                {
+                    let arc = |action: ActionKind| {
+                        matches!(
+                            action,
+                            ActionKind::Landing | ActionKind::Tossed | ActionKind::Dragged
+                        )
+                    };
+                    for (creature, ((was, was_doing), (is, doing))) in
+                        world.save.creatures.iter().zip(before.iter().zip(&frame))
+                    {
+                        if !arc(*was_doing) && !arc(*doing) && !creature.state.indoors {
+                            largest = largest.max(was.distance(*is));
+                        }
+                    }
+                }
+                shown = Some(frame);
+                let phased = redraw_due + interval;
+                redraw_due = if phased > now { phased } else { now + interval };
+            }
+        }
+        largest
+    }
+
+    /// A resident setting off from rest at home is drawn from its first step, not half a second
+    /// later a body's width along: between any two frames nobody walks further than a few points.
+    /// Before 0.66.3 the frame after a resting spell could be half a second late, and a companion
+    /// stepping aside looked frozen and then jumped up to 26 points.
+    #[test]
+    fn a_resident_setting_off_from_rest_is_drawn_from_its_first_step() {
+        let desktop = DesktopSnapshot {
+            monitors: vec![MonitorInfo {
+                id: 1,
+                display_key: DisplayKey([1; 16]),
+                bounds: DesktopRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 900.0,
+                },
+                usable_bounds: DesktopRect {
+                    x: 0.0,
+                    y: 24.0,
+                    width: 1440.0,
+                    height: 826.0,
+                },
+                scale_factor: 2.0,
+                primary: true,
+            }],
+            ..DesktopSnapshot::default()
+        };
+        let largest = largest_step_between_frames(1, &desktop, 20.0);
+        assert!(
+            largest <= 10.0,
+            "a companion moved {largest:.1} points between two frames"
+        );
     }
 }

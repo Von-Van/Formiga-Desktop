@@ -19,29 +19,8 @@
 
 use super::attention::point_exposed;
 use super::*;
+use crate::tuning::WONDERS;
 use crate::wonders::{WonderKind, WonderRecord, WonderSeats, WonderView};
-
-/// How long between one wonder and the next, in visible seconds.
-const INTERVAL_SECS: std::ops::Range<f32> = 600.0..1200.0;
-/// How soon to look again when nobody was free for one, or nowhere would take it.
-const RETRY_SECS: std::ops::Range<f32> = 40.0..90.0;
-/// How long it takes to appear and to go.
-const APPEAR_SECS: f32 = 0.45;
-const VANISH_SECS: f32 = 0.6;
-/// How long its players have to get there before it gives up on them.
-const PATIENCE_SECS: f32 = 30.0;
-/// How long the finder of a new kind stands marvelling at it before playing.
-const MARVEL_SECS: f32 = 2.2;
-/// How near counts as there, in points.
-const ARRIVED: f32 = 1.5;
-/// Further than this, in points, and the walk over turns into an eager run.
-const RUN_FROM: f32 = 160.0;
-/// How far from its player a wonder on the player's own ground turns up, in frames.
-const NEAR_FRAMES: std::ops::Range<f32> = 1.6..5.0;
-/// How far to either side a companion on the floor will go to climb up to one, in points.
-const CLIMB_REACH: f32 = 420.0;
-/// How much of its own height a player needs clear above a ledge, below the top of the screen.
-const HEADROOM_FRAMES: f32 = 1.4;
 
 /// Runtime state: when the next wonder is due, and the one out now.
 pub(super) struct Wonders {
@@ -59,7 +38,7 @@ pub(super) struct Wonders {
 impl Wonders {
     pub(super) fn new(streams: &SeedStream) -> Self {
         let mut rng = streams.rng("wonders", 0);
-        let next_in = rng.random_range(INTERVAL_SECS);
+        let next_in = rng.random_range(WONDERS.interval_secs);
         Self {
             next_in,
             rng,
@@ -192,7 +171,11 @@ impl Ground {
                     && surface.kind == SurfaceKind::ScreenFloor
                     && surface.monitor_id == monitor
             }
-            Self::Village { .. } => true,
+            // Only those already down on the village's own display: a resident still on its
+            // way home from another one is not on this ground yet, however close it looks.
+            Self::Village { monitor } => {
+                surface.window_key.is_none() && surface.monitor_id == monitor
+            }
         }
     }
 }
@@ -260,8 +243,8 @@ impl Active {
 
     fn presence(&self) -> f32 {
         match self.phase {
-            Phase::Leaving(t) => (1.0 - t / VANISH_SECS).clamp(0.0, 1.0),
-            _ => (self.elapsed / APPEAR_SECS).clamp(0.0, 1.0),
+            Phase::Leaving(t) => (1.0 - t / WONDERS.vanish_secs).clamp(0.0, 1.0),
+            _ => (self.elapsed / WONDERS.appear_secs).clamp(0.0, 1.0),
         }
     }
 
@@ -933,7 +916,7 @@ impl World {
             active.elapsed += dt;
             if let Phase::Leaving(t) = &mut active.phase {
                 *t += dt;
-                if *t >= VANISH_SECS {
+                if *t >= WONDERS.vanish_secs {
                     self.wonders.active = None;
                 }
                 return;
@@ -954,9 +937,9 @@ impl World {
             return;
         }
         self.wonders.next_in = if self.start_wonder(desktop, home) {
-            self.wonders.rng.random_range(INTERVAL_SECS)
+            self.wonders.rng.random_range(WONDERS.interval_secs)
         } else {
-            self.wonders.rng.random_range(RETRY_SECS)
+            self.wonders.rng.random_range(WONDERS.retry_secs)
         };
     }
 
@@ -1052,7 +1035,7 @@ impl World {
             let mut by_distance: Vec<(f32, CreatureId)> = partners
                 .iter()
                 .filter_map(|id| self.save.creatures.iter().find(|c| c.id == *id))
-                .filter(|c| c.state.surface.monitor_id == ground.monitor() || home)
+                .filter(|c| c.state.surface.monitor_id == ground.monitor())
                 .map(|c| (c.state.position.distance(at), c.id))
                 .collect();
             by_distance.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -1202,9 +1185,10 @@ impl World {
                     let bounds = window.bounds;
                     let mine = on_ledge == Some(window.key);
                     let near = (lead.state.position.x - (bounds.x + bounds.width / 2.0)).abs()
-                        <= CLIMB_REACH + bounds.width / 2.0;
+                        <= WONDERS.climb_reach + bounds.width / 2.0;
                     let rise = floor_y - bounds.y;
-                    let headroom = bounds.y - frame * HEADROOM_FRAMES >= monitor.usable_bounds.y;
+                    let headroom =
+                        bounds.y - frame * WONDERS.headroom_frames >= monitor.usable_bounds.y;
                     if !(mine || (near && rise >= 36.0)) || !headroom {
                         continue;
                     }
@@ -1263,7 +1247,7 @@ impl World {
         let (ground, low, high, y, _) = chosen;
         let (low, high) = (low + room / 2.0, high - room / 2.0);
         // A little way along from where the lead is, on whichever side has room.
-        let away = self.wonders.rng.random_range(NEAR_FRAMES) * frame;
+        let away = self.wonders.rng.random_range(WONDERS.near_frames) * frame;
         let from = lead.state.position.x.clamp(low, high);
         let toward_right = self.wonders.rng.random_bool(0.5);
         let x = if toward_right {
@@ -1302,7 +1286,7 @@ impl World {
                     give_up = true;
                 }
             }
-            if active.waited > PATIENCE_SECS {
+            if active.waited > WONDERS.patience_secs {
                 // Whoever has not made it is let go; a wonder for two without both is over.
                 let late: Vec<CreatureId> = active
                     .players
@@ -1338,7 +1322,7 @@ impl World {
         match &mut active.phase {
             Phase::Marvel(t) => {
                 *t += dt;
-                if *t >= MARVEL_SECS {
+                if *t >= WONDERS.marvel_secs {
                     active.phase = Phase::Playing(0.0);
                 }
             }
@@ -1525,6 +1509,19 @@ fn wonder_route(
 ) -> Option<VecDeque<Leg>> {
     let mut legs = VecDeque::new();
     if ground.holds(creature) {
+        // Up on its own roof at home: down in a hop first, the way it went up, rather than
+        // dropped to the ground between two frames.
+        if let Ground::Village { .. } = ground
+            && creature.state.position.y < start.y - 1.0
+        {
+            let landing = Point {
+                x: creature.state.position.x,
+                y: start.y,
+            };
+            legs.push_back(Leg::Journey(super::village_life::roof_hop_down(
+                creature, landing,
+            )));
+        }
         legs.push_back(Leg::Walk);
         return Some(legs);
     }
@@ -1554,6 +1551,7 @@ fn wonder_route(
             surface: surface.clone(),
             elapsed: 0.0,
             duration: (from.state.position.distance(floor) / 180.0).max(0.25),
+            lift: 0.0,
         })));
         from.state.position = floor;
         from.state.surface = surface;
@@ -1617,14 +1615,14 @@ fn go_toward(
             let gap = to - creature.state.position.x;
             creature.state.attention = None;
             creature.state.position.y = player.start.y;
-            if gap.abs() <= ARRIVED {
+            if gap.abs() <= WONDERS.arrived {
                 creature.state.position.x = to;
                 player.legs.pop_front();
                 player.arrived = true;
                 return true;
             }
             // An eager run when it is a way off; a trot for the last of it.
-            let running = gap.abs() > RUN_FROM;
+            let running = gap.abs() > WONDERS.run_from;
             let speed =
                 (40.0 + creature.personality.activity * 40.0) * if running { 1.8 } else { 1.0 };
             let action = if running {

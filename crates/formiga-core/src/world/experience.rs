@@ -449,6 +449,14 @@ impl World {
                         let a_began = pair.a == a;
                         pair.tally.count(Some(a_began), experience, now);
                     }
+                    self.save.day_book.count_pair(
+                        local_day(now),
+                        a,
+                        b,
+                        Some(true),
+                        experience.shared_kind(),
+                        experience.sought_out(),
+                    );
                 }
                 WorldEvent::HomeAppeared => {
                     for creature in self

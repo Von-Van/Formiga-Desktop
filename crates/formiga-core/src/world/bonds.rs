@@ -8,7 +8,7 @@ pub(super) struct BondPlan {
     pub(super) approaching: bool,
 }
 
-pub(super) fn normalize_relationships(save: &mut SaveFile) {
+pub(crate) fn normalize_relationships(save: &mut SaveFile) {
     let creature_ids: BTreeSet<_> = save.creatures.iter().map(|creature| creature.id).collect();
     let mut canonical = BTreeMap::new();
     for mut relationship in save.relationships.drain(..) {
@@ -58,6 +58,9 @@ pub(super) fn normalize_relationships(save: &mut SaveFile) {
         tallies.entry((a, b)).or_insert(pair);
     }
     save.tallies = tallies.into_values().take(MAX_RELATIONSHIPS).collect();
+    // And so do the day book's counts.
+    let residents: Vec<CreatureId> = creature_ids.iter().copied().collect();
+    save.day_book.normalize(&residents);
 }
 
 pub(super) fn relationship_mut_or_insert(

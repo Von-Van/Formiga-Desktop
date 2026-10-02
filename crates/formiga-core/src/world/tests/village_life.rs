@@ -378,6 +378,57 @@ fn a_resident_sits_up_on_its_own_roof_and_comes_back_down() {
     assert!(came_down > 0, "nobody came down again");
 }
 
+/// An hour with the houses out is counted in the day book by the clock, a few seconds at a time,
+/// and so is whoever sat up on a roof; time with them away adds nothing at home.
+#[test]
+fn the_day_book_counts_time_at_home_and_who_sat_up_on_a_roof() {
+    let created = datetime!(2026-01-01 9:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([93; 32], 3, created, &desktop);
+    let mut now = created;
+    for _ in 0..72_000 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        // Kept out by the clock, so the gathering never runs its course.
+        world.save.home.active_since_utc = Some(now);
+    }
+    let book = &world.save.day_book;
+    let counted: u32 = book.days.iter().map(|day| day.home_seconds).sum();
+    assert!(
+        (3_580..=3_600).contains(&counted),
+        "an hour at home counted as {counted} seconds"
+    );
+    let roofs: BTreeSet<CreatureId> = book
+        .days
+        .iter()
+        .flat_map(|day| day.roof.iter().copied())
+        .collect();
+    assert!(!roofs.is_empty(), "nobody's sit up on a roof was counted");
+    assert!(book.since.is_some());
+
+    // The houses put away, and ten minutes later nothing more has been counted at home. Opened again
+    // first, since a settled colony's later members were added without what the desktop needs.
+    let mut world = World::from_save(world.save.clone());
+    world.save.home.active_since_utc = None;
+    for _ in 0..12_000 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        world.save.home.active_since_utc = None;
+    }
+    let after: u32 = world
+        .save
+        .day_book
+        .days
+        .iter()
+        .map(|day| day.home_seconds)
+        .sum();
+    assert!(
+        after - counted < 15,
+        "{} seconds counted away from home",
+        after - counted
+    );
+}
+
 /// Stands a plan up for one resident, as if the village had chosen it.
 fn start_plan(world: &mut World, creature_id: CreatureId, plan: Plan) {
     world
@@ -802,6 +853,7 @@ fn every_way_of_ending_a_visit_brings_everyone_out_and_down() {
         for _ in 0..40 {
             world.tick(created, 0.05, &desktop);
         }
+        let up_there = world.save.creatures[0].state.position;
         match case {
             0 => world.dismiss_home(created, false),
             1 => world.save.settings.paused = true,
@@ -813,6 +865,26 @@ fn every_way_of_ending_a_visit_brings_everyone_out_and_down() {
         for creature in &world.save.creatures {
             assert!(!creature.state.indoors, "case {case}");
             assert!(creature.state.beat.is_none(), "case {case}");
+        }
+        // A paused colony holds still, roof-sitter and all, until it carries on; a hidden one
+        // carries on out of sight.
+        if case == 1 {
+            assert_eq!(
+                world.save.creatures[0].state.position, up_there,
+                "case {case}"
+            );
+        }
+        world.save.settings.paused = false;
+        world.save.settings.visible = true;
+        // Down off the roof in a hop, never a drop from one frame to the next.
+        let mut was = world.save.creatures[0].state.position;
+        for _ in 0..20 {
+            world.tick(created, 0.05, &desktop);
+            let now = world.save.creatures[0].state.position;
+            assert!(now.distance(was) < 16.0, "case {case}: {was:?} to {now:?}");
+            was = now;
+        }
+        for creature in &world.save.creatures {
             assert_eq!(creature.state.position.y, ground, "case {case}");
         }
     }
@@ -884,11 +956,23 @@ fn a_plan_for_the_village_as_it_was_is_let_go_when_the_village_changes() {
             .find(|creature| creature.id == sitter)
             .unwrap();
         if change == 0 {
-            // The whole village moved: everybody's plan goes.
+            // The whole village moved: everybody's plan goes, and the sitter hops straight down
+            // from where it was rather than dropping to the ground at once.
             assert!(
                 world.village_life.is_empty(),
                 "the corner changed under the plans"
             );
+            assert!(sitting.state.position.y < ground);
+            for _ in 0..20 {
+                world.tick(created, 0.05, &desktop);
+                world.save.home.active_since_utc = Some(created);
+            }
+            let sitting = world
+                .save
+                .creatures
+                .iter()
+                .find(|creature| creature.id == sitter)
+                .unwrap();
             assert_eq!(sitting.state.position.y, ground);
         } else {
             // Only the cottages moved: the colony house, and whoever is on its roof, stay put.
@@ -896,4 +980,33 @@ fn a_plan_for_the_village_as_it_was_is_let_go_when_the_village_changes() {
             assert!(sitting.state.position.y < ground);
         }
     }
+}
+
+/// A resident above the village ground when a wonder turns up for it — a roof-sitter's plan is
+/// never interrupted for one, but wherever it stands — gets down in a hop and goes over, rather
+/// than being dropped to the ground between two frames.
+#[test]
+fn a_wonder_player_above_the_ground_hops_down_to_it() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([93; 32], 1, created, &desktop);
+    for creature in &mut world.save.creatures {
+        creature.state.drives.energy = 0.9;
+        creature.state.drives.sleep_pressure = 0.1;
+        creature.personality.playfulness = 0.9;
+    }
+    let ground = world.save.creatures[0].state.position.y;
+    world.save.creatures[0].state.position.y = ground - 60.0;
+    world.save.creatures[0].state.action = ActionKind::Idle;
+    world.wonders.due_now(Some(crate::WonderKind::LeafSled));
+    let mut was = world.save.creatures[0].state.position;
+    let mut called = false;
+    for _ in 0..400 {
+        world.tick(created, 0.05, &desktop);
+        called |= world.wonder().is_some();
+        let now = world.save.creatures[0].state.position;
+        assert!(now.distance(was) < 30.0, "{was:?} to {now:?} in one step");
+        was = now;
+    }
+    assert!(called, "the wonder turned up");
 }

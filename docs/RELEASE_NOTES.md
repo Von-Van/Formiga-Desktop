@@ -4,6 +4,25 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.66.3
+
+The Today page now says how today compares with the rest of the week, in a few lines that each show
+what they rest on — two companions who sought each other out, a first sit up on a roof this week, a
+garden coming round to its third stage, more time at home than yesterday — from a small day book
+the colony keeps for its last eight days. Undo goes back up to eight changes instead of one, and a
+change that alters what the companions will do says so in the notebook's own words: "Moss will now
+wander farther from home", "Relax begins at 22:00 today".
+
+A resident setting off from rest in the village no longer seems to freeze and then jump half a body
+along: frames follow it from its first step, and one whose sit on the roof is cut short hops down
+instead of dropping. A companion caught in mid-air stays under the cursor, and several ways a
+companion could be left where no display reaches — a colony reopened on smaller displays, an undo
+after a display was unplugged, a wonder out when the displays changed — are fixed. Most of those were
+found by a new long simulated run, now nightly in CI, that lives thousands of randomized colonies
+through days of displays, routines, relaunches and damaged files. Underneath, a colony file is read
+one version step at a time through a single validation boundary, and each notebook page keeps its
+own state.
+
 ## New in 0.66.1
 
 The tiny bike is now a leaf sled, which suits a garden better: a big leaf with its tip rolled up

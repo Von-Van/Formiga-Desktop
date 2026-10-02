@@ -1,43 +1,7 @@
 use super::home::HOME_DURATION;
 use super::*;
+use crate::tuning::VISITS;
 
-/// How long after the houses appear the visitor turns up. The residents walk home first; a guest
-/// arriving with them would read as one of them.
-const ARRIVAL_DELAY_SECS: f32 = 12.0;
-/// How much of the gathering is left when the visitor starts saying goodbye. Long enough for the
-/// wave and the walk back out, so nobody is ever cut off mid-farewell.
-const DEPARTURE_LEAD_SECS: f32 = 90.0;
-/// The hello, and the wave goodbye.
-const GREETING_SECS: f32 = 3.2;
-const FAREWELL_SECS: f32 = 2.6;
-/// One shared moment beside the houses, and the still stretch between two of them.
-const BEAT_SECS: f32 = 6.5;
-const STILL_SECS: f32 = 15.0;
-/// A walk shorter than this is not a walk: the guest steps out from beside the last house.
-const MIN_WALK: f32 = 24.0;
-/// And no walk is longer than this, so an arrival reads the same on a laptop and on a wall of
-/// displays rather than growing with the desktop.
-const MAX_WALK: f32 = 520.0;
-/// A walk that has not finished by now was never going to; the guest simply arrives or is gone.
-const MAX_WALK_SECS: f32 = 40.0;
-/// How long a resident holds its answer to the hello, before its temperament lengthens it.
-const ANSWER_HOLD_SECS: f32 = 2.6;
-/// A resident still on its way home only notices a guest it is already this close to. Anyone
-/// resting at the village is part of the welcome, however long the strip has grown.
-const NOTICE_DISTANCE: f32 = 420.0;
-/// An invited friend stays for a day.
-const INVITED_STAY: Duration = Duration::hours(24);
-
-/// How long a guest stays at one stop on its walk around the village, and how much of that is
-/// the one small thing it came over to do. The rest of the stay is the same calm moments a visit
-/// has always had, only somewhere new each time: near enough a full round of them, so a guest
-/// strolls the length of the houses a handful of times in a gathering rather than pacing it.
-const TOUR_STAY_SECS: f32 = 72.0;
-const TOUR_BEAT_SECS: f32 = 8.0;
-/// How much of a gathering is kept back for the walk back to the spot the guest came in at, so
-/// the goodbye is said there and the walk out is the walk in run backwards rather than a dash
-/// from the far end of the village.
-const TOUR_RETURN_SECS: f32 = 45.0;
 /// How many spans of ground a fifth body is kept off: a doorway and a resting resident for each
 /// of the colony, and the patch each of its things is sitting on.
 const MAX_BLOCKED: usize = 2 * MAX_COLONY_CREATURES + MAX_COLONY_OBJECTS;
@@ -150,7 +114,7 @@ impl World {
                 .is_some_and(|guest| guest.visit.planned != Some(stage.spot)))
         .then(|| self.plan_tour(&stage, desktop));
         // Whether there is still time to walk somewhere new before the goodbye.
-        let roam = remaining > DEPARTURE_LEAD_SECS + TOUR_RETURN_SECS;
+        let roam = remaining > VISITS.departure_lead_secs + VISITS.tour_return_secs;
 
         let guest = self
             .save
@@ -164,7 +128,7 @@ impl World {
             // A village that moved takes the guest back to the spot it walked in to.
             guest.visit.stop = 0;
             guest.visit.moment = TourMoment::Walking;
-            guest.visit.stay = MAX_WALK_SECS;
+            guest.visit.stay = VISITS.max_walk_secs;
         }
         guest.visit.elapsed += dt;
         guest.visit.since_home += dt;
@@ -195,8 +159,8 @@ impl World {
             VisitPhase::Waiting => {
                 guest.on_stage = false;
                 // Turning up with only the goodbye left would be a walk-past, not a visit.
-                if guest.visit.since_home < ARRIVAL_DELAY_SECS
-                    || remaining <= DEPARTURE_LEAD_SECS + GREETING_SECS
+                if guest.visit.since_home < VISITS.arrival_delay_secs
+                    || remaining <= VISITS.departure_lead_secs + VISITS.greeting_secs
                 {
                     return;
                 }
@@ -221,7 +185,7 @@ impl World {
             VisitPhase::ArrivingWalk => {
                 act(&mut guest.creature, ActionKind::Traverse);
                 if step_toward(&mut guest.creature, stage.spot, dt)
-                    || guest.visit.elapsed >= MAX_WALK_SECS
+                    || guest.visit.elapsed >= VISITS.max_walk_secs
                 {
                     stand(
                         &mut guest.creature,
@@ -236,18 +200,18 @@ impl World {
             VisitPhase::Greeting => {
                 stand_at(guest, &stage);
                 act(&mut guest.creature, ActionKind::Greet);
-                if guest.visit.elapsed >= GREETING_SECS {
+                if guest.visit.elapsed >= VISITS.greeting_secs {
                     enter(guest, VisitPhase::Visiting, ActionKind::Idle);
                     guest.visit.beat = 0;
-                    guest.visit.beat_remaining = STILL_SECS;
+                    guest.visit.beat_remaining = VISITS.still_secs;
                     // And off around the houses, if the village left anywhere to go.
                     guest.visit.stop = u8::from(guest.visit.stops.len() > 1);
                     guest.visit.moment = TourMoment::Walking;
-                    guest.visit.stay = MAX_WALK_SECS;
+                    guest.visit.stay = VISITS.max_walk_secs;
                 }
             }
             VisitPhase::Visiting => {
-                if remaining <= DEPARTURE_LEAD_SECS {
+                if remaining <= VISITS.departure_lead_secs {
                     // A tour that has run long simply stops touring.
                     enter(guest, VisitPhase::Farewell, ActionKind::Greet);
                 } else if guest.visit.stops.len() > 1 {
@@ -267,7 +231,7 @@ impl World {
                 act(&mut guest.creature, ActionKind::Greet);
                 guest.creature.state.attention =
                     pose(here, (!reduce_motion).then_some(Gesture::Reach));
-                if guest.visit.elapsed >= FAREWELL_SECS {
+                if guest.visit.elapsed >= VISITS.farewell_secs {
                     match guest.visit.doorway {
                         Some(doorway) if !reduce_motion => {
                             guest.creature.state.facing_right = doorway.x >= here.x;
@@ -281,7 +245,7 @@ impl World {
                 act(&mut guest.creature, ActionKind::Traverse);
                 let doorway = guest.visit.doorway.unwrap_or(stage.spot);
                 if step_toward(&mut guest.creature, doorway, dt)
-                    || guest.visit.elapsed >= MAX_WALK_SECS
+                    || guest.visit.elapsed >= VISITS.max_walk_secs
                 {
                     enter(guest, VisitPhase::Gone, ActionKind::Idle);
                 }
@@ -390,7 +354,7 @@ impl World {
         creature.state.arrival_delay_secs = 0.0;
         // A day on the colony's own timeline, which never runs backwards, so winding the clock
         // back can never lengthen a stay.
-        let until = self.save.maximum_seen_utc.max(now) + INVITED_STAY;
+        let until = self.save.maximum_seen_utc.max(now) + VISITS.invited_stay;
         self.save.visitors.guest =
             Some(Visitor::new(creature, VisitorSource::Invited, Some(until)));
         // Call everyone home, so a friend invited now turns up now rather than in half an hour.
@@ -508,7 +472,7 @@ impl World {
             })
             .filter(|creature| {
                 self.resting_at_home(creature.id)
-                    || creature.state.position.distance(spot) <= NOTICE_DISTANCE
+                    || creature.state.position.distance(spot) <= VISITS.notice_distance
             })
             .enumerate()
             .map(|(index, creature)| self.answer_of(creature, index, reduce_motion))
@@ -685,11 +649,11 @@ impl World {
         } else {
             region.x + 8.0
         };
-        let reach = (edge - spot.x).abs().min(MAX_WALK);
+        let reach = (edge - spot.x).abs().min(VISITS.max_walk);
         Some(GuestStage {
             monitor_id,
             spot,
-            doorway: (reach >= MIN_WALK).then(|| Point {
+            doorway: (reach >= VISITS.min_walk).then(|| Point {
                 x: spot.x + (edge - spot.x).signum() * reach,
                 y: spot.y,
             }),
@@ -958,11 +922,11 @@ pub(super) fn wanderer_due(colony_seed: [u8; 32], ordinal: u32) -> bool {
 /// shown, a little dance, and a sit-down between the still stretches.
 fn shared_moment(beat: u8, reduce_motion: bool) -> (ActionKind, f32) {
     match beat {
-        1 => (ActionKind::Eat, BEAT_SECS),
-        3 => (ActionKind::PresentDiscovery, BEAT_SECS),
-        5 if !reduce_motion => (ActionKind::SoloPlay, BEAT_SECS),
-        7 => (ActionKind::Perch, BEAT_SECS),
-        _ => (ActionKind::Idle, STILL_SECS),
+        1 => (ActionKind::Eat, VISITS.beat_secs),
+        3 => (ActionKind::PresentDiscovery, VISITS.beat_secs),
+        5 if !reduce_motion => (ActionKind::SoloPlay, VISITS.beat_secs),
+        7 => (ActionKind::Perch, VISITS.beat_secs),
+        _ => (ActionKind::Idle, VISITS.still_secs),
     }
 }
 
@@ -1000,7 +964,7 @@ pub(super) fn resident_answer(
         creature_id: creature.id,
         // The sociable ones look up first and the rest follow, a beat apart.
         after: 0.4 + index as f32 * 0.9 + (1.0 - creature.personality.sociability) * 2.2,
-        hold: ANSWER_HOLD_SECS + creature.personality.sociability * 1.4,
+        hold: VISITS.answer_hold_secs + creature.personality.sociability * 1.4,
         gesture: gesture.filter(|_| !reduce_motion),
         bubble,
     }
@@ -1037,7 +1001,7 @@ fn tour(
     if !roam && guest.visit.stop != 0 {
         guest.visit.stop = 0;
         guest.visit.moment = TourMoment::Walking;
-        guest.visit.stay = MAX_WALK_SECS;
+        guest.visit.stay = VISITS.max_walk_secs;
     }
     let index = usize::from(guest.visit.stop).min(guest.visit.stops.len() - 1);
     let stop = guest.visit.stops[index];
@@ -1061,12 +1025,12 @@ fn tour(
         // On to the next: the ring runs out along the houses and back again.
         guest.visit.stop = ((index + 1) % guest.visit.stops.len()) as u8;
         guest.visit.moment = TourMoment::Walking;
-        guest.visit.stay = MAX_WALK_SECS;
+        guest.visit.stay = VISITS.max_walk_secs;
         guest.creature.state.attention = None;
     } else {
         // Nowhere left to go before the goodbye: the guest settles where it walked in.
         guest.visit.moment = TourMoment::Resting;
-        guest.visit.stay = TOUR_STAY_SECS - TOUR_BEAT_SECS;
+        guest.visit.stay = VISITS.tour_stay_secs - VISITS.tour_beat_secs;
     }
     None
 }
@@ -1078,7 +1042,7 @@ fn arrive(
     residents: &Residents,
     seed: [u8; 32],
 ) -> Option<CreatureId> {
-    guest.visit.stay = TOUR_STAY_SECS;
+    guest.visit.stay = VISITS.tour_stay_secs;
     guest.creature.state.velocity = Point::default();
     // The nearest resident this guest has not been over to yet, if it can see one from here.
     // Meeting somebody new is the whole point of walking over, so it wins every time.
@@ -1086,7 +1050,7 @@ fn arrive(
         .iter()
         .flatten()
         .filter(|(creature_id, _)| !guest.visit.met.contains(creature_id))
-        .filter(|(_, point)| point.distance(stop.at) <= NOTICE_DISTANCE)
+        .filter(|(_, point)| point.distance(stop.at) <= VISITS.notice_distance)
         .min_by(|a, b| a.1.distance(stop.at).total_cmp(&b.1.distance(stop.at)))
         .map(|(creature_id, _)| *creature_id);
     if let Some(creature_id) = met
@@ -1109,7 +1073,7 @@ fn arrive(
 /// Hold the guest at a stop: the one small thing it came over to do, and then the same calm
 /// moments a visit has always had until it is time to move on.
 fn hold(guest: &mut Visitor, stop: TourStop, residents: &Residents, dt: f32, reduce_motion: bool) {
-    if guest.visit.stay <= TOUR_STAY_SECS - TOUR_BEAT_SECS {
+    if guest.visit.stay <= VISITS.tour_stay_secs - VISITS.tour_beat_secs {
         calm_moment(guest, stop.at, dt, reduce_motion);
         return;
     }

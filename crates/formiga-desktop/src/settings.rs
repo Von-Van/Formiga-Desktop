@@ -390,7 +390,7 @@ impl SettingsWindow {
     }
 
     pub fn set_generation_preview(&mut self, preview: GenerationPreview) {
-        self.clubhouse.push_preview(&self.context, preview);
+        self.clubhouse.studio.push_preview(&self.context, preview);
         self.tab = SettingsTab::Studio;
         self.error = None;
         self.window.request_redraw();
@@ -413,7 +413,7 @@ impl SettingsWindow {
     }
 
     pub fn clear_generation_preview(&mut self) {
-        self.clubhouse.clear_previews();
+        self.clubhouse.studio.clear_previews();
         self.window.request_redraw();
     }
 
@@ -527,10 +527,12 @@ impl SettingsWindow {
         // The window follows the saved preference, and re-reads the system's appearance with it,
         // so "match system" keeps up without anything polling for it.
         let appearance = colony.save.companion.appearance;
-        if self.applied_appearance != Some(appearance)
-            || (appearance.theme == ThemeChoice::System
-                && self.applied_system_theme != self.context.system_theme())
-        {
+        if appearance_changed(
+            self.applied_appearance,
+            self.applied_system_theme,
+            appearance,
+            self.context.system_theme(),
+        ) {
             configure_style(&self.context, appearance);
             self.applied_appearance = Some(appearance);
             self.applied_system_theme = self.context.system_theme();
@@ -557,7 +559,7 @@ impl SettingsWindow {
         let relationships = self.relationships.clone();
         let mut creature_names = self.creature_names.clone();
         let mut selected_creature = self.selected_creature;
-        self.clubhouse.retain_portraits(&creatures);
+        self.clubhouse.shell.retain_portraits(&creatures);
         let mut remove_confirmation = self.remove_confirmation;
         let mut bulk_confirmation = self.bulk_confirmation;
         let mut pending_copy = self.pending_copy.take();
@@ -705,6 +707,18 @@ impl SettingsWindow {
         }
         Ok(outcome)
     }
+}
+
+/// Whether the notebook has to apply its appearance again: the preference changed, or it follows
+/// the system and the system's own appearance changed since it was last applied — the system
+/// switching to dark at dusk, say, while the notebook is open.
+pub(crate) fn appearance_changed(
+    applied: Option<AppearancePreferences>,
+    applied_system: Option<egui::Theme>,
+    wanted: AppearancePreferences,
+    system: Option<egui::Theme>,
+) -> bool {
+    applied != Some(wanted) || (wanted.theme == ThemeChoice::System && applied_system != system)
 }
 
 /// Apply the reader's chosen appearance. Called whenever the preference or the system's own
@@ -928,25 +942,28 @@ fn draw_settings(
             if let Some(message) = error.as_deref() {
                 ui.colored_label(egui::Color32::from_rgb(145, 58, 44), message);
             }
-            if let Some((message, started)) = &clubhouse.feedback {
+            if let Some((message, started)) = &clubhouse.shell.feedback {
                 if started.elapsed() < std::time::Duration::from_secs(4) {
                     ui.colored_label(forest(), message);
                     ui.ctx().request_repaint_after(
                         std::time::Duration::from_secs(4).saturating_sub(started.elapsed()),
                     );
                 } else {
-                    clubhouse.feedback = None;
+                    clubhouse.shell.feedback = None;
                 }
             }
             // The last change to who lives here or how the village is laid out, while it can
             // still be taken back: on every page, since a change on one page shows on another.
             if let Some(change) = clubhouse.last_edit.clone()
-                && ui.button(format!("Undo {change}")).clicked()
+                && ui
+                    .button(format!("Undo {change}"))
+                    .on_hover_text(undo_hint(clubhouse.earlier_edits))
+                    .clicked()
             {
                 outcome.undo_last_edit = true;
             }
             let adoption_footer =
-                *tab == SettingsTab::Studio && clubhouse.adoption_footer(ui, save, outcome);
+                *tab == SettingsTab::Studio && clubhouse.studio.adoption_footer(ui, save, outcome);
             if !adoption_footer || settings != saved {
                 let dirty = settings != saved;
                 let pending = pending_changes(saved, settings);
@@ -1047,52 +1064,19 @@ fn draw_settings(
                 .show(ui, |ui| {
         // The tour, above the page rather than on it, so it stays in view while the page scrolls
         // to whatever it is pointing at.
-        clubhouse.tour_card(ui, save, tab, outcome);
+        clubhouse.shell.tour_card(ui, save, tab, outcome);
         egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
-            if let Some(reason) = clubhouse.recovery.clone() {
-                clubhouse::card(ui, |ui| {
-                    clubhouse::journal::kicker(ui, "Your saved colony needs attention");
-                    ui.heading("Nothing has been lost");
-                    ui.label(format!("Formiga could not read the colony it saved last time: {reason}"));
-                    ui.label("Those files are kept exactly as they were, and nothing will be written over them. The colony on your desktop for now is a temporary one, and it will not be saved until you choose what to do.");
-                    ui.add_space(4.0);
-                    ui.strong("Choose one");
-                    ui.small("Restore a backup you exported earlier, or a copy of colony.json from another computer:");
-                    if ui.button("Restore a colony backup…").clicked() { outcome.restore_colony = true; }
-                    ui.add_space(4.0);
-                    ui.small("Or keep the unreadable files as recovery copies beside the colony, and carry on with this new one:");
-                    ui.checkbox(&mut clubhouse.fresh_confirmed, "Keep recovery copies and start a new colony");
-                    if ui.add_enabled(clubhouse.fresh_confirmed, egui::Button::new("Start fresh with recovery copies")).clicked() { outcome.start_fresh_recovery = true; }
-                    ui.horizontal_wrapped(|ui| {
-                        ui.small(format!("The files are in {save_location}"));
-                        if ui.small_button("Open diagnostic logs").clicked() { outcome.open_logs = true; }
-                    });
-                });
-                ui.add_space(16.0);
-            }
-            if let Some(trouble) = clubhouse.save_trouble.clone() {
-                clubhouse::card(ui, |ui| {
-                    clubhouse::journal::kicker(ui, "Saving has stopped for now");
-                    ui.label(trouble);
-                    ui.label("Your colony carries on as usual, and the last good save and its backup are untouched. Formiga keeps trying every few seconds and will say so here when it works again.");
-                    ui.horizontal_wrapped(|ui| {
-                        if ui.button("Try again now").clicked() { outcome.retry_save = true; }
-                        if ui.button("Export a backup elsewhere…").on_hover_text("Write the colony as it is now to another folder or drive.").clicked() { outcome.export_colony = true; }
-                        if ui.small_button("Open diagnostic logs").clicked() { outcome.open_logs = true; }
-                    });
-                });
-                ui.add_space(16.0);
-            }
+            clubhouse.recovery.cards(ui, save_location, outcome);
             match tab {
-                SettingsTab::Today => clubhouse.today(ui, save, monitors, tab),
+                SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
                 SettingsTab::Colony => {
                     clubhouse::journal::page_heading(ui, SettingsTab::Colony, "Your colony", &clubhouse::journal::colony_observation(creatures));
-                    colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, clubhouse, outcome);
+                    colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, &mut clubhouse.colony, &mut clubhouse.shell, outcome);
                 }
-                SettingsTab::Studio => clubhouse.studio(ui, save, selected_creature, outcome),
-                SettingsTab::Home => clubhouse.home(ui, save, monitors, outcome),
-                SettingsTab::Journal => clubhouse::journal(ui, save, clubhouse, outcome),
-                SettingsTab::General => general_tab(ui, settings, save, clubhouse, outcome),
+                SettingsTab::Studio => clubhouse.studio.show(ui, &mut clubhouse.shell, save, selected_creature, outcome),
+                SettingsTab::Home => clubhouse.home.show(ui, &mut clubhouse.shell, save, monitors, outcome),
+                SettingsTab::Journal => clubhouse.journal.show(ui, &mut clubhouse.shell, save, clubhouse.reading.as_ref(), outcome),
+                SettingsTab::General => general_tab(ui, settings, save, &mut clubhouse.shell, outcome),
                 SettingsTab::Habitat => {
                     clubhouse::journal::page_heading(ui, SettingsTab::Habitat, "Habitat", "Where the colony may wander. Mint is welcome; clay is not.");
                     clubhouse::habitat_map(ui, &settings.habitat, monitors);
@@ -1104,13 +1088,7 @@ fn draw_settings(
                 }
                 SettingsTab::About => {
                     clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
-                    clubhouse::wide_card(ui, |ui| {
-                        ui.strong("Colony backups");
-                        ui.label("A full backup includes names, memories, relationships, the journal, and preferences. Keep it private or move it to another computer.");
-                        if ui.button("Export full colony…").clicked() { outcome.export_colony = true; }
-                        ui.checkbox(&mut clubhouse.restore_confirmed, "Restore a backup in place of this colony; keep recovery copies first");
-                        if ui.add_enabled(clubhouse.restore_confirmed, egui::Button::new("Choose backup to restore…")).clicked() { outcome.restore_colony = true; }
-                    });
+                    clubhouse.recovery.backups(ui, outcome);
                     ui.add_space(18.0);
                     about_tab(ui, outcome, save_location, update_status, automatic_update_checks);
                 }
@@ -1133,6 +1111,15 @@ fn draw_settings(
                 save.settings.reduce_motion,
             );
         });
+}
+
+/// What the undo button says about the changes behind the one it takes back.
+pub(crate) fn undo_hint(earlier: usize) -> String {
+    match earlier {
+        0 => "The only change kept. Changes are kept until Formiga quits.".to_owned(),
+        1 => "One earlier change can be undone after this one.".to_owned(),
+        n => format!("{n} earlier changes can be undone after this one, newest first."),
+    }
 }
 
 /// The preferences changed but not yet applied, by the names their controls go by.
@@ -1167,79 +1154,11 @@ pub(crate) fn pending_changes(saved: &Settings, draft: &Settings) -> Vec<&'stati
     pending
 }
 
-/// What applying preferences changes about how the colony behaves, said the way it will look on
-/// the desktop: "Applied · they'll keep off window ledges · they'll hold still". `None` when
-/// nothing the companions do changes.
-pub(crate) fn behavior_change_notice(before: &Settings, after: &Settings) -> Option<String> {
-    let mut said = Vec::new();
-    let mut say = |changed: bool, on: &'static str, off: &'static str, value: bool| {
-        if changed {
-            said.push(if value { on } else { off });
-        }
-    };
-    say(
-        before.visible != after.visible,
-        "the colony is back on your desktop",
-        "the colony is hidden; they carry on out of sight",
-        after.visible,
-    );
-    say(
-        before.paused != after.paused,
-        "everyone holds still until you resume",
-        "everyone is moving again",
-        after.paused,
-    );
-    say(
-        before.window_ledges != after.window_ledges,
-        "they may climb onto window ledges again",
-        "they'll keep off window ledges and come down",
-        after.window_ledges,
-    );
-    say(
-        before.cursor_reactions != after.cursor_reactions,
-        "they'll notice your cursor again",
-        "they'll ignore your cursor",
-        after.cursor_reactions,
-    );
-    say(
-        before.direct_manipulation != after.direct_manipulation,
-        "you can pet and carry them again",
-        "clicks pass straight through them",
-        after.direct_manipulation,
-    );
-    say(
-        before.reduce_motion != after.reduce_motion,
-        "motion is reduced: fewer bounces and no page turns",
-        "full motion is back",
-        after.reduce_motion,
-    );
-    say(
-        before.fullscreen_app_occlusion != after.fullscreen_app_occlusion,
-        "they'll hide behind full-screen apps",
-        "they'll stay visible over full-screen apps",
-        after.fullscreen_app_occlusion,
-    );
-    if before.display_scale != after.display_scale {
-        said.push(match after.display_scale {
-            2 => "they're drawn small",
-            4 => "they're drawn large",
-            _ => "they're drawn at medium size",
-        });
-    }
-    if before.habitat != after.habitat {
-        said.push("anyone outside the new habitat walks back inside");
-    }
-    if before.application_occlusion_rules != after.application_occlusion_rules {
-        said.push("the chosen apps' windows now cover them");
-    }
-    (!said.is_empty()).then(|| format!("Applied · {}", said.join(" · ")))
-}
-
 fn general_tab(
     ui: &mut egui::Ui,
     settings: &mut Settings,
     save: &formiga_core::SaveFile,
-    clubhouse: &mut Clubhouse,
+    shell: &mut clubhouse::shell::Shell,
     outcome: &mut SettingsOutcome,
 ) {
     clubhouse::journal::page_heading(
@@ -1252,7 +1171,7 @@ fn general_tab(
         .scope(|ui| clubhouse::quiet_controls(ui, save, outcome))
         .response
         .rect;
-    clubhouse.tour_mark(ui, TourMark::Quiet, quiet);
+    shell.tour_mark(ui, TourMark::Quiet, quiet);
     ui.add_space(16.0);
     clubhouse::card(ui, |ui| {
         ui.strong("Saved routines").on_hover_text(
@@ -1276,7 +1195,7 @@ fn general_tab(
                     && let Some(mode) = &save.companion.modes[index]
                 {
                     mode.apply(settings);
-                    clubhouse.notify(format!("{name} routine loaded · Apply to use it"));
+                    shell.notify(format!("{name} routine loaded · Apply to use it"));
                 }
             });
         }
@@ -1333,7 +1252,7 @@ fn general_tab(
     });
     ui.add_space(18.0);
     if ui.button("Take the tour").clicked() {
-        clubhouse.take_the_tour();
+        shell.take_the_tour();
     }
 }
 
@@ -1347,7 +1266,8 @@ fn colony_tab(
     error: &mut Option<String>,
     remove_confirmation: &mut Option<CreatureId>,
     bulk_confirmation: &mut bool,
-    clubhouse: &mut Clubhouse,
+    page: &mut clubhouse::collection::ColonyState,
+    shell: &mut clubhouse::shell::Shell,
     outcome: &mut SettingsOutcome,
 ) {
     let creatures = colony.creatures;
@@ -1395,7 +1315,7 @@ fn colony_tab(
         .map_or(1, |index| index + 1);
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            clubhouse.portrait(ui, creature, 144.0);
+            shell.portrait(ui, creature, 144.0);
             ui.label(clubhouse::journal::label_job(
                 &format!("Fig. Nº {number:02}"),
                 clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
@@ -1604,10 +1524,10 @@ fn colony_tab(
             ui.small(creature.leaning.description());
         });
     });
-    clubhouse.tour_mark(ui, TourMark::Name, name.response.rect);
+    shell.tour_mark(ui, TourMark::Name, name.response.rect);
 
     ui.add_space(8.0);
-    clubhouse.wardrobe(ui, colony.save, creature, outcome);
+    page.wardrobe(ui, shell, colony.save, creature, outcome);
     ui.add_space(8.0);
     ui.group(|ui| {
         ui.strong("Colony care");
@@ -1667,7 +1587,7 @@ fn colony_tab(
             ui.monospace(format!("{}…{}", &code[..15], &code[code.len() - 8..]));
             if ui.button("Copy seed").clicked() {
                 ui.ctx().copy_text(code);
-                clubhouse.notify("Creature code copied");
+                shell.notify("Creature code copied");
             }
         });
         ui.add_space(5.0);
@@ -1679,24 +1599,21 @@ fn colony_tab(
         ui.label("Or a looping sticker on a transparent background: just the drawing, animated.");
         ui.horizontal_wrapped(|ui| {
             egui::ComboBox::from_id_salt("sticker-clip")
-                .selected_text(clubhouse.sticker_clip.label())
+                .selected_text(page.sticker_clip.label())
                 .show_ui(ui, |ui| {
                     for clip in formiga_art::StickerClip::ALL {
-                        ui.selectable_value(&mut clubhouse.sticker_clip, clip, clip.label());
+                        ui.selectable_value(&mut page.sticker_clip, clip, clip.label());
                     }
                 });
-            ui.selectable_value(&mut clubhouse.small_sticker, false, "8×");
-            ui.selectable_value(&mut clubhouse.small_sticker, true, "4×");
+            ui.selectable_value(&mut page.small_sticker, false, "8×");
+            ui.selectable_value(&mut page.small_sticker, true, "4×");
             if ui.button("Export sticker…").clicked() {
-                outcome.export_creature_sticker = Some((
-                    creature.id,
-                    clubhouse.sticker_clip,
-                    clubhouse.sticker_scale(),
-                ));
+                outcome.export_creature_sticker =
+                    Some((creature.id, page.sticker_clip, page.sticker_scale()));
             }
         });
     });
-    clubhouse.tour_mark(ui, TourMark::Share, share.response.rect);
+    shell.tour_mark(ui, TourMark::Share, share.response.rect);
 
     ui.add_space(8.0);
 
@@ -1722,7 +1639,7 @@ fn colony_tab(
     colony_standings_card(ui, creatures, relationships, selected_creature);
     // Everything the colony can find, and which of it hangs in the trees.
     ui.add_space(18.0);
-    clubhouse.collection(ui, colony.save, outcome);
+    page.collection(ui, shell, colony.save, outcome);
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_secs(1));
 }

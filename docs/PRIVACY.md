@@ -106,6 +106,17 @@ the journal has one more kind of moment, a visitor coming back, carrying the nam
 which visit it was. Observations the notebook makes are worked out from the save each time and are
 never stored.
 
+Save version 25 (0.66.3) adds a **day book**, for the Today page to compare one day with another.
+For each of the last eight local days — named by its date and nothing finer — it keeps how many
+seconds the houses were out while Formiga was running, which companions sat up on the roof of their
+own house, and, for each pair, how many times each went looking for the other, rested beside,
+played with and brought something to the other. Like the tallies it is counted from what the colony
+already does, holds no position, time of day, window or cursor, starts empty on an upgraded colony
+rather than estimating the past, and names only companions who still live there. Days older than
+the last eight are dropped as new ones are counted. The lines the Today page writes from it are
+worked out each time and never stored. The notebook's undo history — the last eight changes that
+can be taken back — is kept only while Formiga runs and is never written anywhere.
+
 The notebook remembers where its window was in a separate `notebook-window.json` beside the colony:
 a position, a size and whether it was zoomed, and nothing else. It is not part of the colony file,
 so a backup does not carry it to another computer.

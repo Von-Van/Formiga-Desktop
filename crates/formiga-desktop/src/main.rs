@@ -12,6 +12,7 @@ mod explain;
 mod gpu;
 mod interaction;
 mod notebook_window;
+mod notices;
 mod platform;
 mod reference_match;
 mod settings;

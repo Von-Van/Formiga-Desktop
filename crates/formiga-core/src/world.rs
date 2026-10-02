@@ -1,5 +1,6 @@
 use crate::behavior::{BehaviorContext, choose_action};
 use crate::rng::SeedStream;
+use crate::tuning::{FINDS, ROAMING};
 use crate::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -35,8 +36,10 @@ mod village_life;
 mod visitors;
 mod wonders;
 use attention::{AttentionRuntime, DisplayAttention};
+pub(crate) use bonds::normalize_relationships;
 use bonds::*;
 pub use bubbles::{BubbleGrowth, ThoughtBubble};
+pub(crate) use colony::normalize_colony_roles;
 use colony::*;
 use generation::*;
 use habits::*;
@@ -55,21 +58,13 @@ pub use wonders::{WonderPose, wonder_length, wonder_motion, wonder_poses};
 /// cannot depend on the art crate, so shelter layout mirrors the constant the way `home_anchor`
 /// already mirrors the shelter's own half-width.
 const CREATURE_ART_WIDTH: f32 = crate::CREATURE_FRAME_WIDTH;
-const INSPECT_INTERVAL_SECS: std::ops::Range<f32> = 120.0..240.0;
-const DANGLE_INTERVAL_SECS: std::ops::Range<f32> = 240.0..480.0;
-/// Visible time between one find out on the desktop and the next: long enough that a day's few
-/// finds are spread across it rather than found in its first hour.
-const DISCOVERY_INTERVAL_SECS: std::ops::Range<f32> = 3_600.0..9_000.0;
-/// The chance, each time it chooses something to do up on a ledge, that a companion comes down
-/// to do it on the floor instead, and how long it stays down before it thinks of climbing again.
-const ANYWHERE_COMES_DOWN: f64 = 0.35;
-const CLIMBER_COMES_DOWN: f64 = 0.05;
+/// How long a companion stays down on the floor before it thinks of climbing again.
 fn climb_rest_secs(leaning: RoamingLeaning) -> std::ops::Range<f32> {
     match leaning {
-        RoamingLeaning::Climber => 15.0..40.0,
-        RoamingLeaning::Anywhere => 35.0..90.0,
-        RoamingLeaning::Homebody => 60.0..150.0,
-        RoamingLeaning::FloorDweller => 90.0..200.0,
+        RoamingLeaning::Climber => ROAMING.climber_rest_secs,
+        RoamingLeaning::Anywhere => ROAMING.anywhere_rest_secs,
+        RoamingLeaning::Homebody => ROAMING.homebody_rest_secs,
+        RoamingLeaning::FloorDweller => ROAMING.floor_dweller_rest_secs,
     }
 }
 
@@ -113,7 +108,12 @@ pub struct World {
     moment_rng: ChaCha12Rng,
     /// The last change made to the colony from the settings window, kept so it can be taken
     /// back. Never saved: it lasts as long as the app runs.
-    last_edit: Option<undo::UndoPoint>,
+    /// The changes that can still be taken back, oldest first.
+    undo_history: VecDeque<undo::UndoPoint>,
+    /// When the last tick was, by the clock, and the seconds with the houses out since the day
+    /// book was last written to. Runtime only.
+    day_clock: Option<OffsetDateTime>,
+    home_seconds_pending: f32,
     /// Sleepers being towed out of somebody's way by a friend on a little rope.
     tows: tows::TowTable,
     /// When the colony next yawns, and the yawns and looks still waiting to start.
@@ -214,7 +214,33 @@ fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
     now.to_offset(offset)
 }
 
+/// The local day `now` falls on, as a Julian day number: the day the day book counts it under.
+fn local_day(now: OffsetDateTime) -> i32 {
+    local_time_or_utc(now).date().to_julian_day()
+}
+
 impl World {
+    /// Counts the time the houses are out in the day book, by the clock rather than by ticks, a
+    /// few seconds at a time. A gap of more than a few seconds — the machine asleep, the app
+    /// stopped — is not time at home, and is not counted.
+    fn count_home_time(&mut self, now: OffsetDateTime) {
+        const LONGEST_STEP: f32 = 5.0;
+        const WRITE_EVERY: f32 = 10.0;
+        let step = self.day_clock.map_or(0.0, |last| {
+            (now - last).as_seconds_f32().clamp(0.0, LONGEST_STEP)
+        });
+        self.day_clock = Some(now);
+        if !self.save.home.is_active() {
+            return;
+        }
+        self.home_seconds_pending += step;
+        if self.home_seconds_pending >= WRITE_EVERY {
+            let whole = self.home_seconds_pending.floor();
+            self.home_seconds_pending -= whole;
+            self.save.day_book.count_home(local_day(now), whole as u32);
+        }
+    }
+
     /// Queues one ephemeral world event. Publicly observable events are projected into compact
     /// state before `tick`, `handle_command`, or `drain_events` returns.
     fn emit(events: &mut Vec<WorldEvent>, event: WorldEvent) {
@@ -294,54 +320,22 @@ impl World {
             },
             visitors: VisitorState::default(),
             finds_today: FindsToday::default(),
+            day_book: DayBook::default(),
         };
         let mut world = Self::from_save(save);
         world.generator = generator;
         world
     }
 
-    pub fn from_save(mut save: SaveFile) -> Self {
-        save.companion.normalize();
-        save.visitors.normalize();
-        normalize_colony_roles(&mut save);
-        normalize_relationships(&mut save);
-        if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.ritual.next_at_utc =
-                scheduled_ritual_at(save.colony_seed, save.ritual.ordinal, save.maximum_seen_utc);
-        }
-        save.objects.objects.truncate(MAX_COLONY_OBJECTS);
-        save.home.normalize_village();
-        if save.objects.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.objects.next_at_utc = scheduled_colony_object_at(
-                save.colony_seed,
-                save.objects.ordinal,
-                save.maximum_seen_utc,
-            );
-        }
-        if save.home.unlocks.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.home.unlocks.next_at_utc = scheduled_village_unlock_at(
-                save.colony_seed,
-                save.home.unlocks.ordinal,
-                save.maximum_seen_utc,
-            );
-        }
+    /// Open a colony. Only a validated one can be opened: a `SaveFile` passed here is validated
+    /// first, and one read from disk already has been.
+    pub fn from_save(save: impl Into<crate::ValidatedSave>) -> Self {
+        let mut save = save.into().into_inner();
+        save.visitors.settle_after_opening();
         // Identity and durable drives survive relaunch, but interrupted locomotion and reactions do
         // not. Surface attachments are validated against the first desktop snapshot on the next
         // tick, while every creature resumes from a stable pose.
         for creature in &mut save.creatures {
-            creature.appearance.design = creature
-                .appearance
-                .design
-                .map(crate::CreatureDesign::bounded);
-            creature.origin.design = creature.appearance.design;
-            // Only something the colony has found can be worn: a file that says otherwise wears
-            // nothing rather than something from nowhere.
-            if creature
-                .accessory
-                .is_some_and(|accessory| !accessory.available(&save.companion.scrapbook))
-            {
-                creature.accessory = None;
-            }
             creature.state.action = ActionKind::Idle;
             creature.state.action_elapsed = 0.0;
             creature.state.action_duration = 2.5;
@@ -363,14 +357,14 @@ impl World {
                 (
                     creature.id,
                     AmbientTimers {
-                        inspect_remaining: ambient_rng.random_range(INSPECT_INTERVAL_SECS),
-                        dangle_remaining: ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+                        inspect_remaining: ambient_rng.random_range(ROAMING.inspect_interval_secs),
+                        dangle_remaining: ambient_rng.random_range(ROAMING.dangle_interval_secs),
                         climb_rest: 0.0,
                     },
                 )
             })
             .collect();
-        let discovery_remaining = ambient_rng.random_range(DISCOVERY_INTERVAL_SECS);
+        let discovery_remaining = ambient_rng.random_range(FINDS.desktop_interval_secs);
         Self {
             save,
             rngs,
@@ -404,7 +398,9 @@ impl World {
             home_roam_rng: streams.rng("home-roaming", 0),
             habit_rng: streams.rng("habits", 0),
             village_moment: None,
-            last_edit: None,
+            undo_history: VecDeque::new(),
+            day_clock: None,
+            home_seconds_pending: 0.0,
             tows: tows::TowTable::default(),
             beats: beats::Beats::new(&streams),
             antics: antics::Antics::new(&streams),
@@ -442,6 +438,7 @@ impl World {
             self.dismiss_home(timeline_now, false);
         }
         self.apply_routine_schedule(now);
+        self.count_home_time(now);
         self.process_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
         self.process_village_unlocks(timeline_now);
@@ -1172,7 +1169,7 @@ impl World {
                         &self.save.companion.scrapbook,
                     );
                     self.discovery_remaining =
-                        self.ambient_rng.random_range(DISCOVERY_INTERVAL_SECS);
+                        self.ambient_rng.random_range(FINDS.desktop_interval_secs);
                     let bond = context.bond.filter(|bond| {
                         bond.relationship.affinity >= 96
                             && bond.relationship.familiarity >= 48
@@ -1192,7 +1189,7 @@ impl World {
                 {
                     if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
                         timers.dangle_remaining =
-                            self.ambient_rng.random_range(DANGLE_INTERVAL_SECS);
+                            self.ambient_rng.random_range(ROAMING.dangle_interval_secs);
                     }
                     selected_choice = Some(ActionChoice {
                         action: ActionKind::Dangle,
@@ -1219,7 +1216,7 @@ impl World {
                     });
                     if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
                         timers.inspect_remaining =
-                            self.ambient_rng.random_range(INSPECT_INTERVAL_SECS);
+                            self.ambient_rng.random_range(ROAMING.inspect_interval_secs);
                     }
                     scheduled_ambient = true;
                 }
@@ -1370,8 +1367,8 @@ impl World {
                 let comes_down = match creature.leaning {
                     RoamingLeaning::FloorDweller => 0.7,
                     RoamingLeaning::Homebody => 0.4,
-                    RoamingLeaning::Anywhere => ANYWHERE_COMES_DOWN,
-                    RoamingLeaning::Climber => CLIMBER_COMES_DOWN,
+                    RoamingLeaning::Anywhere => ROAMING.anywhere_comes_down,
+                    RoamingLeaning::Climber => ROAMING.climber_comes_down,
                 };
                 if comes_down > 0.0
                     && creature.state.surface.kind == SurfaceKind::WindowLedge
@@ -1396,6 +1393,7 @@ impl World {
                         },
                         elapsed: 0.0,
                         duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
+                        lift: 0.0,
                     });
                     next = journey.initial_action();
                     self.window_journeys.insert(creature.id, journey);
@@ -1573,7 +1571,8 @@ impl World {
                 creature.state.action_duration = self.ambient_rng.random_range(3.0..5.0);
                 creature.state.velocity = Point::default();
                 if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
-                    timers.inspect_remaining = self.ambient_rng.random_range(INSPECT_INTERVAL_SECS);
+                    timers.inspect_remaining =
+                        self.ambient_rng.random_range(ROAMING.inspect_interval_secs);
                 }
                 Self::emit(
                     &mut self.events,

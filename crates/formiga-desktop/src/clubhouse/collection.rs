@@ -7,6 +7,7 @@
 //! choose one thing to wear, made from a find, with a look at how it sits in each of a few poses
 //! before it is put on.
 
+use super::shell::Shell;
 use super::tour::TourMark;
 use super::*;
 use formiga_art::AccessoryArt;
@@ -89,12 +90,44 @@ fn wear_choice(ui: &mut Ui, chosen: bool, enabled: bool, label: &str) -> egui::R
     response
 }
 
-impl Clubhouse {
+/// The Colony page's own state: the Collection and the wardrobe, and the sticker being made of a
+/// companion. Never saved.
+#[derive(Default)]
+pub(crate) struct ColonyState {
+    collection: CollectionState,
+    /// Which clip the sticker export will use.
+    pub sticker_clip: StickerClip,
+    /// Whether the sticker export draws at the smaller of the two offered scales. The default,
+    /// `false`, is the large one, which is what most places want to post.
+    pub small_sticker: bool,
+}
+
+impl ColonyState {
+    pub(super) fn texture_ids(&self) -> Vec<egui::TextureId> {
+        self.collection.texture_ids()
+    }
+
+    pub(super) fn release_images(&mut self) {
+        self.collection.release_images();
+    }
+
+    /// The scale the sticker export will draw at, from the two the art offers.
+    pub fn sticker_scale(&self) -> u32 {
+        let [small, large] = formiga_art::STICKER_SCALES;
+        if self.small_sticker { small } else { large }
+    }
+
     /// Every keepsake there is, as one page: the found ones in their colours and the rest as the
     /// shape of what belongs there, with a hint. A found one can be hung in the trees, sixteen at
     /// most; with none chosen by hand the trees fill themselves as finds come in.
-    pub fn collection(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
-        let atlas = self.trinket_atlas(ui, save);
+    pub fn collection(
+        &mut self,
+        ui: &mut Ui,
+        shell: &mut Shell,
+        save: &SaveFile,
+        outcome: &mut SettingsOutcome,
+    ) {
+        let atlas = shell.trinket_atlas(ui, save);
         let offset = local_offset();
         let found = &save.companion.scrapbook;
         let hung = hung_keepsakes(save.home.tree_keepsakes.as_ref(), found);
@@ -185,7 +218,7 @@ impl Clubhouse {
                     ui.painter().image(
                         atlas.id(),
                         rect.shrink(3.0),
-                        Self::trinket_uv(info.variant),
+                        Shell::trinket_uv(info.variant),
                         tint,
                     );
                     let response = match record {
@@ -212,7 +245,7 @@ impl Clubhouse {
                     if response.clicked() && record.is_some() {
                         match toggled_in_trees(save, info.variant) {
                             Some(hooks) => outcome.tree_keepsakes = Some(Some(hooks)),
-                            None => self.notify(format!(
+                            None => shell.notify(format!(
                                 "The trees hold {TREE_HOOKS}. Take one down to hang {}.",
                                 info.name
                             )),
@@ -221,158 +254,7 @@ impl Clubhouse {
                 }
             });
         });
-        self.tour_mark(ui, TourMark::Collection, collection.response.rect);
-    }
-
-    /// The finds themselves, for the Journal: only what has actually turned up, newest first,
-    /// with who found it and when. What is still to find lives in the Collection.
-    pub fn scrapbook(&mut self, ui: &mut Ui, save: &SaveFile) {
-        let offset = local_offset();
-        let atlas = self.trinket_atlas(ui, save);
-        let mut found = save.companion.scrapbook.clone();
-        found.sort_by_key(|record| std::cmp::Reverse((record.first_at, record.variant)));
-        ui.label(
-            RichText::new(format!("THE SCRAPBOOK · {} found", found.len()))
-                .color(forest())
-                .size(11.0),
-        );
-        ui.add_space(6.0);
-        if found.is_empty() {
-            card(ui, |ui| {
-                ui.strong("Nothing found yet");
-                ui.label(
-                    "When a companion brings something back for the first time, it is recorded \
-                     here with the date and who found it. Everything still to find is in the \
-                     Collection, on the Your colony page.",
-                );
-            });
-            ui.add_space(8.0);
-            return;
-        }
-        for record in &found {
-            let Some(info) = formiga_core::trinket_info(record.variant) else {
-                continue;
-            };
-            card(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(Self::trinket_image(&atlas, info.variant, 48.0));
-                    ui.vertical(|ui| {
-                        ui.strong(info.name);
-                        ui.label(info.description);
-                        // The finder's name was kept when it was found, so a companion who has
-                        // since left is still the one credited.
-                        let finder = record
-                            .finder
-                            .and_then(|id| save.creatures.iter().find(|c| c.id == id))
-                            .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                        let at = record.first_at.to_offset(offset);
-                        ui.small(format!("Found by {finder} · {}", at.date()));
-                    });
-                });
-            });
-            ui.add_space(8.0);
-        }
-        ui.small("Only the first find of each kind is recorded, and only on this computer.");
-    }
-
-    /// One still picture of every kind of wonder in a row, cut from the frames the desktop draws.
-    fn wonder_sheet(&mut self, ui: &Ui, save: &SaveFile) -> TextureHandle {
-        if self
-            .wonder_sheet
-            .as_ref()
-            .is_none_or(|(seed, _)| *seed != save.colony_seed)
-        {
-            use formiga_art::{WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WonderRenderer};
-            let kinds = WonderKind::ALL.len() as u32;
-            let mut sheet = formiga_art::Canvas::new(WONDER_CELL_WIDTH * kinds, WONDER_CELL_HEIGHT);
-            for (index, kind) in WonderKind::ALL.into_iter().enumerate() {
-                let frames = WonderRenderer::render(kind, save.colony_seed);
-                // The level frame for a seesaw; the first for everything else.
-                let rest = if kind == WonderKind::Seesaw { 3 } else { 0 };
-                for y in 0..WONDER_CELL_HEIGHT as i32 {
-                    for x in 0..WONDER_CELL_WIDTH as i32 {
-                        let pixel = frames.get(rest * WONDER_CELL_WIDTH as i32 + x, y);
-                        if pixel.a > 0 {
-                            sheet.set(index as i32 * WONDER_CELL_WIDTH as i32 + x, y, pixel);
-                        }
-                    }
-                }
-            }
-            let texture = upload(ui.ctx(), "colony-wonders", &sheet);
-            self.wonder_sheet = Some((save.colony_seed, texture));
-        }
-        self.wonder_sheet.as_ref().unwrap().1.clone()
-    }
-
-    /// The notebook's page of wonders: every kind there is, the ones that have turned up drawn
-    /// with who first found it, when, and how many goes the colony has had since, and the rest as
-    /// a shadow with a hint. Nothing here can be placed or kept: a wonder turns up by itself.
-    pub fn wonders(&mut self, ui: &mut Ui, save: &SaveFile) {
-        let offset = local_offset();
-        let sheet = self.wonder_sheet(ui, save);
-        let found = &save.companion.wonders;
-        ui.add_space(14.0);
-        ui.label(
-            RichText::new(format!(
-                "WONDERS · {} of {} found",
-                found.len(),
-                WonderKind::ALL.len()
-            ))
-            .color(forest())
-            .size(11.0),
-        );
-        ui.small(
-            "Now and then something to play on turns up for a little while — a chair, a leaf sled, a \
-             fountain — and whoever it turned up for goes straight over to have a go.",
-        );
-        ui.add_space(6.0);
-        let kinds = WonderKind::ALL.len() as f32;
-        for (index, kind) in WonderKind::ALL.into_iter().enumerate() {
-            let record = found.iter().find(|record| record.kind == kind);
-            card(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let uv = egui::Rect::from_min_max(
-                        egui::pos2(index as f32 / kinds, 0.0),
-                        egui::pos2((index + 1) as f32 / kinds, 1.0),
-                    );
-                    // Something still to find is its own shape and nothing more.
-                    let tint = if record.is_some() {
-                        Color32::WHITE
-                    } else {
-                        Color32::from_rgba_unmultiplied(0, 0, 0, 70)
-                    };
-                    ui.add(
-                        egui::Image::new(&sheet)
-                            .uv(uv)
-                            .tint(tint)
-                            .maintain_aspect_ratio(false)
-                            .fit_to_exact_size(egui::vec2(112.0, 64.0)),
-                    );
-                    ui.vertical(|ui| match record {
-                        Some(record) => {
-                            ui.strong(kind.label());
-                            ui.label(kind.description());
-                            let finder = record
-                                .finder
-                                .and_then(|id| save.creatures.iter().find(|c| c.id == id))
-                                .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                            let at = record.first_at.to_offset(offset);
-                            ui.small(format!(
-                                "First found by {finder} · {} · {} {}",
-                                at.date(),
-                                record.goes,
-                                if record.goes == 1 { "go" } else { "goes" }
-                            ));
-                        }
-                        None => {
-                            ui.strong("Still to find");
-                            ui.label(kind.hint());
-                        }
-                    });
-                });
-            });
-            ui.add_space(6.0);
-        }
+        shell.tour_mark(ui, TourMark::Collection, collection.response.rect);
     }
 
     /// The companion wearing `wearing`, drawn in each of the try-on poses, from the colony's own
@@ -435,6 +317,7 @@ impl Clubhouse {
     pub fn wardrobe(
         &mut self,
         ui: &mut Ui,
+        shell: &mut Shell,
         save: &SaveFile,
         creature: &Creature,
         outcome: &mut SettingsOutcome,
@@ -446,7 +329,7 @@ impl Clubhouse {
             .filter(|(id, _)| *id == creature.id)
             .map_or(creature.accessory, |(_, candidate)| candidate);
         let poses = self.try_on_poses(ui, save, creature, trying);
-        let atlas = self.trinket_atlas(ui, save);
+        let atlas = shell.trinket_atlas(ui, save);
         let mut pointed: Option<Option<Accessory>> = None;
         let wardrobe = ui.group(|ui| {
             ui.horizontal(|ui| {
@@ -546,7 +429,7 @@ impl Clubhouse {
                                 ui.painter().image(
                                     atlas.id(),
                                     rect.shrink(2.0),
-                                    Self::trinket_uv(variant),
+                                    Shell::trinket_uv(variant),
                                     Color32::WHITE,
                                 );
                                 let response = response.on_hover_text(pin.label());
@@ -561,7 +444,7 @@ impl Clubhouse {
                     });
             }
         });
-        self.tour_mark(ui, TourMark::Wardrobe, wardrobe.response.rect);
+        shell.tour_mark(ui, TourMark::Wardrobe, wardrobe.response.rect);
         // What the pointer is over now is what the poses show next frame; moving off every
         // choice goes back to what is actually worn.
         self.collection.trying = pointed.map(|candidate| (creature.id, candidate));

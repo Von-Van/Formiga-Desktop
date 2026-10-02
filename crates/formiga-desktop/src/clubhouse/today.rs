@@ -2,9 +2,10 @@
 //! who is doing what right now, how the week has gone, what the notebook has noticed, and the
 //! last few things companions shared with one another. Everything on it is read from what the
 //! colony has recorded; nothing here is a task, a score or a reminder.
+use super::shell::Shell;
 use super::*;
 use crate::settings::SettingsTab;
-use formiga_core::{Observation, SharedMomentKind};
+use formiga_core::{DayNote, GardenKind, GardenStage, Observation, SharedMomentKind};
 
 /// What was unread when the reader turned to the Today or Journal page: kept while they stay on
 /// those pages, so the news they came to read does not vanish the moment it is marked as read.
@@ -295,14 +296,132 @@ fn section(ui: &mut Ui, title: &str, help: &str) {
     ui.add_space(4.0);
 }
 
-impl Clubhouse {
-    /// The Today page.
-    pub(crate) fn today(
+/// How long the Today page keeps its comparisons before reading them again: long enough that a
+/// line does not come and go as the counts under it tick over.
+const NOTES_FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The Today page's own state. Never saved.
+#[derive(Default)]
+pub(crate) struct TodayState {
+    /// How today compares with the rest of the week, and when that was read.
+    notes: Vec<DayNote>,
+    noted_at: Option<std::time::Instant>,
+}
+
+/// The garden a patch is, as a sentence's subject: what it is called, and whether it is several.
+fn garden_subject(kind: GardenKind) -> (String, bool) {
+    let plural = matches!(kind, GardenKind::Sunflowers | GardenKind::Cactus);
+    (format!("the {}", kind.label().to_lowercase()), plural)
+}
+
+fn capitalised(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
+}
+
+/// What a comparison says, and the counts it rests on, both in the notebook's voice.
+pub(crate) fn day_note_text(save: &SaveFile, note: &DayNote) -> (String, String) {
+    match *note {
+        DayNote::SoughtEachOther {
+            a,
+            b,
+            sought: [by_a, by_b],
+        } => {
+            let count = u16::from(by_a) + u16::from(by_b);
+            (
+                format!(
+                    "{} and {} sought each other out {} today",
+                    name_of(save, a),
+                    name_of(save, b),
+                    times(u32::from(count))
+                ),
+                format!(
+                    "{} went looking {}, {} {}.",
+                    name_of(save, a),
+                    times(u32::from(by_a)),
+                    name_of(save, b),
+                    times(u32::from(by_b))
+                ),
+            )
+        }
+        DayNote::WentLookingFor {
+            seeker,
+            sought,
+            times: count,
+        } => (
+            format!(
+                "{} went looking for {} {} today",
+                name_of(save, seeker),
+                name_of(save, sought),
+                times(u32::from(count))
+            ),
+            "Followed, greeted coming home, or brought a find.".to_owned(),
+        ),
+        DayNote::FirstRoofSitThisWeek { creature } => (
+            format!(
+                "{} sat up on the roof for the first time this week",
+                name_of(save, creature)
+            ),
+            "Not once in the six days before.".to_owned(),
+        ),
+        DayNote::GardenStage { kind, stage } => {
+            let (subject, plural) = garden_subject(kind);
+            let (has, its) = if plural {
+                ("have", "their")
+            } else {
+                ("has", "its")
+            };
+            let said = match stage {
+                GardenStage::Bounty => {
+                    format!(
+                        "{} {has} reached {its} fourth stage, at {its} fullest",
+                        capitalised(&subject)
+                    )
+                }
+                _ => format!("{} {has} reached {its} third stage", capitalised(&subject)),
+            };
+            (
+                said,
+                format!(
+                    "It came round to it today, {} hours a stage.",
+                    kind.stage_hours()
+                ),
+            )
+        }
+        DayNote::MoreTimeAtHome { today, yesterday } => (
+            "More time at home than yesterday".to_owned(),
+            if yesterday == 0 {
+                format!(
+                    "{} with the houses out, and none yesterday.",
+                    duration_text(today)
+                )
+            } else {
+                format!(
+                    "{} with the houses out, against {} yesterday.",
+                    duration_text(today),
+                    duration_text(yesterday)
+                )
+            },
+        ),
+        DayNote::MorePlay { today, yesterday } => (
+            "More play than yesterday".to_owned(),
+            format!("{today} games between companions, against {yesterday} yesterday."),
+        ),
+    }
+}
+
+impl TodayState {
+    /// The Today page. `reading` is what was new when the reader turned to it.
+    pub(crate) fn show(
         &mut self,
         ui: &mut Ui,
+        shell: &mut Shell,
         save: &SaveFile,
         monitors: &[MonitorInfo],
         tab: &mut SettingsTab,
+        reading: Option<&Reading>,
     ) {
         let now = OffsetDateTime::now_utc();
         let offset = local_offset();
@@ -327,7 +446,7 @@ impl Clubhouse {
                 );
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("Take the tour").clicked() {
-                        self.take_the_tour();
+                        shell.take_the_tour();
                     }
                     if ui.button("Meet your companions").clicked() {
                         *tab = SettingsTab::Colony;
@@ -338,7 +457,7 @@ impl Clubhouse {
 
         // New since last time: what the reader came to the page for, kept on show while they
         // read it even though it now counts as read.
-        let unread = self.reading.as_ref().map_or(&[][..], |r| &r.unread[..]);
+        let unread = reading.map_or(&[][..], |r| &r.unread[..]);
         if !unread.is_empty() {
             section(
                 ui,
@@ -363,7 +482,8 @@ impl Clubhouse {
         }
 
         ui.add_space(10.0);
-        self.today_card(ui, save, offset);
+        self.today_card(ui, shell, save, offset);
+        self.compared(ui, save, now.to_offset(offset));
         section(ui, "Right now", "What each companion is doing this minute.");
         wide_card(ui, |ui| {
             if save.creatures.is_empty() {
@@ -392,7 +512,7 @@ impl Clubhouse {
             }
             for creature in &save.creatures {
                 ui.horizontal(|ui| {
-                    self.portrait(ui, creature, 32.0);
+                    shell.portrait(ui, creature, 32.0);
                     ui.vertical(|ui| {
                         ui.strong(&creature.name);
                         let doing = crate::settings::activity_label(creature.state.action);
@@ -522,6 +642,240 @@ impl Clubhouse {
         // Right now stays right now while the page is open, at a page's frame every two seconds.
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs(2));
+    }
+}
+
+/// What today's recap can honestly say: the journal's moments from today, newest first; the
+/// treasures the scrapbook says were first found today; and whether earlier moments of today may
+/// already have rolled out of a full journal. Nothing is said about time the app was not running,
+/// because nothing was written down then.
+pub(crate) struct Today<'a> {
+    pub(crate) moments: Vec<&'a JournalEntry>,
+    pub(crate) found: Vec<u8>,
+    pub(crate) rolled_out: bool,
+}
+
+pub(crate) fn today<'a>(
+    save: &'a SaveFile,
+    date: time::Date,
+    offset: time::UtcOffset,
+) -> Today<'a> {
+    let on_date = |at: OffsetDateTime| at.to_offset(offset).date() == date;
+    let journal = &save.companion.journal;
+    Today {
+        moments: journal
+            .iter()
+            .rev()
+            .filter(|entry| on_date(entry.at))
+            .collect(),
+        found: save
+            .companion
+            .scrapbook
+            .iter()
+            .filter(|record| on_date(record.first_at))
+            .map(|record| record.variant)
+            .collect(),
+        // A full journal whose oldest everyday moment is itself from today has dropped whatever
+        // came before it, and some of that may have been today's too. Milestones kept past their
+        // turn say nothing either way.
+        rolled_out: save
+            .companion
+            .rolled_out_since(date.midnight().assume_offset(offset)),
+    }
+}
+
+/// Short counts for the kinds of moment a day held, in a fixed order.
+fn today_tally(moments: &[&JournalEntry]) -> Vec<String> {
+    let count = |test: &dyn Fn(&JournalMoment) -> bool| {
+        moments.iter().filter(|entry| test(&entry.moment)).count()
+    };
+    let plural = |n: usize, one: &str, many: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {many}")
+        }
+    };
+    let mut tally = Vec::new();
+    for (n, one, many) in [
+        (
+            count(&|m| matches!(m, JournalMoment::Arrival)),
+            "arrival",
+            "arrivals",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Discovery)),
+            "discovery",
+            "discoveries",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Friendship(_))),
+            "new friendship",
+            "new friendships",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Preference(_))),
+            "new preference",
+            "new preferences",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Ritual(_))),
+            "shared moment",
+            "shared moments",
+        ),
+        (
+            count(&|m| {
+                matches!(
+                    m,
+                    JournalMoment::Object(_)
+                        | JournalMoment::Decoration(_)
+                        | JournalMoment::Unlocked(_)
+                )
+            }),
+            "new keepsake",
+            "new keepsakes",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Visit(_))),
+            "visitor",
+            "visitors",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Habit(_))),
+            "new habit",
+            "new habits",
+        ),
+        (
+            count(&|m| matches!(m, JournalMoment::Wonder(_))),
+            "new wonder",
+            "new wonders",
+        ),
+    ] {
+        if n > 0 {
+            tally.push(plural(n, one, many));
+        }
+    }
+    tally
+}
+
+impl TodayState {
+    /// How today compares with the rest of the week: a few lines, each with the counts it rests
+    /// on, and only for days the day book was counting.
+    fn compared(&mut self, ui: &mut Ui, save: &SaveFile, local: OffsetDateTime) {
+        if self
+            .noted_at
+            .is_none_or(|at| at.elapsed() >= NOTES_FRESH_FOR)
+        {
+            self.notes = formiga_core::day_notes(save, local);
+            self.noted_at = Some(std::time::Instant::now());
+        }
+        section(
+            ui,
+            "Today, compared",
+            "How today compares with the rest of the week, from the few counts the colony keeps \
+             for each day. Nothing is compared with a day before it began keeping them.",
+        );
+        wide_card(ui, |ui| {
+            if self.notes.is_empty() {
+                let day = local.date().to_julian_day();
+                ui.label(if save.day_book.counted(day - 1) {
+                    "Nothing stands out yet today. A line appears here when today has something \
+                     the rest of the week did not — two who sought each other out, a first sit \
+                     up on a roof, a garden coming round."
+                } else {
+                    "The notebook began counting the colony's days today, so there is no \
+                     yesterday to compare with until tomorrow."
+                });
+                return;
+            }
+            for note in &self.notes {
+                let (said, evidence) = day_note_text(save, note);
+                ui.label(said);
+                ui.small(RichText::new(evidence).color(muted()));
+                ui.add_space(4.0);
+            }
+        });
+    }
+
+    /// Today at a glance, on the Today page: who the day was about, what kinds of thing
+    /// happened, what was found, and the latest few moments, all read from what was recorded.
+    pub(crate) fn today_card(
+        &mut self,
+        ui: &mut Ui,
+        shell: &mut Shell,
+        save: &SaveFile,
+        offset: time::UtcOffset,
+    ) {
+        let date = OffsetDateTime::now_utc().to_offset(offset).date();
+        let today = today(save, date, offset);
+        wide_card(ui, |ui| {
+            journal::kicker(ui, "Today in your colony");
+            if today.moments.is_empty() && today.found.is_empty() {
+                ui.label(
+                    "Nothing has been written down yet today. Moments appear here as they happen.",
+                );
+                return;
+            }
+            // Everyone the day was about, in colony order.
+            let featured: Vec<&Creature> = save
+                .creatures
+                .iter()
+                .filter(|creature| {
+                    today.moments.iter().any(|entry| {
+                        entry.creature == Some(creature.id)
+                            || entry.moment == JournalMoment::Friendship(creature.id)
+                    })
+                })
+                .collect();
+            if !featured.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    for creature in featured {
+                        shell.portrait(ui, creature, 40.0);
+                    }
+                });
+            }
+            ui.horizontal_wrapped(|ui| {
+                for count in today_tally(&today.moments) {
+                    egui::Frame::new()
+                        .fill(mint())
+                        .inner_margin(4)
+                        .show(ui, |ui| {
+                            ui.small(count);
+                        });
+                }
+            });
+            if !today.found.is_empty() {
+                let atlas = shell.trinket_atlas(ui, save);
+                ui.horizontal_wrapped(|ui| {
+                    ui.small("Found today:");
+                    for variant in &today.found {
+                        ui.add(Shell::trinket_image(&atlas, *variant, 28.0));
+                    }
+                });
+            }
+            for entry in today.moments.iter().take(4) {
+                let local = entry.at.to_offset(offset);
+                ui.label(format!(
+                    "{:02}:{:02} · {}",
+                    local.hour(),
+                    local.minute(),
+                    moment_text(save, entry)
+                ));
+            }
+            if today.moments.len() > 4 {
+                ui.small(format!(
+                    "…and {} more from today below.",
+                    today.moments.len() - 4
+                ));
+            }
+            if today.rolled_out {
+                ui.small(format!(
+                    "The journal keeps its last {MAX_JOURNAL_ENTRIES} moments, so some from \
+                     earlier today have already rolled out."
+                ));
+            }
+        });
+        ui.add_space(10.0);
     }
 }
 

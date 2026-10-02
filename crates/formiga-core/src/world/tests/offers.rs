@@ -154,6 +154,7 @@ fn an_offer_is_not_made_at_all_when_it_would_cut_something_short() {
                     surface: world.save.creatures[0].state.surface.clone(),
                     elapsed: 0.0,
                     duration: 1.0,
+                    lift: 0.0,
                 }),
             );
         }),

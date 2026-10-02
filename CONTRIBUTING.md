@@ -68,8 +68,17 @@ to do instead.
 
 ### Changing things safely
 
-- **Persistence.** A new saved field needs a `SAVE_VERSION` bump, an explicit migration, and
-  migration and round-trip tests. Every save an earlier release wrote must still load.
+- **Persistence.** A new saved field needs a `SAVE_VERSION` bump, its `Step` in
+  `crates/formiga-core/src/persistence/migrations.rs` (a test fails until every version has exactly
+  one), any new limit enforced in `persistence/validation.rs` and named in `violations`, and
+  migration and round-trip tests. Every save an earlier release wrote must still load. The privacy
+  test's list of field names has to learn any new one.
+- **Design values.** How often something happens, how long it lasts, how far, how likely: put it in
+  `crates/formiga-core/src/tuning.rs` beside its feature's other values, not inline, so a retune is
+  a change to that file alone.
+- **Long simulated runs.** `formiga-tools soak` checks a change against many randomized colonies
+  over days; the nightly workflow runs it in full. On your own machine keep it small and in the
+  background (`--threads 2`, and `taskpolicy -b` on a Mac); see [docs/BUILD.md](docs/BUILD.md#long-simulated-runs).
 - **Generation.** Keep it append-only, so that existing seeds, recipes, and seed codes resolve
   exactly as before. [docs/GENERATION.md](docs/GENERATION.md#extending-safely) has the rules.
   Regenerate the contact sheet and keep the 1,000-genome render test passing.
@@ -82,7 +91,9 @@ to do instead.
 - **Privacy.** Nothing may read beyond the boundary in [docs/PRIVACY.md](docs/PRIVACY.md). If what
   is stored changes, that document changes with it.
 - **Documentation.** Add or update the section of `docs/ARCHITECTURE.md` your change belongs to,
-  and add a CHANGELOG entry.
+  and add a CHANGELOG entry. Something noticed but not fixed belongs in a GitHub issue, labelled
+  `native-qa` (needs real hardware), `simulation`, `notebook`, `accessibility`, `performance` or
+  `polish`, rather than in the documentation.
 
 ### Writing behavior scenarios
 

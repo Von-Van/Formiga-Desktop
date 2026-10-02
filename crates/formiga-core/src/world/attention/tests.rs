@@ -804,7 +804,7 @@ fn poses_are_not_saved_and_reduced_motion_keeps_calm_stationary_gaze() {
             .unwrap()
             .contains("cursor_sample_millis")
     );
-    let restored = World::from_save(serde_json::from_str(&json).unwrap());
+    let restored = World::from_save(serde_json::from_str::<SaveFile>(&json).unwrap());
     assert!(
         restored
             .save
@@ -1249,6 +1249,7 @@ fn attention_walks_keep_clear_of_an_existing_landing_reservation() {
             surface: world.save.creatures[0].state.surface.clone(),
             elapsed: 0.0,
             duration: 3.0,
+            lift: 0.0,
         }),
     );
     new_window(&mut world, &mut desktop, now);

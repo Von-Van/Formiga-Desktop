@@ -156,7 +156,7 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
                 for index in 0..4 {
                     let seed = [index + 17; 32];
                     let shared = (index == 3).then_some(shared);
-                    clubhouse.push_preview(
+                    clubhouse.studio.push_preview(
                         &context,
                         GenerationPreview {
                             shared,
@@ -496,6 +496,7 @@ impl Harness {
         self.frame(Vec::new());
         self.frame(Vec::new());
         self.clubhouse
+            .home
             .arrange
             .shown
             .iter()
@@ -595,7 +596,7 @@ fn studio_clicks_preview_before_adoption_and_protect_replacement() {
         source_generation: 2,
         design: None,
     };
-    h.clubhouse.seed_code = encode_creature_seed(shared.into());
+    h.clubhouse.studio.seed_code = encode_creature_seed(shared.into());
     let outcome = h.click("Preview shared creature");
     assert_eq!(outcome.preview_shared, Some(shared));
     assert!(outcome.accept_creature_preview.is_none());
@@ -604,7 +605,7 @@ fn studio_clicks_preview_before_adoption_and_protect_replacement() {
             .save
             .creatures
             .remove(0);
-    h.clubhouse.push_preview(
+    h.clubhouse.studio.push_preview(
         &h.context,
         GenerationPreview {
             shared: Some(shared),
@@ -698,7 +699,7 @@ fn the_sticker_and_colony_portrait_controls_ask_the_app_for_an_export() {
     h.tab = SettingsTab::Colony;
     let creature = h.save.creatures[0].id;
     // The clip is chosen right beside the button, and carried with the request.
-    h.clubhouse.sticker_clip = StickerClip::Dance;
+    h.clubhouse.colony.sticker_clip = StickerClip::Dance;
     assert_eq!(
         h.click("Export sticker…").export_creature_sticker,
         Some((creature, StickerClip::Dance, DEFAULT_STICKER_SCALE))
@@ -916,7 +917,7 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
             if tab == SettingsTab::Studio {
                 for index in 0..4 {
                     let seed = [40 + index; 32];
-                    h.clubhouse.push_preview(
+                    h.clubhouse.studio.push_preview(
                         &h.context,
                         GenerationPreview {
                             shared: None,
@@ -965,7 +966,7 @@ fn all_ui_artwork_together_fits_the_budget() {
     let mut h = Harness::new(SettingsTab::Home);
     for index in 0..4 {
         let seed = [30 + index; 32];
-        h.clubhouse.push_preview(
+        h.clubhouse.studio.push_preview(
             &h.context,
             GenerationPreview {
                 shared: None,
@@ -982,10 +983,15 @@ fn all_ui_artwork_together_fits_the_budget() {
     }
     let mut output = h.context.run_ui(egui::RawInput::default(), |ui| {
         for c in &h.save.creatures {
-            h.clubhouse.portrait(ui, c, 48.0);
+            h.clubhouse.shell.portrait(ui, c, 48.0);
         }
-        h.clubhouse
-            .home(ui, &h.save, &h.monitors, &mut SettingsOutcome::default());
+        h.clubhouse.home.show(
+            ui,
+            &mut h.clubhouse.shell,
+            &h.save,
+            &h.monitors,
+            &mut SettingsOutcome::default(),
+        );
     });
     let mut textures = HashMap::new();
     apply_textures(&mut textures, &output.textures_delta);
@@ -1093,7 +1099,7 @@ fn today_recaps_only_what_was_recorded_today_and_admits_what_rolled_out() {
         finder: Some(creature),
         finder_name: "Mallow".into(),
     });
-    let recap = clubhouse::today(&save, today_date, offset);
+    let recap = clubhouse::today::today(&save, today_date, offset);
     assert_eq!(recap.moments.len(), 3);
     assert!(
         recap.moments.windows(2).all(|w| w[0].at >= w[1].at),
@@ -1115,9 +1121,9 @@ fn today_recaps_only_what_was_recorded_today_and_admits_what_rolled_out() {
             moment: JournalMoment::Ritual(RitualKind::Picnic),
         });
     }
-    assert!(clubhouse::today(&save, today_date, offset).rolled_out);
+    assert!(clubhouse::today::today(&save, today_date, offset).rolled_out);
     // Another day has nothing to say about this one.
-    let tomorrow = clubhouse::today(&save, today_date.next_day().unwrap(), offset);
+    let tomorrow = clubhouse::today::today(&save, today_date.next_day().unwrap(), offset);
     assert!(tomorrow.moments.is_empty() && tomorrow.found.is_empty() && !tomorrow.rolled_out);
 }
 
@@ -1278,7 +1284,7 @@ fn a_postcard_is_chosen_and_captioned_from_the_home_page() {
         Some((formiga_art::PostcardScene::Nap, String::new()))
     );
     h.click("A picnic");
-    h.clubhouse.postcard_caption = "  Snacks \t for everyone\n".into();
+    h.clubhouse.home.postcard_caption = "  Snacks \t for everyone\n".into();
     assert_eq!(
         h.click("Export postcard…").export_postcard,
         Some((
@@ -1486,7 +1492,7 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
     let mut clubhouse = Clubhouse::default();
     for index in 0..4 {
         let seed = [index + 17; 32];
-        clubhouse.push_preview(
+        clubhouse.studio.push_preview(
             &context,
             GenerationPreview {
                 shared: None,
@@ -1683,7 +1689,7 @@ fn the_tour_notices_a_companion_petted_carried_and_asked_for_something() {
     h.click("Next");
     h.frame(Vec::new());
     assert!(!tried(&h));
-    h.clubhouse.tour.menus_opened += 1;
+    h.clubhouse.shell.tour.menus_opened += 1;
     h.frame(Vec::new());
     assert!(tried(&h), "a menu went unnoticed");
     // And the next step asks for nothing.
@@ -2076,22 +2082,22 @@ fn the_journal_is_searched_filtered_and_cleared() {
     assert!(shown(&h, "MILESTONES"));
     let dance = "The colony shared a dance";
     assert!(shown(&h, dance));
-    h.clubhouse.journal_search = "treasure".into();
+    h.clubhouse.journal.search = "treasure".into();
     h.frame(Vec::new());
     h.frame(Vec::new());
     assert!(shown(&h, &format!("{name} found a little treasure")));
     assert!(!shown(&h, dance));
     assert!(shown_starting(&h, "Showing 1 of "));
     // A search that matches nothing says so, and clears in one click.
-    h.clubhouse.journal_search = "zebra".into();
+    h.clubhouse.journal.search = "zebra".into();
     h.click("Clear the search and filters");
     h.frame(Vec::new());
-    assert!(h.clubhouse.journal_search.is_empty());
+    assert!(h.clubhouse.journal.search.is_empty());
     assert!(shown(&h, dance));
     // By kind.
     h.click("Together");
     h.frame(Vec::new());
-    assert_eq!(h.clubhouse.journal_kind, Some(MomentKind::Together));
+    assert_eq!(h.clubhouse.journal.kind, Some(MomentKind::Together));
     assert!(shown(&h, dance));
     assert!(!shown(&h, &format!("{name} found a little treasure")));
 }
@@ -2117,12 +2123,12 @@ fn save_trouble_is_shown_with_ways_to_act_on_it() {
         let mut h = Harness::new(tab);
         h.frame(Vec::new());
         assert!(!shown(&h, "SAVING HAS STOPPED FOR NOW"));
-        h.clubhouse.save_trouble =
+        h.clubhouse.recovery.save_trouble =
             Some("The disk is full, so the colony could not be written.".into());
         h.frame(Vec::new());
         assert!(shown(&h, "SAVING HAS STOPPED FOR NOW"));
         assert!(h.click("Try again now").retry_save);
-        h.clubhouse.save_trouble = Some("x".into());
+        h.clubhouse.recovery.save_trouble = Some("x".into());
         assert!(h.click("Export a backup elsewhere…").export_colony);
     }
 }
@@ -2160,4 +2166,111 @@ fn command_w_asks_for_the_notebook_to_close() {
         h.frame(key(egui::Key::W, egui::Modifiers::COMMAND))
             .close_notebook
     );
+}
+
+/// Today compares itself with the rest of the week only once yesterday was counted, each line
+/// says what it rests on, and a pair who sought each other out is named.
+#[test]
+fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
+    let mut h = Harness::new(SettingsTab::Today);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "TODAY, COMPARED"));
+    assert!(shown_starting(
+        &h,
+        "The notebook began counting the colony's days today"
+    ));
+    let local = time::OffsetDateTime::now_utc().to_offset(clubhouse::local_offset());
+    let day = local.date().to_julian_day();
+    let (a, b) = (h.save.creatures[0].id, h.save.creatures[1].id);
+    h.save.day_book.count_home(day - 1, 600);
+    for a_began in [true, false, true] {
+        h.save.day_book.count_pair(
+            day,
+            a,
+            b,
+            Some(a_began),
+            formiga_core::SharedMomentKind::Greeting,
+            true,
+        );
+    }
+    // The page keeps what it read for half a minute; a new page state reads it at once.
+    h.clubhouse.today = Default::default();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let (first, second) = formiga_core::canonical_creature_pair(a, b).unwrap();
+    let name = |id| {
+        h.save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == id)
+            .unwrap()
+            .name
+            .clone()
+    };
+    assert!(
+        shown(
+            &h,
+            &format!(
+                "{} and {} sought each other out 3 times today",
+                name(first),
+                name(second)
+            )
+        ),
+        "{:?}",
+        h.labels.iter().map(|(text, _)| text).collect::<Vec<_>>()
+    );
+    let (by_first, by_second) = if first == a { (2, 1) } else { (1, 2) };
+    assert!(shown(
+        &h,
+        &format!(
+            "{} went looking {}, {} {}.",
+            name(first),
+            if by_first == 2 { "twice" } else { "once" },
+            name(second),
+            if by_second == 2 { "twice" } else { "once" }
+        )
+    ));
+}
+
+/// The notebook follows the system's own appearance while it is open: when the preference is to
+/// match the system and the system turns dark, the notebook applies it on its next frame, and the
+/// palette with it; a fixed preference ignores the system. The native appearance switch itself
+/// stays a manual check; this is the notebook's half of it.
+#[test]
+fn the_notebook_follows_the_system_into_the_dark_and_back() {
+    let system = AppearancePreferences {
+        theme: ThemeChoice::System,
+        ..AppearancePreferences::default()
+    };
+    let light = Some(egui::Theme::Light);
+    let dark = Some(egui::Theme::Dark);
+    assert!(appearance_changed(None, None, system, light), "first frame");
+    assert!(!appearance_changed(Some(system), light, system, light));
+    assert!(
+        appearance_changed(Some(system), light, system, dark),
+        "the system turned dark"
+    );
+    let fixed = AppearancePreferences {
+        theme: ThemeChoice::Light,
+        ..AppearancePreferences::default()
+    };
+    assert!(!appearance_changed(Some(fixed), light, fixed, dark));
+    // And applying it really does move the palette both ways.
+    let context = egui::Context::default();
+    for (theme, want_dark) in [(dark, true), (light, false), (dark, true)] {
+        let mut input = egui::RawInput {
+            system_theme: theme,
+            ..egui::RawInput::default()
+        };
+        input.screen_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 600.0),
+        ));
+        let mut output = context.run_ui(input, |_| {});
+        output.textures_delta.clear();
+        configure_style(&context, system);
+        assert_eq!(crate::clubhouse::dark_interface(), want_dark, "{theme:?}");
+    }
+    configure_style(&context, AppearancePreferences::default());
 }

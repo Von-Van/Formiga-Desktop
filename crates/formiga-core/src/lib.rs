@@ -6,6 +6,7 @@ mod bubble;
 mod clock;
 mod companion;
 mod cursor;
+mod daybook;
 mod design;
 mod habitat;
 mod habits;
@@ -18,6 +19,7 @@ mod stature;
 mod temperament;
 mod topology;
 mod trinkets;
+pub mod tuning;
 mod visitor;
 mod wonders;
 mod world;
@@ -31,6 +33,7 @@ pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use bubble::BubbleIcon;
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use companion::*;
+pub use daybook::{DAYS_KEPT, DayBook, DayNote, DayPair, DayRecord, day_notes};
 pub use design::{
     BODY_ARCHETYPES, BodyArchetype, BodyPlan, ClassicParts, CreatureDesign, DetailParts, EarStyle,
     Edition, FACE_TEMPLATES, Strangeness, apply_creature_design, hsl, to_hsl,
@@ -54,7 +57,8 @@ pub use habits::{
 pub use model::*;
 pub use observations::{Observation, observations_of, observe};
 pub use persistence::{
-    PERIODIC_SAVE, PersistenceError, ROUTINE_CHECKPOINT, SaveStore, SaveUrgency, save_due,
+    ImportRefusal, MAX_SAVE_BYTES, PERIODIC_SAVE, PersistenceError, ROUTINE_CHECKPOINT, SaveStore,
+    SaveUrgency, ValidatedSave, damage, decode, save_due, violations,
 };
 pub use rng::{SeedStream, new_colony_seed};
 pub use seed_share::{
@@ -85,4 +89,4 @@ pub use world::{
     wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 24;
+pub const SAVE_VERSION: u32 = 25;

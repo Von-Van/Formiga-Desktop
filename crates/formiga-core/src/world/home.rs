@@ -1092,6 +1092,7 @@ impl World {
             .collect();
         let mut answering: Vec<(CreatureId, Point, f32)> = Vec::new();
         let find_allowed = self.trinket_find_allowed(now);
+        let mut up_on_roofs = Vec::new();
         for creature in &mut self.save.creatures {
             if self
                 .interaction
@@ -1146,7 +1147,15 @@ impl World {
                     },
                 });
                 if !activity.still_on(ground) {
-                    village_life::settle(activity, creature);
+                    if let Some(landing) = village_life::settle(activity, creature) {
+                        // The house it was sitting on has moved: straight down from where it is.
+                        let landing = Point {
+                            x: creature.state.position.x,
+                            y: landing.y,
+                        };
+                        self.window_journeys
+                            .insert(creature.id, village_life::roof_hop_down(creature, landing));
+                    }
                     self.village_life.remove(&creature.id);
                     continue;
                 }
@@ -1162,7 +1171,20 @@ impl World {
                     frame,
                     find_allowed,
                 };
-                if village_life::advance(activity, creature, dt, &mut context) {
+                let was_on_roof = creature
+                    .state
+                    .beat
+                    .is_some_and(|beat| beat.kind == BeatKind::RoofSit);
+                let going_on = village_life::advance(activity, creature, dt, &mut context);
+                if !was_on_roof
+                    && creature
+                        .state
+                        .beat
+                        .is_some_and(|beat| beat.kind == BeatKind::RoofSit)
+                {
+                    up_on_roofs.push(creature.id);
+                }
+                if going_on {
                     continue;
                 }
                 self.village_life.remove(&creature.id);
@@ -1318,6 +1340,7 @@ impl World {
                         },
                         elapsed: 0.0,
                         duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
+                        lift: 0.0,
                     }),
                 );
             }
@@ -1646,6 +1669,12 @@ impl World {
                 answering.push((id, point, length));
             }
         }
+        if !up_on_roofs.is_empty() {
+            let day = local_day(now);
+            for creature in up_on_roofs {
+                self.save.day_book.count_roof(day, creature);
+            }
+        }
 
         self.apply_asides(asides);
 
@@ -1876,7 +1905,7 @@ impl World {
         // An offer outranks an idle fidget, and the scheduler leaves a requested moment alone.
         // Whatever it was about in the village — the garden, a chore, indoors, up on the roof —
         // it leaves off, back on the ground outside, to take what is held out.
-        self.end_village_activity(creature_id);
+        let landing = self.end_village_activity(creature_id);
         let Some(creature) = self
             .save
             .creatures
@@ -1885,7 +1914,10 @@ impl World {
         else {
             return false;
         };
-        let rest = resting.map_or(creature.state.position, |moment| moment.rest);
+        // Down off a roof first, if it was up on one, and what is held out is taken there.
+        let rest = resting.map_or(landing.unwrap_or(creature.state.position), |moment| {
+            moment.rest
+        });
         // Taking what is held out means stepping out of a shared moment, which carries on without
         // it for as long as there are still two.
         if let Some(plan) = &mut self.village_moment {

@@ -8,6 +8,7 @@
 //! `onboarding_complete` set, which is all the save knows; a window closed part way keeps its place
 //! for as long as Formiga runs, since closing the settings window only hides it.
 
+use super::shell::Shell;
 use super::*;
 use crate::settings::SettingsTab;
 
@@ -268,7 +269,7 @@ impl TourState {
     pub(crate) const LENGTH: usize = STEPS.len();
 }
 
-impl Clubhouse {
+impl Shell {
     /// Takes the tour from the beginning, whether or not the colony has taken it before.
     pub fn take_the_tour(&mut self) {
         self.tour.step = Some(0);
