@@ -1092,6 +1092,7 @@ impl World {
             .collect();
         let mut answering: Vec<(CreatureId, Point, f32)> = Vec::new();
         let find_allowed = self.trinket_find_allowed(now);
+        let mut up_on_roofs = Vec::new();
         for creature in &mut self.save.creatures {
             if self
                 .interaction
@@ -1162,7 +1163,20 @@ impl World {
                     frame,
                     find_allowed,
                 };
-                if village_life::advance(activity, creature, dt, &mut context) {
+                let was_on_roof = creature
+                    .state
+                    .beat
+                    .is_some_and(|beat| beat.kind == BeatKind::RoofSit);
+                let going_on = village_life::advance(activity, creature, dt, &mut context);
+                if !was_on_roof
+                    && creature
+                        .state
+                        .beat
+                        .is_some_and(|beat| beat.kind == BeatKind::RoofSit)
+                {
+                    up_on_roofs.push(creature.id);
+                }
+                if going_on {
                     continue;
                 }
                 self.village_life.remove(&creature.id);
@@ -1644,6 +1658,12 @@ impl World {
                 && let Some(point) = resting.get(&id).copied()
             {
                 answering.push((id, point, length));
+            }
+        }
+        if !up_on_roofs.is_empty() {
+            let day = local_day(now);
+            for creature in up_on_roofs {
+                self.save.day_book.count_roof(day, creature);
             }
         }
 

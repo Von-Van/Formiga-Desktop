@@ -110,6 +110,10 @@ pub struct World {
     /// back. Never saved: it lasts as long as the app runs.
     /// The changes that can still be taken back, oldest first.
     undo_history: VecDeque<undo::UndoPoint>,
+    /// When the last tick was, by the clock, and the seconds with the houses out since the day
+    /// book was last written to. Runtime only.
+    day_clock: Option<OffsetDateTime>,
+    home_seconds_pending: f32,
     /// Sleepers being towed out of somebody's way by a friend on a little rope.
     tows: tows::TowTable,
     /// When the colony next yawns, and the yawns and looks still waiting to start.
@@ -210,7 +214,33 @@ fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
     now.to_offset(offset)
 }
 
+/// The local day `now` falls on, as a Julian day number: the day the day book counts it under.
+fn local_day(now: OffsetDateTime) -> i32 {
+    local_time_or_utc(now).date().to_julian_day()
+}
+
 impl World {
+    /// Counts the time the houses are out in the day book, by the clock rather than by ticks, a
+    /// few seconds at a time. A gap of more than a few seconds — the machine asleep, the app
+    /// stopped — is not time at home, and is not counted.
+    fn count_home_time(&mut self, now: OffsetDateTime) {
+        const LONGEST_STEP: f32 = 5.0;
+        const WRITE_EVERY: f32 = 10.0;
+        let step = self.day_clock.map_or(0.0, |last| {
+            (now - last).as_seconds_f32().clamp(0.0, LONGEST_STEP)
+        });
+        self.day_clock = Some(now);
+        if !self.save.home.is_active() {
+            return;
+        }
+        self.home_seconds_pending += step;
+        if self.home_seconds_pending >= WRITE_EVERY {
+            let whole = self.home_seconds_pending.floor();
+            self.home_seconds_pending -= whole;
+            self.save.day_book.count_home(local_day(now), whole as u32);
+        }
+    }
+
     /// Queues one ephemeral world event. Publicly observable events are projected into compact
     /// state before `tick`, `handle_command`, or `drain_events` returns.
     fn emit(events: &mut Vec<WorldEvent>, event: WorldEvent) {
@@ -290,6 +320,7 @@ impl World {
             },
             visitors: VisitorState::default(),
             finds_today: FindsToday::default(),
+            day_book: DayBook::default(),
         };
         let mut world = Self::from_save(save);
         world.generator = generator;
@@ -367,6 +398,8 @@ impl World {
             habit_rng: streams.rng("habits", 0),
             village_moment: None,
             undo_history: VecDeque::new(),
+            day_clock: None,
+            home_seconds_pending: 0.0,
             tows: tows::TowTable::default(),
             beats: beats::Beats::new(&streams),
             antics: antics::Antics::new(&streams),
@@ -404,6 +437,7 @@ impl World {
             self.dismiss_home(timeline_now, false);
         }
         self.apply_routine_schedule(now);
+        self.count_home_time(now);
         self.process_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
         self.process_village_unlocks(timeline_now);

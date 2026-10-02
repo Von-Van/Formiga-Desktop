@@ -2167,3 +2167,68 @@ fn command_w_asks_for_the_notebook_to_close() {
             .close_notebook
     );
 }
+
+/// Today compares itself with the rest of the week only once yesterday was counted, each line
+/// says what it rests on, and a pair who sought each other out is named.
+#[test]
+fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
+    let mut h = Harness::new(SettingsTab::Today);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "TODAY, COMPARED"));
+    assert!(shown_starting(
+        &h,
+        "The notebook began counting the colony's days today"
+    ));
+    let local = time::OffsetDateTime::now_utc().to_offset(clubhouse::local_offset());
+    let day = local.date().to_julian_day();
+    let (a, b) = (h.save.creatures[0].id, h.save.creatures[1].id);
+    h.save.day_book.count_home(day - 1, 600);
+    for a_began in [true, false, true] {
+        h.save.day_book.count_pair(
+            day,
+            a,
+            b,
+            Some(a_began),
+            formiga_core::SharedMomentKind::Greeting,
+            true,
+        );
+    }
+    // The page keeps what it read for half a minute; a new page state reads it at once.
+    h.clubhouse.today = Default::default();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let (first, second) = formiga_core::canonical_creature_pair(a, b).unwrap();
+    let name = |id| {
+        h.save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == id)
+            .unwrap()
+            .name
+            .clone()
+    };
+    assert!(
+        shown(
+            &h,
+            &format!(
+                "{} and {} sought each other out 3 times today",
+                name(first),
+                name(second)
+            )
+        ),
+        "{:?}",
+        h.labels.iter().map(|(text, _)| text).collect::<Vec<_>>()
+    );
+    let (by_first, by_second) = if first == a { (2, 1) } else { (1, 2) };
+    assert!(shown(
+        &h,
+        &format!(
+            "{} went looking {}, {} {}.",
+            name(first),
+            if by_first == 2 { "twice" } else { "once" },
+            name(second),
+            if by_second == 2 { "twice" } else { "once" }
+        )
+    ));
+}

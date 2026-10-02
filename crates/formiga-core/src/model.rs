@@ -3162,6 +3162,10 @@ pub struct SaveFile {
     /// day, however many companions it has: see `daily_trinket_target`.
     #[serde(default, skip_serializing_if = "FindsToday::is_empty")]
     pub finds_today: FindsToday,
+    /// A few counts for each of the last week's days, for the Today page to compare. Absent from
+    /// the file until anything is counted.
+    #[serde(default, skip_serializing_if = "crate::DayBook::is_empty")]
+    pub day_book: crate::DayBook,
 }
 
 /// The trinkets found so far on one local day.

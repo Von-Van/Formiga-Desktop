@@ -378,6 +378,57 @@ fn a_resident_sits_up_on_its_own_roof_and_comes_back_down() {
     assert!(came_down > 0, "nobody came down again");
 }
 
+/// An hour with the houses out is counted in the day book by the clock, a few seconds at a time,
+/// and so is whoever sat up on a roof; time with them away adds nothing at home.
+#[test]
+fn the_day_book_counts_time_at_home_and_who_sat_up_on_a_roof() {
+    let created = datetime!(2026-01-01 9:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([93; 32], 3, created, &desktop);
+    let mut now = created;
+    for _ in 0..72_000 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        // Kept out by the clock, so the gathering never runs its course.
+        world.save.home.active_since_utc = Some(now);
+    }
+    let book = &world.save.day_book;
+    let counted: u32 = book.days.iter().map(|day| day.home_seconds).sum();
+    assert!(
+        (3_580..=3_600).contains(&counted),
+        "an hour at home counted as {counted} seconds"
+    );
+    let roofs: BTreeSet<CreatureId> = book
+        .days
+        .iter()
+        .flat_map(|day| day.roof.iter().copied())
+        .collect();
+    assert!(!roofs.is_empty(), "nobody's sit up on a roof was counted");
+    assert!(book.since.is_some());
+
+    // The houses put away, and ten minutes later nothing more has been counted at home. Opened again
+    // first, since a settled colony's later members were added without what the desktop needs.
+    let mut world = World::from_save(world.save.clone());
+    world.save.home.active_since_utc = None;
+    for _ in 0..12_000 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        world.save.home.active_since_utc = None;
+    }
+    let after: u32 = world
+        .save
+        .day_book
+        .days
+        .iter()
+        .map(|day| day.home_seconds)
+        .sum();
+    assert!(
+        after - counted < 15,
+        "{} seconds counted away from home",
+        after - counted
+    );
+}
+
 /// Stands a plan up for one resident, as if the village had chosen it.
 fn start_plan(world: &mut World, creature_id: CreatureId, plan: Plan) {
     world

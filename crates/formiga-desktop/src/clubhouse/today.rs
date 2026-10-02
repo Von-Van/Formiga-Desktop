@@ -5,7 +5,7 @@
 use super::shell::Shell;
 use super::*;
 use crate::settings::SettingsTab;
-use formiga_core::{Observation, SharedMomentKind};
+use formiga_core::{DayNote, GardenKind, GardenStage, Observation, SharedMomentKind};
 
 /// What was unread when the reader turned to the Today or Journal page: kept while they stay on
 /// those pages, so the news they came to read does not vanish the moment it is marked as read.
@@ -296,9 +296,121 @@ fn section(ui: &mut Ui, title: &str, help: &str) {
     ui.add_space(4.0);
 }
 
+/// How long the Today page keeps its comparisons before reading them again: long enough that a
+/// line does not come and go as the counts under it tick over.
+const NOTES_FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// The Today page's own state. Never saved.
 #[derive(Default)]
-pub(crate) struct TodayState {}
+pub(crate) struct TodayState {
+    /// How today compares with the rest of the week, and when that was read.
+    notes: Vec<DayNote>,
+    noted_at: Option<std::time::Instant>,
+}
+
+/// The garden a patch is, as a sentence's subject: what it is called, and whether it is several.
+fn garden_subject(kind: GardenKind) -> (String, bool) {
+    let plural = matches!(kind, GardenKind::Sunflowers | GardenKind::Cactus);
+    (format!("the {}", kind.label().to_lowercase()), plural)
+}
+
+fn capitalised(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
+}
+
+/// What a comparison says, and the counts it rests on, both in the notebook's voice.
+pub(crate) fn day_note_text(save: &SaveFile, note: &DayNote) -> (String, String) {
+    match *note {
+        DayNote::SoughtEachOther {
+            a,
+            b,
+            sought: [by_a, by_b],
+        } => {
+            let count = u16::from(by_a) + u16::from(by_b);
+            (
+                format!(
+                    "{} and {} sought each other out {} today",
+                    name_of(save, a),
+                    name_of(save, b),
+                    times(u32::from(count))
+                ),
+                format!(
+                    "{} went looking {}, {} {}.",
+                    name_of(save, a),
+                    times(u32::from(by_a)),
+                    name_of(save, b),
+                    times(u32::from(by_b))
+                ),
+            )
+        }
+        DayNote::WentLookingFor {
+            seeker,
+            sought,
+            times: count,
+        } => (
+            format!(
+                "{} went looking for {} {} today",
+                name_of(save, seeker),
+                name_of(save, sought),
+                times(u32::from(count))
+            ),
+            "Followed, greeted coming home, or brought a find.".to_owned(),
+        ),
+        DayNote::FirstRoofSitThisWeek { creature } => (
+            format!(
+                "{} sat up on the roof for the first time this week",
+                name_of(save, creature)
+            ),
+            "Not once in the six days before.".to_owned(),
+        ),
+        DayNote::GardenStage { kind, stage } => {
+            let (subject, plural) = garden_subject(kind);
+            let (has, its) = if plural {
+                ("have", "their")
+            } else {
+                ("has", "its")
+            };
+            let said = match stage {
+                GardenStage::Bounty => {
+                    format!(
+                        "{} {has} reached {its} fourth stage, at {its} fullest",
+                        capitalised(&subject)
+                    )
+                }
+                _ => format!("{} {has} reached {its} third stage", capitalised(&subject)),
+            };
+            (
+                said,
+                format!(
+                    "It came round to it today, {} hours a stage.",
+                    kind.stage_hours()
+                ),
+            )
+        }
+        DayNote::MoreTimeAtHome { today, yesterday } => (
+            "More time at home than yesterday".to_owned(),
+            if yesterday == 0 {
+                format!(
+                    "{} with the houses out, and none yesterday.",
+                    duration_text(today)
+                )
+            } else {
+                format!(
+                    "{} with the houses out, against {} yesterday.",
+                    duration_text(today),
+                    duration_text(yesterday)
+                )
+            },
+        ),
+        DayNote::MorePlay { today, yesterday } => (
+            "More play than yesterday".to_owned(),
+            format!("{today} games between companions, against {yesterday} yesterday."),
+        ),
+    }
+}
 
 impl TodayState {
     /// The Today page. `reading` is what was new when the reader turned to it.
@@ -371,6 +483,7 @@ impl TodayState {
 
         ui.add_space(10.0);
         self.today_card(ui, shell, save, offset);
+        self.compared(ui, save, now.to_offset(offset));
         section(ui, "Right now", "What each companion is doing this minute.");
         wide_card(ui, |ui| {
             if save.creatures.is_empty() {
@@ -646,6 +759,44 @@ fn today_tally(moments: &[&JournalEntry]) -> Vec<String> {
 }
 
 impl TodayState {
+    /// How today compares with the rest of the week: a few lines, each with the counts it rests
+    /// on, and only for days the day book was counting.
+    fn compared(&mut self, ui: &mut Ui, save: &SaveFile, local: OffsetDateTime) {
+        if self
+            .noted_at
+            .is_none_or(|at| at.elapsed() >= NOTES_FRESH_FOR)
+        {
+            self.notes = formiga_core::day_notes(save, local);
+            self.noted_at = Some(std::time::Instant::now());
+        }
+        section(
+            ui,
+            "Today, compared",
+            "How today compares with the rest of the week, from the few counts the colony keeps \
+             for each day. Nothing is compared with a day before it began keeping them.",
+        );
+        wide_card(ui, |ui| {
+            if self.notes.is_empty() {
+                let day = local.date().to_julian_day();
+                ui.label(if save.day_book.counted(day - 1) {
+                    "Nothing stands out yet today. A line appears here when today has something \
+                     the rest of the week did not — two who sought each other out, a first sit \
+                     up on a roof, a garden coming round."
+                } else {
+                    "The notebook began counting the colony's days today, so there is no \
+                     yesterday to compare with until tomorrow."
+                });
+                return;
+            }
+            for note in &self.notes {
+                let (said, evidence) = day_note_text(save, note);
+                ui.label(said);
+                ui.small(RichText::new(evidence).color(muted()));
+                ui.add_space(4.0);
+            }
+        });
+    }
+
     /// Today at a glance, on the Today page: who the day was about, what kinds of thing
     /// happened, what was found, and the latest few moments, all read from what was recorded.
     pub(crate) fn today_card(

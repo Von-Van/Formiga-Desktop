@@ -181,6 +181,9 @@ const STEPS: &[Step] = &[
     // 24: the notebook's page of wonders, and the trinkets found today. An older colony has
     // found none of either.
     Step::adds_only(23),
+    // 25: the day book, for the Today page to compare one day with another. An older colony has
+    // counted nothing, and the book only says anything about days it counted.
+    Step::adds_only(24),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

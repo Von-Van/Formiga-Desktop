@@ -330,3 +330,26 @@ pub struct Undo {
 }
 
 pub const UNDO: Undo = Undo { depth: 8 };
+
+/// When a day is worth a line on the Today page (`daybook.rs`). Below these, today is simply not
+/// compared.
+pub struct TodayNotes {
+    /// Two who went looking for each other at least this many times between them.
+    pub sought_each_other: u16,
+    /// One who went looking for another at least this many times.
+    pub went_looking: u8,
+    /// Seconds with the houses out before more time at home than yesterday is worth saying.
+    pub home_seconds: u32,
+    /// Games between companions before more play than yesterday is worth saying.
+    pub plays: u16,
+    /// The most lines today has.
+    pub most: usize,
+}
+
+pub const TODAY_NOTES: TodayNotes = TodayNotes {
+    sought_each_other: 2,
+    went_looking: 2,
+    home_seconds: 10 * 60,
+    plays: 3,
+    most: 4,
+};

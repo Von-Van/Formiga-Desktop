@@ -15,7 +15,7 @@ fn migrate(value: serde_json::Value, version: u32) -> Result<SaveFile, Persisten
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 275] = [
+const SAVED_FIELDS: [&str; 282] = [
     "Decoration",
     "Friendship",
     "Garden",
@@ -90,6 +90,8 @@ const SAVED_FIELDS: [&str; 275] = [
     "cursor_interest",
     "cursor_reactions",
     "cursor_trust",
+    "day",
+    "day_book",
     "days",
     "decision_temperature",
     "decorations",
@@ -148,6 +150,7 @@ const SAVED_FIELDS: [&str; 275] = [
     "highlight_style",
     "home",
     "home_affinity",
+    "home_seconds",
     "home_visits",
     "hooks",
     "horns",
@@ -197,6 +200,7 @@ const SAVED_FIELDS: [&str; 275] = [
     "origin",
     "ornaments",
     "overridden",
+    "pairs",
     "palette",
     "palette_index",
     "parent_id",
@@ -221,8 +225,10 @@ const SAVED_FIELDS: [&str; 275] = [
     "relationships",
     "relative_x",
     "rest_pose",
+    "rests",
     "ritual",
     "role",
+    "roof",
     "roundness",
     "routine",
     "routine_affinity",
@@ -234,6 +240,7 @@ const SAVED_FIELDS: [&str; 275] = [
     "shared_rests",
     "shelter",
     "signed",
+    "since",
     "size",
     "sleep_interruptions",
     "sleep_pressure",
@@ -1212,6 +1219,7 @@ fn example_save() -> SaveFile {
         },
         visitors: crate::VisitorState::default(),
         finds_today: crate::FindsToday::default(),
+        day_book: crate::DayBook::default(),
     }
 }
 
