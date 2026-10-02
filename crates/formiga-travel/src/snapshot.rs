@@ -97,12 +97,6 @@ mirror!(
     }
 );
 
-impl Default for Theme {
-    fn default() -> Self {
-        Self::System
-    }
-}
-
 /// How the owner likes things shown, as far as both apps share it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
