@@ -7,6 +7,11 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 pub struct TrayState {
     tray: TrayIcon,
+    /// The menu itself, kept to add and remove the trip to Formiga Hill as Hill comes and goes.
+    menu: Menu,
+    /// The trip to Formiga Hill: only in the menu while Hill is installed.
+    hill: MenuItem,
+    hill_menu: HillMenu,
     pub about: MenuItem,
     /// Whether the icon carries its small dot for something new in the journal.
     news: bool,
@@ -43,8 +48,26 @@ pub enum TrayAction {
     QuietMoment,
     CheckForUpdates,
     OpenAbout,
+    GoToHill,
+    BringColonyHome,
     None,
 }
+
+/// What the tray offers about Formiga Hill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HillMenu {
+    /// Hill is not installed: the menu says nothing about it.
+    Hidden,
+    /// Hill is installed and the colony is home.
+    Go,
+    /// The colony is leaving, or away.
+    Away,
+    /// The colony is getting off the train.
+    Returning,
+}
+
+/// Where the trip sits in the menu: straight after the everyday colony actions.
+const HILL_POSITION: usize = 5;
 
 impl TrayState {
     pub fn new(settings: &Settings) -> Result<Self> {
@@ -68,6 +91,7 @@ impl TrayState {
         let check_updates = MenuItem::new("Check for updates…", true, None);
         let about = MenuItem::new("About Formiga", true, None);
         let quit = MenuItem::new("Quit Formiga", true, None);
+        let hill = MenuItem::new("Go to Formiga Hill…", true, None);
         let separator_a = PredefinedMenuItem::separator();
         let separator_b = PredefinedMenuItem::separator();
         let separator_c = PredefinedMenuItem::separator();
@@ -104,10 +128,13 @@ impl TrayState {
         let tray = TrayIconBuilder::new()
             .with_tooltip(TOOLTIP)
             .with_icon(icon(false)?)
-            .with_menu(Box::new(menu))
+            .with_menu(Box::new(menu.clone()))
             .build()?;
         Ok(Self {
             tray,
+            menu,
+            hill,
+            hill_menu: HillMenu::Hidden,
             about,
             news: false,
             trouble: false,
@@ -153,6 +180,13 @@ impl TrayState {
         }
         if event.id() == self.gather.id() {
             return TrayAction::GatherCreatures;
+        }
+        if event.id() == self.hill.id() {
+            return match self.hill_menu {
+                HillMenu::Go => TrayAction::GoToHill,
+                HillMenu::Away => TrayAction::BringColonyHome,
+                HillMenu::Hidden | HillMenu::Returning => TrayAction::None,
+            };
         }
         if event.id() == self.reset.id() {
             let confirmed = self
@@ -216,6 +250,53 @@ impl TrayState {
         self.scale_4.set_checked(settings.display_scale == 4);
     }
 
+    /// Offer the trip to Formiga Hill, or the way home from it, or nothing at all. While the
+    /// colony is away the actions that move it about the desktop wait for it to come back.
+    pub fn sync_hill(&mut self, mode: HillMenu) {
+        if mode == self.hill_menu {
+            return;
+        }
+        let shown = self.hill_menu != HillMenu::Hidden;
+        let showing = mode != HillMenu::Hidden;
+        if showing && !shown {
+            if let Err(error) = self.menu.insert(&self.hill, HILL_POSITION) {
+                tracing::warn!(%error, "could not offer the trip to Formiga Hill");
+                return;
+            }
+        } else if shown
+            && !showing
+            && let Err(error) = self.menu.remove(&self.hill)
+        {
+            tracing::warn!(%error, "could not withdraw the trip to Formiga Hill");
+        }
+        self.hill_menu = mode;
+        match mode {
+            HillMenu::Hidden | HillMenu::Go => self.hill.set_text("Go to Formiga Hill…"),
+            HillMenu::Away => self.hill.set_text("Bring the colony home"),
+            HillMenu::Returning => self.hill.set_text("Coming home…"),
+        }
+        self.hill.set_enabled(mode != HillMenu::Returning);
+        let home = matches!(mode, HillMenu::Hidden | HillMenu::Go);
+        for item in [&self.gather, &self.quiet] {
+            item.set_enabled(home);
+        }
+        self.paused.set_enabled(home);
+        self.reset.set_enabled(home);
+        if !self.trouble
+            && let Err(error) = self.tray.set_tooltip(Some(self.resting_tooltip()))
+        {
+            tracing::warn!(%error, "could not update the tray tooltip");
+        }
+    }
+
+    /// The tooltip while nothing is wrong: where the colony is.
+    fn resting_tooltip(&self) -> &'static str {
+        match self.hill_menu {
+            HillMenu::Hidden | HillMenu::Go => TOOLTIP,
+            HillMenu::Away | HillMenu::Returning => "Formiga · the colony is at Formiga Hill",
+        }
+    }
+
     pub fn sync_quiet(&mut self, active: bool) {
         if active != self.quiet_active {
             self.quiet_active = active;
@@ -253,7 +334,7 @@ impl TrayState {
         let text = if trouble {
             "Formiga · could not save the colony just now; open the notebook for details"
         } else {
-            TOOLTIP
+            self.resting_tooltip()
         };
         if let Err(error) = self.tray.set_tooltip(Some(text)) {
             tracing::warn!(%error, "could not update the tray tooltip");

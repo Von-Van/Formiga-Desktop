@@ -58,7 +58,13 @@ pub fn run(path: PathBuf) -> Result<()> {
             );
             let ground = y + LABEL + (ROW - (TRAIN_HEIGHT - TRAIN_GROUND)) * SCALE;
             let train = TrainRenderer::render(&look, MAX_CARS, 4);
-            stamp(&mut pixels, width, &train, 4, ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32);
+            stamp(
+                &mut pixels,
+                width,
+                &train,
+                4,
+                ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32,
+            );
             // A companion standing at each door, as one about to step in would.
             let doors = door_centers(MAX_CARS);
             let mut x = (longest + GAP) * SCALE;
@@ -96,18 +102,37 @@ pub fn run(path: PathBuf) -> Result<()> {
     let mut x = 4_i32;
     for cars in 1..MAX_CARS {
         let train = TrainRenderer::render(&look, cars, 5);
-        stamp(&mut pixels, width, &train, x, ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32);
+        stamp(
+            &mut pixels,
+            width,
+            &train,
+            x,
+            ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32,
+        );
         x += ((train_width(cars) + GAP) * SCALE) as i32;
     }
     // Every frame of one carriage: four running, two standing.
     let y = top(&mut band);
     wallpaper(&mut pixels, width, y, ROW * SCALE + LABEL, false);
-    label(&mut pixels, width, 4, y + 3, "FRAMES: RUNNING 0-3, STANDING 4-5", false);
+    label(
+        &mut pixels,
+        width,
+        4,
+        y + 3,
+        "FRAMES: RUNNING 0-3, STANDING 4-5",
+        false,
+    );
     let ground = y + LABEL + (ROW - (TRAIN_HEIGHT - TRAIN_GROUND)) * SCALE;
     let mut x = 4_i32;
     for frame in 0..TRAIN_FRAMES {
         let train = crop_engine(&TrainRenderer::render(&look, 1, frame));
-        stamp(&mut pixels, width, &train, x, ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32);
+        stamp(
+            &mut pixels,
+            width,
+            &train,
+            x,
+            ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32,
+        );
         x += ((train.width() + 4) * SCALE) as i32;
     }
     crate::write_png(&path, width, height, &pixels)?;
@@ -128,7 +153,11 @@ fn crop_engine(train: &Canvas) -> Canvas {
 }
 
 fn wallpaper(pixels: &mut [u8], width: u32, top: u32, rows: u32, dark: bool) {
-    let shade = if dark { [52, 50, 64, 255] } else { [234, 230, 222, 255] };
+    let shade = if dark {
+        [52, 50, 64, 255]
+    } else {
+        [234, 230, 222, 255]
+    };
     for y in top..top + rows {
         for x in 0..width {
             let index = ((y * width + x) * 4) as usize;

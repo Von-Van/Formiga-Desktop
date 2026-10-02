@@ -1319,6 +1319,7 @@ dependencies = [
  "anyhow",
  "formiga-art",
  "formiga-core",
+ "formiga-travel",
  "gif",
  "png",
  "rand",

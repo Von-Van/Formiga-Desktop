@@ -157,7 +157,11 @@ fn rounded_block(canvas: &mut Canvas, x: i32, y: i32, w: i32, h: i32, radius: i3
 
 /// A window: dark glass with a glint in its upper left corner, or lamplight after dark.
 fn window(canvas: &mut Canvas, x: i32, y: i32, w: i32, h: i32, lit: bool) {
-    let (pane, shine) = if lit { (GLOW, GLOW_CORE) } else { (GLASS, GLINT) };
+    let (pane, shine) = if lit {
+        (GLOW, GLOW_CORE)
+    } else {
+        (GLASS, GLINT)
+    };
     for py in y..y + h {
         for px in x..x + w {
             let corner = (px == x || px == x + w - 1) && (py == y || py == y + h - 1);
@@ -207,7 +211,15 @@ fn engine(canvas: &mut Canvas, paints: &Paints, phase: u8, moving: bool) {
     window(canvas, 34, g - 27, 8, 7, paints.lit);
     // A lamp on the nose: brass, and lit after dark or while it runs.
     rounded_block(canvas, 1, g - 21, 4, 4, 1, paints.brass);
-    canvas.set(2, g - 20, if paints.lit || moving { GLOW_CORE } else { paints.brass.light });
+    canvas.set(
+        2,
+        g - 20,
+        if paints.lit || moving {
+            GLOW_CORE
+        } else {
+            paints.brass.light
+        },
+    );
     // The footplate along the bottom, and the cowcatcher in front of it.
     rounded_block(canvas, 3, g - 11, 44, 4, 1, paints.iron);
     for row in 0..5 {
@@ -381,7 +393,10 @@ mod tests {
                 let canvas = TrainRenderer::render(&look(), cars, frame);
                 let (left, top, right, bottom) = canvas.alpha_bounds().unwrap();
                 assert!(left <= 1, "the nose reaches the front: {left}");
-                assert!(right + 2 >= canvas.width() - 1, "the last carriage reaches the back");
+                assert!(
+                    right + 2 >= canvas.width() - 1,
+                    "the last carriage reaches the back"
+                );
                 assert!(top >= 1, "the steam stays inside the frame");
                 assert_eq!(bottom, TRAIN_GROUND, "the wheels stand on the ground");
             }
@@ -423,7 +438,14 @@ mod tests {
     #[test]
     fn after_dark_the_windows_are_lit() {
         let day = TrainRenderer::render(&look(), 1, 4);
-        let night = TrainRenderer::render(&TrainLook { lit: true, ..look() }, 1, 4);
+        let night = TrainRenderer::render(
+            &TrainLook {
+                lit: true,
+                ..look()
+            },
+            1,
+            4,
+        );
         let glowing = |canvas: &Canvas| canvas.pixels().iter().filter(|p| **p == GLOW).count();
         assert!(glowing(&night) > glowing(&day) + 40);
     }

@@ -14,8 +14,8 @@
 
 use formiga_travel::{
     ACK_FILE, AckRefusal, Acknowledgement, Capability, RECALL_FILE, RECEIPT_FILE, Recall,
-    RecallReason, ReturnEffect, ReturnReceipt, SNAPSHOT_FILE, SessionId, SnapshotSeal,
-    TravelError, TravelSnapshot, read_document, write_atomically, write_document,
+    RecallReason, ReturnEffect, ReturnReceipt, SNAPSHOT_FILE, SessionId, SnapshotSeal, TravelError,
+    TravelSnapshot, read_document, write_atomically, write_document,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;

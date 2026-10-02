@@ -41,6 +41,10 @@ pub use shelter::{
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
 };
+pub use train::{
+    CAR_WIDTH, COUPLING, ENGINE_WIDTH, MAX_CARS, RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND,
+    TRAIN_HEIGHT, TrainLook, TrainRenderer, cars_for, door_centers, train_width,
+};
 pub use tree::{
     ANCHOR_CLEARANCE, KeepsakeTreeRenderer, TREE_CELL, TREE_INSET, TRINKET_ANCHORS, TreeScene,
     TrinketAnchor, beside_tree, hook_place, hung_trinkets, reference_tree, standing_row,
@@ -56,10 +60,6 @@ pub use ui_atlas::{
     MENU_ICON_BOX, MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MenuIcon,
     MenuLayout, MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
     menu_label_text,
-};
-pub use train::{
-    CAR_WIDTH, COUPLING, ENGINE_WIDTH, MAX_CARS, RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND,
-    TRAIN_HEIGHT, TrainLook, TrainRenderer, cars_for, door_centers, train_width,
 };
 pub use wonders::{
     WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE, WonderRenderer,

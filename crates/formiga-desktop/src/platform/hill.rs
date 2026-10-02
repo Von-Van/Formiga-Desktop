@@ -106,17 +106,18 @@ fn installed() -> Option<HillInstall> {
         .and_then(|value| value.downcast::<NSString>().ok())
         .map(|value| formiga_travel::sanitize_text(&value.to_string(), 32))
         .filter(|value| !value.is_empty());
-    let travel_version =
-        info(discovery::MACOS_TRAVEL_VERSION_KEY).and_then(|value| match value.downcast::<NSNumber>() {
-            Ok(number) => u32::try_from(number.integerValue()).ok(),
-            Err(value) => value
-                .downcast::<NSString>()
-                .ok()?
-                .to_string()
-                .trim()
-                .parse()
-                .ok(),
-        });
+    let travel_version = info(discovery::MACOS_TRAVEL_VERSION_KEY).and_then(|value| match value
+        .downcast::<NSNumber>(
+    ) {
+        Ok(number) => u32::try_from(number.integerValue()).ok(),
+        Err(value) => value
+            .downcast::<NSString>()
+            .ok()?
+            .to_string()
+            .trim()
+            .parse()
+            .ok(),
+    });
     Some(HillInstall {
         path,
         version,

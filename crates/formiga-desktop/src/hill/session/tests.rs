@@ -74,7 +74,10 @@ fn a_trip_is_written_whole_and_found_again_after_a_restart() {
     assert_eq!(files.open_trip(), None);
     let snapshot = snapshot();
     let trip = files.open(&snapshot).unwrap();
-    assert_eq!(trip.dir, scratch.0.join("travel").join(snapshot.session_id.as_str()));
+    assert_eq!(
+        trip.dir,
+        scratch.0.join("travel").join(snapshot.session_id.as_str())
+    );
     let written = fs::read(trip.dir.join(SNAPSHOT_FILE)).unwrap();
     assert_eq!(written, encode(&snapshot).unwrap());
     assert_eq!(trip.seal, SnapshotSeal::of(&snapshot, &written));
@@ -124,7 +127,10 @@ fn only_a_receipt_for_exactly_this_trip_is_a_receipt() {
         ("another session", encode(&other_session).unwrap()),
         ("another snapshot", encode(&other_snapshot).unwrap()),
         ("a newer version", serde_json::to_vec(&newer).unwrap()),
-        ("an acknowledgement", fs::read(trip.dir.join(SNAPSHOT_FILE)).unwrap()),
+        (
+            "an acknowledgement",
+            fs::read(trip.dir.join(SNAPSHOT_FILE)).unwrap(),
+        ),
     ];
     for (what, bytes) in cases {
         fs::write(&path, bytes).unwrap();
@@ -230,7 +236,10 @@ fn a_visit_outside_the_trip_or_never_offered_is_set_aside() {
         &receipt(&trip, vec![visit(LEFT, LEFT + Duration::minutes(5))]),
         now,
     );
-    assert_eq!(welcome.trip, None, "a visit is only kept when it was offered");
+    assert_eq!(
+        welcome.trip, None,
+        "a visit is only kept when it was offered"
+    );
 }
 
 #[test]
@@ -243,7 +252,10 @@ fn closing_a_trip_leaves_nothing_and_sweeping_leaves_only_the_open_one() {
     assert!(!old.dir.exists());
 
     let open = files.open(&snapshot()).unwrap();
-    let stale = scratch.0.join("travel").join("0123456789abcdef0123456789abcdef");
+    let stale = scratch
+        .0
+        .join("travel")
+        .join("0123456789abcdef0123456789abcdef");
     fs::create_dir_all(&stale).unwrap();
     fs::write(stale.join(RECEIPT_FILE), b"{}").unwrap();
     fs::write(scratch.0.join("travel").join("trip.json.tmp"), b"half").unwrap();
@@ -258,10 +270,7 @@ fn closing_a_trip_leaves_nothing_and_sweeping_leaves_only_the_open_one() {
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .collect();
     left.sort();
-    let mut expected = vec![
-        open.seal.session_id.to_string(),
-        MARKER_FILE.to_owned(),
-    ];
+    let mut expected = vec![open.seal.session_id.to_string(), MARKER_FILE.to_owned()];
     expected.sort();
     assert_eq!(left, expected);
     assert_eq!(fs::read(&outside).unwrap(), b"the colony");

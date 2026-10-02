@@ -22,9 +22,9 @@ mod soak;
 mod social_preview;
 mod sticker;
 mod tick_bench;
+mod train_sheet;
 mod ui_sheet;
 mod village_life_sheet;
-mod train_sheet;
 mod wonder_sheet;
 
 fn main() -> Result<()> {
