@@ -140,17 +140,20 @@ impl FormigaApp {
             }
         }
         let mut companion_changed = false;
-        // A change worth saying in its own words, rather than as a plain "saved".
+        // A change to what the companions will do, said in its own words rather than as a plain
+        // "saved": see `notices`.
         let mut specific_notice: Option<String> = None;
+        let local = OffsetDateTime::now_utc().to_offset(crate::clubhouse::local_offset());
         if let Some(world) = &mut self.world {
             if let Some(minutes) = outcome.quiet_minutes {
                 world.set_quiet_mode(minutes, OffsetDateTime::now_utc());
                 companion_changed = true;
-                specific_notice = Some(if minutes == 0 {
-                    "Quiet moment over · everyone is back to their usual adventures".to_owned()
-                } else {
-                    format!("Everyone is heading home to settle for {minutes} minutes")
-                });
+                let until = world
+                    .save
+                    .companion
+                    .quiet_until
+                    .map(|until| until.to_offset(local.offset()));
+                specific_notice = Some(crate::notices::quiet(minutes, until));
             }
             if outcome.complete_onboarding {
                 world.save.companion.onboarding_complete = true;
@@ -163,12 +166,15 @@ impl FormigaApp {
                     world.save.home.corner = corner
                 });
                 companion_changed = true;
+                specific_notice = Some(crate::notices::home_moved(Some(corner), None));
             }
             if let Some(display) = outcome.home_display {
                 world.edit(ColonyEdit::MovedHome, |world| {
                     world.save.home.display = Some(display);
                 });
                 companion_changed = true;
+                let label = crate::settings::display_label(display, &self.monitors);
+                specific_notice = Some(crate::notices::home_moved(None, Some(&label)));
             }
             if let Some((keeper, slot, kind)) = outcome.set_decoration {
                 companion_changed |= world.edit(ColonyEdit::Decorations, |world| {
@@ -197,9 +203,16 @@ impl FormigaApp {
                 }
             }
             if let Some((kind, along)) = outcome.set_hangout {
-                companion_changed |= world.edit(ColonyEdit::Hangout(kind), |world| {
+                let before = world.save.home.hangout(kind).map(|spot| spot.along);
+                let changed = world.edit(ColonyEdit::Hangout(kind), |world| {
                     world.save.home.set_hangout(kind, along)
                 });
+                companion_changed |= changed;
+                if changed {
+                    let after = world.save.home.hangout(kind).map(|spot| spot.along);
+                    specific_notice =
+                        crate::notices::hangout(kind, before, after).or(specific_notice);
+                }
             }
             if let Some(order) = outcome.cottage_order.clone() {
                 world.edit(ColonyEdit::MovedCottages, |world| {
@@ -221,11 +234,17 @@ impl FormigaApp {
                 companion_changed = true;
             }
             if let Some((kind, along)) = outcome.set_garden {
-                companion_changed |= world.edit(ColonyEdit::Garden(kind), |world| {
+                let was_planted = world.save.home.gardens.iter().any(|p| p.kind == kind);
+                let changed = world.edit(ColonyEdit::Garden(kind), |world| {
                     // A patch put down now starts growing from now, by the colony's own clock.
                     let now = world.save.maximum_seen_utc;
                     world.save.home.set_garden(kind, along, now)
                 });
+                companion_changed |= changed;
+                let planted = world.save.home.gardens.iter().any(|p| p.kind == kind);
+                if changed && planted != was_planted {
+                    specific_notice = Some(crate::notices::garden(kind, planted));
+                }
             }
             if outcome.reset_village {
                 world.edit(ColonyEdit::PutVillageBack, |world| {
@@ -247,6 +266,7 @@ impl FormigaApp {
             {
                 world.save.companion.modes[index] = Some(preset);
                 companion_changed = true;
+                specific_notice = Some(crate::notices::routine_kept(index));
             }
             if let Some(appearance) = outcome.appearance {
                 world.save.companion.appearance = appearance;
@@ -259,10 +279,18 @@ impl FormigaApp {
                 // Editing the routine by hand is the reader speaking last.
                 world.override_routine();
                 companion_changed = true;
+                specific_notice = Some(crate::notices::routine_saved(
+                    &world.save.companion.schedule,
+                    local,
+                ));
             }
             if outcome.resume_routine {
                 world.resume_routine(OffsetDateTime::now_utc());
                 companion_changed = true;
+                specific_notice = Some(crate::notices::routine_resumed(
+                    &world.save.companion.schedule,
+                    local,
+                ));
             }
             // Reading the journal changes nothing worth a notice: it is written with the next
             // routine checkpoint, quietly.
@@ -293,17 +321,21 @@ impl FormigaApp {
             if let Some(origin) = &outcome.forget_favorite_visitor {
                 companion_changed |= world.save.visitors.forget_favorite(origin);
             }
-            if let Some((creature_id, leaning)) = outcome.set_roaming_leaning
-                && world.set_roaming_leaning(creature_id, leaning)
-            {
-                companion_changed = true;
-                if let Some(creature) = world.save.creatures.iter().find(|c| c.id == creature_id) {
-                    specific_notice = Some(format!(
-                        "{} · {}: {}",
-                        creature.name,
-                        leaning.label(),
-                        leaning.description().to_lowercase()
-                    ));
+            if let Some((creature_id, leaning)) = outcome.set_roaming_leaning {
+                let before = world
+                    .save
+                    .creatures
+                    .iter()
+                    .find(|c| c.id == creature_id)
+                    .map(|c| c.leaning);
+                if world.set_roaming_leaning(creature_id, leaning)
+                    && let Some(before) = before
+                    && let Some(creature) =
+                        world.save.creatures.iter().find(|c| c.id == creature_id)
+                {
+                    companion_changed = true;
+                    specific_notice =
+                        Some(crate::notices::leaning(&creature.name, before, leaning));
                 }
             }
         }
@@ -698,7 +730,7 @@ impl FormigaApp {
                 .unwrap_or(false);
             let mut notice = None;
             if let Some(world) = &mut self.world {
-                notice = crate::settings::behavior_change_notice(&world.save.settings, &settings);
+                notice = crate::notices::preferences_applied(&world.save.settings, &settings);
                 world.save.settings = settings;
             }
             match self.finish_settings_change(previous_launch) {
