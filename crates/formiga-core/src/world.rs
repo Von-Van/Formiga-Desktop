@@ -31,6 +31,7 @@ mod routine;
 mod spacing;
 mod surfaces;
 mod tows;
+mod trips;
 mod undo;
 mod village_life;
 mod visitors;
@@ -321,6 +322,7 @@ impl World {
             visitors: VisitorState::default(),
             finds_today: FindsToday::default(),
             day_book: DayBook::default(),
+            trips: TripLog::default(),
         };
         let mut world = Self::from_save(save);
         world.generator = generator;

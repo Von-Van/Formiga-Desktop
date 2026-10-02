@@ -34,6 +34,8 @@ pub enum JournalMoment {
     Revisit(String, u16),
     /// The first wonder of a kind turned up.
     Wonder(crate::WonderKind),
+    /// The colony went away on the train and came home again.
+    Trip,
 }
 
 /// How many moments the journal holds on to past their turn to roll out because they are the
@@ -60,6 +62,7 @@ impl JournalMoment {
                 | Self::Revisit(..)
                 | Self::Habit(_)
                 | Self::Wonder(_)
+                | Self::Trip
         )
     }
 
@@ -70,7 +73,7 @@ impl JournalMoment {
             Self::Friendship(_) => MomentKind::Friendships,
             Self::Discovery | Self::Wonder(_) => MomentKind::Finds,
             Self::Preference(_) | Self::Habit(_) => MomentKind::Ways,
-            Self::Ritual(_) => MomentKind::Together,
+            Self::Ritual(_) | Self::Trip => MomentKind::Together,
             Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) => MomentKind::Village,
             Self::Visit(_) | Self::Revisit(..) => MomentKind::Visitors,
         }

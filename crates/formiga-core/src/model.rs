@@ -3170,6 +3170,48 @@ pub struct SaveFile {
     /// the file until anything is counted.
     #[serde(default, skip_serializing_if = "crate::DayBook::is_empty")]
     pub day_book: crate::DayBook,
+    /// The colony's trips away on the train, and the last of them. Absent from the file until the
+    /// colony has been anywhere.
+    #[serde(default, skip_serializing_if = "TripLog::is_empty")]
+    pub trips: TripLog,
+}
+
+/// How often the colony has been away on the train and come home, and the last time. Only what
+/// Desktop itself writes from a trip it checked is ever kept here: nothing another app sent is
+/// copied in as it was sent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TripLog {
+    pub count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<Trip>,
+}
+
+impl TripLog {
+    pub fn is_empty(&self) -> bool {
+        self.count == 0 && self.last.is_none()
+    }
+}
+
+/// One trip away and home again.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Trip {
+    /// The trip's own identifier, 32 lowercase hex digits, kept so the same trip is never counted
+    /// twice.
+    pub session: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub arrived_at_utc: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub left_at_utc: OffsetDateTime,
+}
+
+impl Trip {
+    /// Whether `session` is written the one way a trip's identifier is.
+    pub fn is_session(session: &str) -> bool {
+        session.len() == 32
+            && session
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }
 }
 
 /// The trinkets found so far on one local day.

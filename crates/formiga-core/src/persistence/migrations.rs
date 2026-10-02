@@ -184,6 +184,9 @@ const STEPS: &[Step] = &[
     // 25: the day book, for the Today page to compare one day with another. An older colony has
     // counted nothing, and the book only says anything about days it counted.
     Step::adds_only(24),
+    // 26: trips away on the train, and the journal moment for coming home from one. An older
+    // colony has never been anywhere.
+    Step::adds_only(25),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

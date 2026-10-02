@@ -750,6 +750,11 @@ fn today_tally(moments: &[&JournalEntry]) -> Vec<String> {
             "new wonder",
             "new wonders",
         ),
+        (
+            count(&|m| matches!(m, JournalMoment::Trip)),
+            "trip away",
+            "trips away",
+        ),
     ] {
         if n > 0 {
             tally.push(plural(n, one, many));

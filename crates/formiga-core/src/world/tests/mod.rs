@@ -26,6 +26,7 @@ mod rituals;
 mod spacing;
 mod topology_and_attention;
 mod tows;
+mod trips;
 mod undo;
 mod village;
 mod village_life;

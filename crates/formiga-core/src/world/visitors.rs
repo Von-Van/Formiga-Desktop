@@ -523,7 +523,7 @@ impl World {
     }
 
     /// Write down a visit that really happened: the guest was here, and said hello.
-    fn sign_if_visited(&mut self, now: OffsetDateTime) {
+    pub(super) fn sign_if_visited(&mut self, now: OffsetDateTime) {
         if self
             .save
             .visitors
@@ -567,7 +567,7 @@ impl World {
     }
 
     /// The guest is off the desktop, wherever the visit had got to.
-    fn close_visit(&mut self) {
+    pub(super) fn close_visit(&mut self) {
         if let Some(guest) = &mut self.save.visitors.guest {
             guest.on_stage = false;
             guest.visit = VisitProgress::default();
