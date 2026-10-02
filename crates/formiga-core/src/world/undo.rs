@@ -90,6 +90,10 @@ pub(super) struct UndoPoint {
     edit: ColonyEdit,
     creatures: Vec<Creature>,
     relationships: Vec<CreatureRelationship>,
+    /// What each pair had done together, and the day book's counts, so that a companion brought
+    /// back comes back with its shared history.
+    tallies: Vec<PairTally>,
+    day_book: DayBook,
     home: ColonyHome,
     objects: Vec<ColonyObject>,
     /// Companions the change itself brought in, which taking it back sends away again. Anyone
@@ -107,6 +111,8 @@ impl World {
             edit,
             creatures: self.save.creatures.clone(),
             relationships: self.save.relationships.clone(),
+            tallies: self.save.tallies.clone(),
+            day_book: self.save.day_book.clone(),
             home: self.save.home.clone(),
             objects: self.save.objects.objects.clone(),
             added: Vec::new(),
@@ -164,6 +170,8 @@ impl World {
                 self.undo_history.push_back(point);
                 return Err(error);
             }
+            // Back where it last stood, which may be on a display unplugged since.
+            self.look_again_at_displays();
             self.save.home.cottage_order = point.home.cottage_order.clone();
             self.save.home.house_styles = point.home.house_styles.clone();
             self.save.home.dressing = point.home.dressing.clone();
@@ -274,8 +282,28 @@ impl World {
                 .filter(|bond| present.contains(&bond.a) && present.contains(&bond.b))
                 .cloned(),
         );
+        let mut tallies: Vec<PairTally> = self
+            .save
+            .tallies
+            .iter()
+            .filter(|pair| !restored.contains(&pair.a) && !restored.contains(&pair.b))
+            .cloned()
+            .collect();
+        tallies.extend(
+            point
+                .tallies
+                .iter()
+                .filter(|pair| restored.contains(&pair.a) || restored.contains(&pair.b))
+                .filter(|pair| present.contains(&pair.a) && present.contains(&pair.b))
+                .cloned(),
+        );
+        let present_ids: Vec<CreatureId> = present.iter().copied().collect();
+        self.save
+            .day_book
+            .restore(&point.day_book, &restored, &present_ids);
         self.save.creatures = creatures;
         self.save.relationships = relationships;
+        self.save.tallies = tallies;
         // A mini that arrived since, whose big version was the one the change brought in, is
         // given a big version from those here now.
         let orphaned = self.save.creatures.iter().any(|creature| {

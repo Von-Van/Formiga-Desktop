@@ -331,6 +331,7 @@ impl World {
     /// first, and one read from disk already has been.
     pub fn from_save(save: impl Into<crate::ValidatedSave>) -> Self {
         let mut save = save.into().into_inner();
+        save.visitors.settle_after_opening();
         // Identity and durable drives survive relaunch, but interrupted locomotion and reactions do
         // not. Surface attachments are validated against the first desktop snapshot on the next
         // tick, while every creature resumes from a stable pose.

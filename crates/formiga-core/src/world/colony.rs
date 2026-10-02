@@ -569,7 +569,19 @@ pub(crate) fn normalize_colony_roles(save: &mut SaveFile) {
     {
         save.creatures[0].role = CreatureRole::Adult;
     }
-    rebalance_minis(&mut save.creatures);
+    // Only a mini whose grown-up is not here is given another: one that has its own keeps it,
+    // so a colony opened again is the colony that was closed.
+    let orphaned = save.creatures.iter().any(|creature| {
+        creature.role.parent_id().is_some_and(|parent| {
+            !save
+                .creatures
+                .iter()
+                .any(|adult| adult.id == parent && adult.role.is_adult())
+        })
+    });
+    if orphaned {
+        rebalance_minis(&mut save.creatures);
+    }
 }
 
 pub(super) fn adult_count(creatures: &[Creature]) -> usize {

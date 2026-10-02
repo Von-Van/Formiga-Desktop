@@ -1320,6 +1320,9 @@ dependencies = [
  "formiga-core",
  "gif",
  "png",
+ "rand",
+ "rand_chacha",
+ "serde_json",
  "sha2",
  "time",
 ]

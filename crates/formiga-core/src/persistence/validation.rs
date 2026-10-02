@@ -89,8 +89,6 @@ impl From<SaveFile> for ValidatedSave {
         save.visitors.normalize();
         crate::world::normalize_colony_roles(&mut save);
         crate::world::normalize_relationships(&mut save);
-        let residents: Vec<_> = save.creatures.iter().map(|creature| creature.id).collect();
-        save.day_book.normalize(&residents);
         save.objects.objects.truncate(MAX_COLONY_OBJECTS);
         save.home.normalize_village();
         // Anything that was never scheduled is scheduled from the colony's seed, as a new colony's

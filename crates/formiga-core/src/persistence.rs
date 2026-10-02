@@ -24,9 +24,11 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+mod damage;
 mod migrations;
 mod validation;
 
+pub use damage::damage;
 pub use validation::{ImportRefusal, ValidatedSave, violations};
 
 /// The largest colony file read. A full colony of six with a full journal is well under half of

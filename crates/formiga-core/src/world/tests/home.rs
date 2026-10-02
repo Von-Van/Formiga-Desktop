@@ -1053,3 +1053,98 @@ fn an_afternoon_at_home_builds_no_bonds_and_spends_none_of_the_calm_minutes_alre
         "the minutes a pair had already spent together were spent or forgotten at home"
     );
 }
+
+/// A display made smaller while the houses are out and everything is paused: nobody is left
+/// standing where the display no longer reaches. Found by the long simulated runs.
+#[test]
+fn residents_paused_at_home_come_with_a_display_that_shrinks() {
+    let created = datetime!(2026-03-01 9:00 UTC);
+    let mut desktop = desktop();
+    desktop.monitors[0].bounds.width = 2560.0;
+    desktop.monitors[0].bounds.height = 1440.0;
+    desktop.monitors[0].usable_bounds.width = 2560.0;
+    desktop.monitors[0].usable_bounds.height = 1366.0;
+    let mut world = World::new(created_seed(), created, &desktop);
+    for seed in [[41; 32], [42; 32]] {
+        world
+            .add_designed_adult(seed, None, created, &desktop)
+            .unwrap();
+    }
+    world.handle_command(WorldCommand::SendHome, &desktop);
+    let mut now = created;
+    for _ in 0..1200 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+    }
+    assert!(world.save.home.is_active());
+    world.save.settings.paused = true;
+    desktop.monitors[0].bounds.width = 1280.0;
+    desktop.monitors[0].bounds.height = 800.0;
+    desktop.monitors[0].usable_bounds.width = 1280.0;
+    desktop.monitors[0].usable_bounds.height = 726.0;
+    for _ in 0..20 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+    }
+    for creature in &world.save.creatures {
+        let p = creature.state.position;
+        assert!(
+            (0.0..=1280.0).contains(&p.x) && (0.0..=800.0).contains(&p.y),
+            "{} is left at ({}, {})",
+            creature.name,
+            p.x,
+            p.y
+        );
+    }
+}
+
+fn created_seed() -> [u8; 32] {
+    [17; 32]
+}
+
+/// A colony closed while a bigger display was plugged in, and opened again paused on a smaller
+/// one: nobody is left standing where the display no longer reaches. Found by the long simulated
+/// runs, where a relaunch is a write and a read like any other.
+#[test]
+fn a_colony_opened_paused_on_a_smaller_display_brings_everyone_onto_it() {
+    let created = datetime!(2026-03-01 9:00 UTC);
+    let mut desktop = desktop();
+    desktop.monitors[0].bounds.width = 2560.0;
+    desktop.monitors[0].bounds.height = 1440.0;
+    desktop.monitors[0].usable_bounds.width = 2560.0;
+    desktop.monitors[0].usable_bounds.height = 1366.0;
+    let mut world = World::new(created_seed(), created, &desktop);
+    for seed in [[41; 32], [42; 32]] {
+        world
+            .add_designed_adult(seed, None, created, &desktop)
+            .unwrap();
+    }
+    let mut now = created;
+    for _ in 0..200 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+    }
+    for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+        creature.state.position = Point {
+            x: 1_900.0 + 150.0 * index as f32,
+            y: 1_376.0,
+        };
+    }
+    world.save.settings.paused = true;
+    let mut reopened = World::from_save(world.save.clone());
+    desktop.monitors[0].bounds.width = 1280.0;
+    desktop.monitors[0].bounds.height = 800.0;
+    desktop.monitors[0].usable_bounds.width = 1280.0;
+    desktop.monitors[0].usable_bounds.height = 726.0;
+    reopened.tick(now + Duration::milliseconds(50), 0.05, &desktop);
+    for creature in &reopened.save.creatures {
+        let p = creature.state.position;
+        assert!(
+            (0.0..=1280.0).contains(&p.x) && (0.0..=800.0).contains(&p.y),
+            "{} is left at ({}, {})",
+            creature.name,
+            p.x,
+            p.y
+        );
+    }
+}

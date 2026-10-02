@@ -129,12 +129,18 @@ impl DayBook {
         {
             Some(index) => index,
             None if record.pairs.len() < MAX_RELATIONSHIPS => {
-                record.pairs.push(DayPair {
-                    a: first,
-                    b: second,
-                    ..DayPair::default()
-                });
-                record.pairs.len() - 1
+                let index = record
+                    .pairs
+                    .partition_point(|pair| (pair.a, pair.b) < (first, second));
+                record.pairs.insert(
+                    index,
+                    DayPair {
+                        a: first,
+                        b: second,
+                        ..DayPair::default()
+                    },
+                );
+                index
             }
             None => return,
         };
@@ -169,6 +175,43 @@ impl DayBook {
     pub fn count_home(&mut self, day: i32, seconds: u32) {
         if let Some(record) = self.day_mut(day) {
             record.home_seconds = record.home_seconds.saturating_add(seconds).min(86_400);
+        }
+    }
+
+    /// Put back what an earlier copy of the book counted for `returning` companions, where
+    /// everyone it names is `present`: a companion brought back by undo comes back with its days.
+    pub fn restore(&mut self, earlier: &DayBook, returning: &[CreatureId], present: &[CreatureId]) {
+        for record in &earlier.days {
+            let roof: Vec<CreatureId> = record
+                .roof
+                .iter()
+                .copied()
+                .filter(|id| returning.contains(id))
+                .collect();
+            let pairs: Vec<DayPair> = record
+                .pairs
+                .iter()
+                .copied()
+                .filter(|pair| returning.contains(&pair.a) || returning.contains(&pair.b))
+                .filter(|pair| present.contains(&pair.a) && present.contains(&pair.b))
+                .collect();
+            if roof.is_empty() && pairs.is_empty() {
+                continue;
+            }
+            let Some(now) = self.day_mut(record.day) else {
+                continue;
+            };
+            for id in roof {
+                if !now.roof.contains(&id) {
+                    now.roof.push(id);
+                }
+            }
+            for pair in pairs {
+                if !now.pairs.iter().any(|p| p.a == pair.a && p.b == pair.b) {
+                    now.pairs.push(pair);
+                }
+            }
+            now.pairs.sort_by_key(|pair| (pair.a, pair.b));
         }
     }
 
@@ -210,6 +253,7 @@ impl DayBook {
                 pairs.push((pair.a, pair.b));
                 keep
             });
+            record.pairs.sort_by_key(|pair| (pair.a, pair.b));
             record.pairs.truncate(MAX_RELATIONSHIPS);
         }
     }

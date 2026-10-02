@@ -456,3 +456,53 @@ fn a_removal_under_rearrangements_comes_back_in_order() {
     assert_eq!(world.save.home.palette, before.palette);
     assert_eq!(world.undoable_edits(), 0);
 }
+
+/// A companion removed on a big display and brought back by undo after the display has been made
+/// smaller, with everything paused: it comes back somewhere the display reaches, not where it
+/// stood before. Found by the long simulated runs.
+#[test]
+fn a_companion_brought_back_after_its_display_shrank_lands_on_the_display() {
+    let (mut world, mut desktop, now) = colony();
+    let target = adults(&world)[1];
+    let name = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == target)
+        .unwrap()
+        .name
+        .clone();
+    let width = desktop.monitors[0].bounds.width;
+    world
+        .save
+        .creatures
+        .iter_mut()
+        .find(|creature| creature.id == target)
+        .unwrap()
+        .state
+        .position
+        .x = width - 20.0;
+    world
+        .edit(ColonyEdit::Removed { name: name.clone() }, |world| {
+            world.remove_colony_creature(target)
+        })
+        .unwrap();
+    world.save.settings.paused = true;
+    desktop.monitors[0].bounds.width = width / 2.0;
+    desktop.monitors[0].usable_bounds.width = width / 2.0;
+    world.tick(now + Duration::seconds(1), 0.05, &desktop);
+    assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::Removed { name }));
+    world.tick(now + Duration::seconds(2), 0.05, &desktop);
+    let back = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == target)
+        .unwrap();
+    assert!(
+        back.state.position.x <= width / 2.0,
+        "brought back at {} on a display {} wide",
+        back.state.position.x,
+        width / 2.0
+    );
+}

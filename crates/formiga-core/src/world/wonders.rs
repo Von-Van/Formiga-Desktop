@@ -171,7 +171,11 @@ impl Ground {
                     && surface.kind == SurfaceKind::ScreenFloor
                     && surface.monitor_id == monitor
             }
-            Self::Village { .. } => true,
+            // Only those already down on the village's own display: a resident still on its
+            // way home from another one is not on this ground yet, however close it looks.
+            Self::Village { monitor } => {
+                surface.window_key.is_none() && surface.monitor_id == monitor
+            }
         }
     }
 }
@@ -1031,7 +1035,7 @@ impl World {
             let mut by_distance: Vec<(f32, CreatureId)> = partners
                 .iter()
                 .filter_map(|id| self.save.creatures.iter().find(|c| c.id == *id))
-                .filter(|c| c.state.surface.monitor_id == ground.monitor() || home)
+                .filter(|c| c.state.surface.monitor_id == ground.monitor())
                 .map(|c| (c.state.position.distance(at), c.id))
                 .collect();
             by_distance.sort_by(|a, b| a.0.total_cmp(&b.0));
