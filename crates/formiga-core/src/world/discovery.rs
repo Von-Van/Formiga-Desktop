@@ -11,15 +11,7 @@ use super::rides::RideMemory;
 use super::surfaces::drop_below;
 use super::*;
 use crate::trinkets::{TrinketCondition, trinkets_for};
-
-/// "After dark" is wider than the late-night ritual's 22..05. That window is about the person
-/// still being awake at an odd hour; this one is about it being dark outside, which begins before
-/// the evening is late and lasts past the first hour anybody is up. It also has to be wide enough
-/// that the night trinkets are findable by someone who keeps ordinary evening hours.
-const EVENING_HOUR: u8 = 20;
-const MORNING_HOUR: u8 = 6;
-/// The early part of the day, when the morning finds turn up: from first light until ten.
-const LATE_MORNING_HOUR: u8 = 10;
+use crate::tuning::FINDS;
 
 impl World {
     /// Whether the colony may turn up another trinket today. A day's finds are shared by the
@@ -46,12 +38,6 @@ impl World {
     }
 }
 
-/// How far down the nearest thing that would catch a fall has to be, in logical desktop points,
-/// before a ledge counts as high. The floor-is-lava game calls 90 points far enough to be worth
-/// not falling into; something found high up asks for more than that — about a window's worth of
-/// clear air, and well past the 12 points a ledge hop treats as a drop at all.
-const HIGH_DROP: f32 = 140.0;
-
 /// The affinity at which the journal writes down a new close friendship. A trinket found beside
 /// a close friend means the word the journal means, so `world/experience.rs` reads this too.
 pub(super) const CLOSE_FRIENDSHIP_AFFINITY: u8 = 112;
@@ -59,26 +45,9 @@ pub(super) const CLOSE_FRIENDSHIP_AFFINITY: u8 = 112;
 /// Two creature-widths: near enough to be standing together rather than merely sharing a ledge.
 const FRIEND_REACH: f32 = CREATURE_ART_WIDTH * 2.0;
 
-/// About half of the finds that could be conditional are, so a circumstance makes a keepsake
-/// likely without ever promising one.
-const CONDITIONAL_IN: u32 = 2;
-
-/// Three times in four the pick prefers something the scrapbook has not seen yet, so an empty
-/// slot fills before a duplicate turns up again.
-const PREFER_UNDISCOVERED_IN: u32 = 4;
-
-/// One find in this many is one of the rare ones, wherever and whenever it happens.
-const RARE_IN: u32 = 60;
-
 /// The moon's cycle, and one new moon to count it from: 6 January 2000, 18:14 UTC.
 const SYNODIC_MONTH_DAYS: f64 = 29.530_588_853;
 const KNOWN_NEW_MOON_UNIX: f64 = 947_182_440.0;
-/// How near to exactly full the moon has to be to count as full: a day and a half either side,
-/// which is as full as it looks to anybody glancing up.
-const FULL_MOON_DAYS: f64 = 1.5;
-
-/// How many days either side of the colony's own birthday its birthday finds turn up.
-const BIRTHDAY_DAYS: i64 = 3;
 
 /// What is true of a creature at the moment it finds something. Conditional trinkets only turn up
 /// when the matching circumstance holds; everything here is read from state the simulation
@@ -135,12 +104,12 @@ pub(super) struct ColonyView<'a> {
 /// Dark outside, by the clock on the user's own wall. The caller converts with
 /// `local_time_or_utc`, so a machine that will not give up its offset behaves one consistent way.
 pub(super) fn after_dark(local: OffsetDateTime) -> bool {
-    !(MORNING_HOUR..EVENING_HOUR).contains(&local.hour())
+    !(FINDS.morning_hour..FINDS.evening_hour).contains(&local.hour())
 }
 
 /// The first hours of the day, by the same wall clock.
 pub(super) fn early_morning(local: OffsetDateTime) -> bool {
-    (MORNING_HOUR..LATE_MORNING_HOUR).contains(&local.hour())
+    (FINDS.morning_hour..FINDS.late_morning_hour).contains(&local.hour())
 }
 
 /// Saturday or Sunday, by the same wall clock.
@@ -160,7 +129,7 @@ pub(super) fn moon_age_days(now: OffsetDateTime) -> f64 {
 
 /// Whether tonight's moon is full, or near enough that nobody looking up would say otherwise.
 pub(super) fn full_moon(now: OffsetDateTime) -> bool {
-    (moon_age_days(now) - SYNODIC_MONTH_DAYS / 2.0).abs() <= FULL_MOON_DAYS
+    (moon_age_days(now) - SYNODIC_MONTH_DAYS / 2.0).abs() <= FINDS.full_moon_days
 }
 
 /// Within a few days of the colony's own birthday, once it has had one: the same anniversary the
@@ -178,7 +147,7 @@ pub(super) fn colony_birthday(local: OffsetDateTime, created_utc: OffsetDateTime
                 .or_else(|_| time::Date::from_calendar_date(year, created.month(), 28))
                 .ok()
         })
-        .any(|birthday| (today - birthday).whole_days().abs() <= BIRTHDAY_DAYS)
+        .any(|birthday| (today - birthday).whole_days().abs() <= FINDS.birthday_days)
 }
 
 /// High up: on a window ledge with a long way down to the nearest thing below it. This is the same
@@ -186,7 +155,7 @@ pub(super) fn colony_birthday(local: OffsetDateTime, created_utc: OffsetDateTime
 /// one thing everywhere, and it carries no absolute screen position with it.
 pub(super) fn high_up(creature: &Creature, desktop: &DesktopSnapshot, settings: &Settings) -> bool {
     creature.state.surface.kind == SurfaceKind::WindowLedge
-        && drop_below(creature, creature.state.position.x, desktop, settings) >= HIGH_DROP
+        && drop_below(creature, creature.state.position.x, desktop, settings) >= FINDS.high_drop
 }
 
 /// Partway along a ride: the window is moving under the creature right now, or the action that
@@ -299,8 +268,10 @@ fn pick_preferring_unseen(side: &mut ChaCha12Rng, pool: &[u8], found: &[Scrapboo
         }
     }
     let pool = if unseen_count > 0
-        && side.random_ratio(PREFER_UNDISCOVERED_IN - 1, PREFER_UNDISCOVERED_IN)
-    {
+        && side.random_ratio(
+            FINDS.prefer_undiscovered_in - 1,
+            FINDS.prefer_undiscovered_in,
+        ) {
         &unseen[..unseen_count]
     } else {
         pool
@@ -328,17 +299,20 @@ pub(super) fn choose_trinket_variant(
     let plain = everyday[rng.random_range(0..everyday.len())];
     let mut side = fork(rng);
     // Once in a long while, anywhere at all.
-    if side.random_ratio(1, RARE_IN) {
+    if side.random_ratio(1, FINDS.rare_in) {
         let (rare, count) = variants_where(|condition| condition == TrinketCondition::Rare);
         return pick_preferring_unseen(&mut side, &rare[..count], found);
     }
     let (qualifying, count) = variants_where(|condition| circumstances.holds(condition));
-    if count > 0 && side.random_ratio(1, CONDITIONAL_IN) {
+    if count > 0 && side.random_ratio(1, FINDS.conditional_in) {
         return pick_preferring_unseen(&mut side, &qualifying[..count], found);
     }
     // An everyday find. It prefers one the scrapbook is still missing, like everything else,
     // and otherwise is the plain draw.
-    if side.random_ratio(PREFER_UNDISCOVERED_IN - 1, PREFER_UNDISCOVERED_IN) {
+    if side.random_ratio(
+        FINDS.prefer_undiscovered_in - 1,
+        FINDS.prefer_undiscovered_in,
+    ) {
         let missing = everyday
             .iter()
             .filter(|variant| !found.iter().any(|record| record.variant == **variant))

@@ -14,18 +14,12 @@
 
 use super::discovery::{self, DiscoveryCircumstances};
 use super::*;
+use crate::tuning::{FINDS, VILLAGE_LIFE};
 
 /// How fast a resident walks about the village on an errand of its own.
 fn errand_speed(creature: &Creature) -> f32 {
     22.0 + creature.personality.activity * 18.0
 }
-
-/// The longest any one walk in a plan may take before the resident gives up on it and does its
-/// thing where it has got to.
-const WALK_LIMIT_SECS: f32 = 20.0;
-
-/// One in this many chores, garden visits and roof sits turns something up.
-const FIND_IN: u32 = 7;
 
 /// What a garden visit is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -264,7 +258,7 @@ impl VillageContext<'_> {
 
     /// Whether this visit turns something up, and in what circumstances.
     fn maybe_find(&mut self, garden: bool, roof: bool) -> Option<DiscoveryCircumstances> {
-        if !self.rng.random_ratio(1, FIND_IN) || !self.find_allowed {
+        if !self.rng.random_ratio(1, FINDS.at_home_in) || !self.find_allowed {
             return None;
         }
         Some(DiscoveryCircumstances {
@@ -276,10 +270,6 @@ impl VillageContext<'_> {
         })
     }
 }
-
-/// The steps of a find at home: holding it up for a moment, and then — once the presentation is
-/// complete — it goes in the scrapbook like any other find.
-const FIND_SECS: f32 = 2.6;
 
 /// Moves one resident's plan on by `dt`. Returns `false` once the plan is over and the resident
 /// should go back to strolling.
@@ -303,7 +293,7 @@ pub(super) fn advance(
             context.noticed(creature.state.position, creature.id, 1.6);
             return true;
         }
-        if activity.step_elapsed >= FIND_SECS {
+        if activity.step_elapsed >= VILLAGE_LIFE.find_secs {
             World::emit(
                 context.events,
                 WorldEvent::ActionCompleted {
@@ -333,7 +323,9 @@ pub(super) fn advance(
             // To the patch.
             (0, _) => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, stand, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, stand, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     creature.state.facing_right = face_right;
                     show(creature, ActionKind::Idle, context.events);
                     let (kind, length, held) = match task {
@@ -381,7 +373,7 @@ pub(super) fn advance(
                     beat(
                         creature,
                         BeatKind::Carrying,
-                        WALK_LIMIT_SECS,
+                        VILLAGE_LIFE.walk_limit_secs,
                         Some(VillageProp::Produce(patch)),
                     );
                     if let Some(onlooker) = context
@@ -393,7 +385,7 @@ pub(super) fn advance(
                         context.asides.push(Aside {
                             creature: friend,
                             beat: BeatKind::Notice,
-                            length: (walk + 1.0).min(WALK_LIMIT_SECS),
+                            length: (walk + 1.0).min(VILLAGE_LIFE.walk_limit_secs),
                             look: creature.state.position,
                         });
                     }
@@ -431,7 +423,9 @@ pub(super) fn advance(
                     y: friend_at.y,
                 };
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, goal, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, goal, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     creature.state.facing_right = friend_at.x > creature.state.position.x;
                     show(creature, ActionKind::Idle, context.events);
                     beat(
@@ -461,7 +455,9 @@ pub(super) fn advance(
         } => match activity.step {
             0 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, stand, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, stand, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     creature.state.facing_right = face_right;
                     show(creature, ActionKind::Idle, context.events);
                     let length = context.rng.random_range(3.0..4.5);
@@ -485,7 +481,9 @@ pub(super) fn advance(
         } => match activity.step {
             0 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, door, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, door, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     creature.state.position = door;
                     creature.state.indoors = true;
                     show(
@@ -517,7 +515,9 @@ pub(super) fn advance(
         } => match activity.step {
             0 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, beside, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, beside, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     show(creature, ActionKind::Landing, context.events);
                     activity.next();
                 }
@@ -566,8 +566,13 @@ pub(super) fn advance(
             // The leaf drifting down.
             0 => {
                 show(creature, ActionKind::Homebound, context.events);
-                if activity.step_elapsed >= LEAF_FALL_SECS {
-                    beat(creature, BeatKind::LeafOnFace, LEAF_BEAT_SECS, None);
+                if activity.step_elapsed >= VILLAGE_LIFE.leaf_fall_secs {
+                    beat(
+                        creature,
+                        BeatKind::LeafOnFace,
+                        VILLAGE_LIFE.leaf_beat_secs,
+                        None,
+                    );
                     context.noticed(creature.state.position, creature.id, 1.6);
                     activity.next();
                 }
@@ -581,7 +586,7 @@ pub(super) fn advance(
                 true
             }
             // The leaf on its way to the ground, and carrying on.
-            _ => activity.step_elapsed < LEAF_DROP_SECS,
+            _ => activity.step_elapsed < VILLAGE_LIFE.leaf_drop_secs,
         },
         Plan::DroppedSnack {
             before,
@@ -617,7 +622,9 @@ pub(super) fn advance(
                     x: to.x + side * context.frame * 0.3,
                     y: from.y,
                 };
-                if walk(creature, goal, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, goal, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     creature.state.facing_right = to.x > creature.state.position.x;
                     show(creature, ActionKind::Idle, context.events);
                     beat(creature, BeatKind::Retrieve, 0.9, None);
@@ -637,7 +644,9 @@ pub(super) fn advance(
             // standing, and the rest of it is eaten at its own spot.
             4 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, back, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, back, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     show(creature, ActionKind::Eat, context.events);
                     activity.next();
                 }
@@ -654,7 +663,9 @@ pub(super) fn advance(
             // Over to the cushion, or nearly.
             0 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, beside, speed, dt) || activity.step_elapsed > WALK_LIMIT_SECS {
+                if walk(creature, beside, speed, dt)
+                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                {
                     creature.state.facing_right = cushion.x > creature.state.position.x;
                     show(creature, ActionKind::Idle, context.events);
                     beat(creature, BeatKind::MissedCushion, 2.4, None);
@@ -691,12 +702,6 @@ pub(super) fn advance(
     }
 }
 
-/// How long a leaf takes to drift down onto a face, how long the start and the shake take, and
-/// how long it takes to reach the ground once shaken off.
-const LEAF_FALL_SECS: f32 = 1.1;
-const LEAF_BEAT_SECS: f32 = 3.0;
-const LEAF_DROP_SECS: f32 = 0.8;
-
 /// A point along a little hop from `from` to `to`: straight across, and up in an arc.
 fn hop_point(from: Point, to: Point, t: f32) -> Point {
     let lift = (to.y - from.y).abs().max(6.0) * 0.5 + 6.0;
@@ -721,7 +726,7 @@ pub(super) fn loose_prop(
     match activity.plan {
         Plan::LeafOnFace => match activity.step {
             0 => {
-                let t = (activity.step_elapsed / LEAF_FALL_SECS).clamp(0.0, 1.0);
+                let t = (activity.step_elapsed / VILLAGE_LIFE.leaf_fall_secs).clamp(0.0, 1.0);
                 let sway = (t * std::f32::consts::TAU * 1.5).sin() * face_height * 0.3 * (1.0 - t);
                 Some((
                     VillageProp::Leaf,
@@ -736,7 +741,7 @@ pub(super) fn loose_prop(
                 (progress < 0.8).then_some((VillageProp::Leaf, face))
             }
             _ => {
-                let t = (activity.step_elapsed / LEAF_DROP_SECS).clamp(0.0, 1.0);
+                let t = (activity.step_elapsed / VILLAGE_LIFE.leaf_drop_secs).clamp(0.0, 1.0);
                 let drift = if creature.state.facing_right {
                     -1.0
                 } else {
@@ -828,23 +833,6 @@ pub(super) enum Choice {
     /// Nothing just now: everything it could do is somebody else's turn.
     Wait,
 }
-
-/// How the choices weigh against one another: an ordinary quiet moment is still the commonest
-/// thing, the garden and the house come next, and a mishap is rare enough to be worth noticing.
-const MOMENT_WEIGHT: u32 = 10;
-const GARDEN_WEIGHT: u32 = 6;
-const CHORE_WEIGHT: u32 = 4;
-const INDOORS_WEIGHT: u32 = 3;
-const ROOF_WEIGHT: u32 = 2;
-const LEAF_WEIGHT: u32 = 1;
-const SNACK_WEIGHT: u32 = 1;
-const CUSHION_WEIGHT: u32 = 1;
-
-/// How long a resident stays indoors: a nap, or a while pottering about in there.
-const INDOORS_NAP_SECS: std::ops::Range<f32> = 40.0..110.0;
-const INDOORS_POTTER_SECS: std::ops::Range<f32> = 12.0..30.0;
-/// How long a resident sits up on its roof.
-const ROOF_SECS: std::ops::Range<f32> = 18.0..45.0;
 
 /// One weighted pick from `weights`, or `None` if they are all zero.
 fn weighted(rng: &mut ChaCha12Rng, weights: &[u32]) -> Option<usize> {
@@ -950,28 +938,36 @@ pub(super) fn choose(
     let house = options.house;
     let weights = [
         if options.moment_free {
-            MOMENT_WEIGHT
+            VILLAGE_LIFE.moment_weight
         } else {
             0
         },
-        if garden.is_some() { GARDEN_WEIGHT } else { 0 },
-        plan_weight(if house.is_some() { CHORE_WEIGHT } else { 0 }),
+        if garden.is_some() {
+            VILLAGE_LIFE.garden_weight
+        } else {
+            0
+        },
+        plan_weight(if house.is_some() {
+            VILLAGE_LIFE.chore_weight
+        } else {
+            0
+        }),
         if house.is_some() && options.may_go_in {
-            INDOORS_WEIGHT + 2 * u32::from(sleepy)
+            VILLAGE_LIFE.indoors_weight + 2 * u32::from(sleepy)
         } else {
             0
         },
         plan_weight(if house.is_some() && options.roof_free {
-            ROOF_WEIGHT
+            VILLAGE_LIFE.roof_weight
         } else {
             0
         }),
-        plan_weight(LEAF_WEIGHT),
-        plan_weight(SNACK_WEIGHT + u32::from(hungry)),
+        plan_weight(VILLAGE_LIFE.leaf_weight),
+        plan_weight(VILLAGE_LIFE.snack_weight + u32::from(hungry)),
         plan_weight(if options.cushions.is_empty() {
             0
         } else {
-            CUSHION_WEIGHT + u32::from(sleepy)
+            VILLAGE_LIFE.cushion_weight + u32::from(sleepy)
         }),
     ];
     let Some(pick) = weighted(rng, &weights) else {
@@ -1025,9 +1021,9 @@ pub(super) fn choose(
                     y: ground,
                 },
                 stay: rng.random_range(if nap {
-                    INDOORS_NAP_SECS
+                    VILLAGE_LIFE.indoors_nap_secs
                 } else {
-                    INDOORS_POTTER_SECS
+                    VILLAGE_LIFE.indoors_potter_secs
                 }),
                 nap,
             }
@@ -1039,7 +1035,7 @@ pub(super) fn choose(
                 y: ground,
             },
             top: house.roof,
-            stay: rng.random_range(ROOF_SECS),
+            stay: rng.random_range(VILLAGE_LIFE.roof_secs),
         },
         (5, _) => Plan::LeafOnFace,
         (6, _) => {

@@ -18,6 +18,7 @@ mod stature;
 mod temperament;
 mod topology;
 mod trinkets;
+pub mod tuning;
 mod visitor;
 mod wonders;
 mod world;

@@ -1,26 +1,5 @@
 use super::*;
-
-/// A second offer inside this window is a nudge rather than a new question, and is turned down.
-/// It is what keeps a double click from feeding anyone twice.
-const PESTER_SECS: i64 = 6;
-/// How long a creature stays full after accepting a snack.
-const FED_SECS: i64 = 90;
-/// How long a creature has had its fill of the toy after accepting one.
-const PLAYED_SECS: i64 = 45;
-/// Sleep pressure past which nothing held out is interesting.
-const TOO_SLEEPY: f32 = 0.82;
-/// Sleep pressure below which a sleeping creature has had its rest and can be woken gently.
-const RESTED_ENOUGH: f32 = 0.35;
-/// Boldness below which a creature takes a beat before it answers.
-const TIMID_BOLDNESS: f32 = 0.38;
-/// How long that beat lasts.
-const THINKING_SECS: f32 = 0.55;
-/// A cursor this close is the hand holding the offer out.
-const CURSOR_REACH: f32 = 240.0;
-/// How many kind and unkind handlings still colour how an offer is received.
-const REMEMBERED_HANDLING: u32 = 50;
-/// Playfulness below which a toy is simply baffling rather than unwanted.
-const BAFFLED_BY_TOYS: f32 = 0.35;
+use crate::tuning::OFFERS;
 
 /// The clip a creature is enjoying because it accepted an offer, if any. A visit holds its own
 /// timeline still while its guest finishes one, exactly as it does for a pet.
@@ -155,14 +134,14 @@ impl World {
             && !self.save.settings.reduce_motion
             && self
                 .offer_subject(creature_id)
-                .is_some_and(|creature| creature.personality.boldness < TIMID_BOLDNESS);
+                .is_some_and(|creature| creature.personality.boldness < OFFERS.timid_boldness);
         let memory = self.offers.entry(creature_id).or_default();
         memory.offers = memory.offers.saturating_add(1);
         memory.last_offer_utc = Some(now);
         memory.pending = hesitates.then_some(PendingAnswer {
             kind,
             answer,
-            remaining: THINKING_SECS,
+            remaining: OFFERS.thinking_secs,
         });
         if hesitates {
             self.show_bubble(creature_id, BubbleIcon::Ellipsis);
@@ -248,14 +227,15 @@ impl World {
         let asleep = creature.state.action == ActionKind::Sleep;
         // Too tired to take an interest, or still sleeping off the day: a creature that needs its
         // rest sleeps through the whole thing.
-        if drives.sleep_pressure >= TOO_SLEEPY || (asleep && drives.sleep_pressure > RESTED_ENOUGH)
+        if drives.sleep_pressure >= OFFERS.too_sleepy
+            || (asleep && drives.sleep_pressure > OFFERS.rested_enough)
         {
             return Answer::Decline(BubbleIcon::Sleepy);
         }
         let no_thanks = || {
             Answer::Decline(if asleep {
                 BubbleIcon::Sleepy
-            } else if kind == OfferKind::Toy && personality.playfulness < BAFFLED_BY_TOYS {
+            } else if kind == OfferKind::Toy && personality.playfulness < OFFERS.baffled_by_toys {
                 BubbleIcon::Question
             } else {
                 BubbleIcon::Decline
@@ -264,7 +244,7 @@ impl World {
         // Asked again before the last answer has finished settling.
         if memory
             .last_offer_utc
-            .is_some_and(|last| now - last < Duration::seconds(PESTER_SECS))
+            .is_some_and(|last| now - last < Duration::seconds(OFFERS.pester_secs))
         {
             return no_thanks();
         }
@@ -275,7 +255,7 @@ impl World {
         match kind {
             OfferKind::Snack
                 if creature.state.action == ActionKind::Eat
-                    || recently(memory.fed_utc, FED_SECS) =>
+                    || recently(memory.fed_utc, OFFERS.fed_secs) =>
             {
                 return no_thanks();
             }
@@ -283,7 +263,7 @@ impl World {
                 if matches!(
                     creature.state.action,
                     ActionKind::SoloPlay | ActionKind::SocialPlay
-                ) || recently(memory.played_utc, PLAYED_SECS) =>
+                ) || recently(memory.played_utc, OFFERS.played_secs) =>
             {
                 return no_thanks();
             }
@@ -301,9 +281,9 @@ impl World {
             }
         };
         // How it has been treated: the learned tendencies, plus the handling it remembers.
-        let handled = (creature.memory.times_petted.min(REMEMBERED_HANDLING) as f32
-            - creature.memory.times_tossed.min(REMEMBERED_HANDLING) as f32)
-            / REMEMBERED_HANDLING as f32;
+        let handled = (creature.memory.times_petted.min(OFFERS.remembered_handling) as f32
+            - creature.memory.times_tossed.min(OFFERS.remembered_handling) as f32)
+            / OFFERS.remembered_handling as f32;
         let trust = LearnedTendencies::utility(creature.tendencies.cursor_trust)
             + LearnedTendencies::utility(creature.tendencies.sociability) * 0.5
             + handled * 0.18;
@@ -420,7 +400,7 @@ impl World {
         };
         // Turn towards the hand, if it is close enough to be the hand.
         if let Some(point) = cursor
-            && creature.state.position.distance(point) <= CURSOR_REACH
+            && creature.state.position.distance(point) <= OFFERS.cursor_reach
         {
             creature.state.facing_right = point.x >= creature.state.position.x;
         }
@@ -483,7 +463,7 @@ impl World {
             return;
         }
         creature.state.facing_right = match cursor {
-            Some(point) if creature.state.position.distance(point) <= CURSOR_REACH => {
+            Some(point) if creature.state.position.distance(point) <= OFFERS.cursor_reach => {
                 point.x <= creature.state.position.x
             }
             _ => !creature.state.facing_right,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::tuning::ROAMING;
 
 impl World {
     pub fn rename_creature(
@@ -448,8 +449,8 @@ impl World {
         self.ambient_timers.insert(
             creature.id,
             AmbientTimers {
-                inspect_remaining: self.ambient_rng.random_range(INSPECT_INTERVAL_SECS),
-                dangle_remaining: self.ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+                inspect_remaining: self.ambient_rng.random_range(ROAMING.inspect_interval_secs),
+                dangle_remaining: self.ambient_rng.random_range(ROAMING.dangle_interval_secs),
                 climb_rest: 0.0,
             },
         );

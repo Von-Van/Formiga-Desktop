@@ -7,6 +7,7 @@
 //!
 //! This reads the save and nothing else. It is not stored: the same colony always gives the same
 //! observations, in the same order.
+use crate::tuning::OBSERVATIONS;
 use crate::{CreatureId, DisplayKey, SaveFile};
 
 /// One thing noticed, and the evidence for it.
@@ -112,32 +113,6 @@ impl Observation {
     }
 }
 
-/// Seconds on ledges before keeping to high places is worth remarking on: an hour, with at least
-/// ten climbs of its own to get there.
-pub const HIGH_PLACES_SECONDS: u32 = 60 * 60;
-pub const HIGH_PLACES_CLIMBS: u32 = 10;
-/// Half an hour riding windows.
-pub const WINDOW_RIDER_SECONDS: u32 = 30 * 60;
-/// First to find at least five things in the scrapbook.
-pub const FINDER_FIRSTS: u32 = 5;
-/// Two hours asleep without being disturbed.
-pub const SOUND_SLEEPER_SECONDS: u32 = 2 * 60 * 60;
-/// How sure the colony has to be of a companion's usual spot before saying so.
-pub const PLACE_CONFIDENCE: u8 = 24;
-/// Twenty games.
-pub const PLAYFUL_SESSIONS: u32 = 20;
-/// Each sought the other out at least five times, sixteen between them.
-pub const SEEK_EACH: u16 = 5;
-pub const SEEK_TOTAL: u16 = 16;
-/// Sought out twelve times, at least three times as often as it went the other way.
-pub const FOLLOW_TIMES: u16 = 12;
-pub const NAPS: u16 = 10;
-pub const GAMES: u16 = 30;
-pub const GIFTS: u16 = 4;
-pub const SQUABBLES: u16 = 8;
-/// A visitor seen this many times.
-pub const REGULAR_VISITS: usize = 3;
-
 /// Everything the colony's own records support saying, companions first in colony order, then
 /// pairs, then visitors. Deterministic: the same save gives the same list.
 pub fn observe(save: &SaveFile) -> Vec<Observation> {
@@ -150,8 +125,8 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
     };
     for creature in creatures {
         let memory = &creature.memory;
-        if memory.ledge_seconds >= HIGH_PLACES_SECONDS
-            && memory.window_climbs >= HIGH_PLACES_CLIMBS
+        if memory.ledge_seconds >= OBSERVATIONS.high_places_seconds
+            && memory.window_climbs >= OBSERVATIONS.high_places_climbs
             && unique_top(&|c| c.memory.ledge_seconds, creature.id)
         {
             found.push(Observation::HighPlaces {
@@ -160,7 +135,7 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
                 climbs: memory.window_climbs,
             });
         }
-        if memory.window_ride_seconds >= WINDOW_RIDER_SECONDS
+        if memory.window_ride_seconds >= OBSERVATIONS.window_rider_seconds
             && unique_top(&|c| c.memory.window_ride_seconds, creature.id)
         {
             found.push(Observation::WindowRider {
@@ -176,21 +151,21 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
                 .count() as u32
         };
         let firsts = firsts_of(creature.id);
-        if firsts >= FINDER_FIRSTS && unique_top(&|c| firsts_of(c.id), creature.id) {
+        if firsts >= OBSERVATIONS.finder_firsts && unique_top(&|c| firsts_of(c.id), creature.id) {
             found.push(Observation::Finder {
                 creature: creature.id,
                 firsts,
                 scrapbook: save.companion.scrapbook.len() as u32,
             });
         }
-        if memory.longest_sleep_seconds >= SOUND_SLEEPER_SECONDS {
+        if memory.longest_sleep_seconds >= OBSERVATIONS.sound_sleeper_seconds {
             found.push(Observation::SoundSleeper {
                 creature: creature.id,
                 longest_seconds: memory.longest_sleep_seconds,
             });
         }
         if let Some(place) = memory.preferred_region
-            && place.confidence >= PLACE_CONFIDENCE
+            && place.confidence >= OBSERVATIONS.place_confidence
         {
             found.push(Observation::KeepsToAPlace {
                 creature: creature.id,
@@ -199,7 +174,7 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
                 confidence: place.confidence,
             });
         }
-        if memory.play_sessions >= PLAYFUL_SESSIONS
+        if memory.play_sessions >= OBSERVATIONS.playful_sessions
             && unique_top(&|c| c.memory.play_sessions, creature.id)
         {
             found.push(Observation::Playful {
@@ -230,7 +205,9 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
     };
     if let Some(r) = standout(&|t| {
         let [a, b] = t.sought;
-        (a >= SEEK_EACH && b >= SEEK_EACH && a.saturating_add(b) >= SEEK_TOTAL)
+        (a >= OBSERVATIONS.seek_each
+            && b >= OBSERVATIONS.seek_each
+            && a.saturating_add(b) >= OBSERVATIONS.seek_total)
             .then(|| u32::from(a.min(b)) * 1000 + u32::from(a.max(b)))
     }) {
         found.push(Observation::SeekEachOther {
@@ -244,7 +221,8 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
     let one_sided = |t: &crate::RelationshipTally| {
         let [a, b] = t.sought;
         let (times, returned) = (a.max(b), a.min(b));
-        (times >= FOLLOW_TIMES && times >= returned.saturating_mul(3)).then_some(u32::from(times))
+        (times >= OBSERVATIONS.follow_times && times >= returned.saturating_mul(3))
+            .then_some(u32::from(times))
     };
     if let Some(r) = standout(&one_sided) {
         let [a_sought, b_sought] = r.tally.sought;
@@ -260,16 +238,18 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
             returned,
         });
     }
-    if let Some(r) = standout(&|t| (t.shared_rests >= NAPS).then_some(u32::from(t.shared_rests))) {
+    if let Some(r) =
+        standout(&|t| (t.shared_rests >= OBSERVATIONS.naps).then_some(u32::from(t.shared_rests)))
+    {
         found.push(Observation::NapTogether {
             a: r.a,
             b: r.b,
             naps: r.tally.shared_rests,
         });
     }
-    if let Some(r) =
-        standout(&|t| (t.plays >= GAMES && t.squabbles <= t.plays).then_some(u32::from(t.plays)))
-    {
+    if let Some(r) = standout(&|t| {
+        (t.plays >= OBSERVATIONS.games && t.squabbles <= t.plays).then_some(u32::from(t.plays))
+    }) {
         found.push(Observation::PlayTogether {
             a: r.a,
             b: r.b,
@@ -277,7 +257,8 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
         });
     }
     if let Some(r) = standout(&|t| {
-        (t.squabbles >= SQUABBLES && t.squabbles > t.plays).then_some(u32::from(t.squabbles))
+        (t.squabbles >= OBSERVATIONS.squabbles && t.squabbles > t.plays)
+            .then_some(u32::from(t.squabbles))
     }) {
         found.push(Observation::Squabble {
             a: r.a,
@@ -286,7 +267,7 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
             games: r.tally.plays,
         });
     }
-    if let Some(r) = standout(&|t| (t.gifts >= GIFTS).then_some(u32::from(t.gifts))) {
+    if let Some(r) = standout(&|t| (t.gifts >= OBSERVATIONS.gifts).then_some(u32::from(t.gifts))) {
         found.push(Observation::ShareFinds {
             a: r.a,
             b: r.b,
@@ -303,7 +284,7 @@ pub fn observe(save: &SaveFile) -> Vec<Observation> {
             continue;
         }
         let visits = save.visitors.visits_of(&entry.origin);
-        if visits >= REGULAR_VISITS {
+        if visits >= OBSERVATIONS.regular_visits {
             visitors.push((
                 entry.name.clone(),
                 u16::try_from(visits).unwrap_or(u16::MAX),
@@ -361,27 +342,27 @@ mod tests {
         let mut world = colony();
         let first = world.save.creatures[0].id;
         let second = world.save.creatures[1].id;
-        world.save.creatures[0].memory.ledge_seconds = HIGH_PLACES_SECONDS - 1;
-        world.save.creatures[0].memory.window_climbs = HIGH_PLACES_CLIMBS;
+        world.save.creatures[0].memory.ledge_seconds = OBSERVATIONS.high_places_seconds - 1;
+        world.save.creatures[0].memory.window_climbs = OBSERVATIONS.high_places_climbs;
         assert!(observe(&world.save).is_empty());
-        world.save.creatures[0].memory.ledge_seconds = HIGH_PLACES_SECONDS;
+        world.save.creatures[0].memory.ledge_seconds = OBSERVATIONS.high_places_seconds;
         assert_eq!(
             observe(&world.save),
             vec![Observation::HighPlaces {
                 creature: first,
-                ledge_seconds: HIGH_PLACES_SECONDS,
-                climbs: HIGH_PLACES_CLIMBS,
+                ledge_seconds: OBSERVATIONS.high_places_seconds,
+                climbs: OBSERVATIONS.high_places_climbs,
             }]
         );
         // A tie for the most says nothing about either of them.
-        world.save.creatures[1].memory.ledge_seconds = HIGH_PLACES_SECONDS;
+        world.save.creatures[1].memory.ledge_seconds = OBSERVATIONS.high_places_seconds;
         assert!(observe(&world.save).is_empty());
         world.save.creatures[1].memory.ledge_seconds = 0;
 
         let at = datetime!(2026-10-01 9:00 UTC);
         let pair = crate::tally_mut_or_insert(&mut world.save.tallies, first, second).unwrap();
         let first_is_a = pair.a == first;
-        for _ in 0..SEEK_TOTAL / 2 - 1 {
+        for _ in 0..OBSERVATIONS.seek_total / 2 - 1 {
             pair.tally
                 .count(Some(true), RelationshipExperience::Followed, at);
             pair.tally
@@ -399,7 +380,7 @@ mod tests {
         pair.tally
             .count(Some(!first_is_a), RelationshipExperience::Followed, at);
         let seen = observations_of(&world.save, second);
-        let each = SEEK_TOTAL / 2;
+        let each = OBSERVATIONS.seek_total / 2;
         assert!(
             seen.iter().any(|o| matches!(
                 o,
@@ -426,7 +407,7 @@ mod tests {
         let pair = crate::tally_mut_or_insert(&mut world.save.tallies, first, second).unwrap();
         let (a, b) = (pair.a, pair.b);
         let at = datetime!(2026-10-01 9:00 UTC);
-        for _ in 0..FOLLOW_TIMES {
+        for _ in 0..OBSERVATIONS.follow_times {
             pair.tally
                 .count(Some(false), RelationshipExperience::Followed, at);
         }
@@ -438,17 +419,19 @@ mod tests {
             vec![Observation::FollowsAround {
                 seeker: b,
                 sought: a,
-                times: FOLLOW_TIMES,
+                times: OBSERVATIONS.follow_times,
                 returned: 1,
             }]
         );
         // Nearer even, it is no longer one-sided; and enough both ways, it is mutual.
-        world.save.tallies[0].tally.sought = [SEEK_EACH, FOLLOW_TIMES + 2];
+        world.save.tallies[0].tally.sought =
+            [OBSERVATIONS.seek_each, OBSERVATIONS.follow_times + 2];
         assert!(matches!(
             observe(&world.save)[..],
             [Observation::SeekEachOther { .. }]
         ));
-        world.save.tallies[0].tally.sought = [SEEK_EACH - 1, FOLLOW_TIMES - 1];
+        world.save.tallies[0].tally.sought =
+            [OBSERVATIONS.seek_each - 1, OBSERVATIONS.follow_times - 1];
         assert!(observe(&world.save).is_empty());
     }
 

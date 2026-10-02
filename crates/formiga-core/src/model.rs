@@ -3189,7 +3189,7 @@ pub fn daily_trinket_target(colony_seed: [u8; 32], day: i32) -> u8 {
     use rand::Rng;
     crate::SeedStream::new(colony_seed)
         .rng("daily-finds", u64::from(day.unsigned_abs()))
-        .random_range(1..=5)
+        .random_range(crate::tuning::FINDS.per_day)
 }
 
 /// What the person at the desk is holding out. Runtime-only: an offer is a moment, not a record.

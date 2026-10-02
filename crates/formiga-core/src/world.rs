@@ -1,5 +1,6 @@
 use crate::behavior::{BehaviorContext, choose_action};
 use crate::rng::SeedStream;
+use crate::tuning::{FINDS, ROAMING};
 use crate::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -57,21 +58,13 @@ pub use wonders::{WonderPose, wonder_length, wonder_motion, wonder_poses};
 /// cannot depend on the art crate, so shelter layout mirrors the constant the way `home_anchor`
 /// already mirrors the shelter's own half-width.
 const CREATURE_ART_WIDTH: f32 = crate::CREATURE_FRAME_WIDTH;
-const INSPECT_INTERVAL_SECS: std::ops::Range<f32> = 120.0..240.0;
-const DANGLE_INTERVAL_SECS: std::ops::Range<f32> = 240.0..480.0;
-/// Visible time between one find out on the desktop and the next: long enough that a day's few
-/// finds are spread across it rather than found in its first hour.
-const DISCOVERY_INTERVAL_SECS: std::ops::Range<f32> = 3_600.0..9_000.0;
-/// The chance, each time it chooses something to do up on a ledge, that a companion comes down
-/// to do it on the floor instead, and how long it stays down before it thinks of climbing again.
-const ANYWHERE_COMES_DOWN: f64 = 0.35;
-const CLIMBER_COMES_DOWN: f64 = 0.05;
+/// How long a companion stays down on the floor before it thinks of climbing again.
 fn climb_rest_secs(leaning: RoamingLeaning) -> std::ops::Range<f32> {
     match leaning {
-        RoamingLeaning::Climber => 15.0..40.0,
-        RoamingLeaning::Anywhere => 35.0..90.0,
-        RoamingLeaning::Homebody => 60.0..150.0,
-        RoamingLeaning::FloorDweller => 90.0..200.0,
+        RoamingLeaning::Climber => ROAMING.climber_rest_secs,
+        RoamingLeaning::Anywhere => ROAMING.anywhere_rest_secs,
+        RoamingLeaning::Homebody => ROAMING.homebody_rest_secs,
+        RoamingLeaning::FloorDweller => ROAMING.floor_dweller_rest_secs,
     }
 }
 
@@ -331,14 +324,14 @@ impl World {
                 (
                     creature.id,
                     AmbientTimers {
-                        inspect_remaining: ambient_rng.random_range(INSPECT_INTERVAL_SECS),
-                        dangle_remaining: ambient_rng.random_range(DANGLE_INTERVAL_SECS),
+                        inspect_remaining: ambient_rng.random_range(ROAMING.inspect_interval_secs),
+                        dangle_remaining: ambient_rng.random_range(ROAMING.dangle_interval_secs),
                         climb_rest: 0.0,
                     },
                 )
             })
             .collect();
-        let discovery_remaining = ambient_rng.random_range(DISCOVERY_INTERVAL_SECS);
+        let discovery_remaining = ambient_rng.random_range(FINDS.desktop_interval_secs);
         Self {
             save,
             rngs,
@@ -1140,7 +1133,7 @@ impl World {
                         &self.save.companion.scrapbook,
                     );
                     self.discovery_remaining =
-                        self.ambient_rng.random_range(DISCOVERY_INTERVAL_SECS);
+                        self.ambient_rng.random_range(FINDS.desktop_interval_secs);
                     let bond = context.bond.filter(|bond| {
                         bond.relationship.affinity >= 96
                             && bond.relationship.familiarity >= 48
@@ -1160,7 +1153,7 @@ impl World {
                 {
                     if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
                         timers.dangle_remaining =
-                            self.ambient_rng.random_range(DANGLE_INTERVAL_SECS);
+                            self.ambient_rng.random_range(ROAMING.dangle_interval_secs);
                     }
                     selected_choice = Some(ActionChoice {
                         action: ActionKind::Dangle,
@@ -1187,7 +1180,7 @@ impl World {
                     });
                     if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
                         timers.inspect_remaining =
-                            self.ambient_rng.random_range(INSPECT_INTERVAL_SECS);
+                            self.ambient_rng.random_range(ROAMING.inspect_interval_secs);
                     }
                     scheduled_ambient = true;
                 }
@@ -1338,8 +1331,8 @@ impl World {
                 let comes_down = match creature.leaning {
                     RoamingLeaning::FloorDweller => 0.7,
                     RoamingLeaning::Homebody => 0.4,
-                    RoamingLeaning::Anywhere => ANYWHERE_COMES_DOWN,
-                    RoamingLeaning::Climber => CLIMBER_COMES_DOWN,
+                    RoamingLeaning::Anywhere => ROAMING.anywhere_comes_down,
+                    RoamingLeaning::Climber => ROAMING.climber_comes_down,
                 };
                 if comes_down > 0.0
                     && creature.state.surface.kind == SurfaceKind::WindowLedge
@@ -1541,7 +1534,8 @@ impl World {
                 creature.state.action_duration = self.ambient_rng.random_range(3.0..5.0);
                 creature.state.velocity = Point::default();
                 if let Some(timers) = self.ambient_timers.get_mut(&creature.id) {
-                    timers.inspect_remaining = self.ambient_rng.random_range(INSPECT_INTERVAL_SECS);
+                    timers.inspect_remaining =
+                        self.ambient_rng.random_range(ROAMING.inspect_interval_secs);
                 }
                 Self::emit(
                     &mut self.events,
