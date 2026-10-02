@@ -35,15 +35,16 @@ one feature at a time, and assumes you know where things are.
 
 ### The crates and where to start reading
 
-Dependencies run one way: `formiga-art` depends on `formiga-core`, and `formiga-desktop` and
-`formiga-tools` depend on both. Nothing depends on the desktop crate.
+Dependencies run one way: `formiga-art` depends on `formiga-core`, `formiga-travel` on both, and
+`formiga-desktop` and `formiga-tools` on all three. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for the save file and migrations; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
 | `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus |
 | `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` and `clubhouse.rs` for the settings window; `tray.rs`; `updater.rs`; `platform/` for the macOS and Windows adapters |
-| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark |
+| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `bin/formiga-hill-stub.rs`, a stand-in for Formiga Hill |
+| `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 
 ### How the app starts
 
@@ -94,6 +95,7 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 | Where the notebook window was | `notebook-window.json` | Written when the window closes or Formiga quits, if it moved |
 | Downloaded installers | `updates/` | Until the version they install is running |
 | Logs | `logs/formiga.log` and `formiga.previous.log` | Rotated at 1 MB |
+| A trip to Formiga Hill | `travel/trip.json` and `travel/<session>/` | While the trip is open; see [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 
 All of it lives in one data directory. That is `FORMIGA_DATA_DIR` when it is set, and otherwise
 `~/Library/Application Support/com.Formiga.Formiga` on macOS and `%APPDATA%\Formiga\Formiga\data`
@@ -2329,3 +2331,110 @@ Nothing about where the tour has got to is saved: finishing or skipping it sets
 window closed part way keeps its place for as long as Formiga runs, because closing the settings
 window only hides it. Preferences offers "Take the tour" to start it again from the first step.
 
+
+## Trips to Formiga Hill (save v26)
+
+Formiga Hill is a separate application. Desktop never needs it: without Hill installed nothing in
+this section runs and the tray says nothing about it. With Hill installed, the tray offers "Go to
+Formiga Hill…", and the colony can spend a while there and come home by train.
+
+### The boundary
+
+```text
+formiga-desktop ──▶ formiga-travel ──▶ formiga-core, formiga-art
+   tray · trip state machine · train scene     │
+   platform/hill.rs: find and start Hill       │  the contract: versioned documents, bounds,
+   hill/session.rs: the trip's files           │  the projection from the colony and back to
+                                               ▼  something the art crate can draw
+                                       Formiga Hill (its own repository)
+```
+
+`formiga-travel` is the only thing the two apps share besides `formiga-core` and `formiga-art`. It
+holds four documents — the `TravelSnapshot` Desktop writes, Hill's `Acknowledgement` and
+`ReturnReceipt`, and Desktop's `Recall` — with their bounds, sanitizing and validation, the atomic
+writer and bounded reader both sides use, and `project_colony`, the one-way projection from a
+`SaveFile` to a snapshot. Only `projection.rs` reads Desktop's model; every type in the documents is
+the contract's own, and each enum mirrors one in the core through an exhaustive conversion, so a new
+variant in the core fails to build until the travel format is deliberately extended. A traveler
+carries its resolved look (`TravelAppearance`, with the recipe in the same byte form a share code
+uses), its temperament, traits and phrase, its pace and how it celebrates, its habits, what it wears
+with the colours Desktop resolved for it, and its family link; pairs carry bands rather than
+Desktop's scores. Seeds, positions, displays, windows, the cursor, plans, memories, the journal and
+settings beyond reduced motion, theme and text size never cross. `Traveler::to_creature` gives Hill
+a stand-in `Creature` that the art crate draws exactly as Desktop does.
+
+Every document names its `format`, the `version` it was written as, and the `min_reader_version`
+a reader needs. The header is checked on the raw JSON before anything is shaped, so a newer file
+is refused for its version rather than for its shape, and unknown fields and unknown enum values
+in lists (`Capability`, `ReturnEffect`) read as "unknown" rather than failing. The fixtures under
+`crates/formiga-travel/tests/fixtures` are version 1 as written, and a test fails if this build
+stops writing it byte for byte or stops reading it.
+
+### A trip
+
+| State | Desktop |
+|---|---|
+| Idle | Lives as always. Looks for Hill when it starts and at most every ten minutes, from a tick it was taking anyway |
+| Preparing | `World::prepare_for_trip` lets go of a drag or toss, drops every plan, scene, offer and bubble, sends a visiting guest on its way, and stands everyone still out of doors. The colony is saved, the snapshot projected and written. Any failure says why in a dialog and leaves the colony home |
+| Departing | The train pulls in and everyone gets on. The world does not tick. As the train pulls away Hill is started; if it cannot be, the train stops and everyone gets off again |
+| Away | Nothing of the colony is drawn, the world does not tick and the app wakes every two seconds only to rescan displays. The tray offers "Bring the colony home" |
+| Returning | Hill has exited, or the owner called the colony home: what Hill left is checked, at most a counted trip and a journal line are kept, the trip's files are closed, and the train brings everyone back to exactly where they stood |
+
+The states are `hill::TripState`, runtime only. The app's side is `app/hill.rs`; the tray maps
+its item to `TrayAction::GoToHill` or `TrayAction::BringColonyHome`, and while a trip is under way
+it disables Gather, Settle, Pause and Start a new colony, which act on a colony that is not there.
+The habitat editor waits too, since it draws over overlays that show nothing.
+
+Hill is started by `platform::hill::launch_formiga_hill` with two arguments, `--formiga-travel`
+and the session directory, and a thread that sleeps in `Child::wait` reports its exit as
+`UserEvent::Hill`. On macOS an app bundle is opened with `open -W -n -a`, so LaunchServices starts
+it and the `open` process lasts as long as Hill does. Discovery is `FORMIGA_HILL_PATH` in
+development; then LaunchServices by bundle identifier `com.formiga.hill`, with the newest travel
+version Hill reads from `FormigaTravelVersion` in its `Info.plist`; or on Windows the
+`Software\Formiga\Hill` key Hill's installer writes. A Hill that says it reads only older versions
+is explained before it is started.
+
+### Files, and failing toward home
+
+A trip's files are under `travel/` in the data directory (`hill/session.rs`): a fresh
+`travel/<session>/` holding `snapshot.json`, where Hill writes `ack.json` and `receipt.json` and
+Desktop may write `recall.json`; and `travel/trip.json`, the marker that says a trip is open,
+holding only the session, the snapshot's SHA-256, its time and what Desktop offered to apply. A
+receipt is used only if it is whole, inside its bounds, in a version this build reads, and names
+this session and this exact snapshot; then `session::welcome` keeps at most one visit inside the
+trip's own time, and everything else — souvenirs, keepsakes, anything unknown — is set aside unread.
+`World::welcome_home` counts the trip once per session, so the same receipt read again after a
+restart changes nothing. The journal line is Desktop's own; nothing Hill sends is copied in as text.
+
+Desktop never waits on Hill to show the colony again. Hill missing, refusing, crashing, closing
+without a receipt or writing a bad one, and the owner calling the colony home, all end with the
+colony home exactly as it left. A trip closed after Hill has gone is deleted outright. One called
+home while Hill may still be running keeps its directory, holding the recall, for Hill to see; Hill
+also takes its directory disappearing as a recall. If Desktop itself stops while the colony is
+away, the next start finds the marker and finishes the trip: with Hill's receipt if it is there,
+and otherwise by recalling it. Everything under `travel/` that is not the open trip is swept at
+start and before each new trip, so at most one called-home directory is ever kept.
+
+### The train
+
+`hill/scene.rs` is presentation only: it never touches the world. Each frame it makes a copy of
+the colony for the overlay with whoever is on the platform walking, standing or gone, and an
+`OverlayUi::train` the overlay draws in front of them, so a companion reaching its door walks
+behind the carriage. The train stops at the middle of the widest stretch of ground on the
+village's display (then the primary); companions there walk to the nearest door from where they
+are, anyone elsewhere comes along the ground from the edge nearest its own display, and anyone with
+far to go hurries, so a departure is never longer than about sixteen seconds at any scale. Coming
+home they step off in turn and walk back, and the scene ends with everyone exactly as saved. With
+reduced motion the train neither slides nor puffs: it is there, and then it is not. A departure
+that cannot go on turns round where it stands. The art is `formiga-art`'s `TrainRenderer`: an
+engine and one carriage for every two travellers, in the village's palette, with lit windows
+after dark, baked once into a strip of six frames when a scene starts and dropped when it ends
+(`formiga-tools train-sheet` draws it for review).
+
+### Cost
+
+Without Hill installed the additions are a comparison of two instants per tick and one
+LaunchServices or registry lookup every ten minutes. While the colony is away no frame is drawn and
+the world does not tick: measured on a debug build with a real colony, Desktop used 0.0% CPU for
+the sixteen seconds of a trip spent away. A scene draws at the overlay's quickest pace, 20 frames
+a second, for its length only.

@@ -70,9 +70,9 @@ pub use receipt::{
     AckRefusal, Acknowledgement, Recall, RecallReason, ReturnEffect, ReturnReceipt, SnapshotSeal,
 };
 pub use snapshot::{
-    AccessoryColors, AccessoryItem, AccessoryKind, Band, Capability, Habit, Presentation,
-    TemperamentKind, Tension, Theme, TravelAccessory, TravelAxes, TravelCharacter, TravelMotion,
-    TravelRelationship, TravelRole, TravelSnapshot, Traveler,
+    AccessoryColors, AccessoryItem, AccessoryKind, Band, Capability, Celebration, Habit,
+    Presentation, TemperamentKind, Tension, Theme, TravelAccessory, TravelAxes, TravelCharacter,
+    TravelMotion, TravelRelationship, TravelRole, TravelSnapshot, Traveler,
 };
 pub use text::{is_sanitized, sanitize_text};
 

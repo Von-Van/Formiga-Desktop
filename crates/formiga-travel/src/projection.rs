@@ -144,6 +144,7 @@ fn traveler(
             activity: unit(creature.personality.activity),
             playfulness: unit(creature.personality.playfulness),
             boldness: unit(creature.personality.boldness),
+            celebration: Some(core::Celebration::for_creature(creature).into()),
         },
         habits: creature
             .memory

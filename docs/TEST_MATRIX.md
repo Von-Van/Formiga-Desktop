@@ -424,3 +424,42 @@ every frame of a loop, leaving one-shot clips alone, and differing with temperam
 Production renderer fixtures capture performer handoffs and expressions. The game catalog is now
 complete, so what remains is native playback on real desktops; these tests do not complete the
 0.57.0 release gate.
+
+## Trips to Formiga Hill
+
+Formiga Hill is a separate application; these rows cover Desktop's side of a trip. Without Hill
+installed the tray must look exactly as it always has.
+
+### Automated
+
+| Check | macOS | Windows |
+|---|---:|---:|
+| Travel snapshot: the same colony gives the same bytes; every look (every recipe edition, a companion from before recipes, a little one) crosses exactly and draws pixel-for-pixel as at home; pace and celebration kept; accessory colours resolved | CI | CI |
+| No Desktop-only field crosses: no seed in any spelling, position, display, window, cursor, memory, routine, journal, habitat or settings beyond presentation | CI | CI |
+| Bonds cross as bands between travelers only; names and profiles sanitized; an empty colony is not sent; snapshots that do not add up are refused when written and when read | CI | CI |
+| Version 1 fixtures still written byte for byte and still read; a newer writer's optional additions read; a version needing a newer reader refused for its version; unknown capabilities and receipt effects read as unknown | CI | CI |
+| Trip files: written whole, found again after a restart, never reused; half-written, garbage, empty, oversized, other-session, other-snapshot and newer-version receipts ignored; a refusal heard; one visit kept, everything else set aside; sweeping keeps only the open trip and never follows a link | CI | CI |
+| Calling the colony home closes the trip and leaves Hill its recall; the next trip sweeps it | CI | CI |
+| Save v26: a trip home counted and written once, a repeated or malformed trip changing nothing, nothing written for a colony that has been nowhere, a damaged trip record repaired | CI | CI |
+| Leaving drops a drag, scenes and bubbles, sends a visiting guest on its way (signed if it said hello), and brings everyone out of doors | CI | CI |
+| The train scene: nobody boards a moving train, everyone is seen getting on, companions from another display come in from its side, coming home ends with everyone exactly as saved, reduced motion never slides the train, a turned-back departure lets everyone off where it stands, and no scene is longer than sixteen seconds at 2–4× on 1–2× displays | CI | CI |
+| End to end against the stand-in Hill: an ordinary visit changes the colony file only by the trip and its journal line; silence, garbage, a stranger's receipt and a crash change nothing; refusals say why; a newer snapshot is refused for its version; a recall or a cleared session ends the visit | CI | CI |
+| Train art: one carriage per two travellers, standing on the ground line, every door on its carriage, wheels still and steam breathing while it stands, lit windows after dark | CI | CI |
+
+### Manual
+
+Use `formiga-hill-stub` as described in [BUILD.md](BUILD.md#trying-a-trip-to-formiga-hill) until a
+real Hill is installed.
+
+| Scenario | macOS 14 arm64 | macOS x64/Rosetta | Windows 10 22H2 | Windows 11 |
+|---|---|---|---|---|
+| Without Hill installed, the tray is exactly as before and the log says nothing about Hill | pending | pending | pending | pending |
+| With Hill installed (or the stub named), "Go to Formiga Hill…" appears within ten minutes, or at launch; removing Hill withdraws it | pending | pending | pending | pending |
+| A full trip on a real colony: the train in the village's colours, everyone walking to a door and getting on, Hill opening as the train pulls away, nothing of the colony on the desktop while it is away, and everyone getting off and walking back to exactly where they were | stub, debug build, 2026-10-02 | pending | pending | pending |
+| The train at Small, Medium and Large on 100% and 200% displays, after dark, with reduced motion, and with companions on a ledge and on a second display | pending | pending | pending | pending |
+| Leaving while paused, while hidden (no train; straight away), with the village out, with a visitor, during a scene, and mid-drag or mid-toss | pending | pending | pending | pending |
+| "Bring the colony home" while boarding and while away; Gather, Settle, Pause and Start a new colony disabled throughout and back afterwards | pending | pending | pending | pending |
+| Hill refusing (an incompatible version gives a precise message), crashing, closing without a receipt, and never starting: the colony always comes home unchanged | crash while away: stub, debug build, 2026-10-02 | pending | pending | pending |
+| Desktop quit or killed while the colony is away: the next start brings it home by train, with the receipt if Hill finished and otherwise telling Hill the trip is over | stub, debug build, 2026-10-02 | pending | pending | pending |
+| CPU while the colony is away stays at idle | 0.0% for 16 s, debug build, 2026-10-02 | pending | pending | pending |
+| The installed Hill found by its bundle identifier (macOS) and registry key (Windows), with the Dock or taskbar usable throughout | pending | pending | pending | pending |

@@ -1,5 +1,6 @@
 [package]
 name = "formiga-tools"
+default-run = "formiga-tools"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

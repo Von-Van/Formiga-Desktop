@@ -88,7 +88,8 @@
       "motion": {
         "activity": 0.38056013,
         "playfulness": 0.5535524,
-        "boldness": 0.2854265
+        "boldness": 0.2854265,
+        "celebration": "hop"
       },
       "habits": [
         "waves_hello",
@@ -207,7 +208,8 @@
       "motion": {
         "activity": 0.80273765,
         "playfulness": 0.77072203,
-        "boldness": 0.74539506
+        "boldness": 0.74539506,
+        "celebration": "hop"
       },
       "habits": [
         "looks_food_over"
@@ -325,7 +327,8 @@
       "motion": {
         "activity": 0.3459453,
         "playfulness": 0.5722029,
-        "boldness": 0.44899327
+        "boldness": 0.44899327,
+        "celebration": "twirl"
       }
     },
     {
@@ -406,7 +409,8 @@
       "motion": {
         "activity": 0.73619246,
         "playfulness": 0.16301242,
-        "boldness": 0.71281356
+        "boldness": 0.71281356,
+        "celebration": "hop"
       }
     },
     {
@@ -484,7 +488,8 @@
       "motion": {
         "activity": 0.72596914,
         "playfulness": 0.51327133,
-        "boldness": 0.8043601
+        "boldness": 0.8043601,
+        "celebration": "twirl"
       }
     },
     {
@@ -566,7 +571,8 @@
       "motion": {
         "activity": 0.38056013,
         "playfulness": 0.5535524,
-        "boldness": 0.2854265
+        "boldness": 0.2854265,
+        "celebration": "hop"
       }
     }
   ],

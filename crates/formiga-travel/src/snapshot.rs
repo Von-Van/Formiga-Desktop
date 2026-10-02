@@ -41,6 +41,7 @@ mirror!(
         GrumpyButAffectionate,
     }
 );
+mirror!(Celebration = core::Celebration { Hop, Dance, Twirl });
 mirror!(
     Habit = core::Habit {
         LooksFoodOver,
@@ -214,6 +215,11 @@ pub struct TravelMotion {
     pub activity: f32,
     pub playfulness: f32,
     pub boldness: f32,
+    /// How it celebrates when something goes its way. Optional: Desktop works it out from the
+    /// companion's own seed, which never travels, so Hill should use this rather than work it out
+    /// again from a stand-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub celebration: Option<Celebration>,
 }
 
 /// What it is wearing.

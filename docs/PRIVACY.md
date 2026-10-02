@@ -261,6 +261,43 @@ after five seconds; descriptor text is shown only when the user opens the local 
 state and in-progress interactions are never persisted.
 
 
+Formiga Hill is a separate application, and Formiga passes it nothing unless the owner sends the
+colony there from the tray. Without Hill installed nothing is passed anywhere. To know whether to
+offer the trip, Formiga asks the system once at launch and then at most every ten minutes whether
+an application with Hill's bundle identifier is registered (macOS LaunchServices), or reads the
+per-user key Hill's installer writes (Windows); it reads Hill's version and the travel version Hill
+says it reads, and nothing about any other application.
+
+A trip writes a **travel snapshot** into a new directory under `travel/` in Formiga's own data
+directory, and Hill is started with the path of that directory and nothing else. The snapshot holds,
+for each companion: its identifier, its name with control and invisible formatting characters
+removed, whether it is a little one and whose, its birth time, its drawn look and size, its
+temperament, three traits and profile phrase, how lively, playful and bold it is (which sets its
+walking pace), how it celebrates, its habits, and what it is wearing with the colours to draw it in.
+For each pair it holds four coarse bands — none, low, medium or high — rather than Formiga's scores.
+It also holds the trip's identifier, the time, Formiga's version, a 64-bit one-way digest standing
+for the colony so Hill can tell one colony from another, and the reduced-motion, theme and text-size
+preferences. It holds **no** seed — not the colony's, not any companion's (a first companion's own
+seed is the colony's) — and no share code, position, display, window rectangle or title, cursor
+sample, application identity, habitat zone, routine, drive, memory, learned tendency, journal, guest
+book, scrapbook, schedule, other setting, update state, or diagnostic log, and it never names
+`colony.json`. Hill's content packages are given nothing by Formiga; what Hill shows them is Hill's
+business.
+
+What comes back is read only once Hill has gone, only if it names this trip and this exact
+snapshot, and only inside fixed bounds. Formiga keeps at most a count of trips and the last trip's
+identifier and the times Hill gives for it — once each checked to fall inside the trip — and writes
+one journal line in its own words. Nothing Hill sends is copied into the colony as text; a
+souvenir or keepsake Hill offers is set aside unread. Save version 26 adds `trips` (that count and
+that last trip) and the `Trip` journal moment; a v25 colony opens unchanged, having been nowhere.
+
+The trip's files are deleted when the colony comes home. If Formiga calls the colony home while
+Hill may still be running, it keeps that one directory, holding the word that the trip is over,
+until Formiga next starts or next sends the colony anywhere. While a trip is open,
+`travel/trip.json` holds the trip's identifier, the snapshot's SHA-256, its time and what Formiga
+offered to apply, so a trip interrupted by Formiga itself stopping can be finished on its next
+start. Nothing about a trip leaves the computer.
+
 Full-colony backup is deliberately different from a share code: it contains the complete private
 save, including names, learned history, journal, habitat, and settings. Export writes only to a
 user-selected local path. Restore reads at most 2 MiB, validates the snapshot, confirms replacement,

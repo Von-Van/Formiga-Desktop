@@ -104,6 +104,15 @@ fn every_look_crosses_exactly_and_draws_the_same() {
                 "{} keeps its own pace",
                 creature.name
             );
+            assert_eq!(
+                traveler
+                    .motion
+                    .celebration
+                    .map(formiga_core::Celebration::from),
+                Some(formiga_core::Celebration::for_creature(creature)),
+                "{} celebrates its own way",
+                creature.name
+            );
             let home_dress = creature
                 .accessory
                 .map(|accessory| AccessoryArt::resolve(accessory, save.colony_seed, &members));
