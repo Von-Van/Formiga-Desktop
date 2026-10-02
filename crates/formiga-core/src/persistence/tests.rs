@@ -1220,6 +1220,7 @@ fn example_save() -> SaveFile {
         visitors: crate::VisitorState::default(),
         finds_today: crate::FindsToday::default(),
         day_book: crate::DayBook::default(),
+        trips: crate::TripLog::default(),
     }
 }
 

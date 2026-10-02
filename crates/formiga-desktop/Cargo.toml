@@ -14,6 +14,7 @@ egui-wgpu.workspace = true
 egui-winit = { workspace = true, features = ["accesskit"] }
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
+formiga-travel = { path = "../formiga-travel" }
 image.workspace = true
 pollster.workspace = true
 png.workspace = true

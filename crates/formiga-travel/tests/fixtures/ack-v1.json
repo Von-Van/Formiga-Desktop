@@ -1,0 +1,9 @@
+{
+  "format": "formiga.travel.ack",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "snapshot_sha256": "b443b703a0f60785c116e88e825a8a1589320f71a78913bc7f4b77eb8e4a49ae",
+  "hill_version": "0.1.0",
+  "accepted": true
+}

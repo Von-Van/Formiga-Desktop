@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.3"
+version = "0.66.4"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1262,7 +1262,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.3"
+version = "0.66.4"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.66.3"
+version = "0.66.4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1289,6 +1289,7 @@ dependencies = [
  "egui-winit",
  "formiga-art",
  "formiga-core",
+ "formiga-travel",
  "image",
  "libc",
  "objc2 0.6.4",
@@ -1313,17 +1314,32 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.66.3"
+version = "0.66.4"
 dependencies = [
  "anyhow",
  "formiga-art",
  "formiga-core",
+ "formiga-travel",
  "gif",
  "png",
  "rand",
  "rand_chacha",
  "serde_json",
  "sha2",
+ "time",
+]
+
+[[package]]
+name = "formiga-travel"
+version = "0.66.4"
+dependencies = [
+ "formiga-art",
+ "formiga-core",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
  "time",
 ]
 

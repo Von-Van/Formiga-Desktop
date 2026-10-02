@@ -1,4 +1,4 @@
-# Formiga · v0.66.3
+# Formiga · v0.66.4
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.66.3-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.66.4-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,24 +107,19 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.66.3
+## New in 0.66.4
 
-The Today page now says how today compares with the rest of the week, in a few lines that each show
-what they rest on — two companions who sought each other out, a first sit up on a roof this week, a
-garden coming round to its third stage, more time at home than yesterday — from a small day book
-the colony keeps for its last eight days. Undo goes back up to eight changes instead of one, and a
-change that alters what the companions will do says so in the notebook's own words: "Moss will now
-wander farther from home", "Relax begins at 22:00 today".
+The colony can now go on a trip to Formiga Hill, a separate app, once it is installed. The tray
+offers **Go to Formiga Hill…**: a little train in your village's colours pulls in, everyone walks to
+a door and gets on, and Formiga Hill opens as the train pulls away. While they are away nothing of
+the colony is on your desktop, and the tray offers to bring them home whenever you like; coming
+back, everyone gets off and walks to exactly where they were, and the journal notes the trip.
+Whatever happens at the other end — Formiga Hill closing early, refusing, or stopping unexpectedly,
+or Formiga itself being closed mid-trip — the colony comes home as it left. Formiga Hill is told how
+your companions look, behave and get on, and nothing about your desktop or your colony's seed.
 
-A resident setting off from rest in the village no longer seems to freeze and then jump half a body
-along: frames follow it from its first step, and one whose sit on the roof is cut short hops down
-instead of dropping. A companion caught in mid-air stays under the cursor, and several ways a
-companion could be left where no display reaches — a colony reopened on smaller displays, an undo
-after a display was unplugged, a wonder out when the displays changed — are fixed. Most of those were
-found by a new long simulated run, now nightly in CI, that lives thousands of randomized colonies
-through days of displays, routines, relaunches and damaged files. Underneath, a colony file is read
-one version step at a time through a single validation boundary, and each notebook page keeps its
-own state.
+Without Formiga Hill installed nothing changes: the tray, the colony and the notebook are exactly as
+they were. The colony file moves to version 26 to make room for the trips.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
@@ -146,6 +141,7 @@ prereleases, and most of the manual checks on real hardware are not done yet.
 | Performance budgets | Measured on one Mac only. **Not yet measured on Windows** |
 | [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Five recorded**: three on macOS (real colonies' migrations, on copies) and two on Windows 11 (everyday use, with several displays); the rest **not yet**, each tracked as a [`native-qa` issue](https://github.com/Von-Van/Formiga-Desktop/issues?q=label%3Anative-qa) |
 | Long simulated runs | **Nightly** in CI: 4,500 randomized colonies, three simulated days each, across three time zones |
+| Trips to Formiga Hill | **Not yet available to use**: Desktop's side is shipped and tested against a stand-in, and shows nothing until Formiga Hill, a separate app, is installed |
 | Code signing | **Not signed.** Gatekeeper and SmartScreen warn on first launch |
 
 ## Build from source

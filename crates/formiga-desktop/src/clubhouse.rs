@@ -404,6 +404,8 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
         JournalMoment::Wonder(kind) => {
             format!("{name} found a wonder: the {}", kind.label().to_lowercase())
         }
+        // Always Desktop's own words: nothing Formiga Hill sent is copied into the journal.
+        JournalMoment::Trip => "The colony took the train to Formiga Hill and came home".to_owned(),
     }
 }
 

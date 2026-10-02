@@ -238,6 +238,21 @@ opens before anything is drawn, and cancelling makes nothing.
 
 ![Four postcards of one colony: a nap, a picnic, a game, and the village at dusk](assets/postcards.png)
 
+## A trip to Formiga Hill
+
+Formiga Hill is a separate app, and Formiga does not need it. Once it is installed, the tray menu
+offers **Go to Formiga Hill…**: a little train in your village's colours pulls in, everyone walks
+to a door and gets on, and the train pulls away as Formiga Hill opens. While the colony is away
+nothing of it is on your desktop, and the tray offers **Bring the colony home** whenever you want
+them back. When the visit ends the train brings everyone home to exactly where they were, and the
+journal notes the trip.
+
+The colony always comes home, whatever happens. If Formiga Hill closes early, cannot take the
+colony, or stops unexpectedly, everyone comes straight back as they left; if Formiga itself is
+closed while they are away, it brings them home the next time it starts. Formiga Hill is told only
+how your companions look and behave and how they get on, never anything about your desktop or the
+colony's seed: [PRIVACY.md](PRIVACY.md) lists exactly what goes.
+
 ## Settings you may want
 
 - Limit where creatures go with presets, or up to 32 allowed and excluded rectangles across displays.

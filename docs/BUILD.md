@@ -37,6 +37,39 @@ runs formatting, Clippy, and the tests on Windows for every push to `main` and e
 so get the change onto one of those and let it pass before tagging a release; a published tag is
 awkward to take back. A branch pushed on its own is not built.
 
+## Trying a trip to Formiga Hill
+
+Formiga Hill is a separate application, but Desktop's side of a trip can be tried without it.
+`formiga-hill-stub` stands in for Hill: it reads the snapshot it is handed, checks it, prints who
+arrived, says it can host them, waits, and writes a receipt, all without a window.
+
+```sh
+cargo build -p formiga-tools --bin formiga-hill-stub
+FORMIGA_DATA_DIR=/tmp/formiga-dev \
+FORMIGA_HILL_PATH="$PWD/target/debug/formiga-hill-stub" \
+FORMIGA_HILL_TRIP_AFTER=5 \
+FORMIGA_HILL_STUB=stay=20 \
+cargo run -p formiga-desktop
+```
+
+`FORMIGA_HILL_PATH` names a Hill executable (or, on macOS, an `.app`) to use instead of looking for
+an installed one, and makes the tray offer the trip. `FORMIGA_HILL_TRIP_AFTER` sends the colony
+that many seconds after launch, once, as if the tray had been used; it is ignored unless
+`FORMIGA_HILL_PATH` is set too. `FORMIGA_HILL_STUB` takes a comma-separated list of how the stub
+should behave: `stay=SECONDS`, `refuse=version|busy|invalid`, `crash`, `silent`, `garbage`,
+`stranger`, `souvenir`, and `sheet=PATH` to draw every traveler into a PNG. Each trip's files are
+under `travel/` in the scratch data directory while it is open, and the log names each step.
+
+The travel contract has its own fixtures. `crates/formiga-travel/tests/fixtures` holds version 1 as
+it is written; the tests fail if a build stops writing or reading it. When a new travel version is
+deliberately added, `FORMIGA_TRAVEL_BLESS=1 cargo test -p formiga-travel --test golden` writes this
+build's documents over them, so add the new version's fixtures beside the old ones rather than in
+their place once anything has shipped.
+
+The Windows half of Hill discovery, which reads the registry, can be type-checked from a Mac
+without the desktop crate's `ring` dependency by compiling `platform/hill.rs` on its own against
+`formiga-travel` and the `windows` crate for `x86_64-pc-windows-msvc`.
+
 ## Performance tools
 
 ```sh
@@ -103,6 +136,7 @@ cargo run -p formiga-tools -- village-palette-sheet
 cargo run -p formiga-tools -- home-yard-sheet
 cargo run -p formiga-tools -- prop-sheet
 cargo run -p formiga-tools -- wonder-sheet
+cargo run -p formiga-tools -- train-sheet
 cargo run -p formiga-tools -- motion-sheet
 cargo run -p formiga-tools -- accessory-sheet
 cargo run -p formiga-tools -- village-life-sheet

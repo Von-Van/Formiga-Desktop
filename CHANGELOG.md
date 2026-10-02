@@ -2,6 +2,30 @@
 
 All notable changes are documented here.
 
+## [0.66.4] - 2026-10-02
+
+### Added
+
+- **Trips to Formiga Hill.** Formiga Hill is a separate app, and Formiga gains no dependency on it:
+  without it installed nothing here shows. With it installed, the tray offers **Go to Formiga
+  Hill…** — a little train in the village's colours pulls in, everyone gets on, and Formiga Hill
+  opens as it pulls away. While the colony is away nothing of it is drawn and the world holds
+  still; **Bring the colony home** calls it back at any time. Coming home, everyone gets off and
+  walks back to exactly where they stood, and the journal notes the trip.
+- The colony always comes home. Formiga Hill missing, refusing, crashing or closing early, and
+  Formiga itself being closed mid-trip, all end with the colony home as it left; Formiga never
+  waits on Formiga Hill to show it again.
+- `formiga-travel`, the versioned contract the two apps share: a deliberate projection of the
+  colony that carries no seed and nothing about the desktop, bounded and sanitized documents, a
+  receipt Formiga applies only as far as an allowlist goes (a counted trip and a journal line in its
+  own words), and golden fixtures for version 1. `formiga-hill-stub` stands in for Formiga Hill in
+  development and tests, and `formiga-tools train-sheet` draws the train for review.
+
+### Changed
+
+- Save version 26 adds the trip count, the last trip, and the journal moment for coming home. A
+  version 25 colony opens unchanged, having been nowhere.
+
 ## [0.66.3] - 2026-10-02
 
 ### Added

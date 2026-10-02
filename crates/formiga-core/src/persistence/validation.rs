@@ -91,6 +91,18 @@ impl From<SaveFile> for ValidatedSave {
         crate::world::normalize_relationships(&mut save);
         save.objects.objects.truncate(MAX_COLONY_OBJECTS);
         save.home.normalize_village();
+        // A trip that cannot have happened is forgotten, though it is still counted.
+        if save
+            .trips
+            .last
+            .as_ref()
+            .is_some_and(|trip| !trip_holds(trip))
+        {
+            save.trips.last = None;
+        }
+        if save.trips.last.is_some() {
+            save.trips.count = save.trips.count.max(1);
+        }
         // Anything that was never scheduled is scheduled from the colony's seed, as a new colony's
         // would be.
         if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
@@ -341,6 +353,11 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
         save.visitors.favorites.len() <= MAX_FAVORITE_VISITORS,
         &|| format!("{} favourite visitors", save.visitors.favorites.len()),
     );
+    check(
+        save.trips.last.as_ref().is_none_or(trip_holds)
+            && (save.trips.last.is_none() || save.trips.count >= 1),
+        &|| "a trip that cannot have happened".to_owned(),
+    );
 
     // The village.
     check(save.objects.objects.len() <= MAX_COLONY_OBJECTS, &|| {
@@ -397,6 +414,11 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
     found
 }
 
+/// Whether a trip is written as one: its own identifier, and home no earlier than it got there.
+fn trip_holds(trip: &crate::Trip) -> bool {
+    crate::Trip::is_session(&trip.session) && trip.arrived_at_utc <= trip.left_at_utc
+}
+
 /// Whether every one of these places along the village ground is on it.
 fn placed(mut alongs: impl Iterator<Item = f32>) -> bool {
     alongs.all(|along| (0.0..=1.0).contains(&along))
@@ -439,7 +461,7 @@ mod tests {
     #[test]
     fn every_violation_is_noticed_and_repaired() {
         type Breakage = (&'static str, fn(&mut SaveFile));
-        let breakages: [Breakage; 8] = [
+        let breakages: [Breakage; 9] = [
             ("text", |save| save.companion.appearance.text_scale = 233),
             ("bond", |save| {
                 let first = save.relationships[0];
@@ -473,6 +495,13 @@ mod tests {
                     .collect()
             }),
             ("version", |save| save.save_version = 3),
+            ("trip", |save| {
+                save.trips.last = Some(crate::Trip {
+                    session: "../../colony".to_owned(),
+                    arrived_at_utc: save.created_at_utc,
+                    left_at_utc: save.created_at_utc,
+                })
+            }),
             ("orphan", |save| {
                 for creature in &mut save.creatures {
                     creature.role = CreatureRole::Mini { parent_id: 404 };

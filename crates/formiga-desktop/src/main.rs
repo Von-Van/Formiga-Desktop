@@ -10,6 +10,7 @@ mod creature_menu;
 mod desktop_ui_review;
 mod explain;
 mod gpu;
+mod hill;
 mod interaction;
 mod notebook_window;
 mod notices;

@@ -4,6 +4,20 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.66.4
+
+The colony can now go on a trip to Formiga Hill, a separate app, once it is installed. The tray
+offers **Go to Formiga Hill…**: a little train in your village's colours pulls in, everyone walks to
+a door and gets on, and Formiga Hill opens as the train pulls away. While they are away nothing of
+the colony is on your desktop, and the tray offers to bring them home whenever you like; coming
+back, everyone gets off and walks to exactly where they were, and the journal notes the trip.
+Whatever happens at the other end — Formiga Hill closing early, refusing, or stopping unexpectedly,
+or Formiga itself being closed mid-trip — the colony comes home as it left. Formiga Hill is told how
+your companions look, behave and get on, and nothing about your desktop or your colony's seed.
+
+Without Formiga Hill installed nothing changes: the tray, the colony and the notebook are exactly as
+they were. The colony file moves to version 26 to make room for the trips.
+
 ## New in 0.66.3
 
 The Today page now says how today compares with the rest of the week, in a few lines that each show

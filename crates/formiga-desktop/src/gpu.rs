@@ -26,11 +26,13 @@ use winit::window::Window;
 mod atlas;
 mod occlusion;
 mod resources;
+mod train;
 mod ui;
 mod village;
 use atlas::*;
 pub(crate) use occlusion::monitor_has_fullscreen_window;
 use occlusion::*;
+pub use train::TrainView;
 use village::*;
 
 #[repr(C)]
@@ -127,6 +129,8 @@ pub struct OverlayUi<'a> {
     pub village: VillageScene<'a>,
     /// A wonder out somewhere for somebody to play on.
     pub wonder: Option<WonderView>,
+    /// The train, while the colony is getting on or off it.
+    pub train: Option<TrainView>,
 }
 
 /// What the village is up to this frame beyond where everyone stands: the houses somebody is
@@ -222,6 +226,8 @@ pub struct OverlayRenderer {
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
     wonder: Option<WonderGpu>,
+    /// The train's frames, while a trip is on this display.
+    train: Option<train::TrainGpu>,
     tree_vertex_cache_key: Option<TreeVertexCacheKey>,
     tree_vertices: Vec<Vertex>,
     object_vertex_cache_key: Option<ObjectVertexCacheKey>,
@@ -494,6 +500,7 @@ impl OverlayRenderer {
             trinkets: None,
             rope: None,
             wonder: None,
+            train: None,
             tree_vertex_cache_key: None,
             tree_vertices: Vec::new(),
             object_vertex_cache_key: None,
@@ -744,6 +751,21 @@ impl OverlayRenderer {
         if prop_vertex_count > 0 {
             self.ensure_colony_object_atlas(save.colony_seed);
         }
+        // The train, in front of everyone: a companion walking up to its door goes behind it.
+        let train_start = vertices.len();
+        match ui
+            .train
+            .filter(|train| train.pose.monitor_id == self.monitor.id)
+        {
+            Some(train) => {
+                self.ensure_train(&train);
+                vertices.extend_from_slice(
+                    &self.train_vertices(train.pose, save.settings.display_scale),
+                );
+            }
+            None => self.train = None,
+        }
+        let train_vertex_count = vertices.len() - train_start;
         let bubble_start = vertices.len();
         if let Some(creature) = bubble_creature
             && let Some(bubble_vertices) =
@@ -905,6 +927,16 @@ impl OverlayRenderer {
                     &objects.bind_group,
                     prop_start,
                     prop_vertex_count,
+                );
+            }
+            if train_vertex_count > 0
+                && let Some(train) = &self.train
+            {
+                draw(
+                    &mut pass,
+                    &train.bind_group,
+                    train_start,
+                    train_vertex_count,
                 );
             }
             if bubble_vertex_count > 0

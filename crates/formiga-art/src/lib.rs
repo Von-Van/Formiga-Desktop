@@ -8,6 +8,7 @@ mod postcard;
 mod renderer;
 mod shelter;
 mod sticker;
+mod train;
 mod tree;
 mod trinkets;
 mod ui_atlas;
@@ -39,6 +40,10 @@ pub use shelter::{
 };
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
+};
+pub use train::{
+    CAR_WIDTH, COUPLING, ENGINE_WIDTH, MAX_CARS, RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND,
+    TRAIN_HEIGHT, TrainLook, TrainRenderer, cars_for, door_centers, train_width,
 };
 pub use tree::{
     ANCHOR_CLEARANCE, KeepsakeTreeRenderer, TREE_CELL, TREE_INSET, TRINKET_ANCHORS, TreeScene,

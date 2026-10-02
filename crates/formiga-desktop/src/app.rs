@@ -5,7 +5,8 @@ use crate::card_export::{
 };
 use crate::creature_menu::{CreatureMenu, MenuDismissal, MenuTarget, MenuWorld};
 use crate::gpu::{
-    MenuView, OverlayRenderer, OverlayUi, SideView, VillageScene, monitor_has_fullscreen_window,
+    MenuView, OverlayRenderer, OverlayUi, SideView, TrainView, VillageScene,
+    monitor_has_fullscreen_window,
 };
 use crate::interaction::{InteractionProxy, MenuProxy, ProxyRuntimeState};
 use crate::notebook_window;
@@ -40,11 +41,13 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId, WindowLevel};
 mod cadence;
 mod habitat_editor;
+mod hill;
 mod menus;
 mod settings_window;
 mod updates;
 use cadence::*;
 use habitat_editor::*;
+use hill::HillLink;
 
 #[derive(Debug)]
 pub enum UserEvent {
@@ -52,6 +55,8 @@ pub enum UserEvent {
     Update(UpdateEvent),
     /// A screen reader asking the notebook window for its contents, or to act on a control.
     AccessKit(egui_winit::accesskit_winit::Event),
+    /// Formiga Hill has exited.
+    Hill(crate::hill::HillEvent),
 }
 
 impl From<egui_winit::accesskit_winit::Event> for UserEvent {
@@ -122,6 +127,8 @@ pub struct FormigaApp {
     /// colony keeps being tried at every checkpoint, and this clears on the first write that
     /// works.
     save_trouble: Option<String>,
+    /// Formiga Hill, if it is installed, and the colony's trip there, if it is on one.
+    hill: HillLink,
 }
 
 impl FormigaApp {
@@ -161,6 +168,7 @@ impl FormigaApp {
             night: false,
             night_checked: None,
             notebook_geometry: notebook_window::load(&data_dir),
+            hill: HillLink::new(&data_dir),
             data_dir,
             save_trouble: None,
         })
@@ -189,6 +197,8 @@ impl FormigaApp {
         self.world = Some(world);
         self.sync_overlay_visibility();
         self.save()?;
+        self.check_for_hill(true);
+        self.resume_open_trip();
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
@@ -290,6 +300,8 @@ impl FormigaApp {
         let Some(world) = &self.world else { return };
         let settings = &world.save.settings;
         let editor_active = self.habitat_editor.is_some();
+        // While a trip has the colony, only the display the train stops at shows anything.
+        let trip_display = self.trip_display();
         for overlay in self.overlays.values_mut() {
             overlay.set_hittest_enabled(editor_active);
             // Full-screen occlusion is applied while rendering, not by ordering the native window
@@ -297,7 +309,8 @@ impl FormigaApp {
             // Space, so hiding it here blanked the colony everywhere and it only came back on
             // whichever Space happened to be active when it was ordered front again.
             let enabled = settings.visible
-                && !accessible_regions(&settings.habitat, &overlay.monitor).is_empty();
+                && !accessible_regions(&settings.habitat, &overlay.monitor).is_empty()
+                && trip_display.is_none_or(|station| station == Some(overlay.monitor.id));
             overlay.set_visible(enabled);
         }
     }
@@ -306,6 +319,14 @@ impl FormigaApp {
         let Some(world) = &self.world else {
             return Duration::from_millis(250);
         };
+        // A train on the desktop moves at the overlay's quickest pace; a colony away needs nothing.
+        if self.hill.trip.holds_world() {
+            return if self.hill.trip.scene().is_some() {
+                Duration::from_millis(50)
+            } else {
+                Duration::from_secs(2)
+            };
+        }
         if world.is_interacting() {
             return Duration::from_millis(50);
         }
@@ -392,6 +413,12 @@ impl FormigaApp {
             self.night = night;
             self.night_checked = Some(now);
         }
+        // While a trip has the colony, the trip ticks instead of the world.
+        if self.hill.trip.holds_world() {
+            self.tick_trip(dt);
+            return true;
+        }
+        self.check_for_hill(false);
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
@@ -592,12 +619,20 @@ impl FormigaApp {
                 }
             }
             TrayAction::OpenAbout => self.show_update_settings(event_loop),
+            TrayAction::GoToHill => self.go_to_hill(),
+            TrayAction::BringColonyHome => self.bring_colony_home(),
             TrayAction::None => {}
         }
     }
 
     fn sync_interaction_proxies(&mut self, event_loop: &ActiveEventLoop) {
         if self.habitat_editor.is_some() {
+            for proxy in self.interaction_proxies.values_mut() {
+                proxy.hide();
+            }
+            return;
+        }
+        if self.hill.trip.holds_world() {
             for proxy in self.interaction_proxies.values_mut() {
                 proxy.hide();
             }
@@ -891,6 +926,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         match event {
             UserEvent::Menu(event) => self.handle_menu(event_loop, &event),
             UserEvent::Update(event) => self.handle_update_event(event_loop, event),
+            UserEvent::Hill(event) => self.handle_hill_event(event),
             UserEvent::AccessKit(event) => {
                 if let Some(window) = &mut self.settings_window
                     && window.id() == event.window_id
@@ -1031,20 +1067,37 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             world.loose_props(&self.monitors),
                         )
                     });
+                // While a trip has the colony, the overlay draws the trip's copy of it: whoever
+                // is on the platform, and the train. Nobody is indoors and nothing is said.
+                let trip = self
+                    .world
+                    .as_ref()
+                    .and_then(|world| self.trip_stage(&world.save));
+                let on_trip = trip.is_some();
                 let village = VillageScene {
-                    occupied: &occupied,
-                    motions: &motions,
+                    occupied: if on_trip { &[] } else { &occupied },
+                    motions: if on_trip { &[] } else { &motions },
                     loose: &loose,
                     clock: self.observation_epoch.elapsed().as_secs_f32(),
                 };
                 if let (Some(overlay), Some(world)) =
                     (self.overlays.get_mut(&window_id), &self.world)
-                    && let Err(error) = overlay.render(
-                        &world.save,
-                        self.current_cursor,
-                        self.habitat_editor.as_ref().map(|editor| &editor.draft),
-                        &self.cached_windows,
-                        milestone,
+                {
+                    let (save, train) = match &trip {
+                        Some((staged, train)) => (staged, *train),
+                        None => (&world.save, None),
+                    };
+                    let ui = if on_trip {
+                        OverlayUi {
+                            bubbles: &[],
+                            reduce_motion: world.save.settings.reduce_motion,
+                            night: self.night,
+                            menu: None,
+                            village,
+                            wonder: None,
+                            train,
+                        }
+                    } else {
                         OverlayUi {
                             bubbles: world.thought_bubbles(),
                             reduce_motion: world.save.settings.reduce_motion,
@@ -1052,10 +1105,19 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             menu,
                             village,
                             wonder: world.wonder(),
-                        },
-                    )
-                {
-                    tracing::error!(%error, "overlay render failed");
+                            train: None,
+                        }
+                    };
+                    if let Err(error) = overlay.render(
+                        save,
+                        self.current_cursor,
+                        self.habitat_editor.as_ref().map(|editor| &editor.draft),
+                        &self.cached_windows,
+                        if on_trip { None } else { milestone },
+                        ui,
+                    ) {
+                        tracing::error!(%error, "overlay render failed");
+                    }
                 }
             }
             WindowEvent::Resized(size) => {

@@ -107,6 +107,11 @@ impl FormigaApp {
         if self.habitat_editor.is_some() {
             return;
         }
+        // The areas are drawn over the colony's own overlays, which show nothing while it is away.
+        if self.hill.trip.holds_world() {
+            self.settings_notice("The colony is away; arrange where it may go once it is home");
+            return;
+        }
         let previous_paused = self
             .world
             .as_ref()
