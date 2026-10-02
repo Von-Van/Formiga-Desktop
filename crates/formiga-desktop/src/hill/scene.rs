@@ -24,7 +24,7 @@ const PULL_IN_SECS: f32 = 2.6;
 const PULL_OUT_SECS: f32 = 2.4;
 /// From the train stopping to the first companion stepping on or off, and between each after.
 const FIRST_STEP_SECS: f32 = 0.35;
-const STEP_SECS: f32 = 0.3;
+const STEP_SECS: f32 = 0.25;
 /// How long the train stands once the last companion is on, or off.
 const LINGER_SECS: f32 = 0.8;
 /// The longest anyone takes to reach the train, or to walk home from it: anyone farther hurries.
@@ -275,18 +275,27 @@ impl TrainScene {
         }
         let (leave_at, ends_at) = match leg {
             Leg::Departure => {
-                // Each steps aboard once it is at its door and the train has stopped, one after
-                // another.
+                // Whoever was waiting on the platform steps aboard in turn once the train has
+                // stopped; anyone who reaches the train after that steps straight in, rather than
+                // waiting behind a carriage.
                 let mut arrivals: Vec<(usize, f32)> = walkers
                     .iter()
                     .enumerate()
                     .map(|(index, walker)| (index, walker.arrives_at()))
                     .collect();
                 arrivals.sort_by(|a, b| a.1.total_cmp(&b.1));
-                let mut last = PULL_IN_SECS + FIRST_STEP_SECS - STEP_SECS;
+                let stopped = PULL_IN_SECS + FIRST_STEP_SECS;
+                let mut queue = stopped - STEP_SECS;
+                let mut last: f32 = stopped;
                 for (index, arrives) in arrivals {
-                    last = arrives.max(last + STEP_SECS);
-                    walkers[index].aboard_at = last;
+                    let aboard = if arrives < stopped {
+                        queue += STEP_SECS;
+                        queue
+                    } else {
+                        arrives
+                    };
+                    walkers[index].aboard_at = aboard;
+                    last = last.max(aboard);
                 }
                 let leave_at = last + LINGER_SECS;
                 (leave_at, leave_at + PULL_OUT_SECS)
@@ -449,5 +458,7 @@ impl TrainScene {
 /// art pixels above the ground line, as a creature's frame sits above its contact point.
 pub const TRAIN_RISE: u32 = TRAIN_GROUND + 1;
 
+#[cfg(test)]
+mod review;
 #[cfg(test)]
 mod tests;
