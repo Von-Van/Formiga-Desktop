@@ -804,7 +804,7 @@ fn poses_are_not_saved_and_reduced_motion_keeps_calm_stationary_gaze() {
             .unwrap()
             .contains("cursor_sample_millis")
     );
-    let restored = World::from_save(serde_json::from_str(&json).unwrap());
+    let restored = World::from_save(serde_json::from_str::<SaveFile>(&json).unwrap());
     assert!(
         restored
             .save

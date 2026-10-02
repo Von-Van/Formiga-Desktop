@@ -415,7 +415,7 @@ fn accepted_design_survives_add_replace_save_and_sharing_with_related_minis() {
     assert_eq!(imported.save.creatures[0].appearance, added.appearance);
     assert_eq!(imported.save.creatures[0].personality, added.personality);
     let serialized = serde_json::to_vec(&world.save).unwrap();
-    let mut restored = World::from_save(serde_json::from_slice(&serialized).unwrap());
+    let mut restored = World::from_save(serde_json::from_slice::<SaveFile>(&serialized).unwrap());
     assert_eq!(
         restored
             .save

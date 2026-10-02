@@ -35,8 +35,10 @@ mod village_life;
 mod visitors;
 mod wonders;
 use attention::{AttentionRuntime, DisplayAttention};
+pub(crate) use bonds::normalize_relationships;
 use bonds::*;
 pub use bubbles::{BubbleGrowth, ThoughtBubble};
+pub(crate) use colony::normalize_colony_roles;
 use colony::*;
 use generation::*;
 use habits::*;
@@ -300,48 +302,14 @@ impl World {
         world
     }
 
-    pub fn from_save(mut save: SaveFile) -> Self {
-        save.companion.normalize();
-        save.visitors.normalize();
-        normalize_colony_roles(&mut save);
-        normalize_relationships(&mut save);
-        if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.ritual.next_at_utc =
-                scheduled_ritual_at(save.colony_seed, save.ritual.ordinal, save.maximum_seen_utc);
-        }
-        save.objects.objects.truncate(MAX_COLONY_OBJECTS);
-        save.home.normalize_village();
-        if save.objects.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.objects.next_at_utc = scheduled_colony_object_at(
-                save.colony_seed,
-                save.objects.ordinal,
-                save.maximum_seen_utc,
-            );
-        }
-        if save.home.unlocks.next_at_utc == OffsetDateTime::UNIX_EPOCH {
-            save.home.unlocks.next_at_utc = scheduled_village_unlock_at(
-                save.colony_seed,
-                save.home.unlocks.ordinal,
-                save.maximum_seen_utc,
-            );
-        }
+    /// Open a colony. Only a validated one can be opened: a `SaveFile` passed here is validated
+    /// first, and one read from disk already has been.
+    pub fn from_save(save: impl Into<crate::ValidatedSave>) -> Self {
+        let mut save = save.into().into_inner();
         // Identity and durable drives survive relaunch, but interrupted locomotion and reactions do
         // not. Surface attachments are validated against the first desktop snapshot on the next
         // tick, while every creature resumes from a stable pose.
         for creature in &mut save.creatures {
-            creature.appearance.design = creature
-                .appearance
-                .design
-                .map(crate::CreatureDesign::bounded);
-            creature.origin.design = creature.appearance.design;
-            // Only something the colony has found can be worn: a file that says otherwise wears
-            // nothing rather than something from nowhere.
-            if creature
-                .accessory
-                .is_some_and(|accessory| !accessory.available(&save.companion.scrapbook))
-            {
-                creature.accessory = None;
-            }
             creature.state.action = ActionKind::Idle;
             creature.state.action_elapsed = 0.0;
             creature.state.action_duration = 2.5;

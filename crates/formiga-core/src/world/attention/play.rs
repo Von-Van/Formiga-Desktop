@@ -1394,7 +1394,7 @@ pub(super) mod tests {
         assert!(w.attention.play.cooldown > 40.0);
         assert!(std::mem::size_of::<PlayRuntime>() <= 512);
         let restored = World::from_save(
-            serde_json::from_str(&serde_json::to_string(&w.save).unwrap()).unwrap(),
+            serde_json::from_str::<SaveFile>(&serde_json::to_string(&w.save).unwrap()).unwrap(),
         );
         assert!(restored.attention.play.session.is_none());
         assert!(restored.attention.play.encounter.is_none());

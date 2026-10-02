@@ -115,8 +115,12 @@ pub fn colony_file(error: &formiga_core::PersistenceError) -> String {
              copy."
                 .to_owned()
         }
-        PersistenceError::Io(io) if io.kind() == std::io::ErrorKind::InvalidData => format!(
-            "It is larger than any colony file can be, so it is not a Formiga backup. ({io})"
+        PersistenceError::TooLarge(_) => {
+            "It is larger than any colony file can be, so it is not a Formiga backup.".to_owned()
+        }
+        PersistenceError::NotAColony(why) => format!(
+            "It is a Formiga file, but not a whole colony: {why}. Choose a backup made with \
+             \"Export full colony\" instead; your colony is untouched."
         ),
         PersistenceError::Io(io) => format!("It could not be read. ({io})"),
     }
@@ -224,6 +228,21 @@ mod tests {
         assert!(reference_image(&big).contains("smaller"));
         let broken = anyhow::anyhow!("invalid chunk").context("decode reference image");
         assert!(reference_image(&broken).contains("damaged"));
+    }
+
+    /// A file that is too big and a file that is not a whole colony are told apart, and each
+    /// says the colony was not touched or what to choose instead.
+    #[test]
+    fn a_colony_file_failure_names_what_is_wrong_with_it() {
+        use formiga_core::{ImportRefusal, PersistenceError};
+        let big = colony_file(&PersistenceError::TooLarge(formiga_core::MAX_SAVE_BYTES));
+        assert!(big.contains("larger than any colony file"), "{big}");
+        let empty = colony_file(&PersistenceError::NotAColony(ImportRefusal::Empty));
+        assert!(empty.contains("no companions"), "{empty}");
+        assert!(empty.contains("Export full colony"), "{empty}");
+        assert!(!empty.contains("larger"), "{empty}");
+        let newer = colony_file(&PersistenceError::UnsupportedVersion(99));
+        assert!(newer.contains("newer Formiga"), "{newer}");
     }
 
     #[test]

@@ -557,7 +557,7 @@ impl World {
     }
 }
 
-pub(super) fn normalize_colony_roles(save: &mut SaveFile) {
+pub(crate) fn normalize_colony_roles(save: &mut SaveFile) {
     if save.creatures.is_empty() {
         return;
     }

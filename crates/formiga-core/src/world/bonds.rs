@@ -8,7 +8,7 @@ pub(super) struct BondPlan {
     pub(super) approaching: bool,
 }
 
-pub(super) fn normalize_relationships(save: &mut SaveFile) {
+pub(crate) fn normalize_relationships(save: &mut SaveFile) {
     let creature_ids: BTreeSet<_> = save.creatures.iter().map(|creature| creature.id).collect();
     let mut canonical = BTreeMap::new();
     for mut relationship in save.relationships.drain(..) {

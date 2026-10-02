@@ -864,7 +864,7 @@ impl FormigaApp {
             return;
         };
         let mut save = match SaveStore::read_snapshot(&path) {
-            Ok(save) => save,
+            Ok(save) => save.into_inner(),
             Err(error) => {
                 self.failure_dialog(
                     "That backup could not be opened",

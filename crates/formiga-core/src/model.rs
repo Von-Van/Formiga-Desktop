@@ -1390,6 +1390,9 @@ pub enum ColonyManagementError {
     DuplicateIdentity,
 }
 
+/// The longest a companion's name can be, in characters.
+pub const MAX_NAME_CHARACTERS: usize = 24;
+
 pub fn validate_creature_name(value: &str) -> Result<String, CreatureNameError> {
     if value.chars().any(char::is_control) {
         return Err(CreatureNameError::ControlCharacter);
@@ -1398,7 +1401,7 @@ pub fn validate_creature_name(value: &str) -> Result<String, CreatureNameError> 
     if trimmed.is_empty() {
         return Err(CreatureNameError::Empty);
     }
-    if trimmed.chars().count() > 24 {
+    if trimmed.chars().count() > MAX_NAME_CHARACTERS {
         return Err(CreatureNameError::TooLong);
     }
     Ok(trimmed.to_owned())
