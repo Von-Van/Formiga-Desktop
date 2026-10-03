@@ -126,8 +126,9 @@ pub enum ReturnEffect {
         #[serde(with = "time::serde::rfc3339")]
         left_at_utc: OffsetDateTime,
     },
-    /// A souvenir to wear, by an identifier Desktop knows. No Desktop knows any yet, so each is
-    /// set aside.
+    /// One of Formiga Hill's souvenirs, by Formiga Hill's own identifier for it. Desktop keeps
+    /// it once, to be looked at, when the trip's snapshot offered [`crate::Capability::Souvenirs`]
+    /// and listed it in [`crate::TravelSnapshot::accepts_souvenirs`]. Any other is set aside.
     Souvenir { id: String },
     /// An official keepsake unlocked at Hill, by an identifier Desktop knows. No Desktop knows
     /// any yet, so each is set aside.
@@ -150,7 +151,7 @@ impl ReturnEffect {
 }
 
 /// An identifier from a fixed catalogue: lowercase letters, digits, `-`, `_` and `.`.
-fn is_reward_id(id: &str) -> bool {
+pub(crate) fn is_reward_id(id: &str) -> bool {
     (1..=MAX_REWARD_ID_CHARS).contains(&id.len())
         && id
             .bytes()

@@ -15,6 +15,7 @@ mod observations;
 mod persistence;
 mod rng;
 mod seed_share;
+mod souvenirs;
 mod stature;
 mod temperament;
 mod topology;
@@ -65,6 +66,7 @@ pub use seed_share::{
     SeedCodeError, SharedCreatureSeed, decode_creature_seed, derive_imported_colony_seed,
     encode_creature_seed,
 };
+pub use souvenirs::{Souvenir, SouvenirRecord};
 pub use stature::{
     AVERAGE_SIZE, STATURE_MAX, STATURE_MIN, apply_statures, size_after_parent, size_for,
     stature_percent,
@@ -89,4 +91,4 @@ pub use world::{
     wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 26;
+pub const SAVE_VERSION: u32 = 27;

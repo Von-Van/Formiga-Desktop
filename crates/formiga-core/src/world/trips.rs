@@ -2,9 +2,10 @@
 //!
 //! The world knows only the two ends of a trip. Before the colony leaves, everything anybody is in
 //! the middle of is let go, so the colony leaves as it would on quitting and comes back as it would
-//! on opening. When it is home again, the trip is counted and the journal says so, once. Where
-//! the colony went, how it was started, and what was checked on its way home are the desktop
-//! host's business: nothing here reads another app's words.
+//! on opening. When it is home again, the trip is counted and the journal says so, once, and any
+//! souvenir it brought is kept for the journal's page of them, once. Where the colony went, how it
+//! was started, and what was checked on its way home are the desktop host's business: nothing here
+//! reads another app's words.
 
 use super::*;
 
@@ -64,5 +65,23 @@ impl World {
             .companion
             .remember(None, crate::JournalMoment::Trip, now);
         true
+    }
+
+    /// Keep the souvenirs the host has checked, each one once, as brought home `now`. One the
+    /// colony already has changes nothing, and nothing else is touched: a souvenir is only ever
+    /// looked at. Returns whether anything changed.
+    pub fn keep_souvenirs(&mut self, souvenirs: &[crate::Souvenir], now: OffsetDateTime) -> bool {
+        let mut kept = false;
+        for &souvenir in souvenirs {
+            if self.save.trips.has_souvenir(souvenir) {
+                continue;
+            }
+            self.save.trips.souvenirs.push(crate::SouvenirRecord {
+                souvenir,
+                brought_home_at_utc: now,
+            });
+            kept = true;
+        }
+        kept
     }
 }

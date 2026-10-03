@@ -231,15 +231,16 @@ mod tests {
 
     #[test]
     fn a_header_from_a_newer_reader_is_refused_for_its_version() {
+        let newer = TRAVEL_FORMAT_VERSION + 1;
         let value = serde_json::json!({
             "format": "formiga.travel.snapshot",
-            "version": 7,
-            "min_reader_version": 3,
+            "version": newer + 4,
+            "min_reader_version": newer,
             "anything": ["shaped", "differently"],
         });
         match check_header(&value, "formiga.travel.snapshot") {
-            Err(TravelError::UnsupportedVersion { needs: 3, reads }) => {
-                assert_eq!(reads, TRAVEL_FORMAT_VERSION)
+            Err(TravelError::UnsupportedVersion { needs, reads }) => {
+                assert_eq!((needs, reads), (newer, TRAVEL_FORMAT_VERSION))
             }
             other => panic!("expected a version refusal, got {other:?}"),
         }

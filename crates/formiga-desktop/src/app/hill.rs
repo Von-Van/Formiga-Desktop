@@ -263,12 +263,19 @@ impl FormigaApp {
                 if !welcome.set_aside.is_empty() {
                     tracing::info!(set_aside = ?welcome.set_aside, "receipt effects set aside");
                 }
-                if let (Some(trip), Some(world)) = (welcome.trip, &mut self.world)
-                    && world.welcome_home(trip, now)
-                {
-                    self.save_waiting = SaveUrgency::Prompt;
+                if let Some(world) = &mut self.world {
+                    let counted = welcome
+                        .trip
+                        .is_some_and(|trip| world.welcome_home(trip, now));
+                    let kept = world.keep_souvenirs(&welcome.souvenirs, now);
+                    if counted || kept {
+                        self.save_waiting = SaveUrgency::Prompt;
+                    }
                 }
-                tracing::info!("the colony came home from Formiga Hill");
+                tracing::info!(
+                    souvenirs = welcome.souvenirs.len(),
+                    "the colony came home from Formiga Hill"
+                );
                 None
             }
             Answer::Silent { refusal, problem } => {

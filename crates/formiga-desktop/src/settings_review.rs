@@ -2115,6 +2115,57 @@ fn an_empty_journal_and_guest_book_explain_themselves() {
     assert!(shown(&h, "No visitors yet"));
 }
 
+/// The journal has no place for souvenirs until one comes home from Formiga Hill. Then each is
+/// shown, newest first, with Desktop's own name and line for it, and its picture is given back
+/// with the rest of the artwork when the menu closes.
+#[test]
+fn souvenirs_appear_in_the_journal_only_once_one_has_come_home() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    // An otherwise empty journal, so the section is on screen without scrolling.
+    h.save.companion.journal.clear();
+    h.save.companion.pins.clear();
+    h.save.companion.scrapbook.clear();
+    h.save.visitors = VisitorState::default();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(!shown_starting(&h, "SOUVENIRS"));
+    let textures = h.clubhouse.texture_ids().len();
+    let at = h.save.created_at_utc + time::Duration::days(2);
+    h.save.trips.souvenirs = vec![
+        SouvenirRecord {
+            souvenir: Souvenir::PicnicRibbon,
+            brought_home_at_utc: at,
+        },
+        SouvenirRecord {
+            souvenir: Souvenir::FairTicket,
+            brought_home_at_utc: at + time::Duration::days(1),
+        },
+    ];
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "SOUVENIRS · 2 from Formiga Hill"));
+    let top = |name: &str| {
+        h.labels
+            .iter()
+            .find(|(text, _)| text == name)
+            .map(|(_, rect)| rect.top())
+            .unwrap_or_else(|| panic!("{name} is not shown"))
+    };
+    assert!(
+        top(Souvenir::FairTicket.name()) < top(Souvenir::PicnicRibbon.name()),
+        "the newest comes first"
+    );
+    assert!(shown(&h, Souvenir::PicnicRibbon.description()));
+    assert!(shown_starting(&h, "Brought home from Formiga Hill · "));
+    assert_eq!(
+        h.clubhouse.texture_ids().len(),
+        textures + 1,
+        "one picture holds every souvenir"
+    );
+    h.clubhouse.release_images();
+    assert!(h.clubhouse.texture_ids().is_empty());
+}
+
 /// A save that fails is shown calmly on every page, with something to do about it; it is the
 /// app that clears it once a save works again.
 #[test]

@@ -287,8 +287,10 @@ temperament, three traits (in words and as identifiers) and profile phrase, how 
 bold it is (which sets its walking pace), how it celebrates, its habits, and what it is wearing with
 the colours to draw it in. For each pair it holds four coarse bands — none, low, medium or high —
 rather than Formiga's scores. It also holds the trip's identifier, the time, Formiga's version, a
-64-bit one-way digest standing for the colony so Hill can tell one colony from another, and the
-reduced-motion, theme and text-size preferences. It holds **no** seed — not the colony's, not any
+64-bit one-way digest standing for the colony so Hill can tell one colony from another, the
+reduced-motion, theme and text-size preferences, and the list of Formiga Hill's souvenirs this
+version of Formiga keeps — the same list for every colony, saying nothing about which it already
+has. It holds **no** seed — not the colony's, not any
 companion's (a first companion's own seed is the colony's) — and no share code, position, display,
 window rectangle or title, cursor sample, application identity, habitat zone, routine, drive,
 memory, learned tendency, journal, guest book, scrapbook, schedule, other setting, update state, or
@@ -297,10 +299,14 @@ Formiga; what Hill shows them is Hill's business.
 
 What comes back is read only once Hill has gone, only if it names this trip and this exact
 snapshot, and only inside fixed bounds. Formiga keeps at most a count of trips and the last trip's
-identifier and the times Hill gives for it — once each checked to fall inside the trip — and writes
-one journal line in its own words. Nothing Hill sends is copied into the colony as text; a
-souvenir or keepsake Hill offers is set aside unread. Save version 26 adds `trips` (that count and
-that last trip) and the `Trip` journal moment; a v25 colony opens unchanged, having been nowhere.
+identifier and the times Hill gives for it — once each checked to fall inside the trip — writes
+one journal line in its own words, and keeps which of the souvenirs it listed came home, and when,
+each once, to show in the journal. Nothing Hill sends is copied into the colony as text: a
+souvenir is kept as one of Formiga's own seven, with Formiga's own name for it, and a souvenir
+Formiga did not list, a keepsake, or anything else Hill offers is set aside unread. Save version 26
+adds `trips` (that count and that last trip) and the `Trip` journal moment; a v25 colony opens
+unchanged, having been nowhere. Save version 27 adds the souvenirs; a v26 colony opens unchanged,
+having brought none home.
 
 The trip's files are deleted when the colony comes home. If Formiga calls the colony home while
 Hill may still be running, it keeps that one directory, holding the word that the trip is over,

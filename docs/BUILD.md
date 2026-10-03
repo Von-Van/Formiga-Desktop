@@ -57,14 +57,16 @@ an installed one, and makes the tray offer the trip. `FORMIGA_HILL_TRIP_AFTER` s
 that many seconds after launch, once, as if the tray had been used; it is ignored unless
 `FORMIGA_HILL_PATH` is set too. `FORMIGA_HILL_STUB` takes a comma-separated list of how the stub
 should behave: `stay=SECONDS`, `refuse=version|busy|invalid`, `crash`, `silent`, `garbage`,
-`stranger`, `souvenir`, and `sheet=PATH` to draw every traveler into a PNG. Each trip's files are
-under `travel/` in the scratch data directory while it is open, and the log names each step.
+`stranger`, `souvenir` to bring home every souvenir the snapshot says Desktop keeps (the Journal
+then shows them under Souvenirs), `souvenir=ID` to bring home just that one, listed or not, and
+`sheet=PATH` to draw every traveler into a PNG. Each trip's files are under `travel/` in the
+scratch data directory while it is open, and the log names each step.
 
-The travel contract has its own fixtures. `crates/formiga-travel/tests/fixtures` holds version 1 as
-it is written; the tests fail if a build stops writing or reading it. When a new travel version is
-deliberately added, `FORMIGA_TRAVEL_BLESS=1 cargo test -p formiga-travel --test golden` writes this
-build's documents over them, so add the new version's fixtures beside the old ones rather than in
-their place once anything has shipped.
+The travel contract has its own fixtures. `crates/formiga-travel/tests/fixtures` holds every
+version as it shipped; the tests fail if a build stops reading any of them, or stops writing its
+own version byte for byte. When a new travel version is deliberately added,
+`FORMIGA_TRAVEL_BLESS=1 cargo test -p formiga-travel --test golden` writes that version's files
+beside the others, named for it, and never touches a version that has shipped.
 
 The Windows half of Hill discovery, which reads the registry, can be type-checked from a Mac
 without the desktop crate's `ring` dependency by compiling `platform/hill.rs` on its own against

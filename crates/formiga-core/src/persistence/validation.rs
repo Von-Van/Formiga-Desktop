@@ -103,6 +103,13 @@ impl From<SaveFile> for ValidatedSave {
         if save.trips.last.is_some() {
             save.trips.count = save.trips.count.max(1);
         }
+        // A souvenir kept twice is the one that came home first.
+        let mut kept = Vec::new();
+        save.trips.souvenirs.retain(|record| {
+            let first = !kept.contains(&record.souvenir);
+            kept.push(record.souvenir);
+            first
+        });
         // Anything that was never scheduled is scheduled from the colony's seed, as a new colony's
         // would be.
         if save.ritual.next_at_utc == OffsetDateTime::UNIX_EPOCH {
@@ -358,6 +365,9 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
             && (save.trips.last.is_none() || save.trips.count >= 1),
         &|| "a trip that cannot have happened".to_owned(),
     );
+    check(souvenirs_once(&save.trips.souvenirs), &|| {
+        "a souvenir kept twice".to_owned()
+    });
 
     // The village.
     check(save.objects.objects.len() <= MAX_COLONY_OBJECTS, &|| {
@@ -419,6 +429,15 @@ fn trip_holds(trip: &crate::Trip) -> bool {
     crate::Trip::is_session(&trip.session) && trip.arrived_at_utc <= trip.left_at_utc
 }
 
+/// Whether every souvenir is kept at most once.
+fn souvenirs_once(souvenirs: &[crate::SouvenirRecord]) -> bool {
+    souvenirs.iter().enumerate().all(|(index, record)| {
+        souvenirs[..index]
+            .iter()
+            .all(|earlier| earlier.souvenir != record.souvenir)
+    })
+}
+
 /// Whether every one of these places along the village ground is on it.
 fn placed(mut alongs: impl Iterator<Item = f32>) -> bool {
     alongs.all(|along| (0.0..=1.0).contains(&along))
@@ -461,7 +480,7 @@ mod tests {
     #[test]
     fn every_violation_is_noticed_and_repaired() {
         type Breakage = (&'static str, fn(&mut SaveFile));
-        let breakages: [Breakage; 9] = [
+        let breakages: [Breakage; 10] = [
             ("text", |save| save.companion.appearance.text_scale = 233),
             ("bond", |save| {
                 let first = save.relationships[0];
@@ -501,6 +520,13 @@ mod tests {
                     arrived_at_utc: save.created_at_utc,
                     left_at_utc: save.created_at_utc,
                 })
+            }),
+            ("souvenir", |save| {
+                let twice = crate::SouvenirRecord {
+                    souvenir: crate::Souvenir::WellPenny,
+                    brought_home_at_utc: save.created_at_utc,
+                };
+                save.trips.souvenirs = vec![twice, twice];
             }),
             ("orphan", |save| {
                 for creature in &mut save.creatures {

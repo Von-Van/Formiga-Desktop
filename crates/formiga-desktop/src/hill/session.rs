@@ -73,11 +73,13 @@ pub struct Refusal {
     pub hill_version: String,
 }
 
-/// What Desktop will do with a receipt: at most one trip to count, and the kinds of everything
-/// else it set aside unread.
+/// What Desktop will do with a receipt: at most one trip to count, the souvenirs to keep, and the
+/// kinds of everything else it set aside unread.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Welcome {
     pub trip: Option<formiga_core::Trip>,
+    /// Each souvenir to keep, once, in the order the receipt named them.
+    pub souvenirs: Vec<formiga_core::Souvenir>,
     pub set_aside: Vec<&'static str>,
 }
 
@@ -234,11 +236,12 @@ impl TravelFiles {
 }
 
 /// The receipt's effects that Desktop applies, which are only those this trip's snapshot offered
-/// and only as Desktop checks them: one visit, inside the trip's own time. Everything else is set
-/// aside unread.
+/// and only as Desktop checks them: one visit, inside the trip's own time, and each souvenir this
+/// build keeps, once. Everything else is set aside unread.
 pub fn welcome(trip: &OpenTrip, receipt: &ReturnReceipt, now: OffsetDateTime) -> Welcome {
     let mut welcome = Welcome::default();
     let records_visits = trip.capabilities.contains(&Capability::VisitRecord);
+    let keeps_souvenirs = trip.capabilities.contains(&Capability::Souvenirs);
     let earliest = trip.seal.created_at_utc - CLOCK_SLACK;
     let latest = now + CLOCK_SLACK;
     for effect in &receipt.effects {
@@ -256,6 +259,13 @@ pub fn welcome(trip: &OpenTrip, receipt: &ReturnReceipt, now: OffsetDateTime) ->
                     arrived_at_utc,
                     left_at_utc,
                 });
+            }
+            ReturnEffect::Souvenir { ref id } if keeps_souvenirs => {
+                match formiga_core::Souvenir::from_id(id) {
+                    Some(souvenir) if welcome.souvenirs.contains(&souvenir) => {}
+                    Some(souvenir) => welcome.souvenirs.push(souvenir),
+                    None => welcome.set_aside.push(effect.kind()),
+                }
             }
             ref other => welcome.set_aside.push(other.kind()),
         }

@@ -4,6 +4,14 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.66.6
+
+Anything your colony is given to keep at Formiga Hill — a gingham ribbon from a picnic, a ticket
+from the Fairground — now comes home with it. The Journal page shows each under Souvenirs, with the
+day it came home, drawn exactly as Formiga Hill draws it in its own display case. Souvenirs are
+there to look at and nothing more, and the Journal shows no Souvenirs at all until the first one
+has come home. Without Formiga Hill installed nothing changes.
+
 ## New in 0.66.5
 
 The train that takes the colony to Formiga Hill is now Formiga Hill's own: a little green tank

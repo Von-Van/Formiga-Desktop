@@ -47,6 +47,7 @@
 //! |---|---|---|
 //! | 1 | Desktop 0.66.4 | Everything |
 //! | 2 | Desktop 0.66.5 | `trait_ids`: each trait by an identifier as well as in Desktop's words |
+//! | 3 | Desktop 0.66.6 | `accepts_souvenirs` and [`Capability::Souvenirs`]: the souvenirs Desktop keeps, by Formiga Hill's own identifiers |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it shipped, and must keep
 //! reading.
@@ -89,7 +90,7 @@ pub use snapshot::{
 pub use text::{is_sanitized, sanitize_text};
 
 /// The version of every travel document this build writes, and the newest it reads.
-pub const TRAVEL_FORMAT_VERSION: u32 = 2;
+pub const TRAVEL_FORMAT_VERSION: u32 = 3;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.travel.snapshot";
@@ -147,6 +148,9 @@ pub mod limits {
     pub const MAX_CAPABILITIES: usize = 16;
     pub const MAX_VERSION_CHARS: usize = 32;
     pub const MAX_EFFECTS: usize = 16;
+    /// The souvenirs a snapshot can say Desktop keeps. Desktop keeps seven; the room is for
+    /// Formiga Hill's catalogue to grow without a refusal on Hill's side.
+    pub const MAX_SOUVENIRS: usize = 64;
     /// A souvenir or keepsake identifier: lowercase letters, digits, `-`, `_` and `.`.
     pub const MAX_REWARD_ID_CHARS: usize = 48;
 }

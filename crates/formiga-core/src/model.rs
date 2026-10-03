@@ -3184,11 +3184,22 @@ pub struct TripLog {
     pub count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last: Option<Trip>,
+    /// The souvenirs the colony has brought home from Formiga Hill, each once, in the order they
+    /// came.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub souvenirs: Vec<crate::SouvenirRecord>,
 }
 
 impl TripLog {
     pub fn is_empty(&self) -> bool {
-        self.count == 0 && self.last.is_none()
+        self.count == 0 && self.last.is_none() && self.souvenirs.is_empty()
+    }
+
+    /// Whether the colony has brought this souvenir home.
+    pub fn has_souvenir(&self, souvenir: crate::Souvenir) -> bool {
+        self.souvenirs
+            .iter()
+            .any(|record| record.souvenir == souvenir)
     }
 }
 

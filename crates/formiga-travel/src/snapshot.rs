@@ -6,6 +6,7 @@ use crate::appearance::{DesignRecipe, TravelAppearance, mirror};
 use crate::document::{Document, TravelError, header_ok, unhex};
 use crate::ids::{SessionId, TravelerId};
 use crate::limits::*;
+use crate::receipt::is_reward_id;
 use crate::text::is_sanitized;
 use crate::{SNAPSHOT_FORMAT, TRAVEL_FORMAT_VERSION};
 use formiga_core as core;
@@ -312,6 +313,10 @@ pub enum Capability {
     /// A [`crate::ReturnEffect::Visit`]: Desktop counts the trip and writes one line about it in
     /// the colony's journal, in its own words.
     VisitRecord,
+    /// [`crate::ReturnEffect::Souvenir`]s: Desktop keeps each souvenir that
+    /// [`TravelSnapshot::accepts_souvenirs`] lists once, to be looked at in its journal, and
+    /// nothing else comes of it.
+    Souvenirs,
     /// Anything a newer Desktop offers that this build does not know.
     #[serde(other)]
     Unknown,
@@ -550,6 +555,11 @@ pub struct TravelSnapshot {
     pub created_at_utc: OffsetDateTime,
     pub desktop_version: String,
     pub capabilities: Vec<Capability>,
+    /// The souvenirs Desktop keeps, by Formiga Hill's own identifiers. The list is the same for
+    /// every colony and says nothing about which the colony already has. Hill brings home only
+    /// these, and only while [`Capability::Souvenirs`] is offered. Empty before version 3.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepts_souvenirs: Vec<String>,
     pub travelers: Vec<Traveler>,
     #[serde(default)]
     pub relationships: Vec<TravelRelationship>,
@@ -574,7 +584,10 @@ impl TravelSnapshot {
             colony_id,
             created_at_utc,
             desktop_version,
-            capabilities: vec![Capability::VisitRecord],
+            capabilities: vec![Capability::VisitRecord, Capability::Souvenirs],
+            accepts_souvenirs: core::Souvenir::ALL
+                .map(|souvenir| souvenir.id().to_owned())
+                .to_vec(),
             travelers: Vec::new(),
             relationships: Vec::new(),
             presentation: Presentation::default(),
@@ -587,6 +600,11 @@ impl TravelSnapshot {
 
     pub fn offers(&self, capability: Capability) -> bool {
         self.capabilities.contains(&capability)
+    }
+
+    /// Whether Desktop keeps the souvenir Formiga Hill calls `id`, if the colony brings it home.
+    pub fn accepts_souvenir(&self, id: &str) -> bool {
+        self.offers(Capability::Souvenirs) && self.accepts_souvenirs.iter().any(|kept| kept == id)
     }
 }
 
@@ -617,6 +635,15 @@ impl Document for TravelSnapshot {
         }
         if self.capabilities.len() > MAX_CAPABILITIES {
             return Err(invalid("too many capabilities"));
+        }
+        let souvenirs: BTreeSet<_> = self.accepts_souvenirs.iter().collect();
+        if self.accepts_souvenirs.len() > MAX_SOUVENIRS
+            || souvenirs.len() != self.accepts_souvenirs.len()
+            || !self.accepts_souvenirs.iter().all(|id| is_reward_id(id))
+        {
+            return Err(invalid(
+                "the souvenirs Desktop keeps are not a short list of different identifiers",
+            ));
         }
         if self.travelers.is_empty() || self.travelers.len() > MAX_TRAVELERS {
             return Err(invalid("a snapshot carries one to twelve travelers"));
@@ -749,11 +776,13 @@ mod tests {
     #[test]
     fn capabilities_from_a_newer_desktop_read_as_unknown() {
         let read: Vec<Capability> =
-            serde_json::from_str(r#"["visit_record", "souvenirs", "photos"]"#).unwrap();
+            serde_json::from_str(r#"["visit_record", "souvenirs", "photos", "postcards"]"#)
+                .unwrap();
         assert_eq!(
             read,
             vec![
                 Capability::VisitRecord,
+                Capability::Souvenirs,
                 Capability::Unknown,
                 Capability::Unknown
             ]

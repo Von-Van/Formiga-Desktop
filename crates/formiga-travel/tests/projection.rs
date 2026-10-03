@@ -227,6 +227,7 @@ fn the_snapshot_holds_nothing_about_the_desktop_or_the_colony_file() {
             "created_at_utc",
             "desktop_version",
             "capabilities",
+            "accepts_souvenirs",
             "travelers",
             "relationships",
             "presentation",
@@ -376,6 +377,19 @@ fn a_snapshot_that_does_not_add_up_is_refused_both_ways() {
     let mut nonsense = snapshot.clone();
     nonsense.travelers[0].character.axes.social = f32::NAN;
     cases.push(("nonsense", nonsense));
+    let mut souvenir_twice = snapshot.clone();
+    souvenir_twice
+        .accepts_souvenirs
+        .push("picnic_ribbon".to_owned());
+    cases.push(("souvenir twice", souvenir_twice));
+    let mut souvenir_path = snapshot.clone();
+    souvenir_path.accepts_souvenirs[0] = "../colony.json".to_owned();
+    cases.push(("souvenir path", souvenir_path));
+    let mut souvenir_flood = snapshot.clone();
+    souvenir_flood.accepts_souvenirs = (0..=limits::MAX_SOUVENIRS)
+        .map(|index| format!("souvenir_{index}"))
+        .collect();
+    cases.push(("souvenir flood", souvenir_flood));
     let mut unknown = snapshot;
     unknown.travelers[0].appearance.design = Some(DesignRecipe {
         parts: "ff".repeat(20),
@@ -404,4 +418,37 @@ fn a_snapshot_asks_for_the_oldest_reader_that_can_draw_everyone() {
         // still host any colony this build sends.
         assert_eq!(snapshot.min_reader_version, 1);
     }
+}
+
+#[test]
+fn the_souvenirs_desktop_keeps_say_nothing_about_the_colony() {
+    let every: Vec<String> = formiga_core::Souvenir::ALL
+        .map(|souvenir| souvenir.id().to_owned())
+        .to_vec();
+    let mut brought_some_home = colony(200);
+    brought_some_home.trips.souvenirs = vec![formiga_core::SouvenirRecord {
+        souvenir: formiga_core::Souvenir::FairTicket,
+        brought_home_at_utc: MADE,
+    }];
+    for save in [colony(3), colony(41), brought_some_home] {
+        let snapshot = snapshot_of(&save);
+        assert!(snapshot.offers(Capability::Souvenirs));
+        assert_eq!(snapshot.accepts_souvenirs, every);
+        for souvenir in formiga_core::Souvenir::ALL {
+            assert!(snapshot.accepts_souvenir(souvenir.id()));
+        }
+        assert!(!snapshot.accepts_souvenir("acorn-badge"));
+    }
+    // A receipt can bring every one of them home along with the visit.
+    assert!(formiga_core::Souvenir::ALL.len() < limits::MAX_EFFECTS);
+    assert!(formiga_core::Souvenir::ALL.len() <= limits::MAX_SOUVENIRS);
+}
+
+#[test]
+fn a_souvenir_on_the_list_is_kept_only_while_the_capability_is_offered() {
+    let mut snapshot = snapshot_of(&colony(3));
+    snapshot
+        .capabilities
+        .retain(|capability| *capability != Capability::Souvenirs);
+    assert!(!snapshot.accepts_souvenir("picnic_ribbon"));
 }

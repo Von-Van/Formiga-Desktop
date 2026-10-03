@@ -248,6 +248,11 @@ nothing of it is on your desktop, and the tray offers **Bring the colony home** 
 them back. When the visit ends the train brings everyone home to exactly where they were, and the
 journal notes the trip.
 
+Anything the colony was given to keep at Formiga Hill — a gingham ribbon from a picnic, a ticket
+from the Fairground — comes home with it and appears under **Souvenirs** on the Journal page, with
+the day it came home. Souvenirs are there to look at, nothing more, and each comes home once. The
+Journal shows no Souvenirs at all until the first one has come home.
+
 The colony always comes home, whatever happens. If Formiga Hill closes early, cannot take the
 colony, or stops unexpectedly, everyone comes straight back as they left; if Formiga itself is
 closed while they are away, it brings them home the next time it starts. Formiga Hill is told only

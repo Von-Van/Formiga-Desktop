@@ -1,4 +1,4 @@
-# Formiga · v0.66.5
+# Formiga · v0.66.6
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.66.5-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.66.6-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,13 +107,13 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.66.5
+## New in 0.66.6
 
-The train that takes the colony to Formiga Hill is now Formiga Hill's own: a little green tank
-engine lined in gold and two coaches in cream and maroon, the same train that pulls in at the
-Hill's station. It always runs left to right, so the journey never seems to turn back between
-leaving your desktop and arriving at the Hill. Formiga Hill's stories can now choose companions by
-their traits however Formiga words them. Without Formiga Hill installed nothing changes.
+Anything your colony is given to keep at Formiga Hill — a gingham ribbon from a picnic, a ticket
+from the Fairground — now comes home with it. The Journal page shows each under Souvenirs, with the
+day it came home, drawn exactly as Formiga Hill draws it in its own display case. Souvenirs are
+there to look at and nothing more, and the Journal shows no Souvenirs at all until the first one
+has come home. Without Formiga Hill installed nothing changes.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

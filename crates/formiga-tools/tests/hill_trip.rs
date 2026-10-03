@@ -97,7 +97,8 @@ fn ack(session: &Session) -> Acknowledgement {
     read_document(&session.dir.join(ACK_FILE)).expect("an acknowledgement")
 }
 
-/// The colony file without what a trip home may add: the trip itself, and its line in the journal.
+/// The colony file without what a trip home may add: the trip itself, the souvenirs it brought,
+/// and its line in the journal.
 fn without_the_trip(save: &SaveFile) -> Vec<u8> {
     let mut save = save.clone();
     save.trips = TripLog::default();
@@ -112,7 +113,7 @@ fn an_ordinary_visit_brings_home_only_the_visit() {
     let mut world = colony();
     let before = serde_json::to_vec_pretty(&world.save).unwrap();
     let session = pack(&world, "ordinary");
-    assert_eq!(visit(&session.dir, "stay=0,souvenir"), Some(0));
+    assert_eq!(visit(&session.dir, "stay=0"), Some(0));
     let ack = ack(&session);
     assert!(ack.accepted && ack.answers(&session.seal));
     let receipt = receipt(&session).unwrap();
@@ -122,12 +123,11 @@ fn an_ordinary_visit_brings_home_only_the_visit() {
             arrived_at_utc,
             left_at_utc,
         },
-        ReturnEffect::Souvenir { .. },
     ] = receipt.effects[..]
     else {
-        panic!("a visit and a souvenir: {:?}", receipt.effects);
+        panic!("only a visit: {:?}", receipt.effects);
     };
-    // What Desktop keeps: the visit, once. The souvenir is set aside.
+    // What Desktop keeps: the visit, once.
     assert!(world.welcome_home(
         Trip {
             session: session.seal.session_id.to_string(),
@@ -141,6 +141,68 @@ fn an_ordinary_visit_brings_home_only_the_visit() {
         without_the_trip(&world.save),
         before,
         "nothing else in the colony changed"
+    );
+}
+
+/// What Desktop does with a receipt's souvenirs, short of the desktop app itself: each one this
+/// build keeps, once.
+fn keep(world: &mut World, receipt: &ReturnReceipt) -> bool {
+    let souvenirs: Vec<Souvenir> = receipt
+        .effects
+        .iter()
+        .filter_map(|effect| match effect {
+            ReturnEffect::Souvenir { id } => Souvenir::from_id(id),
+            _ => None,
+        })
+        .collect();
+    world.keep_souvenirs(&souvenirs, OffsetDateTime::now_utc())
+}
+
+#[test]
+fn a_visit_brings_home_each_souvenir_desktop_keeps_once() {
+    let mut world = colony();
+    let before = serde_json::to_vec_pretty(&world.save).unwrap();
+    let session = pack(&world, "souvenirs");
+    assert_eq!(visit(&session.dir, "stay=0,souvenir"), Some(0));
+    let receipt = receipt(&session).unwrap();
+    let ids: Vec<&str> = receipt
+        .effects
+        .iter()
+        .filter_map(|effect| match effect {
+            ReturnEffect::Souvenir { id } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids, Souvenir::ALL.map(Souvenir::id), "every one listed");
+    assert!(keep(&mut world, &receipt));
+    let kept: Vec<Souvenir> = world
+        .save
+        .trips
+        .souvenirs
+        .iter()
+        .map(|record| record.souvenir)
+        .collect();
+    assert_eq!(kept, Souvenir::ALL);
+    // Brought home again on the next trip, or named by an identifier Desktop does not keep,
+    // nothing changes.
+    for behaviour in [
+        "stay=0,souvenir=picnic_ribbon",
+        "stay=0,souvenir=acorn-badge",
+    ] {
+        let again = pack(&world, &behaviour.replace([',', '='], "-"));
+        assert_eq!(visit(&again.dir, behaviour), Some(0));
+        let receipt = self::receipt(&again).unwrap();
+        assert!(
+            matches!(receipt.effects.last(), Some(ReturnEffect::Souvenir { .. })),
+            "{behaviour}"
+        );
+        assert!(!keep(&mut world, &receipt), "{behaviour}");
+    }
+    assert_eq!(world.save.trips.souvenirs.len(), Souvenir::ALL.len());
+    assert_eq!(
+        without_the_trip(&world.save),
+        before,
+        "a souvenir changes nothing else in the colony"
     );
 }
 

@@ -7,6 +7,7 @@ mod palette;
 mod postcard;
 mod renderer;
 mod shelter;
+mod souvenirs;
 mod sticker;
 mod train;
 mod tree;
@@ -38,6 +39,7 @@ pub use shelter::{
     ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,
     VILLAGE_ATLAS_WIDTH, VILLAGE_DAY_HEIGHT, VILLAGE_HOUSES, VillageCell, VillageLook,
 };
+pub use souvenirs::{SOUVENIR_ICON, SOUVENIR_TILE, draw_souvenir, souvenir_strip};
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
 };

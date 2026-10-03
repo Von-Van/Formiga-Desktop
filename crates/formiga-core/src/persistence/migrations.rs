@@ -187,6 +187,9 @@ const STEPS: &[Step] = &[
     // 26: trips away on the train, and the journal moment for coming home from one. An older
     // colony has never been anywhere.
     Step::adds_only(25),
+    // 27: the souvenirs a colony has brought home from Formiga Hill. An older colony has brought
+    // none home.
+    Step::adds_only(26),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

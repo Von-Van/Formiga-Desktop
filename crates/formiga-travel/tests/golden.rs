@@ -1,8 +1,9 @@
 //! Every travel version as it shipped. These files are never regenerated to make a test pass: a
 //! change that breaks one of them breaks every Hill already installed, or every snapshot an older
-//! Desktop already wrote. Version 1 shipped with Desktop 0.66.4 and version 2 added each trait's
-//! identifier. `FORMIGA_TRAVEL_BLESS=1` writes this build's own version's files only, so a new
-//! version's fixtures go beside the old ones and never over them.
+//! Desktop already wrote. Version 1 shipped with Desktop 0.66.4, version 2 added each trait's
+//! identifier, and version 3 the souvenirs Desktop keeps. `FORMIGA_TRAVEL_BLESS=1` writes this
+//! build's own version's files only, so a new version's fixtures go beside the old ones and never
+//! over them.
 
 mod common;
 
@@ -38,10 +39,15 @@ fn written_now() -> Vec<(String, Vec<u8>)> {
         &seal,
         datetime!(2026-10-02 11:05 UTC),
         "0.1.0",
-        vec![ReturnEffect::Visit {
-            arrived_at_utc: datetime!(2026-10-02 9:31 UTC),
-            left_at_utc: datetime!(2026-10-02 11:04 UTC),
-        }],
+        vec![
+            ReturnEffect::Visit {
+                arrived_at_utc: datetime!(2026-10-02 9:31 UTC),
+                left_at_utc: datetime!(2026-10-02 11:04 UTC),
+            },
+            ReturnEffect::Souvenir {
+                id: "picnic_ribbon".to_owned(),
+            },
+        ],
     );
     let recall = Recall::new(
         session(),
@@ -110,7 +116,10 @@ fn every_shipped_answer_still_reads() {
         assert!(ack.accepted && ack.answers(&seal), "version {version}");
         let receipt: ReturnReceipt = decode(&read(&format!("receipt-v{version}.json"))).unwrap();
         assert!(receipt.answers(&seal), "version {version}");
-        assert!(matches!(receipt.effects[..], [ReturnEffect::Visit { .. }]));
+        assert!(matches!(
+            receipt.effects.first(),
+            Some(ReturnEffect::Visit { .. })
+        ));
         let recall: Recall = decode(&read(&format!("recall-v{version}.json"))).unwrap();
         assert_eq!(recall.session_id, session());
     }
@@ -134,6 +143,28 @@ fn version_two_names_every_trait_by_identifier_and_version_one_only_in_words() {
         );
         assert!(!after.character.trait_ids.contains(&Trait::Unknown));
     }
+}
+
+#[test]
+fn version_three_lists_the_souvenirs_desktop_keeps_and_the_older_ones_none() {
+    for version in [1, 2] {
+        let old: TravelSnapshot = decode(&read(&format!("snapshot-v{version}.json"))).unwrap();
+        assert!(old.accepts_souvenirs.is_empty() && !old.offers(Capability::Souvenirs));
+        assert!(!old.accepts_souvenir("picnic_ribbon"), "version {version}");
+    }
+    let new: TravelSnapshot = decode(&read("snapshot-v3.json")).unwrap();
+    assert!(new.offers(Capability::Souvenirs));
+    assert_eq!(
+        new.accepts_souvenirs,
+        formiga_core::Souvenir::ALL.map(|souvenir| souvenir.id().to_owned())
+    );
+    let receipt: ReturnReceipt = decode(&read("receipt-v3.json")).unwrap();
+    assert_eq!(
+        receipt.effects[1],
+        ReturnEffect::Souvenir {
+            id: "picnic_ribbon".to_owned()
+        }
+    );
 }
 
 #[test]

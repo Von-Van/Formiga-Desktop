@@ -17,7 +17,8 @@
 //! - `silent` stays and then exits without a receipt;
 //! - `garbage` writes a receipt that is not a receipt;
 //! - `stranger` writes a receipt for some other trip;
-//! - `souvenir` asks for a souvenir as well as the visit;
+//! - `souvenir` brings home every souvenir the snapshot says Desktop keeps, as Hill does for a
+//!   colony that has kept them all, and `souvenir=ID` brings home that one, listed or not;
 //! - `sheet=PATH` draws every traveler into a PNG at PATH.
 //!
 //! A recall from Desktop, or the session directory disappearing, ends the visit early without a
@@ -27,7 +28,7 @@ use anyhow::{Context, Result, bail};
 use formiga_art::{BodyClip, Canvas, CreatureRenderer, FRAME_SIZE};
 use formiga_core::ActionKind;
 use formiga_travel::{
-    ACK_FILE, AckRefusal, Acknowledgement, LAUNCH_ARGUMENT, RECALL_FILE, RECEIPT_FILE,
+    ACK_FILE, AckRefusal, Acknowledgement, Capability, LAUNCH_ARGUMENT, RECALL_FILE, RECEIPT_FILE,
     ReturnEffect, ReturnReceipt, SNAPSHOT_FILE, SessionId, SnapshotSeal, TRAVEL_FORMAT_VERSION,
     TravelError, TravelRole, TravelSnapshot, decode, limits, read_bounded, write_atomically,
     write_document,
@@ -46,7 +47,8 @@ struct Options {
     silent: bool,
     garbage: bool,
     stranger: bool,
-    souvenir: bool,
+    /// Which souvenirs to bring home: every one the snapshot lists when empty.
+    souvenir: Option<String>,
     sheet: Option<PathBuf>,
 }
 
@@ -72,7 +74,7 @@ fn options() -> Result<Options> {
             "silent" => options.silent = true,
             "garbage" => options.garbage = true,
             "stranger" => options.stranger = true,
-            "souvenir" => options.souvenir = true,
+            "souvenir" => options.souvenir = Some(value.to_owned()),
             "sheet" => options.sheet = Some(PathBuf::from(value)),
             other => bail!("unknown FORMIGA_HILL_STUB option {other:?}"),
         }
@@ -170,10 +172,18 @@ fn main() -> Result<()> {
         arrived_at_utc: started,
         left_at_utc: OffsetDateTime::now_utc(),
     }];
-    if options.souvenir {
-        effects.push(ReturnEffect::Souvenir {
-            id: "hill-acorn-badge".to_owned(),
-        });
+    match options.souvenir.as_deref() {
+        // Every one Desktop keeps, and only while it offers to keep them, as Hill does.
+        Some("") if snapshot.offers(Capability::Souvenirs) => {
+            effects.extend(
+                snapshot
+                    .accepts_souvenirs
+                    .iter()
+                    .map(|id| ReturnEffect::Souvenir { id: id.clone() }),
+            );
+        }
+        Some("") | None => {}
+        Some(id) => effects.push(ReturnEffect::Souvenir { id: id.to_owned() }),
     }
     let mut receipt = ReturnReceipt::new(&seal, OffsetDateTime::now_utc(), VERSION, effects);
     if options.stranger {

@@ -217,6 +217,43 @@ fn a_receipt_adds_one_visit_and_nothing_else() {
 }
 
 #[test]
+fn a_receipt_brings_home_each_souvenir_desktop_keeps_once() {
+    let scratch = Scratch::new("souvenirs");
+    let files = TravelFiles::new(&scratch.0);
+    let mut trip = files.open(&snapshot()).unwrap();
+    let now = LEFT + Duration::hours(1);
+    let souvenir = |id: &str| ReturnEffect::Souvenir { id: id.to_owned() };
+    let effects = vec![
+        visit(LEFT + Duration::minutes(1), LEFT + Duration::minutes(55)),
+        souvenir("fair_ticket"),
+        souvenir("picnic_ribbon"),
+        souvenir("fair_ticket"),
+        souvenir("acorn-badge"),
+    ];
+    let kept = welcome(&trip, &receipt(&trip, effects.clone()), now);
+    assert!(kept.trip.is_some());
+    assert_eq!(
+        kept.souvenirs,
+        [
+            formiga_core::Souvenir::FairTicket,
+            formiga_core::Souvenir::PicnicRibbon
+        ],
+        "each kept once, in the order the receipt names them"
+    );
+    assert_eq!(
+        kept.set_aside,
+        ["souvenir"],
+        "one Desktop does not keep is set aside"
+    );
+    // A trip whose snapshot never offered to keep souvenirs keeps none.
+    trip.capabilities
+        .retain(|capability| *capability != Capability::Souvenirs);
+    let unoffered = welcome(&trip, &receipt(&trip, effects), now);
+    assert!(unoffered.trip.is_some() && unoffered.souvenirs.is_empty());
+    assert_eq!(unoffered.set_aside, ["souvenir"; 4]);
+}
+
+#[test]
 fn a_visit_outside_the_trip_or_never_offered_is_set_aside() {
     let scratch = Scratch::new("outside");
     let files = TravelFiles::new(&scratch.0);

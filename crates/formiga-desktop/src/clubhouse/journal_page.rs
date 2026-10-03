@@ -1,9 +1,9 @@
 //! The Journal page: every moment written down, searched and filtered, the guest book, the
-//! scrapbook of finds, and the page of wonders.
+//! scrapbook of finds, the souvenirs brought home from Formiga Hill, and the page of wonders.
 
 use super::shell::Shell;
 use super::*;
-use formiga_core::WonderKind;
+use formiga_core::{Souvenir, WonderKind};
 
 /// The Journal page's own state: how the journal is filtered and searched, and the picture of
 /// the wonders. A view preference, never saved.
@@ -17,15 +17,21 @@ pub(crate) struct JournalState {
     pub search: String,
     /// One still picture of every kind of wonder, side by side, for the page of them.
     wonder_sheet: Option<([u8; 32], TextureHandle)>,
+    /// Every souvenir's picture side by side, each on its velvet, made once one has come home.
+    souvenir_strip: Option<TextureHandle>,
 }
 
 impl JournalState {
     pub(super) fn texture_ids(&self) -> impl Iterator<Item = egui::TextureId> + '_ {
-        self.wonder_sheet.iter().map(|(_, t)| t.id())
+        self.wonder_sheet
+            .iter()
+            .map(|(_, t)| t.id())
+            .chain(self.souvenir_strip.iter().map(TextureHandle::id))
     }
 
     pub(super) fn release_images(&mut self) {
         self.wonder_sheet = None;
+        self.souvenir_strip = None;
     }
 }
 
@@ -388,6 +394,7 @@ fn page(
         ui.add_space(14.0);
         guest_book(ui, save, shell, outcome, offset);
         state.scrapbook(ui, shell, save);
+        state.souvenirs(ui, save);
         state.wonders(ui, save);
         return;
     }
@@ -633,6 +640,7 @@ fn page(
     ui.add_space(14.0);
     guest_book(ui, save, shell, outcome, offset);
     state.scrapbook(ui, shell, save);
+    state.souvenirs(ui, save);
     state.wonders(ui, save);
 }
 
@@ -686,6 +694,62 @@ impl JournalState {
             ui.add_space(8.0);
         }
         ui.small("Only the first find of each kind is recorded, and only on this computer.");
+    }
+
+    /// The souvenirs the colony has brought home from Formiga Hill, newest first, each with the day
+    /// it came. They are only here to be looked at, and the page has no place for them at all until
+    /// one has come home, so a colony that has never been to the Hill has nothing here to fill.
+    pub fn souvenirs(&mut self, ui: &mut Ui, save: &SaveFile) {
+        let kept = &save.trips.souvenirs;
+        if kept.is_empty() {
+            return;
+        }
+        let offset = local_offset();
+        let strip = self
+            .souvenir_strip
+            .get_or_insert_with(|| {
+                upload(ui.ctx(), "colony-souvenirs", &formiga_art::souvenir_strip())
+            })
+            .clone();
+        ui.add_space(14.0);
+        ui.label(
+            RichText::new(format!("SOUVENIRS · {} from Formiga Hill", kept.len()))
+                .color(forest())
+                .size(11.0),
+        );
+        ui.add_space(6.0);
+        let kinds = Souvenir::ALL.len() as f32;
+        for record in kept.iter().rev() {
+            let index = Souvenir::ALL
+                .iter()
+                .position(|souvenir| *souvenir == record.souvenir)
+                .unwrap_or_default() as f32;
+            card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let uv = egui::Rect::from_min_max(
+                        egui::pos2(index / kinds, 0.0),
+                        egui::pos2((index + 1.0) / kinds, 1.0),
+                    );
+                    // Six screen points to each pixel of the picture and its velvet.
+                    let side = formiga_art::SOUVENIR_TILE as f32 * 6.0;
+                    ui.add(
+                        egui::Image::new(&strip)
+                            .uv(uv)
+                            .maintain_aspect_ratio(false)
+                            .corner_radius(3.0)
+                            .fit_to_exact_size(egui::vec2(side, side)),
+                    );
+                    ui.vertical(|ui| {
+                        ui.strong(record.souvenir.name());
+                        ui.label(record.souvenir.description());
+                        let at = record.brought_home_at_utc.to_offset(offset);
+                        ui.small(format!("Brought home from Formiga Hill · {}", at.date()));
+                    });
+                });
+            });
+            ui.add_space(8.0);
+        }
+        ui.small("Each souvenir comes home once, and is kept only on this computer.");
     }
 
     /// One still picture of every kind of wonder in a row, cut from the frames the desktop draws.

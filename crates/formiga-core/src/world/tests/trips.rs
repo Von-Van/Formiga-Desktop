@@ -130,3 +130,53 @@ fn a_colony_that_has_been_nowhere_writes_no_trips() {
     assert_eq!(file["trips"]["count"], 1);
     assert_eq!(file["trips"]["last"]["session"], SESSION);
 }
+
+#[test]
+fn a_souvenir_is_kept_once_and_changes_nothing_else() {
+    let created = datetime!(2026-10-02 9:00 UTC);
+    let mut world = two_creature_world([66; 32], created);
+    let now = created + Duration::hours(2);
+    let before = world.save.clone();
+    assert!(world.keep_souvenirs(&[Souvenir::PicnicRibbon, Souvenir::PicnicRibbon], now));
+    assert_eq!(
+        world.save.trips.souvenirs,
+        vec![SouvenirRecord {
+            souvenir: Souvenir::PicnicRibbon,
+            brought_home_at_utc: now,
+        }],
+        "the same souvenir twice in one homecoming is kept once"
+    );
+    // Brought home again on a later trip, it is still the one from the first.
+    let later = now + Duration::days(3);
+    assert!(world.keep_souvenirs(&[Souvenir::FairTicket, Souvenir::PicnicRibbon], later));
+    let kept: Vec<_> = world
+        .save
+        .trips
+        .souvenirs
+        .iter()
+        .map(|record| (record.souvenir, record.brought_home_at_utc))
+        .collect();
+    assert_eq!(
+        kept,
+        [(Souvenir::PicnicRibbon, now), (Souvenir::FairTicket, later)]
+    );
+    assert!(!world.keep_souvenirs(&[Souvenir::FairTicket], later));
+    assert!(!world.keep_souvenirs(&[], later));
+    // Nothing but the souvenirs moved: no journal moment, no trip counted, nobody changed.
+    let mut without = world.save.clone();
+    without.trips.souvenirs.clear();
+    assert_eq!(without, before);
+}
+
+#[test]
+fn a_colony_writes_its_souvenirs_by_formiga_hills_identifiers() {
+    let created = datetime!(2026-10-02 9:00 UTC);
+    let mut world = two_creature_world([67; 32], created);
+    let now = created + Duration::hours(1);
+    world.keep_souvenirs(&[Souvenir::ChestMarble], now);
+    let file = serde_json::to_value(&world.save).unwrap();
+    assert_eq!(file["trips"]["count"], 0);
+    assert_eq!(file["trips"]["souvenirs"][0]["souvenir"], "chest_marble");
+    let read: SaveFile = serde_json::from_value(file).unwrap();
+    assert_eq!(read.trips, world.save.trips);
+}

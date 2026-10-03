@@ -1,0 +1,8 @@
+{
+  "format": "formiga.travel.recall",
+  "version": 3,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "at_utc": "2026-10-02T11:00:00Z",
+  "reason": "owner_asked"
+}

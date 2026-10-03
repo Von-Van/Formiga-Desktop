@@ -41,7 +41,7 @@ Dependencies run one way: `formiga-art` depends on `formiga-core`, `formiga-trav
 | Crate | Start with | Then |
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
-| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them |
 | `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `platform/` for the macOS and Windows adapters |
 | `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs`, a stand-in for Formiga Hill |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
@@ -2018,7 +2018,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–23: version 23 is read directly, versions 1 through 22 are
+Persistence accepts save versions 1–27: version 27 is read directly, versions 1 through 26 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -2459,8 +2459,8 @@ Every document names its `format`, the `version` it was written as, and the `min
 a reader needs. The header is checked on the raw JSON before anything is shaped, so a newer file
 is refused for its version rather than for its shape, and unknown fields and unknown enum values
 in lists (`Capability`, `ReturnEffect`, `Trait`) read as "unknown" rather than failing. Version 1
-shipped with 0.66.4; version 2 adds each trait's identifier and is still marked readable by version
-1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
+shipped with 0.66.4; version 2 adds each trait's identifier, and version 3, in 0.66.6, the souvenirs
+Desktop keeps; both are still marked readable by version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
 older reader cannot draw: `reader_for_colony` maps every edition to the first travel version that
 carries it, and a new edition in the core does not build until it is given one. Desktop checks
 that requirement against the version an installed Hill says it reads before starting it. The
@@ -2475,7 +2475,7 @@ fails if this build stops writing its own byte for byte or stops reading any of 
 | Preparing | `World::prepare_for_trip` lets go of a drag or toss, drops every plan, scene, offer and bubble, sends a visiting guest on its way, and stands everyone still out of doors. The colony is saved, the snapshot projected and written. Any failure says why in a dialog and leaves the colony home |
 | Departing | The train pulls in and everyone gets on. The world does not tick. As the train pulls away Hill is started; if it cannot be, the train stops and everyone gets off again |
 | Away | Nothing of the colony is drawn, the world does not tick and the app wakes every two seconds only to rescan displays. The tray offers "Bring the colony home" |
-| Returning | Hill has exited, or the owner called the colony home: what Hill left is checked, at most a counted trip and a journal line are kept, the trip's files are closed, and the train brings everyone back to exactly where they stood |
+| Returning | Hill has exited, or the owner called the colony home: what Hill left is checked, at most a counted trip, a journal line and the souvenirs it brought are kept, the trip's files are closed, and the train brings everyone back to exactly where they stood |
 
 The states are `hill::TripState`, runtime only. The app's side is `app/hill.rs`; the tray maps
 its item to `TrayAction::GoToHill` or `TrayAction::BringColonyHome`, and while a trip is under way
@@ -2499,9 +2499,11 @@ Desktop may write `recall.json`; and `travel/trip.json`, the marker that says a 
 holding only the session, the snapshot's SHA-256, its time and what Desktop offered to apply. A
 receipt is used only if it is whole, inside its bounds, in a version this build reads, and names
 this session and this exact snapshot; then `session::welcome` keeps at most one visit inside the
-trip's own time, and everything else — souvenirs, keepsakes, anything unknown — is set aside unread.
-`World::welcome_home` counts the trip once per session, so the same receipt read again after a
-restart changes nothing. The journal line is Desktop's own; nothing Hill sends is copied in as text.
+trip's own time and, when the snapshot offered to keep souvenirs, each souvenir this build knows,
+once. Everything else — a souvenir it does not know, keepsakes, anything unknown — is set aside
+unread. `World::welcome_home` counts the trip once per session and `World::keep_souvenirs` keeps
+each souvenir once, so the same receipt read again after a restart changes nothing. The journal
+line and the souvenirs' names are Desktop's own; nothing Hill sends is copied in as text.
 
 Desktop never waits on Hill to show the colony again. Hill missing, refusing, crashing, closing
 without a receipt or writing a bad one, and the owner calling the colony home, all end with the
@@ -2511,6 +2513,32 @@ also takes its directory disappearing as a recall. If Desktop itself stops while
 away, the next start finds the marker and finishes the trip: with Hill's receipt if it is there,
 and otherwise by recalling it. Everything under `travel/` that is not the open trip is swept at
 start and before each new trip, so at most one called-home directory is ever kept.
+
+### Souvenirs (save v27)
+
+Formiga Hill gives souvenirs from its own catalogue — a gingham ribbon from a picnic, a ticket
+from the Fairground — and keeps them in its station's display case. Desktop keeps a copy of each
+that comes home, only to be looked at. `formiga_core::Souvenir` lists the seven it knows, by
+Formiga Hill's own identifiers and with Desktop's own name and line for each, and
+`TripLog::souvenirs`, added in save version 27, holds which have come home and when, each once.
+Nothing else reads them: a souvenir is not a keepsake, hangs in no tree, is worn by nobody and
+writes no journal moment. The Journal page shows them, newest first, in a Souvenirs section that
+exists only once one has come home, so a colony that has never been to the Hill has nothing there
+to fill.
+
+The snapshot lists the identifiers Desktop keeps in `accepts_souvenirs`, the same list for every
+colony, and offers `Capability::Souvenirs`. Hill puts in each receipt every souvenir the colony has
+kept at the Hill that the list names, on every trip, so one earned on a trip that ended without a
+receipt, or kept before Desktop knew souvenirs, still comes home on the next. Desktop keeps each
+once and passes over repeats quietly, and an identifier it does not list is set aside. A souvenir
+Hill adds later comes home once a Desktop release lists it.
+
+The pictures are `formiga-art`'s `draw_souvenir`: Formiga Hill's own seven-pixel pictures, ported
+row for row and pinned by a digest of their pixels, so a souvenir looks the same in the journal as
+at the Hill. The journal shows them at six points to the pixel, each on a tile of the velvet that
+lines Hill's display case, since the pictures were made to be seen against it: the pressed daisy
+is white. The one strip holding all seven is about 1 KiB, made when the page first shows a
+souvenir and given back with the rest of the notebook's artwork.
 
 ### The train
 

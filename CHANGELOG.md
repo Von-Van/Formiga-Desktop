@@ -2,6 +2,28 @@
 
 All notable changes are documented here.
 
+## [0.66.6] - 2026-10-03
+
+### Added
+
+- **Souvenirs from Formiga Hill.** Anything the colony is given to keep at Formiga Hill — a
+  gingham ribbon from a picnic, a ticket from the Fairground — now comes home with it, and the
+  Journal page shows each under **Souvenirs** with the day it came home, drawn exactly as Formiga
+  Hill draws it in its station's display case. Souvenirs are there to look at and nothing more:
+  they hang in no tree, are worn by nobody, write no journal moment and change nothing about the
+  colony. Each comes home once, and the Journal has no Souvenirs at all until the first one has.
+- Formiga keeps seven of Formiga Hill's souvenirs by Formiga Hill's own names for them, with its
+  own words for each. One brought home on a trip that ended early, or kept before this version,
+  comes home on the next trip; one this version does not know is set aside.
+
+### Changed
+
+- The travel snapshot is **version 3**: it lists the souvenirs Formiga keeps — the same list for
+  every colony, saying nothing about which it already has — and offers to keep them. Formiga Hill
+  builds that read versions 1 and 2 still read it, and bring no souvenirs home.
+- Save version **27** adds the souvenirs that have come home and when; a version 26 colony opens
+  unchanged, having brought none home.
+
 ## [0.66.5] - 2026-10-03
 
 ### Changed
