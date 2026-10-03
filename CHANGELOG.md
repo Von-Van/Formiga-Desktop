@@ -6,6 +6,10 @@ All notable changes are documented here.
 
 ### Changed
 
+- The train is **Formiga Hill's own**: a green tank engine lined in gold and two coaches in cream
+  over maroon, drawn to the same design and the same size against the companions as at the Hill's
+  station, so the train that leaves the desktop is the one that arrives there. It was a train in
+  the village's colours with a carriage for every two travellers.
 - The train always runs **left to right**, engine first, as Formiga Hill's own train does. Leaving
   the desktop it used to run the other way, so the colony seemed to turn round between leaving
   and arriving.

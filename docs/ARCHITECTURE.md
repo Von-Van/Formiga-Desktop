@@ -2525,10 +2525,12 @@ are, anyone elsewhere comes along the ground from the edge nearest its own displ
 far to go hurries, so a departure is never longer than about sixteen seconds at any scale. Coming
 home they step off in turn and walk back, and the scene ends with everyone exactly as saved. With
 reduced motion the train neither slides nor puffs: it is there, and then it is not. A departure
-that cannot go on turns round where it stands. The art is `formiga-art`'s `TrainRenderer`: an
-engine and one carriage for every two travellers, in the village's palette, with lit windows
-after dark, baked once into a strip of six frames when a scene starts and dropped when it ends
-(`formiga-tools train-sheet` draws it for review).
+that cannot go on turns round where it stands. The art is `formiga-art`'s `TrainRenderer`:
+Formiga Hill's own train, a green tank engine and two maroon-and-cream coaches drawn to the same
+design and the same size against the companions as at the Hill's station, so the train that leaves
+the desktop is the one that arrives there. Its compartments are lit after dark. It is baked once
+into a strip of ten frames — eight turning the wheels a full revolution, two standing — when a
+scene starts, and dropped when it ends (`formiga-tools train-sheet` draws it for review).
 
 ### Cost
 

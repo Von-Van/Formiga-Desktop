@@ -145,8 +145,8 @@ fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, nig
         stamp(sheet, &canvas, x, y, scale, false);
     }
     if let Some(train) = scene.train() {
-        let look = TrainLook::of(&save.home, night);
-        let canvas = TrainRenderer::render(&look, train.cars, train.frame);
+        let look = TrainLook { lit: night };
+        let canvas = TrainRenderer::render(&look, train.frame);
         let y = to_sheet_y(train.ground) - TRAIN_RISE as i32 * scale;
         stamp(
             sheet,
@@ -154,7 +154,7 @@ fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, nig
             train.left.round() as i32,
             y,
             scale,
-            train.facing_right,
+            !train.facing_right,
         );
     }
 }

@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::hill::scene::{TRAIN_RISE, TrainPose};
-use formiga_art::{TRAIN_FRAMES, TRAIN_HEIGHT, TrainLook, TrainRenderer, train_width};
+use formiga_art::{TRAIN_FRAMES, TRAIN_HEIGHT, TRAIN_WIDTH, TrainLook, TrainRenderer};
 
 /// The train on the desktop this frame, and the colours it is painted in.
 #[derive(Clone, Copy, Debug)]
@@ -13,24 +13,15 @@ pub struct TrainView {
     pub look: TrainLook,
 }
 
-/// What a baked train is: how many carriages, and how it is painted.
+/// What a baked train is: lit or not.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) struct TrainKey {
-    cars: u8,
-    body: [u8; 3],
-    accent: [u8; 3],
     lit: bool,
 }
 
 impl TrainKey {
     fn of(view: &TrainView) -> Self {
-        let rgb = |color: Rgba| [color.r, color.g, color.b];
-        Self {
-            cars: view.pose.cars,
-            body: rgb(view.look.body.coat),
-            accent: rgb(view.look.accent.coat),
-            lit: view.look.lit,
-        }
+        Self { lit: view.look.lit }
     }
 }
 
@@ -47,7 +38,7 @@ impl OverlayRenderer {
         if self.train.as_ref().is_some_and(|train| train.key == key) {
             return;
         }
-        let strip = TrainRenderer::render_strip(&view.look, view.pose.cars);
+        let strip = TrainRenderer::render_strip(&view.look);
         let (width, height) = (strip.width(), TRAIN_HEIGHT);
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("train frames"),
@@ -105,10 +96,10 @@ impl OverlayRenderer {
     }
 
     /// One quad: the frame for the moment, its left edge where the scene has it, standing on the
-    /// ground creatures stand on, and turned round when it runs to the right.
+    /// ground creatures stand on, and turned round only if it is to face left.
     pub(super) fn train_vertices(&self, pose: TrainPose, display_scale: u8) -> [Vertex; 6] {
         let unit = f32::from(display_scale);
-        let width_px = train_width(pose.cars) as f32 * unit;
+        let width_px = TRAIN_WIDTH as f32 * unit;
         let height_px = TRAIN_HEIGHT as f32 * unit;
         let left_px = self.snap((pose.left - self.monitor.bounds.x) * self.monitor.scale_factor);
         let ground = self.snap((pose.ground - self.monitor.bounds.y) * self.monitor.scale_factor);
@@ -118,7 +109,7 @@ impl OverlayRenderer {
         let frames = f32::from(TRAIN_FRAMES);
         let frame = f32::from(pose.frame % TRAIN_FRAMES);
         let (mut u_left, mut u_right) = (frame / frames, (frame + 1.0) / frames);
-        if pose.facing_right {
+        if !pose.facing_right {
             std::mem::swap(&mut u_left, &mut u_right);
         }
         let vertex = |position, uv| Vertex {

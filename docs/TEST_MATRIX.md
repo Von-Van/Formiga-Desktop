@@ -481,7 +481,7 @@ installed the tray must look exactly as it always has.
 | Leaving drops a drag, scenes and bubbles, sends a visiting guest on its way (signed if it said hello), and brings everyone out of doors | CI | CI |
 | The train scene: nobody boards a moving train, everyone is seen getting on, companions from another display come in from its side, coming home ends with everyone exactly as saved, reduced motion never slides the train, a turned-back departure lets everyone off where it stands, and no scene is longer than sixteen seconds at 2–4× on 1–2× displays | CI | CI |
 | End to end against the stand-in Hill: an ordinary visit changes the colony file only by the trip and its journal line; silence, garbage, a stranger's receipt and a crash change nothing; refusals say why; a newer snapshot is refused for its version; a recall or a cleared session ends the visit | CI | CI |
-| Train art: one carriage per two travellers, standing on the ground line, every door on its carriage, wheels still and steam breathing while it stands, lit windows after dark | CI | CI |
+| Train art: Formiga Hill's engine and two coaches standing on the ground line, tall enough to hide a companion at a door, every door on its coach, the wheels turning every running frame and still while it stands, compartments lit after dark, and the strip within any texture the overlay may make | CI | CI |
 
 ### Manual
 
@@ -492,7 +492,7 @@ real Hill is installed.
 |---|---|---|---|---|
 | Without Hill installed, the tray is exactly as before and the log says nothing about Hill | pending | pending | pending | pending |
 | With Hill installed (or the stub named), "Go to Formiga Hill…" appears within ten minutes, or at launch; removing Hill withdraws it | pending | pending | pending | pending |
-| A full trip on a real colony: the train in the village's colours, everyone walking to a door and getting on, Hill opening as the train pulls away, nothing of the colony on the desktop while it is away, and everyone getting off and walking back to exactly where they were | stub, debug build, 2026-10-02 | pending | pending | pending |
+| A full trip on a real colony: Formiga Hill's train coming in from the left, everyone walking to a door and getting on, Hill opening as the train pulls away to the right, nothing of the colony on the desktop while it is away, and everyone getting off and walking back to exactly where they were | the trip's flow only: stub, debug build, 2026-10-02, before the train was redrawn; the train itself not yet watched | pending | pending | pending |
 | The train at Small, Medium and Large on 100% and 200% displays, after dark, with reduced motion, and with companions on a ledge and on a second display | pending | pending | pending | pending |
 | Leaving while paused, while hidden (no train; straight away), with the village out, with a visitor, during a scene, and mid-drag or mid-toss | pending | pending | pending | pending |
 | "Bring the colony home" while boarding and while away; Gather, Settle, Pause and Start a new colony disabled throughout and back afterwards | pending | pending | pending | pending |

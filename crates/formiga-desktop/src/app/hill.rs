@@ -426,7 +426,7 @@ impl FormigaApp {
                 scene.stage(save),
                 scene.train().map(|pose| TrainView {
                     pose,
-                    look: formiga_art::TrainLook::of(&save.home, self.night),
+                    look: formiga_art::TrainLook { lit: self.night },
                 }),
             ),
             None => {

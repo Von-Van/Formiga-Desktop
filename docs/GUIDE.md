@@ -241,8 +241,9 @@ opens before anything is drawn, and cancelling makes nothing.
 ## A trip to Formiga Hill
 
 Formiga Hill is a separate app, and Formiga does not need it. Once it is installed, the tray menu
-offers **Go to Formiga Hill…**: a little train in your village's colours pulls in, everyone walks
-to a door and gets on, and the train pulls away as Formiga Hill opens. While the colony is away
+offers **Go to Formiga Hill…**: Formiga Hill's little green engine pulls in with its two coaches,
+everyone walks to a door and gets on, and the train pulls away as Formiga Hill opens, where the
+same train arrives. While the colony is away
 nothing of it is on your desktop, and the tray offers **Bring the colony home** whenever you want
 them back. When the visit ends the train brings everyone home to exactly where they were, and the
 journal notes the trip.
