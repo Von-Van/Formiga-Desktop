@@ -1,16 +1,16 @@
 //! The colony's train, for review.
 //!
-//! One band per village palette, by day on pale wallpaper and after dark on a dark one: the train
-//! standing with three carriages and the reference companions waiting beside it at the scale the
-//! overlay draws them, then one and two carriages, then every frame of a run. Companions stand on
-//! their own resting feet on the same ground as the wheels. A review sheet, not a test.
+//! Formiga Hill's own engine and two coaches: standing by day on pale wallpaper and after dark on
+//! a dark one, with the reference companions waiting beside it at the scale the overlay draws
+//! them, standing on the same ground as the wheels; then the engine through every frame, running
+//! and standing. A review sheet, not a test.
 //!
 //!   cargo run -p formiga-tools -- train-sheet [--output PATH]
 
 use anyhow::Result;
 use formiga_art::{
-    BodyClip, Canvas, CreatureRenderer, MAX_CARS, PALETTES, TRAIN_FRAMES, TRAIN_GROUND,
-    TRAIN_HEIGHT, TrainLook, TrainRenderer, door_centers, train_width,
+    BodyClip, Canvas, CreatureRenderer, FRAME_SIZE, RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND,
+    TRAIN_HEIGHT, TRAIN_WIDTH, TrainLook, TrainRenderer,
 };
 use formiga_core::ActionKind;
 use std::path::PathBuf;
@@ -18,135 +18,90 @@ use std::path::PathBuf;
 const SCALE: u32 = 3;
 const LABEL: u32 = 14;
 const GAP: u32 = 10;
-/// Room above the train for the tallest companion's head.
-const ROW: u32 = TRAIN_HEIGHT + 10;
+/// How much of the engine end each frame of the strip shows.
+const ENGINE: u32 = 70;
 
 pub fn run(path: PathBuf) -> Result<()> {
     let companions = crate::reference_creatures();
-    // Three villages: the reference colours the village sheet opens with.
-    let villages = [(3_u8, 7_u8), (0, 5), (9, 2)];
-    let longest = train_width(MAX_CARS);
-    let width = (longest + GAP + 3 * 52 + GAP) * SCALE;
-    let bands = villages.len() as u32 * 2 + 2;
-    let height = bands * (ROW * SCALE + LABEL);
+    let band = TRAIN_HEIGHT * SCALE + LABEL;
+    let standing_width = (TRAIN_WIDTH + GAP + companions.len() as u32 * (FRAME_SIZE + 4)) * SCALE;
+    let frames_width = u32::from(TRAIN_FRAMES) * (ENGINE + 4) * SCALE;
+    let width = standing_width.max(frames_width) + 8;
+    let height = band * 3;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
-    let mut band = 0_u32;
-    let top = |band: &mut u32| {
-        let y = *band * (ROW * SCALE + LABEL);
-        *band += 1;
-        y
-    };
-    for (body, accent) in villages {
-        for lit in [false, true] {
-            let y = top(&mut band);
-            wallpaper(&mut pixels, width, y, ROW * SCALE + LABEL, lit);
-            let look = TrainLook {
-                body: PALETTES[usize::from(body)],
-                accent: PALETTES[usize::from(accent)],
-                lit,
-            };
-            label(
-                &mut pixels,
-                width,
-                4,
-                y + 3,
-                &format!(
-                    "VILLAGE {body}/{accent} {}",
-                    if lit { "AFTER DARK" } else { "BY DAY" }
-                ),
-                lit,
-            );
-            let ground = y + LABEL + (ROW - (TRAIN_HEIGHT - TRAIN_GROUND)) * SCALE;
-            let train = TrainRenderer::render(&look, MAX_CARS, 4);
-            stamp(
-                &mut pixels,
-                width,
-                &train,
-                4,
-                ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32,
-            );
-            // A companion standing at each door, as one about to step in would.
-            let doors = door_centers(MAX_CARS);
-            let mut x = (longest + GAP) * SCALE;
-            for (index, companion) in companions.iter().enumerate() {
-                let frame = CreatureRenderer::render_body_frame(
-                    &companion.appearance,
-                    BodyClip::Action(ActionKind::Idle),
-                    0,
-                    false,
-                );
-                let feet = CreatureRenderer::resting_baseline(&companion.appearance, false);
-                let canvas = frame.canvas;
-                stamp(
-                    &mut pixels,
-                    width,
-                    &canvas,
-                    x as i32,
-                    ground as i32 - ((formiga_art::FRAME_SIZE - feet) * SCALE) as i32,
-                );
-                x += 52 * SCALE;
-                let _ = (index, &doors);
-            }
-        }
-    }
-    // One, two and three carriages, standing.
-    let y = top(&mut band);
-    wallpaper(&mut pixels, width, y, ROW * SCALE + LABEL, false);
-    label(&mut pixels, width, 4, y + 3, "ONE AND TWO CARRIAGES", false);
-    let look = TrainLook {
-        body: PALETTES[3],
-        accent: PALETTES[7],
-        lit: false,
-    };
-    let ground = y + LABEL + (ROW - (TRAIN_HEIGHT - TRAIN_GROUND)) * SCALE;
-    let mut x = 4_i32;
-    for cars in 1..MAX_CARS {
-        let train = TrainRenderer::render(&look, cars, 5);
+    for (row, lit) in [false, true].into_iter().enumerate() {
+        let top = row as u32 * band;
+        wallpaper(&mut pixels, width, top, band, lit);
+        label(
+            &mut pixels,
+            width,
+            4,
+            top + 3,
+            if lit {
+                "STANDING, AFTER DARK"
+            } else {
+                "STANDING, BY DAY"
+            },
+            lit,
+        );
+        let ground = top + LABEL + (TRAIN_GROUND + 1) * SCALE;
+        let train = TrainRenderer::render(&TrainLook { lit }, RUNNING_FRAMES);
         stamp(
             &mut pixels,
             width,
             &train,
-            x,
-            ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32,
+            4,
+            (ground - (TRAIN_GROUND + 1) * SCALE) as i32,
         );
-        x += ((train_width(cars) + GAP) * SCALE) as i32;
+        // The reference companions waiting on the same ground, as they would at a door.
+        let mut x = (TRAIN_WIDTH + GAP) * SCALE;
+        for companion in &companions {
+            let frame = CreatureRenderer::render_body_frame(
+                &companion.appearance,
+                BodyClip::Action(ActionKind::Idle),
+                0,
+                false,
+            );
+            let feet = CreatureRenderer::resting_baseline(&companion.appearance, false);
+            stamp(
+                &mut pixels,
+                width,
+                &frame.canvas,
+                x as i32,
+                (ground - (FRAME_SIZE - feet) * SCALE) as i32,
+            );
+            x += (FRAME_SIZE + 4) * SCALE;
+        }
     }
-    // Every frame of one carriage: four running, two standing.
-    let y = top(&mut band);
-    wallpaper(&mut pixels, width, y, ROW * SCALE + LABEL, false);
+    // Every frame of the engine end: running 0 to 7, standing 8 and 9.
+    let top = 2 * band;
+    wallpaper(&mut pixels, width, top, band, false);
     label(
         &mut pixels,
         width,
         4,
-        y + 3,
-        "FRAMES: RUNNING 0-3, STANDING 4-5",
+        top + 3,
+        "FRAMES: RUNNING 0-7, STANDING 8-9",
         false,
     );
-    let ground = y + LABEL + (ROW - (TRAIN_HEIGHT - TRAIN_GROUND)) * SCALE;
     let mut x = 4_i32;
     for frame in 0..TRAIN_FRAMES {
-        let train = crop_engine(&TrainRenderer::render(&look, 1, frame));
-        stamp(
-            &mut pixels,
-            width,
-            &train,
-            x,
-            ground as i32 - ((TRAIN_GROUND + 1) * SCALE) as i32,
-        );
-        x += ((train.width() + 4) * SCALE) as i32;
+        let train = TrainRenderer::render(&TrainLook { lit: false }, frame);
+        let engine = crop(&train, TRAIN_WIDTH - ENGINE, ENGINE);
+        stamp(&mut pixels, width, &engine, x, (top + LABEL) as i32);
+        x += ((ENGINE + 4) * SCALE) as i32;
     }
     crate::write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
 }
 
-/// The engine alone, for the frame strip.
-fn crop_engine(train: &Canvas) -> Canvas {
-    let width = formiga_art::ENGINE_WIDTH + 4;
+/// A slice of the train, `width` wide from `left`.
+fn crop(train: &Canvas, left: u32, width: u32) -> Canvas {
     let mut cell = Canvas::new(width, train.height());
     for y in 0..train.height() as i32 {
         for x in 0..width as i32 {
-            cell.set(x, y, train.get(x, y));
+            cell.set(x, y, train.get(left as i32 + x, y));
         }
     }
     cell

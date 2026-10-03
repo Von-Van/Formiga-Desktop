@@ -1,7 +1,8 @@
-//! Version 1 as it shipped. These files are never regenerated to make a test pass: a change that
-//! breaks one of them breaks every Hill already installed. Set `FORMIGA_TRAVEL_BLESS=1` only
-//! when deliberately writing a new version's fixtures, and add them beside these rather than over
-//! them.
+//! Every travel version as it shipped. These files are never regenerated to make a test pass: a
+//! change that breaks one of them breaks every Hill already installed, or every snapshot an older
+//! Desktop already wrote. Version 1 shipped with Desktop 0.66.4 and version 2 added each trait's
+//! identifier. `FORMIGA_TRAVEL_BLESS=1` writes this build's own version's files only, so a new
+//! version's fixtures go beside the old ones and never over them.
 
 mod common;
 
@@ -24,8 +25,11 @@ fn session() -> SessionId {
     SessionId::parse("5eed5eed5eed5eed5eed5eed5eed5eed").unwrap()
 }
 
-/// The fixtures as this build writes them.
-fn current() -> Vec<(&'static str, Vec<u8>)> {
+/// Every version a fixture set has been written for.
+const SHIPPED: std::ops::RangeInclusive<u32> = 1..=TRAVEL_FORMAT_VERSION;
+
+/// The fixtures as this build writes them, named for this build's version.
+fn written_now() -> Vec<(String, Vec<u8>)> {
     let snapshot = project_colony(&colony(3), session(), MADE, "0.66.1").unwrap();
     let snapshot_bytes = encode(&snapshot).unwrap();
     let seal = SnapshotSeal::of(&snapshot, &snapshot_bytes);
@@ -44,89 +48,123 @@ fn current() -> Vec<(&'static str, Vec<u8>)> {
         datetime!(2026-10-02 11:00 UTC),
         RecallReason::OwnerAsked,
     );
+    let name = |kind: &str| format!("{kind}-v{TRAVEL_FORMAT_VERSION}.json");
     vec![
-        ("snapshot-v1.json", snapshot_bytes),
-        ("ack-v1.json", encode(&ack).unwrap()),
-        ("receipt-v1.json", encode(&receipt).unwrap()),
-        ("recall-v1.json", encode(&recall).unwrap()),
+        (name("snapshot"), snapshot_bytes),
+        (name("ack"), encode(&ack).unwrap()),
+        (name("receipt"), encode(&receipt).unwrap()),
+        (name("recall"), encode(&recall).unwrap()),
     ]
 }
 
 #[test]
-fn version_one_is_still_written_exactly_as_it_shipped() {
+fn this_version_is_still_written_exactly_as_it_shipped() {
     let bless = std::env::var_os("FORMIGA_TRAVEL_BLESS").is_some();
-    for (name, bytes) in current() {
+    for (name, bytes) in written_now() {
         if bless {
-            std::fs::write(fixture(name), &bytes).unwrap();
+            std::fs::write(fixture(&name), &bytes).unwrap();
             continue;
         }
         assert!(
-            read(name) == bytes,
-            "{name} is no longer written the way version 1 shipped"
+            read(&name) == bytes,
+            "{name} is no longer written the way travel version {TRAVEL_FORMAT_VERSION} shipped"
         );
     }
 }
 
 #[test]
-fn a_version_one_snapshot_still_imports_and_draws() {
-    let snapshot: TravelSnapshot = decode(&read("snapshot-v1.json")).unwrap();
-    assert_eq!(snapshot.session_id, session());
-    assert_eq!(snapshot.travelers.len(), 6);
-    assert!(snapshot.offers(Capability::VisitRecord));
-    for traveler in &snapshot.travelers {
-        let creature = traveler.to_creature().unwrap();
-        let dress = traveler.accessory.map(|accessory| accessory.to_art());
-        let frame = formiga_art::CreatureRenderer::render_dressed_body_frame(
-            &creature.appearance,
-            dress,
-            formiga_art::BodyClip::Action(formiga_core::ActionKind::Idle),
-            0,
-            false,
-        );
-        assert!(
-            frame.canvas.alpha_bounds().is_some(),
-            "{} draws as something",
-            traveler.name
-        );
+fn every_shipped_snapshot_still_imports_and_draws() {
+    for version in SHIPPED {
+        let snapshot: TravelSnapshot = decode(&read(&format!("snapshot-v{version}.json"))).unwrap();
+        assert_eq!(snapshot.version, version);
+        assert_eq!(snapshot.min_reader_version, 1);
+        assert_eq!(snapshot.session_id, session());
+        assert_eq!(snapshot.travelers.len(), 6);
+        assert!(snapshot.offers(Capability::VisitRecord));
+        for traveler in &snapshot.travelers {
+            let creature = traveler.to_creature().unwrap();
+            let dress = traveler.accessory.map(|accessory| accessory.to_art());
+            let frame = formiga_art::CreatureRenderer::render_dressed_body_frame(
+                &creature.appearance,
+                dress,
+                formiga_art::BodyClip::Action(formiga_core::ActionKind::Idle),
+                0,
+                false,
+            );
+            assert!(
+                frame.canvas.alpha_bounds().is_some(),
+                "{} in version {version} draws as something",
+                traveler.name
+            );
+        }
     }
 }
 
 #[test]
-fn a_snapshot_from_a_newer_desktop_that_version_one_may_read_is_read() {
-    let snapshot: TravelSnapshot = decode(&read("snapshot-v2-readable-by-v1.json")).unwrap();
-    assert_eq!(snapshot.version, 2);
+fn every_shipped_answer_still_reads() {
+    for version in SHIPPED {
+        let snapshot_bytes = read(&format!("snapshot-v{version}.json"));
+        let snapshot: TravelSnapshot = decode(&snapshot_bytes).unwrap();
+        let seal = SnapshotSeal::of(&snapshot, &snapshot_bytes);
+        let ack: Acknowledgement = decode(&read(&format!("ack-v{version}.json"))).unwrap();
+        assert!(ack.accepted && ack.answers(&seal), "version {version}");
+        let receipt: ReturnReceipt = decode(&read(&format!("receipt-v{version}.json"))).unwrap();
+        assert!(receipt.answers(&seal), "version {version}");
+        assert!(matches!(receipt.effects[..], [ReturnEffect::Visit { .. }]));
+        let recall: Recall = decode(&read(&format!("recall-v{version}.json"))).unwrap();
+        assert_eq!(recall.session_id, session());
+    }
+}
+
+#[test]
+fn version_two_names_every_trait_by_identifier_and_version_one_only_in_words() {
+    let old: TravelSnapshot = decode(&read("snapshot-v1.json")).unwrap();
+    assert!(
+        old.travelers
+            .iter()
+            .all(|traveler| traveler.character.trait_ids.is_empty()),
+        "version 1 never had identifiers, and still reads without them"
+    );
+    let new: TravelSnapshot = decode(&read("snapshot-v2.json")).unwrap();
+    for (before, after) in old.travelers.iter().zip(&new.travelers) {
+        assert_eq!(after.character.traits, before.character.traits);
+        assert_eq!(
+            after.character.trait_ids.len(),
+            after.character.traits.len()
+        );
+        assert!(!after.character.trait_ids.contains(&Trait::Unknown));
+    }
+}
+
+#[test]
+fn a_snapshot_from_a_newer_desktop_that_this_build_may_read_is_read() {
+    let snapshot: TravelSnapshot = decode(&read("snapshot-future-readable.json")).unwrap();
+    assert!(snapshot.version > TRAVEL_FORMAT_VERSION);
     assert_eq!(
         snapshot.capabilities,
         vec![Capability::VisitRecord, Capability::Unknown]
     );
     assert_eq!(snapshot.travelers.len(), 6);
+    assert_eq!(
+        snapshot.travelers[0].character.trait_ids.last(),
+        Some(&Trait::Unknown),
+        "a trait this build does not know is read as unknown, not refused"
+    );
 }
 
 #[test]
 fn a_snapshot_that_needs_a_newer_reader_says_so() {
-    match decode::<TravelSnapshot>(&read("snapshot-v2-needs-v2.json")) {
-        Err(TravelError::UnsupportedVersion { needs: 2, reads: 1 }) => {}
+    match decode::<TravelSnapshot>(&read("snapshot-future-needs-newer.json")) {
+        Err(TravelError::UnsupportedVersion { needs: 99, reads }) => {
+            assert_eq!(reads, TRAVEL_FORMAT_VERSION)
+        }
         other => panic!("expected a clear version refusal, got {other:?}"),
     }
 }
 
 #[test]
-fn version_one_answers_still_read() {
-    let snapshot_bytes = read("snapshot-v1.json");
-    let snapshot: TravelSnapshot = decode(&snapshot_bytes).unwrap();
-    let seal = SnapshotSeal::of(&snapshot, &snapshot_bytes);
-    let ack: Acknowledgement = decode(&read("ack-v1.json")).unwrap();
-    assert!(ack.accepted && ack.answers(&seal));
-    let receipt: ReturnReceipt = decode(&read("receipt-v1.json")).unwrap();
-    assert!(receipt.answers(&seal));
-    assert!(matches!(receipt.effects[..], [ReturnEffect::Visit { .. }]));
-    let recall: Recall = decode(&read("recall-v1.json")).unwrap();
-    assert_eq!(recall.session_id, session());
-}
-
-#[test]
 fn a_receipt_from_a_newer_hill_keeps_what_this_build_knows() {
-    let receipt: ReturnReceipt = decode(&read("receipt-v2-readable-by-v1.json")).unwrap();
+    let receipt: ReturnReceipt = decode(&read("receipt-future-readable.json")).unwrap();
     assert_eq!(
         receipt
             .effects

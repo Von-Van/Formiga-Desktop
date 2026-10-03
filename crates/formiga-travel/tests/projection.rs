@@ -113,6 +113,12 @@ fn every_look_crosses_exactly_and_draws_the_same() {
                 "{} celebrates its own way",
                 creature.name
             );
+            assert_eq!(
+                traveler.character.trait_ids,
+                creature.traits().map(Trait::from).to_vec(),
+                "{}'s traits travel by identifier, in the order its profile shows them",
+                creature.name
+            );
             let home_dress = creature
                 .accessory
                 .map(|accessory| AccessoryArt::resolve(accessory, save.colony_seed, &members));
@@ -380,5 +386,22 @@ fn a_snapshot_that_does_not_add_up_is_refused_both_ways() {
         assert!(encode(&case).is_err(), "{what} was written");
         let bytes = serde_json::to_vec(&case).unwrap();
         assert!(decode::<TravelSnapshot>(&bytes).is_err(), "{what} was read");
+    }
+}
+
+#[test]
+fn a_snapshot_asks_for_the_oldest_reader_that_can_draw_everyone() {
+    for seed in [3, 41, 200] {
+        let save = colony(seed);
+        let snapshot = snapshot_of(&save);
+        assert_eq!(snapshot.version, TRAVEL_FORMAT_VERSION);
+        assert_eq!(
+            snapshot.min_reader_version,
+            reader_for_colony(&save),
+            "colony {seed}"
+        );
+        // Every edition drawn so far is drawn by the first travel version, so an older Hill can
+        // still host any colony this build sends.
+        assert_eq!(snapshot.min_reader_version, 1);
     }
 }

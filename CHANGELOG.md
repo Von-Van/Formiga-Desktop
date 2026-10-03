@@ -2,6 +2,26 @@
 
 All notable changes are documented here.
 
+## [0.66.5] - 2026-10-03
+
+### Changed
+
+- The train is **Formiga Hill's own**: a green tank engine lined in gold and two coaches in cream
+  over maroon, drawn to the same design and the same size against the companions as at the Hill's
+  station, so the train that leaves the desktop is the one that arrives there. It was a train in
+  the village's colours with a carriage for every two travellers.
+- The train always runs **left to right**, engine first, as Formiga Hill's own train does. Leaving
+  the desktop it used to run the other way, so the colony seemed to turn round between leaving
+  and arriving.
+- The travel snapshot is **version 2**: each companion's traits also travel by identifier
+  (`brave`, `night_owl`), so Formiga Hill's stories can choose companions by trait however
+  Formiga words them. Formiga Hill builds that read version 1 still read it, and a trait a reader
+  does not know is read as unknown rather than refused.
+- If Formiga ever draws a companion in a way an older Formiga Hill cannot, the snapshot asks for
+  the newer reader and the trip is turned away with that reason before the colony leaves, rather
+  than Formiga Hill calling the colony damaged. Every companion drawn so far can travel to any
+  Formiga Hill.
+
 ## [0.66.4] - 2026-10-02
 
 ### Added

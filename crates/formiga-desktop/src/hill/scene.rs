@@ -6,14 +6,16 @@
 //! made for the frame, and when a homecoming ends everyone is standing exactly where they stood
 //! before they left.
 //!
-//! The train stops at the colony's own display, at the middle of its widest stretch of ground.
-//! Whoever is on that ground walks to a door from where they are; whoever is somewhere else — up
+//! The train stops at the colony's own display, at the middle of its widest stretch of ground. It
+//! always comes in from the left and leaves to the right, as Formiga Hill's own train does, so the
+//! journey runs one way from the desktop to the Hill and home again. Whoever is on that ground
+//! walks to a door from where they are; whoever is somewhere else — up
 //! on a ledge, on another display — comes along the ground from the edge nearest them. Anyone with
 //! a long way to go hurries, so nobody keeps the train waiting more than a few seconds. Coming
 //! home, each steps off in turn and walks back to its own spot, or off towards the display it
 //! lives on. With reduced motion the train does not slide: it is simply there, and then it is not.
 
-use formiga_art::{FRAME_SIZE, TRAIN_GROUND, cars_for, door_centers, train_width};
+use formiga_art::{FRAME_SIZE, TRAIN_GROUND, TRAIN_WIDTH, door_centers};
 use formiga_core::{
     ActionKind, CreatureId, DesktopRect, MonitorId, MonitorInfo, Point, SaveFile,
     SurfaceAttachment, SurfaceKind, accessible_regions,
@@ -49,9 +51,8 @@ pub struct TrainPose {
     pub left: f32,
     /// The ground its wheels stand on: the same line companions stand on.
     pub ground: f32,
-    pub cars: u8,
     pub frame: u8,
-    /// Coming home it runs to the right, engine first; leaving, it faces left.
+    /// Which way it faces: always to the right, the way it runs.
     pub facing_right: bool,
 }
 
@@ -127,7 +128,6 @@ pub struct TrainScene {
     leg: Leg,
     monitor_id: MonitorId,
     ground: f32,
-    cars: u8,
     facing_right: bool,
     enter_left: f32,
     stop_left: f32,
@@ -186,26 +186,25 @@ impl TrainScene {
         let reduce_motion = save.settings.reduce_motion;
         // Desktop points to one art pixel, as the overlay draws a creature on this display.
         let unit = f32::from(save.settings.display_scale.max(1)) / monitor.scale_factor.max(0.5);
-        let cars = cars_for(save.creatures.len());
-        let width = train_width(cars) as f32 * unit;
+        let width = TRAIN_WIDTH as f32 * unit;
         let half_sprite = FRAME_SIZE as f32 * unit / 2.0;
         let ground = region.bottom() - 4.0;
         let stop_left = region.x + region.width / 2.0 - width / 2.0;
         let (off_left, off_right) = (monitor.bounds.x - width - 4.0, monitor.bounds.right() + 4.0);
-        // Leaving it runs off to the left; coming home it comes back from there.
-        let facing_right = leg == Leg::Arrival;
-        let (enter_left, exit_left) = match leg {
-            Leg::Departure => (off_right, off_left),
-            Leg::Arrival => (off_left, off_right),
-        };
-        let art_width = train_width(cars) as f32;
-        let mut doors: Vec<f32> = door_centers(cars)
+        // It always runs left to right, engine first, as Formiga Hill's own train does: out of the
+        // desktop to the right, in at the Hill from the left, and the same way home again, so the
+        // journey never turns round between the two apps.
+        let facing_right = true;
+        let (enter_left, exit_left) = (off_left, off_right);
+        let art_width = TRAIN_WIDTH as f32;
+        let mut doors: Vec<f32> = door_centers()
             .into_iter()
             .map(|door| {
+                // The art faces right, as drawn.
                 let along = if facing_right {
-                    art_width - door as f32
-                } else {
                     door as f32
+                } else {
+                    art_width - door as f32
                 };
                 stop_left + along * unit
             })
@@ -311,7 +310,6 @@ impl TrainScene {
             leg,
             monitor_id: monitor.id,
             ground,
-            cars,
             facing_right,
             enter_left,
             stop_left,
@@ -374,7 +372,6 @@ impl TrainScene {
             monitor_id: self.monitor_id,
             left,
             ground: self.ground,
-            cars: self.cars,
             frame,
             facing_right: self.facing_right,
         };

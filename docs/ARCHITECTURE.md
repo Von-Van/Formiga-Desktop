@@ -2448,7 +2448,8 @@ writer and bounded reader both sides use, and `project_colony`, the one-way proj
 the contract's own, and each enum mirrors one in the core through an exhaustive conversion, so a new
 variant in the core fails to build until the travel format is deliberately extended. A traveler
 carries its resolved look (`TravelAppearance`, with the recipe in the same byte form a share code
-uses), its temperament, traits and phrase, its pace and how it celebrates, its habits, what it wears
+uses), its temperament, its traits (by identifier for content to match on, and in Desktop's words
+for showing) and phrase, its pace and how it celebrates, its habits, what it wears
 with the colours Desktop resolved for it, and its family link; pairs carry bands rather than
 Desktop's scores. Seeds, positions, displays, windows, the cursor, plans, memories, the journal and
 settings beyond reduced motion, theme and text size never cross. `Traveler::to_creature` gives Hill
@@ -2457,9 +2458,14 @@ a stand-in `Creature` that the art crate draws exactly as Desktop does.
 Every document names its `format`, the `version` it was written as, and the `min_reader_version`
 a reader needs. The header is checked on the raw JSON before anything is shaped, so a newer file
 is refused for its version rather than for its shape, and unknown fields and unknown enum values
-in lists (`Capability`, `ReturnEffect`) read as "unknown" rather than failing. The fixtures under
-`crates/formiga-travel/tests/fixtures` are version 1 as written, and a test fails if this build
-stops writing it byte for byte or stops reading it.
+in lists (`Capability`, `ReturnEffect`, `Trait`) read as "unknown" rather than failing. Version 1
+shipped with 0.66.4; version 2 adds each trait's identifier and is still marked readable by version
+1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
+older reader cannot draw: `reader_for_colony` maps every edition to the first travel version that
+carries it, and a new edition in the core does not build until it is given one. Desktop checks
+that requirement against the version an installed Hill says it reads before starting it. The
+fixtures under `crates/formiga-travel/tests/fixtures` are every version as written, and a test
+fails if this build stops writing its own byte for byte or stops reading any of them.
 
 ### A trip
 
@@ -2511,16 +2517,20 @@ start and before each new trip, so at most one called-home directory is ever kep
 `hill/scene.rs` is presentation only: it never touches the world. Each frame it makes a copy of
 the colony for the overlay with whoever is on the platform walking, standing or gone, and an
 `OverlayUi::train` the overlay draws in front of them, so a companion reaching its door walks
-behind the carriage. The train stops at the middle of the widest stretch of ground on the
-village's display (then the primary); companions there walk to the nearest door from where they
+behind the carriage. It always comes in from the left and leaves to the right, engine first, as
+Formiga Hill's own train does, so the journey runs one way from the desktop to the Hill and home
+again. The train stops at the middle of the widest stretch of ground on the village's display
+(then the primary); companions there walk to the nearest door from where they
 are, anyone elsewhere comes along the ground from the edge nearest its own display, and anyone with
 far to go hurries, so a departure is never longer than about sixteen seconds at any scale. Coming
 home they step off in turn and walk back, and the scene ends with everyone exactly as saved. With
 reduced motion the train neither slides nor puffs: it is there, and then it is not. A departure
-that cannot go on turns round where it stands. The art is `formiga-art`'s `TrainRenderer`: an
-engine and one carriage for every two travellers, in the village's palette, with lit windows
-after dark, baked once into a strip of six frames when a scene starts and dropped when it ends
-(`formiga-tools train-sheet` draws it for review).
+that cannot go on turns round where it stands. The art is `formiga-art`'s `TrainRenderer`:
+Formiga Hill's own train, a green tank engine and two maroon-and-cream coaches drawn to the same
+design and the same size against the companions as at the Hill's station, so the train that leaves
+the desktop is the one that arrives there. Its compartments are lit after dark. It is baked once
+into a strip of ten frames — eight turning the wheels a full revolution, two standing — when a
+scene starts, and dropped when it ends (`formiga-tools train-sheet` draws it for review).
 
 ### Cost
 

@@ -4,6 +4,14 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.66.5
+
+The train that takes the colony to Formiga Hill is now Formiga Hill's own: a little green tank
+engine lined in gold and two coaches in cream and maroon, the same train that pulls in at the
+Hill's station. It always runs left to right, so the journey never seems to turn back between
+leaving your desktop and arriving at the Hill. Formiga Hill's stories can now choose companions by
+their traits however Formiga words them. Without Formiga Hill installed nothing changes.
+
 ## New in 0.66.4
 
 The colony can now go on a trip to Formiga Hill, a separate app, once it is installed. The tray

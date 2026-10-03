@@ -272,9 +272,8 @@ pub fn refusal_text(refusal: &Refusal) -> String {
     };
     match refusal.reason {
         AckRefusal::UnsupportedVersion { reads } => format!(
-            "{hill} reads travel version {reads}, and this colony travels as version {}. Update \
-             Formiga Hill to take the colony there.",
-            formiga_travel::TRAVEL_FORMAT_VERSION
+            "{hill} reads travel version {reads}, which is too old for this colony. Update \
+             Formiga Hill to take the colony there."
         ),
         AckRefusal::Busy => format!("{hill} is already hosting a colony."),
         AckRefusal::Invalid => format!("{hill} could not read the colony's ticket."),

@@ -22,6 +22,29 @@ pub enum ProjectionError {
     Invalid(#[from] TravelError),
 }
 
+/// The oldest travel reader that can draw a companion of each edition. Every edition so far can
+/// be drawn by version 1. A new edition in the core fails to build here until it is given the
+/// version that first carries it, and a snapshot with such a companion then asks for that version,
+/// so an older Hill says it is too old for the colony rather than that the colony is damaged.
+const fn reader_for(edition: core::Edition) -> u32 {
+    match edition {
+        core::Edition::Original | core::Edition::Archetypes | core::Edition::Details => 1,
+    }
+}
+
+/// The oldest travel reader a snapshot of this colony can be read by: the newest any companion's
+/// look needs, and never older than version 1. Desktop asks this before it starts Hill, so a Hill
+/// that says which version it reads is turned away with a reason before the colony leaves.
+pub fn reader_for_colony(save: &core::SaveFile) -> u32 {
+    save.creatures
+        .iter()
+        .filter_map(|creature| creature.appearance.design)
+        .map(|design| reader_for(design.edition()))
+        .max()
+        .unwrap_or(1)
+        .max(1)
+}
+
 /// The travel snapshot of a colony: every companion, how each looks and carries itself, how they
 /// get on, and the owner's shared preferences. Nothing about the desktop they live on, their
 /// plans, their memories of it, or the colony's own seed. The same colony, session and time always
@@ -42,6 +65,7 @@ pub fn project_colony(
         .into();
     let mut snapshot = TravelSnapshot::new(
         session_id,
+        reader_for_colony(save),
         crate::document::hex(&colony[..8]),
         created_at_utc
             .replace_nanosecond(0)
@@ -136,6 +160,12 @@ fn traveler(
                 .traits()
                 .iter()
                 .map(|label| sanitize_text(label.label(), MAX_TRAIT_CHARS))
+                .take(MAX_TRAITS)
+                .collect(),
+            trait_ids: creature
+                .traits()
+                .into_iter()
+                .map(Trait::from)
                 .take(MAX_TRAITS)
                 .collect(),
             phrase: sanitize_text(&creature.temperament_phrase(), MAX_PHRASE_CHARS),
@@ -281,5 +311,21 @@ impl Traveler {
             leaning: core::RoamingLeaning::default(),
             accessory: self.accessory.map(|accessory| accessory.to_accessory()),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn this_build_reads_every_edition_it_can_send() {
+        for edition in [
+            core::Edition::Original,
+            core::Edition::Archetypes,
+            core::Edition::Details,
+        ] {
+            assert!(reader_for(edition) <= crate::TRAVEL_FORMAT_VERSION);
+        }
     }
 }

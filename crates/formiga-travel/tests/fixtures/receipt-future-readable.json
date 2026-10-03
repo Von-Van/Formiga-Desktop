@@ -1,9 +1,9 @@
 {
   "format": "formiga.travel.receipt",
-  "version": 2,
+  "version": 99,
   "min_reader_version": 1,
   "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
-  "snapshot_sha256": "b443b703a0f60785c116e88e825a8a1589320f71a78913bc7f4b77eb8e4a49ae",
+  "snapshot_sha256": "e4e5eeb3215d15adc95467ff725740408f6c1071f1a1f569cc5103127f1da443",
   "returned_at_utc": "2026-10-02T11:05:00Z",
   "hill_version": "0.1.0",
   "effects": [

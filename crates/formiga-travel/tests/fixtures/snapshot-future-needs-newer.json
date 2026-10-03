@@ -1,33 +1,33 @@
 {
   "format": "formiga.travel.snapshot",
-  "version": 2,
-  "min_reader_version": 2,
+  "version": 99,
+  "min_reader_version": 99,
   "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
   "colony": {
     "members": [
       {
         "id": "876a55d6a17221ef",
-        "look": "v2"
+        "look": "v99"
       },
       {
         "id": "a5cdeae193601ce1",
-        "look": "v2"
+        "look": "v99"
       },
       {
         "id": "d9d41613046adffe",
-        "look": "v2"
+        "look": "v99"
       },
       {
         "id": "db8acad9ace9f7a2",
-        "look": "v2"
+        "look": "v99"
       },
       {
         "id": "66cd447617ba3991",
-        "look": "v2"
+        "look": "v99"
       },
       {
         "id": "876a55d6fb287bb5",
-        "look": "v2"
+        "look": "v99"
       }
     ]
   }

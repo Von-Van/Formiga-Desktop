@@ -283,17 +283,17 @@ A trip writes a **travel snapshot** into a new directory under `travel/` in Form
 directory, and Hill is started with the path of that directory and nothing else. The snapshot holds,
 for each companion: its identifier, its name with control and invisible formatting characters
 removed, whether it is a little one and whose, its birth time, its drawn look and size, its
-temperament, three traits and profile phrase, how lively, playful and bold it is (which sets its
-walking pace), how it celebrates, its habits, and what it is wearing with the colours to draw it in.
-For each pair it holds four coarse bands — none, low, medium or high — rather than Formiga's scores.
-It also holds the trip's identifier, the time, Formiga's version, a 64-bit one-way digest standing
-for the colony so Hill can tell one colony from another, and the reduced-motion, theme and text-size
-preferences. It holds **no** seed — not the colony's, not any companion's (a first companion's own
-seed is the colony's) — and no share code, position, display, window rectangle or title, cursor
-sample, application identity, habitat zone, routine, drive, memory, learned tendency, journal, guest
-book, scrapbook, schedule, other setting, update state, or diagnostic log, and it never names
-`colony.json`. Hill's content packages are given nothing by Formiga; what Hill shows them is Hill's
-business.
+temperament, three traits (in words and as identifiers) and profile phrase, how lively, playful and
+bold it is (which sets its walking pace), how it celebrates, its habits, and what it is wearing with
+the colours to draw it in. For each pair it holds four coarse bands — none, low, medium or high —
+rather than Formiga's scores. It also holds the trip's identifier, the time, Formiga's version, a
+64-bit one-way digest standing for the colony so Hill can tell one colony from another, and the
+reduced-motion, theme and text-size preferences. It holds **no** seed — not the colony's, not any
+companion's (a first companion's own seed is the colony's) — and no share code, position, display,
+window rectangle or title, cursor sample, application identity, habitat zone, routine, drive,
+memory, learned tendency, journal, guest book, scrapbook, schedule, other setting, update state, or
+diagnostic log, and it never names `colony.json`. Hill's content packages are given nothing by
+Formiga; what Hill shows them is Hill's business.
 
 What comes back is read only once Hill has gone, only if it names this trip and this exact
 snapshot, and only inside fixed bounds. Formiga keeps at most a count of trips and the last trip's

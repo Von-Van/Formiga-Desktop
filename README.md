@@ -1,4 +1,4 @@
-# Formiga · v0.66.4
+# Formiga · v0.66.5
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.66.4-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.66.5-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,19 +107,13 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.66.4
+## New in 0.66.5
 
-The colony can now go on a trip to Formiga Hill, a separate app, once it is installed. The tray
-offers **Go to Formiga Hill…**: a little train in your village's colours pulls in, everyone walks to
-a door and gets on, and Formiga Hill opens as the train pulls away. While they are away nothing of
-the colony is on your desktop, and the tray offers to bring them home whenever you like; coming
-back, everyone gets off and walks to exactly where they were, and the journal notes the trip.
-Whatever happens at the other end — Formiga Hill closing early, refusing, or stopping unexpectedly,
-or Formiga itself being closed mid-trip — the colony comes home as it left. Formiga Hill is told how
-your companions look, behave and get on, and nothing about your desktop or your colony's seed.
-
-Without Formiga Hill installed nothing changes: the tray, the colony and the notebook are exactly as
-they were. The colony file moves to version 26 to make room for the trips.
+The train that takes the colony to Formiga Hill is now Formiga Hill's own: a little green tank
+engine lined in gold and two coaches in cream and maroon, the same train that pulls in at the
+Hill's station. It always runs left to right, so the journey never seems to turn back between
+leaving your desktop and arriving at the Hill. Formiga Hill's stories can now choose companions by
+their traits however Formiga words them. Without Formiga Hill installed nothing changes.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
