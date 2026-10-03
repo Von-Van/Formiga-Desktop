@@ -154,6 +154,81 @@ pub enum Trait {
     Unknown,
 }
 
+impl Trait {
+    /// Every trait a profile can show, in the order Desktop's own list keeps them: every
+    /// identifier content may name. [`Trait::Unknown`] is not among them.
+    pub const ALL: [Self; 68] = [
+        Self::Outgoing,
+        Self::Chatty,
+        Self::Clingy,
+        Self::Loner,
+        Self::Energetic,
+        Self::Excitable,
+        Self::Restless,
+        Self::Mellow,
+        Self::Sleepy,
+        Self::Lazy,
+        Self::Brave,
+        Self::Confident,
+        Self::Reckless,
+        Self::Cautious,
+        Self::Shy,
+        Self::Nervous,
+        Self::Cowardly,
+        Self::Playful,
+        Self::Mischievous,
+        Self::Silly,
+        Self::Serious,
+        Self::Stoic,
+        Self::Grumpy,
+        Self::Feisty,
+        Self::Stubborn,
+        Self::Bossy,
+        Self::Irritable,
+        Self::Competitive,
+        Self::Gentle,
+        Self::Sweet,
+        Self::Easygoing,
+        Self::Impulsive,
+        Self::Impatient,
+        Self::Distractible,
+        Self::Spontaneous,
+        Self::Patient,
+        Self::Steady,
+        Self::Particular,
+        Self::Picky,
+        Self::Suspicious,
+        Self::Wary,
+        Self::Watchful,
+        Self::Trusting,
+        Self::Friendly,
+        Self::Affectionate,
+        Self::Loyal,
+        Self::Jealous,
+        Self::Protective,
+        Self::Nurturing,
+        Self::Independent,
+        Self::Aloof,
+        Self::Curious,
+        Self::Nosy,
+        Self::Obsessive,
+        Self::Observant,
+        Self::Unbothered,
+        Self::Dramatic,
+        Self::Vain,
+        Self::AttentionSeeking,
+        Self::FoodMotivated,
+        Self::Messy,
+        Self::Eccentric,
+        Self::Unpredictable,
+        Self::NightOwl,
+        Self::EarlyRiser,
+        Self::EasilyEmbarrassed,
+        Self::SecretlyAffectionate,
+        Self::DeeplyLoyal,
+    ];
+}
+
 impl From<core::Trait> for Trait {
     fn from(value: core::Trait) -> Self {
         match value {
@@ -650,6 +725,25 @@ mod tests {
         assert_eq!(Band::of(111), Band::Medium);
         assert_eq!(Band::of(112), Band::High);
         assert_eq!(Band::of(255), Band::High);
+    }
+
+    #[test]
+    fn every_trait_desktop_knows_has_an_identifier_and_no_two_share_one() {
+        let ids: Vec<_> = core::Trait::ALL.map(Trait::from).to_vec();
+        assert_eq!(ids, Trait::ALL.to_vec(), "the list follows Desktop's own");
+        let written: std::collections::BTreeSet<String> = Trait::ALL
+            .iter()
+            .map(|id| {
+                serde_json::to_value(id)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(written.len(), Trait::ALL.len());
+        assert!(written.contains("night_owl") && written.contains("brave"));
+        assert!(!written.contains("unknown"));
     }
 
     #[test]
