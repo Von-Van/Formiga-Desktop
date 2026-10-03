@@ -36,8 +36,8 @@ impl HillInstall {
                 .map(|version| format!("Formiga Hill {version}"))
                 .unwrap_or_else(|| "This copy of Formiga Hill".to_owned());
             format!(
-                "{which} reads travel version {reads}, and this colony travels as version \
-                 {needs}. Update Formiga Hill to take the colony there."
+                "{which} reads travel version {reads}, and this colony needs version {needs}. \
+                 Update Formiga Hill to take the colony there."
             )
         })
     }
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(
             install.incompatibility(2).as_deref(),
             Some(
-                "Formiga Hill 0.1.0 reads travel version 1, and this colony travels as version 2. \
+                "Formiga Hill 0.1.0 reads travel version 1, and this colony needs version 2. \
                  Update Formiga Hill to take the colony there."
             )
         );

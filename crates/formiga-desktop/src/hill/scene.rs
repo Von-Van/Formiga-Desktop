@@ -6,8 +6,10 @@
 //! made for the frame, and when a homecoming ends everyone is standing exactly where they stood
 //! before they left.
 //!
-//! The train stops at the colony's own display, at the middle of its widest stretch of ground.
-//! Whoever is on that ground walks to a door from where they are; whoever is somewhere else — up
+//! The train stops at the colony's own display, at the middle of its widest stretch of ground. It
+//! always comes in from the left and leaves to the right, as Formiga Hill's own train does, so the
+//! journey runs one way from the desktop to the Hill and home again. Whoever is on that ground
+//! walks to a door from where they are; whoever is somewhere else — up
 //! on a ledge, on another display — comes along the ground from the edge nearest them. Anyone with
 //! a long way to go hurries, so nobody keeps the train waiting more than a few seconds. Coming
 //! home, each steps off in turn and walks back to its own spot, or off towards the display it
@@ -51,7 +53,7 @@ pub struct TrainPose {
     pub ground: f32,
     pub cars: u8,
     pub frame: u8,
-    /// Coming home it runs to the right, engine first; leaving, it faces left.
+    /// Which way it faces: always to the right, the way it runs.
     pub facing_right: bool,
 }
 
@@ -192,12 +194,11 @@ impl TrainScene {
         let ground = region.bottom() - 4.0;
         let stop_left = region.x + region.width / 2.0 - width / 2.0;
         let (off_left, off_right) = (monitor.bounds.x - width - 4.0, monitor.bounds.right() + 4.0);
-        // Leaving it runs off to the left; coming home it comes back from there.
-        let facing_right = leg == Leg::Arrival;
-        let (enter_left, exit_left) = match leg {
-            Leg::Departure => (off_right, off_left),
-            Leg::Arrival => (off_left, off_right),
-        };
+        // It always runs left to right, engine first, as Formiga Hill's own train does: out of the
+        // desktop to the right, in at the Hill from the left, and the same way home again, so the
+        // journey never turns round between the two apps.
+        let facing_right = true;
+        let (enter_left, exit_left) = (off_left, off_right);
         let art_width = train_width(cars) as f32;
         let mut doors: Vec<f32> = door_centers(cars)
             .into_iter()

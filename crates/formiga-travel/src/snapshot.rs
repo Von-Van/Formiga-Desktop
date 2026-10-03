@@ -76,6 +76,159 @@ mirror!(
     }
 );
 
+/// One of the traits a profile shows, by an identifier that stays the same however Desktop words
+/// it: `brave`, `nosy`, `night_owl`. Content should match on these, never on the words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Trait {
+    Outgoing,
+    Chatty,
+    Clingy,
+    Loner,
+    Energetic,
+    Excitable,
+    Restless,
+    Mellow,
+    Sleepy,
+    Lazy,
+    Brave,
+    Confident,
+    Reckless,
+    Cautious,
+    Shy,
+    Nervous,
+    Cowardly,
+    Playful,
+    Mischievous,
+    Silly,
+    Serious,
+    Stoic,
+    Grumpy,
+    Feisty,
+    Stubborn,
+    Bossy,
+    Irritable,
+    Competitive,
+    Gentle,
+    Sweet,
+    Easygoing,
+    Impulsive,
+    Impatient,
+    Distractible,
+    Spontaneous,
+    Patient,
+    Steady,
+    Particular,
+    Picky,
+    Suspicious,
+    Wary,
+    Watchful,
+    Trusting,
+    Friendly,
+    Affectionate,
+    Loyal,
+    Jealous,
+    Protective,
+    Nurturing,
+    Independent,
+    Aloof,
+    Curious,
+    Nosy,
+    Obsessive,
+    Observant,
+    Unbothered,
+    Dramatic,
+    Vain,
+    AttentionSeeking,
+    FoodMotivated,
+    Messy,
+    Eccentric,
+    Unpredictable,
+    NightOwl,
+    EarlyRiser,
+    EasilyEmbarrassed,
+    SecretlyAffectionate,
+    DeeplyLoyal,
+    /// A trait a newer Desktop has that this build does not know. It matches nothing.
+    #[serde(other)]
+    Unknown,
+}
+
+impl From<core::Trait> for Trait {
+    fn from(value: core::Trait) -> Self {
+        match value {
+            core::Trait::Outgoing => Self::Outgoing,
+            core::Trait::Chatty => Self::Chatty,
+            core::Trait::Clingy => Self::Clingy,
+            core::Trait::Loner => Self::Loner,
+            core::Trait::Energetic => Self::Energetic,
+            core::Trait::Excitable => Self::Excitable,
+            core::Trait::Restless => Self::Restless,
+            core::Trait::Mellow => Self::Mellow,
+            core::Trait::Sleepy => Self::Sleepy,
+            core::Trait::Lazy => Self::Lazy,
+            core::Trait::Brave => Self::Brave,
+            core::Trait::Confident => Self::Confident,
+            core::Trait::Reckless => Self::Reckless,
+            core::Trait::Cautious => Self::Cautious,
+            core::Trait::Shy => Self::Shy,
+            core::Trait::Nervous => Self::Nervous,
+            core::Trait::Cowardly => Self::Cowardly,
+            core::Trait::Playful => Self::Playful,
+            core::Trait::Mischievous => Self::Mischievous,
+            core::Trait::Silly => Self::Silly,
+            core::Trait::Serious => Self::Serious,
+            core::Trait::Stoic => Self::Stoic,
+            core::Trait::Grumpy => Self::Grumpy,
+            core::Trait::Feisty => Self::Feisty,
+            core::Trait::Stubborn => Self::Stubborn,
+            core::Trait::Bossy => Self::Bossy,
+            core::Trait::Irritable => Self::Irritable,
+            core::Trait::Competitive => Self::Competitive,
+            core::Trait::Gentle => Self::Gentle,
+            core::Trait::Sweet => Self::Sweet,
+            core::Trait::Easygoing => Self::Easygoing,
+            core::Trait::Impulsive => Self::Impulsive,
+            core::Trait::Impatient => Self::Impatient,
+            core::Trait::Distractible => Self::Distractible,
+            core::Trait::Spontaneous => Self::Spontaneous,
+            core::Trait::Patient => Self::Patient,
+            core::Trait::Steady => Self::Steady,
+            core::Trait::Particular => Self::Particular,
+            core::Trait::Picky => Self::Picky,
+            core::Trait::Suspicious => Self::Suspicious,
+            core::Trait::Wary => Self::Wary,
+            core::Trait::Watchful => Self::Watchful,
+            core::Trait::Trusting => Self::Trusting,
+            core::Trait::Friendly => Self::Friendly,
+            core::Trait::Affectionate => Self::Affectionate,
+            core::Trait::Loyal => Self::Loyal,
+            core::Trait::Jealous => Self::Jealous,
+            core::Trait::Protective => Self::Protective,
+            core::Trait::Nurturing => Self::Nurturing,
+            core::Trait::Independent => Self::Independent,
+            core::Trait::Aloof => Self::Aloof,
+            core::Trait::Curious => Self::Curious,
+            core::Trait::Nosy => Self::Nosy,
+            core::Trait::Obsessive => Self::Obsessive,
+            core::Trait::Observant => Self::Observant,
+            core::Trait::Unbothered => Self::Unbothered,
+            core::Trait::Dramatic => Self::Dramatic,
+            core::Trait::Vain => Self::Vain,
+            core::Trait::AttentionSeeking => Self::AttentionSeeking,
+            core::Trait::FoodMotivated => Self::FoodMotivated,
+            core::Trait::Messy => Self::Messy,
+            core::Trait::Eccentric => Self::Eccentric,
+            core::Trait::Unpredictable => Self::Unpredictable,
+            core::Trait::NightOwl => Self::NightOwl,
+            core::Trait::EarlyRiser => Self::EarlyRiser,
+            core::Trait::EasilyEmbarrassed => Self::EasilyEmbarrassed,
+            core::Trait::SecretlyAffectionate => Self::SecretlyAffectionate,
+            core::Trait::DeeplyLoyal => Self::DeeplyLoyal,
+        }
+    }
+}
+
 /// What Desktop will do with a receipt. Hill should only ask for what is listed; anything else in
 /// a receipt is set aside unread.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -197,8 +350,13 @@ pub struct TravelCharacter {
     pub axes: TravelAxes,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tension: Option<Tension>,
-    /// The three traits its profile shows, in Desktop's words: "Brave", "Nosy", "Night owl".
+    /// The three traits its profile shows, in Desktop's words: "Brave", "Nosy", "Night owl". For
+    /// showing only: the words may be changed or translated.
     pub traits: Vec<String>,
+    /// The same traits as identifiers, in the same order: what content should match on. Since
+    /// travel version 2; a snapshot from an older Desktop has none, and only the words.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trait_ids: Vec<Trait>,
     /// The line its profile leads with: "A suspicious guardian".
     pub phrase: String,
 }
@@ -328,6 +486,7 @@ impl TravelSnapshot {
     /// An empty snapshot with this build's header, for the projection to fill.
     pub(crate) fn new(
         session_id: SessionId,
+        min_reader_version: u32,
         colony_id: String,
         created_at_utc: OffsetDateTime,
         desktop_version: String,
@@ -335,7 +494,7 @@ impl TravelSnapshot {
         Self {
             format: SNAPSHOT_FORMAT.to_owned(),
             version: TRAVEL_FORMAT_VERSION,
-            min_reader_version: 1,
+            min_reader_version,
             session_id,
             colony_id,
             created_at_utc,
@@ -444,6 +603,7 @@ impl Traveler {
             return Err(invalid("a traveler's character is out of range"));
         }
         if self.character.traits.len() > MAX_TRAITS
+            || self.character.trait_ids.len() > MAX_TRAITS
             || !self
                 .character
                 .traits

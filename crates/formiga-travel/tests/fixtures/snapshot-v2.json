@@ -7,8 +7,7 @@
   "created_at_utc": "2026-10-02T09:30:00Z",
   "desktop_version": "0.66.1",
   "capabilities": [
-    "visit_record",
-    "photo_album"
+    "visit_record"
   ],
   "travelers": [
     {
@@ -84,6 +83,11 @@
           "Wary",
           "Mellow"
         ],
+        "trait_ids": [
+          "shy",
+          "wary",
+          "mellow"
+        ],
         "phrase": "A shy wallflower"
       },
       "motion": {
@@ -128,8 +132,7 @@
             246
           ]
         }
-      },
-      "favorite_snack": "clover"
+      }
     },
     {
       "id": "a5cdeae193601ce1",
@@ -183,8 +186,7 @@
         "pattern_density": 0.5457996,
         "marking_seed": "b746b07ae6c166e8",
         "gait_bob": 0.42092627,
-        "face_signature": 1777620417,
-        "sparkle": 3
+        "face_signature": 1777620417
       },
       "stature_percent": 108,
       "scale_percent": 100,
@@ -205,6 +207,11 @@
           "Excitable",
           "Mischievous",
           "Reckless"
+        ],
+        "trait_ids": [
+          "excitable",
+          "mischievous",
+          "reckless"
         ],
         "phrase": "An excitable scamp"
       },
@@ -325,10 +332,12 @@
           "Competitive",
           "Affectionate"
         ],
-        "phrase": "A competitive napper",
-        "mood": {
-          "now": "sleepy"
-        }
+        "trait_ids": [
+          "lazy",
+          "competitive",
+          "affectionate"
+        ],
+        "phrase": "A competitive napper"
       },
       "motion": {
         "activity": 0.3459453,
@@ -410,6 +419,11 @@
           "Curious",
           "Affectionate"
         ],
+        "trait_ids": [
+          "serious",
+          "curious",
+          "affectionate"
+        ],
         "phrase": "A serious explorer"
       },
       "motion": {
@@ -488,6 +502,11 @@
           "Curious",
           "Brave",
           "Energetic"
+        ],
+        "trait_ids": [
+          "curious",
+          "brave",
+          "energetic"
         ],
         "phrase": "A curious explorer"
       },
@@ -572,6 +591,11 @@
           "Wary",
           "Mellow"
         ],
+        "trait_ids": [
+          "shy",
+          "wary",
+          "mellow"
+        ],
         "phrase": "A shy little wallflower"
       },
       "motion": {
@@ -589,8 +613,7 @@
       "affinity": "high",
       "familiarity": "high",
       "playfulness": "low",
-      "avoidance": "low",
-      "shared_moments": 12
+      "avoidance": "low"
     },
     {
       "a": "66cd447617ba3991",
@@ -708,11 +731,6 @@
   "presentation": {
     "reduce_motion": false,
     "theme": "system",
-    "text_scale_percent": 100,
-    "high_contrast": true
-  },
-  "weather": {
-    "kind": "drizzle",
-    "since_utc": "2026-10-02T08:00:00Z"
+    "text_scale_percent": 100
   }
 }

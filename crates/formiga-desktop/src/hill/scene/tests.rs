@@ -110,10 +110,11 @@ fn leaving_everyone_gets_on_and_the_train_pulls_away() {
     assert_eq!(scene.monitor_id(), 1);
     let frames = play(scene, &save);
     let (_, first_train, first) = &frames[0];
-    // The train comes in from off the display, and the companions already here are standing where
-    // they were; the one on the other display is not here yet.
-    assert!(first_train.unwrap().left >= monitors[0].bounds.right());
-    assert!(!first_train.unwrap().facing_right);
+    // The train comes in from off the left of the display, running right as Formiga Hill's own
+    // train does, and the companions already here are standing where they were; the one on the
+    // other display is not here yet.
+    assert!(first_train.unwrap().left < monitors[0].bounds.x);
+    assert!(first_train.unwrap().facing_right);
     assert!(
         first
             .creatures

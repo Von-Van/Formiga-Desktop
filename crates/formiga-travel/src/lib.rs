@@ -36,8 +36,20 @@
 //! `min_reader_version` is at most [`TRAVEL_FORMAT_VERSION`], ignores fields it does not know, and
 //! refuses anything else with [`TravelError::UnsupportedVersion`] rather than guessing. A writer
 //! that only adds optional fields bumps `version` and leaves `min_reader_version` alone; one that
-//! changes or removes anything, or adds a variant to any enum here, bumps both. The golden fixtures
-//! under `tests/fixtures` are version 1 as it shipped and must keep reading.
+//! changes or removes anything, or adds a variant to any enum here, bumps both. An enum whose
+//! values are only ever matched against, such as [`Trait`], reads a value it does not know as
+//! `Unknown` instead, so adding to it needs no bump. A snapshot's `min_reader_version` also rises
+//! by itself when a companion is drawn in an edition an older reader cannot draw
+//! ([`reader_for_colony`]), so an older Hill turns such a colony away as too new rather than as
+//! damaged.
+//!
+//! | Version | Shipped with | What it added |
+//! |---|---|---|
+//! | 1 | Desktop 0.66.4 | Everything |
+//! | 2 | Desktop after 0.66.4 | `trait_ids`: each trait by an identifier as well as in Desktop's words |
+//!
+//! The golden fixtures under `tests/fixtures` are every version as it shipped, and must keep
+//! reading.
 //!
 //! # Bounds
 //!
@@ -65,19 +77,19 @@ pub use document::{
     write_atomically, write_document,
 };
 pub use ids::{SessionId, TravelerId};
-pub use projection::{ProjectionError, project_colony};
+pub use projection::{ProjectionError, project_colony, reader_for_colony};
 pub use receipt::{
     AckRefusal, Acknowledgement, Recall, RecallReason, ReturnEffect, ReturnReceipt, SnapshotSeal,
 };
 pub use snapshot::{
     AccessoryColors, AccessoryItem, AccessoryKind, Band, Capability, Celebration, Habit,
-    Presentation, TemperamentKind, Tension, Theme, TravelAccessory, TravelAxes, TravelCharacter,
-    TravelMotion, TravelRelationship, TravelRole, TravelSnapshot, Traveler,
+    Presentation, TemperamentKind, Tension, Theme, Trait, TravelAccessory, TravelAxes,
+    TravelCharacter, TravelMotion, TravelRelationship, TravelRole, TravelSnapshot, Traveler,
 };
 pub use text::{is_sanitized, sanitize_text};
 
 /// The version of every travel document this build writes, and the newest it reads.
-pub const TRAVEL_FORMAT_VERSION: u32 = 1;
+pub const TRAVEL_FORMAT_VERSION: u32 = 2;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.travel.snapshot";

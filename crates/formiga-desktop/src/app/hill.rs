@@ -12,9 +12,6 @@ use formiga_travel::{RecallReason, SessionId, project_colony};
 /// How often Desktop looks again for Hill having been installed or removed.
 const HILL_RECHECK: Duration = Duration::from_secs(10 * 60);
 
-/// The oldest travel reader the snapshots this build writes can be read by.
-const SNAPSHOT_READER: u32 = 1;
-
 /// The title every reason for not leaving is shown under.
 const STAYING_HOME: &str = "The colony is staying home";
 
@@ -128,7 +125,13 @@ impl FormigaApp {
             self.failure_dialog(STAYING_HOME, "Formiga Hill is no longer installed.");
             return;
         };
-        if let Some(reason) = install.incompatibility(SNAPSHOT_READER) {
+        // The travel version this colony needs: newer only if someone in it is drawn in a way an
+        // older Hill cannot draw.
+        let needs = self
+            .world
+            .as_ref()
+            .map_or(1, |world| formiga_travel::reader_for_colony(&world.save));
+        if let Some(reason) = install.incompatibility(needs) {
             self.failure_dialog(STAYING_HOME, &reason);
             return;
         }
