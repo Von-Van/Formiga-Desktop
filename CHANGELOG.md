@@ -2,6 +2,21 @@
 
 All notable changes are documented here.
 
+## [0.67.1] - 2026-10-06
+
+### Fixed
+
+- A companion no longer half disappears at the edge of a display, or pokes out past the side of
+  the area it is allowed. Every wall stopped a companion's feet 8 points from the edge, but its
+  frame is 48 pixels times the size setting wide, and each display's overlay draws only the
+  companions standing on it, so whatever reached past a seam was drawn nowhere and whatever
+  reached past the side of an allowed region was drawn where it was not wanted. Now the sides of
+  each display and of each allowed region keep a companion's whole body inside, measured in that
+  display's own points, so mixed scaling such as a 125% laptop beside a 100% monitor is handled.
+  A region narrower than a companion has a single place to stand, in its middle. The same walls
+  apply to walking, landing after a toss or a drop, window ledges that run past a display's side,
+  journeys across displays, and the way to a wonder.
+
 ## [0.67.0] - 2026-10-06
 
 ### Added

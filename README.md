@@ -1,4 +1,4 @@
-# Formiga · v0.67.0
+# Formiga · v0.67.1
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.1-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,14 +107,15 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.0
+## New in 0.67.1
 
-Formiga can now open its houses in Formiga Home, a separate app you can install alongside it. With
-Home installed, clicking a house in the village brings up the house's own menu, and "look inside"
-opens it in Formiga Home, where you can arrange the rooms and spend a while with the household that
-lives there. They go indoors while the house is open, come back out when it closes, and the journal
-notes the visit. Four more souvenirs, from Formiga Hill's Fairground, now come home to the Journal
-too. Without Formiga Home or Formiga Hill installed nothing changes.
+Companions stay whole on screen when you have more than one display, or have told them to keep to
+part of one. Before, a companion could walk up to the edge of a display and half vanish there,
+because each display draws only the companions standing on it, and one kept to a corner of the
+screen could poke out past its side. Now the edges of every display, and of every area you allow
+them, are walls a companion keeps its whole body behind, at whatever size you draw them and
+whatever scaling each display uses. It follows 0.67.0, which lets Formiga open its houses in
+Formiga Home and brought Formiga Hill's Fairground souvenirs home to the Journal.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

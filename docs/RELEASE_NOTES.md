@@ -4,6 +4,16 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.1
+
+Companions stay whole on screen when you have more than one display, or have told them to keep to
+part of one. Before, a companion could walk up to the edge of a display and half vanish there,
+because each display draws only the companions standing on it, and one kept to a corner of the
+screen could poke out past its side. Now the edges of every display, and of every area you allow
+them, are walls a companion keeps its whole body behind, at whatever size you draw them and
+whatever scaling each display uses. It follows 0.67.0, which lets Formiga open its houses in
+Formiga Home and brought Formiga Hill's Fairground souvenirs home to the Journal.
+
 ## New in 0.67.0
 
 Formiga can now open its houses in Formiga Home, a separate app you can install alongside it. With
