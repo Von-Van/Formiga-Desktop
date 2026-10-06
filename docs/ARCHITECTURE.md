@@ -44,7 +44,7 @@ desktop crate.
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
 | `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
-| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through, and `app/visits.rs` for each app's tray item and who is away where; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
 | `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
@@ -2472,12 +2472,17 @@ visit by itself, its folder in the data directory, and the words it is spoken of
 | `Expansion::start` | Starts the app with its flag and the session directory, and waits for it on a thread that sleeps until it exits and then says so through the event loop |
 | `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words |
 | `files::VisitFiles` | The app's directory: a fresh session directory for each visit, the marker that lets Desktop finish a visit after a restart, closing, forgetting while the app may still be running (leaving it its recall), and sweeping whatever is neither the open visit nor a file Desktop keeps there |
+| `Holding`, `busy_elsewhere` | Who the app has just now: nobody, the whole colony, or a few companions. A visit that wants any of them is turned away in the words of the app that has them (`Words::occupied`), so a companion is away in one app at a time |
 
 A marker is written as its format and session, then whatever the app's side remembers of the visit,
 so `travel/trip.json` is read and written byte for byte as before. What a visit carries, what
 Desktop keeps from it and how it looks on the desktop stay the app's own. Formiga Hill is visited
 through its slot, `hill::HILL`, and Formiga Home through `house::HOME`, whose folder also keeps
 `home/state.json`, the homes Desktop keeps, through every sweep.
+
+The tray has an item for each app, in the order `app/visits.rs` lists them, straight after the
+everyday colony actions. Each app says what its item offers just now, as a `tray::VisitOffer`, or
+withdraws it, and a click comes back as `TrayAction::Visit` with the app's place in the list.
 
 
 ## Trips to Formiga Hill (save v26)
@@ -2537,9 +2542,10 @@ fails if this build stops writing its own byte for byte or stops reading any of 
 | Away | Nothing of the colony is drawn, the world does not tick and the app wakes every two seconds only to rescan displays. The tray offers "Bring the colony home" |
 | Returning | Hill has exited, or the owner called the colony home: what Hill left is checked, at most a counted trip, a journal line and the souvenirs it brought are kept, the trip's files are closed, and the train brings everyone back to exactly where they stood |
 
-The states are `hill::TripState`, runtime only. The app's side is `app/hill.rs`; the tray maps
-its item to `TrayAction::GoToHill` or `TrayAction::BringColonyHome`, and while a trip is under way
-it disables Gather, Settle, Pause and Start a new colony, which act on a colony that is not there.
+The states are `hill::TripState`, runtime only. The app's side is `app/hill.rs`; Hill's tray item
+offers the trip or the way home, and while a trip is under way the tray disables Gather, Settle,
+Pause and Start a new colony, which act on a colony that is not there, and its tooltip says where
+the colony is. The whole colony is Hill's while a trip is under way, so no house opens.
 The habitat editor waits too, since it draws over overlays that show nothing.
 
 Hill is started through its slot, `hill::HILL` (see [The slot a companion app plugs

@@ -15,6 +15,7 @@ pub mod files;
 
 use crate::app::UserEvent;
 use crate::platform::companion_app::{self, AppInstall, AppNames};
+use formiga_core::CreatureId;
 use formiga_expansion_rulebook::AckRefusal;
 use std::path::Path;
 use std::process::Child;
@@ -54,6 +55,45 @@ pub struct Words {
     pub unreadable: &'static str,
     /// What it said when it turned a visit away for any other reason.
     pub declined: &'static str,
+    /// What the owner is told when another visit would need someone this app has: the whole
+    /// sentence, said on its own.
+    pub occupied: &'static str,
+}
+
+/// Who a companion app has while a visit to it is open, as far as any other visit is concerned.
+/// A creature is away in one app at a time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Holding {
+    Nobody,
+    /// The whole colony, as on a trip to Formiga Hill.
+    Everyone,
+    /// These creatures, as a household gone indoors in Formiga Home.
+    These(Vec<CreatureId>),
+}
+
+impl Holding {
+    /// Whether a visit that needs `wants`, or everyone when it is `None`, would need someone held
+    /// here. A visit that needs everyone waits for every other visit to end.
+    pub fn holds_any(&self, wants: Option<&[CreatureId]>) -> bool {
+        match (self, wants) {
+            (Self::Nobody, _) => false,
+            (Self::Everyone, _) | (Self::These(_), None) => true,
+            (Self::These(held), Some(wants)) => held.iter().any(|id| wants.contains(id)),
+        }
+    }
+}
+
+/// Why a visit to `asking` cannot have `wants` (everyone, when `None`) just now, in the words of the
+/// first other app in `holdings` that has any of them; `None` when nobody it needs is away.
+pub fn busy_elsewhere(
+    asking: &Expansion,
+    wants: Option<&[CreatureId]>,
+    holdings: &[(&'static Expansion, Holding)],
+) -> Option<&'static str> {
+    holdings
+        .iter()
+        .find(|(app, holding)| !std::ptr::eq(*app, asking) && holding.holds_any(wants))
+        .map(|(app, _)| app.words.occupied)
 }
 
 /// An app's own reason for turning a visit away, as its acknowledgement gave it.
@@ -207,6 +247,13 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    const SAMPLE_FOLDER: files::Folder = files::Folder {
+        directory: "sample",
+        marker_file: "visit.json",
+        marker_format: "formiga.desktop.sample-visit",
+        kept: &[],
+    };
+
     static SAMPLE: Expansion = Expansion {
         name: "Formiga Sample",
         app: AppNames {
@@ -220,19 +267,25 @@ mod tests {
         },
         launch_argument: "--formiga-sample",
         start_after_env: "FORMIGA_SAMPLE_VISIT_AFTER",
-        folder: files::Folder {
-            directory: "sample",
-            marker_file: "visit.json",
-            marker_format: "formiga.desktop.sample-visit",
-            kept: &[],
-        },
+        folder: SAMPLE_FOLDER,
         words: Words {
             contract: "sample",
             update_to: "open the sample",
             busy: "is already open",
             unreadable: "could not read the sample",
             declined: "could not open the sample this time",
+            occupied: "The sample is open just now.",
         },
+    };
+
+    static OTHER: Expansion = Expansion {
+        name: "Formiga Other",
+        folder: SAMPLE_FOLDER,
+        words: Words {
+            occupied: "Someone is at the other app just now.",
+            ..SAMPLE.words
+        },
+        ..SAMPLE
     };
 
     fn install(version: Option<&str>, reads: Option<u32>) -> AppInstall {
@@ -308,5 +361,30 @@ mod tests {
         assert!(!slot.start_due(true), "not while held");
         assert!(slot.start_due(false));
         assert!(!slot.start_due(false), "once");
+    }
+
+    #[test]
+    fn a_creature_is_away_in_one_app_at_a_time() {
+        let (a, b, c): (CreatureId, CreatureId, CreatureId) = (1, 2, 3);
+        let household = [(&OTHER, Holding::These(vec![a, b]))];
+        assert_eq!(
+            busy_elsewhere(&SAMPLE, Some(&[b, c]), &household),
+            Some("Someone is at the other app just now.")
+        );
+        assert_eq!(busy_elsewhere(&SAMPLE, Some(&[c]), &household), None);
+        assert_eq!(
+            busy_elsewhere(&SAMPLE, None, &household),
+            Some("Someone is at the other app just now."),
+            "a visit that needs everyone waits"
+        );
+        let colony = [(&OTHER, Holding::Everyone)];
+        assert!(busy_elsewhere(&SAMPLE, Some(&[c]), &colony).is_some());
+        let nobody = [(&OTHER, Holding::Nobody)];
+        assert_eq!(busy_elsewhere(&SAMPLE, None, &nobody), None);
+        assert_eq!(
+            busy_elsewhere(&SAMPLE, None, &[(&SAMPLE, Holding::Everyone)]),
+            None,
+            "an app's own visit is its own business"
+        );
     }
 }

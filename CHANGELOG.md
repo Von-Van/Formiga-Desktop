@@ -21,6 +21,9 @@ All notable changes are documented here.
   one slot that any companion app fills in with its names, its folder and the words it is spoken
   of in. Every message about either app, the tray, and every file a visit writes are unchanged, so
   a trip or a house visit an earlier Desktop left open is finished as before.
+- The tray's items for Formiga Hill and Formiga Home, and the rule that a companion is away in one
+  companion app at a time, come from the same list of apps. The tray reads as before, and the
+  colony still cannot leave for the Hill while a house is open, nor a house open while it is away.
 
 ### Fixed
 

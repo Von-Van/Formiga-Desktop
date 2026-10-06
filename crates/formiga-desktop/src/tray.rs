@@ -7,14 +7,13 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 pub struct TrayState {
     tray: TrayIcon,
-    /// The menu itself, kept to add and remove the trip to Formiga Hill as Hill comes and goes.
+    /// The menu itself, kept to add and remove each companion app's item as it comes and goes.
     menu: Menu,
-    /// The trip to Formiga Hill: only in the menu while Hill is installed.
-    hill: MenuItem,
-    hill_menu: HillMenu,
-    /// The way back out of a house open in Formiga Home: only in the menu while one is open.
-    house: MenuItem,
-    house_shown: bool,
+    /// One item for each companion app, in the order the app lists them, each in the menu only
+    /// while it offers something.
+    visits: Vec<VisitItem>,
+    /// Where the colony is while it is away from the desktop.
+    colony_at: Option<&'static str>,
     pub about: MenuItem,
     /// Whether the icon carries its small dot for something new in the journal.
     news: bool,
@@ -51,30 +50,30 @@ pub enum TrayAction {
     QuietMoment,
     CheckForUpdates,
     OpenAbout,
-    GoToHill,
-    BringColonyHome,
-    BringHouseholdBack,
+    /// The item of the companion app at this place in the app's list.
+    Visit(usize),
     None,
 }
 
-/// What the tray offers about Formiga Hill.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HillMenu {
-    /// Hill is not installed: the menu says nothing about it.
-    Hidden,
-    /// Hill is installed and the colony is home.
-    Go,
-    /// The colony is leaving, or away.
-    Away,
-    /// The colony is getting off the train.
-    Returning,
+/// What one companion app's item says, and whether it can be chosen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VisitOffer {
+    pub text: String,
+    pub enabled: bool,
 }
 
-/// Where the trip sits in the menu: straight after the everyday colony actions.
-const HILL_POSITION: usize = 5;
+/// A companion app's item, and what it offers while it is in the menu.
+struct VisitItem {
+    item: MenuItem,
+    offer: Option<VisitOffer>,
+}
+
+/// Where the companion apps' items sit in the menu: straight after the everyday colony actions.
+const VISITS_POSITION: usize = 5;
 
 impl TrayState {
-    pub fn new(settings: &Settings) -> Result<Self> {
+    /// A tray with room for `visits` companion apps' items.
+    pub fn new(settings: &Settings, visits: usize) -> Result<Self> {
         let visible = CheckMenuItem::new("Show colony", true, settings.visible, None);
         let paused = CheckMenuItem::new("Pause colony", true, settings.paused, None);
         let settings_item = MenuItem::new("Your colony…", true, None);
@@ -95,8 +94,6 @@ impl TrayState {
         let check_updates = MenuItem::new("Check for updates…", true, None);
         let about = MenuItem::new("About Formiga", true, None);
         let quit = MenuItem::new("Quit Formiga", true, None);
-        let hill = MenuItem::new("Go to Formiga Hill…", true, None);
-        let house = MenuItem::new("Bring the household back", true, None);
         let separator_a = PredefinedMenuItem::separator();
         let separator_b = PredefinedMenuItem::separator();
         let separator_c = PredefinedMenuItem::separator();
@@ -138,10 +135,13 @@ impl TrayState {
         Ok(Self {
             tray,
             menu,
-            hill,
-            hill_menu: HillMenu::Hidden,
-            house,
-            house_shown: false,
+            visits: (0..visits)
+                .map(|_| VisitItem {
+                    item: MenuItem::new("", true, None),
+                    offer: None,
+                })
+                .collect(),
+            colony_at: None,
             about,
             news: false,
             trouble: false,
@@ -188,18 +188,19 @@ impl TrayState {
         if event.id() == self.gather.id() {
             return TrayAction::GatherCreatures;
         }
-        if event.id() == self.house.id() {
-            return if self.house_shown {
-                TrayAction::BringHouseholdBack
+        if let Some(slot) = self
+            .visits
+            .iter()
+            .position(|visit| event.id() == visit.item.id())
+        {
+            let offered = self.visits[slot]
+                .offer
+                .as_ref()
+                .is_some_and(|offer| offer.enabled);
+            return if offered {
+                TrayAction::Visit(slot)
             } else {
                 TrayAction::None
-            };
-        }
-        if event.id() == self.hill.id() {
-            return match self.hill_menu {
-                HillMenu::Go => TrayAction::GoToHill,
-                HillMenu::Away => TrayAction::BringColonyHome,
-                HillMenu::Hidden | HillMenu::Returning => TrayAction::None,
             };
         }
         if event.id() == self.reset.id() {
@@ -264,33 +265,47 @@ impl TrayState {
         self.scale_4.set_checked(settings.display_scale == 4);
     }
 
-    /// Offer the trip to Formiga Hill, or the way home from it, or nothing at all. While the
-    /// colony is away the actions that move it about the desktop wait for it to come back.
-    pub fn sync_hill(&mut self, mode: HillMenu) {
-        if mode == self.hill_menu {
+    /// Show what the companion app at `slot` in the app's list offers, or withdraw its item. The
+    /// items keep the app's order, straight after the everyday colony actions.
+    pub fn sync_visit(&mut self, slot: usize, offer: Option<VisitOffer>) {
+        let Some(visit) = self.visits.get(slot) else {
+            return;
+        };
+        if visit.offer == offer {
             return;
         }
-        let shown = self.hill_menu != HillMenu::Hidden;
-        let showing = mode != HillMenu::Hidden;
+        let (shown, showing) = (visit.offer.is_some(), offer.is_some());
         if showing && !shown {
-            if let Err(error) = self.menu.insert(&self.hill, HILL_POSITION) {
-                tracing::warn!(%error, "could not offer the trip to Formiga Hill");
+            let position = VISITS_POSITION
+                + self.visits[..slot]
+                    .iter()
+                    .filter(|visit| visit.offer.is_some())
+                    .count();
+            if let Err(error) = self.menu.insert(&visit.item, position) {
+                tracing::warn!(%error, "could not offer a companion app in the tray");
                 return;
             }
         } else if shown
             && !showing
-            && let Err(error) = self.menu.remove(&self.hill)
+            && let Err(error) = self.menu.remove(&visit.item)
         {
-            tracing::warn!(%error, "could not withdraw the trip to Formiga Hill");
+            tracing::warn!(%error, "could not withdraw a companion app from the tray");
         }
-        self.hill_menu = mode;
-        match mode {
-            HillMenu::Hidden | HillMenu::Go => self.hill.set_text("Go to Formiga Hill…"),
-            HillMenu::Away => self.hill.set_text("Bring the colony home"),
-            HillMenu::Returning => self.hill.set_text("Coming home…"),
+        if let Some(offer) = &offer {
+            visit.item.set_text(&offer.text);
+            visit.item.set_enabled(offer.enabled);
         }
-        self.hill.set_enabled(mode != HillMenu::Returning);
-        let home = matches!(mode, HillMenu::Hidden | HillMenu::Go);
+        self.visits[slot].offer = offer;
+    }
+
+    /// While the colony is away from the desktop, at the app `at` names, the actions that move it
+    /// about the desktop wait for it to come back, and the tooltip says where it is.
+    pub fn sync_colony_away(&mut self, at: Option<&'static str>) {
+        if at == self.colony_at {
+            return;
+        }
+        self.colony_at = at;
+        let home = at.is_none();
         for item in [&self.gather, &self.quiet] {
             item.set_enabled(home);
         }
@@ -303,34 +318,11 @@ impl TrayState {
         }
     }
 
-    /// Offer to bring back the household of the house open in Formiga Home, named for whoever
-    /// keeps it, or nothing while no house is open. It sits just after the trip to Formiga Hill.
-    pub fn sync_house(&mut self, keeper: Option<&str>) {
-        let showing = keeper.is_some();
-        if showing && !self.house_shown {
-            let position = HILL_POSITION + usize::from(self.hill_menu != HillMenu::Hidden);
-            if let Err(error) = self.menu.insert(&self.house, position) {
-                tracing::warn!(%error, "could not offer the way back out of Formiga Home");
-                return;
-            }
-        } else if !showing
-            && self.house_shown
-            && let Err(error) = self.menu.remove(&self.house)
-        {
-            tracing::warn!(%error, "could not withdraw the way back out of Formiga Home");
-        }
-        self.house_shown = showing;
-        if let Some(keeper) = keeper {
-            self.house
-                .set_text(format!("Bring {keeper}'s household back"));
-        }
-    }
-
     /// The tooltip while nothing is wrong: where the colony is.
-    fn resting_tooltip(&self) -> &'static str {
-        match self.hill_menu {
-            HillMenu::Hidden | HillMenu::Go => TOOLTIP,
-            HillMenu::Away | HillMenu::Returning => "Formiga · the colony is at Formiga Hill",
+    fn resting_tooltip(&self) -> String {
+        match self.colony_at {
+            None => TOOLTIP.to_owned(),
+            Some(at) => format!("Formiga · the colony is at {at}"),
         }
     }
 
@@ -369,7 +361,7 @@ impl TrayState {
         }
         self.trouble = trouble;
         let text = if trouble {
-            "Formiga · could not save the colony just now; open the notebook for details"
+            "Formiga · could not save the colony just now; open the notebook for details".to_owned()
         } else {
             self.resting_tooltip()
         };

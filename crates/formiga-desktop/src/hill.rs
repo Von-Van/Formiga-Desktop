@@ -58,6 +58,7 @@ pub static HILL: Expansion = Expansion {
         busy: "is already hosting a colony",
         unreadable: "could not read the colony's ticket",
         declined: "could not take the colony this time",
+        occupied: "The colony is away at Formiga Hill just now.",
     },
 };
 

@@ -8,9 +8,11 @@ use crate::expansion::Slot;
 use crate::house::session::{self, HouseFiles, OpenVisit};
 use crate::house::{HOME, HouseEvent, VisitState};
 use crate::houses::{HouseProxy, PlacedHouse};
+use crate::tray::VisitOffer;
 use formiga_home_contract::{
     HomeCapability, RecallReason, SessionId, likely_visitors, project_household,
 };
+use visits::HOME_ITEM;
 
 /// The title every reason for not opening a house is shown under.
 const STAYING_SHUT: &str = "The house is staying shut";
@@ -90,8 +92,12 @@ impl FormigaApp {
                 .and_then(|world| world.save.creatures.iter().find(|c| c.id == open.keeper))
                 .map_or_else(|| "the household".to_owned(), |keeper| keeper.name.clone())
         });
+        let offer = away.map(|keeper| VisitOffer {
+            text: format!("Bring {keeper}'s household back"),
+            enabled: true,
+        });
         if let Some(tray) = &mut self.tray {
-            tray.sync_house(away.as_deref());
+            tray.sync_visit(HOME_ITEM, offer);
         }
     }
 
@@ -101,8 +107,8 @@ impl FormigaApp {
         if self.house.visit.open().is_some() || self.world.is_none() {
             return;
         }
-        if self.hill.trip.holds_world() {
-            self.failure_dialog(STAYING_SHUT, "The colony is away at Formiga Hill just now.");
+        if let Some(reason) = self.busy_elsewhere(&HOME, Some(&[keeper])) {
+            self.failure_dialog(STAYING_SHUT, reason);
             return;
         }
         if self.recovery_pending {
