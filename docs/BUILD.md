@@ -160,6 +160,7 @@ cargo run -p formiga-tools -- animation-preview --seed 17 --output docs/assets/a
 cargo run -p formiga-tools -- expression-sheet
 cargo run -p formiga-tools -- gesture-sheet
 cargo run -p formiga-tools -- habit-sheet
+cargo run -p formiga-tools -- forms-sheet
 cargo run -p formiga-tools -- activity-sheet
 cargo run -p formiga-tools -- ambient-sheet
 cargo run -p formiga-tools -- shelter-sheet
@@ -219,7 +220,8 @@ blink, and `temperament-sheet` every frame of the six poses a temperament strike
 face its moment wears. `shelter-sheet` draws every kind of house plain, dressed two ways
 between which every decoration appears, as a cottage by day, with its resident at home and lit
 after dark, and with its resident sitting on the roof where the simulation seats it. And
-`gesture-sheet` and `habit-sheet` show every pose on every body. `sticker` takes
+`gesture-sheet` and `habit-sheet` show every pose on every body, and `forms-sheet` each of the seven
+sculpted body plans in its most common poses, bare and dressed. `sticker` takes
 `--clip walk|wave|cheer|play|snack|sleep|dance`, `--scale 4|8`, and `--seed NUMBER`. `postcard`
 draws a single postcard (`--scene nap|picnic|play|dusk`, `--caption TEXT`). `social-preview` is a
 1280×640 link-preview image, and `itch-cover` is a 630×500 store cover. Run the tools without a

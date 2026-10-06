@@ -452,3 +452,39 @@ fn a_souvenir_on_the_list_is_kept_only_while_the_capability_is_offered() {
         .retain(|capability| *capability != Capability::Souvenirs);
     assert!(!snapshot.accepts_souvenir("picnic_ribbon"));
 }
+
+/// A form sculpted in Formiga Farm does not travel. The companion recipe Desktop keeps beside it
+/// does, so an app that cannot draw sculpts shows the nearest companion in its colours, and the
+/// snapshot says nothing a reader before sculpts would not understand.
+#[test]
+fn a_sculpted_form_travels_as_the_recipe_kept_beside_it() {
+    use formiga_core::forms::{Design, Form, Plan, Sculpt};
+    let plain = colony(3);
+    let mut save = plain.clone();
+    let creature = &mut save.creatures[0];
+    creature.appearance = Design {
+        form: Form::Sculpted {
+            sculpt: Sculpt::starter(Plan::Crawler),
+        },
+        face: creature.appearance.face,
+    }
+    .genome(&creature.appearance);
+    creature.origin.design = creature.appearance.design;
+    let snapshot = snapshot_of(&save);
+    let written = String::from_utf8(encode(&snapshot).unwrap()).unwrap();
+    assert!(!written.contains("sculpt"));
+    assert_eq!(
+        snapshot.min_reader_version,
+        snapshot_of(&plain).min_reader_version
+    );
+    let genome = snapshot.travelers[0].appearance.to_genome().unwrap();
+    assert_eq!(genome.sculpt, None);
+    assert_eq!(genome.design, save.creatures[0].appearance.design);
+    assert_eq!(
+        genome,
+        formiga_core::AppearanceGenome {
+            sculpt: None,
+            ..save.creatures[0].appearance.clone()
+        }
+    );
+}

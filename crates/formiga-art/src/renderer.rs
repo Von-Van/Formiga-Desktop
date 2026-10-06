@@ -141,24 +141,24 @@ pub struct FaceRenderState {
 /// Where a body's parts are in one frame, as its drawing placed them: what anything it wears is
 /// put on against. Frames are drawn facing right.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Figure {
-    face: PixelPoint,
+pub(crate) struct Figure {
+    pub(crate) face: PixelPoint,
     /// The middle of the top of the head: its topmost drawn row.
-    crown: PixelPoint,
+    pub(crate) crown: PixelPoint,
     /// Half the head's width.
-    head_half: i32,
+    pub(crate) head_half: i32,
     /// Where a collar sits, and half its width: the neck, or for a body that carries its face on
     /// its front, a band across the body just under the face.
-    neck: PixelPoint,
-    neck_half: i32,
+    pub(crate) neck: PixelPoint,
+    pub(crate) neck_half: i32,
     /// On the front of the chest.
-    chest: PixelPoint,
+    pub(crate) chest: PixelPoint,
     /// On the back hip, where a bag hangs.
-    hip: PixelPoint,
+    pub(crate) hip: PixelPoint,
     /// The top of the back, where a pack rides.
-    back: PixelPoint,
+    pub(crate) back: PixelPoint,
     /// The lowest row anything worn may reach: the feet.
-    floor: i32,
+    pub(crate) floor: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -680,7 +680,8 @@ impl CreatureRenderer {
     }
 
     /// One body frame with whatever the creature is wearing drawn on, placed against the body as
-    /// this frame draws it.
+    /// this frame draws it. A sculpted form's body is drawn by [`crate::forms`], and what it
+    /// holds and shows is coloured as its face is.
     pub fn render_dressed_body_frame(
         genome: &AppearanceGenome,
         dress: Option<AccessoryArt>,
@@ -689,30 +690,18 @@ impl CreatureRenderer {
         reduce_motion: bool,
     ) -> RenderedBodyFrame {
         let frame = if reduce_motion { 0 } else { frame };
-        let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        let palette = crate::palette_for(genome);
         let clip = clip.into().body();
-        let pose = Pose::new(genome, clip, frame, reduce_motion);
-        let figure = if let Some(design) = genome.design {
-            modular::draw(
-                &mut canvas,
-                design,
-                palette,
-                pose,
-                scale(genome),
-                clip,
-                frame,
-            );
-            modular::figure(design, pose, scale(genome))
+        let face_genome;
+        let (genome, mut canvas, figure) = if let Some(sculpt) = &genome.sculpt {
+            face_genome = crate::forms::face_genome(sculpt, genome);
+            let (canvas, figure) = crate::forms::body(sculpt, genome, clip, frame, reduce_motion);
+            (&face_genome, canvas, figure)
         } else {
-            match genome.family {
-                BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
-                BodyFamily::Hopper => draw_hopper(&mut canvas, genome, palette, pose, clip, frame),
-                BodyFamily::SoftQuadruped => {
-                    draw_quadruped(&mut canvas, genome, palette, pose, clip, frame)
-                }
-            }
+            let (canvas, figure) = Self::draw_recipe_body(genome, clip, frame, reduce_motion);
+            (genome, canvas, figure)
         };
+        let palette = crate::palette_for(genome);
+        let pose = Pose::new(genome, clip, frame, reduce_motion);
         let mut face_anchor = figure.face;
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
@@ -760,7 +749,48 @@ impl CreatureRenderer {
         }
     }
 
+    /// A body drawn from its recipe, or from its genes for a look from before recipes.
+    fn draw_recipe_body(
+        genome: &AppearanceGenome,
+        clip: BodyClip,
+        frame: u8,
+        reduce_motion: bool,
+    ) -> (Canvas, Figure) {
+        let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        let palette = crate::palette_for(genome);
+        let pose = Pose::new(genome, clip, frame, reduce_motion);
+        let figure = if let Some(design) = genome.design {
+            modular::draw(
+                &mut canvas,
+                design,
+                palette,
+                pose,
+                scale(genome),
+                clip,
+                frame,
+            );
+            modular::figure(design, pose, scale(genome))
+        } else {
+            match genome.family {
+                BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
+                BodyFamily::Hopper => draw_hopper(&mut canvas, genome, palette, pose, clip, frame),
+                BodyFamily::SoftQuadruped => {
+                    draw_quadruped(&mut canvas, genome, palette, pose, clip, frame)
+                }
+            }
+        };
+        (canvas, figure)
+    }
+
+    /// The face, in its 16-pixel frame. A sculpted form wears the face its layout's recipe draws,
+    /// with its own eye colour, so it keeps every expression a companion has.
     pub fn render_face_frame(genome: &AppearanceGenome, state: FaceRenderState) -> Canvas {
+        if let Some(sculpt) = &genome.sculpt {
+            let face_genome = crate::forms::face_genome(sculpt, genome);
+            let mut face = Self::render_face_frame(&face_genome, state);
+            crate::forms::recolor_eyes(&mut face, &face_genome, sculpt.coat.eyes);
+            return face;
+        }
         let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
         let palette = crate::palette_for(genome);
         draw_face(&mut canvas, genome, palette, 8, 7, state);
@@ -877,7 +907,13 @@ impl CreatureRenderer {
     /// Only resting poses are measured, and the smallest clearance among them wins, so the value
     /// is a stable property of the creature. Seating never shifts mid-animation, and airborne
     /// frames keep reading as lift instead of sinking the creature into its perch.
+    ///
+    /// A sculpted form is measured from its own resting frame, and a floater to the ground it
+    /// hovers above, so it is never set down there.
     pub fn resting_baseline(genome: &AppearanceGenome, reduce_motion: bool) -> u32 {
+        if let Some(sculpt) = &genome.sculpt {
+            return crate::forms::resting_baseline(sculpt, genome);
+        }
         const RESTING: [ActionKind; 3] =
             [ActionKind::Idle, ActionKind::Perch, ActionKind::Homebound];
         RESTING

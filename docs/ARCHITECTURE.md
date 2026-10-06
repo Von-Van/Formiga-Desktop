@@ -42,8 +42,8 @@ desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
-| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
-| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
+| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `forms.rs` for a creature's form, the design Formiga Farm reshapes; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `forms.rs` with `forms/` for the seven sculpted body plans; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
 | `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through, and `app/visits.rs` for each app's tray item and who is away where; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
 | `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
@@ -2024,11 +2024,12 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–28: version 28 is read directly, versions 1 through 27 are
+Persistence accepts save versions 1–29: version 29 is read directly, versions 1 through 28 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
-that an older build refuses a village with a house kind chosen by hand. A missing primary can load
+that an older build refuses a village with a house kind chosen by hand, and version 29 so that it
+refuses a sculpted form ([Sculpted forms](#sculpted-forms-save-v29)). A missing primary can load
 its backup; a corrupt primary is preserved before repair, without rotating over a valid backup. If
 both files fail, the host disables writes and presents recovery choices. Explicit restores and
 resets preserve uniquely named copies; snapshot imports validate bounded input before confirmation
@@ -2725,3 +2726,33 @@ Without Home installed the additions are one LaunchServices or registry lookup e
 With it, a house's pixels are cut only when the village's look changes, and the proxies are synced
 from the tick that already syncs the creatures'. While a house is open nothing is drawn for those
 inside it.
+
+## Sculpted forms (save v29)
+
+Formiga Farm is a separate app for reshaping how a companion looks. What it reshapes is a
+`formiga_core::forms::Design`: a creature's form and the features of its face, and nothing about who
+it is. The form is a companion recipe, a look from before recipes, or a `Sculpt` on one of seven
+newer body plans (compact, large and tall quadrupeds, an upright body, a floater, a crawler and a
+percher) with eight proportions, a part in each of its slots, a coat and up to four markings. Every
+value is a small bounded step or a catalogue name, never a pixel. `Design::validate` refuses a
+design out of range, and `Design::revision` names one exactly.
+
+Save version 29 gives `AppearanceGenome` a `sculpt`, absent from the file for every creature drawn
+from its recipe or its genes. A sculpted creature keeps a recipe beside it,
+`Design::fallback_recipe`: the companion plan nearest its form, in its coat's colours. That recipe
+is what anything that cannot draw sculpts draws. A trip to Formiga Hill or a visit to Formiga Home
+carries the recipe and never the sculpt, a share code holds the recipe, and a mini's recipe grows
+from its parent's. Validation keeps a sculpt inside its bounds and never without a recipe beside
+it.
+
+`CreatureRenderer` draws a genome with a sculpt through `formiga_art::forms`, so a sculpted form is
+drawn wherever a companion is. Its body is painted there at the same 48 pixels, fitted to the frame
+and held a pixel inside it. Each plan brings every clip Desktop bakes down to one of a few intents
+and carries it out its own way: a floater hovers rather than walking on legs it does not have, and
+its resting baseline is measured to the ground below it, so it is never set down there. Its face is
+a companion's, drawn from the recipe `face_carrier` makes from the sculpt's face layout and coat,
+with the eyes in the sculpt's own colour, so it has every expression. What it wears is placed by
+its own head, neck, hip and back, and what it holds and its effects are drawn as a companion's.
+`formiga-tools forms-sheet` draws every plan in the poses it is seen in most, bare and dressed.
+`forms::DesignRenderer` draws a design over a creature's genome before any creature has it, as
+Formiga Farm's window does.

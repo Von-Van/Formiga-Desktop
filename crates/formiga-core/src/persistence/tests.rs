@@ -15,7 +15,7 @@ fn migrate(value: serde_json::Value, version: u32) -> Result<SaveFile, Persisten
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 282] = [
+const SAVED_FIELDS: [&str; 283] = [
     "Decoration",
     "Friendship",
     "Garden",
@@ -236,6 +236,7 @@ const SAVED_FIELDS: [&str; 282] = [
     "save_version",
     "schedule",
     "scrapbook",
+    "sculpt",
     "settings",
     "shared_rests",
     "shelter",
@@ -651,7 +652,11 @@ fn collect_field_names(value: &serde_json::Value, names: &mut std::collections::
         serde_json::Value::Object(fields) => {
             for (name, child) in fields {
                 names.insert(name.clone());
-                collect_field_names(child, names);
+                // A sculpted form is the design model's own vocabulary, held to it by the model's
+                // own tests: its `plan` is a body plan, not a plan under way.
+                if name != "sculpt" {
+                    collect_field_names(child, names);
+                }
             }
         }
         serde_json::Value::Array(items) => {
@@ -720,8 +725,20 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
     world.save.home.active_since_utc = None;
     world.save.home.last_disappeared_utc = Some(now);
     world.save.ritual.next_at_utc = now + time::Duration::days(1);
-    // A companion its owner would rather keep on the floor.
+    // A companion its owner would rather keep on the floor, reshaped in Formiga Farm.
     world.save.creatures[0].leaning = crate::RoamingLeaning::FloorDweller;
+    let mut sculpt = crate::forms::Sculpt::starter(crate::forms::Plan::Floater);
+    sculpt.markings.push(crate::forms::Marking::new(
+        crate::forms::MarkingKind::Spots,
+        [240, 236, 228],
+    ));
+    let reshaped = &mut world.save.creatures[0];
+    reshaped.appearance = crate::forms::Design {
+        form: crate::forms::Form::Sculpted { sculpt },
+        face: reshaped.appearance.face,
+    }
+    .genome(&reshaped.appearance);
+    reshaped.origin.design = reshaped.appearance.design;
     world.save.settings.habitat = crate::HabitatPolicy {
         preset: crate::HabitatPreset::Custom,
         zones: vec![crate::HabitatZone {
@@ -2326,4 +2343,90 @@ fn a_damaged_file_is_refused_or_repaired_never_half_read() {
         refused > 0 && repaired > 0,
         "the damage reaches both outcomes"
     );
+}
+
+/// A form sculpted in Formiga Farm on one of the newer body plans.
+fn sculpted(creature: &crate::Creature, plan: crate::forms::Plan) -> crate::AppearanceGenome {
+    crate::forms::Design {
+        form: crate::forms::Form::Sculpted {
+            sculpt: crate::forms::Sculpt::starter(plan),
+        },
+        face: creature.appearance.face,
+    }
+    .genome(&creature.appearance)
+}
+
+/// A version-28 colony opens with nobody sculpted and writes exactly what it read, and a
+/// sculpted form comes back from the file exactly as it was kept, beside the recipe anything
+/// that cannot draw sculpts draws instead.
+#[test]
+fn v29_keeps_a_sculpted_form_beside_its_recipe_and_older_colonies_have_none() {
+    let desktop = crate::DesktopSnapshot::default();
+    let now = datetime!(2026-10-06 12:00 UTC);
+    let mut world = crate::World::new([29; 32], now, &desktop);
+    world.tick(now + time::Duration::days(3), 0.05, &desktop);
+    let save = world.save.clone();
+    let mut value = serde_json::to_value(&save).unwrap();
+    assert!(!value.to_string().contains("sculpt"), "a v28 file has none");
+    value["save_version"] = 28.into();
+    let migrated = migrate(value, 28).unwrap();
+    assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+    assert_eq!(migrated.creatures, save.creatures);
+
+    let mut save = migrated;
+    let creature = &mut save.creatures[0];
+    creature.appearance = sculpted(creature, crate::forms::Plan::Percher);
+    creature.origin.design = creature.appearance.design;
+    let recipe = creature.appearance.design.expect("a sculpt keeps a recipe");
+    assert_eq!(
+        recipe.body,
+        crate::BodyPlan::Winged,
+        "the nearest companion plan"
+    );
+    let directory = std::env::temp_dir().join(format!("formiga-sculpt-{}", std::process::id()));
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&save).unwrap();
+    let loaded = store.load().unwrap().unwrap();
+    assert_eq!(loaded.creatures, save.creatures);
+    assert_eq!(
+        crate::forms::Design::of(&loaded.creatures[0].appearance).form,
+        crate::forms::Form::Sculpted {
+            sculpt: crate::forms::Sculpt::starter(crate::forms::Plan::Percher)
+        }
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+/// A sculpt the file holds out of bounds is brought inside them, and one with no recipe beside
+/// it is given the nearest, as a recipe out of bounds is: validation keeps what a colony holds
+/// drawable, whatever wrote it.
+#[test]
+fn a_sculpt_out_of_bounds_is_brought_inside_them_and_given_a_recipe() {
+    let mut save = example_save();
+    let mut creature = crate::World::preview_adult(
+        [52; 32],
+        save.created_at_utc,
+        &crate::DesktopSnapshot::default(),
+    );
+    creature.appearance = sculpted(&creature, crate::forms::Plan::Crawler);
+    let mut sculpt = creature.appearance.sculpt.clone().unwrap();
+    sculpt.shape.girth = 200;
+    creature.appearance.sculpt = Some(sculpt.clone());
+    creature.appearance.design = None;
+    save.creatures.push(creature);
+    assert!(
+        violations(&save)
+            .iter()
+            .any(|violation| violation.contains("sculpted form")),
+        "{:?}",
+        violations(&save)
+    );
+    let kept = ValidatedSave::from(save).into_inner();
+    let appearance = &kept.creatures.last().unwrap().appearance;
+    assert_eq!(appearance.sculpt, Some(sculpt.normalized()));
+    assert_eq!(
+        appearance.design.map(|recipe| recipe.body),
+        Some(crate::BodyPlan::Round)
+    );
+    assert!(violations(&kept).is_empty(), "{:?}", violations(&kept));
 }

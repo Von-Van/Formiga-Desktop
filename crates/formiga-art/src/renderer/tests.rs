@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 fn genome(family: BodyFamily) -> AppearanceGenome {
     AppearanceGenome {
         design: None,
+        sculpt: None,
         family,
         logical_size: 38,
         body_width: 22,
