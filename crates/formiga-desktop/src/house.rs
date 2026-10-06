@@ -57,6 +57,8 @@ pub static HOME: Expansion = Expansion {
         busy: "already has a house open",
         unreadable: "could not read the house it was given",
         declined: "could not open the house this time",
+        occupied: "A house is open in Formiga Home. Bring its household back first, and the whole \
+                   colony can travel.",
     },
 };
 

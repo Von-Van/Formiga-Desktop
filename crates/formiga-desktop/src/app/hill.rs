@@ -7,8 +7,9 @@ use crate::expansion::Slot;
 use crate::hill::session::{self, Answer, TravelFiles};
 use crate::hill::{HILL, HillEvent, HomecomingNote, TripState, scene::TrainScene};
 use crate::platform::companion_app::AppInstall;
-use crate::tray::HillMenu;
+use crate::tray::VisitOffer;
 use formiga_travel::{RecallReason, SessionId, project_colony};
+use visits::HILL_ITEM;
 
 /// The title every reason for not leaving is shown under.
 const STAYING_HOME: &str = "The colony is staying home";
@@ -51,15 +52,38 @@ impl FormigaApp {
         }
     }
 
+    /// Offer the trip to Formiga Hill in the tray, or the way home from it, or nothing at all.
+    /// While the colony is away the actions that move it about the desktop wait for it to come
+    /// back.
     pub(super) fn sync_hill_menu(&mut self) {
-        let mode = match &self.hill.trip {
-            TripState::Idle if self.hill.slot.install.is_some() => HillMenu::Go,
-            TripState::Idle => HillMenu::Hidden,
-            TripState::Departing { .. } | TripState::Away { .. } => HillMenu::Away,
-            TripState::Returning { .. } => HillMenu::Returning,
-        };
+        let offer = match &self.hill.trip {
+            TripState::Idle if self.hill.slot.install.is_some() => {
+                Some(("Go to Formiga Hill…", true))
+            }
+            TripState::Idle => None,
+            TripState::Departing { .. } | TripState::Away { .. } => {
+                Some(("Bring the colony home", true))
+            }
+            TripState::Returning { .. } => Some(("Coming home…", false)),
+        }
+        .map(|(text, enabled)| VisitOffer {
+            text: text.to_owned(),
+            enabled,
+        });
+        let away = self.hill.trip.holds_world().then_some(HILL.name);
         if let Some(tray) = &mut self.tray {
-            tray.sync_hill(mode);
+            tray.sync_visit(HILL_ITEM, offer);
+            tray.sync_colony_away(away);
+        }
+    }
+
+    /// What Hill's tray item offers: the trip while the colony is home, the way back while it is
+    /// leaving or away.
+    pub(super) fn choose_hill_item(&mut self) {
+        match self.hill.trip {
+            TripState::Idle => self.go_to_hill(),
+            TripState::Departing { .. } | TripState::Away { .. } => self.bring_colony_home(),
+            TripState::Returning { .. } => {}
         }
     }
 
@@ -83,12 +107,8 @@ impl FormigaApp {
             );
             return;
         }
-        if self.house.visit.open().is_some() {
-            self.failure_dialog(
-                STAYING_HOME,
-                "A house is open in Formiga Home. Bring its household back first, and the whole \
-                 colony can travel.",
-            );
+        if let Some(reason) = self.busy_elsewhere(&HILL, None) {
+            self.failure_dialog(STAYING_HOME, reason);
             return;
         }
         // Asked again now: it may have been removed since the last look.

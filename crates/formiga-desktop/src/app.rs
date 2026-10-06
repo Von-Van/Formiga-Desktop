@@ -46,6 +46,7 @@ mod house;
 mod menus;
 mod settings_window;
 mod updates;
+mod visits;
 use cadence::*;
 use habitat_editor::*;
 use hill::HillLink;
@@ -206,7 +207,7 @@ impl FormigaApp {
                 (World::new(new_colony_seed()?, now, &desktop), true)
             }
         };
-        self.tray = Some(TrayState::new(&world.save.settings)?);
+        self.tray = Some(TrayState::new(&world.save.settings, visits::VISIT_ITEMS)?);
         self.world = Some(world);
         self.sync_overlay_visibility();
         self.save()?;
@@ -637,9 +638,7 @@ impl FormigaApp {
                 }
             }
             TrayAction::OpenAbout => self.show_update_settings(event_loop),
-            TrayAction::GoToHill => self.go_to_hill(),
-            TrayAction::BringColonyHome => self.bring_colony_home(),
-            TrayAction::BringHouseholdBack => self.bring_household_back(),
+            TrayAction::Visit(item) => self.choose_visit_item(item),
             TrayAction::None => {}
         }
     }
