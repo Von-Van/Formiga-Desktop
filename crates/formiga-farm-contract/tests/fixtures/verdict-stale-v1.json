@@ -1,0 +1,53 @@
+{
+  "format": "formiga.farm.verdict",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "fa4fa4fa4fa4fa4fa4fa4fa4fa4fa4fa",
+  "snapshot_sha256": "d8535768631c42fc4212e1b3d9de4bf16b2444d9cf8d024d4ab86a6e3c3b8ebb",
+  "serial": 1,
+  "written_at_utc": "2026-10-23T09:37:00Z",
+  "verdict": {
+    "kind": "stale",
+    "current": {
+      "form": {
+        "kind": "companion",
+        "recipe": {
+          "body": "Winged",
+          "ears": "None",
+          "tail": 0,
+          "width": 11,
+          "height": 10,
+          "head": 9,
+          "ear_size": 3,
+          "legs": 3,
+          "muzzle": 0,
+          "marking": 0,
+          "coat": [
+            188,
+            209,
+            143
+          ],
+          "accent": [
+            122,
+            210,
+            135
+          ],
+          "archetype": 7,
+          "face_template": 12
+        }
+      },
+      "face": {
+        "eye_shape": "Round",
+        "eye_size": 2,
+        "eye_spacing": 5,
+        "vertical_offset": 0,
+        "pupil_style": "Wide",
+        "highlight_style": "Double",
+        "brow_style": "Soft",
+        "mouth_style": "Beak",
+        "cheek_style": "None"
+      }
+    },
+    "revision": "0de0dcfb78a1ef41218dd87632380148"
+  }
+}

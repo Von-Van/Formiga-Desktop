@@ -1,7 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
-# The travel and household fixtures are byte-exact: an answer is sealed to the SHA-256 of the
+# The travel, household and Farm fixtures are byte-exact: an answer is sealed to the SHA-256 of the
 # snapshot it answers, so they must check out exactly as written, never with CRLF line endings.
 crates/formiga-travel/tests/fixtures/** -text
 crates/formiga-home-contract/tests/fixtures/** -text
+crates/formiga-farm-contract/tests/fixtures/** -text

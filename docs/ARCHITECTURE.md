@@ -36,9 +36,9 @@ one feature at a time, and assumes you know where things are.
 ### The crates and where to start reading
 
 Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
-depends on neither; `formiga-travel` depends on all three, `formiga-home-contract` on those and
-`formiga-travel`; and `formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the
-desktop crate.
+depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract` and
+`formiga-farm-contract` on those and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on
+the lot. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
@@ -49,6 +49,7 @@ desktop crate.
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
+| `formiga-farm-contract` | `lib.rs`: the design contract with Formiga Farm | `snapshot.rs` and `replies.rs` for the documents; `projection.rs` for the one creature a session opens on; `accept.rs` for what Desktop keeps and how; [The Farm contract](#the-farm-contract) |
 
 ### How the app starts
 
@@ -2435,8 +2436,8 @@ window only hides it. Preferences offers "Take the tour" to start it again from 
 Formiga Hill and Formiga Home are visited the same way: Desktop writes a few documents into a
 fresh session directory, starts the app with that directory's path, and reads back what the app
 answers. What a visit carries and what may come back is each app's own contract
-(`formiga-travel`, `formiga-home-contract`). How it is carried lives once, in
-`formiga-expansion-rulebook`:
+(`formiga-travel`, `formiga-home-contract`, and `formiga-farm-contract` for Formiga Farm's
+sessions). How it is carried lives once, in `formiga-expansion-rulebook`:
 
 | Piece | What it guarantees |
 |---|---|
@@ -2448,8 +2449,8 @@ answers. What a visit carries and what may come back is each app's own contract
 | `AckRefusal` | An app's reasons for turning a visit away, in the words every app already used: `unsupported_version`, `invalid`, `busy`, and `other` for anything newer |
 
 Each contract wraps these in its own error, which says whose file it was ("the travel file…",
-"the Home file…"), adds its own validation, and re-exports the shared items under the names Hill
-and Home have always used. The rulebook has no format version of its own: anything that would
+"the Home file…", "the Farm file…"), adds its own validation, and re-exports the shared items
+under the names Hill, Home and Farm have always used. The rulebook has no format version of its own: anything that would
 change a byte a contract writes is a change to that contract, versioned there, and each
 contract's golden fixtures still read and write byte for byte. A new `AckRefusal` reason reads as
 `other` in an older build.
@@ -2756,3 +2757,31 @@ its own head, neck, hip and back, and what it holds and its effects are drawn as
 `formiga-tools forms-sheet` draws every plan in the poses it is seen in most, bare and dressed.
 `forms::DesignRenderer` draws a design over a creature's genome before any creature has it, as
 Formiga Farm's window does.
+
+### The Farm contract
+
+`formiga-farm-contract` is the agreement with Formiga Farm, kept in Desktop's workspace as
+`formiga-travel` and `formiga-home-contract` are, and Farm builds against it by Desktop's release
+tag. It was drafted beside Farm and adopted with its golden fixtures unchanged, as Farm version 1.
+Farm proposes; Desktop decides. A session opens on one creature to reshape it, or on nothing to
+draw a new one, and five documents pass through its directory: Desktop's `snapshot.json`
+(`FarmSnapshot`: what the session is for; the creature's look exactly as a trip carries it, its
+sculpt beside it, and its design's revision; what Desktop will do with a proposal; the plans it
+can draw; and the owner's reduced motion, theme and text size), Farm's `ack.json` and
+`proposal.json` (a design and what it is for, with a serial one higher each time), and Desktop's
+`verdict.json` on each serial and `recall.json`. Nothing about who the creature is leaves Desktop:
+no temperament, habits, memories, friends, family or history, and a test reads the sample
+snapshot for those words.
+
+`accept_proposal` is the whole rule, run on every proposal. Nothing is kept from another session
+or snapshot, nothing that does not validate, nothing Desktop did not offer or cannot draw, and
+nothing for a creature that is away or gone. An edit names the revision it was made from, and a
+creature whose look has changed since is answered `stale` with its design now, so nothing is
+merged silently. `apply_design` then changes the recipe (in the origin too, as always), the sculpt
+and the face's features, and nothing else; a test holds every other field of the creature, and
+everyone else in the colony, unchanged. A new companion is only a design: `Accepted::Create` hands
+it to Desktop's own welcome, which gives it an id, a name and a life, and the same `apply_design`
+puts the design on it.
+
+The sample sessions in `sample` open Desktop's own sample colony, and Farm rehearses with them
+through the same `accept_proposal` and `apply_design` a real session runs.

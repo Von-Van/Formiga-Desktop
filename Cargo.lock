@@ -1326,6 +1326,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-farm-contract"
+version = "0.67.1"
+dependencies = [
+ "formiga-core",
+ "formiga-expansion-rulebook",
+ "formiga-travel",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "time",
+]
+
+[[package]]
 name = "formiga-home-contract"
 version = "0.67.3"
 dependencies = [
