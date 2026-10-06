@@ -1,0 +1,3 @@
+#!/bin/sh
+# The Formiga developer toolkit; see devtools/README.md. On Windows: py devtools\formiga.py …
+exec python3 "$(dirname "$0")/formiga.py" "$@"

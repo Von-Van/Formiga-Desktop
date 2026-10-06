@@ -1,0 +1,88 @@
+{"reason":"compiler-artifact","package_id":"path+file:///WS/crates/demo-core#0.1.0","manifest_path":"/WS/crates/demo-core/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"demo_core","src_path":"/WS/crates/demo-core/src/lib.rs","edition":"2021","doc":true,"doctest":true,"test":true},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":false},"features":[],"filenames":["/WS/target/debug/deps/libdemo_core-e3e632ad1537090e.rlib","/WS/target/debug/deps/libdemo_core-e3e632ad1537090e.rmeta"],"executable":null,"fresh":true}
+   Compiling demo-tools v0.1.0 (/WS/crates/demo-tools)
+{"reason":"compiler-artifact","package_id":"path+file:///WS/crates/demo-core#0.1.0","manifest_path":"/WS/crates/demo-core/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"demo_core","src_path":"/WS/crates/demo-core/src/lib.rs","edition":"2021","doc":true,"doctest":true,"test":true},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":true},"features":[],"filenames":["/WS/target/debug/deps/demo_core-9c64e4a0b1cdf053"],"executable":"/WS/target/debug/deps/demo_core-9c64e4a0b1cdf053","fresh":true}
+{"reason":"compiler-artifact","package_id":"path+file:///WS/crates/demo-tools#0.1.0","manifest_path":"/WS/crates/demo-tools/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"demo_tools","src_path":"/WS/crates/demo-tools/src/lib.rs","edition":"2021","doc":true,"doctest":true,"test":true},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":false},"features":[],"filenames":["/WS/target/debug/deps/libdemo_tools-93ae954d8a8cfdc9.rlib","/WS/target/debug/deps/libdemo_tools-93ae954d8a8cfdc9.rmeta"],"executable":null,"fresh":false}
+{"reason":"compiler-artifact","package_id":"path+file:///WS/crates/demo-tools#0.1.0","manifest_path":"/WS/crates/demo-tools/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"demo_tools","src_path":"/WS/crates/demo-tools/src/lib.rs","edition":"2021","doc":true,"doctest":true,"test":true},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":true},"features":[],"filenames":["/WS/target/debug/deps/demo_tools-704016807e00e4b3"],"executable":"/WS/target/debug/deps/demo_tools-704016807e00e4b3","fresh":false}
+{"reason":"build-finished","success":true}
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src/lib.rs (target/debug/deps/demo_core-9c64e4a0b1cdf053)
+
+running 3 tests
+test tests::adds_up ... ok
+test tests::panics_plainly ... FAILED
+test tests::decoration_keeps_its_slot ... FAILED
+
+failures:
+
+---- tests::panics_plainly stdout ----
+
+thread 'tests::panics_plainly' (15192) panicked at crates/demo-core/src/lib.rs:15:27:
+the colony file has grown to 9000000 bytes
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:80:14
+   2: demo_core::tests::panics_plainly
+             at ./src/lib.rs:15:27
+   3: demo_core::tests::panics_plainly::{closure#0}
+             at ./src/lib.rs:15:24
+   4: <demo_core::tests::panics_plainly::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+   5: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+---- tests::decoration_keeps_its_slot stdout ----
+
+thread 'tests::decoration_keeps_its_slot' (15191) panicked at crates/demo-core/src/lib.rs:11:9:
+assertion `left == right` failed: Banner lost its slot
+  left: 2
+ right: 3
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:80:14
+   2: core::panicking::assert_failed_inner
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:434:23
+   3: core::panicking::assert_failed::<usize, usize>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:394:5
+   4: demo_core::tests::decoration_keeps_its_slot
+             at ./src/lib.rs:11:9
+   5: demo_core::tests::decoration_keeps_its_slot::{closure#0}
+             at ./src/lib.rs:9:35
+   6: <demo_core::tests::decoration_keeps_its_slot::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    tests::decoration_keeps_its_slot
+    tests::panics_plainly
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+error: test failed, to rerun pass `-p demo-core --lib`
+     Running unittests src/lib.rs (target/debug/deps/demo_tools-704016807e00e4b3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests demo_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests demo_tools
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `-p demo-core --lib`

@@ -12,3 +12,7 @@
 /CLAUDE.md
 /docs/DESIGN.md
 /docs/DESKTOP_ADOPTION.md
+
+# What the developer toolkit (devtools/) makes: scenarios, captures, builds against local crates.
+/.dev/
+__pycache__/
