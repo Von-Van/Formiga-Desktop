@@ -17,10 +17,10 @@ All notable changes are documented here.
 
 ### Changed
 
-- Formiga Hill is found, started, waited on and its trips' files kept through one slot that any
-  companion app fills in with its names, its folder and the words it is spoken of in. Every message
-  about Hill, the tray, and every file a trip writes are unchanged, so a trip an earlier Desktop
-  left open is finished as before.
+- Formiga Hill and Formiga Home are found, started, waited on and their visits' files kept through
+  one slot that any companion app fills in with its names, its folder and the words it is spoken
+  of in. Every message about either app, the tray, and every file a visit writes are unchanged, so
+  a trip or a house visit an earlier Desktop left open is finished as before.
 
 ## [0.67.1] - 2026-10-06
 

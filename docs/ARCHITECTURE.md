@@ -2476,8 +2476,8 @@ visit by itself, its folder in the data directory, and the words it is spoken of
 A marker is written as its format and session, then whatever the app's side remembers of the visit,
 so `travel/trip.json` is read and written byte for byte as before. What a visit carries, what
 Desktop keeps from it and how it looks on the desktop stay the app's own. Formiga Hill is visited
-through its slot, `hill::HILL`; Formiga Home keeps its own copy of these steps in `house/` and
-`platform/home.rs`.
+through its slot, `hill::HILL`, and Formiga Home through `house::HOME`, whose folder also keeps
+`home/state.json`, the homes Desktop keeps, through every sweep.
 
 
 ## Trips to Formiga Hill (save v26)
@@ -2692,15 +2692,15 @@ button, which works whether or not the houses are out.
 
 ### Files, and failing toward home
 
-A visit's files are under `home/` in the data directory (`house/session.rs`): a fresh
-`home/<session>/` with the snapshot and the homes, where Home answers; `home/visit.json`, the
-marker that says a visit is open, holding the session, the seal every answer must match, whose
-house it is, who went in and what Desktop offered; and `home/state.json`, the homes Desktop keeps,
-written whole and only as `accept_result` leaves them, beside the colony and never inside it. An
-answer is used only if it is whole, inside its bounds, in a version this build reads, and names
-this session, this exact snapshot and these exact homes, and Desktop's own two files are checked
-against the seal again before any result is weighed. A result for another colony, or one that
-proposes a change to any house but the one opened, keeps only what the contract allows.
+A visit's files are under `home/` in the data directory (`house/session.rs`, kept by
+`expansion::files`): a fresh `home/<session>/` with the snapshot and the homes, where Home answers;
+`home/visit.json`, the marker that says a visit is open, holding the session, the seal every answer
+must match, whose house it is, who went in and what Desktop offered; and `home/state.json`, the
+homes Desktop keeps, written whole and only as `accept_result` leaves them, beside the colony and
+never inside it. An answer is used only if it is whole, inside its bounds, in a version this build
+reads, and names this session, this exact snapshot and these exact homes, and Desktop's own two
+files are checked against the seal again before any result is weighed. A result for another colony,
+or one that proposes a change to any house but the one opened, keeps only what the contract allows.
 `session::welcome` keeps at most one visit, to this house and inside the visit's own time, and
 everything else in a receipt is set aside unread. `World::note_house_visit` writes the line in
 Desktop's words, and never twice for the same house within six hours.

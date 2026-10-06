@@ -98,9 +98,9 @@ The household contract keeps fixtures for every version in
 files beside the others, never over one that has shipped.
 
 The Windows half of finding Hill and Home, which reads the registry, can be type-checked from a
-Mac without the desktop crate's `ring` dependency by compiling `platform/companion_app.rs` and
-`platform/home.rs` on their own, as a `platform` module, against `formiga-expansion-rulebook`,
-`formiga-home-contract` and the `windows` crate for `x86_64-pc-windows-msvc`.
+Mac without the desktop crate's `ring` dependency by compiling `platform/companion_app.rs` on its
+own, as a `platform` module, against `formiga-expansion-rulebook` and the `windows` crate for
+`x86_64-pc-windows-msvc`.
 
 ## Performance tools
 

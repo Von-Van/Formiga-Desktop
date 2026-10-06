@@ -4,16 +4,13 @@
 //! described in [`crate::house`].
 
 use super::*;
+use crate::expansion::Slot;
 use crate::house::session::{self, HouseFiles, OpenVisit};
-use crate::house::{HouseEvent, VisitState};
+use crate::house::{HOME, HouseEvent, VisitState};
 use crate::houses::{HouseProxy, PlacedHouse};
-use crate::platform::home::{HomeInstall, find_formiga_home, launch_formiga_home};
 use formiga_home_contract::{
     HomeCapability, RecallReason, SessionId, likely_visitors, project_household,
 };
-
-/// How often Desktop looks again for Home having been installed or removed.
-const HOME_RECHECK: Duration = Duration::from_secs(10 * 60);
 
 /// The title every reason for not opening a house is shown under.
 const STAYING_SHUT: &str = "The house is staying shut";
@@ -22,35 +19,20 @@ const STAYING_SHUT: &str = "The house is staying shut";
 /// capability is offered only once Desktop applies what it brings.
 const OFFERED: [HomeCapability; 1] = [HomeCapability::VisitRecord];
 
-/// For development only: with [`formiga_home_contract::discovery::PATH_OVERRIDE_ENV`] naming a
-/// stand-in Home, the colony house opens this many seconds after Desktop starts, once, as if its
-/// menu had been used. Ignored without the override, so it can never open a house in an
-/// installed Home.
-const VISIT_AFTER_ENV: &str = "FORMIGA_HOME_VISIT_AFTER";
-
-/// The visit's own state, files and Home, as the app keeps them.
+/// The visit's own state and files, and Home's slot, as the app keeps them.
 pub(super) struct HouseLink {
     pub(super) visit: VisitState,
     pub(super) files: HouseFiles,
-    pub(super) install: Option<HomeInstall>,
-    checked: Option<Instant>,
-    /// When a development run opens the colony house by itself; see [`VISIT_AFTER_ENV`].
-    visit_at: Option<Instant>,
+    /// Whether Home is installed, and when a development run opens the colony house by itself.
+    pub(super) slot: Slot,
 }
 
 impl HouseLink {
     pub(super) fn new(data_dir: &std::path::Path) -> Self {
-        let visit_at = std::env::var_os(formiga_home_contract::discovery::PATH_OVERRIDE_ENV)
-            .and(std::env::var(VISIT_AFTER_ENV).ok())
-            .and_then(|seconds| seconds.parse::<f32>().ok())
-            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
-            .map(|seconds| Instant::now() + Duration::from_secs_f32(seconds));
         Self {
             visit: VisitState::Idle,
             files: HouseFiles::new(data_dir),
-            install: None,
-            checked: None,
-            visit_at,
+            slot: Slot::new(&HOME),
         }
     }
 }
@@ -62,12 +44,7 @@ impl FormigaApp {
         if self.house.visit.open().is_some() {
             return;
         }
-        if self
-            .house
-            .visit_at
-            .is_some_and(|at| Instant::now() >= at && !self.recovery_pending)
-        {
-            self.house.visit_at = None;
+        if self.house.slot.start_due(self.recovery_pending) {
             let colony_house = self.world.as_ref().and_then(|world| {
                 formiga_core::house_owners(&world.save.creatures, &world.save.home.cottage_order)
                     .as_slice()
@@ -76,39 +53,21 @@ impl FormigaApp {
             });
             if let Some(keeper) = colony_house {
                 tracing::info!(
-                    "opening the colony house in the stand-in Home, as {VISIT_AFTER_ENV} asks"
+                    "opening the colony house in the stand-in Home, as {} asks",
+                    HOME.start_after_env
                 );
                 self.check_for_home(true);
                 self.open_house(keeper);
                 return;
             }
         }
-        if !now
-            && self
-                .house
-                .checked
-                .is_some_and(|checked| checked.elapsed() < HOME_RECHECK)
-        {
-            return;
-        }
-        let found = find_formiga_home();
-        if found != self.house.install {
-            match &found {
-                Some(install) => tracing::info!(
-                    version = install.version.as_deref().unwrap_or("unknown"),
-                    "Formiga Home is installed"
-                ),
-                None => tracing::info!("Formiga Home is not installed"),
-            }
-        }
-        self.house.install = found;
-        self.house.checked = Some(Instant::now());
+        self.house.slot.look(now);
     }
 
     /// Whether a house can be offered to be opened just now: Home is installed, no house is open
     /// already, the colony is here rather than away on a trip, and nothing is being recovered.
     pub(super) fn can_open_house(&self) -> bool {
-        self.house.install.is_some()
+        self.house.slot.install.is_some()
             && self.house.visit.open().is_none()
             && !self.hill.trip.holds_world()
             && !self.recovery_pending
@@ -118,7 +77,7 @@ impl FormigaApp {
     /// What the notebook may offer about Home this frame.
     pub(super) fn formiga_home_view(&self) -> crate::clubhouse::FormigaHomeView {
         crate::clubhouse::FormigaHomeView {
-            installed: self.house.install.is_some(),
+            installed: self.house.slot.install.is_some(),
             open: self.house.visit.open().map(|open| open.keeper),
             can_open: self.can_open_house(),
         }
@@ -162,7 +121,7 @@ impl FormigaApp {
         }
         // Asked again now: it may have been removed since the last look.
         self.check_for_home(true);
-        let Some(install) = self.house.install.clone() else {
+        let Some(install) = self.house.slot.install.clone() else {
             self.failure_dialog(STAYING_SHUT, "Formiga Home is no longer installed.");
             return;
         };
@@ -224,7 +183,7 @@ impl FormigaApp {
                 return;
             }
         };
-        if let Some(reason) = install.incompatibility(snapshot.min_reader_version) {
+        if let Some(reason) = HOME.incompatibility(&install, snapshot.min_reader_version) {
             self.failure_dialog(STAYING_SHUT, &reason);
             return;
         }
@@ -259,14 +218,10 @@ impl FormigaApp {
                 return;
             }
         };
-        let launched = launch_formiga_home(&install, &open.dir).and_then(|child| {
-            crate::house::watch(
-                child,
-                open.seal.session_id.clone(),
-                self.event_proxy.clone(),
-            )
+        let exited = UserEvent::House(HouseEvent::Exited {
+            session: open.seal.session_id.clone(),
         });
-        if let Err(error) = launched {
+        if let Err(error) = HOME.start(&install, &open.dir, exited, self.event_proxy.clone()) {
             self.house.files.close(&open);
             self.let_household_out(None);
             self.failure_dialog(
@@ -425,7 +380,7 @@ impl FormigaApp {
         let Some(world) = &self.world else {
             return false;
         };
-        self.house.install.is_some()
+        self.house.slot.install.is_some()
             && world.save.settings.visible
             && world.save.settings.direct_manipulation
             && self.habitat_editor.is_none()
