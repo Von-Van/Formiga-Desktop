@@ -13,6 +13,12 @@ All notable changes are documented here.
   companion is, with its every expression and whatever it wears, and as the nearest companion by
   anything that cannot draw the new bodies, such as an earlier Formiga Hill or Home or a share code.
   `formiga-tools forms-sheet` draws every new body in the poses it is seen in most.
+- `formiga-farm-contract`, the agreement with Formiga Farm, adopted with its golden fixtures
+  unchanged: what a session opens on, a design Farm proposes and what it is for, and Desktop's
+  verdict on each. Desktop keeps a proposal only through `accept_proposal`, which refuses anything
+  from another session, out of range, made from a look the creature no longer has, or for a
+  creature that is away, and `apply_design`, which changes how a creature looks and nothing else.
+  It is built on the rulebook, as Hill's and Home's contracts are.
 
 ## [0.67.3] - 2026-10-06
 

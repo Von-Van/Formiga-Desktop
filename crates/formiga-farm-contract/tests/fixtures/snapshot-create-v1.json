@@ -1,0 +1,80 @@
+{
+  "format": "formiga.farm.snapshot",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "c4ea7ec4ea7ec4ea7ec4ea7ec4ea7ec4",
+  "created_at_utc": "2026-10-23T09:30:00Z",
+  "desktop_version": "0.67.0",
+  "mode": {
+    "kind": "create",
+    "stand_in": {
+      "design": {
+        "parts": "0300000b0a0903030000bcd18f7ad2870000007c"
+      },
+      "family": "blob",
+      "logical_size": 38,
+      "body_width": 25,
+      "body_height": 13,
+      "head_ratio": 0.67133456,
+      "roundness": 0.78652555,
+      "leg_length": 5,
+      "foot_size": 5,
+      "head_appendages": {
+        "style": "droop",
+        "size": 3
+      },
+      "tail": {
+        "style": "none",
+        "length": 5
+      },
+      "face": {
+        "eye_shape": "round",
+        "eye_size": 2,
+        "eye_spacing": 5,
+        "vertical_offset": 0,
+        "pupil": "wide",
+        "highlight": "double",
+        "brow": "soft",
+        "mouth": "beak",
+        "cheek": "none"
+      },
+      "forelimbs": {
+        "style": "soft_nub",
+        "length": 4,
+        "thickness": 1,
+        "tip": "round",
+        "rest_pose": "together"
+      },
+      "effect_motif": "leaf",
+      "palette_index": 5,
+      "pattern": "patches",
+      "pattern_density": 0.6479941,
+      "marking_seed": "465568b953d40634",
+      "gait_bob": 0.7812724,
+      "face_signature": 458422880
+    }
+  },
+  "capabilities": [
+    "edit_existing",
+    "create_new",
+    "sculpted_forms",
+    "journal_note"
+  ],
+  "renderer": {
+    "design_version": 1,
+    "plans": [
+      "compact_quadruped",
+      "large_quadruped",
+      "tall_quadruped",
+      "upright",
+      "floater",
+      "crawler",
+      "percher"
+    ]
+  },
+  "presentation": {
+    "reduce_motion": false,
+    "theme": "system",
+    "text_scale_percent": 100
+  }
+}
