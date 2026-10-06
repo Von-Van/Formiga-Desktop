@@ -122,8 +122,8 @@ and every change is itemised in [the changelog](CHANGELOG.md).
 ## Status
 
 Formiga is a working preview. It runs for days at a time on the Mac it is developed on and has been
-used by hand on Windows 11, but it is still at 0.x, its releases are published as unsigned
-prereleases, and most of the manual checks on real hardware are not done yet.
+used by hand on Windows 11, but it is still at 0.x, its releases are unsigned, and most of the
+manual checks on real hardware are not done yet.
 
 | Area | Status |
 |---|---|
