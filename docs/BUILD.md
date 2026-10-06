@@ -272,6 +272,10 @@ A release is one commit on `main` titled `Release X.Y.Z with …`, followed by a
 - the examples in `packaging/itch/page.md`, `packaging/windows/winget/README.md`, and
   `scripts/winget-manifest.sh`.
 
+`scripts/set-version.sh X.Y.Z` writes the new number into all of these and refreshes `Cargo.lock`,
+leaving the CHANGELOG entry, the README's "New in" text and the release notes for you to write;
+`scripts/set-version.sh --check` says whether every place still agrees with `Cargo.toml`.
+
 Then:
 
 1. Regenerate the documentation images if anything they draw has changed, and run the full check.
