@@ -55,16 +55,49 @@ jobs:
     needs: [package-macos, package-windows]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release
           merge-multiple: true
+      # The in-app updater shows a release's notes to the people updating, so they are the
+      # player-facing "New in" section of docs/RELEASE_NOTES.md rather than a list of commits. A
+      # tag whose message carries the line "Formiga-Release: draft" publishes a draft, which
+      # nobody sees until it is published by hand; the updater skips drafts.
+      - id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          cargo_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "$version" != "$cargo_version" ]; then
+            echo "Tag $TAG does not match Cargo.toml version $cargo_version" >&2
+            exit 1
+          fi
+          awk -v want="## New in $version" '
+            /^## / { if (found) exit; if ($0 == want) { found = 1; next } }
+            found { print }
+            END { if (!found) exit 1 }
+          ' docs/RELEASE_NOTES.md > notes.md || {
+            echo "docs/RELEASE_NOTES.md has no \"## New in $version\" section" >&2
+            exit 1
+          }
+          cat >> notes.md <<'NOTES'
+
+          Unsigned build. Review README.md and docs/BUILD.md for Gatekeeper and
+          SmartScreen guidance. SHA-256 checksum files are included for every download.
+          NOTES
+          git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          # A lightweight tag has no message of its own, and %(contents) would read its commit's.
+          if [ "$(git cat-file -t "$TAG")" = tag ] && git tag -l --format='%(contents)' "$TAG" | grep -qx 'Formiga-Release: draft'; then
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           prerelease: false
-          generate_release_notes: true
-          body: |
-            Unsigned build. Review README.md and docs/BUILD.md for Gatekeeper and
-            SmartScreen guidance. SHA-256 checksum files are included for every download.
+          draft: ${{ steps.notes.outputs.draft == 'true' }}
+          body_path: notes.md
           files: release/*
