@@ -1,6 +1,7 @@
 use super::*;
 use formiga_core::{DesktopRect, DesktopSnapshot, DisplayKey, MonitorInfo, World};
-use formiga_travel::{TRAVEL_FORMAT_VERSION, encode, project_colony};
+use formiga_travel::{AckRefusal, SessionId, TRAVEL_FORMAT_VERSION, encode, project_colony};
+use std::fs;
 use time::macros::datetime;
 
 const LEFT: OffsetDateTime = datetime!(2026-10-02 9:30 UTC);
@@ -327,4 +328,34 @@ fn calling_the_colony_home_closes_the_trip_and_leaves_hill_its_recall() {
     let next = files.open(&snapshot()).unwrap();
     assert!(!trip.dir.exists());
     assert!(next.dir.exists());
+}
+
+#[test]
+fn a_trip_is_marked_exactly_as_earlier_desktops_marked_it() {
+    /// The marker as Desktop 0.67.1 wrote it, so a trip it left open is finished by this build.
+    #[derive(Serialize)]
+    struct Earlier {
+        format: String,
+        session_id: SessionId,
+        snapshot_sha256: String,
+        #[serde(with = "time::serde::rfc3339")]
+        created_at_utc: OffsetDateTime,
+        capabilities: Vec<Capability>,
+    }
+    let scratch = Scratch::new("earlier");
+    let files = TravelFiles::new(&scratch.0);
+    let trip = files.open(&snapshot()).unwrap();
+    let mut earlier = serde_json::to_vec_pretty(&Earlier {
+        format: "formiga.desktop.trip".to_owned(),
+        session_id: trip.seal.session_id.clone(),
+        snapshot_sha256: trip.seal.snapshot_sha256.clone(),
+        created_at_utc: trip.seal.created_at_utc,
+        capabilities: trip.capabilities.clone(),
+    })
+    .unwrap();
+    earlier.push(b'\n');
+    assert_eq!(
+        fs::read(scratch.0.join("travel").join(MARKER_FILE)).unwrap(),
+        earlier
+    );
 }

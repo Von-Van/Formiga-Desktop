@@ -1289,6 +1289,7 @@ dependencies = [
  "egui-winit",
  "formiga-art",
  "formiga-core",
+ "formiga-expansion-rulebook",
  "formiga-home-contract",
  "formiga-travel",
  "image",

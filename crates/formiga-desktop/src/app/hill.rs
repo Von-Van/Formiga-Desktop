@@ -3,46 +3,30 @@
 //! happens. The states and the guarantees are described in [`crate::hill`].
 
 use super::*;
+use crate::expansion::Slot;
 use crate::hill::session::{self, Answer, TravelFiles};
-use crate::hill::{HillEvent, HomecomingNote, TripState, scene::TrainScene};
-use crate::platform::hill::{HillInstall, find_formiga_hill, launch_formiga_hill};
+use crate::hill::{HILL, HillEvent, HomecomingNote, TripState, scene::TrainScene};
+use crate::platform::companion_app::AppInstall;
 use crate::tray::HillMenu;
 use formiga_travel::{RecallReason, SessionId, project_colony};
-
-/// How often Desktop looks again for Hill having been installed or removed.
-const HILL_RECHECK: Duration = Duration::from_secs(10 * 60);
 
 /// The title every reason for not leaving is shown under.
 const STAYING_HOME: &str = "The colony is staying home";
 
-/// For development only: with [`formiga_travel::discovery::PATH_OVERRIDE_ENV`] naming a stand-in
-/// Hill, the colony leaves this many seconds after Desktop starts, once, as if the tray had been
-/// used. Ignored without the override, so it can never send a colony to an installed Hill.
-const TRIP_AFTER_ENV: &str = "FORMIGA_HILL_TRIP_AFTER";
-
-/// The trip's own state, files and Hill, as the app keeps them.
+/// The trip's own state and files, and Hill's slot, as the app keeps them.
 pub(super) struct HillLink {
     pub(super) trip: TripState,
     pub(super) files: TravelFiles,
-    pub(super) install: Option<HillInstall>,
-    checked: Option<Instant>,
-    /// When a development run sends the colony by itself; see [`TRIP_AFTER_ENV`].
-    trip_at: Option<Instant>,
+    /// Whether Hill is installed, and when a development run sends the colony by itself.
+    pub(super) slot: Slot,
 }
 
 impl HillLink {
     pub(super) fn new(data_dir: &std::path::Path) -> Self {
-        let trip_at = std::env::var_os(formiga_travel::discovery::PATH_OVERRIDE_ENV)
-            .and(std::env::var(TRIP_AFTER_ENV).ok())
-            .and_then(|seconds| seconds.parse::<f32>().ok())
-            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
-            .map(|seconds| Instant::now() + Duration::from_secs_f32(seconds));
         Self {
             trip: TripState::Idle,
             files: TravelFiles::new(data_dir),
-            install: None,
-            checked: None,
-            trip_at,
+            slot: Slot::new(&HILL),
         }
     }
 }
@@ -54,42 +38,22 @@ impl FormigaApp {
         if self.hill.trip.holds_world() {
             return;
         }
-        if self
-            .hill
-            .trip_at
-            .is_some_and(|at| Instant::now() >= at && !self.recovery_pending)
-        {
-            self.hill.trip_at = None;
-            tracing::info!("sending the colony to the stand-in Hill, as {TRIP_AFTER_ENV} asks");
+        if self.hill.slot.start_due(self.recovery_pending) {
+            tracing::info!(
+                "sending the colony to the stand-in Hill, as {} asks",
+                HILL.start_after_env
+            );
             self.go_to_hill();
             return;
         }
-        if !now
-            && self
-                .hill
-                .checked
-                .is_some_and(|checked| checked.elapsed() < HILL_RECHECK)
-        {
-            return;
+        if self.hill.slot.look(now) {
+            self.sync_hill_menu();
         }
-        let found = find_formiga_hill();
-        if found != self.hill.install {
-            match &found {
-                Some(install) => tracing::info!(
-                    version = install.version.as_deref().unwrap_or("unknown"),
-                    "Formiga Hill is installed"
-                ),
-                None => tracing::info!("Formiga Hill is not installed"),
-            }
-        }
-        self.hill.install = found;
-        self.hill.checked = Some(Instant::now());
-        self.sync_hill_menu();
     }
 
     pub(super) fn sync_hill_menu(&mut self) {
         let mode = match &self.hill.trip {
-            TripState::Idle if self.hill.install.is_some() => HillMenu::Go,
+            TripState::Idle if self.hill.slot.install.is_some() => HillMenu::Go,
             TripState::Idle => HillMenu::Hidden,
             TripState::Departing { .. } | TripState::Away { .. } => HillMenu::Away,
             TripState::Returning { .. } => HillMenu::Returning,
@@ -129,7 +93,7 @@ impl FormigaApp {
         }
         // Asked again now: it may have been removed since the last look.
         self.check_for_hill(true);
-        let Some(install) = self.hill.install.clone() else {
+        let Some(install) = self.hill.slot.install.clone() else {
             self.failure_dialog(STAYING_HOME, "Formiga Hill is no longer installed.");
             return;
         };
@@ -139,7 +103,7 @@ impl FormigaApp {
             .world
             .as_ref()
             .map_or(1, |world| formiga_travel::reader_for_colony(&world.save));
-        if let Some(reason) = install.incompatibility(needs) {
+        if let Some(reason) = HILL.incompatibility(&install, needs) {
             self.failure_dialog(STAYING_HOME, &reason);
             return;
         }
@@ -208,15 +172,11 @@ impl FormigaApp {
     }
 
     /// Start Hill for this trip, with a thread waiting for it to exit.
-    fn launch_hill(&self, install: &HillInstall, open: &session::OpenTrip) -> Result<(), String> {
-        launch_formiga_hill(install, &open.dir)
-            .and_then(|child| {
-                crate::hill::watch(
-                    child,
-                    open.seal.session_id.clone(),
-                    self.event_proxy.clone(),
-                )
-            })
+    fn launch_hill(&self, install: &AppInstall, open: &session::OpenTrip) -> Result<(), String> {
+        let exited = UserEvent::Hill(HillEvent::Exited {
+            session: open.seal.session_id.clone(),
+        });
+        HILL.start(install, &open.dir, exited, self.event_proxy.clone())
             .map_err(|error| format!("Formiga Hill could not be opened: {error}"))?;
         tracing::info!("the colony left for Formiga Hill");
         Ok(())

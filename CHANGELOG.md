@@ -15,6 +15,13 @@ All notable changes are documented here.
 - `formiga_art::paint`, the painting helpers Formiga Hill and Formiga Home each kept a copy of,
   exactly as Formiga Home draws with them, with Formiga Hill's `bevel`.
 
+### Changed
+
+- Formiga Hill is found, started, waited on and its trips' files kept through one slot that any
+  companion app fills in with its names, its folder and the words it is spoken of in. Every message
+  about Hill, the tray, and every file a trip writes are unchanged, so a trip an earlier Desktop
+  left open is finished as before.
+
 ## [0.67.1] - 2026-10-06
 
 ### Fixed
