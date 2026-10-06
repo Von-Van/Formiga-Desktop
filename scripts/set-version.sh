@@ -17,7 +17,8 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_dir"
 
-# Every file that names the current version, besides Cargo.toml and Cargo.lock.
+# Every file that names the current version, besides Cargo.toml and Cargo.lock. --check below
+# lists each place in them the version belongs.
 files=(
   README.md
   docs/GENERATION.md
@@ -36,12 +37,33 @@ fi
 
 if [ "${1:-}" = "--check" ]; then
   missing=0
-  for file in "${files[@]}"; do
-    if ! grep -qF "$current" "$file"; then
-      echo "$file does not name $current" >&2
+  v="$current"
+  # Each place the version belongs, and how many times it appears there, so one stale copy among
+  # several fresh ones in the same file is still found.
+  slot() {
+    local found
+    found="$(grep -cF -- "$3" "$1" || true)"
+    if [ "$found" -ne "$2" ]; then
+      echo "$1 names \"$3\" $found times, not $2" >&2
       missing=1
     fi
-  done
+  }
+  slot README.md 1 "# Formiga · v$v"
+  slot README.md 1 "for example \`Formiga-$v-macOS-universal.dmg\`"
+  slot README.md 1 "## New in $v"
+  slot docs/GENERATION.md 1 "· v$v"
+  slot scripts/package-macos.sh 1 "FORMIGA_VERSION:-$v}"
+  slot scripts/package-windows.ps1 1 "else { \"$v\" }"
+  slot packaging/itch/page.md 1 "(for example \`Formiga-$v-macOS-universal.dmg\`)"
+  slot packaging/itch/page.md 2 "--userversion $v"
+  slot packaging/itch/page.md 1 "(\`Formiga-$v-macOS-universal.zip\`, \`Formiga-$v-windows-x64.zip\`)"
+  slot packaging/windows/winget/README.md 1 "gh release view v$v"
+  slot packaging/windows/winget/README.md 1 "scripts/winget-manifest.sh $v"
+  slot packaging/windows/winget/README.md 1 "winget/out/$v/"
+  slot packaging/windows/winget/README.md 2 "winget\\out\\$v"
+  slot packaging/windows/winget/README.md 1 "Formiga/$v/"
+  slot scripts/winget-manifest.sh 1 "(e.g. $v or v$v)"
+  slot scripts/winget-manifest.sh 1 "\$(basename \"\$0\") $v\""
   if awk '/^name = "formiga-/ { getline; print }' Cargo.lock | grep -vqF "version = \"$current\""; then
     echo "Cargo.lock has a workspace crate at another version than $current" >&2
     missing=1
