@@ -42,9 +42,10 @@ Dependencies run one way: `formiga-art` depends on `formiga-core`, `formiga-trav
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
 | `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them |
-| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `platform/` for the macOS and Windows adapters |
-| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs`, a stand-in for Formiga Hill |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
+| `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
+| `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 
 ### How the app starts
 
@@ -97,6 +98,8 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 | Downloaded installers | `updates/` | Until the version they install is running |
 | Logs | `logs/formiga.log` and `formiga.previous.log` | Rotated at 1 MB |
 | A trip to Formiga Hill | `travel/trip.json` and `travel/<session>/` | While the trip is open; see [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
+| A house open in Formiga Home | `home/visit.json` and `home/<session>/` | While the visit is open; see [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
+| The homes arranged in Formiga Home | `home/state.json` | Written whole when a visit closes |
 
 All of it lives in one data directory. That is `FORMIGA_DATA_DIR` when it is set, and otherwise
 `~/Library/Application Support/com.Formiga.Formiga` on macOS and `%APPDATA%\Formiga\Formiga\data`
@@ -2018,7 +2021,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–27: version 27 is read directly, versions 1 through 26 are
+Persistence accepts save versions 1–28: version 28 is read directly, versions 1 through 27 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -2459,8 +2462,9 @@ Every document names its `format`, the `version` it was written as, and the `min
 a reader needs. The header is checked on the raw JSON before anything is shaped, so a newer file
 is refused for its version rather than for its shape, and unknown fields and unknown enum values
 in lists (`Capability`, `ReturnEffect`, `Trait`) read as "unknown" rather than failing. Version 1
-shipped with 0.66.4; version 2 adds each trait's identifier, and version 3, in 0.66.6, the souvenirs
-Desktop keeps; both are still marked readable by version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
+shipped with 0.66.4; version 2 adds each trait's identifier, version 3, in 0.66.6, the souvenirs
+Desktop keeps, and version 4, in 0.67.0, four more of them; all are still marked readable by
+version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
 older reader cannot draw: `reader_for_colony` maps every edition to the first travel version that
 carries it, and a new edition in the core does not build until it is given one. Desktop checks
 that requirement against the version an installed Hill says it reads before starting it. The
@@ -2518,7 +2522,7 @@ start and before each new trip, so at most one called-home directory is ever kep
 
 Formiga Hill gives souvenirs from its own catalogue — a gingham ribbon from a picnic, a ticket
 from the Fairground — and keeps them in its station's display case. Desktop keeps a copy of each
-that comes home, only to be looked at. `formiga_core::Souvenir` lists the seven it knows, by
+that comes home, only to be looked at. `formiga_core::Souvenir` lists the eleven it knows, by
 Formiga Hill's own identifiers and with Desktop's own name and line for each, and
 `TripLog::souvenirs`, added in save version 27, holds which have come home and when, each once.
 Nothing else reads them: a souvenir is not a keepsake, hangs in no tree, is worn by nobody and
@@ -2567,3 +2571,93 @@ LaunchServices or registry lookup every ten minutes. While the colony is away no
 the world does not tick: measured on a debug build with a real colony, Desktop used 0.0% CPU for
 the sixteen seconds of a trip spent away. A scene draws at the overlay's quickest pace, 20 frames
 a second, for its length only.
+
+## Visits to Formiga Home (save v28)
+
+Formiga Home is a separate application that opens one house of the village as a small dollhouse,
+to arrange and to spend a while in. Desktop never needs it: without Home installed nothing in this
+section runs, no house can be clicked, and neither the tray nor the notebook mentions it. With Home
+installed, a click on a house opens the house's own menu, and its first item looks inside.
+
+### The contract
+
+`formiga-home-contract` is the agreement, kept in Desktop's workspace as `formiga-travel` is, and
+Formiga Home builds against it by Desktop's release tag. It was drafted beside Home and adopted
+unchanged in 0.67.0, its golden fixtures with it. It is built on `formiga-travel` where the two say
+the same thing: a resident is the very `Traveler` a trip would carry, documents are written whole
+and read bounded the same way, and text is made safe the same way. Six documents pass through a
+visit's session directory: Desktop's `snapshot.json` (`HomeSnapshot`: the household, any close
+friends from other houses lent for the visit, bonds between them in travel's bands, who keeps every
+other house, everything the colony can show, and what Desktop offers to take back) and
+`state.json` (`HomeState`: every household's home as Desktop last kept it); Home's `ack.json`,
+`result-state.json` (every home whole, written as it changes and again on leaving) and
+`receipt.json`; and Desktop's `recall.json`. Version 7 is the first in Desktop's workspace and adds
+no field: its residents are written in travel version 4, and the Fairground's souvenirs may be
+shown. `project_household` takes the capabilities Desktop offers, and Desktop offers only
+`visit_record`: time together, moments for the journal, going next door and moving in all stay
+with Home until Desktop applies them.
+
+### A visit
+
+| State | Desktop |
+|---|---|
+| Idle | Lives as always. Looks for Home when it starts and at most every ten minutes, from a tick it was taking anyway |
+| Opening | The household that keeps the house, and whichever of its closest friends from other houses are free, let go of whatever they were doing and go indoors (`World::begin_house_visit`). The colony is saved, and the snapshot and homes are written. Any failure brings them straight back out |
+| Open | Home has the house. Those who went in stay indoors and the world leaves them alone; everyone else lives as always. The tray offers to bring the household back |
+| Closing | Home has gone, or the owner asked for the household back: Home's last result is kept as `accept_result` allows, the visit's line goes in the journal if Home sent one, the files are closed, and everyone comes back out where they went in (`World::end_house_visit`) |
+
+The states are `house::VisitState`, runtime only, and only one house is ever open. While one is,
+the colony cannot leave for Formiga Hill, and a trip under way keeps every house shut; replacing
+the colony first tells Home the visit is over. A companion away in a house is skipped by both of
+the world's creature loops, by offers and by gathering, and is `indoors`, which is what keeps it off
+the overlay and its hit-test window ordered out. Its house shows nothing special: a house looks
+occupied only through village life's own plans.
+
+### Clicking a house
+
+`houses.rs` places each house where the overlay draws it, from `home_dwelling_position`, and cuts
+which of its cell's pixels are the house from the very village atlas the overlay draws, by day:
+lit, or with somebody at home, a house keeps the same outline. The pixels are cut again only when
+the village's look changes. A `HouseProxy` per house is the same kind of window as a creature's,
+borderless, transparent, always on top and never activated, and takes a click only on the house's
+own pixels: on macOS by switching hit-testing on while the cursor is over them, on Windows by a
+window region of exactly those pixels. A companion standing in front of a house wins: the house's
+window does not take the click while one is under the cursor, and a press that reaches it anyway is
+handed to the companion, with the rest of a drag begun there. The proxies exist only while Home is
+installed and the houses are out on a display that is not covered by something full-screen.
+
+A click on a house opens `CreatureMenu::for_house`: the same strip as a creature's, placed over
+the house's roof (`OverlayRenderer::house_menu_anchor`), with two items, `Inside` ("look inside")
+and `Profile`, or `Stop` in place of `Inside` while it is the house open. Profile turns the
+notebook to the Home page with that house picked out, where the same way in is offered as a
+button, which works whether or not the houses are out.
+
+### Files, and failing toward home
+
+A visit's files are under `home/` in the data directory (`house/session.rs`): a fresh
+`home/<session>/` with the snapshot and the homes, where Home answers; `home/visit.json`, the
+marker that says a visit is open, holding the session, the seal every answer must match, whose
+house it is, who went in and what Desktop offered; and `home/state.json`, the homes Desktop keeps,
+written whole and only as `accept_result` leaves them, beside the colony and never inside it. An
+answer is used only if it is whole, inside its bounds, in a version this build reads, and names
+this session, this exact snapshot and these exact homes, and Desktop's own two files are checked
+against the seal again before any result is weighed. A result for another colony, or one that
+proposes a change to any house but the one opened, keeps only what the contract allows.
+`session::welcome` keeps at most one visit, to this house and inside the visit's own time, and
+everything else in a receipt is set aside unread. `World::note_house_visit` writes the line in
+Desktop's words, and never twice for the same house within six hours.
+
+Desktop never waits on Home to let a household back out. Home missing, refusing, crashing, closing
+without a receipt or writing a bad one, and the owner bringing the household back, all end with
+everyone back out and the homes Desktop last kept still standing, apart from whatever Home had
+already written back, which is kept as a result would be. If Desktop itself stops while a house is
+open, the next start finds the marker and finishes the visit, with Home's answers if it has gone
+and otherwise by recalling it. Anything under `home/` that is neither the kept homes nor the open
+visit is swept away at start and before each new visit.
+
+### Cost
+
+Without Home installed the additions are one LaunchServices or registry lookup every ten minutes.
+With it, a house's pixels are cut only when the village's look changes, and the proxies are synced
+from the tick that already syncs the creatures'. While a house is open nothing is drawn for those
+inside it.

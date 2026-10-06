@@ -42,12 +42,14 @@ use winit::window::{Window, WindowId, WindowLevel};
 mod cadence;
 mod habitat_editor;
 mod hill;
+mod house;
 mod menus;
 mod settings_window;
 mod updates;
 use cadence::*;
 use habitat_editor::*;
 use hill::HillLink;
+use house::HouseLink;
 
 #[derive(Debug)]
 pub enum UserEvent {
@@ -57,6 +59,8 @@ pub enum UserEvent {
     AccessKit(egui_winit::accesskit_winit::Event),
     /// Formiga Hill has exited.
     Hill(crate::hill::HillEvent),
+    /// Formiga Home has exited.
+    House(crate::house::HouseEvent),
 }
 
 impl From<egui_winit::accesskit_winit::Event> for UserEvent {
@@ -102,6 +106,10 @@ pub struct FormigaApp {
     current_cursor: CursorSnapshot,
     settings_window: Option<SettingsWindow>,
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
+    /// Each house of the village as it can be clicked, while Formiga Home is installed, and the
+    /// native window over each.
+    house_shapes: crate::houses::HouseShapes,
+    house_proxies: BTreeMap<WindowId, crate::houses::HouseProxy>,
     /// The one open right-click menu, and the small native window that takes clicks on it. The
     /// window outlives any single menu so that closing one never destroys the window whose own
     /// click is being handled.
@@ -129,6 +137,8 @@ pub struct FormigaApp {
     save_trouble: Option<String>,
     /// Formiga Hill, if it is installed, and the colony's trip there, if it is on one.
     hill: HillLink,
+    /// Formiga Home, if it is installed, and the house open in it, if there is one.
+    house: HouseLink,
 }
 
 impl FormigaApp {
@@ -157,6 +167,8 @@ impl FormigaApp {
             current_cursor: CursorSnapshot::default(),
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
+            house_shapes: Default::default(),
+            house_proxies: BTreeMap::new(),
             creature_menu: None,
             menu_proxy: None,
             menus_opened: 0,
@@ -169,6 +181,7 @@ impl FormigaApp {
             night_checked: None,
             notebook_geometry: notebook_window::load(&data_dir),
             hill: HillLink::new(&data_dir),
+            house: HouseLink::new(&data_dir),
             data_dir,
             save_trouble: None,
         })
@@ -199,6 +212,8 @@ impl FormigaApp {
         self.save()?;
         self.check_for_hill(true);
         self.resume_open_trip();
+        self.check_for_home(true);
+        self.resume_open_visit();
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
@@ -419,6 +434,7 @@ impl FormigaApp {
             return true;
         }
         self.check_for_hill(false);
+        self.check_for_home(false);
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
@@ -564,6 +580,8 @@ impl FormigaApp {
                     self.settings_error(format!("Could not preserve the previous colony: {error}"));
                     return;
                 }
+                // A house open in Home belongs to the colony being replaced.
+                self.abandon_house_visit();
                 let desktop = self.snapshot();
                 match new_colony_seed() {
                     Ok(seed) => {
@@ -621,6 +639,7 @@ impl FormigaApp {
             TrayAction::OpenAbout => self.show_update_settings(event_loop),
             TrayAction::GoToHill => self.go_to_hill(),
             TrayAction::BringColonyHome => self.bring_colony_home(),
+            TrayAction::BringHouseholdBack => self.bring_household_back(),
             TrayAction::None => {}
         }
     }
@@ -723,6 +742,10 @@ impl FormigaApp {
             .is_some_and(|proxy| proxy.id() == window_id)
         {
             self.handle_menu_proxy_event(event_loop, event);
+            return true;
+        }
+        if self.house_proxies.contains_key(&window_id) {
+            self.handle_house_proxy_event(event_loop, window_id, event);
             return true;
         }
         if !self.interaction_proxies.contains_key(&window_id) {
@@ -927,6 +950,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             UserEvent::Menu(event) => self.handle_menu(event_loop, &event),
             UserEvent::Update(event) => self.handle_update_event(event_loop, event),
             UserEvent::Hill(event) => self.handle_hill_event(event),
+            UserEvent::House(event) => self.handle_house_event(event),
             UserEvent::AccessKit(event) => {
                 if let Some(window) = &mut self.settings_window
                     && window.id() == event.window_id
@@ -980,6 +1004,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 return;
             }
             let mut outcome = None;
+            let formiga_home = self.formiga_home_view();
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
@@ -989,6 +1014,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         window.clubhouse.last_edit = world.last_edit().map(ColonyEdit::describe);
                         window.clubhouse.earlier_edits = world.undoable_edits().saturating_sub(1);
                         window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
+                        window.clubhouse.formiga_home = formiga_home;
                         window.clubhouse.shell.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,
@@ -1041,7 +1067,8 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 let menu = match (&self.creature_menu, self.overlays.get(&window_id)) {
                     (Some(menu), Some(overlay)) if overlay.monitor.id == menu.monitor_id() => {
                         menu.placement().map(|placement| MenuView {
-                            creature_id: menu.creature_id(),
+                            creature_id: (menu.target() != MenuTarget::House)
+                                .then(|| menu.creature_id()),
                             items: menu.items(),
                             layout: menu.layout(),
                             placement,
@@ -1152,6 +1179,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         }
         if ticked {
             self.sync_interaction_proxies(event_loop);
+            self.sync_house_proxies(event_loop);
         }
         let tick_interval = self.tick_interval();
         let mut deadline = self.last_tick + tick_interval;

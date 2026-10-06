@@ -1,4 +1,4 @@
-# Formiga · v0.66.6
+# Formiga · v0.67.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.66.6-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,13 +107,14 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.66.6
+## New in 0.67.0
 
-Anything your colony is given to keep at Formiga Hill — a gingham ribbon from a picnic, a ticket
-from the Fairground — now comes home with it. The Journal page shows each under Souvenirs, with the
-day it came home, drawn exactly as Formiga Hill draws it in its own display case. Souvenirs are
-there to look at and nothing more, and the Journal shows no Souvenirs at all until the first one
-has come home. Without Formiga Hill installed nothing changes.
+Formiga can now open its houses in Formiga Home, a separate app you can install alongside it. With
+Home installed, clicking a house in the village brings up the house's own menu, and "look inside"
+opens it in Formiga Home, where you can arrange the rooms and spend a while with the household that
+lives there. They go indoors while the house is open, come back out when it closes, and the journal
+notes the visit. Four more souvenirs, from Formiga Hill's Fairground, now come home to the Journal
+too. Without Formiga Home or Formiga Hill installed nothing changes.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
@@ -135,7 +136,8 @@ prereleases, and most of the manual checks on real hardware are not done yet.
 | Performance budgets | Measured on one Mac only. **Not yet measured on Windows** |
 | [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Five recorded**: three on macOS (real colonies' migrations, on copies) and two on Windows 11 (everyday use, with several displays); the rest **not yet**, each tracked as a [`native-qa` issue](https://github.com/Von-Van/Formiga-Desktop/issues?q=label%3Anative-qa) |
 | Long simulated runs | **Nightly** in CI: 4,500 randomized colonies, three simulated days each, across three time zones |
-| Trips to Formiga Hill | **Not yet available to use**: Desktop's side is shipped and tested against a stand-in, and shows nothing until Formiga Hill, a separate app, is installed |
+| Trips to Formiga Hill | **Not yet available to use**: Desktop's side is shipped and tested against a stand-in and development builds of Formiga Hill, and shows nothing until Formiga Hill, a separate app, is installed |
+| Visits to Formiga Home | **Not yet available to use**: Desktop's side is shipped and tested against a stand-in and a development build of Formiga Home, and shows nothing until Formiga Home, a separate app, is installed |
 | Code signing | **Not signed.** Gatekeeper and SmartScreen warn on first launch |
 
 ## Build from source

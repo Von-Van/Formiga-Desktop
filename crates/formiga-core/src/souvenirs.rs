@@ -19,11 +19,15 @@ pub enum Souvenir {
     SwingFeather,
     ChestMarble,
     FairTicket,
+    RaceRosette,
+    StrikerBell,
+    HooplaTeddy,
+    TugRope,
 }
 
 impl Souvenir {
     /// Every souvenir Desktop keeps, in the order Formiga Hill's display case shows them.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 11] = [
         Self::PicnicRibbon,
         Self::PressedDaisy,
         Self::WellPenny,
@@ -31,6 +35,10 @@ impl Souvenir {
         Self::SwingFeather,
         Self::ChestMarble,
         Self::FairTicket,
+        Self::RaceRosette,
+        Self::StrikerBell,
+        Self::HooplaTeddy,
+        Self::TugRope,
     ];
 
     /// Formiga Hill's identifier for it: what a trip lists and a receipt names.
@@ -43,6 +51,10 @@ impl Souvenir {
             Self::SwingFeather => "swing_feather",
             Self::ChestMarble => "chest_marble",
             Self::FairTicket => "fair_ticket",
+            Self::RaceRosette => "race_rosette",
+            Self::StrikerBell => "striker_bell",
+            Self::HooplaTeddy => "hoopla_teddy",
+            Self::TugRope => "tug_rope",
         }
     }
 
@@ -60,6 +72,10 @@ impl Souvenir {
             Self::SwingFeather => "Swing feather",
             Self::ChestMarble => "Toy-chest marble",
             Self::FairTicket => "Fairground ticket",
+            Self::RaceRosette => "Sack-race rosette",
+            Self::StrikerBell => "Striker bell",
+            Self::HooplaTeddy => "Hoopla teddy",
+            Self::TugRope => "Tug-of-war rope",
         }
     }
 
@@ -72,6 +88,10 @@ impl Souvenir {
             Self::SwingFeather => "A soft grey feather that caught on the swing.",
             Self::ChestMarble => "A glass marble with an amber twist, from the toy chest.",
             Self::FairTicket => "A ticket from the Fairground, torn along its perforations.",
+            Self::RaceRosette => "A rosette of pleated blue ribbon, from the sack race.",
+            Self::StrikerBell => "A little brass bell from the top of the high striker.",
+            Self::HooplaTeddy => "A little teddy, won with a ring at the hoopla stall.",
+            Self::TugRope => "A knot of rope from the tug-of-war, its red ribbon still tied on.",
         }
     }
 }

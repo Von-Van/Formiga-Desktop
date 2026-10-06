@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.6"
+version = "0.67.0"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1262,7 +1262,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.6"
+version = "0.67.0"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.66.6"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1289,6 +1289,7 @@ dependencies = [
  "egui-winit",
  "formiga-art",
  "formiga-core",
+ "formiga-home-contract",
  "formiga-travel",
  "image",
  "libc",
@@ -1313,12 +1314,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-home-contract"
+version = "0.67.0"
+dependencies = [
+ "formiga-art",
+ "formiga-core",
+ "formiga-travel",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+ "time",
+]
+
+[[package]]
 name = "formiga-tools"
-version = "0.66.6"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "formiga-art",
  "formiga-core",
+ "formiga-home-contract",
  "formiga-travel",
  "gif",
  "png",
@@ -1331,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.66.6"
+version = "0.67.0"
 dependencies = [
  "formiga-art",
  "formiga-core",

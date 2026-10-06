@@ -183,9 +183,23 @@ pub struct Clubhouse {
     /// the world, which is where the changes are kept.
     pub last_edit: Option<String>,
     pub earlier_edits: usize,
+    /// Formiga Home as the notebook may offer it: nothing at all while it is not installed. Set
+    /// by the app before every frame.
+    pub formiga_home: FormigaHomeView,
     /// The page being turned, while it turns, and the page shown last frame, to notice a new one.
     pub(crate) page_turn: Option<journal::PageTurn>,
     pub(crate) shown_page: Option<crate::settings::SettingsTab>,
+}
+
+/// What the notebook may offer about Formiga Home.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FormigaHomeView {
+    /// Formiga Home is installed.
+    pub installed: bool,
+    /// Whose house is open in it, while one is.
+    pub open: Option<CreatureId>,
+    /// Whether a house could be opened just now: none is open, and the colony is here.
+    pub can_open: bool,
 }
 
 pub fn upload(context: &egui::Context, name: &str, canvas: &Canvas) -> TextureHandle {
@@ -406,6 +420,14 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
         }
         // Always Desktop's own words: nothing Formiga Hill sent is copied into the journal.
         JournalMoment::Trip => "The colony took the train to Formiga Hill and came home".to_owned(),
+        // Nor anything Formiga Home sent: only that the owner was there, and whose house it was.
+        JournalMoment::HouseVisit => match entry
+            .creature
+            .and_then(|id| save.creatures.iter().find(|c| c.id == id))
+        {
+            Some(keeper) => format!("You spent a while inside {}'s house", keeper.name),
+            None => "You spent a while inside a house in the village".to_owned(),
+        },
     }
 }
 

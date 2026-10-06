@@ -180,24 +180,23 @@ pub fn set_interaction_hittest(_window: &Window, _enabled: bool) {
     // hit testing without toggling the entire proxy window in response to cursor movement.
 }
 
-pub fn set_interaction_shape(window: &Window, mask: &[bool], scale: u8) {
+/// Shape a proxy to the opaque pixels of `mask`, a square `side` art pixels across, each drawn
+/// `scale` physical pixels wide.
+pub fn set_interaction_shape(window: &Window, mask: &[bool], side: u32, scale: u8) {
     let Some(hwnd) = window_hwnd(window) else {
         return;
     };
     let scale = i32::from(scale.max(1));
+    let side = side as usize;
     let combined = unsafe { CreateRectRgn(0, 0, 0, 0) };
-    for y in 0..formiga_art::FRAME_SIZE as usize {
+    for y in 0..side {
         let mut x = 0;
-        while x < formiga_art::FRAME_SIZE as usize {
-            while x < formiga_art::FRAME_SIZE as usize
-                && !mask[y * formiga_art::FRAME_SIZE as usize + x]
-            {
+        while x < side {
+            while x < side && !mask[y * side + x] {
                 x += 1;
             }
             let start = x;
-            while x < formiga_art::FRAME_SIZE as usize
-                && mask[y * formiga_art::FRAME_SIZE as usize + x]
-            {
+            while x < side && mask[y * side + x] {
                 x += 1;
             }
             if start == x {

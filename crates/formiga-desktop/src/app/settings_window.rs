@@ -139,6 +139,12 @@ impl FormigaApp {
                 Err(error) => tracing::warn!(%error, "colony save still failing"),
             }
         }
+        if let Some(keeper) = outcome.open_house {
+            self.open_house(keeper);
+        }
+        if outcome.bring_household_back {
+            self.bring_household_back();
+        }
         let mut companion_changed = false;
         // A change to what the companions will do, said in its own words rather than as a plain
         // "saved": see `notices`.
@@ -927,6 +933,8 @@ impl FormigaApp {
             .world
             .as_ref()
             .is_some_and(|w| w.save.settings.launch_at_login);
+        // A house open in Home belongs to the colony being replaced.
+        self.abandon_house_visit();
         self.world = Some(imported);
         self.recovery_pending = false;
         self.milestone_notice = None;

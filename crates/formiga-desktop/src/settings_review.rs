@@ -990,6 +990,7 @@ fn all_ui_artwork_together_fits_the_budget() {
             &mut h.clubhouse.shell,
             &h.save,
             &h.monitors,
+            crate::clubhouse::FormigaHomeView::default(),
             &mut SettingsOutcome::default(),
         );
     });
@@ -2113,6 +2114,41 @@ fn an_empty_journal_and_guest_book_explain_themselves() {
     h.frame(Vec::new());
     assert!(shown(&h, "The story is just beginning"));
     assert!(shown(&h, "No visitors yet"));
+}
+
+/// Formiga Home is offered for the house picked out on the Home page only while it is installed:
+/// to open it, or, while it is the one open, to bring its household back out. While another
+/// house is open it is shown but cannot be opened.
+#[test]
+fn a_picked_house_offers_formiga_home_only_while_it_is_installed() {
+    use crate::clubhouse::{FormigaHomeView, arrange::Picked};
+    let mut h = Harness::new(SettingsTab::Home);
+    let owners: Vec<CreatureId> =
+        formiga_core::house_owners(&h.save.creatures, &h.save.home.cottage_order)
+            .as_slice()
+            .to_vec();
+    let keeper = owners[0];
+    h.clubhouse.home.arrange.picked = Some(Picked::House(keeper));
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(!shown(&h, "Open in Formiga Home"), "nothing without Home");
+    h.clubhouse.formiga_home = FormigaHomeView {
+        installed: true,
+        open: None,
+        can_open: true,
+    };
+    assert_eq!(h.click("Open in Formiga Home").open_house, Some(keeper));
+    h.clubhouse.formiga_home = FormigaHomeView {
+        installed: true,
+        open: Some(keeper),
+        can_open: false,
+    };
+    assert!(h.click("Bring them back out").bring_household_back);
+    if let Some(other) = owners.get(1) {
+        h.clubhouse.home.arrange.picked = Some(Picked::House(*other));
+        let outcome = h.click("Open in Formiga Home");
+        assert_eq!(outcome.open_house, None, "one house at a time");
+    }
 }
 
 /// The journal has no place for souvenirs until one comes home from Formiga Hill. Then each is

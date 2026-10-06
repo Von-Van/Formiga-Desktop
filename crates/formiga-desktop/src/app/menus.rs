@@ -81,20 +81,29 @@ impl FormigaApp {
         if offer_moments {
             menu = menu.offering_moments();
         }
-        if self.menu_proxy.is_none() {
-            match MenuProxy::new(event_loop) {
-                Ok(proxy) => self.menu_proxy = Some(proxy),
-                Err(error) => {
-                    tracing::error!(%error, "could not create the creature menu proxy");
-                    return;
-                }
-            }
+        if !self.ensure_menu_proxy(event_loop) {
+            return;
         }
         self.creature_menu = Some(menu);
         self.menus_opened += 1;
         // Place and show it now rather than on the next tick, so the strip appears under the
         // click that asked for it instead of up to a frame later.
         self.sync_creature_menu(0.0);
+    }
+
+    /// The small native window that takes clicks on whichever menu is open, made the first time a
+    /// menu is. Says whether there is one.
+    pub(super) fn ensure_menu_proxy(&mut self, event_loop: &ActiveEventLoop) -> bool {
+        if self.menu_proxy.is_none() {
+            match MenuProxy::new(event_loop) {
+                Ok(proxy) => self.menu_proxy = Some(proxy),
+                Err(error) => {
+                    tracing::error!(%error, "could not create the creature menu proxy");
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     pub(super) fn close_creature_menu(&mut self, reason: MenuDismissal) {
@@ -149,6 +158,9 @@ impl FormigaApp {
             .settings_window
             .as_ref()
             .is_some_and(|window| window.window.has_focus());
+        if menu.target() == MenuTarget::House {
+            return self.advance_house_menu(menu, dt, settings_focused);
+        }
         let (anchor, position) = {
             let world = self.world.as_ref().ok_or(MenuDismissal::Gone)?;
             let settings = &world.save.settings;
@@ -277,6 +289,10 @@ impl FormigaApp {
         let creature_id = menu.creature_id();
         let target = menu.target();
         self.close_creature_menu(MenuDismissal::Answered);
+        if target == MenuTarget::House {
+            self.choose_house_item(event_loop, creature_id, icon);
+            return;
+        }
         let desktop = self.snapshot();
         match icon {
             MenuIcon::Snack
@@ -308,8 +324,8 @@ impl FormigaApp {
                     world.handle_command(command, &desktop);
                 }
             }
-            // Opens the strip of moments instead, above.
-            MenuIcon::Moment => {}
+            // Opens the strip of moments instead, above; and only a house is looked inside.
+            MenuIcon::Moment | MenuIcon::Inside => {}
             MenuIcon::Profile => {
                 self.show_settings(event_loop);
                 if let Some(window) = &mut self.settings_window {
@@ -318,6 +334,7 @@ impl FormigaApp {
                         // A guest has no colony profile of its own, so its page is the journal,
                         // where its visit is written down.
                         MenuTarget::Guest => window.select_journal(),
+                        MenuTarget::House => window.select_house(creature_id),
                     }
                 }
             }

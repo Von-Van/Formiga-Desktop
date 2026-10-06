@@ -68,9 +68,39 @@ own version byte for byte. When a new travel version is deliberately added,
 `FORMIGA_TRAVEL_BLESS=1 cargo test -p formiga-travel --test golden` writes that version's files
 beside the others, named for it, and never touches a version that has shipped.
 
-The Windows half of Hill discovery, which reads the registry, can be type-checked from a Mac
-without the desktop crate's `ring` dependency by compiling `platform/hill.rs` on its own against
-`formiga-travel` and the `windows` crate for `x86_64-pc-windows-msvc`.
+## Trying a visit to Formiga Home
+
+Desktop's side of a visit to a house can be tried without Formiga Home in the same way.
+`formiga-home-stub` stands in for Home: it reads the snapshot and the homes it is handed, checks
+them, says it can open the house, waits, and writes back the homes and a receipt, all without a
+window.
+
+```sh
+cargo build -p formiga-tools --bin formiga-home-stub
+FORMIGA_DATA_DIR=/tmp/formiga-dev \
+FORMIGA_HOME_PATH="$PWD/target/debug/formiga-home-stub" \
+FORMIGA_HOME_VISIT_AFTER=5 \
+FORMIGA_HOME_STUB=stay=20,arrange \
+cargo run -p formiga-desktop
+```
+
+`FORMIGA_HOME_PATH` names a Home executable (or, on macOS, an `.app`), which may be a real build of
+Formiga Home, and makes the houses clickable. `FORMIGA_HOME_VISIT_AFTER` opens the colony house
+that many seconds after launch, once, as if its menu had been used; it is ignored unless
+`FORMIGA_HOME_PATH` is set too. `FORMIGA_HOME_STUB` takes a comma-separated list: `stay=SECONDS`,
+`arrange` to set a shelf out with something on it, `refuse=version|busy|invalid`, `crash`,
+`silent`, `garbage` and `stranger`. A visit's files are under `home/` in the scratch data
+directory while it is open, beside `home/state.json`, the homes Desktop keeps.
+
+The household contract keeps fixtures for every version in
+`crates/formiga-home-contract/tests/fixtures`, as the travel contract does, and
+`FORMIGA_HOME_BLESS=1 cargo test -p formiga-home-contract --test golden` writes a new version's
+files beside the others, never over one that has shipped.
+
+The Windows half of finding Hill and Home, which reads the registry, can be type-checked from a
+Mac without the desktop crate's `ring` dependency by compiling `platform/companion_app.rs`,
+`platform/hill.rs` and `platform/home.rs` on their own, as a `platform` module, against
+`formiga-travel`, `formiga-home-contract` and the `windows` crate for `x86_64-pc-windows-msvc`.
 
 ## Performance tools
 

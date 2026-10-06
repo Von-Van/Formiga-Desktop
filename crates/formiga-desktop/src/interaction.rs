@@ -219,7 +219,7 @@ impl InteractionProxy {
             self.signature = Some(signature);
         }
         if near && self.applied_signature != self.signature {
-            platform::set_interaction_shape(&self.window, &self.mask, scale);
+            platform::set_interaction_shape(&self.window, &self.mask, FRAME_SIZE, scale);
             self.applied_signature = self.signature;
         }
 

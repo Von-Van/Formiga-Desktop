@@ -19,6 +19,7 @@ mod experience;
 mod generation;
 mod habits;
 mod home;
+mod house_visits;
 mod interaction;
 mod journeys;
 mod moments;
@@ -133,6 +134,9 @@ pub struct World {
     /// A wonder out somewhere for a companion or two to play on, and when the next is due.
     /// Runtime only: the notebook's page of them is all a save keeps.
     wonders: wonders::Wonders,
+    /// Who is away in a house open in Formiga Home: indoors, out of every plan, and left alone
+    /// until the house closes. Runtime only: a visit never outlives the app.
+    house_visit: BTreeSet<CreatureId>,
     topology: DesktopTopology,
     geometry_observer: crate::attention::GeometryObserver,
     attention: AttentionRuntime,
@@ -411,6 +415,7 @@ impl World {
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             wonders: wonders::Wonders::new(&streams),
+            house_visit: BTreeSet::new(),
             creature_views: Vec::new(),
             relationship_views: Vec::new(),
             generator: Edition::LATEST,
@@ -652,8 +657,9 @@ impl World {
             {
                 continue;
             }
-            // A wonder's players are its own until it is over.
-            if self.wonders.owns(creature.id) {
+            // A wonder's players are its own until it is over, and a house open elsewhere has its
+            // household until it closes.
+            if self.wonders.owns(creature.id) || self.house_visit.contains(&creature.id) {
                 continue;
             }
             if creature.state.arrival_delay_secs > 0.0 {

@@ -3,7 +3,9 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+pub mod companion_app;
 pub mod hill;
+pub mod home;
 
 /// How far the system's own bars — the menu bar, the Dock, the taskbar — reach into a display from
 /// each edge, in points.

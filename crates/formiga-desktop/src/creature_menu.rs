@@ -1,5 +1,6 @@
 //! The right-click creature menu: what it offers, where its strip goes, what the cursor is over,
-//! and when it closes.
+//! and when it closes. While Formiga Home is installed a house of the village has one too, the same
+//! strip in every way but what it offers and what it stands over.
 //!
 //! Everything here is arithmetic and two timers. No window, no GPU, no clock, no allocation: the
 //! overlay hands in where the creature is this frame and gets back where to draw, `app.rs` hands in
@@ -47,11 +48,13 @@ pub const UNTOUCHED_SECS: f32 = 8.0;
 /// Art pixels between the menu and a strip opened beside it.
 pub const SIDE_STRIP_GAP: i32 = 2;
 
-/// Whose menu this is. A colony member can be sent home; a guest can be asked to stay instead.
+/// Whose menu this is. A colony member can be sent home; a guest can be asked to stay instead; a
+/// house can be looked inside, in Formiga Home.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuTarget {
     Member,
     Guest,
+    House,
 }
 
 /// Why a menu closed. Only ever used for logging and tests: the menu simply goes.
@@ -77,11 +80,12 @@ pub enum MenuDismissal {
     Answered,
 }
 
-/// The four items a menu offers. Every menu has exactly four, so the strip is always the same size
-/// for the same kind of creature and the icons never shuffle under a cursor already on its way.
+/// The four items a creature's menu offers. Every creature's menu has exactly four, so the strip
+/// is always the same size for the same kind of creature and the icons never shuffle under a cursor
+/// already on its way. A house's has two of its own: see [`house_items`].
 pub fn menu_items(target: MenuTarget, visitor_can_stay: bool) -> [MenuIcon; 4] {
     match target {
-        MenuTarget::Member => [
+        MenuTarget::Member | MenuTarget::House => [
             MenuIcon::Snack,
             MenuIcon::Toy,
             MenuIcon::Home,
@@ -98,6 +102,19 @@ pub fn menu_items(target: MenuTarget, visitor_can_stay: bool) -> [MenuIcon; 4] {
             MenuIcon::Profile,
         ],
     }
+}
+
+/// The two items a house's menu offers: a look inside, in Formiga Home, or the way back out while it
+/// is the house open; and its page in the notebook.
+pub fn house_items(open_here: bool) -> [MenuIcon; 2] {
+    [
+        if open_here {
+            MenuIcon::Stop
+        } else {
+            MenuIcon::Inside
+        },
+        MenuIcon::Profile,
+    ]
 }
 
 /// A rectangle in monitor-local physical pixels.
@@ -390,7 +407,7 @@ pub struct MenuTick {
 pub struct CreatureMenu {
     creature_id: CreatureId,
     target: MenuTarget,
-    items: [MenuIcon; 4],
+    items: Vec<MenuIcon>,
     layout: MenuLayout,
     monitor_id: MonitorId,
     hovered: Option<usize>,
@@ -415,12 +432,37 @@ impl CreatureMenu {
         monitor_id: MonitorId,
         settings_focused: bool,
     ) -> Self {
-        let items = menu_items(target, visitor_can_stay);
+        let items = menu_items(target, visitor_can_stay).to_vec();
         Self {
             creature_id,
             target,
-            items,
             layout: MenuLayout::new(&items),
+            items,
+            monitor_id,
+            hovered: None,
+            placement: None,
+            strayed_for: 0.0,
+            untouched_for: 0.0,
+            settings_focused,
+            side: None,
+            usable: None,
+        }
+    }
+
+    /// The menu of the house `keeper` keeps, which is `open_here` when it is the one open in
+    /// Formiga Home.
+    pub fn for_house(
+        keeper: CreatureId,
+        open_here: bool,
+        monitor_id: MonitorId,
+        settings_focused: bool,
+    ) -> Self {
+        let items = house_items(open_here).to_vec();
+        Self {
+            creature_id: keeper,
+            target: MenuTarget::House,
+            layout: MenuLayout::new(&items),
+            items,
             monitor_id,
             hovered: None,
             placement: None,
@@ -487,6 +529,7 @@ impl CreatureMenu {
         })
     }
 
+    /// Whose menu it is: the creature's, or for a house, its keeper's.
     pub fn creature_id(&self) -> CreatureId {
         self.creature_id
     }
@@ -495,7 +538,7 @@ impl CreatureMenu {
         self.target
     }
 
-    pub fn items(&self) -> &[MenuIcon; 4] {
+    pub fn items(&self) -> &[MenuIcon] {
         &self.items
     }
 
@@ -686,6 +729,23 @@ mod tests {
 
     fn member_layout() -> MenuLayout {
         MenuLayout::new(&menu_items(MenuTarget::Member, false))
+    }
+
+    #[test]
+    fn a_house_offers_a_look_inside_or_the_way_back_out_and_its_page() {
+        let shut = CreatureMenu::for_house(7, false, 1, false);
+        assert_eq!(shut.target(), MenuTarget::House);
+        assert_eq!(shut.creature_id(), 7, "a house's menu is its keeper's");
+        assert_eq!(shut.items(), [MenuIcon::Inside, MenuIcon::Profile]);
+        assert_eq!(shut.layout().len(), 2);
+        let open = CreatureMenu::for_house(7, true, 1, false);
+        assert_eq!(open.items(), [MenuIcon::Stop, MenuIcon::Profile]);
+        // A creature's menu never offers a look inside anything.
+        for target in [MenuTarget::Member, MenuTarget::Guest] {
+            for can_stay in [false, true] {
+                assert!(!menu_items(target, can_stay).contains(&MenuIcon::Inside));
+            }
+        }
     }
 
     #[test]

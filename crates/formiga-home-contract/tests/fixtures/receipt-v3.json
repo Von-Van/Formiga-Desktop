@@ -1,0 +1,18 @@
+{
+  "format": "formiga.home.receipt",
+  "version": 3,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "012a87285082e2b42bd65347867c76376ab83867d887e42c3aa2cbf10b2228d1",
+  "state_sha256": "94aeabc50273c07a1bd95d8f6261046e15e9d24b7562678c2b77c4343deead10",
+  "closed_at_utc": "2026-11-11T10:20:00Z",
+  "home_version": "0.1.0",
+  "effects": [
+    {
+      "kind": "home_visit",
+      "household": "876a55d6a17221ef",
+      "arrived_at_utc": "2026-11-11T09:31:00Z",
+      "left_at_utc": "2026-11-11T10:19:00Z"
+    }
+  ]
+}

@@ -12,6 +12,9 @@ pub struct TrayState {
     /// The trip to Formiga Hill: only in the menu while Hill is installed.
     hill: MenuItem,
     hill_menu: HillMenu,
+    /// The way back out of a house open in Formiga Home: only in the menu while one is open.
+    house: MenuItem,
+    house_shown: bool,
     pub about: MenuItem,
     /// Whether the icon carries its small dot for something new in the journal.
     news: bool,
@@ -50,6 +53,7 @@ pub enum TrayAction {
     OpenAbout,
     GoToHill,
     BringColonyHome,
+    BringHouseholdBack,
     None,
 }
 
@@ -92,6 +96,7 @@ impl TrayState {
         let about = MenuItem::new("About Formiga", true, None);
         let quit = MenuItem::new("Quit Formiga", true, None);
         let hill = MenuItem::new("Go to Formiga Hill…", true, None);
+        let house = MenuItem::new("Bring the household back", true, None);
         let separator_a = PredefinedMenuItem::separator();
         let separator_b = PredefinedMenuItem::separator();
         let separator_c = PredefinedMenuItem::separator();
@@ -135,6 +140,8 @@ impl TrayState {
             menu,
             hill,
             hill_menu: HillMenu::Hidden,
+            house,
+            house_shown: false,
             about,
             news: false,
             trouble: false,
@@ -180,6 +187,13 @@ impl TrayState {
         }
         if event.id() == self.gather.id() {
             return TrayAction::GatherCreatures;
+        }
+        if event.id() == self.house.id() {
+            return if self.house_shown {
+                TrayAction::BringHouseholdBack
+            } else {
+                TrayAction::None
+            };
         }
         if event.id() == self.hill.id() {
             return match self.hill_menu {
@@ -286,6 +300,29 @@ impl TrayState {
             && let Err(error) = self.tray.set_tooltip(Some(self.resting_tooltip()))
         {
             tracing::warn!(%error, "could not update the tray tooltip");
+        }
+    }
+
+    /// Offer to bring back the household of the house open in Formiga Home, named for whoever
+    /// keeps it, or nothing while no house is open. It sits just after the trip to Formiga Hill.
+    pub fn sync_house(&mut self, keeper: Option<&str>) {
+        let showing = keeper.is_some();
+        if showing && !self.house_shown {
+            let position = HILL_POSITION + usize::from(self.hill_menu != HillMenu::Hidden);
+            if let Err(error) = self.menu.insert(&self.house, position) {
+                tracing::warn!(%error, "could not offer the way back out of Formiga Home");
+                return;
+            }
+        } else if !showing
+            && self.house_shown
+            && let Err(error) = self.menu.remove(&self.house)
+        {
+            tracing::warn!(%error, "could not withdraw the way back out of Formiga Home");
+        }
+        self.house_shown = showing;
+        if let Some(keeper) = keeper {
+            self.house
+                .set_text(format!("Bring {keeper}'s household back"));
         }
     }
 

@@ -1,0 +1,38 @@
+{
+  "format": "formiga.home.state",
+  "version": 5,
+  "min_reader_version": 1,
+  "colony_key": "da079ed6830d00f6",
+  "households": [
+    {
+      "keeper": "a5cdeae193601ce1",
+      "rooms": [
+        {
+          "width": 6,
+          "depth": 6,
+          "floor": "floor.checks",
+          "wall": "wall.stripes",
+          "pieces": [],
+          "displays": [
+            {
+              "item": "find.26",
+              "spot": {
+                "kind": "wall",
+                "side": "west",
+                "at": 1
+              }
+            },
+            {
+              "item": "souvenir.picnic_ribbon",
+              "spot": {
+                "kind": "wall",
+                "side": "north",
+                "at": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

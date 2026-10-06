@@ -315,6 +315,46 @@ until Formiga next starts or next sends the colony anywhere. While a trip is ope
 offered to apply, so a trip interrupted by Formiga itself stopping can be finished on its next
 start. Nothing about a trip leaves the computer.
 
+Formiga Home is a separate application too, and Formiga passes it nothing unless the owner opens a
+house in it, from the house's menu or the notebook's Home page. Without Home installed nothing is
+passed anywhere and no house can be clicked. Formiga looks for Home as it looks for Hill: once at
+launch and then at most every ten minutes, by its bundle identifier (macOS) or the per-user key its
+installer writes (Windows), reading its version and the household version it says it reads.
+
+Opening a house writes a **household snapshot** into a new directory under `home/` in Formiga's
+own data directory, and Home is started with the path of that directory and nothing else. For the
+household that keeps the house, and for up to two of its closest friends from other houses lent for
+the visit, it holds exactly what a trip's snapshot holds for each companion, and the four coarse
+bands between them. It also holds the name of whoever keeps every other house, every find in the
+scrapbook with the colours it is drawn in and every souvenir kept from Formiga Hill, with their
+names and the dates they were found or came home and who found each find, how the house is built
+from outside, how many days the colony has lived, the reduced-motion, theme and text-size
+preferences, the visit's identifier, the time, Formiga's version, and a 64-bit one-way digest
+standing for the colony, made under a label of Home's own so it cannot be matched with a trip's. It
+holds **no** seed, share code, position, display, window, cursor sample, habitat, routine, drive,
+memory, learned tendency, journal, guest book, schedule, other setting or diagnostic log. Beside it
+goes a copy of **the homes**: how each household's house is arranged, as Formiga last kept it.
+
+What comes back is read only once Home has gone, only if it names this visit and these exact files,
+and only inside fixed bounds. Formiga keeps the homes Home leaves, but only the house that was
+opened may change, and only as the contract allows: nothing on show that the colony does not have,
+and a find moved between houses is moved rather than copied. The homes are kept in
+`home/state.json`, beside the colony and never inside it: rooms, furniture and what stands where,
+by Home's catalogue identifiers; a little of what each resident has come to like there; up to 24
+keepsakes a household came by at home, each with who it came from, who is in it and their colours
+as they were; and up to 40 short notes of what happened in the house, written as structured
+moments rather than text. Formiga stores these for Home and reads none of them. From the receipt
+it keeps at most one line in its own journal, in its own words, that the owner spent a while inside
+that house; save version 28 adds that moment, and a v27 colony opens unchanged. Everything else
+Home offers is set aside unread, and nothing Home sends is copied into the colony as text.
+
+The visit's files are deleted when the house closes. If Formiga ends a visit while Home may still be
+running, it keeps that one directory, holding the word that the visit is over, until Formiga next
+starts or next opens a house. While a visit is open, `home/visit.json` holds its identifier, the
+two files' SHA-256 digests, its time, whose house it is, who went in, and what Formiga offered to
+take back, so a visit interrupted by Formiga itself stopping can be finished on its next start.
+Nothing about a visit leaves the computer.
+
 Full-colony backup is deliberately different from a share code: it contains the complete private
 save, including names, learned history, journal, habitat, and settings. Export writes only to a
 user-selected local path. Restore reads at most 2 MiB, validates the snapshot, confirms replacement,

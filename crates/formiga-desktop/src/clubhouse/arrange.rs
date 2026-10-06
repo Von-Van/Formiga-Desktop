@@ -731,6 +731,7 @@ impl HomeState {
         &mut self,
         ui: &mut Ui,
         save: &SaveFile,
+        formiga_home: FormigaHomeView,
         outcome: &mut SettingsOutcome,
     ) {
         let Some(Picked::House(keeper_id)) = self.arrange.picked else {
@@ -845,6 +846,7 @@ impl HomeState {
                      day or two."
                 ));
             }
+            formiga_home_row(ui, keeper, formiga_home, outcome);
         });
     }
 
@@ -978,4 +980,44 @@ impl HomeState {
             );
         });
     }
+}
+
+/// The way into the picked house in Formiga Home, while Home is installed: open it, or bring its
+/// household back out if it is open already. Nothing at all without Home.
+fn formiga_home_row(
+    ui: &mut Ui,
+    keeper: &Creature,
+    formiga_home: FormigaHomeView,
+    outcome: &mut SettingsOutcome,
+) {
+    if !formiga_home.installed {
+        return;
+    }
+    ui.add_space(6.0);
+    ui.horizontal_wrapped(|ui| {
+        if formiga_home.open == Some(keeper.id) {
+            ui.label(format!("{}'s house is open in Formiga Home.", keeper.name));
+            if ui.button("Bring them back out").clicked() {
+                outcome.bring_household_back = true;
+            }
+            return;
+        }
+        let open = ui
+            .add_enabled(
+                formiga_home.can_open,
+                egui::Button::new("Open in Formiga Home"),
+            )
+            .on_hover_text(
+                "See inside, in Formiga Home. Whoever lives here goes indoors until it closes, \
+                 and a close friend or two may come round.",
+            )
+            .on_disabled_hover_text(if formiga_home.open.is_some() {
+                "Another house is open in Formiga Home."
+            } else {
+                "Not while the colony is away."
+            });
+        if open.clicked() {
+            outcome.open_house = Some(keeper.id);
+        }
+    });
 }

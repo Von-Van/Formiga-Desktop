@@ -1,0 +1,10 @@
+{
+  "format": "formiga.home.ack",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "af6be1dd16761b5c8cc62ad9aa5cd0b93e3d09d0c5779763cd10806aa1500c0b",
+  "state_sha256": "0e72d2586bd8684a11585a4689ebb6cdd1961ab4798c867ae51b45cbb936779a",
+  "home_version": "0.1.0",
+  "accepted": true
+}

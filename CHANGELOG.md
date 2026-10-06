@@ -2,6 +2,39 @@
 
 All notable changes are documented here.
 
+## [0.67.0] - 2026-10-06
+
+### Added
+
+- **Visits to Formiga Home.** Formiga Home is a separate app, and Formiga gains no dependency on
+  it: without it installed no house can be clicked and nothing mentions it. With it installed,
+  clicking a house brings up the house's own menu, as clicking a companion does, and **look
+  inside** opens the house in Formiga Home. The household that lives there, and perhaps a close
+  friend or two from another house, go indoors while the rest of the colony carries on, and come
+  back out where they went in when the house closes. The way the rooms were arranged is kept for
+  next time, and the journal notes the visit in Formiga's own words. A picked house on the Home
+  page has an **Open in Formiga Home** button too, and while a house is open the tray offers to
+  bring its household back.
+- The household always comes back out. Formiga Home missing, refusing, crashing or closing early,
+  and Formiga itself being closed mid-visit, all end with everyone back out and the rooms as last
+  kept. Only the house that was opened can change, and only as the household contract allows.
+- `formiga-home-contract`, the versioned contract the two apps share, now lives in Formiga's own
+  workspace beside `formiga-travel`, adopted unchanged from Formiga Home with every version's
+  fixtures, and Formiga Home builds against it by this release's tag.
+- **Four more souvenirs from Formiga Hill**, all from its Fairground: the rosette from the sack
+  race, the little brass bell from the high striker, the teddy from the hoopla stall and the knot
+  of rope from the tug-of-war. They come home to the Journal's Souvenirs like the rest, drawn as
+  Formiga Hill draws them.
+
+### Changed
+
+- The travel snapshot is **version 4**: it lists all eleven souvenirs Formiga keeps. Every
+  Formiga Hill still reads it.
+- The household contract is **version 7**, its residents written in travel version 4. Formiga
+  Home builds that read version 6 still read it.
+- Save version **28** adds the Fairground's souvenirs and the journal moment for time spent inside
+  a house; a version 27 colony opens unchanged.
+
 ## [0.66.6] - 2026-10-03
 
 ### Added

@@ -49,6 +49,7 @@ impl HomeState {
         shell: &mut Shell,
         save: &SaveFile,
         monitors: &[MonitorInfo],
+        formiga_home: FormigaHomeView,
         outcome: &mut SettingsOutcome,
     ) {
         journal::page_heading(
@@ -119,7 +120,7 @@ impl HomeState {
         });
         shell.tour_mark(ui, tour::TourMark::Village, village.response.rect);
         ui.add_space(10.0);
-        self.picked_house(ui, save, outcome);
+        self.picked_house(ui, save, formiga_home, outcome);
         ui.add_space(10.0);
         self.ground_catalogue(ui, save, outcome);
         ui.add_space(10.0);

@@ -474,11 +474,11 @@ installed the tray must look exactly as it always has.
 | Travel snapshot: the same colony gives the same bytes; every look (every recipe edition, a companion from before recipes, a little one) crosses exactly and draws pixel-for-pixel as at home; pace and celebration kept; accessory colours resolved | CI | CI |
 | No Desktop-only field crosses: no seed in any spelling, position, display, window, cursor, memory, routine, journal, habitat or settings beyond presentation | CI | CI |
 | Bonds cross as bands between travelers only; names and profiles sanitized; an empty colony is not sent; snapshots that do not add up are refused when written and when read | CI | CI |
-| Every shipped version's fixtures (1, 2 and 3) still read and this version's still written byte for byte; version 3 lists the souvenirs Desktop keeps, the same for every colony, and versions 1 and 2 list none; a newer writer's optional additions read; a version needing a newer reader refused for its version; unknown capabilities and receipt effects read as unknown | CI | CI |
+| Every shipped version's fixtures (1 to 4) still read and this version's still written byte for byte; version 3 lists the seven souvenirs Desktop kept then and version 4 all eleven, the same for every colony, and versions 1 and 2 list none; a newer writer's optional additions read; a version needing a newer reader refused for its version; unknown capabilities and receipt effects read as unknown | CI | CI |
 | Trip files: written whole, found again after a restart, never reused; half-written, garbage, empty, oversized, other-session, other-snapshot and newer-version receipts ignored; a refusal heard; one visit and each listed souvenir kept once, everything else set aside, and no souvenir kept from a trip that did not offer to keep them; sweeping keeps only the open trip and never follows a link | CI | CI |
 | Calling the colony home closes the trip and leaves Hill its recall; the next trip sweeps it | CI | CI |
 | Save v26: a trip home counted and written once, a repeated or malformed trip changing nothing, nothing written for a colony that has been nowhere, a damaged trip record repaired | CI | CI |
-| Save v27: each souvenir kept once and written by Formiga Hill's identifier, one brought home again changing nothing, nothing else in the colony touched, and a souvenir kept twice repaired | CI | CI |
+| Save v27: each souvenir kept once and written by Formiga Hill's identifier, one brought home again changing nothing, nothing else in the colony touched, and a souvenir kept twice repaired; the Fairground's four kept as the rest are | CI | CI |
 | Souvenirs in the journal: no section until one has come home, then each shown newest first with Desktop's own name and line, its picture given back with the rest when the notebook closes; every picture pixel for pixel as Formiga Hill draws it, set on its velvet | CI | CI |
 | Leaving drops a drag, scenes and bubbles, sends a visiting guest on its way (signed if it said hello), and brings everyone out of doors | CI | CI |
 | The train scene: nobody boards a moving train, everyone is seen getting on, companions from another display come in from its side, coming home ends with everyone exactly as saved, reduced motion never slides the train, a turned-back departure lets everyone off where it stands, and no scene is longer than sixteen seconds at 2–4× on 1–2× displays | CI | CI |
@@ -503,3 +503,35 @@ real Hill is installed.
 | CPU while the colony is away stays at idle | 0.0% for 16 s, debug build, 2026-10-02 | pending | pending | pending |
 | A souvenir from a real Formiga Hill (a story's or the Fairground's ticket) in the journal's Souvenirs after the trip home, in light and dark; a second trip adds nothing | pending | pending | pending | pending |
 | The installed Hill found by its bundle identifier (macOS) and registry key (Windows), with the Dock or taskbar usable throughout | pending | pending | pending | pending |
+
+## Visits to Formiga Home
+
+Formiga Home is a separate application; these rows cover Desktop's side of a visit to a house.
+Without Home installed no house can be clicked and nothing mentions it.
+
+### Automated
+
+| Check | macOS | Windows |
+|---|---:|---:|
+| The household contract's own: every version's fixtures (1 to 7) still read and accept their own visit, this version's written byte for byte; projection, acceptance and bounds; a snapshot offers only what Desktop passes, once each | CI | CI |
+| Visit files: written whole, found again after a restart, answers only for exactly this visit, refusals heard and said, a result kept only as the contract allows and only against the files Desktop wrote, one visit line and nothing else, recall and sweeping leaving only the kept homes | CI | CI |
+| Save v28: a household away in a house left alone while everyone else lives on, skipped by offers and gathering, and back out where it went in; only free colony members lent, one visit at a time; the visit's line written once per visit and once for visits close together | CI | CI |
+| A house is clicked only on its own pixels; every house of a real village cut with its roof and placed over its keeper's slot; nothing to click while the houses are not out | CI | CI |
+| A house's menu offers a look inside, or the way back out while it is the one open, and its page; a creature's never offers a look inside | CI | CI |
+| The Home page offers the way in for the picked house only while Home is installed, the way back out while it is open, and nothing for another house meanwhile | CI | CI |
+| End to end against the stand-in Home: a visit answers once and changes only the house it opened; no line unless offered; silence, garbage, a stranger's receipt and a crash leave the homes as they were, and a crash after arranging keeps what was arranged; refusals say why; a recall ends the visit; a newer snapshot is refused for its version | CI | CI |
+
+### Manual
+
+Use `formiga-home-stub` as described in [BUILD.md](BUILD.md#trying-a-visit-to-formiga-home), or a
+build of Formiga Home named by `FORMIGA_HOME_PATH`.
+
+| Scenario | macOS 14 arm64 | macOS x64/Rosetta | Windows 10 22H2 | Windows 11 |
+|---|---|---|---|---|
+| Without Home installed, every house is click-through and the log says nothing about Home | pending | pending | pending | pending |
+| With Home installed, clicking a house (either button, or Control-click) opens its menu over the roof; a companion in front of a house is picked up as always | pending | pending | pending | pending |
+| Look inside: the household and any friend lent vanish indoors, Home opens, and when it closes everyone comes back out where they went in, with a line in the journal | stand-in Home, debug build, 2026-10-06 | pending | pending | pending |
+| A real Formiga Home 0.1.0 accepts the house; quitting Desktop mid-visit and starting it again tells Home the visit is over, Home closes, and the household comes back out | debug builds, 2026-10-06 | pending | pending | pending |
+| "Bring … household back" from the tray and from the house's menu; the Home page's button for a picked house, with the houses out and not | pending | pending | pending | pending |
+| An arrangement made in Home is there the next time the same house opens, and a find moved between houses is moved | pending | pending | pending | pending |
+| The installed Home found by its bundle identifier (macOS) and registry key (Windows) | pending | pending | pending | pending |

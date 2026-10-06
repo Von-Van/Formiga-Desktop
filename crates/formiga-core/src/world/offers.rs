@@ -185,8 +185,9 @@ impl World {
         {
             return false;
         }
-        // So is a wonder: whoever is off to one, or playing on it, has better things to do.
-        if self.wonders.owns(creature_id) {
+        // So is a wonder: whoever is off to one, or playing on it, has better things to do. And
+        // whoever is away in a house open elsewhere is not here to be offered anything.
+        if self.wonders.owns(creature_id) || self.house_visit.contains(&creature_id) {
             return false;
         }
         // A colony ritual is the colony's own moment. It is left alone.

@@ -4,6 +4,15 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.0
+
+Formiga can now open its houses in Formiga Home, a separate app you can install alongside it. With
+Home installed, clicking a house in the village brings up the house's own menu, and "look inside"
+opens it in Formiga Home, where you can arrange the rooms and spend a while with the household that
+lives there. They go indoors while the house is open, come back out when it closes, and the journal
+notes the visit. Four more souvenirs, from Formiga Hill's Fairground, now come home to the Journal
+too. Without Formiga Home or Formiga Hill installed nothing changes.
+
 ## New in 0.66.6
 
 Anything your colony is given to keep at Formiga Hill — a gingham ribbon from a picnic, a ticket

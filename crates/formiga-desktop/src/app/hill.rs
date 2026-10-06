@@ -119,6 +119,14 @@ impl FormigaApp {
             );
             return;
         }
+        if self.house.visit.open().is_some() {
+            self.failure_dialog(
+                STAYING_HOME,
+                "A house is open in Formiga Home. Bring its household back first, and the whole \
+                 colony can travel.",
+            );
+            return;
+        }
         // Asked again now: it may have been removed since the last look.
         self.check_for_hill(true);
         let Some(install) = self.hill.install.clone() else {
@@ -339,6 +347,9 @@ impl FormigaApp {
     /// show only the station, and the tray says where everyone is.
     fn enter_trip(&mut self) {
         for proxy in self.interaction_proxies.values_mut() {
+            proxy.hide();
+        }
+        for proxy in self.house_proxies.values_mut() {
             proxy.hide();
         }
         self.sync_overlay_visibility();

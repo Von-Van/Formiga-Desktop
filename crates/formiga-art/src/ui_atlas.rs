@@ -169,6 +169,8 @@ impl SpriteRect {
 /// `Snack, Toy, Stay, Profile` while it may still be invited to stay, and
 /// `Snack, Toy, CopyCode, Profile` once it cannot. `Moment` opens a second strip beside the first,
 /// holding the moments on offer — `Picnic`, `Dance`, `Nap` — and `Stop` while one is under way.
+/// A house, while Formiga Home is installed, offers `Inside, Profile`, with `Stop` in place of
+/// `Inside` while it is the house open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MenuIcon {
     Snack,
@@ -182,10 +184,11 @@ pub enum MenuIcon {
     Dance,
     Nap,
     Stop,
+    Inside,
 }
 
 impl MenuIcon {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Snack,
         Self::Toy,
         Self::Home,
@@ -197,6 +200,7 @@ impl MenuIcon {
         Self::Dance,
         Self::Nap,
         Self::Stop,
+        Self::Inside,
     ];
 
     fn index(self) -> u32 {
@@ -221,6 +225,7 @@ pub fn menu_label_text(icon: MenuIcon) -> &'static str {
         MenuIcon::Dance => "dance",
         MenuIcon::Nap => "nap",
         MenuIcon::Stop => "stop",
+        MenuIcon::Inside => "look inside",
     }
 }
 
@@ -1163,6 +1168,33 @@ fn draw_menu_icon(canvas: &mut Canvas, x: i32, y: i32, icon: MenuIcon) {
                 "............",
             ],
             &[('#', ROSE), ('+', ROSE_DEEP), ('p', PAPER)],
+        ),
+        // A door standing ajar, lamplight spilling out round it onto the step.
+        MenuIcon::Inside => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "..oooooooo..",
+                "..o##aaaao..",
+                "..o##aaaao..",
+                "..o##aaaao..",
+                "..o##aaaao..",
+                "..o#+aaaao..",
+                "..o##aaaao..",
+                "..o##aaaao..",
+                "..o##aaaao..",
+                "..o##aaaao..",
+                ".oooooooooo.",
+                "..ggggg.....",
+            ],
+            &[
+                ('o', OUTLINE),
+                ('#', TAN_DEEP),
+                ('+', GOLD),
+                ('a', AMBER),
+                ('g', HOVER),
+            ],
         ),
     }
 }

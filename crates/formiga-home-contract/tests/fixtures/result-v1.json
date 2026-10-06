@@ -1,0 +1,101 @@
+{
+  "format": "formiga.home.result",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "af6be1dd16761b5c8cc62ad9aa5cd0b93e3d09d0c5779763cd10806aa1500c0b",
+  "state_sha256": "0e72d2586bd8684a11585a4689ebb6cdd1961ab4798c867ae51b45cbb936779a",
+  "written_at_utc": "2026-11-11T10:20:00Z",
+  "home_version": "0.1.0",
+  "state": {
+    "format": "formiga.home.state",
+    "version": 1,
+    "min_reader_version": 1,
+    "colony_key": "da079ed6830d00f6",
+    "households": [
+      {
+        "keeper": "a5cdeae193601ce1",
+        "rooms": [
+          {
+            "width": 6,
+            "depth": 6,
+            "floor": "floor.checks",
+            "wall": "wall.stripes",
+            "pieces": [],
+            "displays": [
+              {
+                "item": "find.26",
+                "spot": {
+                  "kind": "wall",
+                  "side": "west",
+                  "at": 1
+                }
+              },
+              {
+                "item": "souvenir.picnic_ribbon",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "keeper": "876a55d6a17221ef",
+        "rooms": [
+          {
+            "width": 8,
+            "depth": 8,
+            "floor": "floor.boards",
+            "wall": "wall.plaster",
+            "pieces": [
+              {
+                "uid": 1,
+                "piece": "shelf",
+                "x": 0,
+                "y": 2,
+                "turn": 1
+              },
+              {
+                "uid": 2,
+                "piece": "armchair",
+                "x": 3,
+                "y": 3,
+                "turn": 0
+              }
+            ],
+            "displays": [
+              {
+                "item": "find.3",
+                "spot": {
+                  "kind": "on",
+                  "piece": 1,
+                  "slot": 0
+                }
+              },
+              {
+                "item": "find.76",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 4
+                }
+              },
+              {
+                "item": "find.132",
+                "spot": {
+                  "kind": "floor",
+                  "x": 6,
+                  "y": 6
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 //! Every travel version as it shipped. These files are never regenerated to make a test pass: a
 //! change that breaks one of them breaks every Hill already installed, or every snapshot an older
 //! Desktop already wrote. Version 1 shipped with Desktop 0.66.4, version 2 added each trait's
-//! identifier, and version 3 the souvenirs Desktop keeps. `FORMIGA_TRAVEL_BLESS=1` writes this
+//! identifier, version 3 the souvenirs Desktop keeps, and version 4 four more of them. `FORMIGA_TRAVEL_BLESS=1` writes this
 //! build's own version's files only, so a new version's fixtures go beside the old ones and never
 //! over them.
 
@@ -146,18 +146,23 @@ fn version_two_names_every_trait_by_identifier_and_version_one_only_in_words() {
 }
 
 #[test]
-fn version_three_lists_the_souvenirs_desktop_keeps_and_the_older_ones_none() {
+fn the_souvenirs_desktop_keeps_are_listed_from_version_three_and_grow_by_version() {
     for version in [1, 2] {
         let old: TravelSnapshot = decode(&read(&format!("snapshot-v{version}.json"))).unwrap();
         assert!(old.accepts_souvenirs.is_empty() && !old.offers(Capability::Souvenirs));
         assert!(!old.accepts_souvenir("picnic_ribbon"), "version {version}");
     }
-    let new: TravelSnapshot = decode(&read("snapshot-v3.json")).unwrap();
-    assert!(new.offers(Capability::Souvenirs));
-    assert_eq!(
-        new.accepts_souvenirs,
-        formiga_core::Souvenir::ALL.map(|souvenir| souvenir.id().to_owned())
-    );
+    let every: Vec<String> = formiga_core::Souvenir::ALL
+        .map(|souvenir| souvenir.id().to_owned())
+        .to_vec();
+    // Version 3 listed the first seven, and version 4 lists every one this build keeps.
+    for (version, listed) in [(3, &every[..7]), (4, &every[..])] {
+        let snapshot: TravelSnapshot = decode(&read(&format!("snapshot-v{version}.json"))).unwrap();
+        assert!(snapshot.offers(Capability::Souvenirs), "version {version}");
+        assert_eq!(snapshot.accepts_souvenirs, listed, "version {version}");
+    }
+    let new: TravelSnapshot = decode(&read("snapshot-v4.json")).unwrap();
+    assert!(new.accepts_souvenir("tug_rope") && new.accepts_souvenir("race_rosette"));
     let receipt: ReturnReceipt = decode(&read("receipt-v3.json")).unwrap();
     assert_eq!(
         receipt.effects[1],

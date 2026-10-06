@@ -1,0 +1,256 @@
+{
+  "format": "formiga.home.result",
+  "version": 7,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "9050697c472b54cc7f89f02b72864c07522f8c1fbf8812cea2957b63b2824f3f",
+  "state_sha256": "f80f14916a20aee1b9fcfa49a21ac25694f05728f8985e7aee376db0fc67bd9c",
+  "written_at_utc": "2026-11-11T10:20:00Z",
+  "home_version": "0.1.0",
+  "state": {
+    "format": "formiga.home.state",
+    "version": 7,
+    "min_reader_version": 1,
+    "colony_key": "da079ed6830d00f6",
+    "households": [
+      {
+        "keeper": "a5cdeae193601ce1",
+        "rooms": [
+          {
+            "width": 6,
+            "depth": 6,
+            "floor": "floor.checks",
+            "wall": "wall.stripes",
+            "pieces": [],
+            "displays": [
+              {
+                "item": "find.26",
+                "spot": {
+                  "kind": "wall",
+                  "side": "west",
+                  "at": 1
+                }
+              },
+              {
+                "item": "souvenir.picnic_ribbon",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "keeper": "876a55d6a17221ef",
+        "rooms": [
+          {
+            "width": 8,
+            "depth": 8,
+            "floor": "floor.boards",
+            "wall": "wall.plaster",
+            "pieces": [
+              {
+                "uid": 1,
+                "piece": "shelf",
+                "x": 0,
+                "y": 2,
+                "turn": 1
+              },
+              {
+                "uid": 2,
+                "piece": "armchair",
+                "x": 3,
+                "y": 3,
+                "turn": 0
+              }
+            ],
+            "displays": [
+              {
+                "item": "find.3",
+                "spot": {
+                  "kind": "on",
+                  "piece": 1,
+                  "slot": 0
+                }
+              },
+              {
+                "item": "find.76",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 4
+                }
+              },
+              {
+                "item": "find.132",
+                "spot": {
+                  "kind": "floor",
+                  "x": 6,
+                  "y": 6
+                }
+              }
+            ],
+            "doors": [
+              {
+                "side": "west",
+                "at": 5
+              },
+              {
+                "side": "north",
+                "at": 6
+              }
+            ]
+          },
+          {
+            "width": 4,
+            "depth": 4,
+            "floor": "floor.rose",
+            "wall": "wall.stripes",
+            "pieces": [
+              {
+                "uid": 3,
+                "piece": "cushion",
+                "x": 1,
+                "y": 1,
+                "turn": 0
+              }
+            ],
+            "displays": [
+              {
+                "item": "memento.9757705922971574767-1",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 2
+                }
+              }
+            ],
+            "plan": {
+              "x": 4,
+              "y": -4
+            },
+            "kind": "room.nook"
+          }
+        ],
+        "likings": [
+          {
+            "resident": "876a55d6a17221ef",
+            "thing": {
+              "kind": "piece",
+              "room": 0,
+              "uid": 2
+            },
+            "uses": 3
+          }
+        ],
+        "mementos": [
+          {
+            "serial": 1,
+            "kind": "postcard",
+            "by": "66cd447617ba3991",
+            "made_at_utc": "2026-11-11T10:12:00Z"
+          },
+          {
+            "serial": 2,
+            "kind": "photo",
+            "of": [
+              "876a55d6a17221ef",
+              "66cd447617ba3991"
+            ],
+            "inks": [
+              {
+                "outline": [
+                  74,
+                  58,
+                  52
+                ],
+                "deep": [
+                  150,
+                  118,
+                  104
+                ],
+                "body": [
+                  222,
+                  196,
+                  178
+                ],
+                "light": [
+                  244,
+                  230,
+                  218
+                ],
+                "accent": [
+                  214,
+                  120,
+                  132
+                ]
+              },
+              {
+                "outline": [
+                  52,
+                  66,
+                  58
+                ],
+                "deep": [
+                  104,
+                  140,
+                  118
+                ],
+                "body": [
+                  170,
+                  206,
+                  182
+                ],
+                "light": [
+                  214,
+                  236,
+                  220
+                ],
+                "accent": [
+                  236,
+                  196,
+                  96
+                ]
+              }
+            ],
+            "made_at_utc": "2026-11-11T10:15:00Z"
+          }
+        ],
+        "journal": [
+          {
+            "at_utc": "2026-11-11T09:58:00Z",
+            "moment": {
+              "kind": "visit",
+              "visitor": "66cd447617ba3991"
+            }
+          },
+          {
+            "at_utc": "2026-11-11T10:12:00Z",
+            "moment": {
+              "kind": "memento",
+              "memento": "postcard",
+              "by": "66cd447617ba3991"
+            }
+          },
+          {
+            "at_utc": "2026-11-11T10:16:00Z",
+            "moment": {
+              "kind": "stayed_over",
+              "visitor": "66cd447617ba3991"
+            }
+          },
+          {
+            "at_utc": "2026-11-11T10:17:00Z",
+            "moment": {
+              "kind": "asked_to_move_in",
+              "visitor": "66cd447617ba3991"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

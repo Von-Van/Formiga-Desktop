@@ -562,6 +562,10 @@ impl World {
         // another, who would otherwise come down onto the same point and stay there.
         let mut taken: Vec<Point> = Vec::new();
         for creature in &mut self.save.creatures {
+            // Anyone away in a house open elsewhere is gathered when it comes back out.
+            if self.house_visit.contains(&creature.id) {
+                continue;
+            }
             if let Some((monitor_id, mut position)) =
                 nearest_habitat_point(&policy, &desktop.monitors, creature.state.position)
             {

@@ -203,7 +203,7 @@ pub fn set_interaction_hittest(window: &Window, enabled: bool) {
     let _ = window.set_cursor_hittest(enabled);
 }
 
-pub fn set_interaction_shape(_window: &Window, _mask: &[bool], _scale: u8) {}
+pub fn set_interaction_shape(_window: &Window, _mask: &[bool], _side: u32, _scale: u8) {}
 
 /// The open creature menu's proxy covers one rectangle, so there is nothing to shape: as with
 /// `set_interaction_shape`, AppKit hit-tests the window's own frame and the overlay decides what

@@ -11,6 +11,8 @@ mod desktop_ui_review;
 mod explain;
 mod gpu;
 mod hill;
+mod house;
+mod houses;
 mod interaction;
 mod notebook_window;
 mod notices;

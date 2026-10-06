@@ -43,6 +43,10 @@ pub struct SettingsOutcome {
     pub set_hangout: Option<(formiga_core::HangoutKind, Option<f32>)>,
     /// The cottages in a new order, as the companions who keep them.
     pub cottage_order: Option<Vec<CreatureId>>,
+    /// Open the house this companion keeps in Formiga Home.
+    pub open_house: Option<CreatureId>,
+    /// Bring the household of the house open in Formiga Home back out.
+    pub bring_household_back: bool,
     /// A house built as another type, by the companion who keeps it, or with `None` as its own.
     pub house_style: Option<(CreatureId, Option<formiga_core::ShelterStyle>)>,
     /// A named palette for the village, or `Some(None)` for its own colours again.
@@ -462,6 +466,14 @@ impl SettingsWindow {
             self.selected_creature = Some(creature_id);
         }
         self.tab = SettingsTab::Colony;
+        self.window.request_redraw();
+    }
+
+    /// Open the Home page with the house `keeper` keeps picked out: its own settings, and the way
+    /// into it in Formiga Home.
+    pub fn select_house(&mut self, keeper: CreatureId) {
+        self.clubhouse.home.arrange.picked = Some(crate::clubhouse::arrange::Picked::House(keeper));
+        self.tab = SettingsTab::Home;
         self.window.request_redraw();
     }
 
@@ -1074,7 +1086,14 @@ fn draw_settings(
                     colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, &mut clubhouse.colony, &mut clubhouse.shell, outcome);
                 }
                 SettingsTab::Studio => clubhouse.studio.show(ui, &mut clubhouse.shell, save, selected_creature, outcome),
-                SettingsTab::Home => clubhouse.home.show(ui, &mut clubhouse.shell, save, monitors, outcome),
+                SettingsTab::Home => clubhouse.home.show(
+                    ui,
+                    &mut clubhouse.shell,
+                    save,
+                    monitors,
+                    clubhouse.formiga_home,
+                    outcome,
+                ),
                 SettingsTab::Journal => clubhouse.journal.show(ui, &mut clubhouse.shell, save, clubhouse.reading.as_ref(), outcome),
                 SettingsTab::General => general_tab(ui, settings, save, &mut clubhouse.shell, outcome),
                 SettingsTab::Habitat => {

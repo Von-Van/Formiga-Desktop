@@ -262,6 +262,37 @@ impl OverlayRenderer {
         })
     }
 
+    /// Where a menu for a house goes: over its roof, as a creature's goes over its head.
+    pub fn house_menu_anchor(
+        &self,
+        house: &crate::houses::PlacedHouse,
+        display_scale: u8,
+    ) -> MenuAnchor {
+        let unit = f32::from(display_scale);
+        let bounds = self.monitor.bounds;
+        let usable = self.monitor.usable_bounds;
+        let factor = self.monitor.scale_factor;
+        let foot = self.snap((house.foot.y - bounds.y) * factor);
+        MenuAnchor {
+            centre_x: self.snap((house.foot.x - bounds.x) * factor),
+            head_top: foot - (formiga_art::SHELTER_SIZE - house.roof) as f32 * unit,
+            foot_bottom: foot,
+            art_scale: unit,
+            grid: self.render_divisor as f32,
+            usable: LocalRect {
+                x: (usable.x - bounds.x) * factor,
+                y: (usable.y - bounds.y) * factor,
+                width: usable.width * factor,
+                height: usable.height * factor,
+            },
+            monitor_origin: Point {
+                x: bounds.x,
+                y: bounds.y,
+            },
+            scale_factor: factor,
+        }
+    }
+
     /// Every quad sampled from the UI atlas this frame: one bubble per creature answering, then
     /// the open menu's frame, its four cells, and the label tab under whichever one is hovered.
     pub(super) fn ui_vertices(
@@ -297,9 +328,9 @@ impl OverlayRenderer {
         }
 
         if let Some(menu) = ui.menu
-            && visible
-                .iter()
-                .any(|creature| creature.id == menu.creature_id)
+            && menu
+                .creature_id
+                .is_none_or(|creature_id| visible.iter().any(|creature| creature.id == creature_id))
         {
             vertices.extend(menu_quads(menu, self.layout));
         }

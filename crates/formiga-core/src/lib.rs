@@ -91,4 +91,4 @@ pub use world::{
     wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 27;
+pub const SAVE_VERSION: u32 = 28;

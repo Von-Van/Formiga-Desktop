@@ -122,6 +122,36 @@ fn picture(souvenir: Souvenir) -> ([&'static str; 7], [u32; 4]) {
             ],
             [0x8a2a30, 0xf3d8a0, 0xd0584c, 0xc9b080],
         ),
+        // A rosette of pleated blue ribbon round a gilt button, its two tails hanging below.
+        Souvenir::RaceRosette => (
+            [
+                ".#o#o#.", "#o*xxo#", "ooxxxoo", "#oxxxo#", ".#o#o#.", ".#o.o#.", ".#...#.",
+            ],
+            [0x1e2c58, 0x5a7ec4, 0xfff2bc, 0xe4c06c],
+        ),
+        // A little brass bell, lit from the left, its clapper showing under its rim.
+        Souvenir::StrikerBell => (
+            [
+                "...#...", "..#*#..", ".#*ox#.", ".#*ox#.", "#*ooox#", "#######", "...x...",
+            ],
+            [0x6b4a24, 0xd8b058, 0xfff0b8, 0x9a7434],
+        ),
+        // A little teddy's face from the hoopla stall's shelf: round ears, bright eyes, and a
+        // pale muzzle with its nose in the middle.
+        Souvenir::HooplaTeddy => (
+            [
+                "##...##", "#x###x#", "#ooooo#", "#o*o*o#", "#ox#xo#", ".#xxx#.", "..###..",
+            ],
+            [0x5a3420, 0xb07a4a, 0x2e1a12, 0xe8c494],
+        ),
+        // A length of the tug-of-war's rope, its twist catching the light and its ends frayed,
+        // with the red ribbon from its middle still tied on.
+        Souvenir::TugRope => (
+            [
+                "#*.....", "*o*....", ".*o*.x.", "..xox..", ".x.*o*.", "....*o*", ".....*#",
+            ],
+            [0x6a5030, 0xb8955a, 0xe2c58c, 0xc8303e],
+        ),
     }
 }
 
@@ -176,7 +206,7 @@ mod tests {
         let strip = souvenir_strip();
         assert_eq!(
             (strip.width(), strip.height()),
-            (SOUVENIR_TILE * 7, SOUVENIR_TILE)
+            (SOUVENIR_TILE * Souvenir::ALL.len() as u32, SOUVENIR_TILE)
         );
         assert!(
             strip.pixels().iter().all(|pixel| pixel.a == 255),
@@ -202,7 +232,7 @@ mod tests {
         }
     }
 
-    const AS_FORMIGA_HILL_DRAWS_THEM: [(Souvenir, u64); 7] = [
+    const AS_FORMIGA_HILL_DRAWS_THEM: [(Souvenir, u64); 11] = [
         (Souvenir::PicnicRibbon, 0xc5b5_90f5_5e52_7385),
         (Souvenir::PressedDaisy, 0x2246_823e_0c34_fe8e),
         (Souvenir::WellPenny, 0x6bfb_e90a_f30d_3fe8),
@@ -210,5 +240,9 @@ mod tests {
         (Souvenir::SwingFeather, 0x91bc_2b2d_a35b_6255),
         (Souvenir::ChestMarble, 0x3e6e_accf_5294_5074),
         (Souvenir::FairTicket, 0xf5d5_ebbd_8dc4_e04b),
+        (Souvenir::RaceRosette, 0xfdc9_d920_d187_2f01),
+        (Souvenir::StrikerBell, 0x10b1_0400_cd72_6378),
+        (Souvenir::HooplaTeddy, 0x2c30_80ab_8f48_f4f3),
+        (Souvenir::TugRope, 0x3f1f_7c2b_e610_9a49),
     ];
 }

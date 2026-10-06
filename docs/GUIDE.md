@@ -259,6 +259,22 @@ closed while they are away, it brings them home the next time it starts. Formiga
 how your companions look and behave and how they get on, never anything about your desktop or the
 colony's seed: [PRIVACY.md](PRIVACY.md) lists exactly what goes.
 
+## A visit to Formiga Home
+
+Formiga Home is another separate app, and Formiga does not need it either. Once it is installed,
+clicking a house in the village brings up the house's own little menu, as clicking a companion
+does. **Look inside** opens the house in Formiga Home: whoever lives there goes indoors, perhaps
+with a close friend or two from another house who has come round, and the rest of the colony
+carries on as usual. When you close the house they all come back out where they went in, the way
+you arranged the rooms is kept for next time, and the journal notes that you spent a while inside.
+The same house's menu offers its page in the notebook, where a picked house has an **Open in
+Formiga Home** button too, for when the houses are not out. While a house is open, the tray offers
+to bring its household back.
+
+Whatever happens in Formiga Home, the household always comes back out, and nothing about the
+colony itself changes there beyond that one line in the journal. [PRIVACY.md](PRIVACY.md) lists
+exactly what Formiga Home is told and what is kept.
+
 ## Settings you may want
 
 - Limit where creatures go with presets, or up to 32 allowed and excluded rectangles across displays.

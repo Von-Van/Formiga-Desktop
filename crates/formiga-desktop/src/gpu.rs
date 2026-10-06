@@ -148,8 +148,10 @@ pub struct VillageScene<'a> {
 /// One open creature menu, already placed by `creature_menu`.
 #[derive(Clone, Copy)]
 pub struct MenuView<'a> {
-    pub creature_id: CreatureId,
-    pub items: &'a [MenuIcon; 4],
+    /// Whose menu it is, drawn only while that creature is: or `None` for a house's, drawn
+    /// wherever its village is.
+    pub creature_id: Option<CreatureId>,
+    pub items: &'a [MenuIcon],
     pub layout: &'a MenuLayout,
     pub placement: MenuPlacement,
     pub hovered: Option<usize>,

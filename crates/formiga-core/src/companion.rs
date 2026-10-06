@@ -36,6 +36,9 @@ pub enum JournalMoment {
     Wonder(crate::WonderKind),
     /// The colony went away on the train and came home again.
     Trip,
+    /// The owner spent a while inside a house, in Formiga Home. The entry's companion is the one
+    /// who keeps the house.
+    HouseVisit,
 }
 
 /// How many moments the journal holds on to past their turn to roll out because they are the
@@ -74,7 +77,9 @@ impl JournalMoment {
             Self::Discovery | Self::Wonder(_) => MomentKind::Finds,
             Self::Preference(_) | Self::Habit(_) => MomentKind::Ways,
             Self::Ritual(_) | Self::Trip => MomentKind::Together,
-            Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) => MomentKind::Village,
+            Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) | Self::HouseVisit => {
+                MomentKind::Village
+            }
             Self::Visit(_) | Self::Revisit(..) => MomentKind::Visitors,
         }
     }

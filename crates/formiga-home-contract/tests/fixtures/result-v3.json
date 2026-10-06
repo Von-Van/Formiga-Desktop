@@ -1,0 +1,143 @@
+{
+  "format": "formiga.home.result",
+  "version": 3,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "012a87285082e2b42bd65347867c76376ab83867d887e42c3aa2cbf10b2228d1",
+  "state_sha256": "94aeabc50273c07a1bd95d8f6261046e15e9d24b7562678c2b77c4343deead10",
+  "written_at_utc": "2026-11-11T10:20:00Z",
+  "home_version": "0.1.0",
+  "state": {
+    "format": "formiga.home.state",
+    "version": 3,
+    "min_reader_version": 1,
+    "colony_key": "da079ed6830d00f6",
+    "households": [
+      {
+        "keeper": "a5cdeae193601ce1",
+        "rooms": [
+          {
+            "width": 6,
+            "depth": 6,
+            "floor": "floor.checks",
+            "wall": "wall.stripes",
+            "pieces": [],
+            "displays": [
+              {
+                "item": "find.26",
+                "spot": {
+                  "kind": "wall",
+                  "side": "west",
+                  "at": 1
+                }
+              },
+              {
+                "item": "souvenir.picnic_ribbon",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "keeper": "876a55d6a17221ef",
+        "rooms": [
+          {
+            "width": 8,
+            "depth": 8,
+            "floor": "floor.boards",
+            "wall": "wall.plaster",
+            "pieces": [
+              {
+                "uid": 1,
+                "piece": "shelf",
+                "x": 0,
+                "y": 2,
+                "turn": 1
+              },
+              {
+                "uid": 2,
+                "piece": "armchair",
+                "x": 3,
+                "y": 3,
+                "turn": 0
+              }
+            ],
+            "displays": [
+              {
+                "item": "find.3",
+                "spot": {
+                  "kind": "on",
+                  "piece": 1,
+                  "slot": 0
+                }
+              },
+              {
+                "item": "find.76",
+                "spot": {
+                  "kind": "wall",
+                  "side": "north",
+                  "at": 4
+                }
+              },
+              {
+                "item": "find.132",
+                "spot": {
+                  "kind": "floor",
+                  "x": 6,
+                  "y": 6
+                }
+              }
+            ],
+            "doors": [
+              {
+                "side": "west",
+                "at": 5
+              },
+              {
+                "side": "north",
+                "at": 6
+              }
+            ]
+          },
+          {
+            "width": 4,
+            "depth": 4,
+            "floor": "floor.rose",
+            "wall": "wall.stripes",
+            "pieces": [
+              {
+                "uid": 3,
+                "piece": "cushion",
+                "x": 1,
+                "y": 1,
+                "turn": 0
+              }
+            ],
+            "displays": [],
+            "plan": {
+              "x": 4,
+              "y": -4
+            },
+            "kind": "room.nook"
+          }
+        ],
+        "likings": [
+          {
+            "resident": "876a55d6a17221ef",
+            "thing": {
+              "kind": "piece",
+              "room": 0,
+              "uid": 2
+            },
+            "uses": 3
+          }
+        ]
+      }
+    ]
+  }
+}

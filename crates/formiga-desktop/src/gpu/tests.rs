@@ -871,7 +871,7 @@ fn placed_menu(below: bool) -> (MenuLayout, [MenuIcon; 4], MenuPlacement) {
 fn an_open_menu_draws_one_frame_one_quad_per_cell_and_one_label_tab() {
     let (layout, items, placement) = placed_menu(false);
     let view = |hovered| MenuView {
-        creature_id: 1,
+        creature_id: Some(1),
         items: &items,
         layout: &layout,
         placement,
@@ -937,7 +937,7 @@ fn the_label_tab_hangs_under_the_hovered_cell_and_inside_the_strip() {
     for hovered in 0..4 {
         let quads = menu_quads(
             MenuView {
-                creature_id: 1,
+                creature_id: Some(1),
                 items: &items,
                 layout: &layout,
                 placement,
@@ -990,7 +990,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
     let side = crate::creature_menu::place_beside(&side_layout, placement, usable);
     let alone = menu_quads(
         MenuView {
-            creature_id: 1,
+            creature_id: Some(1),
             items: &items,
             layout: &layout,
             placement,
@@ -1001,7 +1001,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
     );
     let quads = menu_quads(
         MenuView {
-            creature_id: 1,
+            creature_id: Some(1),
             items: &items,
             layout: &layout,
             placement,
@@ -1044,7 +1044,7 @@ fn a_menu_under_a_creature_flips_only_its_frame() {
     let (layout, items, placement) = placed_menu(true);
     let quads = menu_quads(
         MenuView {
-            creature_id: 1,
+            creature_id: Some(1),
             items: &items,
             layout: &layout,
             placement,

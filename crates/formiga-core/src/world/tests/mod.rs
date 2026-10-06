@@ -15,6 +15,7 @@ mod experience;
 mod habits;
 mod hangouts;
 mod home;
+mod house_visits;
 mod interaction;
 mod journeys;
 mod misc;

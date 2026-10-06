@@ -1107,6 +1107,10 @@ impl World {
                 self.home_moments.remove(&creature.id);
                 continue;
             }
+            // Away in a house open elsewhere.
+            if self.house_visit.contains(&creature.id) {
+                continue;
+            }
             if creature.state.arrival_delay_secs > 0.0 {
                 creature.state.arrival_delay_secs =
                     (creature.state.arrival_delay_secs - dt).max(0.0);
