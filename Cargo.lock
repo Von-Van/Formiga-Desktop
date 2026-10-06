@@ -1314,11 +1314,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-expansion-rulebook"
+version = "0.67.1"
+dependencies = [
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "formiga-home-contract"
 version = "0.67.1"
 dependencies = [
  "formiga-art",
  "formiga-core",
+ "formiga-expansion-rulebook",
  "formiga-travel",
  "serde",
  "serde_json",
@@ -1351,7 +1363,7 @@ version = "0.67.1"
 dependencies = [
  "formiga-art",
  "formiga-core",
- "getrandom 0.4.3",
+ "formiga-expansion-rulebook",
  "serde",
  "serde_json",
  "sha2",

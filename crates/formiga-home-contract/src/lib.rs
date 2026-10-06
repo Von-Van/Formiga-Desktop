@@ -8,9 +8,10 @@
 //! first. Home never reads the colony file, and never writes anything but its answers.
 //!
 //! This crate is Desktop's, as `formiga-travel` is the contract Formiga Hill builds against, and
-//! Formiga Home takes it by Desktop's release tag. It is built on that crate where the two say the
-//! same thing: a resident is drawn from the very [`formiga_travel::Traveler`] a trip would carry,
-//! documents are written whole the same way, and text is made safe the same way.
+//! Formiga Home takes it by Desktop's release tag. A resident is drawn from the very
+//! [`formiga_travel::Traveler`] a trip would carry, and everything every visit shares with a trip
+//! (the session's identifier, how documents are bounded, version-checked and written whole, how
+//! text is made safe, and the reasons for refusing a visit) is `formiga-expansion-rulebook`'s.
 //!
 //! # A visit, file by file
 //!
@@ -79,7 +80,8 @@ pub use document::{
     HomeDocument, HomeError, decode, encode, read_bounded, read_document, sha256_hex,
     write_document,
 };
-pub use formiga_travel::{SessionId, TravelerId};
+pub use formiga_expansion_rulebook::SessionId;
+pub use formiga_travel::TravelerId;
 pub use ids::{CatalogId, DisplayId};
 pub use inventory::{DisplayItem, DisplayMode, DisplaySource, Ink, find_modes, souvenir_modes};
 pub use projection::{ProjectionError, colony_key, likely_visitors, project_household};

@@ -11,7 +11,7 @@ use crate::document::HomeError;
 use crate::ids::DisplayId;
 use crate::limits::*;
 use formiga_core::Souvenir;
-use formiga_travel::is_sanitized;
+use formiga_expansion_rulebook::is_sanitized;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use time::OffsetDateTime;

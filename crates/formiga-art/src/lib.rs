@@ -3,6 +3,7 @@ mod canvas;
 mod card;
 mod colony_card;
 mod objects;
+pub mod paint;
 mod palette;
 mod postcard;
 mod renderer;

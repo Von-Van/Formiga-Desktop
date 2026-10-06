@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `formiga-expansion-rulebook`, what every visit to a companion app is made of: the session's
+  identifier, documents bounded, version-checked and written whole, text made safe, and an app's
+  reasons for turning a visit away. `formiga-travel` and `formiga-home-contract` are built on it
+  and re-export what they used to define, under the same names; nothing either writes changes by
+  a byte, and both contracts' golden fixtures read and write as before. Nothing an owner sees
+  changes.
+- `formiga_art::paint`, the painting helpers Formiga Hill and Formiga Home each kept a copy of,
+  exactly as Formiga Home draws with them, with Formiga Hill's `bevel`.
+
 ## [0.67.1] - 2026-10-06
 
 ### Fixed

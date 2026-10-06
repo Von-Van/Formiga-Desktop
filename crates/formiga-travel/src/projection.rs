@@ -3,12 +3,13 @@
 //! are plain data.
 
 use crate::document::{Document, TravelError};
-use crate::ids::{SessionId, TravelerId};
+use crate::ids::TravelerId;
 use crate::limits::*;
 use crate::snapshot::*;
-use crate::text::sanitize_text;
 use formiga_art::{AccessoryArt, Rgba, palette_for};
 use formiga_core as core;
+use formiga_expansion_rulebook::SessionId;
+use formiga_expansion_rulebook::sanitize_text;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 

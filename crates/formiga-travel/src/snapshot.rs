@@ -4,12 +4,13 @@
 
 use crate::appearance::{DesignRecipe, TravelAppearance, mirror};
 use crate::document::{Document, TravelError, header_ok, unhex};
-use crate::ids::{SessionId, TravelerId};
+use crate::ids::TravelerId;
 use crate::limits::*;
 use crate::receipt::is_reward_id;
-use crate::text::is_sanitized;
 use crate::{SNAPSHOT_FORMAT, TRAVEL_FORMAT_VERSION};
 use formiga_core as core;
+use formiga_expansion_rulebook::SessionId;
+use formiga_expansion_rulebook::is_sanitized;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use time::OffsetDateTime;

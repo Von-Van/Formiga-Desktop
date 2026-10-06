@@ -1,16 +1,14 @@
 [package]
-name = "formiga-travel"
+name = "formiga-expansion-rulebook"
+description = "What every visit between Formiga Desktop and one of its companion apps is made of"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-formiga-art = { path = "../formiga-art" }
-formiga-core = { path = "../formiga-core" }
-formiga-expansion-rulebook = { path = "../formiga-expansion-rulebook" }
+getrandom.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-time.workspace = true

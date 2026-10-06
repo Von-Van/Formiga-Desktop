@@ -1,10 +1,11 @@
-//! Every string that crosses between the two apps passes through here when it is written, and is
-//! checked against it again when it is read, however carefully it was made on the other side.
+//! Every string that crosses between Desktop and a companion app passes through here when it is
+//! written, and is checked against it again when it is read, however carefully it was made on the
+//! other side.
 
 /// The characters that change how text is laid out without being seen: the bidirectional
 /// embeddings, overrides and isolates, the invisible separators and operators, and the byte-order
-/// mark. A name holding one can read differently in Hill than in Desktop. Zero-width joiners and
-/// non-joiners stay, since scripts and emoji need them to be spelled at all.
+/// mark. A name holding one can read differently in a companion app than in Desktop. Zero-width
+/// joiners and non-joiners stay, since scripts and emoji need them to be spelled at all.
 fn is_invisible_format(c: char) -> bool {
     matches!(
         c,

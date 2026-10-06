@@ -6,11 +6,11 @@
 //! a receipt is a short list of [`ReturnEffect`]s from a fixed vocabulary.
 
 use crate::document::{Document, TravelError, header_ok, is_sha256_hex};
-use crate::ids::SessionId;
 use crate::limits::*;
 use crate::snapshot::TravelSnapshot;
-use crate::text::is_sanitized;
 use crate::{ACK_FORMAT, RECALL_FORMAT, RECEIPT_FORMAT, TRAVEL_FORMAT_VERSION};
+use formiga_expansion_rulebook::SessionId;
+use formiga_expansion_rulebook::is_sanitized;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -34,20 +34,11 @@ impl SnapshotSeal {
     }
 }
 
-/// Why Hill could not take the colony.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AckRefusal {
-    /// The snapshot needs a newer travel reader than this Hill has; `reads` is the newest it has.
-    UnsupportedVersion { reads: u32 },
-    /// The snapshot did not check out.
-    Invalid,
-    /// Hill is already hosting a colony.
-    Busy,
-    /// Anything a newer Hill says that this build does not know.
-    #[serde(other)]
-    Other,
-}
+/// Why Hill could not take the colony: `unsupported_version` with the newest travel version it
+/// reads, `invalid` when the snapshot did not check out, `busy` while it is hosting a colony
+/// already, and `other` for anything a newer Hill says. Every companion app refuses in the same
+/// words, so this is the rulebook's.
+pub use formiga_expansion_rulebook::AckRefusal;
 
 /// Hill's answer once it has read the snapshot.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

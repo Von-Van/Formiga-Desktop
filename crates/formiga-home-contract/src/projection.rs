@@ -9,7 +9,8 @@ use crate::snapshot::{HomeCapability, HomeSnapshot, Household, Neighbour, header
 use crate::{DisplayId, HomeDocument};
 use formiga_art::{TrinketAtlasRenderer, palette_for};
 use formiga_core as core;
-use formiga_travel::{SessionId, TravelerId, sanitize_text};
+use formiga_expansion_rulebook::{SessionId, sanitize_text};
+use formiga_travel::TravelerId;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
