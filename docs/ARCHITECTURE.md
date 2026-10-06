@@ -35,15 +35,18 @@ one feature at a time, and assumes you know where things are.
 
 ### The crates and where to start reading
 
-Dependencies run one way: `formiga-art` depends on `formiga-core`, `formiga-travel` on both, and
-`formiga-desktop` and `formiga-tools` on all three. Nothing depends on the desktop crate.
+Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
+depends on neither; `formiga-travel` depends on all three, `formiga-home-contract` on those and
+`formiga-travel`; and `formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the
+desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
-| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
 | `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
 | `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
+| `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 
@@ -2426,6 +2429,36 @@ window closed part way keeps its place for as long as Formiga runs, because clos
 window only hides it. Preferences offers "Take the tour" to start it again from the first step.
 
 
+## The rulebook every visit shares
+
+Formiga Hill and Formiga Home are visited the same way: Desktop writes a few documents into a
+fresh session directory, starts the app with that directory's path, and reads back what the app
+answers. What a visit carries and what may come back is each app's own contract
+(`formiga-travel`, `formiga-home-contract`). How it is carried lives once, in
+`formiga-expansion-rulebook`:
+
+| Piece | What it guarantees |
+|---|---|
+| `SessionId` | 128 random bits as 32 lowercase hex digits, and nothing else is accepted, so a session directory built from one never leaves the directory it is in |
+| `check_header`, `decode`, `encode` (with a `Kind`: format, byte limit, newest version read) | A document is bounded before it is parsed and before it is written; its `format`, `version` and `min_reader_version` are checked on the raw JSON first, so a newer file is refused for its version rather than its shape; the same document always gives the same bytes |
+| `read_bounded`, `write_atomically` | Never more than a document's limit is read; a file is written to a temporary name, synced, and renamed into place, so a reader sees the old file, the new one, or none |
+| `sha256_hex` and the hex helpers | How an answer names the exact bytes it answers |
+| `sanitize_text`, `is_sanitized` | Every string is made safe when it is written and checked again when it is read |
+| `AckRefusal` | An app's reasons for turning a visit away, in the words every app already used: `unsupported_version`, `invalid`, `busy`, and `other` for anything newer |
+
+Each contract wraps these in its own error, which says whose file it was ("the travel file…",
+"the Home file…"), adds its own validation, and re-exports the shared items under the names Hill
+and Home have always used. The rulebook has no format version of its own: anything that would
+change a byte a contract writes is a change to that contract, versioned there, and each
+contract's golden fixtures still read and write byte for byte. A new `AckRefusal` reason reads as
+`other` in an older build.
+
+The places the apps draw share their painting helpers too: `formiga_art::paint` holds the
+material ramps, the deterministic grain (`noise`, `chance`), blending onto clear pixels without
+darkening (`over`), and the line, box, bevel, ellipse, polygon and sprite helpers, exactly as
+Formiga Home draws with them.
+
+
 ## Trips to Formiga Hill (save v26)
 
 Formiga Hill is a separate application. Desktop never needs it: without Hill installed nothing in
@@ -2443,7 +2476,9 @@ formiga-desktop ──▶ formiga-travel ──▶ formiga-core, formiga-art
                                        Formiga Hill (its own repository)
 ```
 
-`formiga-travel` is the only thing the two apps share besides `formiga-core` and `formiga-art`. It
+`formiga-travel` is the only thing the two apps share besides `formiga-core`, `formiga-art` and
+`formiga-expansion-rulebook`, the visit mechanics every companion app shares (see
+[The rulebook every visit shares](#the-rulebook-every-visit-shares)). It
 holds four documents — the `TravelSnapshot` Desktop writes, Hill's `Acknowledgement` and
 `ReturnReceipt`, and Desktop's `Recall` — with their bounds, sanitizing and validation, the atomic
 writer and bounded reader both sides use, and `project_colony`, the one-way projection from a
@@ -2583,9 +2618,10 @@ installed, a click on a house opens the house's own menu, and its first item loo
 
 `formiga-home-contract` is the agreement, kept in Desktop's workspace as `formiga-travel` is, and
 Formiga Home builds against it by Desktop's release tag. It was drafted beside Home and adopted
-unchanged in 0.67.0, its golden fixtures with it. It is built on `formiga-travel` where the two say
-the same thing: a resident is the very `Traveler` a trip would carry, documents are written whole
-and read bounded the same way, and text is made safe the same way. Six documents pass through a
+unchanged in 0.67.0, its golden fixtures with it. A resident is the very `Traveler` a trip would carry,
+and everything a visit shares with a trip (the session's identifier, documents written whole and
+read bounded, text made safe, the reasons for turning a visit away) is
+`formiga-expansion-rulebook`'s. Six documents pass through a
 visit's session directory: Desktop's `snapshot.json` (`HomeSnapshot`: the household, any close
 friends from other houses lent for the visit, bonds between them in travel's bands, who keeps every
 other house, everything the colony can show, and what Desktop offers to take back) and

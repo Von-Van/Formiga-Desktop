@@ -12,7 +12,8 @@ use crate::state::HomeState;
 use crate::{
     ACK_FORMAT, HOME_FORMAT_VERSION, HomeSnapshot, RECALL_FORMAT, RECEIPT_FORMAT, RESULT_FORMAT,
 };
-use formiga_travel::{SessionId, TravelerId, is_sanitized, sanitize_text};
+use formiga_expansion_rulebook::{SessionId, is_sanitized, sanitize_text};
+use formiga_travel::TravelerId;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -44,21 +45,11 @@ impl SessionSeal {
     }
 }
 
-/// Why Home could not take the household.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AckRefusal {
-    /// The snapshot or state needs a newer reader than this Home has; `reads` is the newest Home
-    /// version it has.
-    UnsupportedVersion { reads: u32 },
-    /// The snapshot or state did not check out.
-    Invalid,
-    /// Home already has a house open.
-    Busy,
-    /// Anything a newer Home says that this build does not know.
-    #[serde(other)]
-    Other,
-}
+/// Why Home could not take the household: `unsupported_version` with the newest Home version it
+/// reads, `invalid` when the snapshot or state did not check out, `busy` while a house is open
+/// already, and `other` for anything a newer Home says. Every companion app refuses in the same
+/// words, so this is the rulebook's.
+pub use formiga_expansion_rulebook::AckRefusal;
 
 /// Home's answer once it has read the snapshot and the state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

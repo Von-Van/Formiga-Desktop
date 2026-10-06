@@ -29,6 +29,11 @@
 //! exactly as it left. A receipt can only ever add the small, fixed set of things listed in
 //! [`ReturnEffect`], and Desktop applies only those it names in the snapshot's capabilities.
 //!
+//! How any visit's documents are bounded, version-checked and written whole, the session's
+//! identifier, how text is made safe, and the reasons Hill can give for turning a colony away are
+//! shared with every companion app, and live in `formiga-expansion-rulebook`; they are re-exported
+//! here under the names Hill has always used.
+//!
 //! # Versions
 //!
 //! Every document carries its `format`, the `version` it was written as, and the
@@ -66,7 +71,6 @@ mod projection;
 mod receipt;
 pub mod sample;
 mod snapshot;
-mod text;
 
 pub use appearance::{
     BodyFamily, BrowStyle, CheekStyle, DesignRecipe, EffectMotif, EyeShape, ForelimbStyle,
@@ -78,7 +82,8 @@ pub use document::{
     Document, TravelError, decode, encode, read_bounded, read_document, sha256_hex,
     write_atomically, write_document,
 };
-pub use ids::{SessionId, TravelerId};
+pub use formiga_expansion_rulebook::{SessionId, is_sanitized, sanitize_text};
+pub use ids::TravelerId;
 pub use projection::{ProjectionError, project_colony, reader_for_colony};
 pub use receipt::{
     AckRefusal, Acknowledgement, Recall, RecallReason, ReturnEffect, ReturnReceipt, SnapshotSeal,
@@ -88,7 +93,6 @@ pub use snapshot::{
     Presentation, TemperamentKind, Tension, Theme, Trait, TravelAccessory, TravelAxes,
     TravelCharacter, TravelMotion, TravelRelationship, TravelRole, TravelSnapshot, Traveler,
 };
-pub use text::{is_sanitized, sanitize_text};
 
 /// The version of every travel document this build writes, and the newest it reads.
 pub const TRAVEL_FORMAT_VERSION: u32 = 4;
