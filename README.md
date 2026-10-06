@@ -1,4 +1,4 @@
-# Formiga · v0.67.1
+# Formiga · v0.67.3
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.1-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.3-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,15 +107,16 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.1
+## New in 0.67.3
 
-Companions stay whole on screen when you have more than one display, or have told them to keep to
-part of one. Before, a companion could walk up to the edge of a display and half vanish there,
-because each display draws only the companions standing on it, and one kept to a corner of the
-screen could poke out past its side. Now the edges of every display, and of every area you allow
-them, are walls a companion keeps its whole body behind, at whatever size you draw them and
-whatever scaling each display uses. It follows 0.67.0, which lets Formiga open its houses in
-Formiga Home and brought Formiga Hill's Fairground souvenirs home to the Journal.
+Formiga Hill and Formiga Home have each had a round of polish, and from this release all three
+apps share one version number, so Formiga 0.67.3, Formiga Hill 0.67.3 and Formiga Home 0.67.3 go
+together. In Formiga Home, residents no longer slide across the floor: after about 25 seconds in a
+house, every walk froze on one frame, and the drawing Home shares with Formiga now keeps it
+turning. They also step up onto seats and beds instead of jumping. Formiga Hill's controls now sit
+on the scene itself, on paper and in Formiga's own lettering, story lines appear over whoever is
+speaking, and idle companions keep moving however long a visit lasts. Your desktop companions
+behave just as before; update Formiga Hill and Formiga Home to 0.67.3 alongside.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
