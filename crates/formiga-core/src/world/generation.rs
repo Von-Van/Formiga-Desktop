@@ -171,6 +171,7 @@ fn generate_creature(
     );
     let appearance = AppearanceGenome {
         design: None,
+        sculpt: None,
         family,
         logical_size: {
             let _former_size: u8 = appearance_rng.random_range(34..=40);

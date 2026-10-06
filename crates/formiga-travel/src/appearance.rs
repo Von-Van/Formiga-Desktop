@@ -281,7 +281,8 @@ impl From<&core::AppearanceGenome> for TravelAppearance {
 }
 
 impl TravelAppearance {
-    /// The genome the art crate draws from, exactly as Desktop held it.
+    /// The genome the art crate draws from, exactly as Desktop held it. A form sculpted in
+    /// Formiga Farm does not travel: it is drawn as the recipe Desktop keeps beside it.
     pub fn to_genome(&self) -> Result<core::AppearanceGenome, TravelError> {
         self.validate()?;
         Ok(core::AppearanceGenome {
@@ -290,6 +291,7 @@ impl TravelAppearance {
                 .as_ref()
                 .map(core::CreatureDesign::try_from)
                 .transpose()?,
+            sculpt: None,
             family: self.family.into(),
             logical_size: self.logical_size,
             body_width: self.body_width,

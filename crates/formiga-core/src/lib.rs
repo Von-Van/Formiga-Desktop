@@ -8,6 +8,7 @@ mod companion;
 mod cursor;
 mod daybook;
 mod design;
+pub mod forms;
 mod habitat;
 mod habits;
 mod model;
@@ -92,4 +93,4 @@ pub use world::{
     wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 28;
+pub const SAVE_VERSION: u32 = 29;

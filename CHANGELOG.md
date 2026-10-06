@@ -2,6 +2,18 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Room for a companion reshaped in Formiga Farm on one of seven new body plans: compact, large and
+  tall four-legged bodies, an upright body, a floater, a crawler and a percher. Save version 29
+  keeps the form beside the companion recipe nearest it, and every creature drawn from a recipe or
+  its genes is written exactly as before. A reshaped companion is drawn as itself everywhere a
+  companion is, with its every expression and whatever it wears, and as the nearest companion by
+  anything that cannot draw the new bodies, such as an earlier Formiga Hill or Home or a share code.
+  `formiga-tools forms-sheet` draws every new body in the poses it is seen in most.
+
 ## [0.67.3] - 2026-10-06
 
 Released together with Formiga Hill 0.67.3 and Formiga Home 0.67.3, which take its version number

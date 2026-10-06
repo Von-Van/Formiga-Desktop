@@ -275,6 +275,11 @@ pub enum TailStyle {
 pub struct AppearanceGenome {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub design: Option<crate::CreatureDesign>,
+    /// A form sculpted in Formiga Farm on one of the newer body plans, drawn in place of the
+    /// recipe, which is kept as the companion plan nearest it for anything that cannot draw
+    /// sculpts. Absent from the file for every creature drawn from its recipe or its genes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sculpt: Option<crate::forms::Sculpt>,
     pub family: BodyFamily,
     pub logical_size: u8,
     pub body_width: u8,
