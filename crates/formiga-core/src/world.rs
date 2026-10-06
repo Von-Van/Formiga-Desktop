@@ -488,6 +488,7 @@ impl World {
                         creature,
                         desktop,
                         &self.save.settings.habitat,
+                        self.save.settings.display_scale,
                         &mut self.events,
                     );
                     if !previous_plan.repaired
@@ -690,6 +691,7 @@ impl World {
                         &self.save.settings.habitat,
                         self.save.settings.reduce_motion,
                         self.save.settings.window_ledges,
+                        self.save.settings.display_scale,
                     )
                 };
                 if let Some((surface, bounced)) = landing {
@@ -735,7 +737,12 @@ impl World {
 
             if self.attention.owns(creature.id) {
                 if !self.attention.crosses_displays(creature.id) {
-                    constrain_to_surface(creature, desktop, &self.save.settings.habitat);
+                    constrain_to_surface(
+                        creature,
+                        desktop,
+                        &self.save.settings.habitat,
+                        self.save.settings.display_scale,
+                    );
                 }
                 continue;
             }
@@ -756,6 +763,7 @@ impl World {
                         creature,
                         desktop,
                         &self.save.settings.habitat,
+                        self.save.settings.display_scale,
                         &mut self.events,
                     );
                     continue;
@@ -791,6 +799,7 @@ impl World {
                         creature,
                         desktop,
                         &self.save.settings.habitat,
+                        self.save.settings.display_scale,
                         &mut self.events,
                     );
                     continue;
@@ -1387,6 +1396,7 @@ impl World {
                         &self.save.settings.habitat,
                         &desktop.monitors,
                         creature.state.position,
+                        self.save.settings.display_scale,
                     )
                     && (floor.y - creature.state.position.y).abs() > 0.5
                 {
@@ -1544,12 +1554,15 @@ impl World {
             // arriving: the constraint turns it round, and letting go of the target it cannot
             // reach is what stops it stepping straight back out and being put back every tick.
             // Without this a creature spends the rest of its walk shivering against the wall.
-            if constrain_to_surface(creature, desktop, &self.save.settings.habitat)
-                && matches!(
-                    creature.state.action,
-                    ActionKind::Traverse | ActionKind::Sprint
-                )
-                && let Some(choice) = self.action_choices.get_mut(&creature.id)
+            if constrain_to_surface(
+                creature,
+                desktop,
+                &self.save.settings.habitat,
+                self.save.settings.display_scale,
+            ) && matches!(
+                creature.state.action,
+                ActionKind::Traverse | ActionKind::Sprint
+            ) && let Some(choice) = self.action_choices.get_mut(&creature.id)
             {
                 choice.target_point = None;
             }
@@ -1606,6 +1619,7 @@ impl World {
             desktop,
             &self.save.settings.habitat,
             &unconstrained,
+            self.save.settings.display_scale,
         );
         self.resolve_overlaps(dt, desktop);
         self.advance_flourishes();

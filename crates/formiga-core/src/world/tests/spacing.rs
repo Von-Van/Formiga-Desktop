@@ -130,8 +130,10 @@ fn a_long_session_ends_with_every_face_clear() {
         world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
         world.drain_events().for_each(drop);
     }
-    // Let the desktop hold still, the way it does when the user stops working.
-    for step in 1_400_i64..1_600 {
+    // Let the desktop hold still, the way it does when the user stops working — long enough for
+    // a climb already under way when it stopped to land and step aside, since a companion still
+    // on its way up a window is passing, not standing.
+    for step in 1_400_i64..1_800 {
         world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
         world.drain_events().for_each(drop);
     }

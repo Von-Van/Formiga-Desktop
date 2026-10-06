@@ -90,10 +90,14 @@ fn corridor_allows(
     accessible_regions(&settings.habitat, monitor)
         .iter()
         .any(|region| {
+            let (low, high) = standing_span(
+                region.x,
+                region.right(),
+                body_half_width(monitor, settings.display_scale),
+            );
             region.contains(start)
                 && region.contains(destination)
-                && destination.x >= region.x + 8.0
-                && destination.x <= region.right() - 8.0
+                && (low..=high).contains(&destination.x)
         })
 }
 

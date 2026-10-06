@@ -11,6 +11,7 @@ mod bubbles;
 mod colony_management;
 mod companion;
 mod discovery;
+mod edges;
 mod experience;
 mod habits;
 mod hangouts;

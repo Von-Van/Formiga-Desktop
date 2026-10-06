@@ -350,6 +350,7 @@ fn swept_toss_lands_on_ledges_bounces_once_and_settles() {
         &desktop,
         &HabitatPolicy::default(),
         true,
+        3,
     )
     .expect("sweep should find the window before the floor");
     assert_eq!(swept.1.kind, SurfaceKind::WindowLedge);
@@ -360,6 +361,7 @@ fn swept_toss_lands_on_ledges_bounces_once_and_settles() {
         &desktop,
         &HabitatPolicy::default(),
         false,
+        3,
     )
     .expect("disabled ledges should still leave a floor");
     assert_eq!(floor_only.1.kind, SurfaceKind::ScreenFloor);
@@ -396,6 +398,7 @@ fn swept_toss_lands_on_ledges_bounces_once_and_settles() {
             &HabitatPolicy::default(),
             false,
             true,
+            3,
         );
         if landed.is_some() {
             break;
@@ -425,6 +428,7 @@ fn swept_toss_lands_on_ledges_bounces_once_and_settles() {
         &HabitatPolicy::default(),
         false,
         true,
+        3,
     )
     .expect("low-energy impact should settle immediately");
     assert!(!first_impact.1);
@@ -451,6 +455,7 @@ fn swept_toss_lands_on_ledges_bounces_once_and_settles() {
             &HabitatPolicy::default(),
             false,
             true,
+            3,
         )
         .is_some()
     );

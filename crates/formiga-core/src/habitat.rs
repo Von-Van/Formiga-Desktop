@@ -75,7 +75,7 @@ pub fn resolved_colony_object_position(
         })
         .min_by(|a, b| a.2.total_cmp(&b.2))
         .map(|(monitor_id, point, _)| (monitor_id, point))
-        .or_else(|| nearest_habitat_point(policy, monitors, intended))
+        .or_else(|| nearest_floor_point(policy, monitors, intended, |_| MIN_WALL_CLEARANCE))
 }
 
 /// What stands on a lot in the village strip beside the colony house.
@@ -1293,19 +1293,86 @@ pub fn habitat_contains(policy: &HabitatPolicy, monitor: &MonitorInfo, point: Po
         .any(|region| region.contains(point))
 }
 
+/// The least room any wall leaves a creature's feet, in points, however small it is drawn.
+const MIN_WALL_CLEARANCE: f32 = 8.0;
+
+/// Half the width a creature's frame draws on `monitor`, in desktop points.
+///
+/// Each display's overlay draws only the creatures standing on it, so whatever of a frame reaches
+/// past the side of its display is drawn nowhere at all — and past the side of a region the
+/// habitat allows, it is drawn where the person asked it not to be. Feet kept this far in from
+/// either side keep the whole frame inside.
+pub fn body_half_width(monitor: &MonitorInfo, display_scale: u8) -> f32 {
+    (CREATURE_FRAME_WIDTH * f32::from(display_scale) / monitor.scale_factor.max(1.0) / 2.0)
+        .max(MIN_WALL_CLEARANCE)
+}
+
+/// The run between `low` and `high` a creature's feet may use with its whole body inside: each
+/// end brought in by `half`. A run narrower than one creature has a single place to stand, in its
+/// middle.
+pub fn standing_span(low: f32, high: f32, half: f32) -> (f32, f32) {
+    let (min, max) = (low + half, high - half);
+    if min <= max {
+        (min, max)
+    } else {
+        let middle = (low + high) / 2.0;
+        (middle, middle)
+    }
+}
+
+/// `x` brought onto the part of `region` a creature can stand on whole.
+pub fn clamp_to_standing(x: f32, region: DesktopRect, half: f32) -> f32 {
+    let (min, max) = standing_span(region.x, region.right(), half);
+    x.clamp(min, max)
+}
+
+/// `point` with the creature standing there kept whole inside whichever of `regions` holds it,
+/// brought in from the sides of the region it would reach past. Regions cut around an exclusion
+/// overlap, so a point any of them already holds whole is left alone; a point none of them holds
+/// is returned as it is, for the caller's own fallback.
+pub fn keep_whole_in(point: Point, regions: &[DesktopRect], half: f32) -> Point {
+    let mut nearest: Option<(f32, f32)> = None;
+    for region in regions.iter().filter(|region| region.contains(point)) {
+        let x = clamp_to_standing(point.x, *region, half);
+        if x == point.x {
+            return point;
+        }
+        let moved = (x - point.x).abs();
+        if nearest.is_none_or(|(_, best)| moved < best) {
+            nearest = Some((x, moved));
+        }
+    }
+    nearest.map_or(point, |(x, _)| Point { x, ..point })
+}
+
+/// The nearest point on any habitat floor where a whole creature fits, and the display it is on.
 pub fn nearest_habitat_point(
     policy: &HabitatPolicy,
     monitors: &[MonitorInfo],
     point: Point,
+    display_scale: u8,
+) -> Option<(u64, Point)> {
+    nearest_floor_point(policy, monitors, point, |monitor| {
+        body_half_width(monitor, display_scale)
+    })
+}
+
+/// The nearest point on any habitat floor at least `half(monitor)` in from either side.
+fn nearest_floor_point(
+    policy: &HabitatPolicy,
+    monitors: &[MonitorInfo],
+    point: Point,
+    half: impl Fn(&MonitorInfo) -> f32,
 ) -> Option<(u64, Point)> {
     monitors
         .iter()
         .flat_map(|monitor| {
+            let half = half(monitor);
             accessible_regions(policy, monitor)
                 .into_iter()
                 .map(move |region| {
                     let candidate = Point {
-                        x: point.x.clamp(region.x + 8.0, region.right() - 8.0),
+                        x: clamp_to_standing(point.x, region, half),
                         y: region.bottom() - 4.0,
                     };
                     (monitor.id, candidate, point.distance(candidate))
@@ -2485,13 +2552,15 @@ mod tests {
                 Point {
                     x: -200.0,
                     y: -100.0
-                }
+                },
+                3,
             )
             .map(|(id, _)| id),
             Some(2)
         );
         assert_eq!(
-            nearest_habitat_point(&policy, &both, Point { x: 800.0, y: 700.0 }).map(|(id, _)| id),
+            nearest_habitat_point(&policy, &both, Point { x: 800.0, y: 700.0 }, 3)
+                .map(|(id, _)| id),
             Some(1)
         );
         assert!(validate_habitat(&policy, &[monitor()]).is_ok());

@@ -1169,7 +1169,8 @@ pub(in super::super) mod tests {
         let (mut w, mut d, now) = scene(false);
         quiet_pair(&mut w, 0);
         // Everything but a short stretch of this ledge is out of bounds, so a player in the
-        // middle of it has no stride left in either direction.
+        // middle of it has no stride left in either direction. The stretch is a body wider than
+        // the ground the two can stand on, because a companion keeps its whole self inside.
         let display = d.monitors[0].display_key;
         for (id, bounds) in [
             (
@@ -1177,16 +1178,16 @@ pub(in super::super) mod tests {
                 DesktopRect {
                     x: 0.0,
                     y: 0.0,
-                    width: 690.0 / 1_440.0,
+                    width: 674.0 / 1_440.0,
                     height: 1.0,
                 },
             ),
             (
                 992,
                 DesktopRect {
-                    x: 775.0 / 1_440.0,
+                    x: 791.0 / 1_440.0,
                     y: 0.0,
-                    width: 1.0 - 775.0 / 1_440.0,
+                    width: 1.0 - 791.0 / 1_440.0,
                     height: 1.0,
                 },
             ),

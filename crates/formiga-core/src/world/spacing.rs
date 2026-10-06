@@ -818,7 +818,8 @@ impl World {
                 return false;
             }
             regions.iter().any(|region| {
-                region.contains(point) && x >= region.x + 8.0 && x <= region.right() - 8.0
+                let (low, high) = standing_span(region.x, region.right(), mover.width / 2.0);
+                region.contains(point) && (low..=high).contains(&x)
             }) && self.spot_unclaimed(mover, point)
         };
         let reach = mover.width * FULL_CLEAR_RATIO * 2.0 + STEP_POINTS;
@@ -984,7 +985,12 @@ impl World {
             .collect();
         for id in shuffling {
             if let Some(creature) = creature_mut(&mut self.save.creatures, id) {
-                constrain_to_surface(creature, desktop, &self.save.settings.habitat);
+                constrain_to_surface(
+                    creature,
+                    desktop,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                );
             }
         }
     }
@@ -1051,6 +1057,7 @@ impl World {
             desktop,
             &self.save.settings.habitat,
             false,
+            self.save.settings.display_scale,
         ) else {
             return false;
         };

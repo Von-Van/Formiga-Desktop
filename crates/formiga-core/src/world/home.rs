@@ -1328,6 +1328,7 @@ impl World {
                     &self.save.settings.habitat,
                     &desktop.monitors,
                     creature.state.position,
+                    self.save.settings.display_scale,
                 )
                 && (floor.y - creature.state.position.y).abs() > 0.5
             {
@@ -1358,6 +1359,7 @@ impl World {
                         creature,
                         desktop,
                         &self.save.settings.habitat,
+                        self.save.settings.display_scale,
                         &mut self.events,
                     );
                     continue;
@@ -1465,6 +1467,7 @@ impl World {
                         creature,
                         desktop,
                         &self.save.settings.habitat,
+                        self.save.settings.display_scale,
                         &mut self.events,
                     );
                     continue;

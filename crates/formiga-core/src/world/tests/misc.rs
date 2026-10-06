@@ -203,6 +203,7 @@ fn stale_monitor_ids_rebind_all_arrived_creatures_instead_of_hiding_them() {
         &desktop,
         &world.save.settings.habitat,
         &[],
+        3,
     );
     assert_eq!(world.save.creatures.len(), 2);
     assert!(

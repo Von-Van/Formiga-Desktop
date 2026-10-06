@@ -531,22 +531,34 @@ pub(super) fn settle_interrupted_journey(
     creature: &mut Creature,
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
+    display_scale: u8,
     events: &mut Vec<WorldEvent>,
 ) {
-    let support = find_drop_support(creature.state.position, desktop, policy, true).or_else(|| {
-        nearest_habitat_point(policy, &desktop.monitors, creature.state.position).map(
-            |(monitor_id, position)| {
-                (
-                    position,
-                    SurfaceAttachment {
-                        kind: SurfaceKind::ScreenFloor,
-                        monitor_id,
-                        window_key: None,
-                        relative_x: 0.5,
-                    },
-                )
-            },
+    let support = find_drop_support(
+        creature.state.position,
+        desktop,
+        policy,
+        true,
+        display_scale,
+    )
+    .or_else(|| {
+        nearest_habitat_point(
+            policy,
+            &desktop.monitors,
+            creature.state.position,
+            display_scale,
         )
+        .map(|(monitor_id, position)| {
+            (
+                position,
+                SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id,
+                    window_key: None,
+                    relative_x: 0.5,
+                },
+            )
+        })
     });
     if let Some((position, surface)) = support {
         creature.state.position = position;
@@ -646,6 +658,21 @@ pub(super) fn find_nearby_ledge(
                     y: window.bounds.y,
                 })
             })?;
+            // A window can run past the side of its display or of the habitat: the spot on it
+            // worth climbing to is one where the whole companion is still drawn, and still on
+            // the window.
+            let ledge_x = keep_whole_in(
+                Point {
+                    x: ledge_x,
+                    y: window.bounds.y,
+                },
+                &accessible_regions(policy, monitor),
+                body_half_width(monitor, display_scale),
+            )
+            .x;
+            if !(window.bounds.x + 12.0..=window.bounds.right() - 12.0).contains(&ledge_x) {
+                return None;
+            }
             // From the floor, any window is worth climbing however tall it stands, so long as
             // a companion sitting on top of it still fits below the top of the screen: a big
             // window is most of what a desktop has to climb. From one ledge to another the reach
@@ -763,6 +790,7 @@ pub(super) fn constrain_to_surface(
     creature: &mut Creature,
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
+    display_scale: u8,
 ) -> bool {
     if let Some(key) = creature.state.surface.window_key
         && let Some(window) = desktop.windows.iter().find(|window| window.key == key)
@@ -774,12 +802,16 @@ pub(super) fn constrain_to_surface(
         else {
             return false;
         };
+        // A ledge ends at the window's own corners, and at the sides of the display or of the
+        // habitat it runs past: there the whole companion has to stay inside.
+        let half = body_half_width(monitor, display_scale);
         let intervals: Vec<_> = accessible_regions(policy, monitor)
             .into_iter()
             .filter(|region| window.bounds.y >= region.y && window.bounds.y <= region.bottom())
             .filter_map(|region| {
-                let min = (window.bounds.x + 12.0).max(region.x + 8.0);
-                let max = (window.bounds.right() - 12.0).min(region.right() - 8.0);
+                let (low, high) = standing_span(region.x, region.right(), half);
+                let min = (window.bounds.x + 12.0).max(low);
+                let max = (window.bounds.right() - 12.0).min(high);
                 (max > min).then_some((min, max))
             })
             .collect();
@@ -818,14 +850,16 @@ pub(super) fn constrain_to_surface(
             .find(|monitor| monitor.id == creature.state.surface.monitor_id)
     {
         let regions = accessible_regions(policy, monitor);
+        let half = body_half_width(monitor, display_scale);
+        let span = |region: &DesktopRect| standing_span(region.x, region.right(), half);
         if let Some(region) = regions.iter().min_by(|a, b| {
-            distance_to_interval(creature.state.position.x, (a.x + 8.0, a.right() - 8.0)).total_cmp(
-                &distance_to_interval(creature.state.position.x, (b.x + 8.0, b.right() - 8.0)),
-            )
+            distance_to_interval(creature.state.position.x, span(a))
+                .total_cmp(&distance_to_interval(creature.state.position.x, span(b)))
         }) {
             // The same rule on the floor: the ends of the ground a creature is allowed on are
-            // walls, and walking into one is arriving, not a reason to keep pushing.
-            let (low, high) = (region.x + 8.0, region.right() - 8.0);
+            // walls, half a body in so none of it is cut off, and walking into one is arriving,
+            // not a reason to keep pushing.
+            let (low, high) = span(region);
             let held = creature.state.position.x <= low || creature.state.position.x >= high;
             if held {
                 creature.state.facing_right = creature.state.position.x <= low;
@@ -853,6 +887,7 @@ pub(super) fn find_drop_support(
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     window_ledges: bool,
+    display_scale: u8,
 ) -> Option<(Point, SurfaceAttachment)> {
     let monitor = desktop
         .monitors
@@ -866,9 +901,18 @@ pub(super) fn find_drop_support(
     } else {
         &[]
     };
+    let half = body_half_width(monitor, display_scale);
     supports_on(windows, &regions, monitor.id)
         .filter(|span| span.y >= cursor.y)
-        .map(|span| span.place(span.nearest_x(cursor.x)))
-        .filter(|(point, _)| regions.iter().any(|region| region.contains(*point)))
+        .filter_map(|span| {
+            let (point, _) = span.place(span.nearest_x(cursor.x));
+            if !regions.iter().any(|region| region.contains(point)) {
+                return None;
+            }
+            // Landing whole: a creature let go by the side of the display or of the habitat
+            // comes down far enough in to be drawn in full, if this surface reaches that far.
+            let x = keep_whole_in(point, &regions, half).x;
+            span.holds(x).then(|| span.place(x))
+        })
         .min_by(|a, b| cursor.distance(a.0).total_cmp(&cursor.distance(b.0)))
 }

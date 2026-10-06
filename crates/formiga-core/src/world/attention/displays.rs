@@ -52,7 +52,12 @@ pub(super) struct DisplayWalk {
 }
 
 impl DisplayWalk {
-    pub(super) fn settle(self, creature: &mut Creature, desktop: &DesktopSnapshot) {
+    pub(super) fn settle(
+        self,
+        creature: &mut Creature,
+        desktop: &DesktopSnapshot,
+        display_scale: u8,
+    ) {
         let Some(monitor) = desktop
             .monitors
             .iter()
@@ -65,11 +70,11 @@ impl DisplayWalk {
         } else {
             self.target_region
         };
-        creature.state.position.x = creature
-            .state
-            .position
-            .x
-            .clamp(region.x + 8.0, region.right() - 8.0);
+        creature.state.position.x = clamp_to_standing(
+            creature.state.position.x,
+            region,
+            body_half_width(monitor, display_scale),
+        );
         creature.state.position.y = region.bottom() - 4.0;
         creature.state.velocity = Point::default();
     }
@@ -130,8 +135,14 @@ impl DisplayWalk {
                     x,
                     y: creature.state.position.y.clamp(min_y, max_y),
                 };
+                // Far enough onto the new display to be drawn there whole.
+                let whole = body_half_width(to, world.save.settings.display_scale) + 8.0;
                 let destination = Point {
-                    x: x + direction * (target.width * 0.25).clamp(24.0, 84.0),
+                    x: x + direction
+                        * (target.width * 0.25)
+                            .clamp(24.0, 84.0)
+                            .max(whole)
+                            .min(target.width / 2.0),
                     y: target.bottom() - 4.0,
                 };
                 let length = creature.state.position.distance(seam) + seam.distance(destination);
@@ -415,9 +426,12 @@ impl World {
                 continue;
             }
             let previous = creature.state.position;
-            if let Some((monitor_id, mut position)) =
-                nearest_habitat_point(&self.save.settings.habitat, &desktop.monitors, previous)
-            {
+            if let Some((monitor_id, mut position)) = nearest_habitat_point(
+                &self.save.settings.habitat,
+                &desktop.monitors,
+                previous,
+                self.save.settings.display_scale,
+            ) {
                 let monitor = desktop
                     .monitors
                     .iter()
@@ -427,6 +441,11 @@ impl World {
                     / monitor.scale_factor
                     * 0.65)
                     .clamp(24.0, 96.0);
+                let (low, high) = standing_span(
+                    monitor.usable_bounds.x,
+                    monitor.usable_bounds.right(),
+                    body_half_width(monitor, self.save.settings.display_scale),
+                );
                 // Enough slots for the whole colony on one side, since a recovery against a
                 // screen edge can only spread the other way.
                 if let Some(spaced) = (0..=2 * MAX_COLONY_CREATURES)
@@ -437,8 +456,7 @@ impl World {
                             y: position.y,
                         };
                         (habitat_contains(&self.save.settings.habitat, monitor, candidate)
-                            && candidate.x >= monitor.usable_bounds.x + 8.0
-                            && candidate.x <= monitor.usable_bounds.right() - 8.0
+                            && (low..=high).contains(&candidate.x)
                             && !self.save.creatures.iter().any(|other| {
                                 other.id != id
                                     && other.state.surface.monitor_id == monitor_id

@@ -644,11 +644,12 @@ impl World {
             .into_iter()
             .find(|region| region.contains(spot))?;
         let outward = self.save.home.corner == HomeCorner::BottomLeft;
-        let edge = if outward {
-            region.right() - 8.0
-        } else {
-            region.x + 8.0
-        };
+        let (low, high) = standing_span(
+            region.x,
+            region.right(),
+            body_half_width(monitor, self.save.settings.display_scale),
+        );
+        let edge = if outward { high } else { low };
         let reach = (edge - spot.x).abs().min(VISITS.max_walk);
         Some(GuestStage {
             monitor_id,

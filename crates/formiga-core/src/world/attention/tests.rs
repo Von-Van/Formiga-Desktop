@@ -1003,7 +1003,9 @@ fn approaches_respect_excluded_strips_and_reduced_motion() {
                 kind: HabitatZoneKind::Excluded,
                 enabled: true,
                 normalized_bounds: DesktopRect {
-                    x: 510.0 / 1440.0,
+                    // Half a body clear of where the creature stands: the strip is a wall it
+                    // keeps its whole self behind.
+                    x: 516.0 / 1440.0,
                     y: 0.0,
                     width: 24.0 / 1440.0,
                     height: 1.0,

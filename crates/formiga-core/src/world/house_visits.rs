@@ -22,6 +22,7 @@ impl World {
     ) -> Vec<CreatureId> {
         self.end_house_visit();
         let policy = self.save.settings.habitat.clone();
+        let display_scale = self.save.settings.display_scale;
         let mut lent = Vec::new();
         for &id in ids {
             let held = self
@@ -65,6 +66,7 @@ impl World {
                     &policy,
                     &desktop.monitors,
                     creature.state.position,
+                    display_scale,
                 )
             {
                 creature.state.position = position;

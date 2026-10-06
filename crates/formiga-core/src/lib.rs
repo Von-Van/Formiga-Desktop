@@ -44,11 +44,12 @@ pub use habitat::{
     DWELLING_DRAWN_HEIGHT, DwellingKind, GroundItem, HANGOUT_WIDTH, HomeCommons, HouseOwners,
     MAX_HABITAT_ZONES, OBJECT_WIDTH, REST_CLEAR_RATIO, REST_WALL_SLIVER, RESTING_WIDTH,
     TREE_OVERLAP, TREE_WIDTH, TRINKETS_PER_TREE, TreeEnd, VILLAGE_SPAN_LIMIT, VillageLot,
-    accessible_regions, colony_cottage_list, colony_cottages, habitat_contains, home_anchor,
-    home_commons, home_dwelling_position, home_ground_positions, home_guest_position,
-    home_hangout_positions, home_lot_widths, home_object_position, home_object_positions,
-    home_resting_position, home_tree_position, house_owners, house_roof_height, house_slot_for,
-    nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, validate_habitat,
+    accessible_regions, body_half_width, clamp_to_standing, colony_cottage_list, colony_cottages,
+    habitat_contains, home_anchor, home_commons, home_dwelling_position, home_ground_positions,
+    home_guest_position, home_hangout_positions, home_lot_widths, home_object_position,
+    home_object_positions, home_resting_position, home_tree_position, house_owners,
+    house_roof_height, house_slot_for, keep_whole_in, nearest_habitat_point,
+    resolved_colony_object_position, resolved_home_anchor, standing_span, validate_habitat,
     village_span,
 };
 pub use habits::{

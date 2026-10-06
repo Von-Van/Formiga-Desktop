@@ -193,9 +193,13 @@ impl World {
                 x: start.x + direction * 25.0 * scale,
                 y: start.y,
             };
-            let Some((landing, surface)) =
-                find_drop_support(ray, desktop, &self.save.settings.habitat, true)
-            else {
+            let Some((landing, surface)) = find_drop_support(
+                ray,
+                desktop,
+                &self.save.settings.habitat,
+                true,
+                self.save.settings.display_scale,
+            ) else {
                 return false;
             };
             if landing.y - start.y < 30.0
@@ -303,6 +307,7 @@ impl World {
                     desktop,
                     &self.save.settings.habitat,
                     self.save.settings.window_ledges,
+                    self.save.settings.display_scale,
                 );
             }
             self.cancel_creature_attention(id);

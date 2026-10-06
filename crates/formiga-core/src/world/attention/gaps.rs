@@ -586,6 +586,7 @@ impl World {
                     creature,
                     desktop,
                     &self.save.settings.habitat,
+                    self.save.settings.display_scale,
                     &mut self.events,
                 );
             }

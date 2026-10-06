@@ -319,7 +319,8 @@ mod tests {
                     kind: HabitatZoneKind::Excluded,
                     enabled: true,
                     normalized_bounds: DesktopRect {
-                        x: 440.0 / 1440.0,
+                        // Half a body behind the creature: its whole self is against the wall.
+                        x: 420.0 / 1440.0,
                         y: 0.0,
                         width: 24.0 / 1440.0,
                         height: 1.0,

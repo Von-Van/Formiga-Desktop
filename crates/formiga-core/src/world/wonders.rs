@@ -886,6 +886,7 @@ impl World {
                     creature,
                     desktop,
                     &self.save.settings.habitat,
+                    self.save.settings.display_scale,
                     &mut self.events,
                 ),
                 _ => {
@@ -1051,7 +1052,13 @@ impl World {
             };
             let start_dx = start_offset(kind, role);
             let start = active.place(start_dx, 0.0);
-            let Some(legs) = wonder_route(creature, ground, start, desktop) else {
+            let Some(legs) = wonder_route(
+                creature,
+                ground,
+                start,
+                desktop,
+                self.save.settings.display_scale,
+            ) else {
                 if role == Role::Lead || kind.seats() == WonderSeats::Two {
                     return false;
                 }
@@ -1169,12 +1176,14 @@ impl World {
         } else {
             let on_ledge = lead.state.surface.window_key;
             for region in accessible_regions(policy, monitor) {
+                // The floor's ends are walls half a body in, as everywhere else.
+                let (low, high) = standing_span(region.x, region.right(), frame / 2.0);
                 runs.push((
                     Ground::Floor {
                         monitor: monitor.id,
                     },
-                    region.x + 8.0,
-                    region.right() - 8.0,
+                    low,
+                    high,
                     region.bottom() - 4.0,
                     if on_ledge.is_none() { 3.0 } else { 2.0 },
                 ));
@@ -1506,6 +1515,7 @@ fn wonder_route(
     ground: Ground,
     start: Point,
     desktop: &DesktopSnapshot,
+    display_scale: u8,
 ) -> Option<VecDeque<Leg>> {
     let mut legs = VecDeque::new();
     if ground.holds(creature) {
@@ -1532,10 +1542,11 @@ fn wonder_route(
             .monitors
             .iter()
             .find(|m| m.id == from.state.surface.monitor_id)?;
+        let half = body_half_width(monitor, display_scale);
         let floor = Point {
             x: from.state.position.x.clamp(
-                monitor.usable_bounds.x + 8.0,
-                monitor.usable_bounds.right() - 8.0,
+                monitor.usable_bounds.x + half,
+                (monitor.usable_bounds.right() - half).max(monitor.usable_bounds.x + half),
             ),
             y: monitor.usable_bounds.bottom() - 4.0,
         };

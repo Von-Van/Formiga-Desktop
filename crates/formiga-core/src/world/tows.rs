@@ -285,7 +285,12 @@ impl World {
                 }
             }
             if let Some(creature) = self.save.creatures.iter_mut().find(|c| c.id == tow.tower) {
-                constrain_to_surface(creature, desktop, &self.save.settings.habitat);
+                constrain_to_surface(
+                    creature,
+                    desktop,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                );
             }
             self.tows.slots[index] = Some(tow);
         }

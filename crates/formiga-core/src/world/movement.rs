@@ -245,6 +245,7 @@ pub(super) fn keep_creatures_in_habitat(
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     unconstrained: &[CreatureId],
+    display_scale: u8,
 ) {
     let primary = desktop
         .monitors
@@ -274,9 +275,12 @@ pub(super) fn keep_creatures_in_habitat(
             creature.state.surface.monitor_id = monitor.id;
             let regions = accessible_regions(policy, monitor);
             if regions.is_empty() {
-                if let Some((monitor_id, position)) =
-                    nearest_habitat_point(policy, &desktop.monitors, creature.state.position)
-                {
+                if let Some((monitor_id, position)) = nearest_habitat_point(
+                    policy,
+                    &desktop.monitors,
+                    creature.state.position,
+                    display_scale,
+                ) {
                     creature.state.position = position;
                     creature.state.surface = SurfaceAttachment {
                         kind: SurfaceKind::ScreenFloor,
@@ -287,20 +291,34 @@ pub(super) fn keep_creatures_in_habitat(
                 }
                 continue;
             }
+            // The sides of the display are walls half a body in: this display's overlay is the
+            // only one that draws this creature, so any of it past the side is drawn nowhere.
+            let half = body_half_width(monitor, display_scale);
             let bounds = monitor.usable_bounds;
-            if creature.state.position.x <= bounds.x + 8.0 {
-                creature.state.position.x = bounds.x + 8.0;
+            let (low, high) = standing_span(bounds.x, bounds.right(), half);
+            if creature.state.position.x <= low {
+                creature.state.position.x = low;
                 creature.state.facing_right = true;
-            } else if creature.state.position.x >= bounds.right() - 8.0 {
-                creature.state.position.x = bounds.right() - 8.0;
+            } else if creature.state.position.x >= high {
+                creature.state.position.x = high;
                 creature.state.facing_right = false;
             }
-            if !regions
+            if regions
                 .iter()
                 .any(|region| region.contains(creature.state.position))
-                && let Some((monitor_id, position)) =
-                    nearest_habitat_point(policy, &desktop.monitors, creature.state.position)
             {
+                // Inside the habitat, and inside it whole: a region's side is a wall as well.
+                let kept = keep_whole_in(creature.state.position, &regions, half);
+                if kept.x != creature.state.position.x {
+                    creature.state.facing_right = kept.x > creature.state.position.x;
+                    creature.state.position = kept;
+                }
+            } else if let Some((monitor_id, position)) = nearest_habitat_point(
+                policy,
+                &desktop.monitors,
+                creature.state.position,
+                display_scale,
+            ) {
                 creature.state.position = position;
                 creature.state.surface = SurfaceAttachment {
                     kind: SurfaceKind::ScreenFloor,

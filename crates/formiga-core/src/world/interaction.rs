@@ -88,6 +88,7 @@ impl World {
                 desktop,
                 &self.save.settings.habitat,
                 self.save.settings.window_ledges,
+                self.save.settings.display_scale,
             ) {
                 Self::emit(
                     &mut self.events,
@@ -471,22 +472,29 @@ impl World {
             );
             return true;
         }
-        let support = find_drop_support(cursor, desktop, &policy, self.save.settings.window_ledges)
-            .or_else(|| {
-                nearest_habitat_point(&policy, &desktop.monitors, cursor).map(
-                    |(monitor_id, position)| {
-                        (
-                            position,
-                            SurfaceAttachment {
-                                kind: SurfaceKind::ScreenFloor,
-                                monitor_id,
-                                window_key: None,
-                                relative_x: 0.5,
-                            },
-                        )
-                    },
-                )
-            });
+        let display_scale = self.save.settings.display_scale;
+        let support = find_drop_support(
+            cursor,
+            desktop,
+            &policy,
+            self.save.settings.window_ledges,
+            display_scale,
+        )
+        .or_else(|| {
+            nearest_habitat_point(&policy, &desktop.monitors, cursor, display_scale).map(
+                |(monitor_id, position)| {
+                    (
+                        position,
+                        SurfaceAttachment {
+                            kind: SurfaceKind::ScreenFloor,
+                            monitor_id,
+                            window_key: None,
+                            relative_x: 0.5,
+                        },
+                    )
+                },
+            )
+        });
         let Some((position, surface)) = support else {
             creature.state.position = interaction.original_position;
             creature.state.surface = interaction.original_surface;
@@ -566,9 +574,12 @@ impl World {
             if self.house_visit.contains(&creature.id) {
                 continue;
             }
-            if let Some((monitor_id, mut position)) =
-                nearest_habitat_point(&policy, &desktop.monitors, creature.state.position)
-            {
+            if let Some((monitor_id, mut position)) = nearest_habitat_point(
+                &policy,
+                &desktop.monitors,
+                creature.state.position,
+                display_scale,
+            ) {
                 let clear = spacing::creature_frame_width(creature, display_scale, desktop)
                     * spacing::FULL_CLEAR_RATIO;
                 for _ in 0..taken.len() {
@@ -580,7 +591,7 @@ impl World {
                     position.x = occupied.x + clear;
                 }
                 if let Some((_, settled)) =
-                    nearest_habitat_point(&policy, &desktop.monitors, position)
+                    nearest_habitat_point(&policy, &desktop.monitors, position, display_scale)
                 {
                     position = settled;
                 }
@@ -601,6 +612,7 @@ impl World {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn advance_toss(
     creature: &mut Creature,
     toss: &mut TossState,
@@ -609,10 +621,18 @@ pub(super) fn advance_toss(
     policy: &HabitatPolicy,
     reduce_motion: bool,
     window_ledges: bool,
+    display_scale: u8,
 ) -> Option<(SurfaceAttachment, bool)> {
     toss.elapsed += dt;
     if reduce_motion || toss.elapsed >= TOSS_MAX_DURATION {
-        return settle_toss(creature, toss, desktop, policy, window_ledges);
+        return settle_toss(
+            creature,
+            toss,
+            desktop,
+            policy,
+            window_ledges,
+            display_scale,
+        );
     }
 
     let previous = creature.state.position;
@@ -624,8 +644,14 @@ pub(super) fn advance_toss(
     };
 
     if creature.state.velocity.y > 0.0
-        && let Some((impact, surface)) =
-            find_swept_support(previous, next, desktop, policy, window_ledges)
+        && let Some((impact, surface)) = find_swept_support(
+            previous,
+            next,
+            desktop,
+            policy,
+            window_ledges,
+            display_scale,
+        )
     {
         creature.state.position = impact;
         if toss.bounces == 0 && creature.state.velocity.y >= TOSS_MIN_BOUNCE_SPEED {
@@ -652,7 +678,14 @@ pub(super) fn advance_toss(
         creature.state.facing_right = creature.state.velocity.x >= 0.0;
         None
     } else {
-        settle_toss(creature, toss, desktop, policy, window_ledges)
+        settle_toss(
+            creature,
+            toss,
+            desktop,
+            policy,
+            window_ledges,
+            display_scale,
+        )
     }
 }
 
@@ -662,23 +695,34 @@ pub(super) fn settle_toss(
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     window_ledges: bool,
+    display_scale: u8,
 ) -> Option<(SurfaceAttachment, bool)> {
-    let support = find_drop_support(creature.state.position, desktop, policy, window_ledges)
-        .or_else(|| {
-            nearest_habitat_point(policy, &desktop.monitors, creature.state.position).map(
-                |(monitor_id, position)| {
-                    (
-                        position,
-                        SurfaceAttachment {
-                            kind: SurfaceKind::ScreenFloor,
-                            monitor_id,
-                            window_key: None,
-                            relative_x: 0.5,
-                        },
-                    )
+    let support = find_drop_support(
+        creature.state.position,
+        desktop,
+        policy,
+        window_ledges,
+        display_scale,
+    )
+    .or_else(|| {
+        nearest_habitat_point(
+            policy,
+            &desktop.monitors,
+            creature.state.position,
+            display_scale,
+        )
+        .map(|(monitor_id, position)| {
+            (
+                position,
+                SurfaceAttachment {
+                    kind: SurfaceKind::ScreenFloor,
+                    monitor_id,
+                    window_key: None,
+                    relative_x: 0.5,
                 },
             )
-        });
+        })
+    });
     let (position, surface) =
         support.unwrap_or_else(|| (toss.last_safe_position, toss.last_safe_surface.clone()));
     creature.state.position = position;
@@ -702,6 +746,7 @@ pub(super) fn find_swept_support(
     desktop: &DesktopSnapshot,
     policy: &HabitatPolicy,
     window_ledges: bool,
+    display_scale: u8,
 ) -> Option<(Point, SurfaceAttachment)> {
     let dy = next.y - previous.y;
     if dy <= 0.0 {
@@ -724,8 +769,15 @@ pub(super) fn find_swept_support(
             if !span.holds(x) {
                 continue;
             }
-            let (point, surface) = span.place(x);
-            if regions.iter().any(|region| region.contains(point)) {
+            let (point, _) = span.place(x);
+            if !regions.iter().any(|region| region.contains(point)) {
+                continue;
+            }
+            // A toss that comes down by the side of the display or of the habitat lands far
+            // enough in to be drawn whole, when the surface it hit reaches that far.
+            let whole = keep_whole_in(point, &regions, body_half_width(monitor, display_scale)).x;
+            if span.holds(whole) {
+                let (point, surface) = span.place(whole);
                 candidates.push((crossed, point, surface));
             }
         }

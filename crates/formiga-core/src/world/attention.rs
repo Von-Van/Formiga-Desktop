@@ -465,6 +465,7 @@ impl World {
                         creature,
                         desktop,
                         &self.save.settings.habitat,
+                        self.save.settings.display_scale,
                         &mut self.events,
                     );
                 }
@@ -624,7 +625,7 @@ impl World {
                 if self.save.settings.reduce_motion {
                     plan.walk = None;
                     if let Some(walk) = plan.display_walk.take() {
-                        walk.settle(creature, desktop);
+                        walk.settle(creature, desktop, self.save.settings.display_scale);
                     }
                 }
                 if plan.elapsed - plan.delay >= 0.45
@@ -634,7 +635,7 @@ impl World {
                     if plan.travel_elapsed >= 10.0
                         || !walk.step(creature, &neighbors, desktop, &self.save.settings, dt)
                     {
-                        walk.settle(creature, desktop);
+                        walk.settle(creature, desktop, self.save.settings.display_scale);
                         plan.display_walk = None;
                     }
                     plan.surface = (
