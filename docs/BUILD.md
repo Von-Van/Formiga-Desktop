@@ -284,7 +284,14 @@ Then:
    by hand on Windows hardware is recorded in `docs/TEST_MATRIX.md`.
 3. Tag the commit and push the tag. `release.yml` packages both platforms and publishes an
    unsigned release with eight files: the DMG, the MSI, two portable ZIPs, and a `.sha256` for
-   each. The in-app updater sees it from then on.
+   each. Its notes are the version's "New in" section of `docs/RELEASE_NOTES.md`, which the
+   in-app updater shows to the people updating; the run fails if the tag and `Cargo.toml`
+   disagree or that section is missing. The in-app updater sees the release from then on.
+
+   To try a release before anyone can see it, add the line `Formiga-Release: draft` to the tag's
+   message (`git tag -a vX.Y.Z -m "Release X.Y.Z with …" -m "Formiga-Release: draft"`). The
+   release is then published as a draft, which the updater and the website skip, and
+   `gh release edit vX.Y.Z --draft=false` makes it public once it has been tried.
 4. Check that all eight files are on the release and that the DMG matches its checksum. A large
    upload can fail after the others succeed. `gh run rerun <run-id> --failed` repeats only the
    publish job, which is how the 0.57.1 release was completed when its DMG upload failed.
