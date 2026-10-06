@@ -42,6 +42,10 @@ if [ "${1:-}" = "--check" ]; then
       missing=1
     fi
   done
+  if awk '/^name = "formiga-/ { getline; print }' Cargo.lock | grep -vqF "version = \"$current\""; then
+    echo "Cargo.lock has a workspace crate at another version than $current" >&2
+    missing=1
+  fi
   [ "$missing" -eq 0 ] && echo "Every place names $current."
   exit "$missing"
 fi
@@ -53,10 +57,8 @@ if ! [[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "       $(basename "$0") --check" >&2
   exit 2
 fi
-if [ "$new" = "$current" ]; then
-  echo "The version is already $current" >&2
-  exit 1
-fi
+# Running it again with the same version is how an interrupted run is finished: the files are left
+# as they are and Cargo.lock is brought up to them.
 
 # The dots are literal: 0.67.1 must not also match 0x67y1.
 pattern="$(printf '%s' "$current" | sed 's/\./\\./g')"
@@ -68,7 +70,7 @@ done
 cargo update --workspace --quiet
 
 # Anything still naming the old version was missed, or is prose about an earlier release.
-if grep -nF "$current" Cargo.toml "${files[@]}"; then
+if [ "$new" != "$current" ] && grep -nF "$current" Cargo.toml "${files[@]}"; then
   echo "The lines above still name $current; check whether each should." >&2
 fi
 
