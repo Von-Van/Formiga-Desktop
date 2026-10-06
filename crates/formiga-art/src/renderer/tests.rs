@@ -312,6 +312,37 @@ fn generated_discoveries_have_sixteen_deterministic_opaque_silhouettes() {
     assert_eq!(hashes.len(), usize::from(formiga_core::TRINKET_VARIANTS));
 }
 
+/// A loop keeps turning however long it has been playing, long past the 255 frames a smaller
+/// count would stop at, and a held clip stays on its last frame.
+#[test]
+fn a_clip_asked_for_long_after_it_began_still_plays() {
+    let clips = ActionKind::ALL
+        .into_iter()
+        .map(BodyClip::Action)
+        .chain(Gesture::ALL.into_iter().map(BodyClip::Gesture));
+    for clip in clips {
+        let spec = AnimationSpec::for_clip(clip);
+        // Ten minutes in, and a day in: both far past 255 frames at any rate a clip plays at.
+        for start in [600.0, 86_400.0] {
+            let seen: std::collections::BTreeSet<u8> = (0..u32::from(spec.frames) * 4)
+                .map(|step| spec.frame_at(start + step as f32 / f32::from(spec.fps) / 2.0))
+                .collect();
+            match spec.playback {
+                PlaybackMode::Loop => assert_eq!(
+                    seen.len(),
+                    usize::from(spec.frames),
+                    "{clip:?} stands still {start} seconds in"
+                ),
+                PlaybackMode::Hold => assert_eq!(
+                    seen.into_iter().collect::<Vec<_>>(),
+                    vec![spec.frames - 1],
+                    "{clip:?}"
+                ),
+            }
+        }
+    }
+}
+
 #[test]
 fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
     for (action, fps) in [

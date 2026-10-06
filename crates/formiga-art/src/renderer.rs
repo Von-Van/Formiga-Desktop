@@ -324,12 +324,16 @@ impl AnimationSpec {
         }
     }
 
+    /// The frame shown `elapsed` seconds into the clip. Frames are counted in `u32`, as
+    /// [`MotionSignature::frame`] counts them: counted in `u8`, the count stopped at 255, so a
+    /// loop asked for after 255 frames (85 seconds of a 3 fps idle) stood still on one frame.
     pub fn frame_at(self, elapsed: f32) -> u8 {
-        let raw = (elapsed.max(0.0) * f32::from(self.fps)) as u8;
-        match self.playback {
-            PlaybackMode::Loop => raw % self.frames,
-            PlaybackMode::Hold => raw.min(self.frames - 1),
-        }
+        let raw = (elapsed.max(0.0) * f32::from(self.fps)) as u32;
+        let frame = match self.playback {
+            PlaybackMode::Loop => raw % u32::from(self.frames),
+            PlaybackMode::Hold => raw.min(u32::from(self.frames) - 1),
+        };
+        frame as u8
     }
 }
 
