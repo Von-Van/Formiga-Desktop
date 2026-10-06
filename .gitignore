@@ -7,3 +7,8 @@
 /animation-preview.png
 /packaging/windows/winget/out/
 /docs/HANDOFF-*.md
+
+# Notes for Claude Code and design documents are kept locally, never in git.
+/CLAUDE.md
+/docs/DESIGN.md
+/docs/DESKTOP_ADOPTION.md
