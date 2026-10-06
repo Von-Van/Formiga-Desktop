@@ -89,7 +89,8 @@ jobs:
           SmartScreen guidance. SHA-256 checksum files are included for every download.
           NOTES
           git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG"
-          if git tag -l --format='%(contents)' "$TAG" | grep -qx 'Formiga-Release: draft'; then
+          # A lightweight tag has no message of its own, and %(contents) would read its commit's.
+          if [ "$(git cat-file -t "$TAG")" = tag ] && git tag -l --format='%(contents)' "$TAG" | grep -qx 'Formiga-Release: draft'; then
             echo "draft=true" >> "$GITHUB_OUTPUT"
           else
             echo "draft=false" >> "$GITHUB_OUTPUT"
