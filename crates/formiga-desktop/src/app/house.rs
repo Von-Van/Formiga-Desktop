@@ -135,10 +135,12 @@ impl FormigaApp {
         let prepared = {
             let Some(world) = &self.world else { return };
             // Whoever lives there goes in, with whichever of its closest friends from other
-            // houses are free to come.
+            // houses are free to come: not in the owner's hand, nor away in another app.
             let visitors: Vec<CreatureId> = likely_visitors(&world.save, keeper)
                 .into_iter()
-                .filter(|id| world.free_to_go_in(*id))
+                .filter(|id| {
+                    world.free_to_go_in(*id) && self.busy_elsewhere(&HOME, Some(&[*id])).is_none()
+                })
                 .collect();
             SessionId::generate()
                 .map_err(|error| error.to_string())
@@ -195,6 +197,12 @@ impl FormigaApp {
         }
         if let Some(name) = busy {
             self.failure_dialog(STAYING_SHUT, &format!("{name} is busy just now."));
+            return;
+        }
+        // Asked of the keeper first, before the house was described; asked again of everyone
+        // going in, since another app may have any one of them.
+        if let Some(reason) = self.busy_elsewhere(&HOME, Some(&away)) {
+            self.failure_dialog(STAYING_SHUT, reason);
             return;
         }
         self.finish_habitat_editor(false);
