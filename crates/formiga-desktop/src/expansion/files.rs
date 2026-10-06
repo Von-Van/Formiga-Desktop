@@ -63,6 +63,11 @@ impl<M: Serialize + DeserializeOwned> VisitFiles<M> {
         }
     }
 
+    /// The app's directory, where Desktop may keep files of its own beside the visits.
+    pub fn directory(&self) -> &Path {
+        &self.root
+    }
+
     fn marker_path(&self) -> PathBuf {
         self.root.join(self.folder.marker_file)
     }

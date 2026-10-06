@@ -1,8 +1,8 @@
 use super::*;
 use formiga_core::SaveFile;
 use formiga_home_contract::{
-    CatalogId, DisplayId, HouseholdHome, PlacedDisplay, PlacedPiece, RoomLayout, Spot, TravelerId,
-    project_household, sample,
+    AckRefusal, CatalogId, DisplayId, HouseholdHome, PlacedDisplay, PlacedPiece, RoomLayout,
+    SessionId, Spot, TravelerId, project_household, sample,
 };
 use time::macros::datetime;
 
@@ -290,4 +290,42 @@ fn closing_leaves_only_the_kept_homes_and_calling_home_leaves_home_its_recall() 
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(left, ["state.json"]);
+}
+
+#[test]
+fn a_visit_is_marked_exactly_as_earlier_desktops_marked_it() {
+    /// The marker as Desktop 0.67.1 wrote it, so a visit it left open is finished by this build.
+    #[derive(Serialize)]
+    struct Earlier {
+        format: String,
+        session_id: SessionId,
+        snapshot_sha256: String,
+        state_sha256: String,
+        #[serde(with = "time::serde::rfc3339")]
+        created_at_utc: OffsetDateTime,
+        keeper: CreatureId,
+        away: Vec<CreatureId>,
+        capabilities: Vec<HomeCapability>,
+    }
+    let scratch = Scratch::new("earlier");
+    let files = HouseFiles::new(&scratch.0);
+    let snapshot = snapshot(&colony());
+    let away = [snapshot.household.keeper.0];
+    let visit = files.open(&snapshot, &away).unwrap();
+    let mut earlier = serde_json::to_vec_pretty(&Earlier {
+        format: "formiga.desktop.house-visit".to_owned(),
+        session_id: visit.seal.session_id.clone(),
+        snapshot_sha256: visit.seal.snapshot_sha256.clone(),
+        state_sha256: visit.seal.state_sha256.clone(),
+        created_at_utc: visit.seal.created_at_utc,
+        keeper: visit.keeper,
+        away: visit.away.clone(),
+        capabilities: visit.capabilities.clone(),
+    })
+    .unwrap();
+    earlier.push(b'\n');
+    assert_eq!(
+        fs::read(scratch.0.join(HOME_DIRECTORY).join(MARKER_FILE)).unwrap(),
+        earlier
+    );
 }

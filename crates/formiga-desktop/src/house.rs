@@ -18,17 +18,47 @@
 //! the visit from the marker it left, with Home's answers if there are any and without them
 //! otherwise.
 //!
-//! Nothing here polls. Home's process is waited on by one sleeping thread, which reports through
+//! Nothing here polls. Home is found, started and waited on through its slot ([`HOME`], in
+//! [`crate::expansion`]): its process is waited on by one sleeping thread, which reports through
 //! the event loop when it exits, and Desktop checks whether Home is installed only when it starts
 //! and then at most every ten minutes, from a tick it was taking anyway.
 
 pub mod session;
 
-use crate::app::UserEvent;
-use formiga_home_contract::SessionId;
+use crate::expansion::files::Folder;
+use crate::expansion::{Expansion, Words};
+use crate::platform::companion_app::AppNames;
+use formiga_home_contract::{SessionId, discovery};
 use session::OpenVisit;
-use std::process::Child;
-use winit::event_loop::EventLoopProxy;
+
+/// Formiga Home, as Desktop finds it, starts it, keeps its visits' files and speaks of it.
+pub static HOME: Expansion = Expansion {
+    name: "Formiga Home",
+    app: AppNames {
+        path_override_env: discovery::PATH_OVERRIDE_ENV,
+        macos_bundle_id: discovery::MACOS_BUNDLE_ID,
+        macos_reads_key: discovery::MACOS_HOME_VERSION_KEY,
+        windows_registry_key: discovery::WINDOWS_REGISTRY_KEY,
+        windows_path_value: discovery::WINDOWS_PATH_VALUE,
+        windows_version_value: discovery::WINDOWS_VERSION_VALUE,
+        windows_reads_value: discovery::WINDOWS_HOME_VERSION_VALUE,
+    },
+    launch_argument: formiga_home_contract::LAUNCH_ARGUMENT,
+    start_after_env: "FORMIGA_HOME_VISIT_AFTER",
+    folder: Folder {
+        directory: session::HOME_DIRECTORY,
+        marker_file: session::MARKER_FILE,
+        marker_format: session::MARKER_FORMAT,
+        kept: &[session::KEPT_FILE],
+    },
+    words: Words {
+        contract: "household",
+        update_to: "open its houses",
+        busy: "already has a house open",
+        unreadable: "could not read the house it was given",
+        declined: "could not open the house this time",
+    },
+};
 
 /// What the thread watching Home reports.
 #[derive(Debug)]
@@ -56,20 +86,55 @@ impl VisitState {
     }
 }
 
-/// Wait for Home to exit on a thread of its own, which sleeps until then, and say so through the
-/// event loop.
-pub fn watch(
-    mut child: Child,
-    session: SessionId,
-    proxy: EventLoopProxy<UserEvent>,
-) -> std::io::Result<()> {
-    std::thread::Builder::new()
-        .name("formiga-home-watch".to_owned())
-        .spawn(move || {
-            if let Err(error) = child.wait() {
-                tracing::warn!(%error, "lost track of Formiga Home");
-            }
-            let _ = proxy.send_event(UserEvent::House(HouseEvent::Exited { session }));
-        })?;
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::expansion::Refusal;
+    use crate::platform::companion_app::AppInstall;
+    use formiga_home_contract::AckRefusal;
+    use std::path::PathBuf;
+
+    #[test]
+    fn an_older_home_is_told_exactly_what_it_lacks() {
+        let install = AppInstall {
+            path: PathBuf::from("Formiga Home.app"),
+            version: Some("0.1.0".to_owned()),
+            reads: Some(1),
+        };
+        assert_eq!(HOME.incompatibility(&install, 1), None);
+        assert_eq!(
+            HOME.incompatibility(&install, 2).as_deref(),
+            Some(
+                "Formiga Home 0.1.0 reads household version 1, and this colony needs version 2. \
+                 Update Formiga Home to open its houses."
+            )
+        );
+        let silent = AppInstall {
+            reads: None,
+            ..install
+        };
+        assert_eq!(
+            HOME.incompatibility(&silent, 9),
+            None,
+            "Home answers for itself"
+        );
+    }
+
+    #[test]
+    fn home_is_spoken_of_as_it_always_was() {
+        let said = |reason, version: &str| {
+            HOME.refusal_text(&Refusal {
+                reason,
+                version: version.to_owned(),
+            })
+        };
+        assert_eq!(
+            said(AckRefusal::Busy, ""),
+            "Formiga Home already has a house open."
+        );
+        assert_eq!(
+            said(AckRefusal::Other, "0.1.0"),
+            "Formiga Home 0.1.0 could not open the house this time."
+        );
+    }
 }

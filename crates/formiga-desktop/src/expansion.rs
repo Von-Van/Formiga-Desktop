@@ -8,8 +8,8 @@
 //! everything here is done for it as for any other. What a visit carries, what Desktop keeps from
 //! it, and how it looks on the desktop stay the app's own.
 //!
-//! Formiga Hill is visited through its slot ([`crate::hill::HILL`]). Formiga Home keeps its own
-//! copy of these steps in [`crate::house`] and `platform/home.rs`.
+//! Formiga Hill ([`crate::hill::HILL`]) and Formiga Home ([`crate::house::HOME`]) are visited
+//! through it.
 
 pub mod files;
 
