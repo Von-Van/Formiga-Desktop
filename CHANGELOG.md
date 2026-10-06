@@ -2,7 +2,10 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.67.3] - 2026-10-06
+
+Released together with Formiga Hill 0.67.3 and Formiga Home 0.67.3, which take its version number
+from here on. Travel version 4 and household version 7 are unchanged.
 
 ### Added
 

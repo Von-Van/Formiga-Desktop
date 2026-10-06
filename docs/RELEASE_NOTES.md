@@ -4,6 +4,17 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.3
+
+Formiga Hill and Formiga Home have each had a round of polish, and from this release all three
+apps share one version number, so Formiga 0.67.3, Formiga Hill 0.67.3 and Formiga Home 0.67.3 go
+together. In Formiga Home, residents no longer slide across the floor: after about 25 seconds in a
+house, every walk froze on one frame, and the drawing Home shares with Formiga now keeps it
+turning. They also step up onto seats and beds instead of jumping. Formiga Hill's controls now sit
+on the scene itself, on paper and in Formiga's own lettering, story lines appear over whoever is
+speaking, and idle companions keep moving however long a visit lasts. Your desktop companions
+behave just as before; update Formiga Hill and Formiga Home to 0.67.3 alongside.
+
 ## New in 0.67.1
 
 Companions stay whole on screen when you have more than one display, or have told them to keep to
