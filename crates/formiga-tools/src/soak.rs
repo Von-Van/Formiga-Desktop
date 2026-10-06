@@ -406,7 +406,7 @@ fn check(world: &World, desktop: &DesktopSnapshot, when: &str) -> anyhow::Result
 
 /// Write the colony and read it back, the way a relaunch does. What comes back must be the colony
 /// that was written, validated.
-fn reload(world: &World, store: &SaveStore) -> anyhow::Result<World> {
+pub(crate) fn reload(world: &World, store: &SaveStore) -> anyhow::Result<World> {
     let written = world.save.clone();
     store.save(&written)?;
     let read = store

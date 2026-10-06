@@ -21,6 +21,11 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # The developer toolkit (devtools/), on the oldest Python it supports.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - run: python -m unittest discover devtools/tests
 
   package-macos:
     runs-on: macos-14
