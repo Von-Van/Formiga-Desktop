@@ -107,7 +107,7 @@ fn installed(names: &AppNames) -> Option<AppInstall> {
     };
     let version = info("CFBundleShortVersionString")
         .and_then(|value| value.downcast::<NSString>().ok())
-        .map(|value| formiga_travel::sanitize_text(&value.to_string(), 32))
+        .map(|value| formiga_expansion_rulebook::sanitize_text(&value.to_string(), 32))
         .filter(|value| !value.is_empty());
     let reads = info(names.macos_reads_key).and_then(|value| match value.downcast::<NSNumber>() {
         Ok(number) => u32::try_from(number.integerValue()).ok(),
@@ -139,7 +139,7 @@ fn installed(names: &AppNames) -> Option<AppInstall> {
             path.is_file().then(|| AppInstall {
                 path,
                 version: registry::string(root, key, names.windows_version_value)
-                    .map(|value| formiga_travel::sanitize_text(&value, 32))
+                    .map(|value| formiga_expansion_rulebook::sanitize_text(&value, 32))
                     .filter(|value| !value.is_empty()),
                 reads: registry::dword(root, key, names.windows_reads_value),
             })

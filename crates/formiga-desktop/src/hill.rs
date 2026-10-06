@@ -17,20 +17,49 @@
 //! as it left; if Desktop itself stops while the colony is away, the next start finishes the trip
 //! from the marker it left, with Hill's receipt if there is one and without it otherwise.
 //!
-//! Nothing here polls. Hill's process is waited on by one sleeping thread, which reports through
+//! Nothing here polls. Hill is found, started and waited on through its slot ([`HILL`], in
+//! [`crate::expansion`]): its process is waited on by one sleeping thread, which reports through
 //! the event loop when it exits, and Desktop checks whether Hill is installed only when it starts
 //! and then at most every ten minutes, from a tick it was taking anyway.
 
 pub mod scene;
 pub mod session;
 
-use crate::app::UserEvent;
-use crate::platform::hill::HillInstall;
-use formiga_travel::SessionId;
+use crate::expansion::files::Folder;
+use crate::expansion::{Expansion, Words};
+use crate::platform::companion_app::{AppInstall, AppNames};
+use formiga_travel::{SessionId, discovery};
 use scene::TrainScene;
 use session::OpenTrip;
-use std::process::Child;
-use winit::event_loop::EventLoopProxy;
+
+/// Formiga Hill, as Desktop finds it, starts it, keeps its trips' files and speaks of it.
+pub static HILL: Expansion = Expansion {
+    name: "Formiga Hill",
+    app: AppNames {
+        path_override_env: discovery::PATH_OVERRIDE_ENV,
+        macos_bundle_id: discovery::MACOS_BUNDLE_ID,
+        macos_reads_key: discovery::MACOS_TRAVEL_VERSION_KEY,
+        windows_registry_key: discovery::WINDOWS_REGISTRY_KEY,
+        windows_path_value: discovery::WINDOWS_PATH_VALUE,
+        windows_version_value: discovery::WINDOWS_VERSION_VALUE,
+        windows_reads_value: discovery::WINDOWS_TRAVEL_VERSION_VALUE,
+    },
+    launch_argument: formiga_travel::LAUNCH_ARGUMENT,
+    start_after_env: "FORMIGA_HILL_TRIP_AFTER",
+    folder: Folder {
+        directory: session::TRAVEL_DIRECTORY,
+        marker_file: session::MARKER_FILE,
+        marker_format: session::MARKER_FORMAT,
+        kept: &[],
+    },
+    words: Words {
+        contract: "travel",
+        update_to: "take the colony there",
+        busy: "is already hosting a colony",
+        unreadable: "could not read the colony's ticket",
+        declined: "could not take the colony this time",
+    },
+};
 
 /// What the thread watching Hill reports.
 #[derive(Debug)]
@@ -57,7 +86,7 @@ pub enum TripState {
     Departing {
         open: OpenTrip,
         scene: TrainScene,
-        hill: Option<HillInstall>,
+        hill: Option<AppInstall>,
     },
     /// The colony is at Hill.
     Away { open: OpenTrip },
@@ -98,20 +127,63 @@ impl TripState {
     }
 }
 
-/// Wait for Hill to exit on a thread of its own, which sleeps until then, and say so through the
-/// event loop.
-pub fn watch(
-    mut child: Child,
-    session: SessionId,
-    proxy: EventLoopProxy<UserEvent>,
-) -> std::io::Result<()> {
-    std::thread::Builder::new()
-        .name("formiga-hill-watch".to_owned())
-        .spawn(move || {
-            if let Err(error) = child.wait() {
-                tracing::warn!(%error, "lost track of Formiga Hill");
-            }
-            let _ = proxy.send_event(UserEvent::Hill(HillEvent::Exited { session }));
-        })?;
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::expansion::Refusal;
+    use formiga_travel::AckRefusal;
+    use std::path::PathBuf;
+
+    #[test]
+    fn an_older_hill_is_told_exactly_what_it_lacks() {
+        let install = AppInstall {
+            path: PathBuf::from("Formiga Hill.app"),
+            version: Some("0.1.0".to_owned()),
+            reads: Some(1),
+        };
+        assert_eq!(HILL.incompatibility(&install, 1), None);
+        assert_eq!(
+            HILL.incompatibility(&install, 2).as_deref(),
+            Some(
+                "Formiga Hill 0.1.0 reads travel version 1, and this colony needs version 2. \
+                 Update Formiga Hill to take the colony there."
+            )
+        );
+        let silent = AppInstall {
+            reads: None,
+            ..install
+        };
+        assert_eq!(
+            HILL.incompatibility(&silent, 9),
+            None,
+            "Hill answers for itself"
+        );
+    }
+
+    #[test]
+    fn hill_is_spoken_of_as_it_always_was() {
+        let said = |reason, version: &str| {
+            HILL.refusal_text(&Refusal {
+                reason,
+                version: version.to_owned(),
+            })
+        };
+        assert_eq!(
+            said(AckRefusal::UnsupportedVersion { reads: 0 }, "0.1.0"),
+            "Formiga Hill 0.1.0 reads travel version 0, which is too old for this colony. Update \
+             Formiga Hill to take the colony there."
+        );
+        assert_eq!(
+            said(AckRefusal::Busy, "0.1.0"),
+            "Formiga Hill 0.1.0 is already hosting a colony."
+        );
+        assert_eq!(
+            said(AckRefusal::Invalid, ""),
+            "Formiga Hill could not read the colony's ticket."
+        );
+        assert_eq!(
+            said(AckRefusal::Other, ""),
+            "Formiga Hill could not take the colony this time."
+        );
+    }
 }

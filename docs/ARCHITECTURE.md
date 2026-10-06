@@ -44,7 +44,7 @@ desktop crate.
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
 | `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
-| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
 | `formiga-tools` | `main.rs`: one function per subcommand | `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
@@ -2458,6 +2458,27 @@ material ramps, the deterministic grain (`noise`, `chance`), blending onto clear
 darkening (`over`), and the line, box, bevel, ellipse, polygon and sprite helpers, exactly as
 Formiga Home draws with them.
 
+## The slot a companion app plugs into
+
+Desktop's side of a visit is the same for every companion app, and `expansion.rs` does it once. An
+app fills in an `expansion::Expansion`: its name, the names it is found by (`AppNames`, from its
+contract's `discovery` module), the flag it is started with, the development variable that starts a
+visit by itself, its folder in the data directory, and the words it is spoken of in. From that:
+
+| Piece | What it does for every app |
+|---|---|
+| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and notes it coming and going in the log |
+| `Slot::start_due` | With the app's path override naming a stand-in and its development variable set, starts one visit that many seconds after Desktop starts, and never otherwise |
+| `Expansion::start` | Starts the app with its flag and the session directory, and waits for it on a thread that sleeps until it exits and then says so through the event loop |
+| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words |
+| `files::VisitFiles` | The app's directory: a fresh session directory for each visit, the marker that lets Desktop finish a visit after a restart, closing, forgetting while the app may still be running (leaving it its recall), and sweeping whatever is neither the open visit nor a file Desktop keeps there |
+
+A marker is written as its format and session, then whatever the app's side remembers of the visit,
+so `travel/trip.json` is read and written byte for byte as before. What a visit carries, what
+Desktop keeps from it and how it looks on the desktop stay the app's own. Formiga Hill is visited
+through its slot, `hill::HILL`; Formiga Home keeps its own copy of these steps in `house/` and
+`platform/home.rs`.
+
 
 ## Trips to Formiga Hill (save v26)
 
@@ -2470,7 +2491,7 @@ Formiga Hill…", and the colony can spend a while there and come home by train.
 ```text
 formiga-desktop ──▶ formiga-travel ──▶ formiga-core, formiga-art
    tray · trip state machine · train scene     │
-   platform/hill.rs: find and start Hill       │  the contract: versioned documents, bounds,
+   expansion.rs: find, start and wait on Hill  │  the contract: versioned documents, bounds,
    hill/session.rs: the trip's files           │  the projection from the colony and back to
                                                ▼  something the art crate can draw
                                        Formiga Hill (its own repository)
@@ -2521,18 +2542,19 @@ its item to `TrayAction::GoToHill` or `TrayAction::BringColonyHome`, and while a
 it disables Gather, Settle, Pause and Start a new colony, which act on a colony that is not there.
 The habitat editor waits too, since it draws over overlays that show nothing.
 
-Hill is started by `platform::hill::launch_formiga_hill` with two arguments, `--formiga-travel`
-and the session directory, and a thread that sleeps in `Child::wait` reports its exit as
-`UserEvent::Hill`. On macOS an app bundle is opened with `open -W -n -a`, so LaunchServices starts
-it and the `open` process lasts as long as Hill does. Discovery is `FORMIGA_HILL_PATH` in
-development; then LaunchServices by bundle identifier `com.formiga.hill`, with the newest travel
-version Hill reads from `FormigaTravelVersion` in its `Info.plist`; or on Windows the
-`Software\Formiga\Hill` key Hill's installer writes. A Hill that says it reads only older versions
-is explained before it is started.
+Hill is started through its slot, `hill::HILL` (see [The slot a companion app plugs
+into](#the-slot-a-companion-app-plugs-into)), with two arguments, `--formiga-travel` and the session
+directory, and a thread that sleeps in `Child::wait` reports its exit as `UserEvent::Hill`. On macOS
+an app bundle is opened with `open -W -n -a`, so LaunchServices starts it and the `open` process
+lasts as long as Hill does. Discovery is `FORMIGA_HILL_PATH` in development; then LaunchServices by
+bundle identifier `com.formiga.hill`, with the newest travel version Hill reads from
+`FormigaTravelVersion` in its `Info.plist`; or on Windows the `Software\Formiga\Hill` key Hill's
+installer writes. A Hill that says it reads only older versions is explained before it is started.
 
 ### Files, and failing toward home
 
-A trip's files are under `travel/` in the data directory (`hill/session.rs`): a fresh
+A trip's files are under `travel/` in the data directory (`hill/session.rs`, kept by
+`expansion::files`): a fresh
 `travel/<session>/` holding `snapshot.json`, where Hill writes `ack.json` and `receipt.json` and
 Desktop may write `recall.json`; and `travel/trip.json`, the marker that says a trip is open,
 holding only the session, the snapshot's SHA-256, its time and what Desktop offered to apply. A

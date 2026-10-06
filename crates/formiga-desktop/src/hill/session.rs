@@ -12,32 +12,31 @@
 //! still be running is closed by deleting only the marker: its session directory stays, holding the
 //! recall, for Hill to find. Anything under `travel/` that is not the open trip — a called-home
 //! session, or one left by a trip that could not be closed — is swept away when Desktop starts and
-//! before each new trip, so at most one such directory is ever kept.
+//! before each new trip, so at most one such directory is ever kept. All of that is done as for
+//! any companion app, by [`crate::expansion::files`]; what is written, read and kept is Hill's.
 
+pub use crate::expansion::Refusal;
+use crate::expansion::files::VisitFiles;
 use formiga_travel::{
-    ACK_FILE, AckRefusal, Acknowledgement, Capability, RECALL_FILE, RECEIPT_FILE, Recall,
-    RecallReason, ReturnEffect, ReturnReceipt, SNAPSHOT_FILE, SessionId, SnapshotSeal, TravelError,
-    TravelSnapshot, read_document, write_atomically, write_document,
+    ACK_FILE, Acknowledgement, Capability, RECALL_FILE, RECEIPT_FILE, Recall, RecallReason,
+    ReturnEffect, ReturnReceipt, SNAPSHOT_FILE, SnapshotSeal, TravelError, TravelSnapshot,
+    read_document, write_document,
 };
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use time::{Duration, OffsetDateTime};
 
 pub const TRAVEL_DIRECTORY: &str = "travel";
-const MARKER_FILE: &str = "trip.json";
-const MARKER_FORMAT: &str = "formiga.desktop.trip";
-const MAX_MARKER_BYTES: u64 = 4 * 1024;
+pub const MARKER_FILE: &str = "trip.json";
+pub const MARKER_FORMAT: &str = "formiga.desktop.trip";
 
 /// How far a visit's times may sit outside the trip, for two clocks that disagree a little.
 const CLOCK_SLACK: Duration = Duration::minutes(5);
 
-/// What Desktop remembers of an open trip across a restart.
+/// What Desktop remembers of an open trip across a restart, beside its session.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Marker {
-    format: String,
-    session_id: SessionId,
     snapshot_sha256: String,
     #[serde(with = "time::serde::rfc3339")]
     created_at_utc: OffsetDateTime,
@@ -66,13 +65,6 @@ pub enum Answer {
     },
 }
 
-/// Hill's own reason for not taking the colony.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Refusal {
-    pub reason: AckRefusal,
-    pub hill_version: String,
-}
-
 /// What Desktop will do with a receipt: at most one trip to count, the souvenirs to keep, and the
 /// kinds of everything else it set aside unread.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -85,68 +77,43 @@ pub struct Welcome {
 
 /// The travel directory.
 pub struct TravelFiles {
-    root: PathBuf,
+    visits: VisitFiles<Marker>,
 }
 
 impl TravelFiles {
     pub fn new(data_dir: &Path) -> Self {
         Self {
-            root: data_dir.join(TRAVEL_DIRECTORY),
+            visits: VisitFiles::new(data_dir, &super::HILL.folder),
         }
-    }
-
-    fn marker_path(&self) -> PathBuf {
-        self.root.join(MARKER_FILE)
-    }
-
-    /// A session's directory. Safe to build from the identifier, since a [`SessionId`] is never
-    /// anything but 32 hex digits.
-    pub fn session_dir(&self, session: &SessionId) -> PathBuf {
-        self.root.join(session.as_str())
     }
 
     /// Write a trip: a new session directory holding its snapshot, then the marker that says a
     /// trip is open. Either everything is written or nothing is left behind.
     pub fn open(&self, snapshot: &TravelSnapshot) -> Result<OpenTrip, TravelError> {
-        fs::create_dir_all(&self.root)?;
-        self.sweep();
-        let dir = self.session_dir(&snapshot.session_id);
-        // A fresh directory every time: an existing one is never reused or trusted.
-        fs::create_dir(&dir)?;
-        let written = (|| {
+        self.visits.open(&snapshot.session_id, |dir| {
             let bytes = write_document(&dir.join(SNAPSHOT_FILE), snapshot)?;
             let trip = OpenTrip {
                 seal: SnapshotSeal::of(snapshot, &bytes),
-                dir: dir.clone(),
+                dir: dir.to_owned(),
                 capabilities: snapshot.capabilities.clone(),
             };
             let marker = Marker {
-                format: MARKER_FORMAT.to_owned(),
-                session_id: trip.seal.session_id.clone(),
                 snapshot_sha256: trip.seal.snapshot_sha256.clone(),
                 created_at_utc: trip.seal.created_at_utc,
                 capabilities: trip.capabilities.clone(),
             };
-            let mut bytes = serde_json::to_vec_pretty(&marker)?;
-            bytes.push(b'\n');
-            write_atomically(&self.marker_path(), &bytes)?;
-            Ok(trip)
-        })();
-        if written.is_err() {
-            let _ = fs::remove_dir_all(&dir);
-        }
-        written
+            Ok((trip, marker))
+        })
     }
 
     /// The trip left open, if Desktop stopped before closing one. A marker that cannot be read
     /// is no trip at all.
     pub fn open_trip(&self) -> Option<OpenTrip> {
-        let bytes = formiga_travel::read_bounded(&self.marker_path(), MAX_MARKER_BYTES).ok()?;
-        let marker: Marker = serde_json::from_slice(&bytes).ok()?;
-        (marker.format == MARKER_FORMAT).then(|| OpenTrip {
-            dir: self.session_dir(&marker.session_id),
+        let (session_id, marker) = self.visits.open_visit()?;
+        Some(OpenTrip {
+            dir: self.visits.session_dir(&session_id),
             seal: SnapshotSeal {
-                session_id: marker.session_id,
+                session_id,
                 snapshot_sha256: marker.snapshot_sha256,
                 created_at_utc: marker.created_at_utc,
             },
@@ -171,7 +138,7 @@ impl TravelFiles {
             .and_then(|ack| {
                 Some(Refusal {
                     reason: ack.refusal?,
-                    hill_version: ack.hill_version,
+                    version: ack.hill_version,
                 })
             });
         Answer::Silent { refusal, problem }
@@ -185,53 +152,19 @@ impl TravelFiles {
         if let Err(error) = write_document(&trip.dir.join(RECALL_FILE), &recall) {
             tracing::warn!(%error, "could not leave Formiga Hill a recall");
         }
-        self.forget();
-    }
-
-    fn forget(&self) {
-        if let Err(error) = fs::remove_file(self.marker_path())
-            && error.kind() != io::ErrorKind::NotFound
-        {
-            tracing::warn!(%error, "could not close the trip's marker");
-        }
+        self.visits.forget();
     }
 
     /// Close a trip once Hill has gone, or was never started: the marker goes first, so a trip is
     /// never half-closed and then reopened, and then everything that was written for it.
     pub fn close(&self, trip: &OpenTrip) {
-        self.forget();
-        if let Err(error) = fs::remove_dir_all(&trip.dir)
-            && error.kind() != io::ErrorKind::NotFound
-        {
-            tracing::warn!(%error, "could not clear the trip's files");
-        }
+        self.visits.close(&trip.dir);
     }
 
     /// Remove everything under `travel/` that is not the open trip. Directories are removed
     /// without following links.
     pub fn sweep(&self) {
-        let open = self.open_trip();
-        let Ok(entries) = fs::read_dir(&self.root) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let keep = name == MARKER_FILE
-                || open
-                    .as_ref()
-                    .is_some_and(|trip| name == trip.seal.session_id.as_str());
-            if keep {
-                continue;
-            }
-            let path = entry.path();
-            let removed = match entry.file_type() {
-                Ok(kind) if kind.is_dir() => fs::remove_dir_all(&path),
-                _ => fs::remove_file(&path),
-            };
-            if let Err(error) = removed {
-                tracing::warn!(%error, "could not sweep an old travel file");
-            }
-        }
+        self.visits.sweep();
     }
 }
 
@@ -275,20 +208,7 @@ pub fn welcome(trip: &OpenTrip, receipt: &ReturnReceipt, now: OffsetDateTime) ->
 
 /// Hill's refusal, said so the owner can do something about it.
 pub fn refusal_text(refusal: &Refusal) -> String {
-    let hill = if refusal.hill_version.is_empty() {
-        "Formiga Hill".to_owned()
-    } else {
-        format!("Formiga Hill {}", refusal.hill_version)
-    };
-    match refusal.reason {
-        AckRefusal::UnsupportedVersion { reads } => format!(
-            "{hill} reads travel version {reads}, which is too old for this colony. Update \
-             Formiga Hill to take the colony there."
-        ),
-        AckRefusal::Busy => format!("{hill} is already hosting a colony."),
-        AckRefusal::Invalid => format!("{hill} could not read the colony's ticket."),
-        AckRefusal::Other => format!("{hill} could not take the colony this time."),
-    }
+    super::HILL.refusal_text(refusal)
 }
 
 #[cfg(test)]

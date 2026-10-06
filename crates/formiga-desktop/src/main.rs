@@ -8,6 +8,7 @@ mod clubhouse;
 mod creature_menu;
 #[cfg(test)]
 mod desktop_ui_review;
+mod expansion;
 mod explain;
 mod gpu;
 mod hill;
