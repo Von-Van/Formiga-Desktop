@@ -22,6 +22,13 @@ All notable changes are documented here.
   of in. Every message about either app, the tray, and every file a visit writes are unchanged, so
   a trip or a house visit an earlier Desktop left open is finished as before.
 
+### Fixed
+
+- `AnimationSpec::frame_at` counts frames past 255, so a looping clip asked for long after it began
+  keeps playing instead of standing still on one frame (a 3 fps idle stopped after 85 seconds).
+  Desktop's own companions were never affected, since their looping frames come from their own
+  timing. Formiga Home draws its residents with `frame_at`.
+
 ## [0.67.1] - 2026-10-06
 
 ### Fixed
