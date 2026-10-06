@@ -63,15 +63,13 @@ into a `microsoft/winget-pkgs` pull request.
 6. Repeat steps 2-5 for every future release the owner wants published to winget - each version
    is its own manifest folder and its own PR.
 
-## What could block acceptance for an unsigned prerelease
+## What could block acceptance for an unsigned release
 
-- **Every Formiga release today is an unsigned prerelease** (there is no Authenticode
-  certificate yet, so `.github/workflows/release.yml` publishes every tag as a GitHub
-  prerelease). `microsoft/winget-pkgs`'s moderators generally expect submissions to be a
-  package's real public release, not a pre-release/beta channel; it is worth saying so plainly
-  in the PR description rather than letting a reviewer discover it, and it would be reasonable
-  for a moderator to ask that `winget-pkgs` track only tagged stable releases once Formiga has
-  any.
+- **Every Formiga release today is unsigned** (there is no Authenticode certificate yet), and
+  releases up to 0.67.0 were published as GitHub prereleases. `microsoft/winget-pkgs`'s
+  moderators generally expect submissions to be a package's real public release, not a
+  pre-release/beta channel, so submit a release after 0.67.0 and say plainly in the PR
+  description that it is unsigned rather than letting a reviewer discover it.
 - **Defender/SmartScreen reputation.** winget-pkgs' automated validation pipeline runs the
   installer through a Defender scan and checks binary reputation. A brand-new, unsigned,
   low-download-count installer from a repository with no stars yet is exactly the profile that

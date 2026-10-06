@@ -279,7 +279,7 @@ Then:
    Windows. That run is the only Windows build a change gets before it ships; what has been tried
    by hand on Windows hardware is recorded in `docs/TEST_MATRIX.md`.
 3. Tag the commit and push the tag. `release.yml` packages both platforms and publishes an
-   unsigned prerelease with eight files: the DMG, the MSI, two portable ZIPs, and a `.sha256` for
+   unsigned release with eight files: the DMG, the MSI, two portable ZIPs, and a `.sha256` for
    each. The in-app updater sees it from then on.
 4. Check that all eight files are on the release and that the DMG matches its checksum. A large
    upload can fail after the others succeed. `gh run rerun <run-id> --failed` repeats only the
@@ -314,5 +314,5 @@ certificates now require identity validation and keys held in hardware or a clou
 and a newly signed publisher still meets SmartScreen warnings until it builds reputation.
 
 GitHub Actions checks both operating systems and packages unsigned preview artifacts. Tags matching
-`v*` feed the release workflow. The current workflow marks preview builds as prereleases; the app
-intentionally checks those releases as well as stable releases.
+`v*` feed the release workflow. Releases up to 0.67.0 were marked as prereleases and later ones
+are not; the app checks both kinds, so every earlier build still finds the newest.
