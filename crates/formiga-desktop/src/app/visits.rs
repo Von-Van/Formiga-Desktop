@@ -38,6 +38,14 @@ impl FormigaApp {
         crate::expansion::busy_elsewhere(asking, wants, &self.holdings())
     }
 
+    /// The app `id` is away in just now, if any.
+    pub(super) fn away_in(&self, id: CreatureId) -> Option<&'static Expansion> {
+        self.holdings()
+            .into_iter()
+            .find(|(_, holding)| holding.holds_any(Some(&[id])))
+            .map(|(app, _)| app)
+    }
+
     /// Do what a companion app's tray item offers.
     pub(super) fn choose_visit_item(&mut self, item: usize) {
         match item {

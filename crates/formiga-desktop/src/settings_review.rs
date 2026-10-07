@@ -178,6 +178,7 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
                             source_seed: seed,
                             similarity: None,
                             summary: "A new companion with fresh memories.".into(),
+                            drawn: None,
                         },
                     );
                 }
@@ -613,6 +614,7 @@ fn studio_clicks_preview_before_adoption_and_protect_replacement() {
             source_seed: shared.source_colony_seed,
             similarity: None,
             summary: "Exact shared companion".into(),
+            drawn: None,
         },
     );
     // A full colony: adopting cannot replace it or silently remove an individual.
@@ -929,6 +931,7 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
                             source_seed: seed,
                             similarity: None,
                             summary: String::new(),
+                            drawn: None,
                         },
                     );
                 }
@@ -978,6 +981,7 @@ fn all_ui_artwork_together_fits_the_budget() {
                 source_seed: seed,
                 similarity: None,
                 summary: String::new(),
+                drawn: None,
             },
         );
     }
@@ -1505,6 +1509,7 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
                 source_seed: seed,
                 similarity: None,
                 summary: "A new companion with fresh memories.".into(),
+                drawn: None,
             },
         );
     }
@@ -2149,6 +2154,91 @@ fn a_picked_house_offers_formiga_home_only_while_it_is_installed() {
         let outcome = h.click("Open in Formiga Home");
         assert_eq!(outcome.open_house, None, "one house at a time");
     }
+}
+
+/// Formiga Farm is offered only while it is installed: on a companion's page to reshape it, and
+/// in the studio to draw a new one. While a companion is open in it, its page says so instead,
+/// and a sketch drawn there is adopted with the design Farm drew it in.
+#[test]
+fn formiga_farm_is_offered_only_while_it_is_installed() {
+    use crate::clubhouse::FormigaFarmView;
+    use crate::farm::FarmRequest;
+    use formiga_core::forms::{Design, Form, Plan, Sculpt};
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(760.0, 6000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        !shown(&h, "Reshape in Formiga Farm"),
+        "nothing without Farm"
+    );
+    let installed = FormigaFarmView {
+        installed: true,
+        open: None,
+        can_open: true,
+    };
+    h.clubhouse.formiga_farm = installed;
+    let id = h.selected.expect("a companion's page");
+    assert_eq!(
+        h.click("Reshape in Formiga Farm").open_farm,
+        Some(FarmRequest::Reshape(id))
+    );
+    h.clubhouse.formiga_farm = FormigaFarmView {
+        installed: true,
+        open: Some(FarmRequest::Reshape(id)),
+        can_open: false,
+    };
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(!shown(&h, "Reshape in Formiga Farm"), "open there already");
+
+    h.tab = SettingsTab::Studio;
+    h.clubhouse.formiga_farm = FormigaFarmView::default();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        !shown(&h, "Draw one in Formiga Farm"),
+        "nothing without Farm"
+    );
+    h.clubhouse.formiga_farm = installed;
+    assert_eq!(
+        h.click("Draw one in Formiga Farm").open_farm,
+        Some(FarmRequest::Draw)
+    );
+    let seed = [9; 32];
+    let mut creature =
+        World::preview_adult(seed, h.save.maximum_seen_utc, &DesktopSnapshot::default());
+    let design = Design {
+        form: Form::Sculpted {
+            sculpt: Sculpt::starter(Plan::Floater),
+        },
+        face: creature.appearance.face,
+    };
+    formiga_farm_contract::apply_design(&mut creature, &design);
+    h.clubhouse.studio.push_preview(
+        &h.context,
+        GenerationPreview {
+            shared: None,
+            creature: creature.clone(),
+            source_seed: seed,
+            similarity: None,
+            summary: String::new(),
+            drawn: Some(Box::new(design.clone())),
+        },
+    );
+    h.save.creatures.truncate(2);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Floater"), "named by its own plan");
+    assert_eq!(
+        h.click("Adopt into colony").accept_creature_preview,
+        Some(PreviewAcceptance::Drawn {
+            source_seed: seed,
+            recipe: creature.appearance.design,
+            design: Box::new(design),
+            replace: None,
+        })
+    );
 }
 
 /// The journal has no place for souvenirs until one comes home from Formiga Hill. Then each is

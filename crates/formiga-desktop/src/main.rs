@@ -10,6 +10,7 @@ mod creature_menu;
 mod desktop_ui_review;
 mod expansion;
 mod explain;
+mod farm;
 mod gpu;
 mod hill;
 mod house;

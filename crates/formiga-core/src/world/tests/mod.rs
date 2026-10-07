@@ -21,6 +21,7 @@ mod interaction;
 mod journeys;
 mod misc;
 mod moments;
+mod new_looks;
 mod objects_and_decorations;
 mod offers;
 mod perches;

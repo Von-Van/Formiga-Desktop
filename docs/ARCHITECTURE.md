@@ -2785,3 +2785,50 @@ puts the design on it.
 
 The sample sessions in `sample` open Desktop's own sample colony, and Farm rehearses with them
 through the same `accept_proposal` and `apply_design` a real session runs.
+
+### A session
+
+Desktop never needs Farm: without it installed nothing below runs and the notebook says nothing
+about it. With it installed, a companion's page in the notebook offers "Reshape in Formiga Farm",
+and the studio "Draw one in Formiga Farm".
+
+| State | Desktop |
+|---|---|
+| Idle | Lives as always. Looks for Farm when it starts and at most every ten minutes, from a tick it was taking anyway |
+| Open | Farm has a copy of one companion's look, or of a stand-in for a new one, and the companion goes on living on the desktop: nobody is lent to Farm. Each time the owner applies a design, Desktop decides on it at once by `accept_proposal` and answers. A kept look is the companion's straight away, noted in the journal (`World::note_new_look`, in Desktop's words) and saved before Farm is told. A new companion's design goes into the studio as a sketch, drawn over the stand-in, and joins the colony only if the owner adopts it there |
+| Closing | Farm has gone: whatever it proposed last and was not answered on is decided on, the files are closed, and a refusal is said in Farm's own words |
+
+The states are `farm::SessionState`, runtime only, and only one session is ever open. A companion
+away in Formiga Hill or Formiga Home is not opened, and one that goes away while it is open is
+answered `unavailable` until it is back (`app/visits.rs` says which app has it). A companion that
+leaves the colony ends its session with a recall; replacing the colony ends any session, and so
+does Desktop quitting, after keeping the look Farm proposed last for the companion it has open.
+While Farm runs, and only then, `farm::Watcher` looks at its proposal four times a second on a
+thread of its own and says through the event loop when there is a new serial. Without it every
+proposal is still decided, only when Farm closes.
+
+A new companion is made as any sketch is welcomed: `PreviewAcceptance::Drawn` adds the newcomer
+from the stand-in's seed with its sketch's recipe, or in place of a companion, and puts Farm's
+design on it with `apply_design`, as one undoable change. A creature's sprite atlas and its
+click shape are baked again when its look changes, since a reshaped companion keeps its id.
+
+### Files, and failing toward the look it has
+
+A session's files are under `farm/` in the data directory (`farm/session.rs`, kept by
+`expansion::files`): a fresh `farm/<session>/` with the snapshot, where Farm answers, and
+`farm/session.json`, the marker that says a session is open, holding the seal every proposal must
+match and what it was opened for: the companion, or the seed of the stand-in. A proposal is weighed
+only against the snapshot Desktop wrote, checked against the seal again first, and each serial is
+answered once. If Desktop stops while Farm is open, the next start keeps the look Farm last
+proposed for a companion, if it is still keepable, and recalls Farm; a new companion's design
+stays in Farm as a draft. Farm missing, refusing, crashing or writing anything that does not check
+out changes nothing: every companion keeps the look it has.
+
+`formiga-farm-stub` stands in for Farm (see `docs/BUILD.md`), and `formiga-tools`'s
+`farm_session` tests run whole sessions against it through the contract's own rule.
+
+### Cost
+
+Without Farm installed the addition is one LaunchServices or registry lookup every ten minutes.
+With it open, one small file is read four times a second, and a sprite is baked again only when a
+look is kept.

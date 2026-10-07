@@ -39,6 +39,9 @@ pub enum JournalMoment {
     /// The owner spent a while inside a house, in Formiga Home. The entry's companion is the one
     /// who keeps the house.
     HouseVisit,
+    /// The owner gave a companion a new look in Formiga Farm. The entry's companion is the one
+    /// reshaped.
+    NewLook,
 }
 
 /// How many moments the journal holds on to past their turn to roll out because they are the
@@ -75,7 +78,7 @@ impl JournalMoment {
             Self::Arrival => MomentKind::Arrivals,
             Self::Friendship(_) => MomentKind::Friendships,
             Self::Discovery | Self::Wonder(_) => MomentKind::Finds,
-            Self::Preference(_) | Self::Habit(_) => MomentKind::Ways,
+            Self::Preference(_) | Self::Habit(_) | Self::NewLook => MomentKind::Ways,
             Self::Ritual(_) | Self::Trip => MomentKind::Together,
             Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) | Self::HouseVisit => {
                 MomentKind::Village

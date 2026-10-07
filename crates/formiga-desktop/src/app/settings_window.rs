@@ -145,6 +145,9 @@ impl FormigaApp {
         if outcome.bring_household_back {
             self.bring_household_back();
         }
+        if let Some(request) = outcome.open_farm {
+            self.open_farm(request);
+        }
         let mut companion_changed = false;
         // A change to what the companions will do, said in its own words rather than as a plain
         // "saved": see `notices`.
@@ -454,7 +457,7 @@ impl FormigaApp {
             if let Some(window) = &mut self.settings_window {
                 window.clear_generation_preview();
                 window.set_generation_preview(GenerationPreview { shared: Some(shared), source_seed: shared.source_colony_seed, creature, similarity: None,
-                    summary: "An exact shared appearance and personality, with a fresh life in your colony.".into() });
+                    summary: "An exact shared appearance and personality, with a fresh life in your colony.".into(), drawn: None });
             }
         }
         if outcome.request_random_creature {
@@ -496,6 +499,7 @@ impl FormigaApp {
                                 source_seed,
                                 similarity: None,
                                 summary: "A new companion with fresh memories.".into(),
+                                drawn: None,
                             });
                         }
                     }
@@ -536,6 +540,7 @@ impl FormigaApp {
                                         source_seed: take.source_seed,
                                         similarity: Some(take.similarity),
                                         summary: take.summary.to_owned(),
+                                        drawn: None,
                                     });
                                 }
                                 window.clubhouse.studio.reference = Some(path);
@@ -560,7 +565,8 @@ impl FormigaApp {
             let now = OffsetDateTime::now_utc();
             let result = self.world.as_mut().map(|world| {
                 let replaced = match acceptance {
-                    PreviewAcceptance::Shared { replace, .. } => replace,
+                    PreviewAcceptance::Shared { replace, .. }
+                    | PreviewAcceptance::Drawn { replace, .. } => replace,
                     PreviewAcceptance::Add { .. } => None,
                     PreviewAcceptance::Replace { creature_id, .. } => Some(creature_id),
                 };
@@ -589,6 +595,30 @@ impl FormigaApp {
                         now,
                         &desktop,
                     ),
+                    // Welcomed as any sketch is, and then given Formiga Farm's design the one way
+                    // Desktop gives any companion one.
+                    PreviewAcceptance::Drawn {
+                        source_seed,
+                        recipe,
+                        design,
+                        replace,
+                    } => match replace {
+                        Some(creature_id) => world.replace_creature_with_design(
+                            creature_id,
+                            source_seed,
+                            recipe,
+                            now,
+                            &desktop,
+                        ),
+                        None => world.add_designed_adult(source_seed, recipe, now, &desktop),
+                    }
+                    .inspect(|id| {
+                        if let Some(creature) =
+                            world.save.creatures.iter_mut().find(|c| c.id == *id)
+                        {
+                            formiga_farm_contract::apply_design(creature, &design);
+                        }
+                    }),
                 })
             });
             match result {
@@ -933,8 +963,10 @@ impl FormigaApp {
             .world
             .as_ref()
             .is_some_and(|w| w.save.settings.launch_at_login);
-        // A house open in Home belongs to the colony being replaced.
+        // A house open in Home, and a companion open in Farm, belong to the colony being
+        // replaced.
         self.abandon_house_visit();
+        self.abandon_farm_session();
         self.world = Some(imported);
         self.recovery_pending = false;
         self.milestone_notice = None;
