@@ -2760,8 +2760,10 @@ Formiga Farm's window does.
 
 The overlay bakes a sculpted form finer than one texture pixel to the art pixel, painted as Formiga
 Farm paints it. A creature is shown at exactly `display_scale` screen pixels to the art pixel (2, 3
-or 4) and sampled without smoothing, so `atlas::baked_detail` bakes a sculpted form at that many,
-never more, and never more than `forms::FINEST_DETAIL` (4). A companion is always baked at one. The
+or 4) and sampled without smoothing, and the overlay draws at half that on a Retina display at an
+even size (`apply_render_divisor`), so `atlas::baked_detail` bakes a sculpted form at as many pixels
+as the overlay draws it, never more, and never more than `forms::FINEST_DETAIL` (4): on a Retina Mac
+that is plain at Small, three at Medium and two at Large. A companion is always baked at one. The
 finer drawing is the same pixel art: every pixel solid or clear, the outline as heavy as a
 companion's, three tones of shade, with smaller steps in its curves and a little more fur and grain.
 `forms::sculpted` lays a frame out once at one to the unit, then paints that very figure at the

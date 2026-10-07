@@ -6,7 +6,11 @@ impl OverlayRenderer {
     pub(super) fn ensure_sprite(&mut self, creature: &Creature, save: &SaveFile) {
         let reduce_motion = save.settings.reduce_motion;
         let outline = save.companion.appearance.sprite_outline;
-        let detail = baked_detail(&creature.appearance, save.settings.display_scale);
+        let detail = baked_detail(
+            &creature.appearance,
+            save.settings.display_scale,
+            self.render_divisor,
+        );
         // What it is wearing is baked into every frame, so choosing something else, or taking it
         // off, bakes the atlas again. Nothing else about the choice is looked at frame to frame.
         let requires_bake = self.sprites.get(&creature.id).is_none_or(|sprite| {
