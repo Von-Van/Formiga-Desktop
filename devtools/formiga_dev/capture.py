@@ -166,8 +166,18 @@ def _finish(code: int, output: str, seconds: float, target: Path, what: str) -> 
     problems: List[Problem] = cargo.compiler_problems(output, "capture")
     if not problems:
         lines = [line for line in output.strip().splitlines() if line.strip()]
-        message = lines[-1] if lines else f"exited with code {code} and wrote no picture"
+        message = _reason(lines) or f"exited with code {code} and wrote no picture"
         if code == 0:
             message = f"finished but wrote no picture at {target}"
         problems = [Problem("capture", message, detail="\n".join(lines[-20:]) or None)]
     return Step("capture", "failed", "no picture", seconds, problems)
+
+
+def _reason(lines: List[str]) -> Optional[str]:
+    """The line that says why: a panic's message, else the last error, else the last line."""
+    for index, line in enumerate(lines):
+        if "panicked at" in line and index + 1 < len(lines):
+            return lines[index + 1].strip()
+    errors = [line for line in lines if line.lower().lstrip().startswith("error")]
+    quiet = [line for line in lines if not line.startswith(("note:", "stack backtrace"))]
+    return (errors or quiet or [None])[-1]
