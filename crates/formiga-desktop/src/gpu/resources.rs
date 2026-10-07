@@ -6,6 +6,7 @@ impl OverlayRenderer {
     pub(super) fn ensure_sprite(&mut self, creature: &Creature, save: &SaveFile) {
         let reduce_motion = save.settings.reduce_motion;
         let outline = save.companion.appearance.sprite_outline;
+        let detail = baked_detail(&creature.appearance, save.settings.display_scale);
         // What it is wearing is baked into every frame, so choosing something else, or taking it
         // off, bakes the atlas again. Nothing else about the choice is looked at frame to frame.
         let requires_bake = self.sprites.get(&creature.id).is_none_or(|sprite| {
@@ -13,6 +14,7 @@ impl OverlayRenderer {
                 || sprite.outline != outline
                 || sprite.dress.map(|dress| dress.accessory) != creature.accessory
                 || sprite.appearance != creature.appearance
+                || sprite.detail != detail
         });
         if requires_bake {
             let dress = creature.accessory.map(|accessory| {
@@ -23,7 +25,7 @@ impl OverlayRenderer {
                     .collect();
                 AccessoryArt::resolve(accessory, save.colony_seed, &members)
             });
-            let atlas = build_atlas_pixels(creature, reduce_motion, outline, dress);
+            let atlas = build_atlas_pixels(creature, reduce_motion, outline, dress, detail);
             let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("procedural creature body atlas"),
                 size: wgpu::Extent3d {
@@ -129,6 +131,7 @@ impl OverlayRenderer {
                     face_bind_group,
                     reduce_motion,
                     outline,
+                    detail: atlas.detail,
                     body_atlas_width: atlas.body_width,
                     body_atlas_height: atlas.body_height,
                     body_cells: atlas.body_cells,

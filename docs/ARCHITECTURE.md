@@ -2758,6 +2758,16 @@ its own head, neck, hip and back, and what it holds and its effects are drawn as
 `forms::DesignRenderer` draws a design over a creature's genome before any creature has it, as
 Formiga Farm's window does.
 
+The overlay can bake a sculpted form finer than one texture pixel to the art pixel. A creature is
+shown at exactly `display_scale` screen pixels to the art pixel (2, 3 or 4) and sampled without
+smoothing, so `atlas::baked_detail` bakes a sculpted form at that many, never more, and never more
+than `forms::FINEST_DETAIL`, which is one until a finer drawing is adopted from Formiga Farm. A
+companion is always baked at one. A finer atlas keeps the same layout at more pixels: the same
+cells, face anchors and silhouettes in art pixels, and each frame at the same texture coordinates
+(`atlas::cell_uv`), so it fills the same quad on the screen; only the texture grows, by the square
+of the detail. The click shape is still read from the one-to-one frame, which a finer drawing
+keeps.
+
 ### The Farm contract
 
 `formiga-farm-contract` is the agreement with Formiga Farm, kept in Desktop's workspace as
