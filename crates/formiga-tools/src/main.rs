@@ -598,8 +598,7 @@ fn draw_yard_panel(
         .iter()
         .map(|resident| Some(formiga_art::ResidentMark::of(resident)))
         .collect();
-    // The colony house wearing the six decorations a colony could earn before 0.60.0, as it
-    // always has on this sheet.
+    // The colony house wearing the first six decorations, as it always has on this sheet.
     let village = ShelterRenderer::render_village(
         &home.drawn_shelter(),
         &[ShelterDecorationKind::ALL[..6].to_vec()],

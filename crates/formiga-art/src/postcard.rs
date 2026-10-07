@@ -282,10 +282,9 @@ fn paint_picture(
     paint_hills(&mut picture, rng, &light);
     paint_ground(&mut picture, rng, &light);
     let village_ground = light.horizon + 26;
-    // How tall the colony house may stand in the picture: raised with the houses each time they
-    // grew — from 118 and 72 by a quarter in 0.61.0, and by a fifth again in 0.65.0 — so a
-    // village keeps the scale it was drawn at and its houses stand taller beside the colony, as
-    // they do on the desktop.
+    // How tall the colony house may stand in the picture: in step with how large the houses are
+    // drawn, so a village keeps the scale it is drawn at and its houses stand taller beside the
+    // colony, as they do on the desktop.
     paint_village(
         &mut picture,
         save,

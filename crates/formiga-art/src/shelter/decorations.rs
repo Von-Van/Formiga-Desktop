@@ -2,13 +2,13 @@
 //! resolves on the house's own silhouette: the peak, the eaves, either side of the wall, and the
 //! ground either side of the door.
 //!
-//! Since 0.65.0 every decoration is drawn about twice the size it was, as one solid shape on a
-//! sheet of its own, and then ringed with a one-pixel outline before it is set onto the house.
-//! The outline is what makes a wreath read as a wreath at desktop scale: it holds the shape
-//! against a cream wall, a coloured roof and the desktop behind alike. Strings, wires and poles are
-//! drawn straight onto the house afterwards, thin, so they stay lines rather than turning into
-//! bars. Everything is the same size on a cottage as on the colony house, keeps clear of the
-//! doorway, and stays inside the ground its house's lot claims.
+//! Every decoration is drawn as one solid shape on a sheet of its own, and then ringed with a
+//! one-pixel outline before it is set onto the house. The outline is what makes a wreath read as a
+//! wreath at desktop scale: it holds the shape against a cream wall, a coloured roof and the
+//! desktop behind alike. Strings, wires and poles are drawn straight onto the house afterwards,
+//! thin, so they stay lines rather than turning into bars. Everything is the same size on a cottage
+//! as on the colony house, keeps clear of the doorway, and stays inside the ground its house's lot
+//! claims.
 
 use super::ShelterFrame;
 use crate::paint::mix;

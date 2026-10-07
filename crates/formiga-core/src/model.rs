@@ -694,11 +694,10 @@ pub struct CreatureRelationship {
     pub avoidance: u8,
 }
 
-/// What one pair has actually been seen doing together since 0.65.0, kept beside the pair's bond
-/// scores rather than inside them: the scores are read by every companion's every decision, and
-/// copied with them, and the tally is read only by the notebook. Never filled in for time before
-/// it was kept: a colony from an earlier release starts every pair at nothing, however close they
-/// already are.
+/// What one pair has actually been seen doing together, kept beside the pair's bond scores rather
+/// than inside them: the scores are read by every companion's every decision, and copied with them,
+/// and the tally is read only by the notebook. Never filled in for time before it was kept: a
+/// colony from an earlier release starts every pair at nothing, however close they already are.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairTally {
     pub a: CreatureId,
@@ -1082,11 +1081,10 @@ pub struct MiniArrivalState {
     pub arrived: [bool; 2],
 }
 
-/// What a companion has come to lean toward from living here, each from -100 to 100. Since
-/// 0.62.0 a leaning is learned a little at a time, less the nearer it already is to the end an
-/// experience pushes it toward, and drifts back toward the companion's own nature while nothing
-/// pushes it; before that, most of them only ever went up, and every companion ended at the top
-/// of all of them. Whole numbers in older files read as the same values.
+/// What a companion has come to lean toward from living here, each from -100 to 100. A leaning is
+/// learned a little at a time, less the nearer it already is to the end an experience pushes it
+/// toward, and drifts back toward the companion's own nature while nothing pushes it, so no
+/// companion ends at the top of all of them. Whole numbers in older files read as the same values.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LearnedTendencies {
     pub cursor_trust: f32,

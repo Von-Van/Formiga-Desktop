@@ -255,8 +255,8 @@ impl World {
         Self::new_from(colony_seed, now, desktop, Edition::LATEST)
     }
 
-    /// A new colony whose companions all come from the original generator, as every colony's did
-    /// before 0.62.0: for the scenes tests tuned on the companions it made.
+    /// A new colony whose companions all come from the original generator: for the scenes tests
+    /// tuned on the companions it made.
     #[cfg(test)]
     pub(crate) fn new_original(
         colony_seed: [u8; 32],
