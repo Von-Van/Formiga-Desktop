@@ -17,10 +17,9 @@ mod ui_atlas;
 mod wonders;
 
 pub use bubble::MilestoneBubbleRenderer;
-pub use canvas::{Canvas, Rgba};
+pub use canvas::{Canvas, Rgba, write_png};
 pub use card::{CARD_HEIGHT, CARD_WIDTH, CreatureCardRenderer, abbreviated_seed_code};
 pub use colony_card::{COLONY_CARD_HEIGHT, COLONY_CARD_WIDTH, ColonyCardRenderer};
-pub type PixelCanvas = Canvas;
 pub use objects::{
     COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_CELLS, COLONY_OBJECT_SIZE,
     ColonyObjectRenderer, PropSprite,

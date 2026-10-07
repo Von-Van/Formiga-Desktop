@@ -3,7 +3,6 @@ mod ambience;
 mod attention;
 mod behavior;
 mod bubble;
-mod clock;
 mod companion;
 mod cursor;
 mod daybook;
@@ -32,7 +31,6 @@ pub use ambience::DesktopAmbience;
 pub use attention::{AttentionEmotion, AttentionPose, Gesture, WindowSample};
 pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use bubble::BubbleIcon;
-pub use clock::{Clock, FixedClock, SystemClock};
 pub use companion::*;
 pub use daybook::{DAYS_KEPT, DayBook, DayNote, DayPair, DayRecord, day_notes};
 pub use design::{

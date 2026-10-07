@@ -15,9 +15,7 @@ use formiga_core::{
     MonitorInfo, World,
 };
 use sha2::{Digest, Sha256};
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use time::OffsetDateTime;
 
 const SCALE: u32 = 4;
@@ -127,7 +125,10 @@ pub fn run(path: PathBuf) -> Result<()> {
     }
 
     let sheet = painter.sheet;
-    write_png(&path, sheet.width, sheet.height, &sheet.pixels)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    crate::write_png(&path, sheet.width, sheet.height, &sheet.pixels)?;
     println!(
         "wrote {} ({}x{})",
         path.display(),
@@ -670,19 +671,6 @@ const FONT: [[u8; 5]; 26] = [
     [0b101, 0b101, 0b010, 0b010, 0b010], // y
     [0b111, 0b001, 0b010, 0b100, 0b111], // z
 ];
-
-fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
-    }
-    let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
-    let mut encoder = png::Encoder::new(BufWriter::new(file), width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut writer = encoder.write_header()?;
-    writer.write_image_data(pixels)?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

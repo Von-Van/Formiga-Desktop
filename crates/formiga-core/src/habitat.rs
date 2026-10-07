@@ -92,13 +92,11 @@ pub enum DwellingKind {
 impl DwellingKind {
     /// Ground footprint in shelter pixels: the drawn house plus its shadow and the decorations
     /// standing against its corners, with a pixel or two of breathing room. Smaller than the 96px
-    /// atlas cell it is sampled from, so neighbours sit close without their artwork touching.
-    /// The houses are drawn half as large again as they were until 0.61.0 — a quarter then, a
-    /// fifth more in 0.65.0 — so a companion's house stands plainly taller and wider than the
-    /// companion who keeps it, and the colony house stays plainly the largest building on the
-    /// strip. The footprints were 60 and 46 until 0.61.0 and 70 and 56 until 0.65.0; they grew by
-    /// the same fifth as the houses, since the larger decorations that stand against a house's
-    /// corners now stand half in front of its wall rather than out beside it.
+    /// atlas cell it is sampled from, so neighbours sit close without their artwork touching. A
+    /// companion's house stands plainly taller and wider than the companion who keeps it, and the
+    /// colony house stays plainly the largest building on the strip. The decorations that stand
+    /// against a house's corners stand half in front of its wall rather than out beside it, so a
+    /// footprint keeps to the proportions of the house it is under.
     pub const fn width(self) -> f32 {
         match self {
             Self::Main => 84.0,
@@ -183,20 +181,19 @@ pub enum VillageLot {
     Dwelling(usize),
 }
 
-/// The air between two lots that are not part of the same thing. Three shelter pixels is a
-/// visible seam at every scale the overlay draws at and no more: 0.58.0's five turned into
-/// fifty-five pixels of empty lane once the strip was laid end to end.
+/// The air between two lots that are not part of the same thing. Three shelter pixels is a visible
+/// seam at every scale the overlay draws at and no more: the seams add up along the strip, and five
+/// would leave fifty-five pixels of empty lane once it is laid end to end.
 const VILLAGE_GAP: f32 = 3.0;
 
-/// How closely the village is laid out on the display it is on. Comfortable is the village as it
-/// is drawn everywhere it fits: a seam between houses, a footprint round each that leaves its
+/// How closely the village is laid out on the display it is on. Comfortable is the village as it is
+/// drawn everywhere it fits: a seam between houses, a footprint round each that leaves its
 /// decorations room, and the outward tree's yard against the edge of the display. A display too
-/// narrow for every house that way — a 1280- to 1440-point laptop at 100%, at the default size,
-/// once the houses grew a fifth in 0.65.0 — lays it out snug instead, so that nobody's house is
-/// the one left off the end: the outward tree gives up its ground and is not shown, the colony
-/// house tucks into the corner, and the houses stand shoulder to shoulder on footprints that are
-/// only as wide as what is drawn on them. Snug is only ever used where it shows more houses than
-/// comfortable would.
+/// narrow for every house that way — a 1280- to 1440-point laptop at 100%, at the default size —
+/// lays it out snug instead, so that nobody's house is the one left off the end: the outward tree
+/// gives up its ground and is not shown, the colony house tucks into the corner, and the houses
+/// stand shoulder to shoulder on footprints that are only as wide as what is drawn on them. Snug is
+/// only ever used where it shows more houses than comfortable would.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum VillageFit {
     #[default]
@@ -230,11 +227,11 @@ impl VillageFit {
     }
 }
 
-/// How far each tree's lot reaches in over the house beside it. The houses grew a quarter in
-/// 0.61.0 and the village only about a tenth, so the trees at either end stand a little in over
-/// the end houses' ground rather than a seam clear of it; where a tree's drawing and a house's
-/// meet, the tree is drawn in front. Six pixels is the shadow and whatever decoration stands on
-/// the ground beside the wall, never the wall itself.
+/// How far each tree's lot reaches in over the house beside it. The village is laid out a little
+/// tighter than its houses are drawn, so the trees at either end stand a little in over the end
+/// houses' ground rather than a seam clear of it; where a tree's drawing and a house's meet, the
+/// tree is drawn in front. Six pixels is the shadow and whatever decoration stands on the ground
+/// beside the wall, never the wall itself.
 pub const TREE_OVERLAP: f32 = 6.0;
 
 /// The ground one belonging claims. Every belonging draws from a 16-pixel quad, but the thing
@@ -273,12 +270,7 @@ const HOME_EDGE_MARGIN: f32 = DwellingKind::Main.width() / 2.0 - TREE_OVERLAP + 
 /// takes, not the ground every colony takes — a village lays out only the houses it has, so a
 /// founder on its own is a third of this and grows toward it a house at a time.
 ///
-/// It was 448 until 0.61.0, inherited from 0.58.5's four-companion village, which measured 445
-/// with a house and a standing place for each of them; six houses fit inside the same ground once
-/// the standing places came out of the strip. The houses then grew a quarter and the ground about
-/// a tenth, to 465 with each tree standing a little in over its end house, and in 0.65.0 the
-/// houses grew a fifth more and their footprints with them: a full village measures 539. The
-/// trees keep their size, so the village grew by a little less than its houses did.
+/// A full village measures 539, with each tree standing a little in over its end house.
 pub const VILLAGE_SPAN_LIMIT: f32 = 540.0;
 
 /// Where the outward tree's lot sits on the walk, counting outward from the colony house: reaching
@@ -303,12 +295,11 @@ fn lot_width(lot: VillageLot, cottages: &[DwellingKind], fit: VillageFit) -> f32
     }
 }
 
-/// How far above the ground line the tallest house is drawn, pennant and all: 78 shelter pixels
-/// since the houses grew in 0.65.0, held to the drawings by a test in the art crate. The lot
-/// fits by this rather than by the 96-pixel cell it is drawn from, whose top is empty air, so a
-/// band along the bottom of a display that had room for the village before the houses grew —
-/// above a Dock or a taskbar, say — has room for it still. It is the 80 the village allowed while
-/// the cell was 80 pixels tall.
+/// How far above the ground line the tallest house is drawn, pennant and all: 78 shelter pixels,
+/// held to the drawings by a test in the art crate. The lot fits by this rather than by the
+/// 96-pixel cell it is drawn from, whose top is empty air, so a band along the bottom of a display
+/// — above a Dock or a taskbar, say — has room for the village. It allows 80, a little more than
+/// the tallest house, so every band that has held the village still does.
 pub const DWELLING_DRAWN_HEIGHT: f32 = 80.0;
 
 /// How tall a lot's contents draw, for deciding whether the lot fits its region. A keepsake tree
@@ -1111,11 +1102,11 @@ pub fn home_object_positions(
 }
 
 /// How far above the village ground line the top of a house reaches, in shelter pixels: where a
-/// companion sitting on its roof has its feet. Measured the way the house is drawn — its size in
-/// twenty-fourths of the colony house as it was drawn until 0.61.0, the dwelling's own
-/// proportions from the colony's shelter genome, and where each type's roof actually tops out —
-/// and held to the drawing by a test in the art crate. The ground line is three rows below where
-/// a house's walls stand in its cell.
+/// companion sitting on its roof has its feet. Measured the way the house is drawn — its span in
+/// twenty-fourths of the size its drawing is written at, the dwelling's own proportions from the
+/// colony's shelter genome, and where each type's roof actually tops out — and held to the drawing
+/// by a test in the art crate. The ground line is three rows below where a house's walls stand in
+/// its cell.
 pub fn house_roof_height(
     shelter: &crate::ShelterGenome,
     style: crate::ShelterStyle,
@@ -1522,15 +1513,16 @@ mod tests {
         home
     }
 
-    /// Growing the houses a fifth in 0.65.0 must not cost anybody their home. On the displays
-    /// people actually have, at every creature size, a full six-companion colony shows at least
-    /// as many houses as it did in 0.64.0 — the numbers below are 0.64.0's own — laying the
+    /// Houses drawn at their present size must not cost anybody their home. On the displays people
+    /// actually have, at every creature size, a full six-companion colony shows at least as many
+    /// houses as it did with houses a fifth smaller — the numbers below are from then — laying the
     /// village out snug where the comfortable layout would leave a house off the end. A snug
     /// village gives up a keepsake tree before a house, never the other way round.
     #[test]
     fn a_full_colony_shows_every_house_it_did_before_the_houses_grew() {
         let cottages = widest_colony();
-        // Width, usable height, scale factor, and the houses 0.64.0 showed at 2x, 3x and 4x.
+        // Width, usable height, scale factor, and the houses shown at 2x, 3x and 4x when they were
+        // a fifth smaller.
         let displays: [(f32, f32, f32, [usize; 3]); 9] = [
             (1280.0, 760.0, 1.0, [6, 6, 4]),
             (1366.0, 728.0, 1.0, [6, 6, 4]),
@@ -1739,11 +1731,11 @@ mod tests {
         }
     }
 
-    /// A band along the bottom of the display — the Bottom edge habitat, above a Dock or a
-    /// taskbar — that held a full village before the houses grew a fifth in 0.65.0 still holds
-    /// every house and both trees, at the sizes it did: Medium on a 1080p display, Small on a
-    /// 768-line laptop, and Large on a Retina laptop. The houses are fitted by how tall they are
-    /// drawn, not by the empty top of the cell they are drawn from.
+    /// A band along the bottom of the display — the Bottom edge habitat, above a Dock or a taskbar
+    /// — that held a full village while the houses were a fifth smaller still holds every house and
+    /// both trees, at the sizes it did: Medium on a 1080p display, Small on a 768-line laptop, and
+    /// Large on a Retina laptop. The houses are fitted by how tall they are drawn, not by the empty
+    /// top of the cell they are drawn from.
     #[test]
     fn a_bottom_band_that_held_the_village_before_the_houses_grew_still_holds_it() {
         for (width, height, scale_factor, display_scale) in [
@@ -2153,9 +2145,9 @@ mod tests {
         monitor.bounds.width = 800.0;
         monitor.usable_bounds.width = 800.0;
         let monitors = std::slice::from_ref(&monitor);
-        // A habitat cut back to a band in the middle of the display: room for the houses, none
-        // for what stands past them against the edge. Since 0.65.0 the two houses measure 155
-        // shelter pixels end to end, so the band is 200 of them at the 2x drawn here.
+        // A habitat cut back to a band in the middle of the display: room for the houses, none for
+        // what stands past them against the edge. The two houses measure 155 shelter pixels end to
+        // end, so the band is 200 of them at the 2x drawn here.
         for (corner, left) in [
             (HomeCorner::BottomLeft, 0.1_f32),
             (HomeCorner::BottomRight, 0.4),

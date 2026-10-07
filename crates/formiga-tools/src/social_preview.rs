@@ -10,12 +10,10 @@
 //! deterministic and reads only public `formiga_art` / `formiga_core` items, matching the
 //! approach the other `formiga-tools` subcommands already use.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use formiga_art::{AnimationSpec, CreatureRenderer, FRAME_SIZE, SHELTER_SIZE, ShelterRenderer};
 use formiga_core::*;
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use time::OffsetDateTime;
 
 const SOCIAL_WIDTH: i32 = 1280;
@@ -34,14 +32,14 @@ const MOON_HALO: [u8; 4] = [255, 246, 221, 60];
 
 pub fn social_preview(path: PathBuf) -> Result<()> {
     let pixels = render_social_scene();
-    write_png(&path, SOCIAL_WIDTH, SOCIAL_HEIGHT, &pixels)?;
+    crate::write_png(&path, SOCIAL_WIDTH as u32, SOCIAL_HEIGHT as u32, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
 }
 
 pub fn itch_cover(path: PathBuf) -> Result<()> {
     let pixels = render_cover_scene();
-    write_png(&path, COVER_WIDTH, COVER_HEIGHT, &pixels)?;
+    crate::write_png(&path, COVER_WIDTH as u32, COVER_HEIGHT as u32, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
 }
@@ -812,16 +810,6 @@ fn glyph(ch: char) -> Option<[&'static str; 7]> {
         ],
         _ => return None,
     })
-}
-
-fn write_png(path: &Path, width: i32, height: i32, pixels: &[u8]) -> Result<()> {
-    let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
-    let mut encoder = png::Encoder::new(BufWriter::new(file), width as u32, height as u32);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut writer = encoder.write_header()?;
-    writer.write_image_data(pixels)?;
-    Ok(())
 }
 
 #[cfg(test)]
