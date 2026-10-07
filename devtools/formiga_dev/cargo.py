@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .report import Problem
-from .workspace import DESKTOP, relative
+from .workspace import DESKTOP, Run, relative, run
 
 _PACKAGE = re.compile(r"#(?:[^@]+@)?([A-Za-z0-9_-]+)@|/([A-Za-z0-9_-]+)#")
 
@@ -184,3 +184,35 @@ def format_problems(output: str, step: str, root: Path = DESKTOP) -> List[Proble
                 line=int(match.group(2) or match.group(3)),
             )
     return list(problems.values())
+
+
+def json_document(output: str) -> Optional[dict]:
+    """The JSON document a `formiga-tools dev` command prints, out of everything cargo printed."""
+    start = output.find("{\n")
+    if start < 0:
+        return None
+    try:
+        return json.loads(output[start:])
+    except ValueError:
+        return None
+
+
+def last_error(output: str) -> str:
+    lines = [line for line in output.strip().splitlines() if line.strip()]
+    errors = [line for line in lines if line.lstrip().startswith("error")]
+    return (errors or lines or ["failed with no output"])[-1].strip()
+
+
+def tools_dev(args: List[str], step: str, release: bool = False):
+    """Run `formiga-tools dev ARGS` and return (its JSON document or None, the run, problems).
+
+    When there is no document, the problems say why: a compile error at its file and line, or
+    the last error the command printed."""
+    command = ["cargo", "run", "-q", *(["--release"] if release else []), "-p", "formiga-tools",
+               "--", "dev", *args]
+    done: Run = run(command)
+    document = json_document(done.output)
+    problems: List[Problem] = []
+    if document is None:
+        problems = compiler_problems(done.output, step) or [Problem(step, last_error(done.output))]
+    return document, done, problems

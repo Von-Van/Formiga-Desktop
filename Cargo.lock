@@ -1345,6 +1345,7 @@ name = "formiga-tools"
 version = "0.67.3"
 dependencies = [
  "anyhow",
+ "epaint",
  "formiga-art",
  "formiga-core",
  "formiga-home-contract",
