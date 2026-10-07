@@ -75,6 +75,13 @@ impl DesktopRect {
             height: bottom - y,
         })
     }
+
+    pub(crate) fn overlaps(self, other: Self) -> bool {
+        self.x < other.right()
+            && self.right() > other.x
+            && self.y < other.bottom()
+            && self.bottom() > other.y
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -121,14 +128,6 @@ pub struct DesktopSnapshot {
     /// Monotonic time of the native cursor sample; never persisted.
     #[serde(skip)]
     pub cursor_sample_millis: Option<u64>,
-}
-
-pub trait PlatformDesktop {
-    type Error;
-
-    fn snapshot(&self) -> DesktopSnapshot;
-    fn set_overlays_visible(&mut self, visible: bool);
-    fn set_launch_at_login(&mut self, enabled: bool) -> Result<(), Self::Error>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
