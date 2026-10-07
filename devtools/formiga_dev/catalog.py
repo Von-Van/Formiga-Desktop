@@ -70,10 +70,21 @@ def find(catalog: dict, query: str, kind: Optional[str] = None) -> List[Tuple[di
     return found
 
 
+# Other names a kind goes by, as people and the README say them.
+KIND_ALIASES = {"find": "trinket", "colonyobject": "object"}
+
+
 def kind_named(catalog: dict, name: str) -> Optional[dict]:
+    """The kind a word names, singular or plural: `accessories`, `colony objects`, `finds`."""
     wanted = normal(name)
+    forms = {wanted}
+    if wanted.endswith("ies"):
+        forms.add(wanted[:-3] + "y")
+    if wanted.endswith("s"):
+        forms.add(wanted[:-1])
+    forms |= {KIND_ALIASES[form] for form in forms if form in KIND_ALIASES}
     for entry in catalog["kinds"]:
-        if normal(entry["kind"]) in (wanted, wanted.rstrip("s")):
+        if normal(entry["kind"]) in forms:
             return entry
     return None
 
@@ -132,6 +143,18 @@ class Source:
                 if pattern.search(text):
                     hits.append(Hit(repo, path, number, text.strip()))
         return hits
+
+    def search(self, pattern: "re.Pattern[str]", suffixes: Optional[set] = None
+               ) -> Iterator[Tuple[Hit, "re.Match[str]"]]:
+        """Every match of `pattern` in each file's whole text, so one written across several
+        lines is still found; each comes with the line it starts on."""
+        for repo, path, lines in self.files():
+            if suffixes and Path(path).suffix not in suffixes:
+                continue
+            text = "\n".join(lines)
+            for match in pattern.finditer(text):
+                number = text.count("\n", 0, match.start()) + 1
+                yield Hit(repo, path, number, lines[number - 1].strip()), match
 
     def enum_variant(self, path: str, type_name: str, variant: str) -> Optional[int]:
         """The line `variant` is declared on, inside `pub enum type_name`."""
