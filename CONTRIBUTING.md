@@ -37,6 +37,10 @@ logs, and the update preferences all go there, so an experiment, a migration, or
 touch a colony you actually live with. Without it, a development build uses the same colony as an
 installed copy. The log is `logs/formiga.log` in whichever directory is in use.
 
+The developer toolkit in [devtools/](devtools/README.md) does this for you with fixed colonies,
+`devtools/formiga scenario mature-colony`, and also checks a change (`devtools/formiga validate`) and
+pictures the result (`devtools/formiga capture hill-green`).
+
 ### Finding your way around
 
 Start with [the orientation at the top of ARCHITECTURE.md](docs/ARCHITECTURE.md#start-here). It
