@@ -69,16 +69,22 @@ pub(super) fn silhouette_rows(canvas: &formiga_art::Canvas) -> (u8, u8) {
 }
 
 /// How many texture pixels each art pixel of `appearance` is baked as, on a display that shows it
-/// `display_scale` screen pixels to the art pixel. A companion is pixel art at one pixel to the
-/// unit, and is baked at one. A sculpted form is painted finer, as Formiga Farm draws it, and is
-/// baked as finely as its screen shows it and no finer, so it is drawn at the same size, never
-/// shrunk and never blurred.
-pub(super) fn baked_detail(appearance: &AppearanceGenome, display_scale: u8) -> u32 {
+/// `display_scale` screen pixels to the art pixel, drawn by an overlay `render_divisor` screen
+/// pixels to each of its own. A companion is pixel art at one pixel to the unit, and is baked at
+/// one. A sculpted form is painted finer, as Formiga Farm draws it, and is baked as finely as the
+/// overlay draws it and no finer, so it is drawn at the same size, never shrunk and never
+/// blurred. On a Retina display at an even size the overlay draws at half resolution, and a bake
+/// finer than that would only be sampled away, a pixel here and there.
+pub(super) fn baked_detail(
+    appearance: &AppearanceGenome,
+    display_scale: u8,
+    render_divisor: u32,
+) -> u32 {
     if appearance.sculpt.is_none() {
         return 1;
     }
     formiga_art::forms::FINEST_DETAIL
-        .min(u32::from(display_scale))
+        .min(u32::from(display_scale) / render_divisor.max(1))
         .max(1)
 }
 

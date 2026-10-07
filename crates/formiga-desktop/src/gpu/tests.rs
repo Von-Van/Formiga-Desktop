@@ -675,14 +675,32 @@ fn only_a_sculpted_form_is_baked_finer_and_never_finer_than_its_screen_shows_it(
     );
     let mut appearance = world.save.creatures[0].appearance.clone();
     for display_scale in 1..=4 {
-        assert_eq!(baked_detail(&appearance, display_scale), 1);
+        assert_eq!(baked_detail(&appearance, display_scale, 1), 1);
     }
     appearance.sculpt = Some(Sculpt::starter(Plan::Floater));
     for display_scale in 1..=4 {
-        let detail = baked_detail(&appearance, display_scale);
+        let detail = baked_detail(&appearance, display_scale, 1);
         assert!((1..=u32::from(display_scale)).contains(&detail));
         assert!(detail <= formiga_art::forms::FINEST_DETAIL);
     }
+}
+
+/// On a Retina display at an even size the overlay draws at half resolution, so a sculpted form is
+/// baked at the overlay's pixels, not the screen's: plain at Small, and twice as fine at Large.
+#[test]
+fn a_sculpted_form_is_baked_no_finer_than_a_half_resolution_overlay_draws_it() {
+    use formiga_core::forms::{Plan, Sculpt};
+    let world = World::new(
+        [19; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut appearance = world.save.creatures[0].appearance.clone();
+    appearance.sculpt = Some(Sculpt::starter(Plan::CompactQuadruped));
+    assert_eq!(baked_detail(&appearance, 2, 2), 1);
+    assert_eq!(baked_detail(&appearance, 4, 2), 2);
+    assert_eq!(baked_detail(&appearance, 3, 1), 3);
+    assert_eq!(baked_detail(&appearance, 4, 1), 4);
 }
 
 #[test]
