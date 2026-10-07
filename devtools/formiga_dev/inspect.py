@@ -32,24 +32,20 @@ def inspect(words: List[str]) -> Result:
         return result
     if not words:
         return _kinds(result, data)
-    kind = catalog.kind_named(data, words[0])
-    query = " ".join(words[1:] if kind else words)
-    if kind and not query:
-        return _items(result, kind)
-    found = catalog.find(data, query, kind["kind"] if kind else None)
-    if not found:
-        where = f"no {kind['kind']}" if kind else "nothing"
-        result.error = (f"{where} called {query!r}; `formiga inspect "
-                        f"{kind['kind'] if kind else 'KIND'}` lists them")
+    named = catalog.lookup(data, words)
+    if named.error:
+        result.error = named.error
+        if named.matches:
+            result.data["matches"] = named.matches
+            result.data["notes"] = matches(named.matches)
         return result
-    if len(found) > 1:
-        result.error = (f"{query!r} names {len(found)} things; put its kind first, for example "
-                        f"`formiga inspect {found[0][0]['kind']} {query}`")
-        result.data["matches"] = [{"kind": k["kind"], "id": i["id"], "name": i["name"]}
-                                  for k, i in found]
-        result.data["notes"] = [f"  {k['kind']:<12} {i['id']:<16} {i['name']}" for k, i in found]
-        return result
-    return _item(result, data, *found[0])
+    if named.item is None:
+        return _items(result, named.kind)
+    return _item(result, data, named.kind, named.item)
+
+
+def matches(found: List[Dict]) -> List[str]:
+    return [f"  {m['kind']:<12} {m['id']:<16} {m['name']}" for m in found]
 
 
 def _kinds(result: Result, data: dict) -> Result:

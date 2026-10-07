@@ -17,7 +17,9 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from formiga_dev import audit, cargo, catalog, scenarios, validate  # noqa: E402
+from formiga_dev import (  # noqa: E402
+    audit, cargo, catalog, content, save, scenarios, status, uses, validate,
+)
 from formiga_dev.report import Problem, Result, Step, emit  # noqa: E402
 from formiga_dev.workspace import Expansion, lockfile_kept  # noqa: E402
 
@@ -274,6 +276,209 @@ pub const FAIR_TICKET: &str = "fair_ticket";
             ("trinket:3", "error"),               # Home names a find past the last one
             ("trinket:7", "error"),               # …and one written over several lines
         ]))
+
+
+class SaveInspect(unittest.TestCase):
+    def test_each_version_says_what_it_added(self):
+        text = """    // 27: the souvenirs a colony has brought home. An older colony has
+    // brought none home.
+    Step::adds_only(26),
+    // 28: four more souvenirs.
+    // Also the rope bridge, a new hangout.
+    Step::adds_only(27),
+"""
+        self.assertEqual(save.upgrade_notes(text), {
+            27: "the souvenirs a colony has brought home. An older colony has brought none home.",
+            28: "four more souvenirs. Also the rope bridge, a new hangout.",
+        })
+
+    def test_broken_rules_fail_and_repairs_are_warnings(self):
+        document = {"broken": ["two companions share an id"],
+                    "repairs": {"count": 1, "shown": [
+                        {"path": ".creatures[id=7]", "was": "a second copy", "now": None}]},
+                    "after_repair": [], "snapshot": {"accepted": True},
+                    "opens": {"opens": "file"}}
+        self.assertEqual(save._rules(document).status, "failed")
+        repair = save._repair(document)
+        self.assertEqual(repair.status, "passed")
+        self.assertEqual([p.message for p in repair.problems],
+                         [".creatures[id=7]: 'a second copy' → nothing"])
+        self.assertTrue(repair.problems[0].is_warning)
+        self.assertEqual(save._after(document).status, "passed")
+        document["after_repair"] = ["no companion is grown up"]
+        self.assertEqual(save._after(document).status, "failed")
+
+    def test_what_desktop_would_open(self):
+        self.assertEqual(save._opens({"opens": {"opens": "file"}}, Path("c.json")).status,
+                         "passed")
+        backup = save._opens({"opens": {"opens": "backup", "backup": "c.json.bak"}},
+                             Path("c.json"))
+        self.assertEqual((backup.status, backup.problems[0].level), ("passed", "warning"))
+        self.assertEqual(save._opens({"opens": {"opens": "nothing", "why": "bad"}},
+                                     Path("c.json")).status, "failed")
+
+
+class Uses(unittest.TestCase):
+    def hit(self, repo, path):
+        return catalog.Hit(repo, path, 1, "")
+
+    def test_places_are_grouped_by_what_a_change_means_for_them(self):
+        for repo, path, group in [
+            ("desktop", "crates/formiga-core/src/world/home.rs", "code"),
+            ("desktop", "crates/formiga-core/src/world/tests/hangouts.rs", "tests"),
+            ("desktop", "crates/formiga-travel/src/lib.rs", "contracts"),
+            ("desktop", "crates/formiga-core/src/persistence/migrations.rs", "upgrades"),
+            ("desktop", "crates/formiga-tools/src/dev_art.rs", "tools"),
+            ("desktop", "crates/formiga-travel/tests/fixtures/snapshot-v3.json", "data"),
+            ("hill", "crates/formiga-hill/src/story/souvenirs.rs", "expansions"),
+        ]:
+            self.assertEqual(uses.group_of(self.hit(repo, path)), group, path)
+
+    def answers(self, kind_key, item_, saved_in=("home.hangouts[].kind",), **groups):
+        found = {key: [] for key in uses.GROUPS}
+        for key, count in groups.items():
+            found[key] = [self.hit("desktop", "x.rs")] * count
+        return uses.answer(kind(kind_key, [item_], saved_in=list(saved_in)), item_,
+                           {"file": "m.rs", "named": 3, "declared": 2}, found, [], {})
+
+    def test_a_saved_rust_name_needs_a_serde_rename_to_change(self):
+        said = self.answers("hangout", item("Bench", "Bench", saved_as="Bench"), code=2)
+        self.assertIn('#[serde(rename = "Bench")]', said["rename"])
+        self.assertIn("Colonies holding it would stop loading", said["remove"])
+
+    def test_a_snake_case_save_name_is_spelled_from_the_rust_name(self):
+        said = self.answers("souvenir", item("well_penny", "Well penny", saved_as="well_penny",
+                                             variant="WellPenny"), expansions=1)
+        self.assertIn("spelled from its Rust name", said["rename"])
+        self.assertIn("contracts, Hill or Home", said["rename"])
+
+    def test_an_explicit_save_name_is_already_held_steady(self):
+        said = self.answers("wonder", item("LeafSled", "Leaf sled", saved_as="Bike"))
+        self.assertIn("already holds steady", said["rename"])
+
+    def test_finds_are_kept_by_number(self):
+        said = self.answers("trinket", item("4", "Acorn", saved_as=4, number=4))
+        self.assertIn("kept by number", said["rename"])
+        self.assertIn("renumbered", said["remove"])
+
+
+class Report(unittest.TestCase):
+    def test_a_check_is_dated_in_plain_words(self):
+        with mock.patch.object(status, "datetime", wraps=status.datetime) as clock:
+            clock.now.return_value = status.datetime(2026, 10, 7, 12, 0,
+                                                     tzinfo=status.timezone.utc)
+            self.assertEqual(status.age("2026-10-07T11:30:00Z"), "30 min ago")
+            self.assertEqual(status.age("2026-10-07T02:00:00Z"), "10 h ago")
+            self.assertEqual(status.age("2026-10-01T12:00:00Z"), "6 days ago")
+
+    def test_only_the_three_checks_are_kept(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(status, "LAST", Path(folder)), \
+                mock.patch.object(status, "git", return_value="abc"):
+            status.record("inspect", Result("inspect"))
+            status.record("validate", Result("validate", steps=[Step("format", "passed")]))
+            self.assertEqual(sorted(p.name for p in Path(folder).iterdir()), ["validate.json"])
+            kept = status.last("validate")
+            self.assertEqual((kept["success"], kept["commit"]), (True, "abc"))
+
+
+MODEL = """pub enum HangoutKind {
+    Cushion,
+    Swing,
+}
+
+impl HangoutKind {
+    pub const ALL: [Self; 2] = [
+        Self::Cushion,
+        Self::Swing,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cushion => "Nap cushion",
+            Self::Swing => "Swing",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Cushion => "Somewhere soft.",
+            Self::Swing => "A plank on two ropes.",
+        }
+    }
+
+    pub const fn lively(self) -> bool {
+        matches!(self, Self::Swing)
+    }
+}
+"""
+
+
+class ContentAdd(unittest.TestCase):
+    def test_the_new_piece_is_declared_listed_and_named_at_the_end(self):
+        text = content.declare(MODEL, "HangoutKind", "RopeBridge")
+        text = content.add_arm(text, "HangoutKind", "label", "RopeBridge", 'Rope "bridge"')
+        text = content.add_arm(text, "HangoutKind", "description", "RopeBridge", "Bouncy.")
+        self.assertIn("    Swing,\n    RopeBridge,\n}", text)
+        self.assertIn("pub const ALL: [Self; 3] = [", text)
+        self.assertIn("        Self::Swing,\n        Self::RopeBridge,\n    ];", text)
+        self.assertIn('Self::Swing => "Swing",\n            Self::RopeBridge => "Rope \\"bridge\\"",',
+                      text)
+        self.assertIn('            Self::RopeBridge => "Bouncy.",\n        }', text)
+
+    def test_matches_on_the_like_piece_name_the_new_one_and_nothing_else(self):
+        code = """match kind {
+    HangoutKind::Swing => 1,
+    HangoutKind::Lookout
+        | HangoutKind::Swing
+        | HangoutKind::Sandbox => 2,
+}
+let swinging = kind == HangoutKind::Swing || other;
+// HangoutKind::Swing is the oldest
+set(HangoutKind::Swing);
+"""
+        out, copied, left = content.copy_matches(code, "a.rs", "HangoutKind", "Swing",
+                                                 "RopeBridge")
+        self.assertIn("HangoutKind::Swing | HangoutKind::RopeBridge => 1,", out)
+        self.assertIn("| HangoutKind::Swing | HangoutKind::RopeBridge\n", out)
+        self.assertIn("kind == HangoutKind::Swing || other", out)
+        self.assertEqual([place["line"] for place in copied], [2, 4])
+        self.assertEqual([place["line"] for place in left], [7, 9])
+
+    def test_inside_its_own_impl_self_counts_and_the_names_are_left_to_add_arm(self):
+        span = content._names_span(MODEL, "HangoutKind")
+        out, copied, _ = content.copy_matches(MODEL, "m.rs", "HangoutKind", "Swing",
+                                              "RopeBridge", span)
+        self.assertIn("matches!(self, Self::Swing)", out)  # one pattern, no `|`: listed only
+        self.assertNotIn('Self::Swing | Self::RopeBridge => "Swing"', out)
+        self.assertEqual(copied, [])
+
+    def test_a_name_must_be_new_and_the_like_piece_real(self):
+        data = sample_catalog(kind("hangout", [item("Swing", "Swing")], type="HangoutKind"))
+        with mock.patch.object(content, "limit", return_value=32):
+            for name, like, why in [("swing", "Swing", "already a hangout called"),
+                                    (" Rope", "Swing", "stray spaces"),
+                                    ("Rope", "Hammock", "--like names no hangout")]:
+                with self.assertRaises(content.Refused) as refused:
+                    content.plan_addition(data, "hangout", name, "About.", like)
+                self.assertIn(why, str(refused.exception))
+            with self.assertRaises(content.Refused):
+                content.plan_addition(data, "decoration", "Rope", "About.", "Swing")
+
+    def test_a_save_version_is_raised_once_per_release(self):
+        lib = "pub const SAVE_VERSION: u32 = 28;\n"
+        table = ("const STEPS: &[Step] = &[\n    // 28: souvenirs.\n    Step::adds_only(27),\n"
+                 "];\n")
+        for released, version, note in [(28, "29", "    // 29: the rope bridge, a new hangout. "
+                                                     "An older colony has none.\n"),
+                                         (27, "28", "    // Also the rope bridge, a new hangout.\n")]:
+            plan = content.Plan("hangout", "HangoutKind", "RopeBridge", "Rope bridge", "x", "Swing")
+            plan.files = {content.LIB: (lib, lib), content.MIGRATIONS: (table, table)}
+            with mock.patch.object(content, "released_save_version", return_value=released), \
+                    mock.patch.object(content, "desktop_version", return_value="0.67.3"):
+                content.raise_save_version(plan, "the rope bridge, a new hangout")
+            self.assertIn(f"SAVE_VERSION: u32 = {version};", plan.files[content.LIB][1])
+            self.assertIn(note, plan.files[content.MIGRATIONS][1])
 
 
 class Output(unittest.TestCase):

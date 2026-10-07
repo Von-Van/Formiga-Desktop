@@ -90,6 +90,38 @@ def kind_named(catalog: dict, name: str) -> Optional[dict]:
 
 
 @dataclass
+class Lookup:
+    """What a command's words name: a kind, one item of it, or nothing (with why)."""
+
+    kind: Optional[dict] = None
+    item: Optional[dict] = None
+    error: Optional[str] = None
+    matches: Optional[List[Dict]] = None
+
+
+def lookup(catalog: dict, words: List[str], command: str = "inspect") -> Lookup:
+    """`KIND`, `ITEM` or `KIND ITEM`: an item by its id, name, saved name or (within a kind) its
+    number. A name several kinds share is refused with every match, so the kind can be added."""
+    if not words:
+        return Lookup()
+    kind = kind_named(catalog, words[0])
+    query = " ".join(words[1:] if kind else words)
+    if kind and not query:
+        return Lookup(kind=kind)
+    found = find(catalog, query, kind["kind"] if kind else None)
+    if not found:
+        where = f"no {kind['kind']}" if kind else "nothing"
+        return Lookup(kind=kind, error=f"{where} called {query!r}; `formiga inspect "
+                                       f"{kind['kind'] if kind else 'KIND'}` lists them")
+    if len(found) > 1:
+        return Lookup(
+            error=f"{query!r} names {len(found)} things; put its kind first, for example "
+                  f"`formiga {command} {found[0][0]['kind']} {query}`",
+            matches=[{"kind": k["kind"], "id": i["id"], "name": i["name"]} for k, i in found])
+    return Lookup(kind=found[0][0], item=found[0][1])
+
+
+@dataclass
 class Hit:
     repo: str
     path: str

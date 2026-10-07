@@ -17,6 +17,7 @@ mod decoration_sheet;
 mod dev;
 mod dev_art;
 mod dev_catalog;
+mod dev_save;
 mod habit_sheet;
 mod palette_sheet;
 mod postcard;
