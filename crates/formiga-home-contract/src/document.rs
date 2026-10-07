@@ -4,7 +4,7 @@
 //! what went wrong, are Home's, under Home's own version.
 
 use crate::HOME_FORMAT_VERSION;
-use formiga_expansion_rulebook::{self as rulebook, Kind, RulebookError};
+use formiga_expansion_rulebook::{self as rulebook, Kind};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::io;
@@ -13,27 +13,7 @@ use std::path::Path;
 pub use formiga_expansion_rulebook::sha256_hex;
 pub(crate) use formiga_expansion_rulebook::{header_ok, is_lower_hex, is_sha256_hex};
 
-#[derive(Debug, thiserror::Error)]
-pub enum HomeError {
-    #[error("the Home file could not be read or written: {0}")]
-    Io(#[from] io::Error),
-    #[error("the Home file is larger than any Home file can be ({limit} bytes)")]
-    TooLarge { limit: u64 },
-    #[error("the Home file could not be read: {0}")]
-    Json(#[from] serde_json::Error),
-    #[error("expected a {expected} file, found {found:?}")]
-    WrongFormat {
-        expected: &'static str,
-        found: String,
-    },
-    #[error(
-        "the Home file needs a reader of Home version {needs}, and this build reads up to \
-         version {reads}"
-    )]
-    UnsupportedVersion { needs: u32, reads: u32 },
-    #[error("the Home file is not usable: {0}")]
-    Invalid(String),
-}
+rulebook::contract_error!(pub enum HomeError, "Home");
 
 impl HomeError {
     pub(crate) fn invalid(reason: impl Into<String>) -> Self {
@@ -43,21 +23,6 @@ impl HomeError {
     /// Whether the file was simply not there.
     pub fn is_missing(&self) -> bool {
         matches!(self, Self::Io(error) if error.kind() == io::ErrorKind::NotFound)
-    }
-}
-
-impl From<RulebookError> for HomeError {
-    fn from(error: RulebookError) -> Self {
-        match error {
-            RulebookError::Io(error) => Self::Io(error),
-            RulebookError::TooLarge { limit } => Self::TooLarge { limit },
-            RulebookError::Json(error) => Self::Json(error),
-            RulebookError::WrongFormat { expected, found } => Self::WrongFormat { expected, found },
-            RulebookError::UnsupportedVersion { needs, reads } => {
-                Self::UnsupportedVersion { needs, reads }
-            }
-            RulebookError::Invalid(reason) => Self::Invalid(reason),
-        }
     }
 }
 
