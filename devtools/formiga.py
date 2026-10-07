@@ -8,6 +8,10 @@
   formiga inspect [KIND] [ITEM] [--json]
   formiga audit content [--json]
   formiga art check [--kind KIND] [--json]
+  formiga save inspect FILE [--json]
+  formiga uses [KIND] ITEM [--json]
+  formiga report [--json]
+  formiga content add KIND NAME --about TEXT --like ITEM [--id VARIANT] [--write] [--json]
 
 Run from anywhere: it works on the Formiga-Desktop checkout it lives in, and finds Formiga Hill and
 Formiga Home beside it. Python 3.9 or newer, standard library only. See devtools/README.md.
@@ -21,7 +25,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from formiga_dev import audit, capture, inspect, scenarios, validate  # noqa: E402
+from formiga_dev import (  # noqa: E402
+    audit, capture, content, inspect, save, scenarios, status, uses, validate,
+)
 from formiga_dev.report import Result, Step, emit  # noqa: E402
 
 
@@ -85,6 +91,37 @@ def main(argv=None) -> int:
     art.add_argument("--kind", help="only this kind (object, decoration, trinket, body…)")
     art.add_argument("--json", action="store_true")
 
+    colony = commands.add_parser("save", help="read a colony file the way Desktop does",
+                                 description=save.__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    colony.add_argument("what", choices=["inspect"])
+    colony.add_argument("file", help="a colony file, such as colony.json")
+    colony.add_argument("--json", action="store_true")
+
+    use = commands.add_parser("uses", help="can I rename or remove this?",
+                              description=uses.__doc__,
+                              formatter_class=argparse.RawDescriptionHelpFormatter)
+    use.add_argument("words", nargs="+", metavar="KIND ITEM", help="an item, or a kind and an item")
+    use.add_argument("--json", action="store_true")
+
+    where = commands.add_parser("report", help="where things stand, to start work from",
+                                description=status.__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    where.add_argument("--json", action="store_true")
+
+    new = commands.add_parser("content", help="add a hangout, garden or ornament",
+                              description=content.__doc__,
+                              formatter_class=argparse.RawDescriptionHelpFormatter)
+    new.add_argument("what", choices=["add"])
+    new.add_argument("kind", choices=list(content.SUPPORTED))
+    new.add_argument("name", help="its name on screen, such as \"Rope swing\"")
+    new.add_argument("--about", required=True, help="its one-line description")
+    new.add_argument("--like", required=True,
+                     help="the piece it starts out behaving and drawn like")
+    new.add_argument("--id", help="its Rust name, if not the name run together")
+    new.add_argument("--write", action="store_true", help="make the changes (default: show them)")
+    new.add_argument("--json", action="store_true")
+
     args = parser.parse_args(argv)
     if args.command == "validate":
         result = validate.validate(quick=args.quick, expansions=args.expansions, only=args.step)
@@ -98,10 +135,19 @@ def main(argv=None) -> int:
         result = audit.audit_content()
     elif args.command == "art":
         result = audit.art_check(args.kind)
+    elif args.command == "save":
+        result = save.inspect(args.file)
+    elif args.command == "uses":
+        result = uses.uses(args.words)
+    elif args.command == "report":
+        result = status.report()
+    elif args.command == "content":
+        result = content.add(args.kind, args.name, args.about, args.like, args.id, args.write)
     elif args.name == "all":
         result = capture_all(args.window, args.pinned)
     else:
         result = capture.capture(args.name, window=args.window, pinned=args.pinned, out=args.out)
+    status.record(result.command, result)
     return emit(result, args.json)
 
 

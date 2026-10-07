@@ -260,7 +260,7 @@ def expansions(data: dict, source: catalog.Source) -> Step:
 
 
 def art_check(kind: Optional[str] = None) -> Result:
-    result = Result("art check")
+    result = Result("art check", data={"kind": kind} if kind else {})
     args = ["art-check", "--out", str(ART_DIR)] + (["--kind", kind] if kind else [])
     document, done, problems = cargo.tools_dev(args, "art", release=True)
     if document is None:

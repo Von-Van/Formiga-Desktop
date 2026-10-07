@@ -1355,6 +1355,7 @@ dependencies = [
  "png",
  "rand",
  "rand_chacha",
+ "serde",
  "serde_json",
  "sha2",
  "time",
