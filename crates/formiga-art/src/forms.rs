@@ -26,6 +26,12 @@ use formiga_core::forms::{Design, Plan, Sculpt, face_carrier};
 use formiga_core::{ActionKind, AppearanceGenome};
 use paint::Sheet;
 
+/// The finest a sculpted form is drawn, in pixels to each unit of its 48-unit frame: one, exactly
+/// as every companion is, until a finer drawing is adopted from Formiga Farm. Desktop bakes a
+/// sculpted form as finely as this allows and as its screen shows it, and never finer, so it is
+/// never shrunk and never blurred.
+pub const FINEST_DETAIL: u32 = 1;
+
 /// The largest a sculpted figure may stand across the frame, and how far above the ground its
 /// top may reach, leaving room for a hop.
 const MAX_WIDTH: u32 = 44;

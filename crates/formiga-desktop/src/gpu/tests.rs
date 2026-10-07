@@ -261,7 +261,9 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_every_time() {
     let choices = [(false, false), (true, false), (false, true), (true, true)];
     let first: Vec<_> = choices
         .iter()
-        .map(|&(reduce_motion, outline)| build_atlas_pixels(creature, reduce_motion, outline, None))
+        .map(|&(reduce_motion, outline)| {
+            build_atlas_pixels(creature, reduce_motion, outline, None, 1)
+        })
         .collect();
     let cost = |atlas: &AtlasPixels| atlas.body_pixels.len() + atlas.face_pixels.len();
     for (choice, atlas) in choices.iter().zip(&first) {
@@ -281,7 +283,7 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_every_time() {
     // Thrown away and baked again, twice over: the same atlas, byte for byte, every time.
     for round in 1..3 {
         for (choice, previous) in choices.iter().zip(&first) {
-            let atlas = build_atlas_pixels(creature, choice.0, choice.1, None);
+            let atlas = build_atlas_pixels(creature, choice.0, choice.1, None, 1);
             assert_eq!(
                 atlas.body_pixels, previous.body_pixels,
                 "{choice:?} {round}"
@@ -320,7 +322,7 @@ fn every_frame_and_face_is_drawn_from_a_cell_that_holds_it() {
             .collect::<Vec<u8>>()
     };
     for reduce_motion in [false, true] {
-        let atlas = build_atlas_pixels(creature, reduce_motion, false, None);
+        let atlas = build_atlas_pixels(creature, reduce_motion, false, None, 1);
         for clip in BodyClip::baked() {
             for frame in 0..AnimationSpec::for_clip(clip).frames {
                 let drawn = CreatureRenderer::render_dressed_body_frame(
@@ -524,6 +526,102 @@ fn the_trees_draw_one_quad_for_each_hung_keepsake_and_keep_it_on_their_own_branc
     );
 }
 
+/// A finer atlas is the same picture at more pixels: the same cells, faces, anchors and
+/// silhouettes, every art pixel a square of texture pixels, and each frame in the same place in
+/// it, so a frame fills the very quad on the screen it filled before.
+#[test]
+fn a_finer_atlas_is_the_same_picture_at_more_pixels() {
+    let world = World::new(
+        [19; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let plain = build_atlas_pixels(creature, false, true, None, 1);
+    let fine = build_atlas_pixels(creature, false, true, None, 3);
+    assert_eq!((plain.detail, fine.detail), (1, 3));
+    assert_eq!(
+        (fine.body_width, fine.body_height),
+        (plain.body_width * 3, plain.body_height * 3)
+    );
+    assert_eq!(
+        (fine.face_width, fine.face_height),
+        (plain.face_width * 3, plain.face_height * 3)
+    );
+    assert_eq!(fine.body_cells, plain.body_cells);
+    assert_eq!(fine.face_cells, plain.face_cells);
+    assert_eq!(fine.face_anchors, plain.face_anchors);
+    assert_eq!(fine.silhouette, plain.silhouette);
+    let pixel = |pixels: &[u8], width: u32, x: u32, y: u32| {
+        let at = ((y * width + x) * 4) as usize;
+        pixels[at..at + 4].to_vec()
+    };
+    for y in 0..fine.body_height {
+        for x in 0..fine.body_width {
+            assert_eq!(
+                pixel(&fine.body_pixels, fine.body_width, x, y),
+                pixel(&plain.body_pixels, plain.body_width, x / 3, y / 3)
+            );
+        }
+    }
+    for cell in [0, 7, 23] {
+        assert_eq!(
+            cell_uv(
+                cell,
+                ATLAS_COLUMNS,
+                FRAME_SIZE,
+                plain.body_width,
+                plain.body_height
+            ),
+            cell_uv(
+                cell,
+                ATLAS_COLUMNS,
+                FRAME_SIZE * 3,
+                fine.body_width,
+                fine.body_height
+            )
+        );
+        assert_eq!(
+            cell_uv(
+                cell,
+                FACE_ATLAS_COLUMNS,
+                FACE_FRAME_SIZE,
+                plain.face_width,
+                plain.face_height
+            ),
+            cell_uv(
+                cell,
+                FACE_ATLAS_COLUMNS,
+                FACE_FRAME_SIZE * 3,
+                fine.face_width,
+                fine.face_height
+            )
+        );
+    }
+}
+
+/// A companion is pixel art at one pixel to the unit, and is baked at one whatever its size on the
+/// screen. Only a sculpted form is baked finer, and never finer than its screen shows it.
+#[test]
+fn only_a_sculpted_form_is_baked_finer_and_never_finer_than_its_screen_shows_it() {
+    use formiga_core::forms::{Plan, Sculpt};
+    let world = World::new(
+        [19; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut appearance = world.save.creatures[0].appearance.clone();
+    for display_scale in 1..=4 {
+        assert_eq!(baked_detail(&appearance, display_scale), 1);
+    }
+    appearance.sculpt = Some(Sculpt::starter(Plan::Floater));
+    for display_scale in 1..=4 {
+        let detail = baked_detail(&appearance, display_scale);
+        assert!((1..=u32::from(display_scale)).contains(&detail));
+        assert!(detail <= formiga_art::forms::FINEST_DETAIL);
+    }
+}
+
 #[test]
 fn layered_atlas_matches_the_baked_budget_per_creature() {
     let desktop = formiga_core::DesktopSnapshot {
@@ -549,7 +647,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     };
     let world = World::new([7; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop);
     let started = std::time::Instant::now();
-    let atlas = build_atlas_pixels(&world.save.creatures[0], false, false, None);
+    let atlas = build_atlas_pixels(&world.save.creatures[0], false, false, None, 1);
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
@@ -579,7 +677,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,
     // and the same bytes. It touches only pixels the creature itself does not occupy.
-    let outlined = build_atlas_pixels(&world.save.creatures[0], false, true, None);
+    let outlined = build_atlas_pixels(&world.save.creatures[0], false, true, None, 1);
     assert_eq!(
         outlined.body_pixels.len() + outlined.face_pixels.len(),
         total_bytes
@@ -712,7 +810,7 @@ fn quad_sprite(quad: &[Vertex]) -> (f32, f32, f32, f32) {
 fn the_crown_of_a_head_is_the_frame_it_draws_not_the_box_it_is_drawn_in() {
     let world = ui_world();
     let creature = &world.save.creatures[0];
-    let atlas = build_atlas_pixels(creature, false, false, None);
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
     assert_eq!(atlas.silhouette.len(), total_animation_frames() as usize);
     for clip in BodyClip::baked() {
         for frame in 0..AnimationSpec::for_clip(clip).frames {
@@ -757,8 +855,8 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
     let mut mini = adult.clone();
     mini.appearance.logical_size = adult.appearance.logical_size / 2;
     let slot = atlas_slot(ActionKind::Idle, 0) as usize;
-    let adult_top = build_atlas_pixels(&adult, false, false, None).silhouette[slot].0;
-    let mini_top = build_atlas_pixels(&mini, false, false, None).silhouette[slot].0;
+    let adult_top = build_atlas_pixels(&adult, false, false, None, 1).silhouette[slot].0;
+    let mini_top = build_atlas_pixels(&mini, false, false, None, 1).silhouette[slot].0;
     assert!(
         mini_top > adult_top,
         "a smaller creature's crown is further down its frame ({mini_top} vs {adult_top})"
