@@ -5,6 +5,7 @@
 //! colours: a souvenir is one particular thing, not something drawn in a colony's inks. A change
 //! to any picture here is a change Formiga Hill should hear about, and the other way round.
 
+use crate::paint::mix;
 use crate::{Canvas, Rgba};
 use formiga_core::Souvenir;
 
@@ -57,17 +58,6 @@ pub fn souvenir_strip() -> Canvas {
 
 const fn rgb(hex: u32) -> Rgba {
     Rgba::new((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 255)
-}
-
-fn mix(from: Rgba, to: Rgba, along: f32) -> Rgba {
-    let channel =
-        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * along).round() as u8;
-    Rgba::new(
-        channel(from.r, to.r),
-        channel(from.g, to.g),
-        channel(from.b, to.b),
-        255,
-    )
 }
 
 /// One souvenir's rows, `#` `o` `*` `x` naming its four inks and `.` left clear.

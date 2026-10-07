@@ -10,7 +10,8 @@
 //! bars. Everything is the same size on a cottage as on the colony house, keeps clear of the
 //! doorway, and stays inside the ground its house's lot claims.
 
-use super::{ShelterFrame, houses::mix};
+use super::ShelterFrame;
+use crate::paint::mix;
 use crate::{Canvas, Rgba};
 use formiga_core::{ShelterDecorationKind, ShelterGenome};
 

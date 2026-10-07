@@ -10,6 +10,7 @@
 //! The frames are baked once for a trip: eight while it runs, the wheels and their rods turning a
 //! full revolution and the steam trailing back, and two while it stands, puffing gently.
 
+use crate::paint::mix_truncated;
 use crate::{Canvas, Rgba};
 
 /// The train itself, from the back of the last coach to the front buffers.
@@ -136,16 +137,6 @@ pub struct TrainLook {
     pub lit: bool,
 }
 
-fn mix(a: Rgba, b: Rgba, amount: f32) -> Rgba {
-    let channel = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * amount) as u8;
-    Rgba::new(
-        channel(a.r, b.r),
-        channel(a.g, b.g),
-        channel(a.b, b.b),
-        channel(a.a, b.a),
-    )
-}
-
 /// The train's own drawing surface: everything is placed from the top of the train itself, below
 /// the headroom left for steam, and every pixel is laid over what is already there.
 struct Paint<'a> {
@@ -270,9 +261,9 @@ fn coupling(paint: &mut Paint<'_>, x: i32) {
 /// A compartment's light, from the top of a window to its bottom.
 fn compartment(lit: bool, t: f32) -> Rgba {
     if lit {
-        mix(LAMPLIT, LAMPLIT_LOW, t)
+        mix_truncated(LAMPLIT, LAMPLIT_LOW, t)
     } else {
-        mix(INTERIOR, INTERIOR_LOW, t)
+        mix_truncated(INTERIOR, INTERIOR_LOW, t)
     }
 }
 
