@@ -289,6 +289,55 @@ fn look_alikes(drawings: &[Drawing]) -> Vec<Problem> {
     problems
 }
 
+/// Items drawn the same (an error) or nearly so (a warning) taken over every pose together,
+/// for kinds where each item is drawn in the same poses in the same order.
+fn alike_in_every_pose(drawings: &[Drawing]) -> Vec<Problem> {
+    let mut items: Vec<(&str, Vec<&Drawing>)> = Vec::new();
+    for drawing in drawings {
+        match items.last_mut() {
+            Some((item, poses)) if *item == drawing.item => poses.push(drawing),
+            _ => items.push((&drawing.item, vec![drawing])),
+        }
+    }
+    let mut problems = Vec::new();
+    for (index, (a, poses_a)) in items.iter().enumerate() {
+        for (b, poses_b) in &items[index + 1..] {
+            let (mut differing, mut covered) = (0, 0);
+            for (pose_a, pose_b) in poses_a.iter().zip(poses_b) {
+                debug_assert_eq!(pose_a.pose, pose_b.pose);
+                let (d, c) = difference(pose_a, pose_b);
+                differing += d;
+                covered += c;
+            }
+            if covered == 0 {
+                continue;
+            }
+            let level = if differing == 0 {
+                Level::Error
+            } else if (differing as f32 / covered as f32) < NEARLY_THE_SAME {
+                Level::Warning
+            } else {
+                continue;
+            };
+            problems.push(Problem {
+                item: a.to_string(),
+                pose: None,
+                level,
+                check: "look-alike",
+                message: if differing == 0 {
+                    format!("drawn exactly the same as {b} in every pose")
+                } else {
+                    format!(
+                        "drawn nearly the same as {b} across every pose: {differing} of \
+                         {covered} pixels differ"
+                    )
+                },
+            });
+        }
+    }
+    problems
+}
+
 fn difference(a: &Drawing, b: &Drawing) -> (usize, usize) {
     let (mask_a, mask_b) = (covered(a), covered(b));
     let mut differing = 0;
@@ -706,11 +755,15 @@ fn accessories() -> KindReport {
         shown.push((format!("{kind:?}"), poses_shown));
     }
     let mut report = checked("accessory", (FRAME_SIZE, FRAME_SIZE), NO_EDGES, drawings);
-    // Hidden in a pose (behind the body, say) is fine; never showing at all is not. And the
-    // same accessory drawn on the same body is not a look-alike of anything.
+    // Hidden in a pose (behind the body, say) is fine; never showing at all is not. Two
+    // accessories both tucked out of sight in a pose look alike there and say nothing by it, so
+    // look-alikes are judged across every pose at once.
     report
         .problems
         .retain(|p| p.check != "blank" && p.check != "look-alike");
+    report
+        .problems
+        .extend(alike_in_every_pose(&report.drawings));
     for (item, poses) in shown {
         if poses == 0 {
             report.problems.push(Problem {
@@ -1002,6 +1055,20 @@ mod tests {
             ],
         );
         assert_eq!(found(&report), vec![("a", "look-alike", Level::Warning)]);
+    }
+
+    #[test]
+    fn accessories_alike_in_one_pose_only_are_not_look_alikes() {
+        let a = |item: &str, pose: &str| drawing(item, pose, square(8, (2, 2), (6, 6), INK));
+        let b = |item: &str, pose: &str| drawing(item, pose, square(8, (1, 1), (7, 7), INK));
+        let differ_when_running = [a("x", "rest"), a("x", "run"), a("y", "rest"), b("y", "run")];
+        assert!(alike_in_every_pose(&differ_when_running).is_empty());
+        let alike_always = [a("x", "rest"), b("x", "run"), a("y", "rest"), b("y", "run")];
+        let found: Vec<_> = alike_in_every_pose(&alike_always)
+            .into_iter()
+            .map(|p| (p.item, p.level))
+            .collect();
+        assert_eq!(found, vec![("x".to_string(), Level::Error)]);
     }
 
     #[test]

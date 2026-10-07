@@ -228,26 +228,26 @@ def expansions(data: dict, source: catalog.Source) -> Step:
                                       "no souvenir called", system="hill",
                         file=f"Formiga-Hill/{hit.path}", line=hit.line,
                         object=f"souvenir:{souvenir_id}"))
-    for hit in source.grep(_SOUVENIR_ID, {".rs", ".toml", ".json"}):
+    # Matched in each file's whole text: rustfmt spreads a `{ id }` or `{ variant: N }` over
+    # several lines.
+    for hit, match in source.search(_SOUVENIR_ID, {".rs", ".toml", ".json"}):
         if hit.repo == "desktop":
             continue
-        for match in _SOUVENIR_ID.finditer(hit.text):
-            souvenir_id = next(group for group in match.groups() if group)
-            if souvenir_id not in souvenirs:
-                problems.append(Problem(
-                    "expansions", f"names souvenir {souvenir_id!r}, which Desktop does not have",
-                    system=hit.repo, file=f"Formiga-{hit.repo.title()}/{hit.path}",
-                    line=hit.line, object=f"souvenir:{souvenir_id}"))
-    for hit in source.grep(_FIND_NUMBER, {".rs", ".toml", ".json"}):
+        souvenir_id = next(group for group in match.groups() if group)
+        if souvenir_id not in souvenirs:
+            problems.append(Problem(
+                "expansions", f"names souvenir {souvenir_id!r}, which Desktop does not have",
+                system=hit.repo, file=f"Formiga-{hit.repo.title()}/{hit.path}",
+                line=hit.line, object=f"souvenir:{souvenir_id}"))
+    for hit, match in source.search(_FIND_NUMBER, {".rs", ".toml", ".json"}):
         if hit.repo == "desktop":
             continue
-        for match in _FIND_NUMBER.finditer(hit.text):
-            number = int(next(group for group in match.groups() if group))
-            if number >= finds:
-                problems.append(Problem(
-                    "expansions", f"names find {number}; Desktop's finds go up to {finds - 1}",
-                    system=hit.repo, file=f"Formiga-{hit.repo.title()}/{hit.path}",
-                    line=hit.line, object=f"trinket:{number}"))
+        number = int(next(group for group in match.groups() if group))
+        if number >= finds:
+            problems.append(Problem(
+                "expansions", f"names find {number}; Desktop's finds go up to {finds - 1}",
+                system=hit.repo, file=f"Formiga-{hit.repo.title()}/{hit.path}",
+                line=hit.line, object=f"trinket:{number}"))
     present = sorted(key for key in ("hill", "home") if key in source.roots)
     checked = f"souvenirs and finds agree with {', '.join(present) or 'nothing'}"
     step = _step("expansions", problems, checked)

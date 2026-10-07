@@ -190,6 +190,15 @@ class Lookup(unittest.TestCase):
                          ["Button"])
         self.assertEqual(catalog.kind_named(self.CATALOG, "decorations")["kind"], "decoration")
 
+    def test_a_kind_is_named_as_people_say_it(self):
+        data = sample_catalog(kind("accessory", []), kind("object", []), kind("trinket", []),
+                              kind("house-style", []))
+        for name, wanted in [("accessories", "accessory"), ("colony objects", "object"),
+                             ("finds", "trinket"), ("find", "trinket"),
+                             ("house styles", "house-style"), ("objects", "object")]:
+            self.assertEqual(catalog.kind_named(data, name)["kind"], wanted, name)
+        self.assertIsNone(catalog.kind_named(data, "roof star"))
+
     def test_rust_names_become_the_snake_case_trips_use(self):
         self.assertEqual(catalog.snake("FlowerCrown"), "flower_crown")
 
@@ -253,6 +262,8 @@ pub const FAIR_TICKET: &str = "fair_ticket";
             ("home", "crates/formiga-home/src/life.rs"):
                 'DisplaySource::HillSouvenir { id } => id == "chest_marble",\n'
                 'let pin = Accessory::Pin(2);\nlet far = Accessory::Pin(3);\n',
+            ("home", "crates/formiga-home/src/shelf.rs"):
+                'let find = DesktopFind {\n    variant: 7,\n};\n',
         })
         found = problems(audit.expansions(data, source))
         self.assertEqual(sorted(found), sorted([
@@ -261,6 +272,7 @@ pub const FAIR_TICKET: &str = "fair_ticket";
             ("souvenir:golden_key", "error"),     # a story gives one Desktop doesn't have
             ("souvenir:chest_marble", "error"),   # Home names one Desktop doesn't have
             ("trinket:3", "error"),               # Home names a find past the last one
+            ("trinket:7", "error"),               # …and one written over several lines
         ]))
 
 
