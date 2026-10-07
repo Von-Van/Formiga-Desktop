@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -186,12 +187,17 @@ def build_expansion(key: str, pinned: bool) -> tuple:
     return binary, Step("build", "passed", f"built {expansion.title} on {on}", done.seconds)
 
 
-def _command_line(env: Dict[str, str], command: List[str]) -> str:
-    def quote(text: str) -> str:
-        return f'"{text}"' if " " in text else text
+def _command_line(env: Dict[str, str], command: List[str], platform: str = sys.platform) -> str:
+    """The command as one line to paste into this machine's usual shell: PowerShell on Windows,
+    sh elsewhere."""
+    if platform == "win32":
+        def literal(text: str) -> str:
+            return "'" + text.replace("'", "''") + "'"
 
-    assignments = " ".join(f"{key}={quote(value)}" for key, value in env.items())
-    return f"{assignments} {' '.join(quote(part) for part in command)}".strip()
+        settings = "".join(f"$env:{key} = {literal(value)}; " for key, value in env.items())
+        return f"{settings}& {' '.join(literal(part) for part in command)}"
+    assignments = " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
+    return f"{assignments} {' '.join(shlex.quote(part) for part in command)}".strip()
 
 
 def prepare(scenario: Scenario, pinned: bool, fixed_date: bool) -> tuple:

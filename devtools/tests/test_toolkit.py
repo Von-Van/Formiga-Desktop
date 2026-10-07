@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -93,10 +94,37 @@ class Scenarios(unittest.TestCase):
             self.assertIn(f"--render-{place} ", usage)
             self.assertIn(place, usage.split("--place <PLACE>", 1)[1].split("\n--", 1)[0])
 
+    def test_the_open_command_pastes_into_powershell_on_windows(self):
+        line = scenarios._command_line({"FORMIGA_DATA_DIR": r"C:\Users\Jo's PC\data"},
+                                       [r"C:\dev\formiga-desktop.exe"], platform="win32")
+        self.assertEqual(line, "$env:FORMIGA_DATA_DIR = 'C:\\Users\\Jo''s PC\\data'; "
+                               "& 'C:\\dev\\formiga-desktop.exe'")
+
+    def test_the_open_command_pastes_into_sh_elsewhere(self):
+        line = scenarios._command_line({"FORMIGA_DATA_DIR": "/tmp/my data"},
+                                       ["cargo", "run", "-p", "formiga-desktop"], platform="linux")
+        self.assertEqual(line, "FORMIGA_DATA_DIR='/tmp/my data' cargo run -p formiga-desktop")
+
     def test_scenarios_that_only_capture_say_so(self):
         for scenario in scenarios.SCENARIOS.values():
             if not scenario.launchable:
                 self.assertIsNotNone(scenario.capture, scenario.name)
+
+
+class AppStep(unittest.TestCase):
+    def test_picked_alone_where_the_app_builds_it_is_linted(self):
+        linted = Step("app", "passed", "no warnings")
+        with mock.patch.object(validate, "app_builds_here", return_value=True), \
+                mock.patch.object(validate, "_clippy", return_value=linted) as clippy:
+            result = validate.validate(only=["app"])
+        clippy.assert_called_once_with("app", ["-p", "formiga-desktop"])
+        self.assertEqual(result.steps[0].status, "passed")
+
+    def test_alongside_lint_it_is_not_linted_twice(self):
+        with mock.patch.object(validate, "app_builds_here", return_value=True), \
+                mock.patch.object(validate, "_clippy") as clippy:
+            self.assertEqual(validate.step_app(with_lint=True).status, "skipped")
+        clippy.assert_not_called()
 
 
 class Expansions(unittest.TestCase):
