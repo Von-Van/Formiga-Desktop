@@ -552,19 +552,6 @@ fn route_destination(route: &[TopologyRouteHop]) -> WindowKey {
     route.last().map_or(0, |hop| hop.to_window)
 }
 
-trait RectOverlap {
-    fn overlaps(self, other: Self) -> bool;
-}
-
-impl RectOverlap for DesktopRect {
-    fn overlaps(self, other: Self) -> bool {
-        self.x < other.right()
-            && self.right() > other.x
-            && self.y < other.bottom()
-            && self.bottom() > other.y
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,6 @@
-//! How big a companion is drawn against the others. Since 0.63.1 every adult has a stature of its
-//! own, drawn from its seed, and a mini is its parent's size scaled down by the share its
-//! generation is drawn at.
+//! How big a companion is drawn against the others. Every adult has a stature of its own, drawn
+//! from its seed, and a mini is its parent's size scaled down by the share its generation is drawn
+//! at.
 use crate::{Creature, SeedStream};
 use rand::Rng;
 

@@ -18,12 +18,16 @@
 //! - the SHA-256 that ties an answer to the exact bytes it answers ([`sha256_hex`]);
 //! - every string made safe when it is written and checked again when it is read
 //!   ([`sanitize_text`], [`is_sanitized`]);
-//! - an app's reasons for turning a visit away ([`AckRefusal`]).
+//! - an app's reasons for turning a visit away ([`AckRefusal`]);
+//! - the error each contract reads and writes its documents with, in its own words
+//!   ([`contract_error!`]).
 //!
 //! A contract keeps its own version, its own documents and its own error, and says whose file a
 //! problem was in. Nothing here changes a byte of what any contract writes: each contract's golden
 //! fixtures are the proof.
 
+#[doc(hidden)]
+pub mod contract_error;
 mod document;
 mod ids;
 mod refusal;

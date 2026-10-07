@@ -17,7 +17,7 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from formiga_dev import cargo, scenarios, validate  # noqa: E402
+from formiga_dev import audit, cargo, catalog, scenarios, validate  # noqa: E402
 from formiga_dev.report import Problem, Result, Step, emit  # noqa: E402
 from formiga_dev.workspace import Expansion, lockfile_kept  # noqa: E402
 
@@ -147,6 +147,135 @@ class Expansions(unittest.TestCase):
             self.assertEqual(lock.read_text(), "before")
 
 
+def item(id, name, **extra):
+    return {"id": id, "name": name, **extra}
+
+
+def kind(key, items, **extra):
+    return {"kind": key, "type": extra.pop("type", "Thing"), "defined_in": "crates/x.rs",
+            "saved_in": [], "drawn_by": "", "comes_by": "", "count": len(items),
+            "items": items, **extra}
+
+
+def sample_catalog(*kinds):
+    return {"reach": {"colonies": 4, "days": 30}, "names_shown": [
+        {"where": "Formiga Home", "kinds": ["trinket", "souvenir"], "letters": 12}],
+        "kinds": list(kinds)}
+
+
+class FakeSource(catalog.Source):
+    """Source text given outright: {(repo, path): text}."""
+
+    def __init__(self, files):
+        self.roots = {repo: Path("/" + repo) for repo, _ in files}
+        self.roots.setdefault("desktop", Path("/desktop"))
+        self._files = {key: text.splitlines() for key, text in files.items()}
+        self._loaded = True
+
+
+def problems(step):
+    return [(p.object, "warning" if p.is_warning else "error") for p in step.problems]
+
+
+class Lookup(unittest.TestCase):
+    CATALOG = sample_catalog(
+        kind("decoration", [item("RoofOrnament", "Roof star", saved_as="RoofOrnament", number=6)]),
+        kind("trinket", [item("17", "Button", saved_as=17, number=17)]))
+
+    def test_an_item_is_found_by_its_name_its_id_or_its_number(self):
+        for query in ["roof star", "Roof Star", "roof_ornament", "RoofOrnament"]:
+            self.assertEqual([i["id"] for _, i in catalog.find(self.CATALOG, query)],
+                             ["RoofOrnament"], query)
+        self.assertEqual([i["name"] for _, i in catalog.find(self.CATALOG, "17", "trinket")],
+                         ["Button"])
+        self.assertEqual(catalog.kind_named(self.CATALOG, "decorations")["kind"], "decoration")
+
+    def test_a_kind_is_named_as_people_say_it(self):
+        data = sample_catalog(kind("accessory", []), kind("object", []), kind("trinket", []),
+                              kind("house-style", []))
+        for name, wanted in [("accessories", "accessory"), ("colony objects", "object"),
+                             ("finds", "trinket"), ("find", "trinket"),
+                             ("house styles", "house-style"), ("objects", "object")]:
+            self.assertEqual(catalog.kind_named(data, name)["kind"], wanted, name)
+        self.assertIsNone(catalog.kind_named(data, "roof star"))
+
+    def test_rust_names_become_the_snake_case_trips_use(self):
+        self.assertEqual(catalog.snake("FlowerCrown"), "flower_crown")
+
+
+class ContentAudit(unittest.TestCase):
+    def test_a_name_used_twice_in_a_kind_is_an_error(self):
+        data = sample_catalog(kind("hangout", [item("Bench", "Bench"), item("Seat", "bench")]))
+        self.assertEqual(problems(audit.names(data, FakeSource({}))), [("hangout:Seat", "error")])
+
+    def test_a_name_too_big_for_its_tile_is_an_error_at_normal_size_and_a_warning_when_larger(self):
+        size = {"lines": 2, "height": 36, "room": 28, "word_broken": False, "fits": False}
+        sizes = [dict(size, text_scale=100), dict(size, text_scale=150)]
+        data = sample_catalog(kind("garden", [
+            item("Long", "Long name", shown=[{"where": "ground tile", "sizes": sizes[1:]}]),
+            item("Longer", "Longer name", shown=[{"where": "ground tile", "sizes": sizes}])]))
+        self.assertEqual(problems(audit.names(data, FakeSource({}))), [
+            ("garden:Long", "warning"), ("garden:Longer", "error"), ("garden:Longer", "warning")])
+
+    def test_a_name_formiga_home_would_cut_is_an_error(self):
+        data = sample_catalog(kind("souvenir", [item("x", "A very long souvenir name")]))
+        self.assertEqual(problems(audit.names(data, FakeSource({}))), [("souvenir:x", "error")])
+
+    def test_a_village_piece_that_never_arrives_is_an_error(self):
+        never = {"colonies": 0, "of": 4, "first_day": None, "last_day": None}
+        some = {"colonies": 3, "of": 4, "first_day": 2, "last_day": 9}
+        data = sample_catalog(kind("ornament", [
+            item("Well", "Well", reach=never), item("Fence", "Fence", reach=some),
+            item("Post", "Post", reach=never, starting=True)]))
+        self.assertEqual(problems(audit.arrival(data)),
+                         [("ornament:Well", "error"), ("ornament:Fence", "warning")])
+
+    def test_an_accessory_must_wait_for_its_find(self):
+        early = {"worn_before_its_find": True, "worn_once_found": True}
+        data = sample_catalog(kind("accessory", [
+            item("Hat", "Hat", rule=early, made_from={"find": 3, "name": "Leaf"}),
+            item("Cap", "Cap", made_from={"find": 999, "name": None})]))
+        self.assertEqual(problems(audit.arrival(data)),
+                         [("accessory:Hat", "error"), ("accessory:Cap", "error")])
+
+    def test_souvenirs_and_finds_hill_and_home_name_must_be_desktops(self):
+        data = sample_catalog(
+            kind("souvenir", [item("picnic_ribbon", "Ribbon"), item("well_penny", "Penny"),
+                              item("fair_ticket", "Ticket"), item("lost_sock", "Sock")]),
+            kind("trinket", [item(str(n), f"Find {n}", number=n) for n in range(3)]))
+        hill = """
+const CATALOGUE: [(&str, &str, Giver); 3] = [
+    ("picnic_ribbon", "A ribbon", Giver::Story),
+    (
+        "well_penny",
+        "A penny",
+        Giver::Story,
+    ),
+    (FAIR_TICKET, "A ticket", Giver::Game),
+];
+pub const FAIR_TICKET: &str = "fair_ticket";
+"""
+        source = FakeSource({
+            ("hill", "crates/formiga-hill/src/story/souvenirs.rs"): hill,
+            ("hill", "crates/formiga-hill/content/a/content/a.toml"):
+                'souvenir = "picnic_ribbon"\nsouvenir = "golden_key"\n',
+            ("home", "crates/formiga-home/src/life.rs"):
+                'DisplaySource::HillSouvenir { id } => id == "chest_marble",\n'
+                'let pin = Accessory::Pin(2);\nlet far = Accessory::Pin(3);\n',
+            ("home", "crates/formiga-home/src/shelf.rs"):
+                'let find = DesktopFind {\n    variant: 7,\n};\n',
+        })
+        found = problems(audit.expansions(data, source))
+        self.assertEqual(sorted(found), sorted([
+            ("souvenir:well_penny", "warning"),   # a story souvenir no story gives
+            ("souvenir:lost_sock", "error"),      # Desktop has it, Hill never gives it
+            ("souvenir:golden_key", "error"),     # a story gives one Desktop doesn't have
+            ("souvenir:chest_marble", "error"),   # Home names one Desktop doesn't have
+            ("trinket:3", "error"),               # Home names a find past the last one
+            ("trinket:7", "error"),               # …and one written over several lines
+        ]))
+
+
 class Output(unittest.TestCase):
     def test_json_lists_every_problem_and_says_whether_it_passed(self):
         result = Result("validate", steps=[
@@ -160,6 +289,15 @@ class Output(unittest.TestCase):
         self.assertFalse(document["success"])
         self.assertEqual(document["errors"], [
             {"step": "lint", "message": "unused variable", "file": "a.rs", "line": 3}])
+
+    def test_warnings_are_listed_apart_and_do_not_fail_a_run(self):
+        result = Result("audit", steps=[Step("names", "passed", problems=[
+            Problem("names", "a bit long", level="warning")])])
+        document = result.to_json()
+        self.assertTrue(document["success"])
+        self.assertEqual(document["errors"], [])
+        self.assertEqual(document["warnings"], [
+            {"step": "names", "message": "a bit long", "level": "warning"}])
 
     def test_skipped_steps_do_not_fail_a_run(self):
         result = Result("validate", steps=[Step("app", "skipped", "macOS and Windows only")])

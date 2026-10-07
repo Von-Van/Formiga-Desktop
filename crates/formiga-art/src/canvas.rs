@@ -1,3 +1,5 @@
+use std::io::Write;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Rgba {
     pub r: u8,
@@ -192,6 +194,23 @@ impl Canvas {
         }
         found.then_some((min_x, min_y, max_x, max_y))
     }
+}
+
+/// Straight RGBA pixels as a PNG: eight bits a channel, and no ancillary chunks at all, no text,
+/// no timestamp, no profile, so no picture Formiga writes can grow hidden metadata the others do
+/// not have.
+pub fn write_png(
+    sink: impl Write,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+) -> Result<(), png::EncodingError> {
+    let mut encoder = png::Encoder::new(sink, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header()?;
+    writer.write_image_data(pixels)?;
+    writer.finish()
 }
 
 #[cfg(test)]

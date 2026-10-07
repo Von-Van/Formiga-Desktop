@@ -97,6 +97,19 @@ pub fn mix(a: Rgba, b: Rgba, amount: f32) -> Rgba {
     )
 }
 
+/// [`mix`] with each channel cut down to a whole number rather than rounded to the nearest, as the
+/// train's compartment light is shaded.
+pub fn mix_truncated(a: Rgba, b: Rgba, amount: f32) -> Rgba {
+    let amount = amount.clamp(0.0, 1.0);
+    let lerp = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount) as u8;
+    Rgba::new(
+        lerp(a.r, b.r),
+        lerp(a.g, b.g),
+        lerp(a.b, b.b),
+        lerp(a.a, b.a),
+    )
+}
+
 /// The same colour at another alpha.
 pub fn faded(color: Rgba, alpha: u8) -> Rgba {
     Rgba::new(color.r, color.g, color.b, alpha)

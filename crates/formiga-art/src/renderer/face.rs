@@ -953,8 +953,6 @@ pub(super) fn draw_brows(
         _ => 1,
     };
     // How far each brow's inner end is lifted: up for worry and tenderness, down for a scowl.
-    // Until 0.62.0 worry, tenderness, focus, determination and a yawn had theirs the wrong way
-    // round, so a worried companion scowled and a determined one looked worried.
     let (left_inner, right_inner) = match expression {
         ExpressionKind::Worried | ExpressionKind::Affectionate | ExpressionKind::Pleading => (1, 1),
         ExpressionKind::Focused

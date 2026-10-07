@@ -184,7 +184,7 @@ around the code.
                     over each creature; tray menu; settings window (egui); updater
 ```
 
-The workspace is four crates with dependencies that run one way:
+The workspace is seven crates with dependencies that run one way:
 
 | Crate | What it holds |
 |---|---|
@@ -192,6 +192,9 @@ The workspace is four crates with dependencies that run one way:
 | [`formiga-art`](crates/formiga-art) | Procedural generation and rasterisation: creatures, animation atlases, houses, cards, stickers |
 | [`formiga-desktop`](crates/formiga-desktop) | The app: event loop, overlays and GPU rendering, input, tray, settings, OS adapters, updater |
 | [`formiga-tools`](crates/formiga-tools) | A command-line companion: review sheets, documentation images, benchmarks, simulated months |
+| [`formiga-expansion-rulebook`](crates/formiga-expansion-rulebook) | What every visit to a companion app is made of: session identifiers, bounded and version-checked documents written whole, safe text |
+| [`formiga-travel`](crates/formiga-travel) | The travel contract with Formiga Hill: the documents a trip carries and the colony as it travels |
+| [`formiga-home-contract`](crates/formiga-home-contract) | The household contract with Formiga Home: the documents a visit carries and a household as its house opens |
 
 The simulation never reads the desktop directly. Each tick the desktop crate hands it a snapshot of
 what is on screen, and it hands back events. That boundary keeps the core deterministic and

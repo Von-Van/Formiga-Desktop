@@ -22,6 +22,12 @@ class Problem:
     line: Optional[int] = None
     object: Optional[str] = None
     detail: Optional[str] = None
+    # "warning" for something worth a look that does not fail the step; errors leave it unset.
+    level: Optional[str] = None
+
+    @property
+    def is_warning(self) -> bool:
+        return self.level == "warning"
 
     def to_json(self) -> Dict[str, Any]:
         return {key: value for key, value in asdict(self).items() if value is not None}
@@ -57,6 +63,8 @@ class Result:
     steps: List[Step] = field(default_factory=list)
     data: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    # Whether the human summary ends with "All passed." / "Failed: …": not for a lookup.
+    verdict: bool = True
 
     @property
     def success(self) -> bool:
@@ -70,7 +78,12 @@ class Result:
             out["steps"] = [step.to_json() for step in self.steps]
             out["errors"] = [
                 problem.to_json() for step in self.steps for problem in step.problems
+                if not problem.is_warning
             ]
+            warnings = [problem.to_json() for step in self.steps for problem in step.problems
+                        if problem.is_warning]
+            if warnings:
+                out["warnings"] = warnings
         out.update(self.data)
         return out
 
@@ -93,16 +106,19 @@ def emit(result: Result, as_json: bool, out=None) -> int:
         took = f" ({step.seconds:.0f}s)" if step.seconds is not None and step.seconds >= 1 else ""
         summary = f": {step.summary}" if step.summary else ""
         out.write(f"{MARKS.get(step.status, '?')} {step.name}{summary}{took}\n")
-        for problem in step.problems[:SHOWN_PER_STEP]:
+        # Errors first: a warning never hides one.
+        problems = sorted(step.problems, key=lambda problem: problem.is_warning)
+        for problem in problems[:SHOWN_PER_STEP]:
             where = problem.where()
             subject = f" [{problem.object}]" if problem.object else ""
-            out.write(f"    {where + ' ' if where else ''}{problem.message}{subject}\n")
+            mark = "⚠ " if problem.is_warning else ""
+            out.write(f"    {mark}{where + ' ' if where else ''}{problem.message}{subject}\n")
         hidden = len(step.problems) - SHOWN_PER_STEP
         if hidden > 0:
             out.write(f"    … and {hidden} more (--json lists them all)\n")
     for line in result.data.get("notes", []):
         out.write(f"{line}\n")
-    if result.steps:
+    if result.steps and (result.verdict or not result.success):
         failed = [step.name for step in result.steps if step.status == "failed"]
         out.write("\n" + ("All passed.\n" if not failed else f"Failed: {', '.join(failed)}\n"))
     return 0 if result.success else 1

@@ -5,6 +5,9 @@
   formiga scenario list [--json]
   formiga scenario NAME [--no-launch] [--wait] [--pinned] [--fixed-date] [--json]
   formiga capture NAME|all [--window] [--pinned] [--out PNG] [--json]
+  formiga inspect [KIND] [ITEM] [--json]
+  formiga audit content [--json]
+  formiga art check [--kind KIND] [--json]
 
 Run from anywhere: it works on the Formiga-Desktop checkout it lives in, and finds Formiga Hill and
 Formiga Home beside it. Python 3.9 or newer, standard library only. See devtools/README.md.
@@ -18,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from formiga_dev import capture, scenarios, validate  # noqa: E402
+from formiga_dev import audit, capture, inspect, scenarios, validate  # noqa: E402
 from formiga_dev.report import Result, Step, emit  # noqa: E402
 
 
@@ -62,6 +65,26 @@ def main(argv=None) -> int:
     picture.add_argument("--out", help="where to write the PNG (default .dev/captures/NAME.png)")
     picture.add_argument("--json", action="store_true")
 
+    look = commands.add_parser("inspect", help="everything about one item",
+                               description=inspect.__doc__,
+                               formatter_class=argparse.RawDescriptionHelpFormatter)
+    look.add_argument("words", nargs="*", metavar="KIND ITEM",
+                      help="a kind, an item, or a kind and an item")
+    look.add_argument("--json", action="store_true")
+
+    checkup = commands.add_parser("audit", help="check Formiga's content",
+                                  description=audit.__doc__,
+                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    checkup.add_argument("what", choices=["content"])
+    checkup.add_argument("--json", action="store_true")
+
+    art = commands.add_parser("art", help="draw every item and look it over",
+                              description=audit.ART_DOC,
+                              formatter_class=argparse.RawDescriptionHelpFormatter)
+    art.add_argument("what", choices=["check"])
+    art.add_argument("--kind", help="only this kind (object, decoration, trinket, body…)")
+    art.add_argument("--json", action="store_true")
+
     args = parser.parse_args(argv)
     if args.command == "validate":
         result = validate.validate(quick=args.quick, expansions=args.expansions, only=args.step)
@@ -69,6 +92,12 @@ def main(argv=None) -> int:
         result = (scenarios.listing() if args.name == "list" else scenarios.launch(
             args.name, no_launch=args.no_launch, wait=args.wait, pinned=args.pinned,
             fixed_date=args.fixed_date))
+    elif args.command == "inspect":
+        result = inspect.inspect(args.words)
+    elif args.command == "audit":
+        result = audit.audit_content()
+    elif args.command == "art":
+        result = audit.art_check(args.kind)
     elif args.name == "all":
         result = capture_all(args.window, args.pinned)
     else:

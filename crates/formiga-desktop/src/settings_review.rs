@@ -235,9 +235,7 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
                         .iter()
                         .map(|id| textures[id].0.pixels.len() * 4)
                         .sum();
-                    // The Home page is the heaviest: 416 KiB until 0.61.0 drew the houses a
-                    // quarter larger and its row of the village grew by 47 KiB, and 463 KiB until
-                    // 0.65.0 drew them a fifth larger again and it grew to 672x96, 77 KiB more.
+                    // The Home page is the heaviest, with its 672x96 row of the village.
                     assert!(bytes <= 524 * 1024, "UI artwork exceeded budget: {bytes}");
                     if let Some(path) = &output_dir {
                         let jobs = context.tessellate(output.shapes, output.pixels_per_point);
@@ -872,23 +870,13 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
     configure_style(&h.context, AppearancePreferences::default());
 }
 
-/// Every texture the settings window may hold at once. The scrapbook went from eight 16x16
-/// drawings baked per creature to one 256x32 colony sheet that carries all sixteen trinkets and
-/// their glint frames: one texture instead of eight, and 24 KiB more pixels, which is what moved
-/// this from 416 to 432 KiB. In 0.59.0 every house got a cell of its own, so each can wear its
-/// resident's curtain, and the Home page's daylit village grew from 128x128 to 256x128: 64 KiB
-/// more, which moved this to 496 KiB. The object sheet then grew from eight cells to fourteen,
-/// three hangout spots and three garden patches of 16x16 each: 6 KiB more, which is what moves
-/// this to 500 KiB. In 0.60.0 the scrapbook became a Collection of 160 keepsakes, of which the
-/// pages hold only the resting half of the sheet (160 KiB, 128 KiB more); the object sheet grew
-/// to carry every garden at every stage, fifteen spots, fifteen ornaments and the village's
-/// props (112 KiB, 98 KiB more); the Home page's village shrank to the one row it draws (128 KiB,
-/// no change); and a companion trying something on shows four poses (36 KiB): 760 KiB. In 0.61.0
-/// the houses were drawn a quarter larger, so the Home page's row of the village is 560x80
-/// rather than 512x64 (175 KiB, 47 KiB more): 807 KiB. In 0.63.1 the creature studio stands its
-/// large preview beside a village tree, one 64x64 texture shared by every candidate (16 KiB):
-/// 823 KiB. In 0.65.0 the houses grew a fifth again and the Home page's row of the village with
-/// them, to 672x96 (252 KiB, 77 KiB more): 900 KiB.
+/// Every texture the settings window may hold at once. The largest are the Home page's row of the
+/// village, 672x96 with a cell for each house so each can wear its resident's curtain (252 KiB);
+/// the Collection of 160 keepsakes, of which the pages hold only the resting half of the sheet
+/// (160 KiB); the object sheet, with every garden at every stage, fifteen hangout spots, fifteen
+/// ornaments and the village's props (112 KiB); a companion trying something on, in four poses
+/// (36 KiB); and the village tree the creature studio stands its large preview beside, one 64x64
+/// texture shared by every candidate (16 KiB).
 const ARTWORK_BUDGET: usize = 900 * 1024;
 
 #[test]

@@ -24,7 +24,7 @@ const POSES: [(ActionKind, f32, Option<Gesture>); 4] = [
     (ActionKind::InspectScreen, 0.1, Some(Gesture::Cheer)),
 ];
 
-fn subjects() -> Vec<Creature> {
+pub(crate) fn subjects() -> Vec<Creature> {
     let mut subjects: Vec<Creature> = reference_creatures()
         .into_iter()
         .map(|mut creature| {
@@ -51,7 +51,7 @@ fn subjects() -> Vec<Creature> {
     subjects
 }
 
-fn posed(
+pub(crate) fn posed(
     subject: &Creature,
     (action, at, gesture): (ActionKind, f32, Option<Gesture>),
 ) -> Creature {

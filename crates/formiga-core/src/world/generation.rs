@@ -285,8 +285,8 @@ fn generate_creature(
         ),
         face_signature,
     };
-    // The original generator draws every value on its own; since 0.62.0 a temperament is drawn
-    // first and the values come from it. The original stream is left exactly as it was.
+    // The original generator draws every value on its own; the later ones draw a temperament first
+    // and take the values from it. The original stream is left exactly as it was.
     let (personality, temperament) = if edition == Edition::Original {
         let personality = PersonalityGenome {
             activity: personality_rng.random_range(0.2..0.95),
