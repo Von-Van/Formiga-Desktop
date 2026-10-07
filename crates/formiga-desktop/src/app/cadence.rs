@@ -58,8 +58,7 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
 }
 
 /// A colony that is moving is ticked and drawn at 20 Hz, a stroll round the village as much as
-/// anything else. From 0.59.2 until 0.62.0 a stroll at home ran at 10 Hz to save frames, which
-/// left the village visibly steppier than the desktop around it.
+/// anything else: any slower, and the village looks visibly steppier than the desktop around it.
 const MOVING_INTERVAL: Duration = Duration::from_millis(50);
 
 pub(super) fn world_redraw_interval(world: &World) -> Duration {
@@ -206,9 +205,8 @@ mod tests {
     }
 
     /// A resident setting off from rest at home is drawn from its first step, not half a second
-    /// later a body's width along: between any two frames nobody walks further than a few points.
-    /// Before 0.66.3 the frame after a resting spell could be half a second late, and a companion
-    /// stepping aside looked frozen and then jumped up to 26 points.
+    /// later a body's width along: between any two frames nobody walks further than a few points,
+    /// so a companion stepping aside never looks frozen and then jumps.
     #[test]
     fn a_resident_setting_off_from_rest_is_drawn_from_its_first_step() {
         let desktop = DesktopSnapshot {

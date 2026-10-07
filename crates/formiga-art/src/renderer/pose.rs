@@ -227,8 +227,8 @@ impl Pose {
     /// A four-pawed body lifts one paw at a time, near hind, near fore, far hind, far fore, so
     /// three are always down.
     ///
-    /// Until 0.66.0 every walk took its stride from a four-step pattern played over six frames,
-    /// so the same leg stepped twice where the loop came round: a hitch once a second.
+    /// The stride has a step for every frame of the loop, so no leg steps twice where the loop
+    /// comes round.
     fn stride(genome: &AppearanceGenome, phase: usize, bob: i32, running: bool) -> Self {
         let run = i32::from(running);
         if genome.design.is_none() {

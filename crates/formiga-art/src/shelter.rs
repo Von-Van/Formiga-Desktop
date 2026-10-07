@@ -4,9 +4,8 @@ use formiga_core::{ShelterDecorationKind, ShelterGenome, ShelterStyle};
 mod decorations;
 mod houses;
 
-/// One cell of the village atlas: room for the largest house, drawn a fifth larger again in
-/// 0.65.0 than the quarter-larger houses of 0.61.0, standing on a ground line three pixels above
-/// the cell's foot. It was 64 until 0.61.0 and 80 until 0.65.0.
+/// One cell of the village atlas: room for the largest house, standing on a ground line three
+/// pixels above the cell's foot.
 pub const SHELTER_SIZE: u32 = 96;
 
 /// Where a dwelling stands in its cell: across the middle, on the ground line the tree shares.
@@ -18,26 +17,24 @@ const CELL_GROUND: i32 = SHELTER_SIZE as i32 - 3;
 /// than one house per companion.
 pub const VILLAGE_HOUSES: usize = formiga_core::MAX_COLONY_CREATURES;
 
-/// Seven cells across, a house for each companion and the tree, and four down. The top row is
-/// every house by day and the keepsake tree; the second row the same houses by day with somebody
-/// at home; the third and fourth rows the same again lit from inside after dark. The daylit half
-/// on its own is what the Home page and the colony portrait draw from. There were eight columns,
-/// one of them never drawn in, until the cells grew in 0.61.0 and 512 pixels stopped being a
-/// round width worth keeping an empty column for.
+/// Seven cells across, a house for each companion and the tree, and four down. The top row is every
+/// house by day and the keepsake tree; the second row the same houses by day with somebody at home;
+/// the third and fourth rows the same again lit from inside after dark. The daylit half on its own
+/// is what the Home page and the colony portrait draw from.
 pub const VILLAGE_ATLAS_COLUMNS: u32 = VILLAGE_HOUSES as u32 + 1;
 pub const VILLAGE_ATLAS_WIDTH: u32 = SHELTER_SIZE * VILLAGE_ATLAS_COLUMNS;
 pub const VILLAGE_ATLAS_HEIGHT: u32 = SHELTER_SIZE * 4;
 /// The height of the daylit half of the village atlas.
 pub const VILLAGE_DAY_HEIGHT: u32 = SHELTER_SIZE * 2;
 
-/// The span every drawing's proportions are written at: the colony house as it was drawn until
-/// 0.61.0. A dwelling at any other span is the same drawing scaled by `span / DRAWN_SPAN`.
+/// The span every drawing's proportions are written at, the size the houses were first drawn at. A
+/// dwelling at any other span is the same drawing scaled by `span / DRAWN_SPAN`.
 pub const DRAWN_SPAN: i32 = 24;
 
-/// How large each dwelling draws, in twenty-fourths of the colony house as it was drawn until
-/// 0.61.0: half as large again now, beside the same 48px creatures — a quarter in 0.61.0 and a
-/// fifth more in 0.65.0 — and a companion cottage still five-sixths of the colony house, small
-/// enough that the colony house is plainly the main building, big enough to read as a home.
+/// How large each dwelling draws, in twenty-fourths of [`DRAWN_SPAN`]: the colony house half as
+/// large again as its drawing, beside 48px creatures, and a companion cottage five-sixths of the
+/// colony house, small enough that the colony house is plainly the main building, big enough to
+/// read as a home.
 pub const MAIN_SPAN: i32 = 36;
 pub const COTTAGE_SPAN: i32 = 30;
 
@@ -812,9 +809,9 @@ mod tests {
         }
     }
 
-    /// Every decoration is big enough to read at desktop scale — since 0.65.0 each covers at least
-    /// thirty pixels of a cottage, outline and all — and no two that go in the same place on a
-    /// house draw alike, on any type of house.
+    /// Every decoration is big enough to read at desktop scale — each covers at least thirty pixels
+    /// of a cottage, outline and all — and no two that go in the same place on a house draw alike,
+    /// on any type of house.
     #[test]
     fn every_decoration_draws_a_shape_of_its_own_big_enough_to_read() {
         for style in ShelterStyle::ALL {
@@ -991,11 +988,11 @@ mod tests {
     }
 
     /// The village keeps resting companions off every doorway by a fixed number of pixels, which
-    /// only works if no genome can draw a doorway wider than that number assumes. Since 0.65.0 the
-    /// widest doorway reaches seven pixels either side of a dwelling's middle and nine with its
-    /// frame, far inside both what a resting frame may reach into a lot (`REST_WALL_SLIVER`, nine
-    /// pixels in from an edge at least thirty-four from the middle) and the half-frame the village
-    /// keeps clear in front of every door.
+    /// only works if no genome can draw a doorway wider than that number assumes. The widest
+    /// doorway reaches seven pixels either side of a dwelling's middle and nine with its frame, far
+    /// inside both what a resting frame may reach into a lot (`REST_WALL_SLIVER`, nine pixels in
+    /// from an edge at least thirty-four from the middle) and the half-frame the village keeps
+    /// clear in front of every door.
     #[test]
     fn no_dwelling_draws_a_doorway_wider_than_the_village_expects() {
         const WIDEST_DOOR_HALF: i32 = 9;
@@ -1202,8 +1199,7 @@ mod tests {
             };
             let main = ShelterRenderer::roof_height(&genome, style, true);
             let cottage = ShelterRenderer::roof_height(&genome, style, false);
-            // Half as tall again as the 20 to 40 they reached until 0.61.0: a quarter in 0.61.0
-            // and a fifth more in 0.65.0.
+            // Half as tall again as the 20 to 40 the drawings reach at their own span.
             assert!((30..=60).contains(&main), "{style:?}: {main}");
             assert!(cottage < main, "{style:?}: {cottage} against {main}");
         }

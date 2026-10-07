@@ -15,6 +15,8 @@ mod colony_card;
 mod cuteness_sheet;
 mod decoration_sheet;
 mod dev;
+mod dev_art;
+mod dev_catalog;
 mod forms_sheet;
 mod habit_sheet;
 mod palette_sheet;
@@ -601,8 +603,7 @@ fn draw_yard_panel(
         .iter()
         .map(|resident| Some(formiga_art::ResidentMark::of(resident)))
         .collect();
-    // The colony house wearing the six decorations a colony could earn before 0.60.0, as it
-    // always has on this sheet.
+    // The colony house wearing the first six decorations, as it always has on this sheet.
     let village = ShelterRenderer::render_village(
         &home.drawn_shelter(),
         &[ShelterDecorationKind::ALL[..6].to_vec()],
@@ -1553,13 +1554,7 @@ fn app_icon(directory: PathBuf, source: PathBuf) -> Result<()> {
 
 fn encode_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(pixels)?;
-    }
+    formiga_art::write_png(&mut bytes, width, height, pixels)?;
     Ok(bytes)
 }
 
@@ -2149,10 +2144,6 @@ pub(crate) fn blend_pixel(target: &mut [u8], width: u32, x: u32, y: u32, source:
 
 pub(crate) fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8]) -> Result<()> {
     let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
-    let mut encoder = png::Encoder::new(BufWriter::new(file), width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut writer = encoder.write_header()?;
-    writer.write_image_data(pixels)?;
+    formiga_art::write_png(BufWriter::new(file), width, height, pixels)?;
     Ok(())
 }

@@ -3,55 +3,19 @@
 //! companion app; what each document must keep, and the words for what went wrong, are travel's.
 
 use crate::TRAVEL_FORMAT_VERSION;
-use formiga_expansion_rulebook::{self as rulebook, Kind, RulebookError};
+use formiga_expansion_rulebook::{self as rulebook, Kind};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::io;
 use std::path::Path;
 
 pub(crate) use formiga_expansion_rulebook::{header_ok, hex, is_sha256_hex, unhex};
 pub use formiga_expansion_rulebook::{sha256_hex, write_atomically};
 
-#[derive(Debug, thiserror::Error)]
-pub enum TravelError {
-    #[error("the travel file could not be read or written: {0}")]
-    Io(#[from] io::Error),
-    #[error("the travel file is larger than any travel file can be ({limit} bytes)")]
-    TooLarge { limit: u64 },
-    #[error("the travel file could not be read: {0}")]
-    Json(#[from] serde_json::Error),
-    #[error("expected a {expected} file, found {found:?}")]
-    WrongFormat {
-        expected: &'static str,
-        found: String,
-    },
-    #[error(
-        "the travel file needs a reader of travel version {needs}, and this build reads up to \
-         version {reads}"
-    )]
-    UnsupportedVersion { needs: u32, reads: u32 },
-    #[error("the travel file is not usable: {0}")]
-    Invalid(String),
-}
+rulebook::contract_error!(pub enum TravelError, "travel");
 
 impl TravelError {
     pub(crate) fn invalid(reason: impl Into<String>) -> Self {
         Self::Invalid(reason.into())
-    }
-}
-
-impl From<RulebookError> for TravelError {
-    fn from(error: RulebookError) -> Self {
-        match error {
-            RulebookError::Io(error) => Self::Io(error),
-            RulebookError::TooLarge { limit } => Self::TooLarge { limit },
-            RulebookError::Json(error) => Self::Json(error),
-            RulebookError::WrongFormat { expected, found } => Self::WrongFormat { expected, found },
-            RulebookError::UnsupportedVersion { needs, reads } => {
-                Self::UnsupportedVersion { needs, reads }
-            }
-            RulebookError::Invalid(reason) => Self::Invalid(reason),
-        }
     }
 }
 

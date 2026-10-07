@@ -112,23 +112,13 @@ fn write_card_png(creature: &Creature, path: &Path) -> Result<()> {
     )
 }
 
-/// Straight RGBA, eight bits, and no ancillary chunks at all: no text, no timestamp, no profile.
-/// Both cards and the postcards go out through here so none can grow hidden metadata the others
-/// do not have.
+/// Both cards and the postcards go out through [`formiga_art::write_png`], so none can grow
+/// hidden metadata the others do not have.
 fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8], what: &str) -> Result<()> {
     let file =
         File::create(path).with_context(|| format!("create {what} at {}", path.display()))?;
-    let mut encoder = png::Encoder::new(BufWriter::new(file), width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut writer = encoder
-        .write_header()
-        .with_context(|| format!("write {what} header"))?;
-    writer
-        .write_image_data(pixels)
-        .with_context(|| format!("write {what} pixels"))?;
-    writer.finish().with_context(|| format!("finish {what}"))?;
-    Ok(())
+    formiga_art::write_png(BufWriter::new(file), width, height, pixels)
+        .with_context(|| format!("write {what}"))
 }
 
 fn default_card_filename(name: &str) -> String {

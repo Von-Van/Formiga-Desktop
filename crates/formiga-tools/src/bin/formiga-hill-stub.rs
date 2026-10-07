@@ -291,9 +291,6 @@ fn sheet(snapshot: &TravelSnapshot, path: &Path) -> Result<()> {
         }
     }
     let file = std::fs::File::create(path)?;
-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header()?.write_image_data(&pixels)?;
+    formiga_art::write_png(std::io::BufWriter::new(file), width, height, &pixels)?;
     Ok(())
 }

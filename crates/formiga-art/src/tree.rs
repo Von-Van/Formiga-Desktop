@@ -21,9 +21,9 @@
 use crate::{Canvas, PALETTES, Rgba};
 use formiga_core::{ShelterGenome, ShelterStyle, TreeEnd};
 
-/// The tree's own cell, which its keepsake anchors are measured in. It stays the size it always
-/// was when the houses grew a quarter in 0.61.0, and stands in the middle of its larger village
-/// cell on the same ground line the houses stand on, three pixels above the foot of both.
+/// The tree's own cell, which its keepsake anchors are measured in. It is smaller than a house's
+/// cell, and stands in the middle of its larger village cell on the same ground line the houses
+/// stand on, three pixels above the foot of both.
 pub const TREE_CELL: u32 = 64;
 
 /// Where the tree's own cell sits inside its larger cell of the village atlas: across the middle,

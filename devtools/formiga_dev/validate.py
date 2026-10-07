@@ -9,6 +9,8 @@ failed or skipped with its reason:
               as a Windows build when the cross toolchain is installed, and skipped otherwise
   fixtures    the toolkit's fixed colonies: nothing `violations` names, a save that reads back
               unchanged, ten seconds of running (`formiga-tools dev check-fixtures`)
+  content     `formiga audit content`: names unique and fitting, everything reachable, and Hill
+              and Home naming only souvenirs and finds Desktop has (warnings do not fail it)
   tests       cargo test on every crate
   soak        a short run of the nightly soak: randomized colonies living a simulated day,
               written and read back, their files damaged and repaired
@@ -20,7 +22,6 @@ failed or skipped with its reason:
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Callable, Dict, List, Optional
 
@@ -41,7 +42,7 @@ from .workspace import (
 )
 
 QUICK = ["format", "lint", "fixtures"]
-DEFAULT = ["format", "lint", "app", "fixtures", "tests", "soak"]
+DEFAULT = ["format", "lint", "app", "fixtures", "content", "tests", "soak"]
 EXPANSION_STEPS = ["hill", "home"]
 ALL_STEPS = DEFAULT + EXPANSION_STEPS
 
@@ -184,11 +185,31 @@ def step_expansion(key: str) -> Step:
     return Step(key, "failed" if done.code else "passed", summary, done.seconds, problems)
 
 
+def step_content() -> Step:
+    from .audit import audit_content
+
+    audit = audit_content()
+    problems = [problem for step in audit.steps for problem in step.problems]
+    failed = [step for step in audit.steps if step.status == "failed"]
+    errors = [problem for problem in problems if not problem.is_warning]
+    warnings = len(problems) - len(errors)
+    seconds = sum(step.seconds or 0 for step in audit.steps)
+    if failed and not problems:
+        return Step("content", "failed", failed[0].summary, seconds)
+    summary = (f"{len(errors)} error(s)" if errors else
+               ", ".join(step.summary for step in audit.steps if step.name == "catalog"))
+    if warnings:
+        summary += f"; {warnings} warning(s), `formiga audit content` lists them"
+    # Warnings are for a look when auditing; here they would bury the errors.
+    return Step("content", "failed" if failed else "passed", summary, seconds, errors)
+
+
 STEPS: Dict[str, Callable[[], Step]] = {
     "format": step_format,
     "lint": step_lint,
     "app": step_app,
     "fixtures": step_fixtures,
+    "content": step_content,
     "tests": step_tests,
     "soak": step_soak,
     "hill": lambda: step_expansion("hill"),
@@ -223,17 +244,5 @@ def _count(line: str, what: str) -> int:
     return 0
 
 
-def _json_document(output: str) -> Optional[dict]:
-    start = output.find("{\n")
-    if start < 0:
-        return None
-    try:
-        return json.loads(output[start:])
-    except ValueError:
-        return None
-
-
-def _last_error(output: str) -> str:
-    lines = [line for line in output.strip().splitlines() if line.strip()]
-    errors = [line for line in lines if line.lstrip().startswith("error")]
-    return (errors or lines or ["failed with no output"])[-1].strip()
+_json_document = cargo.json_document
+_last_error = cargo.last_error

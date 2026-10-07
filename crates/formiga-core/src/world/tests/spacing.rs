@@ -98,10 +98,10 @@ fn no_face_stays_covered_for_longer_than_a_moment_over_a_long_session() {
     // as many bodies on the same ground and is held to its own, looser bound just below — the
     // test after this one — because the extra company means far more of every meeting happens
     // while one of the two is busy with an errand nobody can interrupt.
-    // Companions from both generators: the bodies and temperaments the archetypes draw since
-    // 0.62.0 meet each other differently, and 0.62.0 shipped before this test drew them. The last
-    // three archetype sessions are the ones 0.62.0 left past the bound: a game of tag held over a
-    // watcher, a dance over a sleeper, and a companion stepping aside into a slow walker's way.
+    // Companions from both generators: the bodies and temperaments the archetypes draw meet each
+    // other differently. The last three archetype sessions are ones that have run past the bound:
+    // a game of tag held over a watcher, a dance over a sleeper, and a companion stepping aside
+    // into a slow walker's way.
     for (generator, sessions) in [
         (Edition::Original, &[0_u8, 1, 2, 3][..]),
         (Edition::Archetypes, &[0, 1, 2, 3, 17, 20, 23][..]),
@@ -387,14 +387,12 @@ fn a_covered_sleeper_shuffles_over_without_waking() {
 /// them is busy with something of its own — which is time nobody can be asked to step aside.
 ///
 /// A full colony is not held to the four-body bound above and does not always meet it: across
-/// sixteen seeded sessions from each generator the worst episode here measures 6.50 seconds for
-/// the original generator and 5.55 for the archetypes, against that bound of 5.25, and three of
-/// the thirty-two run past it. What it is held to is that no face is ever left behind a body for
-/// something one could sit and watch. In 0.62.0 the same sessions ran to 8.75 and 13.85 seconds,
-/// one of them past even this bound: a game held its players over a bystander's face for as long
-/// as it lasted, a companion walking to bed was wriggled over as if asleep, and a step aside could
-/// be sent the way the other was going. Before the pair table was sized for a colony this big the
-/// original generator's sessions ran to 22.20 seconds, with five of the sixteen past this bound.
+/// sixteen seeded sessions from each generator the worst episode here measures 6.50 seconds for the
+/// original generator and 5.55 for the archetypes, against that bound of 5.25, and three of the
+/// thirty-two run past it. What it is held to is that no face is ever left behind a body for
+/// something one could sit and watch: no game holds its players over a bystander's face for as long
+/// as it lasts, a companion walking to bed is never wriggled over as if asleep, and a step aside is
+/// never sent the way the other is going.
 #[test]
 fn a_full_colony_leaves_nobody_standing_on_a_face_for_something_you_could_watch() {
     let bound = (World::cover_grace() + 4.0) * 2.0;

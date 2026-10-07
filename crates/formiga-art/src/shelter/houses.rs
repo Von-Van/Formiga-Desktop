@@ -3,6 +3,7 @@
 //! upper left, a recessed doorway on a threshold, and one or two things that say somebody lives
 //! there. They stay quieter than the residents in front of them: nothing here outshines a face.
 
+use crate::paint::mix;
 use crate::{Canvas, Palette, Rgba};
 use formiga_core::ShelterStyle;
 
@@ -26,11 +27,6 @@ const STRAW: Rgba = Rgba::new(226, 190, 116, 255);
 const STONE: Rgba = Rgba::new(176, 170, 162, 255);
 const LEAF: Rgba = Rgba::new(92, 158, 80, 255);
 const WHITE: Rgba = Rgba::new(255, 252, 240, 255);
-
-pub(super) fn mix(a: Rgba, b: Rgba, t: f32) -> Rgba {
-    let channel = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
-    Rgba::new(channel(a.r, b.r), channel(a.g, b.g), channel(a.b, b.b), 255)
-}
 
 /// One material: its own colour, the same in shadow, and the same where the light catches it.
 #[derive(Clone, Copy)]
