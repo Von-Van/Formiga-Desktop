@@ -8,6 +8,12 @@
 //! [`DesignRenderer`] draws a [`Design`] over a creature's genome before any creature has it, as
 //! Formiga Farm's window does. A companion recipe, or a look from before recipes, is drawn as
 //! Desktop always draws it, untouched.
+//!
+//! A sculpted form can also be painted in finer detail, up to [`FINEST_DETAIL`] pixels to each of
+//! its frame's: the same shapes in the same places, still pixel art in the same style, every
+//! pixel solid or clear and the outline as heavy as a companion's, with smaller steps in its
+//! curves, three tones of shade and its coat's grain. Its face is Formiga's own, redrawn larger
+//! with its corners rounded. This is the drawing Formiga Farm shows on its stage.
 
 mod draw;
 mod figure;
@@ -26,11 +32,11 @@ use formiga_core::forms::{Design, Plan, Sculpt, face_carrier};
 use formiga_core::{ActionKind, AppearanceGenome};
 use paint::Sheet;
 
-/// The finest a sculpted form is drawn, in pixels to each unit of its 48-unit frame: one, exactly
-/// as every companion is, until a finer drawing is adopted from Formiga Farm. Desktop bakes a
-/// sculpted form as finely as this allows and as its screen shows it, and never finer, so it is
-/// never shrunk and never blurred.
-pub const FINEST_DETAIL: u32 = 1;
+/// The finest a sculpted form is drawn, in pixels to each unit of its 48-unit frame. Desktop
+/// shows a creature at 2, 3 or 4 screen pixels to the unit, and bakes a sculpted form as finely as
+/// this allows and as its screen shows it, and never finer, so it is never shrunk and never
+/// blurred.
+pub const FINEST_DETAIL: u32 = 4;
 
 /// The largest a sculpted figure may stand across the frame, and how far above the ground its
 /// top may reach, leaving room for a hop.
@@ -138,7 +144,7 @@ impl DesignRenderer {
         let baseline = CreatureRenderer::resting_baseline(&genome, true) as i32;
         let scruff = match &genome.sculpt {
             Some(sculpt) => {
-                let (_, figure) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true);
+                let (_, figure) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true, 1);
                 point(figure.scruff)
             }
             None => PixelPoint {
@@ -173,15 +179,58 @@ pub(crate) fn body(
     frame: u8,
     reduce_motion: bool,
 ) -> (Canvas, Worn) {
-    let (sheet, figure) = sculpted(sculpt, genome, clip, frame, reduce_motion);
+    let (sheet, figure) = sculpted(sculpt, genome, clip, frame, reduce_motion, 1);
     (sheet.canvas, worn(&figure))
+}
+
+/// The body [`body`] draws, painted `detail` pixels to each of its frame's (see [`FINEST_DETAIL`]),
+/// standing exactly where that frame stands it.
+pub(crate) fn body_in_detail(
+    sculpt: &Sculpt,
+    genome: &AppearanceGenome,
+    clip: BodyClip,
+    frame: u8,
+    reduce_motion: bool,
+    detail: u32,
+) -> Canvas {
+    let res = detail.clamp(1, FINEST_DETAIL) as i32;
+    sculpted(sculpt, genome, clip, frame, reduce_motion, res)
+        .0
+        .canvas
+}
+
+/// A finely painted body with whatever was drawn on it at frame size: a frame pixel that what it
+/// wears, holds or shows changed in `dressed` from `bare` is drawn as a square of that pixel, and
+/// every other is `fine`'s own.
+pub(crate) fn dressed_in_detail(
+    dressed: &Canvas,
+    bare: &Canvas,
+    fine: &Canvas,
+    detail: u32,
+) -> Canvas {
+    let res = detail as i32;
+    let mut out = fine.clone();
+    for y in 0..dressed.height() as i32 {
+        for x in 0..dressed.width() as i32 {
+            let pixel = dressed.get(x, y);
+            if pixel == bare.get(x, y) {
+                continue;
+            }
+            for fy in 0..res {
+                for fx in 0..res {
+                    out.set(x * res + fx, y * res + fy, pixel);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Empty rows beneath a sculpted form at rest, measured from its own resting frame as a
 /// companion's are. A floater's are measured to the ground it hovers above, never to its belly,
 /// so it is never set down there.
 pub(crate) fn resting_baseline(sculpt: &Sculpt, genome: &AppearanceGenome) -> u32 {
-    let (sheet, _) = sculpted(sculpt, genome, ActionKind::Idle.into(), 0, true);
+    let (sheet, _) = sculpted(sculpt, genome, ActionKind::Idle.into(), 0, true, 1);
     let bottom = sheet
         .canvas
         .alpha_bounds()
@@ -240,6 +289,112 @@ fn worn(figure: &Figure) -> Worn {
     }
 }
 
+/// `canvas` with each pixel drawn as a `detail` by `detail` square.
+pub(crate) fn blocks(canvas: &Canvas, detail: u32) -> Canvas {
+    let res = detail.max(1) as i32;
+    if res == 1 {
+        return canvas.clone();
+    }
+    let mut out = Canvas::new(canvas.width() * res as u32, canvas.height() * res as u32);
+    for y in 0..out.height() as i32 {
+        for x in 0..out.width() as i32 {
+            out.set(x, y, canvas.get(x / res, y / res));
+        }
+    }
+    out
+}
+
+/// A pixel face drawn `detail` times larger with its corners rounded, as a pixel artist would
+/// redraw it larger: each pixel doubled, tripled or doubled twice, so that a corner between two
+/// runs of one colour is filled and a lone corner cut. Every expression keeps every feature,
+/// still in flat pixels, only rounder.
+pub(crate) fn rounded_face(face: &Canvas, detail: u32) -> Canvas {
+    match detail.clamp(1, FINEST_DETAIL) {
+        2 => scale2x(face),
+        3 => scale3x(face),
+        4 => scale2x(&scale2x(face)),
+        _ => face.clone(),
+    }
+}
+
+/// One pass of the Scale3x pixel-art enlargement.
+fn scale3x(canvas: &Canvas) -> Canvas {
+    let (w, h) = (canvas.width() as i32, canvas.height() as i32);
+    let mut out = Canvas::new(w as u32 * 3, h as u32 * 3);
+    let at = |x: i32, y: i32| canvas.get(x.clamp(0, w - 1), y.clamp(0, h - 1));
+    for y in 0..h {
+        for x in 0..w {
+            let (a, b, c) = (at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1));
+            let (d, e, f) = (at(x - 1, y), at(x, y), at(x + 1, y));
+            let (g, hh, i) = (at(x - 1, y + 1), at(x, y + 1), at(x + 1, y + 1));
+            let mut cells = [e; 9];
+            if b != hh && d != f {
+                if d == b {
+                    cells[0] = d;
+                }
+                if (d == b && e != c) || (b == f && e != a) {
+                    cells[1] = b;
+                }
+                if b == f {
+                    cells[2] = f;
+                }
+                if (d == b && e != g) || (d == hh && e != a) {
+                    cells[3] = d;
+                }
+                if (b == f && e != i) || (hh == f && e != c) {
+                    cells[5] = f;
+                }
+                if d == hh {
+                    cells[6] = d;
+                }
+                if (d == hh && e != i) || (hh == f && e != g) {
+                    cells[7] = hh;
+                }
+                if hh == f {
+                    cells[8] = f;
+                }
+            }
+            for (n, cell) in cells.into_iter().enumerate() {
+                out.set(x * 3 + n as i32 % 3, y * 3 + n as i32 / 3, cell);
+            }
+        }
+    }
+    out
+}
+
+/// One pass of the Scale2x pixel-art enlargement.
+fn scale2x(canvas: &Canvas) -> Canvas {
+    let (w, h) = (canvas.width() as i32, canvas.height() as i32);
+    let mut out = Canvas::new(w as u32 * 2, h as u32 * 2);
+    let at = |x: i32, y: i32| canvas.get(x.clamp(0, w - 1), y.clamp(0, h - 1));
+    for y in 0..h {
+        for x in 0..w {
+            let e = at(x, y);
+            let (b, d, f, hh) = (at(x, y - 1), at(x - 1, y), at(x + 1, y), at(x, y + 1));
+            let (mut e0, mut e1, mut e2, mut e3) = (e, e, e, e);
+            if b != hh && d != f {
+                if d == b {
+                    e0 = d;
+                }
+                if b == f {
+                    e1 = f;
+                }
+                if d == hh {
+                    e2 = d;
+                }
+                if hh == f {
+                    e3 = f;
+                }
+            }
+            out.set(x * 2, y * 2, e0);
+            out.set(x * 2 + 1, y * 2, e1);
+            out.set(x * 2, y * 2 + 1, e2);
+            out.set(x * 2 + 1, y * 2 + 1, e3);
+        }
+    }
+    out
+}
+
 fn point((x, y): (f32, f32)) -> PixelPoint {
     PixelPoint {
         x: x.round() as i32,
@@ -276,6 +431,7 @@ fn sculpted(
     clip: BodyClip,
     frame: u8,
     reduce_motion: bool,
+    res: i32,
 ) -> (Sheet, Figure) {
     let sculpt = sculpt.normalized();
     let eye_spacing = genome.face.eye_spacing;
@@ -286,7 +442,9 @@ fn sculpted(
     draw::draw(&mut sheet, &sculpt, &figure, pose, eye_spacing);
     // A leap that would reach past the frame is held inside it, a pixel from the edge, as
     // Desktop's atlas keeps every companion's.
+    let laid_out = figure.clone();
     let mut figure = figure;
+    let (mut moved_x, mut moved_y) = (0, 0);
     if let Some((left, top, right, bottom)) = sheet.canvas.alpha_bounds() {
         let edge = FRAME_SIZE as i32 - 2;
         let shift = |low: u32, high: u32| {
@@ -302,7 +460,17 @@ fn sculpted(
         if dx != 0 || dy != 0 {
             sheet.canvas.translate(dx, dy);
             figure = figure.moved(dx as f32, dy as f32);
+            (moved_x, moved_y) = (dx, dy);
         }
+    }
+    if res > 1 {
+        // The same figure painted finely, held exactly where the frame above holds it.
+        let mut fine = Sheet::with_res(res);
+        draw::draw(&mut fine, &sculpt, &laid_out, pose, eye_spacing);
+        if moved_x != 0 || moved_y != 0 {
+            fine.canvas.translate(moved_x * res, moved_y * res);
+        }
+        return (fine, figure);
     }
     (sheet, figure)
 }

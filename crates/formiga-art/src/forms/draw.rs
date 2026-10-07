@@ -4,7 +4,8 @@
 use super::figure::{Figure, Limb};
 use super::motion::Pose;
 use super::paint::{
-    Frame, Mask, OUTLINE, Shape, Sheet, far, grain, hash, light, shade, smooth_noise, soft,
+    Frame, HD_OUTLINE, Mask, OUTLINE, Shape, Sheet, far, grain, hash, light, mix, shade,
+    smooth_noise, smoothstep, soft,
 };
 use crate::Rgba;
 use formiga_core::forms::{
@@ -50,6 +51,11 @@ struct Painter<'a> {
     eye_dx: f32,
     /// Where the top of the snout is, once one is drawn: where a nose horn grows.
     snout_top: (f32, f32),
+    /// In high definition, the body once it is painted, and while a near leg is painted, the
+    /// body it grows out of: the leg's outline stops at the body and the leg fades into it, so
+    /// it reads as part of the creature rather than a peg stuck on.
+    body: Option<Mask>,
+    melt: Option<Mask>,
 }
 
 /// Paint `sculpt` laid out as `fig` in `pose`. `eye_spacing` is the face's own, from 4 to 7.
@@ -73,6 +79,8 @@ pub(crate) fn draw(sheet: &mut Sheet, sculpt: &Sculpt, fig: &Figure, pose: Pose,
             fig.face.0 + fig.head.r * 0.45,
             fig.face.1 + fig.head.r * 0.15,
         ),
+        body: None,
+        melt: None,
     };
     painter.paint();
 }
@@ -185,32 +193,51 @@ impl Painter<'_> {
         outlined: bool,
         dim: bool,
     ) -> Mask {
-        let mask = Mask::of(shapes);
+        let mask = self.sheet.mask(shapes);
         if mask.is_empty() {
             return mask;
         }
-        if outlined {
+        let melt = self.melt.take();
+        if let Some(body) = &melt {
+            // A near leg: outlined only where it is clear of the body.
+            let res = self.sheet.res() as f32;
+            for (x, y, d) in mask.measured() {
+                if d > -1.0 / res {
+                    let clear = smoothstep(-0.3, 0.5, body.distance(x, y).min(4.0));
+                    let alpha = ((HD_OUTLINE - d) * res + 0.5).clamp(0.0, 1.0) * clear;
+                    self.sheet.paint(x, y, OUTLINE, alpha);
+                }
+            }
+        } else if outlined {
             self.sheet.outline(&mask, OUTLINE);
         }
         let coat = self.sculpt.coat;
         let treatment = coat.treatment;
         let is_coat = base == self.inks.primary;
-        let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-        for &(x, y) in &pixels {
-            let (u, v) = frame.local(x, y);
-            let mut color = base;
-            let mut under = false;
-            if is_coat && self.underside(region, u, v) {
-                color = self.inks.underside;
-                under = true;
-            }
-            if is_coat || matches!(region, Region::Ear | Region::Mane | Region::Snout) {
-                for marking in &self.sculpt.markings {
-                    if self.marked(marking, region, u, v, x, y, under) {
-                        color = soft(marking.color);
-                    }
+        if self.sheet.hd() {
+            for (x, y) in mask.pixels() {
+                let mut alpha = mask.coverage(x, y);
+                if let Some(body) = &melt {
+                    alpha *= 1.0 - smoothstep(0.7, 1.8, body.depth(x, y));
                 }
+                // Too little of the pixel to paint: no need to work out its colour.
+                if alpha < 0.5 {
+                    continue;
+                }
+                let (fx, fy) = self.sheet.center(x, y);
+                let color =
+                    self.hd_color(region, frame, base, is_coat, fx, fy, mask.depth(x, y), dim);
+                self.sheet.paint(x, y, color, alpha);
             }
+            if outlined && matches!(region, Region::Body | Region::Head) {
+                self.hd_fringe(&mask, treatment, frame);
+            }
+            return mask;
+        }
+        for (x, y) in mask.pixels() {
+            let (fx, fy) = self.sheet.center(x, y);
+            let (u, v) = frame.at(fx, fy);
+            let (mut color, _) = self.pattern(region, frame, base, is_coat, fx, fy);
             let shadow = match region {
                 Region::Leg { .. } | Region::Arm => v > 0.35,
                 Region::Neck => v < -0.45,
@@ -243,6 +270,91 @@ impl Painter<'_> {
         mask
     }
 
+    /// The coat's own colour at a point of a region, in frame pixels: the base, the underside
+    /// where it reaches, and the markings over both. Says whether it fell on the underside.
+    fn pattern(
+        &self,
+        region: Region,
+        frame: Frame,
+        base: Rgba,
+        is_coat: bool,
+        fx: f32,
+        fy: f32,
+    ) -> (Rgba, bool) {
+        let (u, v) = frame.at(fx, fy);
+        let mut color = base;
+        let mut under = false;
+        if is_coat && self.underside(region, u, v) {
+            color = self.inks.underside;
+            under = true;
+        }
+        if is_coat || matches!(region, Region::Ear | Region::Mane | Region::Snout) {
+            for marking in &self.sculpt.markings {
+                if self.marked(marking, region, u, v, fx, fy, under) {
+                    color = soft(marking.color);
+                }
+            }
+        }
+        (color, under)
+    }
+
+    /// A region's colour at a point in high definition: the coat's pattern, then its shade
+    /// underneath in three tones rather than two, a patch of light from the upper left, a line
+    /// of shadow just inside the outline on the far side, and the coat's treatment drawn as
+    /// fine strands, feathers or folds. Every colour is one of a few flat tones, as pixel art's
+    /// are; there is more detail, not a different way of drawing.
+    #[allow(clippy::too_many_arguments)]
+    fn hd_color(
+        &self,
+        region: Region,
+        frame: Frame,
+        base: Rgba,
+        is_coat: bool,
+        fx: f32,
+        fy: f32,
+        depth: f32,
+        dim: bool,
+    ) -> Rgba {
+        let (mut color, _) = self.pattern(region, frame, base, is_coat, fx, fy);
+        let (u, v) = frame.at(fx, fy);
+        // How far past the line Desktop shades from: a half shade either side of it, and the
+        // full shade beyond, three tones where a companion has two.
+        let past = match region {
+            Region::Leg { .. } | Region::Arm => v - 0.35,
+            Region::Neck => -0.45 - v,
+            _ => v - 0.5,
+        };
+        let shadow = if past > 0.12 {
+            1.0
+        } else if past > -0.1 {
+            0.5
+        } else {
+            0.0
+        };
+        color = mix(color, shade(color), shadow);
+        let treatment = self.sculpt.coat.treatment;
+        // Light from the upper left: a lit patch on every coat, a bright glint on smooth skin.
+        let shine = (u + 0.4).powi(2) + (v + 0.55).powi(2);
+        if matches!(region, Region::Body | Region::Head) {
+            if treatment == Treatment::Smooth && shine < 0.035 {
+                color = light(color);
+            } else if shine < 0.1 {
+                color = mix(color, light(color), 0.3);
+            }
+        }
+        // Turned away from the light, a line of shadow just inside the outline.
+        if depth < 0.55 && v + u * 0.3 > 0.3 && shadow < 1.0 {
+            color = mix(color, shade(color), 0.5);
+        }
+        if depth > 0.7
+            && let Some((textured, amount)) = texture_hd(treatment, region, u, v, fx, fy, color)
+            && amount >= 0.5
+        {
+            color = textured;
+        }
+        if dim { far(color) } else { color }
+    }
+
     /// Ruffled edges for fur: a tuft here and there along the top, and for shaggy fur a fringe
     /// all along the bottom.
     fn fringe(&mut self, mask: &Mask, treatment: Treatment, base: Rgba, frame: Frame) {
@@ -251,9 +363,9 @@ impl Painter<'_> {
             Treatment::Shaggy => (3, true),
             _ => return,
         };
-        let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-        for (x, y) in pixels {
-            let (_, v) = frame.local(x, y);
+        for (x, y) in mask.pixels() {
+            let (fx, fy) = self.sheet.center(x, y);
+            let (_, v) = frame.at(fx, fy);
             if v < -0.5 && !mask.has(x, y - 1) && hash(x, y, 11).is_multiple_of(every) {
                 self.sheet.set(x, y - 2, OUTLINE);
                 self.sheet.set(x, y - 1, self.sheet.get(x, y));
@@ -262,6 +374,110 @@ impl Painter<'_> {
                 self.sheet.set(x, y + 1, shade(base));
                 self.sheet.set(x, y + 2, OUTLINE);
             }
+        }
+    }
+
+    /// Fur's ruffled edge in high definition: small pointed tufts along the top, each grown
+    /// from the coat beneath it with no line where it joins, and for shaggy fur a fringe of
+    /// longer ones all along the bottom.
+    fn hd_fringe(&mut self, mask: &Mask, treatment: Treatment, frame: Frame) {
+        let (spacing, below) = match treatment {
+            Treatment::Fur => (4.2_f32, false),
+            Treatment::Shaggy => (1.6, true),
+            _ => return,
+        };
+        let res = self.sheet.res();
+        // Walk the outline along the body, a tuft every so often where it faces up (or down).
+        let along = frame.half_length * 2.0;
+        let count = (along / spacing).floor() as i32;
+        let (ax, ay) = frame.axis;
+        let across = (-ay, ax);
+        let mut tufts = Vec::new();
+        for i in 0..=count {
+            let t = -0.85 + 1.7 * (i as f32 + 0.5) / (count as f32 + 1.0);
+            let jitter = ((hash(i, 7, 11) % 100) as f32 / 100.0 - 0.5) * 0.12;
+            let t = t + jitter;
+            for (side, wanted) in [(-1.0_f32, true), (1.0, below)] {
+                if !wanted {
+                    continue;
+                }
+                // From the middle, out across the body to where the mask ends.
+                let mid = (
+                    frame.cx + ax * t * frame.half_length,
+                    frame.cy + ay * t * frame.half_length,
+                );
+                let mut edge = None;
+                let mut s = 0.0;
+                while s < frame.half_width * 1.6 + 2.0 {
+                    let p = (mid.0 + across.0 * side * s, mid.1 + across.1 * side * s);
+                    let px = (
+                        (p.0 * res as f32).floor() as i32,
+                        (p.1 * res as f32).floor() as i32,
+                    );
+                    if !mask.has(px.0, px.1) && s > 0.0 {
+                        edge = Some(p);
+                        break;
+                    }
+                    s += 0.25;
+                }
+                let Some(edge) = edge else { continue };
+                // A tuft only grows where the edge faces the way it should.
+                let out = (across.0 * side, across.1 * side);
+                if side < 0.0 && out.1 > -0.55 {
+                    continue;
+                }
+                tufts.push((edge, out, side > 0.0, i));
+            }
+        }
+        // Every tuft is outlined as one, so neighbours run together with no line between them,
+        // and each is filled from the coat it grows out of.
+        let mut shapes = Vec::new();
+        let mut fills = Vec::new();
+        for (edge, out, low, i) in tufts {
+            let lean = if low { 0.25 } else { -0.55 };
+            let dir = (out.0 + lean * out.1.abs(), out.1);
+            let norm = (dir.0 * dir.0 + dir.1 * dir.1).sqrt().max(0.01);
+            let dir = (dir.0 / norm, dir.1 / norm);
+            let len = if low { 1.3 } else { 0.9 } + (hash(i, 3, 5) % 3) as f32 * 0.2;
+            let half = if low { 0.7 } else { 0.9 };
+            let side = (-dir.1, dir.0);
+            let root = (edge.0 - out.0 * 0.9, edge.1 - out.1 * 0.9);
+            let tip = (edge.0 + dir.0 * len, edge.1 + dir.1 * len);
+            let tuft = Shape::Polygon(vec![
+                (root.0 - side.0 * half, root.1 - side.1 * half),
+                tip,
+                (root.0 + side.0 * half, root.1 + side.1 * half),
+            ]);
+            // The coat just inside the edge, which the tuft is grown from.
+            let from = (
+                ((edge.0 - out.0 * 1.4) * res as f32) as i32,
+                ((edge.1 - out.1 * 1.4) * res as f32) as i32,
+            );
+            let coat = self.sheet.get(from.0, from.1);
+            if coat.a == 0 {
+                continue;
+            }
+            shapes.push(tuft.clone());
+            fills.push((tuft, coat));
+        }
+        if shapes.is_empty() {
+            return;
+        }
+        let all = self.sheet.mask(&shapes);
+        let res_f = res as f32;
+        for (x, y, d) in all.measured() {
+            if mask.has(x, y) || d < -1.0 / res_f {
+                continue;
+            }
+            self.sheet.paint(
+                x,
+                y,
+                OUTLINE,
+                ((HD_OUTLINE - d) * res_f + 0.5).clamp(0.0, 1.0),
+            );
+        }
+        for (tuft, coat) in fills {
+            self.sheet.blob(&[tuft], coat);
         }
     }
 
@@ -295,14 +511,13 @@ impl Painter<'_> {
         region: Region,
         u: f32,
         v: f32,
-        x: i32,
-        y: i32,
+        fx: f32,
+        fy: f32,
         under: bool,
     ) -> bool {
         let size = 0.6 + f32::from(m.size) * 0.12;
         let amount = f32::from(m.amount) / 10.0;
         let seed = u32::from(m.layout) * 7919 + m.kind as u32 * 31;
-        let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
         let coat_like = matches!(
             region,
             Region::Body
@@ -485,7 +700,10 @@ impl Painter<'_> {
             );
             return;
         }
-        self.region(&[body], Region::Body, frame, self.inks.primary, true, false);
+        let mask = self.region(&[body], Region::Body, frame, self.inks.primary, true, false);
+        if self.sheet.hd() {
+            self.body = Some(mask);
+        }
     }
 
     fn head(&mut self) {
@@ -497,10 +715,34 @@ impl Painter<'_> {
         } else {
             Shape::ellipse(h.x, h.y, h.r, h.r * 0.92)
         };
+        if floater && self.sheet.hd() {
+            // Only over the body it already shares, never over a line drawn on it, so it adds
+            // no line of its own.
+            let mask = self.sheet.mask(&[shape]);
+            let base = self.inks.primary;
+            for (x, y) in mask.pixels() {
+                let (fx, fy) = self.sheet.center(x, y);
+                let color = self.hd_color(
+                    Region::Head,
+                    frame,
+                    base,
+                    true,
+                    fx,
+                    fy,
+                    mask.depth(x, y),
+                    false,
+                );
+                let alpha = mask.coverage(x, y) * (1.0 - self.sheet.inked(x, y));
+                if self.sheet.get(x, y).a > 0 {
+                    self.sheet.paint(x, y, color, alpha);
+                }
+            }
+            return;
+        }
         if floater {
             // Only over the body it already shares, so it adds no line.
-            let mask = Mask::of(&[shape]);
-            let body = Mask::of(&[Shape::turned(
+            let mask = self.sheet.mask(&[shape]);
+            let body = self.sheet.mask(&[Shape::turned(
                 self.fig.body.cx,
                 self.fig.body.cy,
                 self.fig.body.rx,
@@ -516,7 +758,8 @@ impl Painter<'_> {
                 if self.sheet.get(x, y) == OUTLINE {
                     continue;
                 }
-                let (u, v) = frame.local(x, y);
+                let (fx, fy) = self.sheet.center(x, y);
+                let (u, v) = frame.at(fx, fy);
                 let mut color = base;
                 let mut under = false;
                 if self.underside(Region::Head, u, v) {
@@ -524,7 +767,7 @@ impl Painter<'_> {
                     under = true;
                 }
                 for marking in &self.sculpt.markings {
-                    if self.marked(marking, Region::Head, u, v, x, y, under) {
+                    if self.marked(marking, Region::Head, u, v, fx, fy, under) {
                         color = soft(marking.color);
                     }
                 }
@@ -562,13 +805,12 @@ impl Painter<'_> {
         let (top, foot, r) = (limb.top, limb.foot, limb.radius);
         if talons && region != Region::Arm {
             // Thin legs, drawn flat in the feature colour.
-            let mask = Mask::of(&[Shape::capsule(top, foot, r, r)]);
-            self.sheet.outline(&mask, OUTLINE);
             let color = if dim { far(fill) } else { fill };
-            for (x, y) in mask.pixels() {
-                self.sheet.set(x, y, color);
-            }
+            self.sheet.flat(&[Shape::capsule(top, foot, r, r)], color);
         } else {
+            if limb.near && matches!(region, Region::Leg { .. }) {
+                self.melt = self.body.clone();
+            }
             self.region(
                 &[Shape::capsule(top, foot, r, r * 0.95)],
                 region,
@@ -577,6 +819,7 @@ impl Painter<'_> {
                 true,
                 dim,
             );
+            self.melt = None;
         }
         self.foot(limb, region, dim);
     }
@@ -651,11 +894,14 @@ impl Painter<'_> {
                     tone(paw),
                 );
                 for dx in [-0.5_f32, 1.0] {
-                    self.sheet.set(
-                        (fx + dx * r * 0.7).floor() as i32 + 1,
-                        fy.floor() as i32,
-                        tone(self.inks.feature),
-                    );
+                    let x = (fx + dx * r * 0.7).floor() as i32 + 1;
+                    if self.sheet.hd() {
+                        let toe = Shape::ellipse(x as f32 + 0.5, fy.floor() + 0.4, 0.6, 0.45);
+                        self.sheet.blob(&[toe], tone(self.inks.feature));
+                    } else {
+                        self.sheet
+                            .set(x, fy.floor() as i32, tone(self.inks.feature));
+                    }
                 }
             }
             Some(PartKind::FeetHands) => {
@@ -671,6 +917,27 @@ impl Painter<'_> {
             }
             Some(PartKind::FeetTalons) => {
                 let claw = tone(self.inks.feature);
+                if self.sheet.hd() {
+                    // Toes gripping the ground, a short one behind, and a pale claw on top.
+                    let (x, y) = (fx.floor(), fy.floor());
+                    self.sheet.blob(
+                        &[
+                            Shape::capsule((x + 0.8, y + 0.5), (x + 3.2, y + 1.4), 0.5, 0.35),
+                            Shape::capsule((x + 0.2, y + 0.5), (x - 2.0, y + 1.4), 0.5, 0.35),
+                        ],
+                        OUTLINE,
+                    );
+                    self.sheet.blob(
+                        &[Shape::capsule(
+                            (x + 1.4, y - 0.4),
+                            (x + 2.6, y - 0.3),
+                            0.55,
+                            0.4,
+                        )],
+                        claw,
+                    );
+                    return;
+                }
                 let (x, y) = (fx.floor() as i32, fy.floor() as i32);
                 for (dx, dy) in [(1, 0), (2, 0), (3, 1), (-1, 0), (-2, 1)] {
                     self.sheet.set(x + dx, y + dy, OUTLINE);
@@ -788,9 +1055,35 @@ impl Painter<'_> {
                     false,
                 );
                 let loop_c = (mid.0 - 1.0, mid.1 - 2.0 * k);
-                let ring = Mask::of(&[Shape::ellipse(loop_c.0, loop_c.1, 3.0 * k, 3.0 * k)]);
-                let hole = Mask::of(&[Shape::ellipse(loop_c.0, loop_c.1, 1.2 * k, 1.2 * k)]);
+                let ring = self
+                    .sheet
+                    .mask(&[Shape::ellipse(loop_c.0, loop_c.1, 3.0 * k, 3.0 * k)]);
+                let hole = self
+                    .sheet
+                    .mask(&[Shape::ellipse(loop_c.0, loop_c.1, 1.2 * k, 1.2 * k)]);
                 self.sheet.outline(&ring, OUTLINE);
+                if self.sheet.hd() {
+                    // The coat round the hole, a line just inside the hole, and nothing in it.
+                    let res = self.sheet.res() as f32;
+                    for (x, y) in ring.pixels() {
+                        let dh = hole.distance(x, y);
+                        let (fx, fy) = self.sheet.center(x, y);
+                        let coat = self.hd_color(
+                            Region::Tail,
+                            frame,
+                            ink,
+                            false,
+                            fx,
+                            fy,
+                            ring.depth(x, y),
+                            false,
+                        );
+                        let color = mix(coat, OUTLINE, (0.5 - dh * res).clamp(0.0, 1.0));
+                        let keep = ((dh + HD_OUTLINE) * res + 0.5).clamp(0.0, 1.0);
+                        self.sheet.paint(x, y, color, ring.coverage(x, y) * keep);
+                    }
+                    return;
+                }
                 for (x, y) in ring.pixels() {
                     let c = if hole.has(x, y) {
                         if hole.edge(x, y) { OUTLINE } else { continue }
@@ -914,17 +1207,24 @@ impl Painter<'_> {
                         !near,
                     );
                     if let Some(inner) = inner {
-                        let inside = Mask::of(&[Shape::turned(
+                        let inside = self.sheet.mask(&[Shape::turned(
                             x + side * 0.8,
                             y + 0.5,
                             rx * 0.6,
                             ry * 0.65,
                             side * 0.15,
                         )]);
-                        for (px, py) in inside.pixels() {
-                            if mask.has(px, py) && !mask.edge(px, py) {
-                                let tone = grain(inner);
-                                self.sheet.set(px, py, if near { tone } else { far(tone) });
+                        let tone = grain(inner);
+                        let tone = if near { tone } else { far(tone) };
+                        let pixels: Vec<(i32, i32)> = inside.pixels().collect();
+                        for (px, py) in pixels {
+                            if self.sheet.hd() {
+                                let res = self.sheet.res() as f32;
+                                let keep = ((mask.depth(px, py) - 0.6) * res + 0.5).clamp(0.0, 1.0);
+                                self.sheet
+                                    .paint(px, py, tone, inside.coverage(px, py) * keep);
+                            } else if mask.has(px, py) && !mask.edge(px, py) {
+                                self.sheet.set(px, py, tone);
                             }
                         }
                     }
@@ -989,7 +1289,22 @@ impl Painter<'_> {
                 true,
                 !near,
             );
-            if let Some(inner) = inner {
+            if let Some(inner) = inner
+                && self.sheet.hd()
+            {
+                // The inside of the ear, softly inset from its edge.
+                let color = if near { inner } else { far(inner) };
+                let res = self.sheet.res() as f32;
+                for (x, y) in mask.pixels() {
+                    let (fx, fy) = self.sheet.center(x, y);
+                    // Inset more at the base, where the ear meets the head.
+                    let (dx, dy) = (fx - base.0, fy - base.1);
+                    let up = (dx * out.0 + dy * out.1) / length.max(0.5);
+                    let inset = 1.0 + (1.0 - up.clamp(0.0, 1.0)) * 0.4;
+                    let keep = ((mask.depth(x, y) - inset) * res + 0.5).clamp(0.0, 1.0);
+                    self.sheet.paint(x, y, color, keep);
+                }
+            } else if let Some(inner) = inner {
                 let inside: Vec<(i32, i32)> = mask
                     .pixels()
                     .filter(|&(x, y)| {
@@ -1004,7 +1319,19 @@ impl Painter<'_> {
                     self.sheet.set(x, y, color);
                 }
             }
-            if part.kind == PartKind::EarsTufted {
+            if part.kind == PartKind::EarsTufted && self.sheet.hd() {
+                // A fine wisp of dark fur from the tip.
+                let from = (
+                    base.0 + out.0 * (length - 0.5),
+                    base.1 + out.1 * (length - 0.5),
+                );
+                let to = (
+                    base.0 + out.0 * (length + 2.2) - 0.3,
+                    base.1 + out.1 * (length + 2.2),
+                );
+                self.sheet
+                    .blob(&[Shape::capsule(from, to, 0.55, 0.15)], OUTLINE);
+            } else if part.kind == PartKind::EarsTufted {
                 let tip = (
                     (base.0 + out.0 * (length + 1.5)).floor() as i32,
                     (base.1 + out.1 * (length + 1.5)).floor() as i32,
@@ -1027,6 +1354,18 @@ impl Painter<'_> {
         let lift = f32::from(part.lift) * 0.6;
         let m = (fx + 0.5 + tilt * 0.5, fy + h.r * 0.42 - lift);
         let nose = |painter: &mut Self, x: f32, y: f32| {
+            if painter.sheet.hd() {
+                // A soft dark nose with a glint of light on it.
+                let (cx, cy) = (x.floor() + 1.0, y.floor() + 0.5);
+                painter
+                    .sheet
+                    .blob(&[Shape::ellipse(cx, cy, 1.25, 0.8)], OUTLINE);
+                painter.sheet.blob(
+                    &[Shape::ellipse(cx - 0.35, cy - 0.3, 0.35, 0.22)],
+                    light(OUTLINE),
+                );
+                return;
+            }
             let (x, y) = (x.floor() as i32, y.floor() as i32);
             painter.sheet.set(x, y, OUTLINE);
             painter.sheet.set(x + 1, y, OUTLINE);
@@ -1095,7 +1434,29 @@ impl Painter<'_> {
                 );
                 // A few folds across it.
                 let fold = grain(shade(ink));
+                if self.sheet.hd() {
+                    let trunk = self.sheet.mask(&[
+                        Shape::capsule(p0, p1, 3.0 * k, 2.3 * k),
+                        Shape::capsule(p1, p2, 2.3 * k, 1.7 * k),
+                        Shape::capsule(p2, curl, 1.7 * k, 1.5 * k),
+                    ]);
+                    let (dx, dy) = (p2.0 - p0.0, p2.1 - p0.1);
+                    let length = (dx * dx + dy * dy).sqrt().max(0.5);
+                    let across = (-dy / length * 3.0 * k, dx / length * 3.0 * k);
+                    for t in [0.3_f32, 0.45, 0.6, 0.75, 0.9] {
+                        let (x, y) = (p0.0 + dx * t, p0.1 + dy * t);
+                        self.sheet.line(
+                            (x - across.0, y - across.1),
+                            (x + across.0, y + across.1),
+                            fold,
+                            &trunk,
+                        );
+                    }
+                }
                 for t in [0.35_f32, 0.6, 0.85] {
+                    if self.sheet.hd() {
+                        break;
+                    }
                     let (x, y) = (p0.0 + (p2.0 - p0.0) * t, p0.1 + (p2.1 - p0.1) * t);
                     self.sheet.set(x.floor() as i32, y.floor() as i32, fold);
                     self.sheet.set(x.floor() as i32 + 1, y.floor() as i32, fold);
@@ -1119,8 +1480,22 @@ impl Painter<'_> {
                 let beak = self.ink(part.ink);
                 self.sheet.flat(&[Shape::Polygon(points)], beak);
                 let (x, y) = (top.0.floor() as i32, (top.1 + 1.5 * k).floor() as i32);
-                self.sheet.set(x + 1, y, shade(beak));
-                self.sheet.set(x + 2, y, shade(beak));
+                if self.sheet.hd() {
+                    // The line of the mouth along the beak.
+                    let (x, y) = (x as f32, y as f32 + 0.5);
+                    self.sheet.blob(
+                        &[Shape::capsule(
+                            (x + 0.6, y),
+                            (x + 3.2 * k, y + 0.5),
+                            0.3,
+                            0.2,
+                        )],
+                        shade(beak),
+                    );
+                } else {
+                    self.sheet.set(x + 1, y, shade(beak));
+                    self.sheet.set(x + 2, y, shade(beak));
+                }
                 self.snout_top = (top.0 + 2.0, top.1);
             }
             PartKind::SnoutRostrum => {
@@ -1338,7 +1713,27 @@ impl Painter<'_> {
             false,
         );
         // Paint the neck back over the crest's inner edge so it grows out of the neck.
-        let neck = Mask::of(&[Shape::capsule(a, b, r - 1.0, r * 0.9 - 1.0)]);
+        let neck = self
+            .sheet
+            .mask(&[Shape::capsule(a, b, r - 1.0, r * 0.9 - 1.0)]);
+        if self.sheet.hd() {
+            for (x, y) in neck.pixels() {
+                let alpha = neck.coverage(x, y) * self.sheet.inked(x, y);
+                let (fx, fy) = self.sheet.center(x, y);
+                let color = self.hd_color(
+                    Region::Neck,
+                    Frame::along(a, b, r),
+                    self.inks.primary,
+                    true,
+                    fx,
+                    fy,
+                    neck.depth(x, y) + 1.0,
+                    false,
+                );
+                self.sheet.paint(x, y, color, alpha);
+            }
+            return;
+        }
         for (x, y) in neck.pixels() {
             if self.sheet.get(x, y) == OUTLINE {
                 self.sheet.set(x, y, self.inks.primary);
@@ -1510,6 +1905,11 @@ impl Painter<'_> {
             let pale = self.inks.underside;
             for t in [0.3_f32, 0.55, 0.8] {
                 let (x, y) = (root.0 + (tip.0 - root.0) * t, root.1 + (tip.1 - root.1) * t);
+                if self.sheet.hd() {
+                    let (x, y) = (x.floor() + 0.5, (y - width * k * 0.6).floor() + 0.5);
+                    self.sheet.blob(&[Shape::ellipse(x, y, 0.65, 0.5)], pale);
+                    continue;
+                }
                 self.sheet
                     .set(x.floor() as i32, (y - width * k * 0.6).floor() as i32, pale);
             }
@@ -1652,23 +2052,41 @@ impl Painter<'_> {
         points.push((b.cx - rx, cut));
         let frame = Frame::level(b.cx, cy, rx, ry);
         let shell = Shape::Polygon(points);
-        let mask = Mask::of(&[shell]);
+        let mask = self.sheet.mask(&[shell]);
         self.sheet.outline(&mask, OUTLINE);
         let pixels: Vec<(i32, i32)> = mask.pixels().collect();
         let rim = light(ink);
+        let hd = self.sheet.hd();
         for &(x, y) in &pixels {
-            let (u, v) = frame.local(x, y);
-            let mut color = if y as f32 + 0.5 >= cut - 1.5 {
+            let (fx, fy) = self.sheet.center(x, y);
+            let (u, v) = frame.at(fx, fy);
+            let mut color = if hd {
+                mix(ink, rim, smoothstep(cut - 1.8, cut - 1.2, fy))
+            } else if fy >= cut - 1.5 {
                 rim
             } else {
                 ink
             };
             for marking in &self.sculpt.markings {
                 if matches!(marking.kind, MarkingKind::Mottle | MarkingKind::Spots)
-                    && self.marked(marking, Region::Body, u, v, x, y, false)
+                    && self.marked(marking, Region::Body, u, v, fx, fy, false)
                 {
                     color = soft(marking.color);
                 }
+            }
+            if hd {
+                // A soft dome of light, and the shell darkening toward its sides.
+                let glint = (u + 0.35).powi(2) + (v + 0.7).powi(2);
+                color = mix(color, light(color), 1.0 - smoothstep(0.02, 0.09, glint));
+                let rim_shade = (1.0 - (mask.depth(x, y) / 1.2).min(1.0)) * 0.4;
+                color = mix(
+                    color,
+                    shade(color),
+                    rim_shade + smoothstep(0.2, 1.0, u) * 0.2,
+                );
+                let alpha = mask.coverage(x, y);
+                self.sheet.paint(x, y, color, alpha);
+                continue;
             }
             if (u + 0.35).powi(2) + (v + 0.7).powi(2) < 0.04 {
                 color = light(color);
@@ -1731,6 +2149,100 @@ fn texture(
                 _ => false,
             };
             folded.then(|| grain(shade(color)))
+        }
+        Treatment::Smooth => None,
+    }
+}
+
+/// The grain a coat's treatment gives a point in high definition, in frame pixels, and how
+/// strongly: fine strands of fur, longer locks for shaggy fur, rows of rounded feathers and the
+/// folds of thick skin, each with soft edges.
+fn texture_hd(
+    treatment: Treatment,
+    region: Region,
+    u: f32,
+    v: f32,
+    x: f32,
+    y: f32,
+    color: Rgba,
+) -> Option<(Rgba, f32)> {
+    let large = matches!(
+        region,
+        Region::Body | Region::Head | Region::Neck | Region::Mane | Region::Hump | Region::Wing
+    );
+    // The nearest of the short strokes scattered over a grid of `cell`, each `length` long and
+    // lying down and back: how far the point is from it.
+    let strands = |cell: f32, chance: u32, length: f32, seed: u32| {
+        let (gx, gy) = ((x / cell).floor() as i32, (y / cell).floor() as i32);
+        let mut nearest = f32::MAX;
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let (cx, cy) = (gx + dx, gy + dy);
+                let h = hash(cx, cy, seed);
+                if h % 100 >= chance {
+                    continue;
+                }
+                let px = (cx as f32 + ((h >> 8) % 100) as f32 / 100.0) * cell;
+                let py = (cy as f32 + ((h >> 16) % 100) as f32 / 100.0) * cell;
+                let tilt = ((h >> 24) % 40) as f32 / 100.0 - 0.2;
+                let (dirx, diry) = (-0.45 + tilt, 0.9);
+                let norm = (dirx * dirx + diry * diry).sqrt();
+                let (dirx, diry) = (dirx / norm * length, diry / norm * length);
+                let t = (((x - px) * dirx + (y - py) * diry) / (length * length)).clamp(0.0, 1.0);
+                let d = ((x - px - dirx * t).powi(2) + (y - py - diry * t).powi(2)).sqrt();
+                nearest = nearest.min(d);
+            }
+        }
+        nearest
+    };
+    match treatment {
+        Treatment::Fur => {
+            if !large || v <= -0.75 || v >= 0.55 {
+                return None;
+            }
+            let d = strands(1.5, 40, 0.9, 3);
+            let amount = 1.0 - smoothstep(0.1, 0.24, d);
+            (amount > 0.0).then(|| (grain(color), amount * 0.85))
+        }
+        Treatment::Shaggy => {
+            if !large || v <= -0.85 {
+                return None;
+            }
+            let d = strands(1.1, 75, 1.7, 5);
+            let amount = 1.0 - smoothstep(0.12, 0.26, d);
+            (amount > 0.0).then(|| (grain(color), amount))
+        }
+        Treatment::Feathers => {
+            let feathered = matches!(region, Region::Body | Region::Wing | Region::Neck);
+            if !feathered || v <= -0.55 {
+                return None;
+            }
+            // Overlapping rounded feathers, each row set half a feather along from the last.
+            let (w, h) = (2.2_f32, 1.6_f32);
+            let row = (y / h).floor();
+            let shift = if (row as i32).rem_euclid(2) == 0 {
+                0.0
+            } else {
+                w / 2.0
+            };
+            let lx = (x + shift).rem_euclid(w) - w / 2.0;
+            let ly = y - row * h;
+            let r = (lx * lx + (ly + 0.2).powi(2)).sqrt();
+            let amount =
+                (1.0 - smoothstep(0.1, 0.25, (r - 1.15).abs())) * smoothstep(0.35, 0.7, ly);
+            (amount > 0.0).then(|| (grain(color), amount))
+        }
+        Treatment::Plated => {
+            let distance = match region {
+                Region::Body => [-0.45_f32, 0.05, 0.5]
+                    .into_iter()
+                    .map(|fold| (u - fold - v * 0.12).abs() - 0.045)
+                    .fold(f32::MAX, f32::min),
+                Region::Leg { .. } => ((u - 0.55).abs() - 0.06).min((u - 0.3).abs() - 0.05),
+                _ => return None,
+            };
+            let amount = 1.0 - smoothstep(-0.02, 0.025, distance);
+            (amount > 0.0).then(|| (grain(shade(color)), amount))
         }
         Treatment::Smooth => None,
     }

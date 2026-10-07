@@ -2758,15 +2758,23 @@ its own head, neck, hip and back, and what it holds and its effects are drawn as
 `forms::DesignRenderer` draws a design over a creature's genome before any creature has it, as
 Formiga Farm's window does.
 
-The overlay can bake a sculpted form finer than one texture pixel to the art pixel. A creature is
-shown at exactly `display_scale` screen pixels to the art pixel (2, 3 or 4) and sampled without
-smoothing, so `atlas::baked_detail` bakes a sculpted form at that many, never more, and never more
-than `forms::FINEST_DETAIL`, which is one until a finer drawing is adopted from Formiga Farm. A
-companion is always baked at one. A finer atlas keeps the same layout at more pixels: the same
-cells, face anchors and silhouettes in art pixels, and each frame at the same texture coordinates
-(`atlas::cell_uv`), so it fills the same quad on the screen; only the texture grows, by the square
-of the detail. The click shape is still read from the one-to-one frame, which a finer drawing
-keeps.
+The overlay bakes a sculpted form finer than one texture pixel to the art pixel, painted as Formiga
+Farm paints it. A creature is shown at exactly `display_scale` screen pixels to the art pixel (2, 3
+or 4) and sampled without smoothing, so `atlas::baked_detail` bakes a sculpted form at that many,
+never more, and never more than `forms::FINEST_DETAIL` (4). A companion is always baked at one. The
+finer drawing is the same pixel art: every pixel solid or clear, the outline as heavy as a
+companion's, three tones of shade, with smaller steps in its curves and a little more fur and grain.
+`forms::sculpted` lays a frame out once at one to the unit, then paints that very figure at the
+finer size, so it stands where its frame stands; at one it is the frame Desktop always drew, pixel
+for pixel. `CreatureRenderer::render_dressed_body_frame_in_detail` dresses the frame at one to the
+unit as before, and draws each frame pixel that what it wears, holds or shows changed as a square of
+that pixel over the finer body; `render_face_frame_in_detail` redraws the face larger with its
+corners rounded (Scale2x, Scale3x, or Scale2x twice), and `outline_frame_in_detail` rings it at the
+same weight. A finer atlas keeps the same layout at more pixels: the same cells, face anchors and
+silhouettes in art pixels, and each frame at the same texture coordinates (`atlas::cell_uv`), so it
+fills the same quad on the screen; only the texture grows, by the square of the detail. The click
+shape is still read from the one-to-one frame, which the finer painting covers whole and passes by
+at most two of its pixels, for a tuft or a curl of fur.
 
 ### The Farm contract
 
