@@ -108,9 +108,8 @@ pub struct World {
     village_moment: Option<moments::VillageMomentPlan>,
     /// Who joins a moment the village is asked to share. A stream of its own, like the habits'.
     moment_rng: ChaCha12Rng,
-    /// The last change made to the colony from the settings window, kept so it can be taken
-    /// back. Never saved: it lasts as long as the app runs.
-    /// The changes that can still be taken back, oldest first.
+    /// The changes that can still be taken back, oldest first. Never saved: they last as long as
+    /// the app runs.
     undo_history: VecDeque<undo::UndoPoint>,
     /// When the last tick was, by the clock, and the seconds with the houses out since the day
     /// book was last written to. Runtime only.

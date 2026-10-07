@@ -44,7 +44,7 @@ pictures the result (`devtools/formiga capture hill-green`).
 ### Finding your way around
 
 Start with [the orientation at the top of ARCHITECTURE.md](docs/ARCHITECTURE.md#start-here). It
-covers the four crates, how the app starts, the main loop, where state lives, and the order in
+covers the seven crates, how the app starts, the main loop, where state lives, and the order in
 which a feature usually touches the layers. The short version:
 
 - `formiga-core`: the simulation, colony, and save format. No GUI or GPU code, and no view of
@@ -55,6 +55,8 @@ which a feature usually touches the layers. The short version:
 - `formiga-tools`: a command-line companion. Run `cargo run -p formiga-tools` with no arguments
   for its subcommands: review sheets, documentation images, `simulate` for an accelerated-time
   colony, and `tick-bench` for the simulation's own cost.
+- `formiga-expansion-rulebook`, `formiga-travel` and `formiga-home-contract`: how every visit to
+  a companion app is carried, and what a trip to Formiga Hill and a visit to Formiga Home carry.
 
 ### Checks
 
