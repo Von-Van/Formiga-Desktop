@@ -13,10 +13,10 @@ use formiga_art::{
     WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_core::{
-    ActionKind, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature, CreatureId,
-    CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, HouseMotion,
-    HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble, VillageProp,
-    WonderKind, WonderView, accessible_regions, resolved_home_anchor,
+    ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature,
+    CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind,
+    HouseMotion, HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble,
+    VillageProp, WonderKind, WonderView, accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -86,6 +86,9 @@ struct SpriteGpu {
     resting_baseline: u32,
     /// What it was baked wearing, in the inks it was baked in.
     dress: Option<AccessoryArt>,
+    /// The look it was baked in. A companion given a new look in Formiga Farm keeps its id, so
+    /// its atlas is baked again when this changes.
+    appearance: AppearanceGenome,
 }
 
 struct ShelterGpu {

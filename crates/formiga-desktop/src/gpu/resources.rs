@@ -12,6 +12,7 @@ impl OverlayRenderer {
             sprite.reduce_motion != reduce_motion
                 || sprite.outline != outline
                 || sprite.dress.map(|dress| dress.accessory) != creature.accessory
+                || sprite.appearance != creature.appearance
         });
         if requires_bake {
             let dress = creature.accessory.map(|accessory| {
@@ -141,6 +142,7 @@ impl OverlayRenderer {
                         reduce_motion,
                     ),
                     dress,
+                    appearance: creature.appearance.clone(),
                 },
             );
         }

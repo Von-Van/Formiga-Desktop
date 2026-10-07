@@ -97,7 +97,36 @@ The household contract keeps fixtures for every version in
 `FORMIGA_HOME_BLESS=1 cargo test -p formiga-home-contract --test golden` writes a new version's
 files beside the others, never over one that has shipped.
 
-The Windows half of finding Hill and Home, which reads the registry, can be type-checked from a
+## Trying a session in Formiga Farm
+
+Desktop's side of reshaping a companion can be tried without Formiga Farm too.
+`formiga-farm-stub` stands in for Farm: it reads the snapshot it is handed, checks it, says it can
+open it, proposes one design on a newer body plan as the owner would by applying it, prints
+Desktop's verdict, waits, and exits, all without a window.
+
+```sh
+cargo build -p formiga-tools --bin formiga-farm-stub
+FORMIGA_DATA_DIR=/tmp/formiga-dev \
+FORMIGA_FARM_PATH="$PWD/target/debug/formiga-farm-stub" \
+FORMIGA_FARM_SESSION_AFTER=5 \
+FORMIGA_FARM_STUB=plan=percher \
+cargo run -p formiga-desktop
+```
+
+`FORMIGA_FARM_PATH` names a Farm executable (or, on macOS, an `.app`), which may be a real build of
+Formiga Farm, and makes the notebook offer it. `FORMIGA_FARM_SESSION_AFTER` opens the colony's
+first companion in it that many seconds after launch, once; it is ignored unless
+`FORMIGA_FARM_PATH` is set too. `FORMIGA_FARM_STUB` takes a comma-separated list: `stay=SECONDS`,
+`after=SECONDS` before proposing, `plan=PLAN` (`floater`, `percher`, `compact_quadruped` and the
+rest), `refuse=version|busy|invalid`, `silent`, `stale`, `garbage`, `stranger` and `crash`. A
+session's files are under `farm/` in the scratch data directory while it is open.
+
+The design contract keeps fixtures for every version in
+`crates/formiga-farm-contract/tests/fixtures`, and
+`FORMIGA_FARM_BLESS=1 cargo test -p formiga-farm-contract --test golden` writes a new version's
+files beside the others, never over one that has shipped.
+
+The Windows half of finding Hill, Home and Farm, which reads the registry, can be type-checked from a
 Mac without the desktop crate's `ring` dependency by compiling `platform/companion_app.rs` on its
 own, as a `platform` module, against `formiga-expansion-rulebook` and the `windows` crate for
 `x86_64-pc-windows-msvc`.

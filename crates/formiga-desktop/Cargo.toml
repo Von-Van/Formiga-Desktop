@@ -15,6 +15,7 @@ egui-winit = { workspace = true, features = ["accesskit"] }
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
 formiga-expansion-rulebook = { path = "../formiga-expansion-rulebook" }
+formiga-farm-contract = { path = "../formiga-farm-contract" }
 formiga-home-contract = { path = "../formiga-home-contract" }
 formiga-travel = { path = "../formiga-travel" }
 image.workspace = true

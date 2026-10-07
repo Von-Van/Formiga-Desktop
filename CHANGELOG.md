@@ -19,6 +19,14 @@ All notable changes are documented here.
   from another session, out of range, made from a look the creature no longer has, or for a
   creature that is away, and `apply_design`, which changes how a creature looks and nothing else.
   It is built on the rulebook, as Hill's and Home's contracts are.
+- A companion can be reshaped in Formiga Farm, and a new one drawn there, once Farm is installed:
+  a companion's page in the notebook offers "Reshape in Formiga Farm", and the studio "Draw one in
+  Formiga Farm". The companion goes on living on the desktop meanwhile. Each look the owner applies
+  in Farm is kept at once, noted in the journal and saved, while its name, ways, friends and
+  history stay its own; a new companion's design comes back to the studio as a sketch to adopt.
+  Anything Farm sends that does not check out changes nothing, and a companion away in Formiga
+  Hill or Formiga Home is reshaped once it is back. `formiga-farm-stub` stands in for Farm while
+  developing.
 
 ## [0.67.3] - 2026-10-06
 

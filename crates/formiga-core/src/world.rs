@@ -24,6 +24,7 @@ mod interaction;
 mod journeys;
 mod moments;
 mod movement;
+mod new_looks;
 mod objects;
 mod offers;
 mod rides;

@@ -40,6 +40,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId, WindowLevel};
 mod cadence;
+mod farm;
 mod habitat_editor;
 mod hill;
 mod house;
@@ -48,6 +49,7 @@ mod settings_window;
 mod updates;
 mod visits;
 use cadence::*;
+use farm::FarmLink;
 use habitat_editor::*;
 use hill::HillLink;
 use house::HouseLink;
@@ -62,6 +64,8 @@ pub enum UserEvent {
     Hill(crate::hill::HillEvent),
     /// Formiga Home has exited.
     House(crate::house::HouseEvent),
+    /// Formiga Farm has proposed a design, or exited.
+    Farm(crate::farm::FarmEvent),
 }
 
 impl From<egui_winit::accesskit_winit::Event> for UserEvent {
@@ -140,6 +144,8 @@ pub struct FormigaApp {
     hill: HillLink,
     /// Formiga Home, if it is installed, and the house open in it, if there is one.
     house: HouseLink,
+    /// Formiga Farm, if it is installed, and the companion open in it, if there is one.
+    farm: FarmLink,
 }
 
 impl FormigaApp {
@@ -183,6 +189,7 @@ impl FormigaApp {
             notebook_geometry: notebook_window::load(&data_dir),
             hill: HillLink::new(&data_dir),
             house: HouseLink::new(&data_dir),
+            farm: FarmLink::new(&data_dir),
             data_dir,
             save_trouble: None,
         })
@@ -215,6 +222,8 @@ impl FormigaApp {
         self.resume_open_trip();
         self.check_for_home(true);
         self.resume_open_visit();
+        self.check_for_farm(true);
+        self.resume_farm_session();
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
@@ -436,6 +445,7 @@ impl FormigaApp {
         }
         self.check_for_hill(false);
         self.check_for_home(false);
+        self.check_for_farm(false);
         let desktop = self.snapshot();
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
@@ -581,8 +591,10 @@ impl FormigaApp {
                     self.settings_error(format!("Could not preserve the previous colony: {error}"));
                     return;
                 }
-                // A house open in Home belongs to the colony being replaced.
+                // A house open in Home, and a companion open in Farm, belong to the colony
+                // being replaced.
                 self.abandon_house_visit();
+                self.abandon_farm_session();
                 let desktop = self.snapshot();
                 match new_colony_seed() {
                     Ok(seed) => {
@@ -950,6 +962,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             UserEvent::Update(event) => self.handle_update_event(event_loop, event),
             UserEvent::Hill(event) => self.handle_hill_event(event),
             UserEvent::House(event) => self.handle_house_event(event),
+            UserEvent::Farm(event) => self.handle_farm_event(event_loop, event),
             UserEvent::AccessKit(event) => {
                 if let Some(window) = &mut self.settings_window
                     && window.id() == event.window_id
@@ -1004,6 +1017,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             }
             let mut outcome = None;
             let formiga_home = self.formiga_home_view();
+            let formiga_farm = self.formiga_farm_view();
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
@@ -1014,6 +1028,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         window.clubhouse.earlier_edits = world.undoable_edits().saturating_sub(1);
                         window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
                         window.clubhouse.formiga_home = formiga_home;
+                        window.clubhouse.formiga_farm = formiga_farm;
                         window.clubhouse.shell.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,
@@ -1197,6 +1212,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.finish_habitat_editor(false);
+        self.close_farm_session();
         if self
             .settings_window
             .as_ref()

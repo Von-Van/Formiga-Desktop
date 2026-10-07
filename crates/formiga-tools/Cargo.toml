@@ -10,6 +10,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 formiga-art = { path = "../formiga-art" }
 formiga-core = { path = "../formiga-core" }
+formiga-farm-contract = { path = "../formiga-farm-contract" }
 formiga-home-contract = { path = "../formiga-home-contract" }
 formiga-travel = { path = "../formiga-travel" }
 gif.workspace = true

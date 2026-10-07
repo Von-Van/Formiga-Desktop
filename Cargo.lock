@@ -1290,6 +1290,7 @@ dependencies = [
  "formiga-art",
  "formiga-core",
  "formiga-expansion-rulebook",
+ "formiga-farm-contract",
  "formiga-home-contract",
  "formiga-travel",
  "image",
@@ -1327,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-farm-contract"
-version = "0.67.1"
+version = "0.67.3"
 dependencies = [
  "formiga-core",
  "formiga-expansion-rulebook",
@@ -1360,6 +1361,7 @@ dependencies = [
  "anyhow",
  "formiga-art",
  "formiga-core",
+ "formiga-farm-contract",
  "formiga-home-contract",
  "formiga-travel",
  "gif",
