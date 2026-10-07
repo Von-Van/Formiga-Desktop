@@ -9,6 +9,7 @@ rust-version.workspace = true
 epaint.workspace = true
 formiga-core = { path = "../formiga-core" }
 gif.workspace = true
+png.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 time.workspace = true

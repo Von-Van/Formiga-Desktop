@@ -168,14 +168,7 @@ fn save_review(filename: &str, sheet: &Canvas) {
         let directory = std::path::PathBuf::from(directory);
         std::fs::create_dir_all(&directory).unwrap();
         let file = std::fs::File::create(directory.join(filename)).unwrap();
-        let mut encoder = png::Encoder::new(file, sheet.width(), sheet.height());
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder
-            .write_header()
-            .unwrap()
-            .write_image_data(&sheet.rgba_bytes())
-            .unwrap();
+        formiga_art::write_png(file, sheet.width(), sheet.height(), &sheet.rgba_bytes()).unwrap();
     }
 }
 
