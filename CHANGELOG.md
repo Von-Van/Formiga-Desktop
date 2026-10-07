@@ -13,6 +13,10 @@ All notable changes are documented here.
   companion is, with its every expression and whatever it wears, and as the nearest companion by
   anything that cannot draw the new bodies, such as an earlier Formiga Hill or Home or a share code.
   `formiga-tools forms-sheet` draws every new body in the poses it is seen in most.
+- A reshaped companion is painted finer on the desktop, as Formiga Farm paints it: the same pixel
+  art and the same shapes in the same places, with smaller steps in its curves, three tones of
+  shade, and its face redrawn larger with rounded corners, as finely as the companion size shows it
+  (up to four pixels to each at Large). Companions drawn from a recipe are drawn exactly as before.
 - `formiga-farm-contract`, the agreement with Formiga Farm, adopted with its golden fixtures
   unchanged: what a session opens on, a design Farm proposes and what it is for, and Desktop's
   verdict on each. Desktop keeps a proposal only through `accept_proposal`, which refuses anything

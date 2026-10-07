@@ -70,9 +70,9 @@ pub(super) fn silhouette_rows(canvas: &formiga_art::Canvas) -> (u8, u8) {
 
 /// How many texture pixels each art pixel of `appearance` is baked as, on a display that shows it
 /// `display_scale` screen pixels to the art pixel. A companion is pixel art at one pixel to the
-/// unit, and is baked at one. A sculpted form may be drawn finer, and is then baked as finely as
-/// its screen shows it and no finer, so it is drawn at the same size, never shrunk and never
-/// blurred.
+/// unit, and is baked at one. A sculpted form is painted finer, as Formiga Farm draws it, and is
+/// baked as finely as its screen shows it and no finer, so it is drawn at the same size, never
+/// shrunk and never blurred.
 pub(super) fn baked_detail(appearance: &AppearanceGenome, display_scale: u8) -> u32 {
     if appearance.sculpt.is_none() {
         return 1;
@@ -80,24 +80,6 @@ pub(super) fn baked_detail(appearance: &AppearanceGenome, display_scale: u8) -> 
     formiga_art::forms::FINEST_DETAIL
         .min(u32::from(display_scale))
         .max(1)
-}
-
-/// `frame` at `detail` pixels to the art pixel. Until a finer drawing is adopted, every art pixel
-/// is a square of them, which is the same picture.
-fn in_detail(frame: &formiga_art::Canvas, detail: u32) -> Vec<u8> {
-    let pixels = frame.rgba_bytes();
-    if detail == 1 {
-        return pixels;
-    }
-    let width = frame.width();
-    let mut finer = Vec::with_capacity(pixels.len() * (detail * detail) as usize);
-    for y in 0..frame.height() * detail {
-        for x in 0..width * detail {
-            let at = ((y / detail * width + x / detail) * 4) as usize;
-            finer.extend_from_slice(&pixels[at..at + 4]);
-        }
-    }
-    finer
 }
 
 pub(super) fn build_atlas_pixels(
@@ -114,21 +96,38 @@ pub(super) fn build_atlas_pixels(
     for clip in BodyClip::baked() {
         let spec = AnimationSpec::for_clip(clip);
         for frame in 0..spec.frames {
-            let mut rendered = CreatureRenderer::render_dressed_body_frame(
-                &creature.appearance,
-                dress,
-                clip,
-                frame,
-                reduce_motion,
-            );
+            // The frame itself, for its anchors and silhouette, and the picture baked from it.
+            let (mut rendered, mut fine) = if detail > 1 {
+                let (rendered, fine) = CreatureRenderer::render_dressed_body_frame_in_detail(
+                    &creature.appearance,
+                    dress,
+                    clip,
+                    frame,
+                    reduce_motion,
+                    detail,
+                );
+                (rendered, Some(fine))
+            } else {
+                let rendered = CreatureRenderer::render_dressed_body_frame(
+                    &creature.appearance,
+                    dress,
+                    clip,
+                    frame,
+                    reduce_motion,
+                );
+                (rendered, None)
+            };
             // Baked once into the atlas, so the edge costs nothing per frame and no draw call.
             if outline {
                 CreatureRenderer::outline_frame(&mut rendered.canvas);
+                if let Some(fine) = &mut fine {
+                    CreatureRenderer::outline_frame_in_detail(fine, detail);
+                }
             }
             let slot = atlas_slot(clip, frame) as usize;
             face_anchors[slot] = rendered.face_anchor;
             silhouette[slot] = silhouette_rows(&rendered.canvas);
-            body_frames[slot] = in_detail(&rendered.canvas, detail);
+            body_frames[slot] = fine.unwrap_or(rendered.canvas).rgba_bytes();
         }
     }
     let (body_width, body_height, body_pixels, body_cells) =
@@ -144,8 +143,12 @@ pub(super) fn build_atlas_pixels(
                         eyelids,
                         gaze: formiga_art::GazeDirection::new(gaze_x, gaze_y),
                     };
-                    let face = CreatureRenderer::render_face_frame(&creature.appearance, state);
-                    face_frames[face_atlas_slot(state) as usize] = in_detail(&face, detail);
+                    let face = CreatureRenderer::render_face_frame_in_detail(
+                        &creature.appearance,
+                        state,
+                        detail,
+                    );
+                    face_frames[face_atlas_slot(state) as usize] = face.rgba_bytes();
                 }
             }
         }

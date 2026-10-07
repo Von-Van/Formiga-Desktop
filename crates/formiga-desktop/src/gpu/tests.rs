@@ -600,6 +600,69 @@ fn a_finer_atlas_is_the_same_picture_at_more_pixels() {
     }
 }
 
+/// A reshaped companion is baked from Formiga Farm's finer painting: the same cells, anchors and
+/// silhouettes as at one pixel to the unit, so it stands, moves and is picked up exactly as
+/// before, with each frame painted finer in the very place the frame stands. The finer painting
+/// may add a tuft or a curl of fur the plain frame has no room for, but never further out than two
+/// of its pixels, and leaves nothing of the plain frame out.
+#[test]
+fn a_sculpted_form_is_baked_finer_where_its_frame_stands() {
+    use formiga_core::forms::{Plan, Sculpt};
+    let world = World::new(
+        [19; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut creature = world.save.creatures[0].clone();
+    creature.appearance.sculpt = Some(Sculpt::starter(Plan::CompactQuadruped));
+    let plain = build_atlas_pixels(&creature, false, true, None, 1);
+    let fine = build_atlas_pixels(&creature, false, true, None, 3);
+    assert_eq!(fine.body_width, plain.body_width * 3);
+    assert_eq!(fine.face_width, plain.face_width * 3);
+    assert_eq!(fine.face_cells, plain.face_cells);
+    assert_eq!(fine.face_anchors, plain.face_anchors);
+    assert_eq!(fine.silhouette, plain.silhouette);
+    // A frame's cell, wherever packing put it, read as the alpha at one of its pixels.
+    let alpha = |atlas: &AtlasPixels, slot: usize, size: u32, x: u32, y: u32| {
+        let cell = u32::from(atlas.body_cells[slot]);
+        let (left, top) = (cell % ATLAS_COLUMNS * size, cell / ATLAS_COLUMNS * size);
+        atlas.body_pixels[(((top + y) * atlas.body_width + left + x) * 4 + 3) as usize]
+    };
+    let mut finer = false;
+    for slot in 0..plain.body_cells.len() {
+        for y in 0..FRAME_SIZE * 3 {
+            for x in 0..FRAME_SIZE * 3 {
+                let painted = alpha(&fine, slot, FRAME_SIZE * 3, x, y);
+                let (px, py) = (x / 3, y / 3);
+                finer |= painted != alpha(&plain, slot, FRAME_SIZE, px, py);
+                if painted == 0 {
+                    continue;
+                }
+                let near = (px.saturating_sub(2)..=(px + 2).min(FRAME_SIZE - 1)).any(|nx| {
+                    (py.saturating_sub(2)..=(py + 2).min(FRAME_SIZE - 1))
+                        .any(|ny| alpha(&plain, slot, FRAME_SIZE, nx, ny) > 0)
+                });
+                assert!(
+                    near,
+                    "frame {slot} is painted at ({x}, {y}), away from its frame"
+                );
+            }
+        }
+        for py in 0..FRAME_SIZE {
+            for px in 0..FRAME_SIZE {
+                if alpha(&plain, slot, FRAME_SIZE, px, py) == 0 {
+                    continue;
+                }
+                let kept = (0..9).any(|i| {
+                    alpha(&fine, slot, FRAME_SIZE * 3, px * 3 + i % 3, py * 3 + i / 3) > 0
+                });
+                assert!(kept, "frame {slot} leaves out its pixel ({px}, {py})");
+            }
+        }
+    }
+    assert!(finer, "the fine atlas is painted, not enlarged");
+}
+
 /// A companion is pixel art at one pixel to the unit, and is baked at one whatever its size on the
 /// screen. Only a sculpted form is baked finer, and never finer than its screen shows it.
 #[test]
