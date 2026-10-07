@@ -15,6 +15,8 @@ mod colony_card;
 mod cuteness_sheet;
 mod decoration_sheet;
 mod dev;
+mod dev_art;
+mod dev_catalog;
 mod habit_sheet;
 mod palette_sheet;
 mod postcard;
