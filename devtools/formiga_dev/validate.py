@@ -84,9 +84,14 @@ def step_lint() -> Step:
     return step
 
 
-def step_app() -> Step:
+def step_app(with_lint: bool = False) -> Step:
     if app_builds_here():
-        return Step("app", "skipped", "linted and tested with the other crates on this machine")
+        if with_lint:
+            return Step("app", "skipped", "linted and tested with the other crates on this machine")
+        step = _clippy("app", ["-p", APP_CRATE])
+        if step.status == "passed":
+            step.summary = "linted; its tests run with the tests step"
+        return step
     available, why = windows_cross_check_available()
     if not available:
         return Step("app", "skipped",
@@ -199,7 +204,9 @@ def validate(quick: bool = False, expansions: bool = False,
     result = Result("validate", data={"desktop_version": desktop_version(),
                                       "checkout": str(DESKTOP)})
     for name in names:
-        result.steps.append(STEPS[name]())
+        # The app is linted with every other crate where it builds, so lint covers it then.
+        step = step_app("lint" in names) if name == "app" else STEPS[name]()
+        result.steps.append(step)
     return result
 
 
