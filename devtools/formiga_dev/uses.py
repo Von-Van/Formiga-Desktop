@@ -116,8 +116,10 @@ def answer(kind: dict, item: dict, place: dict, groups: Dict[str, List[Hit]],
     where = f"{place['file']}:{place['named'] or place['declared']}"
     used = {key: len(found) for key, found in groups.items()}
     outside = used["expansions"] + used["contracts"]
+    # Only the expansions that name it are tied to a Desktop that has it.
+    naming = {hit.repo for hit in groups["expansions"]}
     tied = ", ".join(f"{key.title()} builds on Desktop {', '.join(sorted(set(found.values())))}"
-                     for key, found in pins.items() if found)
+                     for key, found in pins.items() if found and key in naming)
 
     if item.get("unnamed"):
         name = "It has no name on screen."

@@ -310,9 +310,12 @@ def uses(source: Source, kind: dict, item: dict) -> List[Hit]:
     declared = defined_at(source, kind, item)
     hits = []
     for hit in source.grep(pattern):
-        # The declaration itself, and the catalogue's own name and number tables, are not uses.
+        # The declaration itself (and the serde name over it), and the catalogue's own name and
+        # number tables, are not uses.
         if hit.repo == "desktop" and hit.path == kind["defined_in"] and (
                 hit.line in (declared["declared"], declared["named"])
+                or (declared["declared"] and hit.line == declared["declared"] - 1
+                    and hit.text.startswith("#[serde("))
                 or re.match(rf"Self::{re.escape(variant or '')}\b", hit.text)):
             continue
         hits.append(hit)
