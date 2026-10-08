@@ -50,7 +50,7 @@ pub const WONDERS: Wonders = Wonders {
     headroom_frames: 1.4,
 };
 
-/// Trinkets turning up, on the desktop and at home (`world/discovery.rs`, `model.rs`).
+/// Trinkets turning up, on the desktop and at home (`world/discovery.rs`, `model/save.rs`).
 pub struct Finds {
     /// How many trinkets a colony finds on one local day, drawn evenly from this range.
     pub per_day: RangeInclusive<u8>,

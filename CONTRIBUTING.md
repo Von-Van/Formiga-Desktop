@@ -67,6 +67,7 @@ and every pull request:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+python3 -m unittest discover devtools/tests
 ```
 
 Windows cannot be fully checked from a Mac; see [docs/BUILD.md](docs/BUILD.md) for why and what

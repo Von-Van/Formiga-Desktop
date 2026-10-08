@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -173,7 +172,3 @@ def relative(path: str, root: Path = DESKTOP) -> str:
         return Path(path).resolve().relative_to(root.resolve()).as_posix()
     except (ValueError, OSError):
         return path
-
-
-def host() -> str:
-    return f"{platform.system()} {platform.machine()}"

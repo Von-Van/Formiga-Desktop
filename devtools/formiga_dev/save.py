@@ -29,8 +29,6 @@ from .report import Problem, Result, Step
 from .workspace import DESKTOP
 
 MIGRATIONS = "crates/formiga-core/src/persistence/migrations.rs"
-# How many of the repair's changes the summary lists; --json lists up to the 200 Formiga gives.
-REPAIRS_SHOWN = 12
 _VERSION_NOTE = re.compile(r"^\s*// (\d+): (.*)$")
 
 
