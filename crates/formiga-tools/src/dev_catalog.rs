@@ -16,6 +16,7 @@
 //! decides them: worn only once the find each is made from has been found.
 
 use epaint::{Color32, FontFamily, FontId, Fonts, TextOptions, text::FontDefinitions};
+use formiga_core::forms::{MarkingKind, PartKind, Plan, Treatment};
 use formiga_core::*;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -95,6 +96,10 @@ pub fn catalog() -> Value {
         ear_styles(),
         archetypes(),
         habits(),
+        sculpt_plans(),
+        sculpt_parts(),
+        markings(),
+        treatments(),
     ];
     json!({
         "success": true,
@@ -119,6 +124,12 @@ pub fn catalog() -> Value {
         }],
         "kinds": kinds,
     })
+}
+
+/// Where a new name would be shown, and whether it fits there: what `catalog` says of each
+/// ground piece's name, for one that does not exist yet.
+pub fn fits(name: &str) -> Value {
+    json!({ "success": true, "name": name, "shown": NameText::new().ground_tile(name) })
 }
 
 /// One kind of thing, and what is true of every item of it.
@@ -539,6 +550,113 @@ fn habits() -> Value {
         &["creatures[].memory.habits"],
         "the creature's own animation, through the action it plays",
         "Picked up by a companion from what happens around it (habit_to_learn, learning_chance).",
+        items,
+    )
+}
+
+const SCULPT: &str = "crates/formiga-core/src/forms/sculpt.rs";
+const SCULPT_DRAWN_BY: &str = "DesignRenderer::frame";
+const CHOSEN_IN_FARM: &str = "Chosen in Formiga Farm when a companion is drawn new or reshaped, \
+     and kept with the creature's sculpt. Desktop, Farm and the Farm contract read it by the name \
+     a save keeps, so a design naming one this build does not know is refused.";
+
+/// A form-design item: `label` is what Farm shows, within its slot or section, and `name` the
+/// same made unique across the kind where two slots share a label.
+fn sculpt_item<T: Copy + std::fmt::Debug + serde::Serialize>(
+    number: usize,
+    item: T,
+    name: String,
+    label: &str,
+) -> Value {
+    json!({
+        "id": format!("{item:?}"),
+        "name": name,
+        "label": label,
+        "number": number,
+        "saved_as": serde_json::to_value(item).unwrap_or_default(),
+    })
+}
+
+fn sculpt_plans() -> Value {
+    let items = Plan::ALL
+        .iter()
+        .enumerate()
+        .map(|(number, &plan)| sculpt_item(number, plan, plan.label().into(), plan.label()))
+        .collect();
+    kind(
+        "plan",
+        "Plan",
+        SCULPT,
+        &["creatures[].appearance.sculpt.plan"],
+        SCULPT_DRAWN_BY,
+        &format!(
+            "One of the newer body plans a form is sculpted on. A sculpted companion keeps the \
+             nearest companion plan as its recipe for anything that cannot draw sculpts. \
+             {CHOSEN_IN_FARM}"
+        ),
+        items,
+    )
+}
+
+fn sculpt_parts() -> Value {
+    let items = PartKind::ALL
+        .iter()
+        .enumerate()
+        .map(|(number, &part)| {
+            let name = format!("{} ({})", part.label(), part.slot().label().to_lowercase());
+            sculpt_item(number, part, name, part.label())
+        })
+        .collect();
+    kind(
+        "part",
+        "PartKind",
+        SCULPT,
+        &["creatures[].appearance.sculpt.parts[].kind"],
+        SCULPT_DRAWN_BY,
+        &format!("A part fitted to one slot of a sculpted form. {CHOSEN_IN_FARM}"),
+        items,
+    )
+}
+
+fn markings() -> Value {
+    let items = MarkingKind::ALL
+        .iter()
+        .enumerate()
+        .map(|(number, &marking)| {
+            sculpt_item(number, marking, marking.label().into(), marking.label())
+        })
+        .collect();
+    kind(
+        "marking",
+        "MarkingKind",
+        SCULPT,
+        &["creatures[].appearance.sculpt.markings[].kind"],
+        SCULPT_DRAWN_BY,
+        &format!("A marking laid over a sculpted form's coat. {CHOSEN_IN_FARM}"),
+        items,
+    )
+}
+
+fn treatments() -> Value {
+    let items = Treatment::ALL
+        .iter()
+        .enumerate()
+        .map(|(number, &treatment)| {
+            sculpt_item(
+                number,
+                treatment,
+                treatment.label().into(),
+                treatment.label(),
+            )
+        })
+        .collect();
+    kind(
+        "treatment",
+        "Treatment",
+        SCULPT,
+        &["creatures[].appearance.sculpt.coat.treatment"],
+        SCULPT_DRAWN_BY,
+        &format!("How a sculpted form's coat is shaded. {CHOSEN_IN_FARM}"),
         items,
     )
 }
