@@ -10,7 +10,8 @@ use crate::limits::*;
 use crate::state::HomeMoment;
 use crate::state::HomeState;
 use crate::{
-    ACK_FORMAT, HOME_FORMAT_VERSION, HomeSnapshot, RECALL_FORMAT, RECEIPT_FORMAT, RESULT_FORMAT,
+    ACK_FORMAT, HOME_FORMAT_VERSION, HomeSnapshot, INDOORS_FORMAT, RECALL_FORMAT, RECEIPT_FORMAT,
+    RESULT_FORMAT,
 };
 use formiga_expansion_rulebook::{SessionId, is_sanitized, sanitize_text};
 use formiga_travel::TravelerId;
@@ -409,6 +410,86 @@ impl HomeDocument for HomeReceipt {
     }
 }
 
+/// Who is in the house just now, said by Home whenever it changes while the house is open: as the
+/// owner chooses who is home from the household's cells, and as visitors come and go. Desktop
+/// keeps everyone named here indoors and everyone else lent for the visit out on the desktop, if
+/// it offers [`crate::HomeCapability::Indoors`]. The last one written stands. Since version 8.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HomeIndoors {
+    pub format: String,
+    pub version: u32,
+    pub min_reader_version: u32,
+    pub session_id: SessionId,
+    pub snapshot_sha256: String,
+    pub state_sha256: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub written_at_utc: OffsetDateTime,
+    /// Everyone in the house, residents and visitors, each once.
+    pub indoors: Vec<TravelerId>,
+}
+
+impl HomeIndoors {
+    pub fn new(
+        seal: &SessionSeal,
+        written_at_utc: OffsetDateTime,
+        indoors: Vec<TravelerId>,
+    ) -> Self {
+        Self {
+            format: INDOORS_FORMAT.to_owned(),
+            version: HOME_FORMAT_VERSION,
+            min_reader_version: 8,
+            session_id: seal.session_id.clone(),
+            snapshot_sha256: seal.snapshot_sha256.clone(),
+            state_sha256: seal.state_sha256.clone(),
+            written_at_utc,
+            indoors,
+        }
+    }
+
+    pub fn answers(&self, seal: &SessionSeal) -> bool {
+        seal.matches(&self.session_id, &self.snapshot_sha256, &self.state_sha256)
+    }
+
+    /// Who of those `snapshot` lent for the visit is indoors, if it offers to keep them so: only
+    /// its residents and visitors, whoever else is named.
+    pub fn for_visit(&self, snapshot: &HomeSnapshot) -> Option<Vec<TravelerId>> {
+        if !snapshot.offers(crate::HomeCapability::Indoors) {
+            return None;
+        }
+        Some(
+            self.indoors
+                .iter()
+                .copied()
+                .filter(|id| snapshot.resident(*id).is_some() || snapshot.visitor(*id).is_some())
+                .collect(),
+        )
+    }
+}
+
+impl HomeDocument for HomeIndoors {
+    const FORMAT: &'static str = INDOORS_FORMAT;
+    const MAX_BYTES: u64 = MAX_INDOORS_BYTES;
+
+    fn validate(&self) -> Result<(), HomeError> {
+        let once: std::collections::BTreeSet<_> = self.indoors.iter().collect();
+        if !header_ok(
+            &self.format,
+            self.version,
+            self.min_reader_version,
+            INDOORS_FORMAT,
+        ) || !is_sha256_hex(&self.snapshot_sha256)
+            || !is_sha256_hex(&self.state_sha256)
+            || self.indoors.len() > MAX_RESIDENTS
+            || once.len() != self.indoors.len()
+        {
+            return Err(HomeError::invalid(
+                "a word on who is indoors that does not add up",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Why Desktop ended the visit without waiting for Home.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -638,5 +719,43 @@ mod tests {
         assert_eq!(receipt.next_door(&snapshot), None, "no such house");
         receipt.effects = vec![going(neighbour), going(neighbour)];
         assert!(receipt.validate().is_err(), "two houses at once");
+    }
+
+    #[test]
+    fn who_is_indoors_names_only_its_own_visit_and_only_those_lent_for_it() {
+        let snapshot = crate::sample::snapshot();
+        let (keeper, little, friend) = (
+            snapshot.household.keeper,
+            snapshot.residents[1].id,
+            snapshot.visitors[0].id,
+        );
+        let indoors = HomeIndoors::new(
+            &seal(),
+            datetime!(2026-10-05 12:05 UTC),
+            vec![keeper, friend, TravelerId(4040)],
+        );
+        let read: HomeIndoors = decode(&encode(&indoors).unwrap()).unwrap();
+        assert!(read.answers(&seal()));
+        assert_eq!(
+            read.for_visit(&snapshot),
+            Some(vec![keeper, friend]),
+            "nobody the visit did not lend, and {little:?} is out"
+        );
+        let mut declined = snapshot.clone();
+        declined
+            .capabilities
+            .retain(|capability| *capability != crate::HomeCapability::Indoors);
+        assert_eq!(read.for_visit(&declined), None, "not offered");
+        let mut moved_on = seal();
+        moved_on.snapshot_sha256 = "ef".repeat(32);
+        assert!(!read.answers(&moved_on));
+
+        let mut twice = indoors.clone();
+        twice.indoors = vec![keeper, keeper];
+        let mut crowd = indoors;
+        crowd.indoors = (0..=MAX_RESIDENTS as u64).map(TravelerId).collect();
+        for indoors in [twice, crowd] {
+            assert!(indoors.validate().is_err(), "{indoors:?} was accepted");
+        }
     }
 }

@@ -1,6 +1,7 @@
 //! The app's side of a visit to a house in Formiga Home: offering it only while Home is
-//! installed, letting the household go indoors while Home has the house, keeping what Home may
-//! change, and letting everyone back out whatever happens. The states and the guarantees are
+//! installed, letting the household go indoors while Home has the house, keeping out on the
+//! desktop whoever Home says is not in it, keeping what Home may change, and letting everyone back
+//! out whatever happens. The states and the guarantees are
 //! described in [`crate::house`].
 
 use super::*;
@@ -10,16 +11,24 @@ use crate::house::{HOME, HouseEvent, VisitState};
 use crate::houses::{HouseProxy, PlacedHouse};
 use crate::tray::VisitOffer;
 use formiga_home_contract::{
-    HomeCapability, RecallReason, SessionId, likely_visitors, project_household,
+    HomeCapability, RecallReason, SessionId, TravelerId, likely_visitors, project_household,
 };
+use std::time::{Instant, SystemTime};
 use visits::HOME_ITEM;
 
 /// The title every reason for not opening a house is shown under.
 const STAYING_SHUT: &str = "The house is staying shut";
 
-/// What Desktop takes back from a visit: a line in the journal for it, and nothing more. A
-/// capability is offered only once Desktop applies what it brings.
-const OFFERED: [HomeCapability; 1] = [HomeCapability::VisitRecord];
+/// What Desktop takes back from a visit: a line in the journal for it, and who is in the house
+/// as it changes, for a Home that says so. A capability is offered only once Desktop applies what
+/// it brings.
+const OFFERED: [HomeCapability; 2] = [HomeCapability::VisitRecord, HomeCapability::Indoors];
+
+/// The first Home version that says who is in the house.
+const SAYS_WHO_IS_INDOORS: u32 = 8;
+
+/// How often, at most, Desktop looks for Home's word on who is indoors while a house is open.
+const INDOORS_CHECK: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The visit's own state and files, and Home's slot, as the app keeps them.
 pub(super) struct HouseLink {
@@ -27,6 +36,11 @@ pub(super) struct HouseLink {
     pub(super) files: HouseFiles,
     /// Whether Home is installed, and when a development run opens the colony house by itself.
     pub(super) slot: Slot,
+    /// Who Home last said is in the open house, when that word was written, and when Desktop last
+    /// looked for a newer one.
+    indoors: Option<Vec<CreatureId>>,
+    indoors_seen: Option<SystemTime>,
+    indoors_checked: Option<Instant>,
 }
 
 impl HouseLink {
@@ -35,6 +49,9 @@ impl HouseLink {
             visit: VisitState::Idle,
             files: HouseFiles::new(data_dir),
             slot: Slot::new(&HOME),
+            indoors: None,
+            indoors_seen: None,
+            indoors_checked: None,
         }
     }
 }
@@ -132,6 +149,15 @@ impl FormigaApp {
             return;
         };
         let now = OffsetDateTime::now_utc();
+        // A Home that says who is in the house is followed: whoever its owner keeps out, and every
+        // friend until it comes over, waits out on the desktop. An older Home has everyone in.
+        let follows = install
+            .reads
+            .is_none_or(|reads| reads >= SAYS_WHO_IS_INDOORS);
+        let offered: Vec<HomeCapability> = OFFERED
+            .into_iter()
+            .filter(|capability| follows || *capability != HomeCapability::Indoors)
+            .collect();
         let prepared = {
             let Some(world) = &self.world else { return };
             // Whoever lives there goes in, with whichever of its closest friends from other
@@ -149,7 +175,7 @@ impl FormigaApp {
                         &world.save,
                         keeper,
                         &visitors,
-                        &OFFERED,
+                        &offered,
                         session,
                         now,
                         env!("CARGO_PKG_VERSION"),
@@ -205,11 +231,31 @@ impl FormigaApp {
             self.failure_dialog(STAYING_SHUT, reason);
             return;
         }
+        let indoors: Vec<CreatureId> = if follows {
+            let kept = self
+                .house
+                .files
+                .kept(&snapshot.colony_key)
+                .settled_for(&snapshot);
+            let stays_out = kept
+                .household(snapshot.household.keeper)
+                .map(|home| home.stays_out.clone())
+                .unwrap_or_default();
+            snapshot
+                .residents
+                .iter()
+                .map(|resident| resident.id)
+                .filter(|id| !stays_out.contains(id))
+                .map(|TravelerId(id)| id)
+                .collect()
+        } else {
+            away.clone()
+        };
         self.finish_habitat_editor(false);
         self.close_creature_menu(MenuDismissal::Hidden);
         let desktop = self.snapshot();
         if let Some(world) = &mut self.world {
-            world.begin_house_visit(&away, &desktop);
+            world.begin_house_visit(&indoors, &desktop);
         }
         // The colony is written as the household goes in, so a crash anywhere after this loses
         // nothing.
@@ -250,6 +296,9 @@ impl FormigaApp {
             "a house is open in Formiga Home"
         );
         self.house.visit = VisitState::Open { open };
+        self.house.indoors = Some(indoors);
+        self.house.indoors_seen = None;
+        self.house.indoors_checked = None;
         self.sync_house_menu();
         self.request_overlay_redraw();
     }
@@ -334,12 +383,43 @@ impl FormigaApp {
         refusal
     }
 
+    /// While a house is open, keep indoors whoever Home last said is in it and everyone else lent
+    /// for the visit out on the desktop. Home's word is looked for at most once a second, from a
+    /// tick Desktop was taking anyway; someone in the owner's hand when it came goes in once put
+    /// down.
+    pub(super) fn follow_who_is_indoors(&mut self, desktop: &DesktopSnapshot) {
+        let Some(open) = self.house.visit.open() else {
+            return;
+        };
+        if !open.capabilities.contains(&HomeCapability::Indoors)
+            || self
+                .house
+                .indoors_checked
+                .is_some_and(|checked| checked.elapsed() < INDOORS_CHECK)
+        {
+            return;
+        }
+        self.house.indoors_checked = Some(Instant::now());
+        if let Some(said) = self.house.files.indoors(open, &mut self.house.indoors_seen) {
+            self.house.indoors = Some(said);
+        }
+        let Some(indoors) = &self.house.indoors else {
+            return;
+        };
+        if let Some(world) = &mut self.world
+            && world.settle_house_visit(indoors, desktop)
+        {
+            self.request_overlay_redraw();
+        }
+    }
+
     /// Everyone who went in comes back out where they went in, and the visit is over.
     fn let_household_out(&mut self, note: Option<String>) {
         if let Some(world) = &mut self.world {
             world.end_house_visit();
         }
         self.house.visit = VisitState::Idle;
+        self.house.indoors = None;
         if let Err(error) = self.save() {
             tracing::error!(%error, "could not save the household coming back out");
         }
