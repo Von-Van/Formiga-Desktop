@@ -121,6 +121,12 @@ pub fn catalog() -> Value {
     })
 }
 
+/// Where a new name would be shown, and whether it fits there: what `catalog` says of each
+/// ground piece's name, for one that does not exist yet.
+pub fn fits(name: &str) -> Value {
+    json!({ "success": true, "name": name, "shown": NameText::new().ground_tile(name) })
+}
+
 /// One kind of thing, and what is true of every item of it.
 #[allow(clippy::too_many_arguments)]
 fn kind(

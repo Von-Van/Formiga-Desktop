@@ -83,12 +83,24 @@ pub fn save_due(waiting: SaveUrgency, since_last_save: Duration) -> bool {
 /// Read a colony from the bytes of a file: parse them as JSON, bring them forward to the current
 /// version, parse that into the current shape, and validate the result.
 pub fn decode(bytes: &[u8]) -> Result<ValidatedSave, PersistenceError> {
+    Ok(ValidatedSave::from(decode_unvalidated(bytes)?))
+}
+
+/// The first three of [`decode`]'s steps: the file brought forward to the current version and
+/// parsed, with nothing yet put right. A colony is never built from this; it is for tools that
+/// show what validation would change in a file.
+pub fn decode_unvalidated(bytes: &[u8]) -> Result<SaveFile, PersistenceError> {
     if bytes.len() as u64 > MAX_SAVE_BYTES {
         return Err(PersistenceError::TooLarge(MAX_SAVE_BYTES));
     }
-    let raw = parse_raw(bytes)?;
-    let persisted = migrations::upgrade(raw)?;
-    Ok(ValidatedSave::from(persisted))
+    migrations::upgrade(parse_raw(bytes)?)
+}
+
+/// The save version a colony file names, or 0 when it names none or is not JSON.
+pub fn named_version(bytes: &[u8]) -> u32 {
+    serde_json::from_slice(bytes)
+        .map(|value| migrations::version_of(&value))
+        .unwrap_or_default()
 }
 
 /// The first step: plain JSON, holding no number too large for the fields a colony keeps. Every

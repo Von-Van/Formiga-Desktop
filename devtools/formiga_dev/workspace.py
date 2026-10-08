@@ -1,10 +1,11 @@
 """Where Formiga lives on this machine, and how to run cargo against it.
 
-Desktop is the repository this folder is in. Hill and Home are found beside it, under either
-spelling a checkout gets ("Formiga-Hill" from git, "Formiga Hill" from GitHub Desktop), or wherever
-FORMIGA_HILL_REPO / FORMIGA_HOME_REPO point.
+Desktop is the repository this folder is in. Hill, Home and Farm are found beside it, under
+either spelling a checkout gets ("Formiga-Hill" from git, "Formiga Hill" from GitHub Desktop), or
+wherever FORMIGA_HILL_REPO / FORMIGA_HOME_REPO / FORMIGA_FARM_REPO point. When this folder is a git worktree
+(under .claude/worktrees/, say), they are also looked for beside the main checkout it belongs to.
 
-Hill and Home take Desktop's crates from a release tag. To try them against the Desktop in this
+Hill, Home and Farm take Desktop's crates from a release tag. To try them against the Desktop in this
 checkout, cargo is told to patch those crates to local paths for one run (`patched`); that rewrites
 the expansion's Cargo.lock, so `lockfile_kept` puts the file back afterwards, and the patched build
 gets a target folder of its own under .dev/ so the expansion's usual build is not thrown away.
@@ -46,7 +47,7 @@ def desktop_version() -> str:
 class Expansion:
     """An expansion app that builds on Desktop's crates."""
 
-    key: str  # "hill" | "home"
+    key: str  # "hill" | "home" | "farm"
     title: str  # "Formiga Hill"
     package: str  # its cargo package and binary
     data_env: str  # the variable that moves its data folder
@@ -70,7 +71,33 @@ class Expansion:
 EXPANSIONS = {
     "hill": Expansion("hill", "Formiga Hill", "formiga-hill", "FORMIGA_HILL_DATA_DIR"),
     "home": Expansion("home", "Formiga Home", "formiga-home", "FORMIGA_HOME_DATA_DIR"),
+    "farm": Expansion("farm", "Formiga Farm", "formiga-farm", "FORMIGA_FARM_DATA_DIR"),
 }
+
+
+def main_checkout() -> Optional[Path]:
+    """The checkout this one is a git worktree of, or None when this is the main checkout."""
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, cwd=DESKTOP,
+        ).stdout.strip()
+    except OSError:
+        return None
+    if not common:
+        return None
+    main = Path(common).resolve().parent
+    return None if main == DESKTOP.resolve() else main
+
+
+def beside() -> List[Path]:
+    """The folders a sibling checkout is looked for in: beside this one, then beside the main
+    checkout when this is a worktree of it."""
+    folders = [DESKTOP.parent]
+    main = main_checkout()
+    if main and main.parent not in folders:
+        folders.append(main.parent)
+    return folders
 
 
 def find_expansion(key: str) -> Expansion:
@@ -82,7 +109,7 @@ def find_expansion(key: str) -> Expansion:
     candidates = (
         [Path(override)]
         if override
-        else [DESKTOP.parent / f"Formiga-{title}", DESKTOP.parent / f"Formiga {title}"]
+        else [folder / f"Formiga{gap}{title}" for folder in beside() for gap in ("-", " ")]
     )
     for candidate in candidates:
         manifest = candidate / "Cargo.toml"
