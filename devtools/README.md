@@ -111,7 +111,9 @@ devtools/formiga inspect trinket 17        # by number, within a kind
 ```
 
 Kinds: decorations, hangouts, gardens, ornaments, colony objects, house styles, palettes, finds
-(`trinket`), accessories, souvenirs, wonders, body plans, ear styles, archetypes and habits.
+(`trinket`), accessories, souvenirs, wonders, body plans, ear styles, archetypes and habits;
+and Formiga Farm's form design: sculpt plans (`plan`), parts (`part`, named with their slot, as
+`Long (tusks)`, or by the name a save keeps, as `tusks.long`), markings and coat treatments.
 Village pieces and colony objects also say when they turned up in 24 colonies lived through
 day by day for 240 days. Finds are mostly referred to by number in tables, so their uses are the
 places that name them outright.
