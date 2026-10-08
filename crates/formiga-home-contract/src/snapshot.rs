@@ -37,6 +37,10 @@ pub enum HomeCapability {
     /// [`crate::HomeEffect::MoveIn`]: Desktop considers, by its own rules, a visitor the owner
     /// asked to come and live here. Since version 6.
     Roommates,
+    /// [`crate::HomeIndoors`]: Desktop keeps indoors only whoever Home says is in the house, and
+    /// everyone else lent for the visit out on the desktop, as the owner chooses and as visitors
+    /// come and go. Since version 8.
+    Indoors,
     /// Anything a newer Desktop offers that this build does not know.
     #[serde(other)]
     Unknown,
@@ -45,12 +49,13 @@ pub enum HomeCapability {
 impl HomeCapability {
     /// Every capability this build knows: what a rehearsal offers, so Home can show everything it
     /// would do for a Desktop that took all of it back. Desktop offers only what it applies.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::VisitRecord,
         Self::BondNudges,
         Self::JournalMoments,
         Self::NextDoor,
         Self::Roommates,
+        Self::Indoors,
     ];
 }
 
@@ -121,7 +126,8 @@ pub struct HomeSnapshot {
     /// The keeper first, then everyone who lives with it, in the order they arrived.
     pub residents: Vec<Traveler>,
     /// Friends from other houses whom Desktop has lent for the visit, since version 2. Desktop
-    /// keeps them indoors too while the house is open. Each keeps a house of its own in the
+    /// keeps them indoors too while the house is open, or, where it offers
+    /// [`HomeCapability::Indoors`], while Home says they are in. Each keeps a house of its own in the
     /// village; none lives here.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub visitors: Vec<Traveler>,
