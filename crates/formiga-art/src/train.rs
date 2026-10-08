@@ -295,23 +295,19 @@ fn coach(paint: &mut Paint<'_>, x: i32, lit: bool) {
         paint.vline(panel, BELT + 5, BODY_BOTTOM - BELT - 9, MAROON.shadow);
         paint.vline(panel + 1, BELT + 5, BODY_BOTTOM - BELT - 9, MAROON.light);
     }
-    paint.vline(x, BODY_TOP, BODY_BOTTOM - BODY_TOP, CREAM.edge);
-    paint.vline(
-        x + length - 1,
-        BODY_TOP,
-        BODY_BOTTOM - BODY_TOP,
-        MAROON.edge,
-    );
+    // Each end and each door is lined in its own band's tone, so no maroon line runs up through
+    // the cream.
+    for end in [x, x + length - 1] {
+        paint.vline(end, BODY_TOP, BELT - BODY_TOP, CREAM.edge);
+        paint.vline(end, BELT, BODY_BOTTOM - BELT, MAROON.edge);
+    }
 
     // Doors at both ends, each with a droplight and a brass handle.
     for door in [x + 1, x + length - 7] {
-        paint.vline(door, BODY_TOP + 1, BODY_BOTTOM - BODY_TOP - 2, MAROON.edge);
-        paint.vline(
-            door + 6,
-            BODY_TOP + 1,
-            BODY_BOTTOM - BODY_TOP - 2,
-            MAROON.edge,
-        );
+        for side in [door, door + 6] {
+            paint.vline(side, BODY_TOP + 2, BELT - BODY_TOP - 2, CREAM.shadow);
+            paint.vline(side, BELT + 2, BODY_BOTTOM - BELT - 3, MAROON.edge);
+        }
         paint.rect(door + 2, WINDOW_TOP, 3, 9, compartment(lit, 0.0));
         paint.put(door + 2, WINDOW_TOP, rgba(0xa6c8d2, 200));
         paint.put(door + 4, BELT + 6, BRASS.light);
@@ -426,15 +422,15 @@ fn locomotive(paint: &mut Paint<'_>, x: i32, lit: bool) {
     );
 
     // Side tanks over the lower half of the boiler, lined out in cream.
-    paint.panel(x + 21, 27, 27, plate - 27);
+    paint.panel(x + 21, 27, 29, plate - 27);
     for y in [30, plate - 4] {
-        paint.hline(x + 24, y, 21, CREAM.base);
+        paint.hline(x + 24, y, 23, CREAM.base);
     }
-    for column in [x + 24, x + 44] {
+    for column in [x + 24, x + 46] {
         paint.vline(column, 30, plate - 33, CREAM.base);
     }
     // The colony's crest: a hill under a sun, in a ring.
-    let (crest_x, crest_y) = (x + 34, 36);
+    let (crest_x, crest_y) = (x + 35, 36);
     paint.ellipse(crest_x, crest_y, 4, 4, CREAM.base);
     paint.ellipse(crest_x, crest_y, 3, 3, LOCO.shadow);
     paint.ellipse(crest_x, crest_y + 3, 3, 2, LOCO.light);
@@ -450,7 +446,7 @@ fn locomotive(paint: &mut Paint<'_>, x: i32, lit: bool) {
     paint.bevel(x + 24, 11, 3, 6, BRASS);
 
     // Smokebox and chimney, in black.
-    let (smoke_top, smoke_bottom) = (15, 45);
+    let (smoke_top, smoke_bottom) = (15, plate);
     for y in smoke_top..smoke_bottom {
         let t = (y - smoke_top) as f32 / (smoke_bottom - smoke_top) as f32;
         let color = if t < 0.08 {

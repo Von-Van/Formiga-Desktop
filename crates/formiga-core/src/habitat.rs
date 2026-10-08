@@ -790,9 +790,6 @@ pub fn home_resting_position(
 pub fn home_guest_position(
     home: &ColonyHome,
     cottages: &[DwellingKind],
-    // How many belongings the colony has. It no longer moves the guest: belongings live in the
-    // trees' yards, and a yard is inside its own tree's lot, which the walk already accounts for.
-    _objects: usize,
     monitors: &[MonitorInfo],
     policy: &HabitatPolicy,
     display_scale: u8,
@@ -2283,15 +2280,8 @@ mod tests {
             };
             let anchor =
                 resolved_home_anchor(&home, &cottages, &monitor, TIGHTEST_SCALE, &policy).unwrap();
-            let (_, guest) = home_guest_position(
-                &home,
-                &cottages,
-                crate::MAX_COLONY_OBJECTS,
-                monitors,
-                &policy,
-                TIGHTEST_SCALE,
-            )
-            .unwrap();
+            let (_, guest) =
+                home_guest_position(&home, &cottages, monitors, &policy, TIGHTEST_SCALE).unwrap();
             assert_eq!(guest.y, anchor.y);
             let out = (guest.x - anchor.x) * direction;
             for (lot, centre) in village_walk(&cottages, VillageFit::Comfortable).iter() {
