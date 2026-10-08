@@ -1,4 +1,4 @@
-# Formiga · v0.67.3
+# Formiga · v0.67.5
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.3-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.5-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,16 +107,16 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.3
+## New in 0.67.5
 
-Formiga Hill and Formiga Home have each had a round of polish, and from this release all three
-apps share one version number, so Formiga 0.67.3, Formiga Hill 0.67.3 and Formiga Home 0.67.3 go
-together. In Formiga Home, residents no longer slide across the floor: after about 25 seconds in a
-house, every walk froze on one frame, and the drawing Home shares with Formiga now keeps it
-turning. They also step up onto seats and beds instead of jumping. Formiga Hill's controls now sit
-on the scene itself, on paper and in Formiga's own lettering, story lines appear over whoever is
-speaking, and idle companions keep moving however long a visit lasts. Your desktop companions
-behave just as before; update Formiga Hill and Formiga Home to 0.67.3 alongside.
+Formiga Home now lets you choose who is home. A small card of faces in the corner of the house
+shows each resident and each friend over for the visit. Click a face to send them out to your
+desktop, where they carry on with the colony while the house stays open, and click it again to
+have them back in. A resident you keep out stays out the next time the house opens. The train also
+reads as one piece now, at Formiga Hill's station and on your desktop, and Formiga Hill's objects
+have had their joins tidied, from the Clubhouse armchairs to the burrow house's porch. Update
+Formiga Hill and Formiga Home to 0.67.5 alongside; an older Formiga Home still opens every house,
+with everyone indoors as before.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

@@ -2,7 +2,11 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.67.5] - 2026-10-08
+
+Released together with Formiga Hill 0.67.5 and Formiga Home 0.67.5. Travel version 4 is unchanged.
+Household version 8 is new, and Formiga Home 0.67.5 uses it; a house opened by an older Home works
+as before.
 
 ### Added
 
@@ -12,6 +16,13 @@ All notable changes are documented here.
   the house just now, a resident sent out or a friend not yet come over, lives on the desktop as
   usual, and goes indoors again when Home says so. An older Home has everyone in, as before. Every
   earlier version's golden fixtures read and write as they did.
+
+### Changed
+
+- `formiga-core`'s `model.rs` is split into sixteen topic files under `model/`, and the tools'
+  `main.rs` into a module per kind of sheet or image. Every public item resolves under the same
+  path as before, such as `formiga_core::Name`, so Formiga Hill, Home and Farm build unchanged, and
+  every review sheet matches byte for byte. Nothing an owner sees changes.
 
 ### Fixed
 
