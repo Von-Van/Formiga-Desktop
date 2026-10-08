@@ -56,7 +56,8 @@ def variant_of(kind: dict, item: dict) -> Optional[str]:
 
 def matches(item: dict, query: str) -> bool:
     wanted = normal(query)
-    names = [item["id"], item["name"], item.get("variant", ""), str(item.get("saved_as", ""))]
+    names = [item["id"], item["name"], item.get("label", ""), item.get("variant", ""),
+             str(item.get("saved_as", ""))]
     return any(normal(name) == wanted for name in names if name != "")
 
 
@@ -260,6 +261,11 @@ def drawn_by(source: Source, kind: dict) -> List[Dict]:
     return found
 
 
+def shown_name(item: dict) -> str:
+    """The name players see: its `label` where the catalogue's name adds to it."""
+    return item.get("label", item["name"])
+
+
 def defined_at(source: Source, kind: dict, item: dict) -> Dict[str, Optional[int]]:
     """The line an item is declared on, and the line that gives it its name."""
     path = kind["defined_in"]
@@ -271,8 +277,12 @@ def defined_at(source: Source, kind: dict, item: dict) -> Dict[str, Optional[int
         named = source.first_line(path, f'"{item["name"]}"', after="static TRINKETS")
         declared = named
     elif not item.get("unnamed"):
-        named = (source.first_line(path, f'=> "{item["name"]}"')
-                 or source.first_line(path, f'"{item["name"]}"'))
+        # An item's `label` is the name on screen where it differs from the catalogue's (unique
+        # across the kind); its own arm of the match is preferred where two share a label.
+        label = shown_name(item)
+        named = ((variant and source.first_line(path, f'::{variant} => "{label}"'))
+                 or source.first_line(path, f'=> "{label}"')
+                 or source.first_line(path, f'"{label}"'))
     return {"file": path, "declared": declared, "named": named}
 
 

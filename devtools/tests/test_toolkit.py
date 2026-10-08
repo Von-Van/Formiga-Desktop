@@ -223,6 +223,16 @@ class Lookup(unittest.TestCase):
                          ["Button"])
         self.assertEqual(catalog.kind_named(self.CATALOG, "decorations")["kind"], "decoration")
 
+    def test_a_label_two_items_share_is_found_on_its_own_arm(self):
+        source = FakeSource({("desktop", "crates/x.rs"): (
+            "pub enum PartKind {\n    EarsLong,\n    TailLong,\n}\n"
+            "fn label(self) {\n    K::EarsLong => \"Long\",\n    K::TailLong => \"Long\",\n}\n")})
+        parts = kind("part", [item("TailLong", "Long (tail)", label="Long")], type="PartKind")
+        place = catalog.defined_at(source, parts, parts["items"][0])
+        self.assertEqual((place["declared"], place["named"]), (3, 7))
+        found = catalog.lookup(sample_catalog(parts), ["part", "long", "(tail)"])
+        self.assertEqual(found.item["id"], "TailLong")
+
     def test_a_kind_is_named_as_people_say_it(self):
         data = sample_catalog(kind("accessory", []), kind("object", []), kind("trinket", []),
                               kind("house-style", []))
