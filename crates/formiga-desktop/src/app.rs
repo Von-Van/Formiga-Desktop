@@ -437,6 +437,7 @@ impl FormigaApp {
         self.check_for_hill(false);
         self.check_for_home(false);
         let desktop = self.snapshot();
+        self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
         if let Some(world) = &mut self.world {

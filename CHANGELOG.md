@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Household version 8: Formiga Home can say who is in the house while it is open
+  (`indoors.json`, offered by the `indoors` capability), and a home remembers which residents its
+  owner keeps out on the desktop (`stays_out`). Desktop follows it: whoever Home does not have in
+  the house just now, a resident sent out or a friend not yet come over, lives on the desktop as
+  usual, and goes indoors again when Home says so. An older Home has everyone in, as before. Every
+  earlier version's golden fixtures read and write as they did.
+
 ## [0.67.3] - 2026-10-06
 
 Released together with Formiga Hill 0.67.3 and Formiga Home 0.67.3, which take its version number

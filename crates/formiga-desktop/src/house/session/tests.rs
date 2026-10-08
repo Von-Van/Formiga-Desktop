@@ -74,6 +74,7 @@ fn arranged(keeper: TravelerId) -> HouseholdHome {
         likings: Vec::new(),
         mementos: Vec::new(),
         journal: Vec::new(),
+        stays_out: Vec::new(),
     }
 }
 
@@ -328,4 +329,46 @@ fn a_visit_is_marked_exactly_as_earlier_desktops_marked_it() {
         fs::read(scratch.0.join(HOME_DIRECTORY).join(MARKER_FILE)).unwrap(),
         earlier
     );
+}
+
+#[test]
+fn who_is_indoors_is_read_once_each_time_home_says_and_only_for_those_lent() {
+    let scratch = Scratch::new("indoors");
+    let files = HouseFiles::new(&scratch.0);
+    let save = colony();
+    let mut snapshot = snapshot(&save);
+    snapshot.capabilities.push(HomeCapability::Indoors);
+    let (keeper, little) = (snapshot.residents[0].id, snapshot.residents[1].id);
+    let visit = files.open(&snapshot, &[keeper.0, little.0]).unwrap();
+    let mut seen = None;
+    assert_eq!(files.indoors(&visit, &mut seen), None, "nothing said yet");
+    let say = |indoors: Vec<TravelerId>, seal: &SessionSeal| {
+        let word = HomeIndoors::new(seal, OPENED, indoors);
+        write_document(&visit.dir.join(INDOORS_FILE), &word).unwrap();
+    };
+    say(vec![keeper, TravelerId(4040)], &visit.seal);
+    assert_eq!(
+        files.indoors(&visit, &mut seen),
+        Some(vec![keeper.0]),
+        "nobody the visit did not lend"
+    );
+    assert_eq!(files.indoors(&visit, &mut seen), None, "read once");
+    // Said again, a moment later, by the right visit and then by another.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let mut stranger = visit.seal.clone();
+    stranger.state_sha256 = "0".repeat(64);
+    say(vec![keeper, little], &stranger);
+    assert_eq!(files.indoors(&visit, &mut seen), None, "another visit's");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    say(vec![keeper, little], &visit.seal);
+    assert_eq!(
+        files.indoors(&visit, &mut seen),
+        Some(vec![keeper.0, little.0])
+    );
+    // A visit that did not offer to follow it never reads it.
+    let unoffered = OpenVisit {
+        capabilities: vec![HomeCapability::VisitRecord],
+        ..visit
+    };
+    assert_eq!(files.indoors(&unoffered, &mut None), None);
 }

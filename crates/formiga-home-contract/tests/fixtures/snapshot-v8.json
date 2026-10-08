@@ -1,0 +1,1356 @@
+{
+  "format": "formiga.home.snapshot",
+  "version": 8,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "colony_key": "da079ed6830d00f6",
+  "created_at_utc": "2026-11-11T09:30:00Z",
+  "desktop_version": "sample colony",
+  "travel_version": 4,
+  "travel_min_reader_version": 1,
+  "capabilities": [
+    "visit_record",
+    "bond_nudges",
+    "journal_moments",
+    "next_door",
+    "roommates",
+    "indoors"
+  ],
+  "household": {
+    "keeper": "876a55d6a17221ef",
+    "slot": 0,
+    "style": "leaf_house"
+  },
+  "residents": [
+    {
+      "id": "876a55d6a17221ef",
+      "name": "Mochi",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "0300000b0a0903030000bcd18f7ad2870000007c"
+        },
+        "family": "blob",
+        "logical_size": 37,
+        "body_width": 25,
+        "body_height": 13,
+        "head_ratio": 0.67133456,
+        "roundness": 0.78652555,
+        "leg_length": 5,
+        "foot_size": 5,
+        "head_appendages": {
+          "style": "droop",
+          "size": 3
+        },
+        "tail": {
+          "style": "none",
+          "length": 5
+        },
+        "face": {
+          "eye_shape": "round",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": 0,
+          "pupil": "wide",
+          "highlight": "double",
+          "brow": "soft",
+          "mouth": "beak",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "soft_nub",
+          "length": 4,
+          "thickness": 1,
+          "tip": "round",
+          "rest_pose": "together"
+        },
+        "effect_motif": "leaf",
+        "palette_index": 5,
+        "pattern": "patches",
+        "pattern_density": 0.6479941,
+        "marking_seed": "465568b953d40634",
+        "gait_bob": 0.7812724,
+        "face_signature": 458422880
+      },
+      "stature_percent": 97,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "wallflower",
+        "axes": {
+          "social": 0.16553476,
+          "energy": 0.24074684,
+          "boldness": 0.21814881,
+          "playfulness": 0.5044405,
+          "curiosity": 0.3669005,
+          "feistiness": 0.15188114,
+          "impulsiveness": 0.3082601,
+          "suspicion": 0.7024214,
+          "affection": 0.5133249
+        },
+        "traits": [
+          "Shy",
+          "Wary",
+          "Mellow"
+        ],
+        "trait_ids": [
+          "shy",
+          "wary",
+          "mellow"
+        ],
+        "phrase": "A shy wallflower"
+      },
+      "motion": {
+        "activity": 0.38056013,
+        "playfulness": 0.5535524,
+        "boldness": 0.2854265,
+        "celebration": "hop"
+      },
+      "habits": [
+        "waves_hello",
+        "circles_before_naps"
+      ],
+      "accessory": {
+        "item": {
+          "kind": "worn",
+          "item": "flower_crown"
+        },
+        "colors": {
+          "outline": [
+            42,
+            36,
+            51
+          ],
+          "deep": [
+            49,
+            18,
+            151
+          ],
+          "body": [
+            75,
+            27,
+            228
+          ],
+          "light": [
+            172,
+            156,
+            221
+          ],
+          "accent": [
+            240,
+            60,
+            246
+          ]
+        }
+      }
+    },
+    {
+      "id": "876a55d6fb287bb5",
+      "name": "Pip",
+      "role": {
+        "kind": "mini",
+        "parent_id": "876a55d6a17221ef"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "0300000b0a0903030000bcd18f7ad2870000007c"
+        },
+        "family": "blob",
+        "logical_size": 23,
+        "body_width": 25,
+        "body_height": 13,
+        "head_ratio": 0.67133456,
+        "roundness": 0.78652555,
+        "leg_length": 5,
+        "foot_size": 5,
+        "head_appendages": {
+          "style": "droop",
+          "size": 3
+        },
+        "tail": {
+          "style": "none",
+          "length": 5
+        },
+        "face": {
+          "eye_shape": "round",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": 0,
+          "pupil": "wide",
+          "highlight": "double",
+          "brow": "soft",
+          "mouth": "beak",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "soft_nub",
+          "length": 4,
+          "thickness": 1,
+          "tip": "round",
+          "rest_pose": "together"
+        },
+        "effect_motif": "leaf",
+        "palette_index": 5,
+        "pattern": "patches",
+        "pattern_density": 0.6479941,
+        "marking_seed": "465568b953d40634",
+        "gait_bob": 0.7812724,
+        "face_signature": 458422880
+      },
+      "stature_percent": 97,
+      "scale_percent": 62,
+      "character": {
+        "temperament": "wallflower",
+        "axes": {
+          "social": 0.16553476,
+          "energy": 0.24074684,
+          "boldness": 0.21814881,
+          "playfulness": 0.5044405,
+          "curiosity": 0.3669005,
+          "feistiness": 0.15188114,
+          "impulsiveness": 0.3082601,
+          "suspicion": 0.7024214,
+          "affection": 0.5133249
+        },
+        "traits": [
+          "Shy",
+          "Wary",
+          "Mellow"
+        ],
+        "trait_ids": [
+          "shy",
+          "wary",
+          "mellow"
+        ],
+        "phrase": "A shy little wallflower"
+      },
+      "motion": {
+        "activity": 0.38056013,
+        "playfulness": 0.5535524,
+        "boldness": 0.2854265,
+        "celebration": "hop"
+      }
+    }
+  ],
+  "visitors": [
+    {
+      "id": "66cd447617ba3991",
+      "name": "Button",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "family": "hopper",
+        "logical_size": 38,
+        "body_width": 22,
+        "body_height": 24,
+        "head_ratio": 0.7581961,
+        "roundness": 0.85026443,
+        "leg_length": 3,
+        "foot_size": 5,
+        "head_appendages": {
+          "style": "leaf",
+          "size": 5
+        },
+        "tail": {
+          "style": "none",
+          "length": 8
+        },
+        "face": {
+          "eye_shape": "soft_square",
+          "eye_size": 2,
+          "eye_spacing": 4,
+          "vertical_offset": 0,
+          "pupil": "spark",
+          "highlight": "diagonal",
+          "brow": "bold",
+          "mouth": "cat",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "mitten_arm",
+          "length": 7,
+          "thickness": 1,
+          "tip": "mitten",
+          "rest_pose": "folded"
+        },
+        "effect_motif": "dot",
+        "palette_index": 11,
+        "pattern": "patches",
+        "pattern_density": 0.6628492,
+        "marking_seed": "3c4238ab9cada22a",
+        "gait_bob": 0.61300963,
+        "face_signature": 2024248359
+      },
+      "stature_percent": 101,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "explorer",
+        "axes": {
+          "social": 0.63182133,
+          "energy": 0.7012922,
+          "boldness": 0.82865894,
+          "playfulness": 0.4540892,
+          "curiosity": 1.0,
+          "feistiness": 0.5,
+          "impulsiveness": 0.5,
+          "suspicion": 0.5,
+          "affection": 0.5
+        },
+        "traits": [
+          "Curious",
+          "Brave",
+          "Energetic"
+        ],
+        "trait_ids": [
+          "curious",
+          "brave",
+          "energetic"
+        ],
+        "phrase": "A curious explorer"
+      },
+      "motion": {
+        "activity": 0.72596914,
+        "playfulness": 0.51327133,
+        "boldness": 0.8043601,
+        "celebration": "twirl"
+      }
+    },
+    {
+      "id": "a5cdeae193601ce1",
+      "name": "Biscuit",
+      "role": {
+        "kind": "adult"
+      },
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {
+          "parts": "010402080809040300006edac437de3c10000037",
+          "details": "0010000000f3bb3f"
+        },
+        "family": "soft_quadruped",
+        "logical_size": 41,
+        "body_width": 19,
+        "body_height": 13,
+        "head_ratio": 0.8283738,
+        "roundness": 0.83071274,
+        "leg_length": 5,
+        "foot_size": 2,
+        "head_appendages": {
+          "style": "pointed",
+          "size": 6
+        },
+        "tail": {
+          "style": "stub",
+          "length": 2
+        },
+        "face": {
+          "eye_shape": "tall",
+          "eye_size": 1,
+          "eye_spacing": 6,
+          "vertical_offset": -1,
+          "pupil": "dot",
+          "highlight": "double",
+          "brow": "none",
+          "mouth": "cat",
+          "cheek": "blush"
+        },
+        "forelimbs": {
+          "style": "front_paw",
+          "length": 6,
+          "thickness": 1,
+          "tip": "paw",
+          "rest_pose": "folded"
+        },
+        "effect_motif": "dot",
+        "palette_index": 3,
+        "pattern": "stripes",
+        "pattern_density": 0.5457996,
+        "marking_seed": "b746b07ae6c166e8",
+        "gait_bob": 0.42092627,
+        "face_signature": 1777620417
+      },
+      "stature_percent": 108,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "troublemaker",
+        "axes": {
+          "social": 0.7034724,
+          "energy": 0.80365026,
+          "boldness": 0.7592883,
+          "playfulness": 0.7759025,
+          "curiosity": 0.59703803,
+          "feistiness": 0.7017637,
+          "impulsiveness": 0.8115414,
+          "suspicion": 0.17826334,
+          "affection": 0.9366232
+        },
+        "traits": [
+          "Excitable",
+          "Mischievous",
+          "Reckless"
+        ],
+        "trait_ids": [
+          "excitable",
+          "mischievous",
+          "reckless"
+        ],
+        "phrase": "An excitable scamp"
+      },
+      "motion": {
+        "activity": 0.80273765,
+        "playfulness": 0.77072203,
+        "boldness": 0.74539506,
+        "celebration": "hop"
+      },
+      "habits": [
+        "looks_food_over"
+      ],
+      "accessory": {
+        "item": {
+          "kind": "pin",
+          "trinket": 17
+        },
+        "colors": {
+          "outline": [
+            42,
+            36,
+            51
+          ],
+          "deep": [
+            18,
+            141,
+            151
+          ],
+          "body": [
+            27,
+            214,
+            228
+          ],
+          "light": [
+            156,
+            217,
+            221
+          ],
+          "accent": [
+            60,
+            97,
+            246
+          ]
+        }
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "a": "66cd447617ba3991",
+      "b": "876a55d6a17221ef",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "66cd447617ba3991",
+      "b": "876a55d6fb287bb5",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "66cd447617ba3991",
+      "b": "a5cdeae193601ce1",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    },
+    {
+      "a": "876a55d6a17221ef",
+      "b": "876a55d6fb287bb5",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    },
+    {
+      "a": "876a55d6a17221ef",
+      "b": "a5cdeae193601ce1",
+      "affinity": "none",
+      "familiarity": "high",
+      "playfulness": "none",
+      "avoidance": "low"
+    },
+    {
+      "a": "876a55d6fb287bb5",
+      "b": "a5cdeae193601ce1",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "medium",
+      "avoidance": "none"
+    }
+  ],
+  "village": [
+    {
+      "keeper": "876a55d6a17221ef",
+      "name": "Mochi",
+      "slot": 0
+    },
+    {
+      "keeper": "a5cdeae193601ce1",
+      "name": "Biscuit",
+      "slot": 1
+    },
+    {
+      "keeper": "d9d41613046adffe",
+      "name": "Fig",
+      "slot": 2
+    },
+    {
+      "keeper": "db8acad9ace9f7a2",
+      "name": "Tansy",
+      "slot": 3
+    },
+    {
+      "keeper": "66cd447617ba3991",
+      "name": "Button",
+      "slot": 4
+    }
+  ],
+  "inventory": [
+    {
+      "id": "find.0",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 0
+      },
+      "name": "Gem",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          138
+        ],
+        "body": [
+          27,
+          228,
+          209
+        ],
+        "light": [
+          156,
+          221,
+          215
+        ],
+        "accent": [
+          60,
+          128,
+          246
+        ]
+      },
+      "modes": [
+        "case",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-11T09:30:00Z",
+      "finder_name": "Biscuit"
+    },
+    {
+      "id": "find.1",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 1
+      },
+      "name": "Key",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          149
+        ],
+        "body": [
+          27,
+          228,
+          226
+        ],
+        "light": [
+          156,
+          221,
+          220
+        ],
+        "accent": [
+          60,
+          112,
+          246
+        ]
+      },
+      "modes": [
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-04T09:30:00Z",
+      "finder_name": "Biscuit"
+    },
+    {
+      "id": "find.3",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 3
+      },
+      "name": "Shell",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          130,
+          151
+        ],
+        "body": [
+          27,
+          197,
+          228
+        ],
+        "light": [
+          156,
+          211,
+          221
+        ],
+        "accent": [
+          60,
+          81,
+          246
+        ]
+      },
+      "modes": [
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-03T09:30:00Z",
+      "finder_name": "Mochi"
+    },
+    {
+      "id": "find.9",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 9
+      },
+      "name": "Firefly jar",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          64,
+          151
+        ],
+        "body": [
+          27,
+          97,
+          228
+        ],
+        "light": [
+          156,
+          179,
+          221
+        ],
+        "accent": [
+          132,
+          60,
+          246
+        ]
+      },
+      "modes": [
+        "floor",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-15T09:30:00Z",
+      "finder_name": "Tansy"
+    },
+    {
+      "id": "find.12",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 12
+      },
+      "name": "Ticket stub",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          60,
+          18,
+          151
+        ],
+        "body": [
+          91,
+          27,
+          228
+        ],
+        "light": [
+          177,
+          156,
+          221
+        ],
+        "accent": [
+          246,
+          60,
+          236
+        ]
+      },
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-27T09:30:00Z",
+      "finder_name": "Fig"
+    },
+    {
+      "id": "find.16",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 16
+      },
+      "name": "Acorn",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          149
+        ],
+        "body": [
+          27,
+          228,
+          226
+        ],
+        "light": [
+          156,
+          221,
+          220
+        ],
+        "accent": [
+          60,
+          112,
+          246
+        ]
+      },
+      "modes": [
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-05T09:30:00Z",
+      "finder_name": "Fig"
+    },
+    {
+      "id": "find.18",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 18
+      },
+      "name": "Marble",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          130,
+          151
+        ],
+        "body": [
+          27,
+          197,
+          228
+        ],
+        "light": [
+          156,
+          211,
+          221
+        ],
+        "accent": [
+          60,
+          81,
+          246
+        ]
+      },
+      "modes": [
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-06T09:30:00Z",
+      "finder_name": "Tansy"
+    },
+    {
+      "id": "find.23",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 23
+      },
+      "name": "Ribbon",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          75,
+          151
+        ],
+        "body": [
+          27,
+          113,
+          228
+        ],
+        "light": [
+          156,
+          184,
+          221
+        ],
+        "accent": [
+          117,
+          60,
+          246
+        ]
+      },
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "textile",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-08T09:30:00Z",
+      "finder_name": "Pip"
+    },
+    {
+      "id": "find.26",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 26
+      },
+      "name": "Pressed daisy",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          49,
+          18,
+          151
+        ],
+        "body": [
+          75,
+          27,
+          228
+        ],
+        "light": [
+          172,
+          156,
+          221
+        ],
+        "accent": [
+          240,
+          60,
+          246
+        ]
+      },
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-13T09:30:00Z",
+      "finder_name": "Fig"
+    },
+    {
+      "id": "find.44",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 44
+      },
+      "name": "Toy block",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          116
+        ],
+        "body": [
+          27,
+          228,
+          175
+        ],
+        "light": [
+          156,
+          221,
+          204
+        ],
+        "accent": [
+          60,
+          159,
+          246
+        ]
+      },
+      "modes": [
+        "floor",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-30T09:30:00Z",
+      "finder_name": "Tansy"
+    },
+    {
+      "id": "find.57",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 57
+      },
+      "name": "Owl feather",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          60,
+          18,
+          151
+        ],
+        "body": [
+          91,
+          27,
+          228
+        ],
+        "light": [
+          177,
+          156,
+          221
+        ],
+        "accent": [
+          246,
+          60,
+          236
+        ]
+      },
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-17T09:30:00Z",
+      "finder_name": "Button"
+    },
+    {
+      "id": "find.62",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 62
+      },
+      "name": "Glow mushroom",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          149
+        ],
+        "body": [
+          27,
+          228,
+          226
+        ],
+        "light": [
+          156,
+          221,
+          220
+        ],
+        "accent": [
+          60,
+          112,
+          246
+        ]
+      },
+      "modes": [
+        "floor",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-24T09:30:00Z",
+      "finder_name": "Biscuit"
+    },
+    {
+      "id": "find.76",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 76
+      },
+      "name": "Postcard",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          138
+        ],
+        "body": [
+          27,
+          228,
+          209
+        ],
+        "light": [
+          156,
+          221,
+          215
+        ],
+        "accent": [
+          60,
+          128,
+          246
+        ]
+      },
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-07T09:30:00Z",
+      "finder_name": "Button"
+    },
+    {
+      "id": "find.89",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 89
+      },
+      "name": "Teacup",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          116
+        ],
+        "body": [
+          27,
+          228,
+          175
+        ],
+        "light": [
+          156,
+          221,
+          204
+        ],
+        "accent": [
+          60,
+          159,
+          246
+        ]
+      },
+      "modes": [
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-19T09:30:00Z",
+      "finder_name": "Pip"
+    },
+    {
+      "id": "find.98",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 98
+      },
+      "name": "Recipe card",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          75,
+          151
+        ],
+        "body": [
+          27,
+          113,
+          228
+        ],
+        "light": [
+          156,
+          184,
+          221
+        ],
+        "accent": [
+          117,
+          60,
+          246
+        ]
+      },
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-11-06T09:30:00Z",
+      "finder_name": "Pip"
+    },
+    {
+      "id": "find.132",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 132
+      },
+      "name": "Toy sheep",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          60,
+          18,
+          151
+        ],
+        "body": [
+          91,
+          27,
+          228
+        ],
+        "light": [
+          177,
+          156,
+          221
+        ],
+        "accent": [
+          246,
+          60,
+          236
+        ]
+      },
+      "modes": [
+        "floor",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-10T09:30:00Z",
+      "finder_name": "Mochi"
+    },
+    {
+      "id": "find.135",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 135
+      },
+      "name": "Pocket watch",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          151,
+          127
+        ],
+        "body": [
+          27,
+          228,
+          192
+        ],
+        "light": [
+          156,
+          221,
+          210
+        ],
+        "accent": [
+          60,
+          143,
+          246
+        ]
+      },
+      "modes": [
+        "case",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-21T09:30:00Z",
+      "finder_name": "Mochi"
+    },
+    {
+      "id": "find.159",
+      "source": {
+        "kind": "desktop_find",
+        "variant": 159
+      },
+      "name": "Rainbow marble",
+      "ink": {
+        "outline": [
+          42,
+          36,
+          51
+        ],
+        "deep": [
+          18,
+          75,
+          151
+        ],
+        "body": [
+          27,
+          113,
+          228
+        ],
+        "light": [
+          156,
+          184,
+          221
+        ],
+        "accent": [
+          117,
+          60,
+          246
+        ]
+      },
+      "modes": [
+        "case",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-11-02T09:30:00Z",
+      "finder_name": "Button"
+    },
+    {
+      "id": "souvenir.picnic_ribbon",
+      "source": {
+        "kind": "hill_souvenir",
+        "id": "picnic_ribbon"
+      },
+      "name": "Gingham ribbon",
+      "modes": [
+        "wall",
+        "textile",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-22T09:30:00Z"
+    },
+    {
+      "id": "souvenir.pressed_daisy",
+      "source": {
+        "kind": "hill_souvenir",
+        "id": "pressed_daisy"
+      },
+      "name": "Pressed daisy",
+      "modes": [
+        "wall",
+        "case",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-26T09:30:00Z"
+    },
+    {
+      "id": "souvenir.chest_marble",
+      "source": {
+        "kind": "hill_souvenir",
+        "id": "chest_marble"
+      },
+      "name": "Toy-chest marble",
+      "modes": [
+        "case",
+        "surface_small",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-10-30T09:30:00Z"
+    },
+    {
+      "id": "souvenir.fair_ticket",
+      "source": {
+        "kind": "hill_souvenir",
+        "id": "fair_ticket"
+      },
+      "name": "Fairground ticket",
+      "modes": [
+        "wall",
+        "surface_small",
+        "case",
+        "fallback_card"
+      ],
+      "found_at_utc": "2026-11-03T09:30:00Z"
+    }
+  ],
+  "days_lived": 40,
+  "presentation": {
+    "reduce_motion": false,
+    "theme": "system",
+    "text_scale_percent": 100
+  }
+}
