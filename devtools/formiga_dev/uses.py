@@ -64,7 +64,7 @@ def named_elsewhere(source: catalog.Source, kind: dict, item: dict, seen: List[H
     if item.get("unnamed"):
         return []
     place = catalog.defined_at(source, kind, item)
-    pattern = re.compile(rf'"{re.escape(item["name"])}"')
+    pattern = re.compile(rf'"{re.escape(catalog.shown_name(item))}"')
     known = {(hit.repo, hit.path, hit.line) for hit in seen}
     return [hit for hit in source.grep(pattern)
             if (hit.repo, hit.path, hit.line) not in known
