@@ -193,7 +193,6 @@ fn a_visit_arrives_after_the_colony_settles_says_hello_once_and_leaves_before_th
     let guest_spot = home_guest_position(
         &world.save.home,
         &colony_cottages(&world.save.creatures),
-        world.save.objects.objects.len(),
         &desktop.monitors,
         &world.save.settings.habitat,
         world.save.settings.display_scale,
@@ -454,7 +453,6 @@ fn pausing_hiding_and_reduced_motion_each_leave_the_visit_somewhere_defined() {
     let spot = home_guest_position(
         &world.save.home,
         &colony_cottages(&world.save.creatures),
-        world.save.objects.objects.len(),
         &desktop.monitors,
         &world.save.settings.habitat,
         world.save.settings.display_scale,
@@ -1022,7 +1020,6 @@ fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
             let spot = home_guest_position(
                 &world.save.home,
                 &colony_cottages(&world.save.creatures),
-                world.save.objects.objects.len(),
                 &desktop.monitors,
                 &world.save.settings.habitat,
                 world.save.settings.display_scale,
