@@ -170,12 +170,7 @@ fn sheet_of(mut scene: TrainScene, save: &SaveFile, night: bool) -> Canvas {
 }
 
 fn save_review(filename: &str, sheet: &Canvas) {
-    if let Some(directory) = std::env::var_os("FORMIGA_TRAIN_REVIEW_DIR") {
-        let directory = std::path::PathBuf::from(directory);
-        std::fs::create_dir_all(&directory).unwrap();
-        let file = std::fs::File::create(directory.join(filename)).unwrap();
-        formiga_art::write_png(file, sheet.width(), sheet.height(), &sheet.rgba_bytes()).unwrap();
-    }
+    crate::review_sheet::save("FORMIGA_TRAIN_REVIEW_DIR", filename, sheet);
 }
 
 #[test]

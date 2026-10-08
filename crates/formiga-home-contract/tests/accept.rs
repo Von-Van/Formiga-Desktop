@@ -319,3 +319,36 @@ fn a_household_keeps_its_own_keepsakes_on_show_but_none_can_move_house() {
     state.set_household(stray);
     assert!(state.validate().is_err());
 }
+
+#[test]
+fn only_those_who_live_here_can_be_kept_out_and_whoever_moves_out_is_let_go() {
+    let visit = visit();
+    let mut home = arranged(&visit.snapshot);
+    let little = visit.snapshot.residents[1].id;
+    let visitor = visit.snapshot.visitors[0].id;
+    home.stays_out = vec![little, visitor];
+    let accepted = accept_result(
+        &visit.seal,
+        &visit.snapshot,
+        &visit.previous,
+        &proposing(&visit, home),
+    );
+    assert_eq!(accepted.set_aside, vec!["staying_out_not_kept"]);
+    let keeper = visit.snapshot.household.keeper;
+    assert_eq!(
+        accepted.state.household(keeper).unwrap().stays_out,
+        vec![little],
+        "a visitor comes or not with each visit"
+    );
+    let mut moved_out = visit.snapshot.clone();
+    moved_out.residents.retain(|resident| resident.id != little);
+    assert!(
+        accepted
+            .state
+            .settled_for(&moved_out)
+            .household(keeper)
+            .unwrap()
+            .stays_out
+            .is_empty()
+    );
+}

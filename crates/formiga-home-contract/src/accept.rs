@@ -52,6 +52,10 @@ impl HomeState {
                 Liked::Shown { item } => snapshot.item(item).is_some() || own.contains(item),
                 Liked::Piece { .. } => true,
             });
+            // Whoever has moved out of the house opened is no longer kept out of it.
+            if home.keeper == snapshot.household.keeper {
+                home.stays_out.retain(|id| snapshot.resident(*id).is_some());
+            }
         }
         settled
     }
@@ -148,6 +152,12 @@ fn proposed_home(
     home.forget_what_is_gone();
     if home.likings.len() != before {
         set_aside.push("liking_not_kept");
+    }
+    // Only those who live here can be kept out of it: a visitor comes or not with each visit.
+    let before = home.stays_out.len();
+    home.stays_out.retain(|id| snapshot.resident(*id).is_some());
+    if home.stays_out.len() != before {
+        set_aside.push("staying_out_not_kept");
     }
     home
 }

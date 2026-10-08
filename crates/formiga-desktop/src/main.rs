@@ -20,6 +20,8 @@ mod notebook_window;
 mod notices;
 mod platform;
 mod reference_match;
+#[cfg(test)]
+mod review_sheet;
 mod settings;
 mod sticker_export;
 mod tray;

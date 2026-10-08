@@ -1,4 +1,5 @@
 //! Test-only visual review of actual world attention and the production composited sprite path.
+use crate::review_sheet::over;
 use formiga_art::{
     AnimationSpec, BodyClip, BodyPresentation, Canvas, CreatureRenderer, ExpressionKind,
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, PixelPoint,
@@ -164,12 +165,7 @@ fn riders_and_spectators_render_notice_reaction_and_relief() {
 }
 
 fn save_review(filename: &str, sheet: &Canvas) {
-    if let Some(directory) = std::env::var_os("FORMIGA_ATTENTION_REVIEW_DIR") {
-        let directory = std::path::PathBuf::from(directory);
-        std::fs::create_dir_all(&directory).unwrap();
-        let file = std::fs::File::create(directory.join(filename)).unwrap();
-        formiga_art::write_png(file, sheet.width(), sheet.height(), &sheet.rgba_bytes()).unwrap();
-    }
+    crate::review_sheet::save("FORMIGA_ATTENTION_REVIEW_DIR", filename, sheet);
 }
 
 #[test]
@@ -983,19 +979,6 @@ fn spectator_reactions_read_without_labels() {
 // contact geometry, the carried prop, and the optional outline arranged the way the overlay
 // composes them rather than the way a single sprite happens to look on its own.
 // ---------------------------------------------------------------------------------------------
-
-/// Source-over. A soft outline and any other translucent edge have to read against the sheet the
-/// way they read against a desktop, not punch a dark hole through it.
-fn over(source: Rgba, under: Rgba) -> Rgba {
-    let alpha = u32::from(source.a);
-    let mix = |s: u8, u: u8| ((u32::from(s) * alpha + u32::from(u) * (255 - alpha)) / 255) as u8;
-    Rgba::new(
-        mix(source.r, under.r),
-        mix(source.g, under.g),
-        mix(source.b, under.b),
-        under.a.max(source.a),
-    )
-}
 
 /// Stamp one art frame at an integer zoom the way the overlay samples its atlas: nearest, never
 /// filtered. `squeeze` is the horizontal narrowing the overlay applies while a companion slips
