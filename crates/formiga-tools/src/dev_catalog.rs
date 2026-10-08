@@ -128,7 +128,6 @@ pub fn fits(name: &str) -> Value {
 }
 
 /// One kind of thing, and what is true of every item of it.
-#[allow(clippy::too_many_arguments)]
 fn kind(
     key: &str,
     type_name: &str,
