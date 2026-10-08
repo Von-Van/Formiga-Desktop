@@ -128,7 +128,6 @@ pub fn fits(name: &str) -> Value {
 }
 
 /// One kind of thing, and what is true of every item of it.
-#[allow(clippy::too_many_arguments)]
 fn kind(
     key: &str,
     type_name: &str,
@@ -150,7 +149,11 @@ fn kind(
     })
 }
 
-const MODEL: &str = "crates/formiga-core/src/model.rs";
+// The files each kind of thing is declared in, which the toolkit reads and adds to.
+const SHELTER: &str = "crates/formiga-core/src/model/shelter.rs";
+const VILLAGE: &str = "crates/formiga-core/src/model/village.rs";
+const OBJECTS: &str = "crates/formiga-core/src/model/objects.rs";
+const HOME: &str = "crates/formiga-core/src/model/home.rs";
 
 fn decorations(reach: &Reach) -> Value {
     let items = ShelterDecorationKind::ALL
@@ -171,7 +174,7 @@ fn decorations(reach: &Reach) -> Value {
     kind(
         "decoration",
         "ShelterDecorationKind",
-        MODEL,
+        SHELTER,
         &["home.unlocks.decorations", "home.dressing[].decorations"],
         "ShelterRenderer::render_with_decorations (the colony house) and \
          ShelterRenderer::render_village (every house)",
@@ -215,7 +218,7 @@ fn village_kind<K: Copy + std::fmt::Debug + PartialEq>(
     kind(
         key,
         type_name,
-        MODEL,
+        VILLAGE,
         &[&format!("home.unlocks.{key}s"), saved_in],
         drawn_by,
         "Three to start with; then the village gains a new piece every day or two \
@@ -249,7 +252,7 @@ fn objects(reach: &Reach) -> Value {
     kind(
         "object",
         "ColonyObjectKind",
-        MODEL,
+        OBJECTS,
         &["objects.objects[].kind"],
         "ColonyObjectRenderer::render_atlas, at ColonyObjectRenderer::object_cell",
         &format!(
@@ -278,7 +281,7 @@ fn house_styles() -> Value {
     kind(
         "house-style",
         "ShelterStyle",
-        MODEL,
+        SHELTER,
         &["home.shelter.style", "home.house_styles[].style"],
         "ShelterRenderer::render and ShelterRenderer::render_village",
         "Always available: the colony's own comes from its seed, and any house can be changed \
@@ -303,7 +306,7 @@ fn palettes() -> Value {
     kind(
         "palette",
         "VillagePalette",
-        MODEL,
+        HOME,
         &["home.palette"],
         "ColonyHome::drawn_shelter, then the shelter renderers",
         "Always available from the Village page.",

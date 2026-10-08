@@ -631,7 +631,6 @@ impl World {
         let (monitor_id, spot) = home_guest_position(
             &self.save.home,
             &cottages,
-            self.save.objects.objects.len(),
             &desktop.monitors,
             policy,
             self.save.settings.display_scale,
