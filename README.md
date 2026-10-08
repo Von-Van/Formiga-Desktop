@@ -162,6 +162,7 @@ Before sending a change anywhere, run the same checks CI runs:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+python3 -m unittest discover devtools/tests
 ```
 
 [docs/BUILD.md](docs/BUILD.md) covers packaging, the performance tools, and regenerating every
