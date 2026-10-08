@@ -388,6 +388,17 @@ class Uses(unittest.TestCase):
         return uses.answer(kind(kind_key, [item_], saved_in=list(saved_in)), item_,
                            {"file": "m.rs", "named": 3, "declared": 2}, found, [], {})
 
+    def test_only_the_expansions_naming_it_are_tied_to_a_desktop_with_it(self):
+        found = {key: [] for key in uses.GROUPS}
+        found["expansions"] = [self.hit("farm", "crates/formiga-forms/src/sculpt.rs")]
+        part = item("TailTaper", "Taper (tail)", saved_as="tail.taper")
+        said = uses.answer(kind("part", [part], saved_in=["x"]), part,
+                           {"file": "m.rs", "named": 3, "declared": 2}, found, [],
+                           {"hill": {"formiga-core": "v0.67.0"},
+                            "farm": {"formiga-core": "v0.67.3"}})
+        self.assertIn("Farm builds on Desktop v0.67.3", said["remove"])
+        self.assertNotIn("Hill", said["remove"])
+
     def test_a_saved_rust_name_needs_a_serde_rename_to_change(self):
         said = self.answers("hangout", item("Bench", "Bench", saved_as="Bench"), code=2)
         self.assertIn('#[serde(rename = "Bench")]', said["rename"])
