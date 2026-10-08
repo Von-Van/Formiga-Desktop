@@ -92,7 +92,7 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 
 | State | Kept in | Lifetime |
 |---|---|---|
-| The colony: creatures, genomes, memories, bonds, village, journal, settings | `SaveFile` (`formiga-core` `model.rs`), held as `World::save` | Written to `colony.json`, with `colony.json.bak` beside it |
+| The colony: creatures, genomes, memories, bonds, village, journal, settings | `SaveFile` (`formiga-core` `model/save.rs`), held as `World::save` | Written to `colony.json`, with `colony.json.bak` beside it |
 | Plans in flight: journeys, attention scenes, games, visits, bubbles | Other fields of `World` | Runtime only. A test keeps runtime-only fields out of the save |
 | The last eight changes that can be taken back | `World`, in `world/undo.rs` | Runtime only |
 | Displays, overlay windows, GPU atlases, proxies, open menus | `FormigaApp` and each `OverlayRenderer` | The life of the process |
