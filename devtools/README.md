@@ -11,7 +11,7 @@ devtools/formiga scenario list         # the known states
 devtools/formiga scenario mature-colony
 devtools/formiga capture hill-green    # .dev/captures/hill-green.png
 devtools/formiga inspect "roof star"   # everything about one item
-devtools/formiga audit content         # names, reachability, Hill and Home agreeing
+devtools/formiga audit content         # names, reachability, the expansions agreeing
 devtools/formiga art check             # every item drawn, every pose, looked over
 devtools/formiga save inspect colony.json   # a save, read the way Desktop reads it
 devtools/formiga uses hangout bench    # can I rename or remove this?
@@ -48,7 +48,7 @@ colony. Failures also carry a rerun or replay command.
 | `content` | `formiga audit content` below. Its errors fail the step; its warnings are counted, and listed by the audit itself |
 | `tests` | `cargo test` on every crate |
 | `soak` | the nightly soak, short: 120 randomized colonies living a simulated day, their files damaged and repaired |
-| `hill`, `home` | with `--expansions`: Formiga Hill's and Formiga Home's own tests, built on *this* checkout's Desktop crates rather than the release they're tied to. This is how a Desktop change that breaks an expansion shows up before release. |
+| `hill`, `home`, `farm` | with `--expansions`: Formiga Hill's, Home's and Farm's own tests, built on *this* checkout's Desktop crates rather than the release they're tied to. This is how a Desktop change that breaks an expansion shows up before release. |
 
 `--quick` runs `format`, `lint` and `fixtures`. `--step` runs only the steps named. The exit code
 is 0 only when nothing failed.
@@ -74,7 +74,9 @@ file. The desktop app runs only on macOS and Windows. Elsewhere, or with `--no-l
 scenario is prepared and the command that opens it is printed.
 
 Hill and Home are found in the checkout beside this one (`Formiga-Hill` or `Formiga Hill`, or set
-`FORMIGA_HILL_REPO` / `FORMIGA_HOME_REPO`). They are built on this checkout's Desktop crates, so a
+`FORMIGA_HILL_REPO` / `FORMIGA_HOME_REPO`). From a git worktree of Desktop (under
+`.claude/worktrees/`, say), they are also looked for beside the main checkout. Formiga Farm is
+found the same way (`FORMIGA_FARM_REPO`) for `validate`, `audit`, `inspect`, `uses` and `report`. They are built on this checkout's Desktop crates, so a
 change to Desktop's drawing shows up in them; `--pinned` builds them on their own Desktop release
 instead. Their `Cargo.lock` is put back afterwards, and the build goes in `.dev/target/`.
 
@@ -98,7 +100,7 @@ commit and by which command.
 
 Everything about one item: its name and id, the line that declares it and the line that names
 it, the name a save keeps and where, the functions that draw it, how a player comes by it,
-whether its name fits where it is shown, and every place in Desktop, Hill and Home that mentions
+whether its name fits where it is shown, and every place in Desktop, Hill, Home and Farm that mentions
 it (real code first, tests last).
 
 ```sh
@@ -122,7 +124,7 @@ Checks Formiga's content as its own code lists it. Errors fail it; warnings are 
 |---|---|
 | `names` | every name unique within its kind and tidy; a village piece's name fits its tile on the Village page, measured in egui's own font at the app's text sizes (an error at normal size, a warning at the largest); a find's or souvenir's name short enough for Formiga Home to show whole |
 | `arrival` | every village piece arrives in the colonies lived through; every kind of colony object turns up somewhere; every accessory can be worn once its find is found and not before; every find and wonder has a hint |
-| `expansions` | every souvenir Desktop knows is one Hill gives, and every story souvenir has a story that gives it; every souvenir and find Hill and Home name by id or number is one Desktop has |
+| `expansions` | every souvenir Desktop knows is one Hill gives, and every story souvenir has a story that gives it; every souvenir and find Hill, Home and Farm name by id or number is one Desktop has |
 
 ### `formiga art check [--kind KIND] [--json]`
 
@@ -164,8 +166,9 @@ check for a save. The file is never written to.
 
 ### `formiga uses [KIND] ITEM [--json]`
 
-For "can I rename or remove this?". It finds every place Desktop, Hill and Home use an item, as
-`inspect` does, groups them (data files holding it, Hill and Home, the trip and Home contracts,
+For "can I rename or remove this?". It finds every place Desktop, Hill, Home and Farm use an
+item, as `inspect` does, groups them (data files holding it, the expansions, the trip, Home and
+Farm contracts,
 save upgrades, Desktop's code, tools, tests, and other places spelling its name out), and
 answers three questions:
 
@@ -173,7 +176,7 @@ answers three questions:
 - **Rename it in the code:** whether colony files keep its Rust name, and the
   `#[serde(rename = "…")]` that keeps them loading if so; for finds, that they are kept by number.
 - **Remove it:** colonies that hold it stop loading without a new save version and upgrade;
-  later finds would be renumbered; and Hill and Home keep it until they move to a Desktop
+  later finds would be renumbered; and the expansions keep it until they move to a Desktop
   release without it.
 
 ### `formiga report [--json]`
@@ -181,7 +184,7 @@ answers three questions:
 The first command for a person or agent starting work: Desktop's version, save version, branch,
 commit and uncommitted files; the last `validate`, `audit content` and `art check` (when, on
 which commit, and what they found, kept in `.dev/last/`); how many of each kind of thing there
-are; Hill's and Home's checkouts and the Desktop release each builds on; the scenarios and which
+are; Hill's, Home's and Farm's checkouts and the Desktop release each builds on; the scenarios and which
 are prepared; and the newest captures.
 
 ### `formiga content add KIND NAME --about TEXT --like ITEM [--id VARIANT] [--write] [--json]`

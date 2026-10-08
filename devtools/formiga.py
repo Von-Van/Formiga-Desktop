@@ -13,8 +13,9 @@
   formiga report [--json]
   formiga content add KIND NAME --about TEXT --like ITEM [--id VARIANT] [--write] [--json]
 
-Run from anywhere: it works on the Formiga-Desktop checkout it lives in, and finds Formiga Hill and
-Formiga Home beside it. Python 3.9 or newer, standard library only. See devtools/README.md.
+Run from anywhere: it works on the Formiga-Desktop checkout it lives in, and finds Formiga Hill,
+Home and Farm beside it (or beside the main checkout, from a git worktree). Python 3.9 or newer,
+standard library only. See devtools/README.md.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ def main(argv=None) -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     check.add_argument("--quick", action="store_true", help="format, lint and fixtures only")
     check.add_argument("--expansions", action="store_true",
-                       help="also run Hill's and Home's tests on this Desktop")
+                       help="also run Hill's, Home's and Farm's tests on this Desktop")
     check.add_argument("--step", action="append", choices=validate.ALL_STEPS,
                        help="run only this step (repeatable)")
     check.add_argument("--json", action="store_true")
