@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- The train reads as one piece at the station and on the desktop. The engine's side tank now runs
+  up to the smokebox, so no strip of boiler shows between them, and the smokebox comes down to the
+  running plate instead of stopping short of it. The coaches' doors and ends are lined in cream
+  above the waist and maroon below, so no dark line runs up through the cream.
+
 ## [0.67.3] - 2026-10-06
 
 Released together with Formiga Hill 0.67.3 and Formiga Home 0.67.3, which take its version number
