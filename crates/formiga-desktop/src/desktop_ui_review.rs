@@ -27,6 +27,7 @@
 //! head: the bubble's tail tip belongs one art pixel above that line, never on or below it.
 
 use crate::creature_menu::{MENU_NOTCH_GAP, MENU_RISE, MenuTarget, menu_items};
+use crate::review_sheet::over;
 use formiga_art::{
     BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose,
     FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, MENU_BODY_HEIGHT, MENU_CELL,
@@ -63,19 +64,6 @@ fn desktop() -> DesktopSnapshot {
 
 fn adult(seed: u8) -> Creature {
     World::preview_adult([seed; 32], time::OffsetDateTime::UNIX_EPOCH, &desktop())
-}
-
-/// Source-over, because `Canvas::set` replaces rather than blends and a bubble's paper is
-/// deliberately a little translucent.
-fn over(source: Rgba, under: Rgba) -> Rgba {
-    let alpha = u32::from(source.a);
-    let mix = |s: u8, u: u8| ((u32::from(s) * alpha + u32::from(u) * (255 - alpha)) / 255) as u8;
-    Rgba::new(
-        mix(source.r, under.r),
-        mix(source.g, under.g),
-        mix(source.b, under.b),
-        under.a.max(source.a),
-    )
 }
 
 /// Blit part of a canvas at a whole-pixel zoom, optionally upside down — the overlay's own
@@ -236,12 +224,7 @@ fn draw_scene(
 }
 
 fn save_review(filename: &str, sheet: &Canvas) {
-    if let Some(directory) = std::env::var_os("FORMIGA_UI_REVIEW_DIR") {
-        let directory = std::path::PathBuf::from(directory);
-        std::fs::create_dir_all(&directory).unwrap();
-        let file = std::fs::File::create(directory.join(filename)).unwrap();
-        formiga_art::write_png(file, sheet.width(), sheet.height(), &sheet.rgba_bytes()).unwrap();
-    }
+    crate::review_sheet::save("FORMIGA_UI_REVIEW_DIR", filename, sheet);
 }
 
 #[test]
