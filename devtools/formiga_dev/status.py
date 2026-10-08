@@ -6,7 +6,7 @@ One look at:
   checks      the last `formiga validate`, `formiga audit content` and `formiga art check`: when,
               on which commit, and what they found
   content     how many of each kind of thing Formiga has
-  expansions  Hill and Home beside this checkout: their commit, and the Desktop release each
+  expansions  Hill, Home and Farm beside this checkout: their commit, and the Desktop release each
               builds on, next to this Desktop's version
   scenarios   the known states, and which have been prepared
   captures    the newest pictures in .dev/captures/
@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 from . import catalog, scenarios, validate
 from .report import Result
-from .workspace import DESKTOP, DEV, desktop_version, find_expansion, relative
+from .workspace import DESKTOP, DEV, EXPANSIONS, desktop_version, find_expansion, relative
 
 LAST = DEV / "last"
 CAPTURES = DEV / "captures"
@@ -155,7 +155,7 @@ def report() -> Result:
     expansions = {}
     notes.append("")
     notes.append("Expansions:")
-    for key in ("hill", "home"):
+    for key in EXPANSIONS:
         expansion = find_expansion(key)
         if not expansion.path:
             notes.append(f"  {expansion.title:<14} no checkout beside this one")

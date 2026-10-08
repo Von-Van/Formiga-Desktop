@@ -6,7 +6,8 @@ identifier a save keeps, how it is come by, and whether its name fits where it i
 here re-reads the game's rules from the source.
 
 What the source is used for is finding things: the line an item is defined on, the line that
-names it, the function that draws it, and every place in Desktop, Hill and Home that mentions it.
+names it, the function that draws it, and every place in Desktop, Hill, Home and Farm that
+mentions it.
 """
 
 from __future__ import annotations
@@ -18,10 +19,11 @@ from typing import Dict, Iterator, List, Optional, Tuple
 
 from . import cargo
 from .report import Step
-from .workspace import DESKTOP, find_expansion, relative
+from .workspace import DESKTOP, EXPANSIONS, find_expansion, relative
 
-# Folders under a repository that are never searched: builds, the toolkit's own output, git.
-SKIPPED = {"target", ".dev", ".git", "node_modules", "__pycache__"}
+# Folders under a repository that are never searched: builds, packaging, the toolkit's own
+# output, git.
+SKIPPED = {"target", "dist", ".dev", ".git", "node_modules", "__pycache__"}
 SEARCHED = {".rs", ".toml", ".json", ".ron"}
 
 
@@ -136,11 +138,11 @@ class Hit:
 
 
 class Source:
-    """The text of Desktop, Hill and Home (whichever are here), read once."""
+    """The text of Desktop, Hill, Home and Farm (whichever are here), read once."""
 
     def __init__(self) -> None:
         self.roots: Dict[str, Path] = {"desktop": DESKTOP}
-        for key in ("hill", "home"):
+        for key in EXPANSIONS:
             path = find_expansion(key).path
             if path:
                 self.roots[key] = path
@@ -236,7 +238,9 @@ def _walk(root: Path) -> Iterator[Path]:
         if path.name in SKIPPED or path.name.startswith("."):
             continue
         if path.is_dir():
-            yield from _walk(path)
+            # A linked folder (a disk image's link to /Applications, say) is not the repository's.
+            if not path.is_symlink():
+                yield from _walk(path)
         elif path.suffix in SEARCHED:
             yield path
 
@@ -273,14 +277,14 @@ def defined_at(source: Source, kind: dict, item: dict) -> Dict[str, Optional[int
 
 
 def uses(source: Source, kind: dict, item: dict) -> List[Hit]:
-    """Every place in Desktop, Hill and Home that mentions the item by its Rust name, by the name
-    a save or a trip file keeps, or (for finds) by its number where a find is expected."""
+    """Every place in Desktop, Hill, Home and Farm that mentions the item by its Rust name, by
+    the name a save or a trip file keeps, or (for finds) by its number where a find is expected."""
     patterns = []
     variant = variant_of(kind, item)
     type_name = kind["type"].split()[0]
     if variant:
         patterns.append(rf"\b{re.escape(type_name)}::{re.escape(variant)}\b")
-        # Mirrors of Desktop's types in the trip and Home contracts, and Hill's and Home's own
+        # Mirrors of Desktop's types in the trip and Home contracts, and the expansions' own
         # copies, spell it in snake case.
         patterns.append(rf'"{re.escape(snake(variant))}"')
     saved = item.get("saved_as")
@@ -302,9 +306,9 @@ def uses(source: Source, kind: dict, item: dict) -> List[Hit]:
                 or re.match(rf"Self::{re.escape(variant or '')}\b", hit.text)):
             continue
         hits.append(hit)
-    order = {"hill": 0, "home": 1, "desktop": 2}
-    return sorted(hits, key=lambda hit: (_is_test(hit.path), order.get(hit.repo, 3), hit.path,
-                                         hit.line))
+    order = {key: number for number, key in enumerate([*EXPANSIONS, "desktop"])}
+    return sorted(hits, key=lambda hit: (_is_test(hit.path), order.get(hit.repo, len(order)),
+                                         hit.path, hit.line))
 
 
 def _is_test(path: str) -> bool:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -21,6 +22,7 @@ from formiga_dev import (  # noqa: E402
     audit, cargo, catalog, content, save, scenarios, status, uses, validate,
 )
 from formiga_dev.report import Problem, Result, Step, emit  # noqa: E402
+from formiga_dev import workspace  # noqa: E402
 from formiga_dev.workspace import Expansion, lockfile_kept  # noqa: E402
 
 FIXTURES = HERE / "fixtures"
@@ -88,10 +90,13 @@ class Scenarios(unittest.TestCase):
                 self.assertIn(f'name: "{scenario.fixture}"', dev, scenario.name)
 
     def test_every_hill_place_is_a_render_and_a_snap_place_hill_knows(self):
-        main = HERE.parents[2] / "Formiga-Hill/crates/formiga-hill/src/main.rs"
-        if not main.exists():
-            self.skipTest("no Formiga-Hill checkout beside this one")
+        hill = workspace.find_expansion("hill").path
+        if not hill:
+            self.skipTest("no Formiga Hill checkout beside this one")
+        main = hill / "crates/formiga-hill/src/main.rs"
         usage = main.read_text()
+        if "--place <PLACE>" not in usage:
+            self.skipTest(f"the Hill checkout at {hill} is older than its --snap places")
         for place in ["station", *scenarios.HILL_PLACES]:
             self.assertIn(f"--render-{place} ", usage)
             self.assertIn(place, usage.split("--place <PLACE>", 1)[1].split("\n--", 1)[0])
@@ -139,6 +144,32 @@ class Expansions(unittest.TestCase):
                 'serde = "1"\n')
             expansion = Expansion("hill", "Formiga Hill", "formiga-hill", "X", Path(folder))
             self.assertEqual(expansion.pins(), {"formiga-art": "v0.67.1", "formiga-core": "v0.67.1"})
+
+    def found_from(self, desktop, key="farm"):
+        """Where `key` is found when the toolkit runs from the checkout at `desktop`."""
+        fresh = {k: Expansion(e.key, e.title, e.package, e.data_env)
+                 for k, e in workspace.EXPANSIONS.items()}
+        with mock.patch.object(workspace, "DESKTOP", desktop), \
+                mock.patch.dict(workspace.EXPANSIONS, fresh), \
+                mock.patch.dict("os.environ", {f"FORMIGA_{key.upper()}_REPO": ""}):
+            return workspace.find_expansion(key).path
+
+    def test_a_sibling_is_found_beside_the_main_checkout_from_a_worktree(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            desktop = root / "Formiga Desktop"
+            desktop.mkdir()
+            git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(desktop)]
+            subprocess.run([*git, "init", "-q"], check=True)
+            subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "start"], check=True)
+            tree = desktop / ".claude" / "worktrees" / "tidy"
+            subprocess.run([*git, "worktree", "add", "-q", "-b", "tidy", str(tree)], check=True)
+            farm = root / "Formiga Farm"
+            farm.mkdir()
+            (farm / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/formiga-farm"]\n')
+            self.assertEqual(self.found_from(desktop), farm)
+            self.assertEqual(self.found_from(tree), farm)
+            self.assertIsNone(self.found_from(tree, "hill"))
 
     def test_the_lockfile_comes_back_as_it_was(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -266,6 +297,8 @@ pub const FAIR_TICKET: &str = "fair_ticket";
                 'let pin = Accessory::Pin(2);\nlet far = Accessory::Pin(3);\n',
             ("home", "crates/formiga-home/src/shelf.rs"):
                 'let find = DesktopFind {\n    variant: 7,\n};\n',
+            ("farm", "crates/formiga-farm/src/shelf.rs"):
+                'let worn = "souvenir.paper_crown";\nlet pin = Pin(1);\n',
         })
         found = problems(audit.expansions(data, source))
         self.assertEqual(sorted(found), sorted([
@@ -275,6 +308,7 @@ pub const FAIR_TICKET: &str = "fair_ticket";
             ("souvenir:chest_marble", "error"),   # Home names one Desktop doesn't have
             ("trinket:3", "error"),               # Home names a find past the last one
             ("trinket:7", "error"),               # …and one written over several lines
+            ("souvenir:paper_crown", "error"),    # Farm names one Desktop doesn't have
         ]))
 
 
@@ -331,6 +365,9 @@ class Uses(unittest.TestCase):
             ("desktop", "crates/formiga-tools/src/dev_art.rs", "tools"),
             ("desktop", "crates/formiga-travel/tests/fixtures/snapshot-v3.json", "data"),
             ("hill", "crates/formiga-hill/src/story/souvenirs.rs", "expansions"),
+            ("farm", "crates/formiga-forms/src/sculpt.rs", "expansions"),
+            ("farm", "crates/formiga-farm-contract/tests/accept.rs", "tests"),
+            ("desktop", "crates/formiga-farm-contract/src/replies.rs", "contracts"),
         ]:
             self.assertEqual(uses.group_of(self.hit(repo, path)), group, path)
 
@@ -350,7 +387,7 @@ class Uses(unittest.TestCase):
         said = self.answers("souvenir", item("well_penny", "Well penny", saved_as="well_penny",
                                              variant="WellPenny"), expansions=1)
         self.assertIn("spelled from its Rust name", said["rename"])
-        self.assertIn("contracts, Hill or Home", said["rename"])
+        self.assertIn("contracts or the expansions", said["rename"])
 
     def test_an_explicit_save_name_is_already_held_steady(self):
         said = self.answers("wonder", item("LeafSled", "Leaf sled", saved_as="Bike"))

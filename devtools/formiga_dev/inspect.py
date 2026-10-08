@@ -8,8 +8,8 @@
 For an item it shows its name and id, the line that declares it and the line that names it, the
 name a save keeps and where, what draws it, how a player comes by it (and, for village pieces and
 objects, when it turned up in colonies lived through day by day), whether its name fits where it
-is shown, and every place in Desktop, Hill and Home that mentions it. Finds are mostly referred to
-by number in tables, so their list of uses is the places that name them outright.
+is shown, and every place in Desktop, Hill, Home and Farm that mentions it. Finds are mostly
+referred to by number in tables, so their list of uses is the places that name them outright.
 """
 
 from __future__ import annotations

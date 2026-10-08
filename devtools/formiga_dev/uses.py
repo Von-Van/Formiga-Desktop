@@ -1,15 +1,15 @@
 """`formiga uses [KIND] ITEM`: can I rename or remove this, and what would it take?
 
-Finds every place Desktop, Hill and Home use an item (as `formiga inspect` does), sorts them by
-what they mean for a change, and answers three questions:
+Finds every place Desktop, Hill, Home and Farm use an item (as `formiga inspect` does), sorts
+them by what they mean for a change, and answers three questions:
 
   name        changing the name players see
   rename      renaming it in the code, which saves and the expansions may spell
   remove      removing it, which colonies that hold it, the expansions and the code all feel
 
 The places are grouped as: saves (where a colony file keeps it, and data files holding it), the
-expansions (Hill and Home), the trip and Home contracts, the save upgrades, Desktop's code, the
-review tools, tests, and other places that spell its name out.
+expansions (Hill, Home and Farm), the trip, Home and Farm contracts, the save upgrades, Desktop's
+code, the review tools, tests, and other places that spell its name out.
 
 Nothing is changed: it only reads.
 """
@@ -23,20 +23,21 @@ from . import catalog
 from .catalog import Hit
 from .inspect import matches
 from .report import Result
-from .workspace import find_expansion
+from .workspace import EXPANSIONS, find_expansion
 
 # The groups, in the order they are shown, and what each holds.
 GROUPS = {
     "data": "data files holding it (saves, fixtures, story packages)",
-    "expansions": "Hill and Home",
-    "contracts": "the trip and Home contracts in Desktop",
+    "expansions": "Hill, Home and Farm",
+    "contracts": "the trip, Home and Farm contracts in Desktop",
     "upgrades": "Desktop's save upgrades",
     "code": "Desktop's code",
     "tools": "the review and developer tools",
     "tests": "tests",
 }
+# formiga-farm-contract is only on the `farm` branch for now.
 CONTRACT_CRATES = ("crates/formiga-travel/", "crates/formiga-home-contract/",
-                   "crates/formiga-expansion-rulebook/")
+                   "crates/formiga-farm-contract/", "crates/formiga-expansion-rulebook/")
 MIGRATIONS = "crates/formiga-core/src/persistence/migrations.rs"
 # How many places of each group the summary lists; --json lists them all.
 SHOWN = 6
@@ -92,7 +93,7 @@ def uses(words: List[str]) -> Result:
         groups[group_of(hit)].append(hit)
     spelled = named_elsewhere(source, kind, item, hits)
     place = catalog.defined_at(source, kind, item)
-    pins = {key: find_expansion(key).pins() for key in ("hill", "home") if key in source.roots}
+    pins = {key: find_expansion(key).pins() for key in EXPANSIONS if key in source.roots}
     answers = answer(kind, item, place, groups, spelled, pins)
     result.data.update({
         "kind": kind["kind"],
@@ -151,14 +152,15 @@ def answer(kind: dict, item: dict, place: dict, groups: Dict[str, List[Hit]],
     code = used["code"] + used["tools"] + used["tests"] + used["upgrades"]
     rename += f" {code} place(s) in Desktop's code, tools and tests name it."
     if outside:
-        rename += (f" {outside} place(s) in the contracts, Hill or Home spell it too: change "
-                   "them in step, or a trip or visit carrying it is refused.")
+        rename += (f" {outside} place(s) in the contracts or the expansions spell it too: "
+                   "change them in step, or a trip, visit or Farm session carrying it is "
+                   "refused.")
 
     steps = []
     if kind["kind"] == "trinket":
         steps.append("finds are numbered by their place in the table and colony files keep "
-                     "them by number, so every later find would be renumbered, in saves, Hill "
-                     "and Home alike")
+                     "them by number, so every later find would be renumbered, in saves and "
+                     "the expansions alike")
     elif kept:
         steps.append("colonies holding it would stop loading: it needs a new save version whose "
                      f"upgrade drops or replaces it ({MIGRATIONS})")
@@ -168,7 +170,7 @@ def answer(kind: dict, item: dict, place: dict, groups: Dict[str, List[Hit]],
     if code:
         steps.append(f"{code} place(s) in Desktop name it")
     if outside:
-        steps.append(f"{outside} place(s) in the contracts, Hill or Home name it"
+        steps.append(f"{outside} place(s) in the contracts or the expansions name it"
                      + (f" ({tied}; they keep working there, and break when moved to a Desktop "
                         "without it)" if tied else ""))
     if used["data"]:
