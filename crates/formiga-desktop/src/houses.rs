@@ -36,6 +36,8 @@ pub struct PlacedHouse {
     pub mask: Arc<[bool]>,
     /// The first row of the cell with any of the house in it: the top of its roof.
     pub roof: u32,
+    /// Display pixels per art pixel it is drawn at: the colony's size, or its scenery's.
+    pub drawn_at: u8,
 }
 
 impl PlacedHouse {
@@ -98,6 +100,16 @@ impl HouseShapes {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let owners = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
         let scale = save.settings.display_scale;
+        // On scenery drawn smaller than the colony, the houses are drawn at the picture's size.
+        let drawn_at = formiga_core::home_commons(
+            &save.home,
+            formiga_core::colony_cottage_list(&save.creatures).as_slice(),
+            monitors,
+            &save.settings.habitat,
+            scale,
+        )
+        .and_then(|commons| commons.scenery)
+        .map_or(scale, |scenery| scenery.display_scale);
         (0..=cottages.len())
             .filter_map(|slot| {
                 let keeper = *owners.as_slice().get(slot)?;
@@ -116,9 +128,10 @@ impl HouseShapes {
                     slot,
                     monitor_id,
                     foot,
-                    side: SHELTER_SIZE as f32 * f32::from(scale) / monitor.scale_factor,
+                    side: SHELTER_SIZE as f32 * f32::from(drawn_at) / monitor.scale_factor,
                     mask,
                     roof,
+                    drawn_at,
                 })
             })
             .collect()
@@ -283,6 +296,7 @@ mod tests {
             side: 192.0,
             mask: mask.into(),
             roof: 10,
+            drawn_at: 2,
         }
     }
 

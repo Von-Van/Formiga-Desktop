@@ -230,6 +230,9 @@ pub struct OverlayRenderer {
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
     scenery: Option<SceneryGpu>,
+    /// Where the village's scenery stood when this display was last drawn, so anything placed
+    /// against a companion afterwards — its menu, its bubbles — finds it at the size it was drawn.
+    scenery_now: Option<formiga_core::SceneryPlacement>,
     bubble: Option<BubbleGpu>,
     ui_atlas: Option<UiAtlasGpu>,
     ui_atlas_idle: u32,
@@ -505,6 +508,7 @@ impl OverlayRenderer {
             sprites: BTreeMap::new(),
             shelter: None,
             scenery: None,
+            scenery_now: None,
             bubble: None,
             ui_atlas: None,
             ui_atlas_idle: 0,
@@ -618,7 +622,18 @@ impl OverlayRenderer {
         milestone: Option<CreatureId>,
         ui: OverlayUi<'_>,
     ) -> Result<()> {
-        self.apply_render_divisor(save.settings.display_scale);
+        // A village out on scenery drawn smaller than the colony, and its companions on the way
+        // up into it, need every display pixel: no half-size drawable then.
+        let smaller_scenery = save.home.is_active()
+            && save.home.display == Some(self.monitor.display_key)
+            && self
+                .scenery_placement(save)
+                .is_some_and(|placement| placement.display_scale != save.settings.display_scale);
+        self.apply_render_divisor(if smaller_scenery {
+            1
+        } else {
+            save.settings.display_scale
+        });
         self.update_occlusion_cache(save, windows);
         let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
         let occlusion = self.occlusion_uniform(&self.occlusion_rects);
@@ -650,6 +665,7 @@ impl OverlayRenderer {
             Some(placement) => self.ensure_scenery(placement.scenery),
             None => self.scenery = None,
         }
+        self.scenery_now = scenery;
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
         let bubble_creature = milestone.and_then(|creature_id| {
@@ -707,8 +723,7 @@ impl OverlayRenderer {
         let mut creature_draws = Vec::with_capacity(visible.len());
         // Under everything, the picture the village is laid out on.
         if let Some(placement) = scenery {
-            vertices
-                .extend_from_slice(&self.scenery_vertices(placement, save.settings.display_scale));
+            vertices.extend_from_slice(&self.scenery_vertices(placement, placement.display_scale));
         }
         let scenery_vertex_count = vertices.len();
         // The village next, then what the colony keeps in the two yards over the top of it:
@@ -758,8 +773,12 @@ impl OverlayRenderer {
                 save.settings.cursor_reactions,
             );
             let start = vertices.len();
-            let (body, face, trinket, held) =
-                self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
+            let (body, face, trinket, held) = self.vertices_for(
+                creature,
+                self.drawn_scale(creature, save.settings.display_scale),
+                sprite,
+                face_state,
+            );
             vertices.extend_from_slice(&body);
             vertices.extend_from_slice(&face);
             if let Some(trinket) = trinket {
@@ -795,8 +814,10 @@ impl OverlayRenderer {
         let train_vertex_count = vertices.len() - train_start;
         let bubble_start = vertices.len();
         if let Some(creature) = bubble_creature
-            && let Some(bubble_vertices) =
-                self.bubble_vertices(creature, save.settings.display_scale)
+            && let Some(bubble_vertices) = self.bubble_vertices(
+                creature,
+                self.drawn_scale(creature, save.settings.display_scale),
+            )
         {
             vertices.extend_from_slice(&bubble_vertices);
         }

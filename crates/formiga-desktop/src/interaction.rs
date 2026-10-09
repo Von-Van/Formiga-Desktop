@@ -51,6 +51,9 @@ pub struct InteractionProxy {
 pub struct ProxyRuntimeState {
     pub dragging: bool,
     pub occluded: bool,
+    /// Display pixels per art pixel the creature is drawn at just now: the colony's size, or
+    /// smaller up in the village's scenery.
+    pub scale: u8,
 }
 
 impl InteractionProxy {
@@ -104,7 +107,7 @@ impl InteractionProxy {
         runtime: ProxyRuntimeState,
     ) {
         self.monitor_id = monitor.id;
-        let scale = settings.display_scale;
+        let scale = runtime.scale;
         let physical_size = FRAME_SIZE * u32::from(scale);
         let logical_size = physical_size as f32 / monitor.scale_factor;
         // The overlay seats the sprite by the creature's authored under-body clearance so its feet

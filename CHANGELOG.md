@@ -11,9 +11,12 @@ All notable changes are documented here.
   two bridges, stairs and cliffs. Each house and both trees stand on their own spot in it, in the
   order houses are given out, and the trees carry their finds as before. Companions walk its paths,
   stairs and bridges and climb its cliffs, hop up onto it from the floor when they come home, and
-  hop down again when the houses go. A display without room for the whole picture at the chosen
-  size keeps the village along the ground. Save version 29 keeps the choice by name; an older
-  colony opens unchanged on its strip.
+  hop down again when the houses go. The pond keeps to the lower third of the display by its
+  corner, drawn smaller than the colony where it has to be, and everything up in it — houses,
+  trees, belongings and companions — is drawn at its size; a companion shrinks as it hops up and
+  grows again as it hops down. A display without room for the whole picture keeps the village
+  along the ground. Save version 29 keeps the choice by name; an older colony opens unchanged on
+  its strip.
 
 ## [0.67.5] - 2026-10-08
 

@@ -212,7 +212,7 @@ impl OverlayRenderer {
         sprite: &SpriteGpu,
         display_scale: u8,
     ) -> (f32, f32, f32) {
-        let scale = f32::from(display_scale);
+        let scale = f32::from(self.drawn_scale(creature, display_scale));
         let local_x = self
             .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
         let contact_y = self

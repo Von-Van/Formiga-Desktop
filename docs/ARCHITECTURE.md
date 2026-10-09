@@ -1311,10 +1311,25 @@ beside the falls and one at the pond's foot — the two trees' spots, and a walk
 joined by straight runs, each walked (paths, stairs, bridges) or climbed. `SceneryPlacement` puts
 the picture on the desktop and turns its pixels into points. `VillageGround::resolve` places it in
 the home's corner, eight points in from the side and standing on the floor of the accessible
-region, when that region has room for the
-whole picture and the 46 pixels of houses and trees above its top edge at the colony's size;
-otherwise the village keeps to its strip, exactly where it would have stood. At the default size on
-a Retina display the picture is about 1,124×686 points.
+region, and draws it — with the 46 pixels of houses and trees above its top edge — at the largest
+whole number of display pixels to a picture pixel, up to the colony's own size, that keeps it
+within a third of the display's width and height. Nothing is drawn smaller than one display pixel
+to an art pixel, so on a display without Retina density the picture can come to a little more
+than a third. On a 1512×982 Retina display at the default size it is drawn at one display pixel to
+a picture pixel, 375×252 points with the room above it, against three for everything else. A
+region without room for the whole picture even at one keeps the village on its strip, exactly
+where it would have stood.
+
+Everything on the picture is drawn at its size: the houses, the trees and their finds, the
+belongings, the spots and gardens, and the companions up in it. `SceneryPlacement::creature_scale`
+gives a companion the picture's size anywhere up in it, its colony's down on the floor or on a
+window, and the sizes between a display pixel at a time as it hops up from the floor or down to it,
+and the overlay, the click targets, its menu and its bubbles all follow it. The village's own
+reckoning — resting places, spacing, strolls — is done at the picture's size too, and a walk over
+the picture goes as much slower as the companion is drawn smaller (`SceneryPlacement::pace`), so
+its feet keep up with the ground. A display showing the picture smaller than the colony is drawn
+at full resolution rather than half. The spacing rules move a body sideways only, so a companion
+up in the picture nudged off its ground by somebody making room is set back on the nearest of it.
 
 One run of the walk map is the trail: it crosses the picture from left to right with one height for
 every x, past every house that stands on it, coming down off the top terrace by the cliff under its

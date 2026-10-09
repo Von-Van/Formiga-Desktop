@@ -858,6 +858,21 @@ impl World {
         self.save.home.is_active()
     }
 
+    /// The scenery the village is out on just now, if it is out on any.
+    pub(super) fn village_scenery(&self, desktop: &DesktopSnapshot) -> Option<SceneryPlacement> {
+        if !self.save.home.is_active() || self.save.home.scenery.is_none() {
+            return None;
+        }
+        home_commons(
+            &self.save.home,
+            colony_cottage_list(&self.save.creatures).as_slice(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        )?
+        .scenery
+    }
+
     /// The scenery goes with the houses, so whoever was up in it when they went hops down to the
     /// floor below. On a strip everybody is on the floor already and nobody moves.
     fn step_down_from_scenery(&mut self, desktop: &DesktopSnapshot) {
@@ -1030,7 +1045,15 @@ impl World {
             .map(|creature| (creature.id, creature.state.position))
             .collect();
         let belongings = self.village_belongings(desktop);
-        let frame = spacing::frame_width(self.save.settings.display_scale, monitor.scale_factor);
+        // A companion up in scenery is drawn at the picture's size, and spaced by it.
+        let frame = spacing::frame_width(
+            commons
+                .and_then(|commons| commons.scenery)
+                .map_or(self.save.settings.display_scale, |scenery| {
+                    scenery.display_scale
+                }),
+            monitor.scale_factor,
+        );
         // Everybody out in the open, and how fast they were going: whose face a walk should not
         // dawdle in front of, nor keep step with.
         let face_clear = frame * spacing::FACE_CLEAR_RATIO;
@@ -1415,6 +1438,20 @@ impl World {
             // somewhere else on the desktop — walks along the floor to below the nearest way up
             // and hops up onto it there; it never walks through the picture's rocks.
             let scenery = commons.and_then(|commons| commons.scenery);
+            // Nudged a little off the picture's ground by somebody making room — the spacing rules
+            // move a body sideways only — a companion up in it is set back on the nearest ground.
+            if let Some(scenery) = scenery
+                && !self.window_journeys.contains_key(&creature.id)
+                && creature.state.surface.kind != SurfaceKind::WindowLedge
+                && matches!(
+                    creature.state.action,
+                    ActionKind::Homebound | ActionKind::Traverse | ActionKind::ClimbWindow
+                )
+                && scenery.up_in(creature.state.position)
+                && !scenery.on_map(creature.state.position)
+            {
+                creature.state.position = scenery.nearest(creature.state.position);
+            }
             let mut target = target;
             if let Some(scenery) = scenery
                 && !self.window_journeys.contains_key(&creature.id)

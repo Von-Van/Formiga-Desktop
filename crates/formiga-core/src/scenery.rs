@@ -215,6 +215,11 @@ impl VillageScenery {
 }
 
 /// Where a scenery picture is on the desktop, and how many points one of its pixels covers.
+///
+/// The picture, and everything standing on it, is drawn at a whole number of display pixels to a
+/// picture pixel, as everything else is: the colony's own size where that keeps it within a third
+/// of the display, and smaller where it does not. A companion up in the picture is drawn at the
+/// picture's size too, so the village keeps its proportions however small it is drawn.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SceneryPlacement {
     pub scenery: VillageScenery,
@@ -222,6 +227,13 @@ pub struct SceneryPlacement {
     pub origin: Point,
     /// Points per picture pixel: the same as points per shelter pixel for the houses on it.
     pub scale: f32,
+    /// Display pixels per picture pixel: the size the picture, the houses and trees on it and the
+    /// companions up in it are drawn at.
+    pub display_scale: u8,
+    /// The colony's own size, which a companion down on the floor is drawn at.
+    pub colony_scale: u8,
+    /// The floor the picture stands on.
+    pub floor_y: f32,
 }
 
 impl SceneryPlacement {
@@ -291,13 +303,53 @@ impl SceneryPlacement {
             .unwrap_or(self.origin)
     }
 
+    /// How fast a companion up in the picture goes, against its walk down on the floor: as much
+    /// slower as it is drawn smaller, so its feet keep pace with the ground.
+    pub fn pace(&self) -> f32 {
+        f32::from(self.display_scale) / f32::from(self.colony_scale.max(1))
+    }
+
+    /// The size a companion at `at` is drawn at: the picture's own size anywhere up in it, the
+    /// colony's down on the floor or on a window, and a size between the two on the way up from
+    /// the floor or down to it, a display pixel at a time.
+    pub fn creature_scale(&self, at: Point, on_a_window: bool) -> u8 {
+        let map = self.map();
+        let inside = !on_a_window && self.over(at) && at.y <= self.floor_y + 0.5;
+        if !inside || self.display_scale >= self.colony_scale {
+            return self.colony_scale;
+        }
+        // The front path is the lowest anybody stands; up there, it is the picture's size.
+        let front = map
+            .ways_up
+            .iter()
+            .map(|&node| self.point(map.node(node)).y)
+            .fold(self.floor_y, f32::min);
+        let risen = ((self.floor_y - at.y) / (self.floor_y - front).max(1.0)).clamp(0.0, 1.0);
+        let between = f32::from(self.colony_scale)
+            + (f32::from(self.display_scale) - f32::from(self.colony_scale)) * risen;
+        between.round() as u8
+    }
+
+    /// Whether `at` is over the picture, or in the room above it where its houses and trees reach.
+    fn over(&self, at: Point) -> bool {
+        let map = self.map();
+        let right = self.origin.x + map.width as f32 * self.scale;
+        let top = self.origin.y - map.headroom * self.scale;
+        (self.origin.x..=right).contains(&at.x) && (top..self.floor_y).contains(&at.y)
+    }
+
+    /// Whether `at` is up in the picture rather than down on the floor in front of it.
+    pub fn up_in(&self, at: Point) -> bool {
+        self.over(at) && at.y < self.floor_y - 1.0
+    }
+
     /// Whether `point` is somewhere on the walk map, give or take a fraction of a point.
     pub fn on_map(&self, point: Point) -> bool {
         self.nearest(point).distance(point) <= 0.5
     }
 
     /// Where a companion at `from` heading for `to` gets to after covering `distance` points of
-    /// walk, and how it is crossing the ground it ends on. It keeps to the walk map all the way,
+    /// walk at its size on the floor, and how it is crossing the ground it ends on. It keeps to the walk map all the way,
     /// up and down stairs and hand over hand on a climb, which goes slower. A destination off
     /// the map is reached at the nearest place on it; one on the map is landed on exactly.
     pub fn step(&self, from: Point, to: Point, distance: f32) -> (Point, Footing) {
@@ -306,7 +358,7 @@ impl SceneryPlacement {
         let (goal_run, goal) = map.locate(wanted);
         let exact = span(goal, wanted) <= SAME_PLACE * 10.0;
         let (_, mut at) = map.locate(self.local(from));
-        let mut left = distance.max(0.0) / self.scale;
+        let mut left = distance.max(0.0) * self.pace() / self.scale;
         let mut footing = Footing::Walk;
         // A route crosses a few points at most in one step; the bound only keeps a step that
         // somehow made no progress from going round for ever.
@@ -474,6 +526,9 @@ mod tests {
             scenery: VillageScenery::Pond,
             origin: Point { x: 100.0, y: 200.0 },
             scale: 1.5,
+            display_scale: 3,
+            colony_scale: 3,
+            floor_y: 200.0 + 457.0 * 1.5 + 2.0,
         }
     }
 

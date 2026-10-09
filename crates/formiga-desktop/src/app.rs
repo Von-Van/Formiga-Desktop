@@ -688,6 +688,22 @@ impl FormigaApp {
             }
         }
         let dragging = world.is_dragging();
+        // Somebody up in scenery drawn smaller than the colony is clicked at the size it is drawn.
+        let scenery = world
+            .save
+            .home
+            .is_active()
+            .then(|| {
+                formiga_core::home_commons(
+                    &world.save.home,
+                    formiga_core::colony_cottage_list(&world.save.creatures).as_slice(),
+                    &self.monitors,
+                    &world.save.settings.habitat,
+                    world.save.settings.display_scale,
+                )
+            })
+            .flatten()
+            .and_then(|commons| commons.scenery);
         for proxy in self.interaction_proxies.values_mut() {
             let Some(creature) = world
                 .save
@@ -725,6 +741,12 @@ impl FormigaApp {
                 ProxyRuntimeState {
                     dragging: dragging_this,
                     occluded: fullscreen_hidden,
+                    scale: scenery.map_or(world.save.settings.display_scale, |scenery| {
+                        scenery.creature_scale(
+                            creature.state.position,
+                            creature.state.surface.kind == SurfaceKind::WindowLedge,
+                        )
+                    }),
                 },
             );
         }

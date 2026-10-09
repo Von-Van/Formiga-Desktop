@@ -429,6 +429,8 @@ impl World {
 
     fn placements(&self, desktop: &DesktopSnapshot) -> Vec<Placed> {
         let display_scale = self.save.settings.display_scale;
+        // Somebody up in the village's scenery is drawn, and so spaced, at the picture's size.
+        let scenery = self.village_scenery(desktop);
         self.save
             .creatures
             .iter()
@@ -445,7 +447,15 @@ impl World {
                     position: creature.state.position,
                     monitor: creature.state.surface.monitor_id,
                     window: creature.state.surface.window_key,
-                    width: frame_width(display_scale, monitor_scale),
+                    width: frame_width(
+                        scenery.map_or(display_scale, |scenery| {
+                            scenery.creature_scale(
+                                creature.state.position,
+                                creature.state.surface.kind == SurfaceKind::WindowLedge,
+                            )
+                        }),
+                        monitor_scale,
+                    ),
                     action: creature.state.action,
                     hanging: creature.state.attention.map_or(0.0, |pose| pose.hanging),
                     settled: creature.state.velocity.x.abs() < 1.0,

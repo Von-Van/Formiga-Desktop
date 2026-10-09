@@ -496,9 +496,10 @@ impl<'a> VillageGround<'a> {
     }
 
     /// The village laid out on its scenery: the picture in the corner of the region it fits in
-    /// nearest the home's corner, standing on that region's floor. `None` when no region on the
-    /// display has room for the whole picture, and the houses above it, at this size — the village
-    /// then keeps to its strip.
+    /// nearest the home's corner, standing on that region's floor, drawn as large as keeps it in
+    /// the lower third of the display by its corner. `None` when no region on the display has room
+    /// for the whole picture and the houses above it even at one display pixel to a picture pixel
+    /// — the village then keeps to its strip.
     fn resolve_scenery(
         home: &ColonyHome,
         scenery: VillageScenery,
@@ -507,11 +508,30 @@ impl<'a> VillageGround<'a> {
         display_scale: u8,
     ) -> Option<Self> {
         let monitor = village_monitor(home, monitors)?;
-        let scale = f32::from(display_scale) / monitor.scale_factor.max(1.0);
         let map = scenery.map();
-        let (width, height) = (map.width as f32 * scale, map.height as f32 * scale);
-        let tall = height + map.headroom * scale + SCENERY_FOOT;
+        let factor = monitor.scale_factor.max(1.0);
         let left = home.corner == HomeCorner::BottomLeft;
+        let size = |pixels: u8| {
+            let scale = f32::from(pixels) / factor;
+            (
+                map.width as f32 * scale,
+                map.height as f32 * scale,
+                (map.height as f32 + map.headroom) * scale + SCENERY_FOOT,
+            )
+        };
+        // The picture keeps to the lower third of the display, and the third nearest its corner:
+        // the colony's own size if that does it, else as many display pixels to a picture pixel
+        // as do, and never less than one.
+        let usable = monitor.usable_bounds;
+        let pixels = (1..=display_scale.max(1))
+            .rev()
+            .find(|&pixels| {
+                let (width, _, tall) = size(pixels);
+                width + SCENERY_EDGE <= usable.width / 3.0 && tall <= usable.height / 3.0
+            })
+            .unwrap_or(1);
+        let scale = f32::from(pixels) / factor;
+        let (width, height, tall) = size(pixels);
         let (region, origin) = accessible_regions(policy, monitor)
             .into_iter()
             .filter(|region| region.width >= width + SCENERY_EDGE * 2.0 && region.height >= tall)
@@ -537,6 +557,9 @@ impl<'a> VillageGround<'a> {
             scenery,
             origin,
             scale,
+            display_scale: pixels,
+            colony_scale: display_scale.max(1),
+            floor_y: region.bottom() - 4.0,
         };
         Some(Self {
             monitor,

@@ -246,6 +246,7 @@ impl OverlayRenderer {
             return &self.object_vertices;
         }
         self.object_vertices.clear();
+        let drawn_at = self.village_scale(save);
         let places = formiga_core::home_object_positions(
             &save.home,
             &cottages,
@@ -273,7 +274,7 @@ impl OverlayRenderer {
                     ColonyObjectRenderer::object_cell(object.kind),
                     false,
                     point,
-                    save.settings.display_scale,
+                    drawn_at,
                 ));
         }
         // The spots put down and the patches planted on the ground between the houses, the
@@ -303,7 +304,7 @@ impl OverlayRenderer {
                     ColonyObjectRenderer::ground_cell(item, stage),
                     ColonyObjectRenderer::ground_mirrored(item, point.x, middle),
                     point,
-                    save.settings.display_scale,
+                    drawn_at,
                 ));
         }
         self.object_vertex_cache_key = Some(key);
@@ -391,7 +392,8 @@ impl OverlayRenderer {
             return Vec::new();
         }
         let display_scale = save.settings.display_scale;
-        let unit = f32::from(display_scale);
+        let drawn_at = self.village_scale(save);
+        let unit = f32::from(drawn_at);
         let local = |point: formiga_core::Point| {
             (
                 (point.x - self.monitor.bounds.x) * self.monitor.scale_factor,
@@ -415,7 +417,7 @@ impl OverlayRenderer {
                 ColonyObjectRenderer::prop_cell(PropSprite::of(*prop)),
                 (x, y),
                 false,
-                display_scale,
+                drawn_at,
                 1.0,
             ));
         }
@@ -450,7 +452,7 @@ impl OverlayRenderer {
                     ColonyObjectRenderer::prop_cell(PropSprite::Snore),
                     (x + across * unit, roof + up * unit),
                     false,
-                    display_scale,
+                    drawn_at,
                     1.0,
                 ));
             }
@@ -474,7 +476,7 @@ impl OverlayRenderer {
                 ColonyObjectRenderer::prop_cell(PropSprite::Leaf),
                 (x + 12.0 * unit + sway, fall),
                 false,
-                display_scale,
+                drawn_at,
                 1.0,
             ));
         }
@@ -492,6 +494,7 @@ impl OverlayRenderer {
         scene: VillageScene<'_>,
     ) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
+        let drawn_at = self.village_scale(save);
         let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
@@ -523,7 +526,7 @@ impl OverlayRenderer {
                     occupied,
                 }),
                 false,
-                save.settings.display_scale,
+                drawn_at,
                 house_sway(motion),
             ));
         }
@@ -543,12 +546,32 @@ impl OverlayRenderer {
                     point,
                     village_cell(VillageCell::Tree),
                     tree_is_mirrored(end),
-                    save.settings.display_scale,
+                    drawn_at,
                     (0.0, 0.0),
                 ));
             }
         }
         vertices
+    }
+
+    /// The size a companion is drawn at here: its colony's, or the picture's while it is up in the
+    /// village's scenery, and a size between on the way up or down.
+    pub(super) fn drawn_scale(&self, creature: &Creature, display_scale: u8) -> u8 {
+        self.scenery_now.map_or(display_scale, |scenery| {
+            scenery.creature_scale(
+                creature.state.position,
+                creature.state.surface.kind == formiga_core::SurfaceKind::WindowLedge,
+            )
+        })
+    }
+
+    /// The size the village is drawn at on this display: the colony's own, or its scenery's when it
+    /// is laid out on scenery drawn smaller.
+    pub(super) fn village_scale(&self, save: &SaveFile) -> u8 {
+        self.scenery_placement(save)
+            .map_or(save.settings.display_scale, |placement| {
+                placement.display_scale
+            })
     }
 
     /// Where the picture the village is laid out on stands on this display, if it is laid out on
@@ -672,6 +695,7 @@ impl OverlayRenderer {
             return &self.tree_vertices;
         }
         self.tree_vertices.clear();
+        let drawn_at = self.village_scale(save);
         let mut trees = [None; formiga_core::TreeEnd::BOTH.len()];
         for (slot, end) in formiga_core::TreeEnd::BOTH.into_iter().enumerate() {
             trees[slot] = formiga_core::home_tree_position(
@@ -696,12 +720,7 @@ impl OverlayRenderer {
                 continue;
             };
             self.tree_vertices
-                .extend_from_slice(&self.hung_trinket_vertices(
-                    tree,
-                    variant,
-                    anchor,
-                    save.settings.display_scale,
-                ));
+                .extend_from_slice(&self.hung_trinket_vertices(tree, variant, anchor, drawn_at));
         }
         self.tree_vertex_cache_key = Some(key);
         &self.tree_vertices

@@ -188,11 +188,19 @@ fn when_the_houses_go_everyone_hops_down_to_the_floor() {
     }
 }
 
-/// A display with no room for the whole picture at this size keeps the village on its strip,
-/// exactly where it would have stood without the scenery.
+/// A display with no room for the whole picture even at a display pixel to a picture pixel keeps
+/// the village on its strip, exactly where it would have stood without the scenery.
 #[test]
 fn a_display_too_small_for_the_pond_keeps_the_village_on_its_strip() {
     let mut desktop = desktop();
+    let small = DesktopRect {
+        x: 0.0,
+        y: 0.0,
+        width: 700.0,
+        height: 440.0,
+    };
+    desktop.monitors[0].bounds = small;
+    desktop.monitors[0].usable_bounds = small;
     desktop.monitors[0].scale_factor = 1.0;
     let mut world = World::new_original([85; 32], CREATED, &desktop);
     let cottages = colony_cottage_list(&world.save.creatures);
@@ -207,7 +215,7 @@ fn a_display_too_small_for_the_pond_keeps_the_village_on_its_strip() {
     world.save.home.scenery = Some(VillageScenery::Pond);
     assert!(
         commons(&world, &desktop).is_some_and(|commons| commons.scenery.is_none()),
-        "no scenery at twice the size"
+        "no room for the pond"
     );
     assert_eq!(
         home_dwelling_position(
@@ -220,6 +228,45 @@ fn a_display_too_small_for_the_pond_keeps_the_village_on_its_strip() {
         ),
         strip
     );
+}
+
+/// The pond keeps to the lower third of the display by its corner, at a whole number of display
+/// pixels to a picture pixel — the colony's own size where that fits, smaller where not — and a
+/// companion up in it is drawn at the picture's size, down on the floor at its own, and somewhere
+/// between on the way up.
+#[test]
+fn the_pond_keeps_to_a_third_of_the_display_and_its_companions_to_its_size() {
+    let desktop = desktop();
+    let world = colony_on_the_pond([88; 32], 4, &desktop);
+    let scenery = placement(&world, &desktop);
+    let usable = desktop.monitors[0].usable_bounds;
+    let map = scenery.map();
+    // At the colony's own size, three display pixels to a picture pixel, the pond would be most
+    // of this display; one is the most that keeps it to a third.
+    assert_eq!(world.save.settings.display_scale, 3);
+    assert_eq!(scenery.display_scale, 1);
+    assert!((scenery.scale - 0.5).abs() < f32::EPSILON);
+    assert!(map.width as f32 * scenery.scale + 8.0 <= usable.width / 3.0);
+    assert!((map.height as f32 + map.headroom) * scenery.scale + 2.0 <= usable.height / 3.0);
+    for creature in &world.save.creatures {
+        assert_eq!(
+            scenery.creature_scale(creature.state.position, false),
+            1,
+            "{} is up in the pond",
+            creature.name
+        );
+    }
+    let floor = Point {
+        x: scenery.origin.x + 100.0,
+        y: scenery.floor_y,
+    };
+    assert_eq!(scenery.creature_scale(floor, false), 3);
+    let halfway = Point {
+        x: floor.x,
+        y: scenery.floor_y - 22.0,
+    };
+    assert_eq!(scenery.creature_scale(halfway, false), 2);
+    assert!(scenery.pace() < 0.34, "and walks at its own size's pace");
 }
 
 /// A whole visit of ordinary village life on the pond — strolls, chores, the garden, quiet

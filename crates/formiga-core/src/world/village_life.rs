@@ -1317,7 +1317,18 @@ impl World {
             .iter()
             .find(|monitor| Some(monitor.display_key) == self.save.home.display)
             .map_or(1.0, |monitor| monitor.scale_factor);
-        let face = spacing::frame_width(self.save.settings.display_scale, scale_factor) * 0.5;
+        let scale = home_commons(
+            &self.save.home,
+            colony_cottage_list(&self.save.creatures).as_slice(),
+            monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        )
+        .and_then(|commons| commons.scenery)
+        .map_or(self.save.settings.display_scale, |scenery| {
+            scenery.display_scale
+        });
+        let face = spacing::frame_width(scale, scale_factor) * 0.5;
         self.village_life
             .iter()
             .filter_map(|(creature_id, activity)| {

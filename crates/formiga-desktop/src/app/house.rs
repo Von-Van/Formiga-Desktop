@@ -555,14 +555,7 @@ impl FormigaApp {
                 .find(|overlay| overlay.monitor.id == monitor.id)
                 .and_then(|overlay| overlay.window.outer_position().ok())
                 .unwrap_or(PhysicalPosition::new(0, 0));
-            proxy.sync(
-                house,
-                monitor,
-                origin,
-                cursor,
-                in_front,
-                settings.display_scale,
-            );
+            proxy.sync(house, monitor, origin, cursor, in_front, house.drawn_at);
         }
     }
 
@@ -691,7 +684,7 @@ impl FormigaApp {
             .overlays
             .values()
             .find(|overlay| overlay.monitor.id == house.monitor_id)
-            .map(|overlay| overlay.house_menu_anchor(&house, settings.display_scale));
+            .map(|overlay| overlay.house_menu_anchor(&house, house.drawn_at));
         menu.attach(anchor);
         let cursor = self
             .current_cursor
