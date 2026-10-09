@@ -1304,14 +1304,15 @@ drops it whenever the village is not out on scenery there. The Home page preview
 the same picture.
 
 `formiga-core/src/scenery.rs` holds everything else about it, in the picture's own pixels: a spot
-for each of the six houses in the order they are given out — the colony house on the top terrace
-beside the outward tree, the next two down the levels to the inward tree, then one between the
-outward tree and the colony house, one on the ledge beside the falls and one at the pond's foot —
-the two trees' spots, and a walk map of 36 points joined by straight runs, each walked (paths,
-stairs, bridges) or climbed. `SceneryPlacement` puts the picture on the desktop and turns its
-pixels into points. `VillageGround::resolve` places it in the home's corner, eight points in from
-the side and standing on the floor of the accessible region, when that region has room for the
-whole picture and the 24 pixels of houses and trees above its top edge at the colony's size;
+for each of the six houses in the order they are given out — the colony house at the back of the
+top terrace beside the outward tree, the next two down the levels to the inward tree, then one at
+the back of the top terrace between the outward tree and the colony house, one on the ledge
+beside the falls and one at the pond's foot — the two trees' spots, and a walk map of 38 points
+joined by straight runs, each walked (paths, stairs, bridges) or climbed. `SceneryPlacement` puts
+the picture on the desktop and turns its pixels into points. `VillageGround::resolve` places it in
+the home's corner, eight points in from the side and standing on the floor of the accessible
+region, when that region has room for the
+whole picture and the 46 pixels of houses and trees above its top edge at the colony's size;
 otherwise the village keeps to its strip, exactly where it would have stood. At the default size on
 a Retina display the picture is about 1,124×686 points.
 
@@ -1324,7 +1325,9 @@ through `village_step`: over the walk map by the shortest route, a climb countin
 length so the stairs win where they are nearly as short, a quarter quicker than the walk on a
 cliff, as up a window's side, and in the `ClimbWindow` clip, landing exactly on a destination on the map and at the nearest place on
 it to one off it. The routing is a Dijkstra over at most 40 points on the stack, asked once per
-step. A house off the trail is reached at the nearest place on the map to its door.
+step. The two houses on the top terrace stand back from its front edge, leaving the top of the stairs
+clear, and a short path runs back from the trail to each door; any other house off the trail is
+reached at the nearest place on the map to its door.
 
 A companion coming home from elsewhere walks the floor to below the nearest of the front path's
 four ways up and hops up onto it, then walks the rest of the way over the picture. When the houses

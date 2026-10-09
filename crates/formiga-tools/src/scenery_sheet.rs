@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 
 /// One display just big enough for the pond at one point per shelter pixel, drawn twice over.
-const DISPLAY: (u32, u32) = (800, 500);
+const DISPLAY: (u32, u32) = (800, 520);
 const SCALE: u32 = 2;
 const GAP: u32 = 16;
 

@@ -346,10 +346,12 @@ impl SceneryPlacement {
 
 /// The pond: terraces stepping down from the top left to the bottom right round a pond, with a
 /// waterfall off the top terrace, a bridge over the pond's top and another over its foot, and
-/// stairs between the levels. The colony house stands on the top terrace beside the outward tree,
-/// the next two houses on the levels below it as the trail runs down to the inward tree, one more
-/// on the top terrace between the outward tree and the colony house, and the last two on the
-/// ledge beside the falls and the terrace at the pond's foot below it.
+/// stairs between the levels. The colony house stands at the back of the top terrace beside the
+/// outward tree, the next two houses on the levels below it as the trail runs down to the inward
+/// tree, one more at the back of the top terrace between the outward tree and the colony house,
+/// and the last two on the ledge beside the falls and the terrace at the pond's foot below it. The
+/// two on the top terrace stand back from its front edge, so the top of the stairs is left clear,
+/// and a short path runs back from the trail to each of their doors.
 ///
 /// The trail comes down off the top terrace by the cliff under its right-hand end, which is the
 /// short way; the stairs beside the colony house are the long way round. The left-hand side is
@@ -358,7 +360,7 @@ impl SceneryPlacement {
 pub const POND: SceneryMap = SceneryMap {
     width: 749,
     height: 457,
-    headroom: 24.0,
+    headroom: 46.0,
     nodes: &[
         // The trail, from the top terrace's left end down to the inward tree.
         (24.0, 56.0),   // 0: the top terrace's left end
@@ -401,6 +403,9 @@ pub const POND: SceneryMap = SceneryMap {
         // The rocks at the foot of the cliff under the second terrace, and the upper bridge.
         (322.0, 205.0), // 34: the upper bridge's left end
         (482.0, 240.0), // 35: its right end
+        // Back from the trail across the top terrace to the two doors there.
+        (232.0, 42.0), // 36: the colony house's door
+        (150.0, 36.0), // 37: the door of the house beside it
     ],
     edges: &[
         (0, 1, Footing::Walk),
@@ -441,15 +446,17 @@ pub const POND: SceneryMap = SceneryMap {
         (19, 34, Footing::Climb),
         (34, 35, Footing::Walk),
         (35, 13, Footing::Walk),
+        (5, 36, Footing::Walk),
+        (3, 37, Footing::Walk),
     ],
     trail: &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
     // The path along the front of the pond, lowest of all.
     ways_up: &[23, 24, 25, 26],
     houses: [
-        (230.0, 60.0),  // the colony house, on the top terrace
+        (232.0, 42.0),  // the colony house, at the back of the top terrace
         (395.0, 123.0), // below it, on the second terrace
         (572.0, 213.0), // below that, past the second stairs
-        (150.0, 58.0),  // between the outward tree and the colony house
+        (150.0, 36.0),  // between the outward tree and the colony house, as far back
         (126.0, 166.0), // on the ledge beside the falls
         (112.0, 298.0), // at the foot of the pond, under the ledge
     ],
