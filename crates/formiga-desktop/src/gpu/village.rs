@@ -551,6 +551,57 @@ impl OverlayRenderer {
         vertices
     }
 
+    /// Where the picture the village is laid out on stands on this display, if it is laid out on
+    /// one here.
+    pub(super) fn scenery_placement(
+        &self,
+        save: &SaveFile,
+    ) -> Option<formiga_core::SceneryPlacement> {
+        formiga_core::home_commons(
+            &save.home,
+            formiga_core::colony_cottage_list(&save.creatures).as_slice(),
+            std::slice::from_ref(&self.monitor),
+            &save.settings.habitat,
+            save.settings.display_scale,
+        )
+        .filter(|commons| commons.monitor_id == self.monitor.id)
+        .and_then(|commons| commons.scenery)
+    }
+
+    /// The whole picture as one quad, a picture pixel to a shelter pixel, its top-left corner on
+    /// a whole display pixel so it is drawn as crisply as the houses standing on it.
+    pub(super) fn scenery_vertices(
+        &self,
+        placement: formiga_core::SceneryPlacement,
+        display_scale: u8,
+    ) -> [Vertex; 6] {
+        let unit = f32::from(display_scale);
+        let map = placement.map();
+        let left =
+            self.snap((placement.origin.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let top =
+            self.snap((placement.origin.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let (right, bottom) = (
+            left + map.width as f32 * unit,
+            top + map.height as f32 * unit,
+        );
+        let x = |value: f32| value / self.layout.width as f32 * 2.0 - 1.0;
+        let y = |value: f32| 1.0 - value / self.layout.height as f32 * 2.0;
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        [
+            vertex([x(left), y(top)], [0.0, 0.0]),
+            vertex([x(right), y(top)], [1.0, 0.0]),
+            vertex([x(right), y(bottom)], [1.0, 1.0]),
+            vertex([x(left), y(top)], [0.0, 0.0]),
+            vertex([x(right), y(bottom)], [1.0, 1.0]),
+            vertex([x(left), y(bottom)], [0.0, 1.0]),
+        ]
+    }
+
     /// One quadrant of the village atlas, standing on the ground line at `anchor`. `mirror` swaps
     /// the cell's own left and right edges, which is how the inward tree is drawn from the same
     /// cell as the outward one without a second texture.

@@ -239,6 +239,12 @@ impl FormigaApp {
                 });
                 companion_changed = true;
             }
+            if let Some(scenery) = outcome.village_scenery {
+                world.edit(ColonyEdit::Scenery, |world| {
+                    world.save.home.scenery = scenery;
+                });
+                companion_changed = true;
+            }
             if let Some((kind, along)) = outcome.set_garden {
                 let was_planted = world.save.home.gardens.iter().any(|p| p.kind == kind);
                 let changed = world.edit(ColonyEdit::Garden(kind), |world| {

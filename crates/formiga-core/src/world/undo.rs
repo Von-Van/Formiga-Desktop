@@ -24,6 +24,8 @@ pub enum ColonyEdit {
     MovedCottages,
     /// The village painted in a palette, or given back its own colours.
     PaintedVillage,
+    /// The village laid out on scenery, or back on its strip.
+    Scenery,
     /// A garden patch planted, moved or dug up.
     Garden(GardenKind),
     /// The cottage order, colours and gardens put back as the village grew.
@@ -54,6 +56,7 @@ impl ColonyEdit {
             Self::StartedOver => "starting companions over".to_owned(),
             Self::MovedCottages => "moving the cottages".to_owned(),
             Self::PaintedVillage => "repainting the village".to_owned(),
+            Self::Scenery => "changing the village's scenery".to_owned(),
             Self::Garden(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::PutVillageBack => "putting the village back".to_owned(),
             Self::Hangout(kind) => format!("changing the {}", kind.label().to_lowercase()),
@@ -182,6 +185,7 @@ impl World {
             home.hangouts = point.home.hangouts.clone();
             home.cottage_order = point.home.cottage_order.clone();
             home.palette = point.home.palette;
+            home.scenery = point.home.scenery;
             home.gardens = point.home.gardens.clone();
             home.house_styles = point.home.house_styles.clone();
             home.dressing = point.home.dressing.clone();

@@ -51,6 +51,8 @@ pub struct SettingsOutcome {
     pub house_style: Option<(CreatureId, Option<formiga_core::ShelterStyle>)>,
     /// A named palette for the village, or `Some(None)` for its own colours again.
     pub village_palette: Option<Option<formiga_core::VillagePalette>>,
+    /// Scenery to lay the village out on, or `Some(None)` for its strip again.
+    pub village_scenery: Option<Option<formiga_core::VillageScenery>>,
     /// Plant a garden patch at a fraction along the village ground, move it, or with `None` dig
     /// it up.
     pub set_garden: Option<(formiga_core::GardenKind, Option<f32>)>,

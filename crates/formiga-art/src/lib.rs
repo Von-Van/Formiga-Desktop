@@ -7,6 +7,7 @@ pub mod paint;
 mod palette;
 mod postcard;
 mod renderer;
+mod scenery;
 mod shelter;
 mod souvenirs;
 mod sticker;
@@ -35,6 +36,7 @@ pub use renderer::{
     FaceRenderState, FramePlacement, GazeDirection, MotionSignature, PixelPoint, PlaybackMode,
     PropAnchor, RenderedBodyFrame, SNACK_KINDS, TOY_KINDS, prop_variants,
 };
+pub use scenery::{render_scenery, scenery_png};
 pub use shelter::{
     ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,
     VILLAGE_ATLAS_WIDTH, VILLAGE_DAY_HEIGHT, VILLAGE_HOUSES, VillageCell, VillageLook,

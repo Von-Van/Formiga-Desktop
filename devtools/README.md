@@ -63,6 +63,7 @@ touches your real colony. `formiga scenario list` shows them all.
 | `first-run` | Desktop with no colony: the real first launch |
 | `new-colony`, `young-colony`, `mature-colony` | Desktop on a colony just begun, ten days old, or half a year old |
 | `full-village` | Desktop forty days in, with every decoration, a full set of objects, a guest at the door and a full guest book |
+| `pond-village` | Desktop on the half-year household laid out on the pond scenery, the houses coming out as it opens |
 | `hill-trip`, `home-visit` | Desktop on the mature colony, which sets off for Hill or Home five seconds after opening |
 | `hill` | Formiga Hill on its sample colony |
 | `home`, `home-lived-in` | Formiga Home's sample household, new or a few weeks on |

@@ -42,8 +42,8 @@ desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
-| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
-| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
+| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching; `habitat.rs` for where the village stands and `scenery.rs` for the pictures it can be laid out on |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village, and `scenery.rs` for the pictures it can stand on; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
 | `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through, and `app/visits.rs` for each app's tray item and who is away where; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
 | `formiga-tools` | `main.rs`: the subcommands, and the module each one runs | `pixels.rs` and `fixtures.rs` for what the review sheets share; `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
@@ -1288,6 +1288,56 @@ decorated house, a cottage with its resident's curtain, the same cottage lit aft
 and the resident at the same scale — and `village-palette-sheet.png` shows each style in its own
 colours and then in every named palette.
 
+## The village on scenery (save v29)
+
+`ColonyHome::scenery` lays the village out on a picture instead of its strip: `None` keeps the
+strip, and `VillageScenery::Pond` is terraces round a pond, with a waterfall, a bridge over each
+end of the pond, stairs between the levels and three cliffs. It is chosen on the Home page, under
+the colours, and undone like any other layout change (`ColonyEdit::Scenery`). Save version 29 adds
+the field; an older colony keeps to its strip.
+
+The picture is painted rather than generated: `formiga-art/assets/scenery/pond.png`, 749×457, cut
+out of its backdrop with every pixel fully drawn or clear, at exactly shelter-pixel scale, so a
+house stands on it the size it stands anywhere. `formiga_art::render_scenery` decodes it; the
+overlay uploads it once per display as one 1.4 MB texture, drawn as one quad under the houses, and
+drops it whenever the village is not out on scenery there. The Home page previews the village on
+the same picture.
+
+`formiga-core/src/scenery.rs` holds everything else about it, in the picture's own pixels: a spot
+for each of the six houses in the order they are given out — the colony house on the top terrace
+beside the outward tree, the next two down the levels to the inward tree, then one between the
+outward tree and the colony house, one on the ledge beside the falls and one at the pond's foot —
+the two trees' spots, and a walk map of 36 points joined by straight runs, each walked (paths,
+stairs, bridges) or climbed. `SceneryPlacement` puts the picture on the desktop and turns its
+pixels into points. `VillageGround::resolve` places it in the home's corner, eight points in from
+the side and standing on the floor of the accessible region, when that region has room for the
+whole picture and the 24 pixels of houses and trees above its top edge at the colony's size;
+otherwise the village keeps to its strip, exactly where it would have stood. At the default size on
+a Retina display the picture is about 1,124×686 points.
+
+One run of the walk map is the trail: it crosses the picture from left to right with one height for
+every x, past every house that stands on it, coming down off the top terrace by the cliff under its
+right-hand end. `HomeCommons` carries the placement, and everything the village reckons along its
+ground — resting places, strolls, gardens and spots, chores, a shared moment's line — is reckoned
+along the trail, at the trail's height (`HomeCommons::at`, `ground_at`). Every walk at home goes
+through `village_step`: over the walk map by the shortest route, a climb counting 1.6 times its
+length so the stairs win where they are nearly as short, a quarter quicker than the walk on a
+cliff, as up a window's side, and in the `ClimbWindow` clip, landing exactly on a destination on the map and at the nearest place on
+it to one off it. The routing is a Dijkstra over at most 40 points on the stack, asked once per
+step. A house off the trail is reached at the nearest place on the map to its door.
+
+A companion coming home from elsewhere walks the floor to below the nearest of the front path's
+four ways up and hops up onto it, then walks the rest of the way over the picture. When the houses
+go, the picture goes with them, and whoever is up in it hops down to the floor beneath. A guest
+waits on the floor just past the side of the picture away from the corner, without a tour, and no
+wonder appears while the village is up in its scenery.
+
+`scenery-sheet.png` (`formiga-tools scenery-sheet`) is drawn from a colony of six actually living
+on the pond at one point to the pixel: walked home, a little later with somebody on a cliff, and
+the walk map over the picture — walked runs in red, climbs in magenta, the trail heavier, house
+spots blue and tree spots green. The toolkit's `pond-village` scenario opens the half-year
+household on the pond, the houses coming out as it opens.
+
 ## Visiting creatures
 
 `world/visitors.rs` and `visitor.rs` add one saved `VisitorState`: the guest, if any, a count of how
@@ -2024,7 +2074,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–28: version 28 is read directly, versions 1 through 27 are
+Persistence accepts save versions 1–29: version 29 is read directly, versions 1 through 28 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so

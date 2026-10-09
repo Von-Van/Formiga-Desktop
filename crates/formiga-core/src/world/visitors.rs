@@ -693,6 +693,19 @@ impl World {
         };
         let policy = &self.save.settings.habitat;
         let display_scale = self.save.settings.display_scale;
+        // A village laid out on scenery is up in its picture, and its guest waits on the floor
+        // beside it: there is no strip to walk along.
+        if home_commons(
+            &self.save.home,
+            colony_cottage_list(&self.save.creatures).as_slice(),
+            &desktop.monitors,
+            policy,
+            display_scale,
+        )
+        .is_some_and(|commons| commons.scenery.is_some())
+        {
+            return stops;
+        }
         // One shelter pixel in desktop points, taken from the frame the spacing rules already
         // measure a standing creature by rather than worked out over again here.
         let scale =

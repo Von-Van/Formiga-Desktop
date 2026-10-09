@@ -20,6 +20,8 @@ pub(crate) struct HomeState {
     /// change.
     pub(super) home_texture: Option<HomeTexture>,
     pub(super) object_texture: Option<([u8; 32], TextureHandle)>,
+    /// The picture the village is laid out on, uploaded the first time the preview draws it.
+    pub(super) scenery_texture: Option<(VillageScenery, TextureHandle)>,
     /// Whether putting the village back as it grew has been asked for once, and is waiting to be
     /// confirmed.
     village_reset_asked: bool,
@@ -35,11 +37,13 @@ impl HomeState {
             .iter()
             .map(|home| home.texture.id())
             .chain(self.object_texture.iter().map(|(_, t)| t.id()))
+            .chain(self.scenery_texture.iter().map(|(_, t)| t.id()))
     }
 
     pub(super) fn release_images(&mut self) {
         self.home_texture = None;
         self.object_texture = None;
+        self.scenery_texture = None;
     }
 
     /// The Home page.
@@ -82,6 +86,21 @@ impl HomeState {
                     ui.ctx(),
                     "home-objects",
                     &ColonyObjectRenderer::render_atlas(save.colony_seed),
+                ),
+            ));
+        }
+        if let Some(scenery) = save.home.scenery
+            && self
+                .scenery_texture
+                .as_ref()
+                .is_none_or(|(uploaded, _)| *uploaded != scenery)
+        {
+            self.scenery_texture = Some((
+                scenery,
+                upload(
+                    ui.ctx(),
+                    "home-scenery",
+                    &formiga_art::render_scenery(scenery),
                 ),
             ));
         }
@@ -287,6 +306,29 @@ impl HomeState {
                     });
             });
             ui.small("A palette paints every house and both trees; the colony's own colours come back with \"From the colony\".");
+        });
+        card(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Scenery");
+                let chosen = save.home.scenery;
+                let name = |scenery: Option<VillageScenery>| {
+                    scenery.map_or("Along the ground", VillageScenery::label)
+                };
+                egui::ComboBox::from_id_salt("village-scenery")
+                    .selected_text(name(chosen))
+                    .show_ui(ui, |ui| {
+                        for scenery in std::iter::once(None).chain(VillageScenery::ALL.map(Some)) {
+                            if ui
+                                .selectable_label(chosen == scenery, name(scenery))
+                                .clicked()
+                                && chosen != scenery
+                            {
+                                outcome.village_scenery = Some(scenery);
+                            }
+                        }
+                    });
+            });
+            ui.small("Scenery lays the houses, trees and paths out on a picture in the corner. A display without room for the whole picture keeps the village along the ground.");
         });
         let arranged = !save.home.cottage_order.is_empty()
             || save.home.palette.is_some()

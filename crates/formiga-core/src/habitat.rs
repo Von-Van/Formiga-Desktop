@@ -1,6 +1,7 @@
 use crate::{
     ColonyHome, ColonyObject, Creature, CreatureRole, DesktopRect, GardenKind, HabitatPolicy,
     HabitatPreset, HabitatZoneKind, HangoutKind, HomeCorner, MonitorInfo, OrnamentKind, Point,
+    SceneryPlacement, VillageScenery,
 };
 
 pub const MAX_HABITAT_ZONES: usize = 32;
@@ -448,7 +449,15 @@ struct VillageGround<'a> {
     region: Option<DesktopRect>,
     /// How closely the village is laid out here.
     fit: VillageFit,
+    /// The picture the village is laid out on, when it has one and it fits here. Every house and
+    /// tree then stands on its own spot in the picture rather than along the strip.
+    scenery: Option<SceneryPlacement>,
 }
+
+/// How far in from the side of its region a scenery picture stands, and up from the bottom, in
+/// points.
+const SCENERY_EDGE: f32 = 8.0;
+const SCENERY_FOOT: f32 = 2.0;
 
 impl<'a> VillageGround<'a> {
     /// The village's ground on its display, laid out comfortably wherever every house fits that
@@ -460,6 +469,12 @@ impl<'a> VillageGround<'a> {
         policy: &HabitatPolicy,
         display_scale: u8,
     ) -> Option<Self> {
+        if let Some(scenery) = home.scenery
+            && let Some(ground) =
+                Self::resolve_scenery(home, scenery, monitors, policy, display_scale)
+        {
+            return Some(ground);
+        }
         let comfortable = Self::resolve_fit(
             home,
             monitors,
@@ -480,10 +495,83 @@ impl<'a> VillageGround<'a> {
         }
     }
 
+    /// The village laid out on its scenery: the picture in the corner of the region it fits in
+    /// nearest the home's corner, standing on that region's floor. `None` when no region on the
+    /// display has room for the whole picture, and the houses above it, at this size — the village
+    /// then keeps to its strip.
+    fn resolve_scenery(
+        home: &ColonyHome,
+        scenery: VillageScenery,
+        monitors: &'a [MonitorInfo],
+        policy: &HabitatPolicy,
+        display_scale: u8,
+    ) -> Option<Self> {
+        let monitor = village_monitor(home, monitors)?;
+        let scale = f32::from(display_scale) / monitor.scale_factor.max(1.0);
+        let map = scenery.map();
+        let (width, height) = (map.width as f32 * scale, map.height as f32 * scale);
+        let tall = height + map.headroom * scale + SCENERY_FOOT;
+        let left = home.corner == HomeCorner::BottomLeft;
+        let (region, origin) = accessible_regions(policy, monitor)
+            .into_iter()
+            .filter(|region| region.width >= width + SCENERY_EDGE * 2.0 && region.height >= tall)
+            .map(|region| {
+                let origin = Point {
+                    x: if left {
+                        region.x + SCENERY_EDGE
+                    } else {
+                        region.right() - SCENERY_EDGE - width
+                    },
+                    y: region.bottom() - SCENERY_FOOT - height,
+                };
+                (region, origin)
+            })
+            // Nearest the corner: lowest first, then furthest toward that side.
+            .min_by(|a, b| {
+                let side = |origin: Point| if left { origin.x } else { -origin.x };
+                b.1.y
+                    .total_cmp(&a.1.y)
+                    .then(side(a.1).total_cmp(&side(b.1)))
+            })?;
+        let placement = SceneryPlacement {
+            scenery,
+            origin,
+            scale,
+        };
+        Some(Self {
+            monitor,
+            anchor: placement.house(0)?,
+            scale,
+            direction: 1.0,
+            region: Some(region),
+            fit: VillageFit::Comfortable,
+            scenery: Some(placement),
+        })
+    }
+
+    /// Where a lot stands on this ground, if it shows here at all: on its spot in the scenery, or
+    /// at its place along the strip if the strip has room for it.
+    fn lot_point(&self, lot: VillageLot, cottages: &[DwellingKind]) -> Option<Point> {
+        match (self.scenery, lot) {
+            (Some(scenery), VillageLot::Dwelling(slot)) => (slot
+                <= cottages.len().min(crate::MAX_COLONY_CREATURES - 1))
+            .then(|| scenery.house(slot))
+            .flatten(),
+            (Some(scenery), VillageLot::Tree(end)) => Some(scenery.tree(end)),
+            (None, _) => {
+                let centre = self.walk(cottages).centre_of(lot)?;
+                self.place(lot, centre, cottages)
+            }
+        }
+    }
+
     /// Whether this ground has room for every one of the colony's houses: the colony house's inner
     /// edge and the last cottage's outer edge, worked out with the same arithmetic the walk lays
     /// them out by, without laying out the walk. It is asked every time the ground is resolved.
     fn shows_every_house(&self, cottages: &[DwellingKind]) -> bool {
+        if self.scenery.is_some() {
+            return true;
+        }
         let Some(region) = self.region else {
             return false;
         };
@@ -561,6 +649,7 @@ impl<'a> VillageGround<'a> {
                     && anchor.y <= region.bottom()
             }),
             fit,
+            scenery: None,
         })
     }
 
@@ -613,8 +702,7 @@ fn village_position(
     display_scale: u8,
 ) -> Option<(u64, Point)> {
     let ground = VillageGround::resolve(home, cottages, monitors, policy, display_scale)?;
-    let centre = ground.walk(cottages).centre_of(lot)?;
-    let point = ground.place(lot, centre, cottages)?;
+    let point = ground.lot_point(lot, cottages)?;
     Some((ground.monitor.id, point))
 }
 
@@ -647,9 +735,39 @@ pub struct HomeCommons {
     pub stand_high_x: f32,
     /// Shelter pixels to desktop points here, so callers can measure in the village's own units.
     pub scale: f32,
+    /// The picture the village is laid out on, if it has one. Its trail is the commons, and the
+    /// ground rises and falls along it rather than keeping to `ground_y`.
+    pub scenery: Option<SceneryPlacement>,
 }
 
 impl HomeCommons {
+    /// How high the ground is at `x` along the commons: the village's ground line, or the
+    /// scenery's trail.
+    pub fn ground_at(&self, x: f32) -> f32 {
+        self.scenery
+            .map_or(self.ground_y, |scenery| scenery.ground_at(x))
+    }
+
+    /// The place on the commons at `x`.
+    pub fn at(&self, x: f32) -> Point {
+        Point {
+            x,
+            y: self.ground_at(x),
+        }
+    }
+
+    /// The nearest place to `point` a companion could stand: straight down or up to the ground
+    /// line on a strip, or the nearest place on the scenery's walk map.
+    pub fn settle(&self, point: Point) -> Point {
+        match self.scenery {
+            Some(scenery) => scenery.nearest(point),
+            None => Point {
+                x: point.x,
+                y: self.ground_y,
+            },
+        }
+    }
+
     /// How wide the walk is, in points.
     pub fn width(&self) -> f32 {
         (self.high_x - self.low_x).max(0.0)
@@ -660,10 +778,7 @@ impl HomeCommons {
     /// is inside the village and not in its belongings.
     pub fn along(&self, fraction: f32) -> Point {
         let (low, high) = self.standing_span();
-        Point {
-            x: low + (high - low) * fraction.clamp(0.0, 1.0),
-            y: self.ground_y,
-        }
+        self.at(low + (high - low) * fraction.clamp(0.0, 1.0))
     }
 
     /// The first and last places along the walk a companion may stand, as `along` measures them.
@@ -690,6 +805,9 @@ pub fn home_commons(
     display_scale: u8,
 ) -> Option<HomeCommons> {
     let ground = VillageGround::resolve(home, cottages, monitors, policy, display_scale)?;
+    if let Some(scenery) = ground.scenery {
+        return Some(scenery_commons(&ground, scenery, cottages));
+    }
     let region = ground.region()?;
     let (mut low, mut high) = (f32::MAX, f32::MIN);
     for (lot, centre) in ground.walk(cottages).iter() {
@@ -728,7 +846,38 @@ pub fn home_commons(
         stand_low_x: front_low.clamp(low, high),
         stand_high_x: front_high.clamp(low, high),
         scale: ground.scale,
+        scenery: None,
     })
+}
+
+/// The commons of a village laid out on scenery: the picture's trail from end to end, with the
+/// stretch in front of the houses — from the leftmost house's left wall to the rightmost one's
+/// right — kept for standing about on.
+fn scenery_commons(
+    ground: &VillageGround<'_>,
+    scenery: SceneryPlacement,
+    cottages: &[DwellingKind],
+) -> HomeCommons {
+    let (low, high) = scenery.trail_span();
+    let (mut front_low, mut front_high) = (f32::MAX, f32::MIN);
+    for slot in 0..=cottages.len().min(crate::MAX_COLONY_CREATURES - 1) {
+        let Some(point) = ground.lot_point(VillageLot::Dwelling(slot), cottages) else {
+            continue;
+        };
+        let half = ground.lot_width(VillageLot::Dwelling(slot), cottages) / 2.0 * ground.scale;
+        front_low = front_low.min(point.x - half);
+        front_high = front_high.max(point.x + half);
+    }
+    HomeCommons {
+        monitor_id: ground.monitor.id,
+        ground_y: ground.anchor.y,
+        low_x: low,
+        high_x: high,
+        stand_low_x: front_low.clamp(low, high),
+        stand_high_x: front_high.clamp(low, high),
+        scale: ground.scale,
+        scenery: Some(scenery),
+    }
 }
 
 /// Where the `slot`-th of `of` companions settles when the colony is home and nobody is walking
@@ -774,13 +923,7 @@ pub fn home_resting_position(
     };
     let spread = step * (of as f32 - 1.0);
     let first = low + half + (usable - spread).max(0.0) / 2.0;
-    Some((
-        commons.monitor_id,
-        Point {
-            x: first + slot as f32 * step,
-            y: commons.ground_y,
-        },
-    ))
+    Some((commons.monitor_id, commons.at(first + slot as f32 * step)))
 }
 
 /// Where a visitor stands: on the village ground line just past everything the colony actually
@@ -799,6 +942,9 @@ pub fn home_guest_position(
     let half = GUEST_HALF_WIDTH * ground.scale;
     if region.width < half * 2.0 {
         return None;
+    }
+    if ground.scenery.is_some() {
+        return scenery_guest_position(&ground);
     }
     let mut outer = ground.anchor.x;
     for (lot, centre) in ground.walk(cottages).iter() {
@@ -839,6 +985,30 @@ pub fn home_guest_position(
         .flatten()
         .all(|resident| (point.x - resident.x).abs() >= clear - 0.01)
         .then_some((ground.monitor.id, point))
+}
+
+/// Where a visitor stands in a village laid out on scenery: down on the floor just past the side of
+/// the picture away from the corner, where it can be seen arriving and is in nobody's way. A
+/// region with no floor to spare there has no guest spot.
+fn scenery_guest_position(ground: &VillageGround<'_>) -> Option<(u64, Point)> {
+    let scenery = ground.scenery?;
+    let region = ground.region()?;
+    let half = GUEST_HALF_WIDTH * ground.scale;
+    let width = scenery.map().width as f32 * scenery.scale;
+    let x = if ground.monitor.usable_bounds.x + ground.monitor.usable_bounds.width / 2.0
+        > scenery.origin.x + width / 2.0
+    {
+        scenery.origin.x + width + VILLAGE_GAP * ground.scale + half
+    } else {
+        scenery.origin.x - VILLAGE_GAP * ground.scale - half
+    };
+    (x - half >= region.x && x + half <= region.right()).then_some((
+        ground.monitor.id,
+        Point {
+            x,
+            y: region.bottom() - 4.0,
+        },
+    ))
 }
 
 /// The companion houses of a colony, on the stack: at most three, in colony order.
@@ -1078,6 +1248,23 @@ pub fn home_object_positions(
     else {
         return places;
     };
+    if ground.scenery.is_some() {
+        // On scenery each yard is round its own tree's spot in the picture.
+        for (slot, place) in places.iter_mut().enumerate() {
+            let (end, sideways, forward) = belonging_offset(slot, home.shelter.detail_seed);
+            let Some(tree) = ground.lot_point(VillageLot::Tree(end), cottages) else {
+                continue;
+            };
+            *place = Some((
+                ground.monitor.id,
+                Point {
+                    x: tree.x + sideways * ground.scale,
+                    y: tree.y - forward * ground.scale,
+                },
+            ));
+        }
+        return places;
+    }
     let walk = ground.walk(cottages);
     // A yard is the ground its own tree stands on, so an end the region cannot take has nowhere
     // to put anything down.
@@ -1204,16 +1391,7 @@ pub fn home_ground_positions(
     spots
         .into_iter()
         .filter(|(_, x)| *x >= low - 0.01)
-        .map(|(item, x)| {
-            (
-                item,
-                commons.monitor_id,
-                Point {
-                    x,
-                    y: commons.ground_y,
-                },
-            )
-        })
+        .map(|(item, x)| (item, commons.monitor_id, commons.at(x)))
         .collect()
 }
 

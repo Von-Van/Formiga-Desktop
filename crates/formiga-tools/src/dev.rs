@@ -48,7 +48,7 @@ struct Fixture {
     grow: fn(OffsetDateTime, &DesktopSnapshot) -> World,
 }
 
-const FIXTURES: [Fixture; 4] = [
+const FIXTURES: [Fixture; 5] = [
     Fixture {
         name: "new-colony",
         about: "The founder alone, just met: welcome finished, nothing else yet.",
@@ -69,6 +69,12 @@ const FIXTURES: [Fixture; 4] = [
         about: "Forty days in with every decoration, as many objects as a colony keeps, a guest \
                 at the door and a full guest book: the settings review's colony, kept valid.",
         grow: full_village,
+    },
+    Fixture {
+        name: "pond-village",
+        about: "The half-year household laid out on the pond scenery, the houses coming out as \
+                soon as it opens.",
+        grow: pond_village,
     },
 ];
 
@@ -171,6 +177,16 @@ fn young_colony(now: OffsetDateTime, desktop: &DesktopSnapshot) -> World {
 
 fn mature_colony(now: OffsetDateTime, desktop: &DesktopSnapshot) -> World {
     grown("mature-colony", 181, now, desktop)
+}
+
+/// The mature colony's household on the pond. The houses went away an hour ago, so they come
+/// out again as soon as the app opens and everyone walks home onto the picture.
+fn pond_village(now: OffsetDateTime, desktop: &DesktopSnapshot) -> World {
+    let mut world = grown("mature-colony", 181, now, desktop);
+    world.save.home.scenery = Some(VillageScenery::Pond);
+    world.save.home.active_since_utc = None;
+    world.save.home.last_disappeared_utc = Some(now - Duration::hours(1));
+    world
 }
 
 /// The settings review's colony (`formiga-desktop/src/settings_review.rs`, `fixture`), which is

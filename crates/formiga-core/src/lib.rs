@@ -13,6 +13,7 @@ mod model;
 mod observations;
 mod persistence;
 mod rng;
+mod scenery;
 mod seed_share;
 mod souvenirs;
 mod stature;
@@ -62,6 +63,7 @@ pub use persistence::{
     violations,
 };
 pub use rng::{SeedStream, new_colony_seed};
+pub use scenery::{CLIMB_PACE, Footing, SceneryMap, SceneryPlacement};
 pub use seed_share::{
     SeedCodeError, SharedCreatureSeed, decode_creature_seed, derive_imported_colony_seed,
     encode_creature_seed,
@@ -91,4 +93,4 @@ pub use world::{
     wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 28;
+pub const SAVE_VERSION: u32 = 29;

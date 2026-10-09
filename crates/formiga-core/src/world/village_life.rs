@@ -163,16 +163,30 @@ pub(super) struct Aside {
     pub(super) look: Point,
 }
 
-/// A step towards `goal` at `speed`, facing the way it goes. Returns whether it has arrived.
-fn walk(creature: &mut Creature, goal: Point, speed: f32, dt: f32) -> bool {
+/// A step towards `goal` at `speed`, facing the way it goes and showing the walk — or the climb,
+/// on a cliff in the scenery, whose walk map it keeps to. Returns whether it has arrived.
+fn walk(
+    creature: &mut Creature,
+    goal: Point,
+    speed: f32,
+    dt: f32,
+    context: &mut VillageContext<'_>,
+) -> bool {
+    let commons = context.commons;
+    let goal = super::home::village_goal(commons, goal);
     let start = creature.state.position;
     let distance = start.distance(goal);
-    if distance <= 0.5 {
+    let on_scenery = commons.is_some_and(|commons| commons.scenery.is_some());
+    if distance <= 0.5 && !on_scenery || distance <= 0.0 {
+        show(creature, ActionKind::Traverse, context.events);
         creature.state.position = goal;
         return true;
     }
     creature.state.facing_right = goal.x >= start.x;
-    creature.state.position = lerp_point(start, goal, (speed * dt / distance).clamp(0.0, 1.0));
+    let footing;
+    (creature.state.position, footing) =
+        super::home::village_step(commons, start, goal, speed * dt);
+    show(creature, super::home::walking_clip(footing), context.events);
     creature.state.position == goal
 }
 
@@ -229,6 +243,8 @@ pub(super) struct VillageContext<'a> {
     pub(super) frame: f32,
     /// Whether the colony has a find left today.
     pub(super) find_allowed: bool,
+    /// The village's ground, which a walk keeps to: over the scenery's walk map when it has one.
+    pub(super) commons: Option<HomeCommons>,
 }
 
 impl VillageContext<'_> {
@@ -322,8 +338,7 @@ pub(super) fn advance(
         } => match (activity.step, task) {
             // To the patch.
             (0, _) => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, stand, speed, dt)
+                if walk(creature, stand, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.facing_right = face_right;
@@ -422,8 +437,7 @@ pub(super) fn advance(
                     x: friend_at.x + side * context.frame * 0.85,
                     y: friend_at.y,
                 };
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, goal, speed, dt)
+                if walk(creature, goal, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.facing_right = friend_at.x > creature.state.position.x;
@@ -454,8 +468,7 @@ pub(super) fn advance(
             ..
         } => match activity.step {
             0 => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, stand, speed, dt)
+                if walk(creature, stand, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.facing_right = face_right;
@@ -480,8 +493,7 @@ pub(super) fn advance(
             door, stay, nap, ..
         } => match activity.step {
             0 => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, door, speed, dt)
+                if walk(creature, door, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.position = door;
@@ -514,8 +526,7 @@ pub(super) fn advance(
             beside, top, stay, ..
         } => match activity.step {
             0 => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, beside, speed, dt)
+                if walk(creature, beside, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     show(creature, ActionKind::Landing, context.events);
@@ -616,13 +627,12 @@ pub(super) fn advance(
             }
             // After it.
             2 => {
-                show(creature, ActionKind::Traverse, context.events);
                 let side = if to.x >= from.x { -1.0 } else { 1.0 };
                 let goal = Point {
                     x: to.x + side * context.frame * 0.3,
                     y: from.y,
                 };
-                if walk(creature, goal, speed, dt)
+                if walk(creature, goal, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.facing_right = to.x > creature.state.position.x;
@@ -643,8 +653,7 @@ pub(super) fn advance(
             // Back to where it was: wherever the snack ran off to, somebody else is likely
             // standing, and the rest of it is eaten at its own spot.
             4 => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, back, speed, dt)
+                if walk(creature, back, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     show(creature, ActionKind::Eat, context.events);
@@ -662,8 +671,7 @@ pub(super) fn advance(
         } => match activity.step {
             // Over to the cushion, or nearly.
             0 => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, beside, speed, dt)
+                if walk(creature, beside, speed, dt, context)
                     || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.facing_right = cushion.x > creature.state.position.x;
@@ -690,8 +698,8 @@ pub(super) fn advance(
             }
             // A shuffle across.
             2 => {
-                show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, cushion, speed * 0.6, dt) || activity.step_elapsed > 6.0 {
+                if walk(creature, cushion, speed * 0.6, dt, context) || activity.step_elapsed > 6.0
+                {
                     show(creature, ActionKind::Sleep, context.events);
                     activity.next();
                 }
@@ -892,11 +900,9 @@ fn choose_garden(
     } else {
         0.45
     };
-    let stand = Point {
-        x: (patch.at.x + if from_right { reach } else { -reach } * options.frame)
-            .clamp(options.commons.low_x, options.commons.high_x),
-        y: options.commons.ground_y,
-    };
+    let stand = options.commons.at((patch.at.x
+        + if from_right { reach } else { -reach } * options.frame)
+        .clamp(options.commons.low_x, options.commons.high_x));
     Some(Plan::Garden {
         patch: patch.kind,
         stand,
@@ -974,8 +980,12 @@ pub(super) fn choose(
         return Choice::Wait;
     };
     let at = creature.state.position;
-    let ground = options.commons.ground_y;
-    let (low, high) = options.commons.standing_span();
+    let commons = options.commons;
+    // Somewhere along the commons, and somewhere beside a house: the same thing on a strip, and
+    // on scenery the nearest place to stand to a house that is off the trail.
+    let ground = |x: f32| commons.at(x);
+    let by_house = |x: f32, house: Point| commons.settle(Point { x, y: house.y });
+    let (low, high) = commons.standing_span();
     // The side of `x` this resident is coming from.
     let side_of = |x: f32| if at.x > x { 1.0 } else { -1.0 };
     // Somebody already standing or busy right there.
@@ -1004,10 +1014,7 @@ pub(super) fn choose(
             };
             Plan::Chore {
                 slot: house.slot,
-                stand: Point {
-                    x: stand_at(side),
-                    y: ground,
-                },
+                stand: by_house(stand_at(side), house.at),
                 face_right: side < 0.0,
                 chore: chore_for(house.style),
             }
@@ -1016,10 +1023,7 @@ pub(super) fn choose(
             let nap = sleepy || rng.random_ratio(1, 3);
             Plan::Indoors {
                 slot: house.slot,
-                door: Point {
-                    x: house.at.x,
-                    y: ground,
-                },
+                door: by_house(house.at.x, house.at),
                 stay: rng.random_range(if nap {
                     VILLAGE_LIFE.indoors_nap_secs
                 } else {
@@ -1030,10 +1034,10 @@ pub(super) fn choose(
         }
         (4, Some(house)) => Plan::Roof {
             slot: house.slot,
-            beside: Point {
-                x: house.at.x + side_of(house.at.x) * house.half * 0.8,
-                y: ground,
-            },
+            beside: by_house(
+                house.at.x + side_of(house.at.x) * house.half * 0.8,
+                house.at,
+            ),
             top: house.roof,
             stay: rng.random_range(VILLAGE_LIFE.roof_secs),
         },
@@ -1044,10 +1048,7 @@ pub(super) fn choose(
             } else {
                 -1.0
             };
-            let from = Point {
-                x: at.x + ahead * options.frame * 0.2,
-                y: ground,
-            };
+            let from = ground(at.x + ahead * options.frame * 0.2);
             // No room ahead, or somebody standing or busy where it would stop: it rolls the other
             // way instead.
             let roll = rng.random_range(0.9..1.6) * options.frame;
@@ -1063,11 +1064,8 @@ pub(super) fn choose(
             Plan::DroppedSnack {
                 before: rng.random_range(2.0..4.0),
                 from,
-                to: Point {
-                    x: to.clamp(low, high),
-                    y: ground,
-                },
-                back: Point { x: at.x, y: ground },
+                to: ground(to.clamp(low, high)),
+                back: ground(at.x),
                 eat: rng.random_range(4.0..8.0),
             }
         }
@@ -1081,14 +1079,8 @@ pub(super) fn choose(
                 return Choice::Wait;
             };
             Plan::MissedCushion {
-                beside: Point {
-                    x: cushion.x + side_of(cushion.x) * options.frame * 0.3,
-                    y: ground,
-                },
-                cushion: Point {
-                    x: cushion.x,
-                    y: ground,
-                },
+                beside: ground(cushion.x + side_of(cushion.x) * options.frame * 0.3),
+                cushion: ground(cushion.x),
                 nap: rng.random_range(40.0..100.0),
             }
         }

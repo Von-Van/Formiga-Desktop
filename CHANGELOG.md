@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Scenery for the village. Chosen on the Home page under the colours, the village is laid out on a
+  painted pond instead of along the ground: terraces stepping down round a pond, with a waterfall,
+  two bridges, stairs and cliffs. Each house and both trees stand on their own spot in it, in the
+  order houses are given out, and the trees carry their finds as before. Companions walk its paths,
+  stairs and bridges and climb its cliffs, hop up onto it from the floor when they come home, and
+  hop down again when the houses go. A display without room for the whole picture at the chosen
+  size keeps the village along the ground. Save version 29 keeps the choice by name; an older
+  colony opens unchanged on its strip.
+
 ## [0.67.5] - 2026-10-08
 
 Released together with Formiga Hill 0.67.5 and Formiga Home 0.67.5. Travel version 4 is unchanged.

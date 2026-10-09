@@ -58,6 +58,28 @@ pub struct ColonyHome {
     /// The keepsakes chosen to hang in the two trees. Absent while the trees fill themselves.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree_keepsakes: Option<TreeKeepsakes>,
+    /// A picture the village is laid out on, in place of the strip along the bottom of the
+    /// display. Absent while the village keeps to the strip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scenery: Option<VillageScenery>,
+}
+
+/// A place the village can be laid out on: a picture with its own paths, stairs and cliffs, and
+/// a spot on it for every house and both trees. Choosing none keeps the village to its strip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum VillageScenery {
+    /// Terraces round a pond, with a waterfall, two bridges and stairs between the levels.
+    Pond,
+}
+
+impl VillageScenery {
+    pub const ALL: [Self; 1] = [Self::Pond];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Pond => "The pond",
+        }
+    }
 }
 
 /// A palette the village can be painted in: a hand-made pairing of a main colour for roofs,
@@ -145,6 +167,7 @@ impl ColonyHome {
             dressing: Vec::new(),
             ornaments: Vec::new(),
             tree_keepsakes: None,
+            scenery: None,
         }
     }
 

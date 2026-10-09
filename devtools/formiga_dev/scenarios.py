@@ -95,6 +95,8 @@ for _fixture, _about in [
     ("mature-colony", "Half a year in: a full household."),
     ("full-village", "Forty days in with every decoration, a full set of objects, a guest at the "
                      "door and a full guest book."),
+    ("pond-village", "The half-year household laid out on the pond scenery, the houses coming out "
+                     "as soon as it opens."),
 ]:
     _add(Scenario(_fixture, "desktop", _about, fixture=_fixture,
                   capture=Capture(render=["dev-capture"])))

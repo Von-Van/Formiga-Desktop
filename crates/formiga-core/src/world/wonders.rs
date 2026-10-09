@@ -1164,6 +1164,10 @@ impl World {
                 policy,
                 display_scale,
             )?;
+            // A village up in its scenery has no level run of ground for a wonder to stand on.
+            if commons.scenery.is_some() {
+                return None;
+            }
             runs.push((
                 Ground::Village {
                     monitor: commons.monitor_id,

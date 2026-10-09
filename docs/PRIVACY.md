@@ -174,7 +174,9 @@ The hangout spots put down on the village ground are stored with the home as a k
 fraction along the ground — never a screen position — and only once one is put down. The garden
 patches are stored the same way, the chosen palette by its name, a cottage order as the ids of
 companions already in the colony, and a house built as another kind as the id of the companion who
-keeps it and the kind's name, each only once it is chosen. A sleeper being towed out of the way, and
+keeps it and the kind's name, each only once it is chosen. Scenery the village is laid out on is
+stored by its name, only once it is chosen; where on the display the picture stands, and where
+anybody walks or climbs on it, are worked out afresh and never written. A sleeper being towed out of the way, and
 who is towing it, are runtime only and never written.
 A moment the village is asked to share while the houses are out is runtime only: who was asked,
 who answered what, and where anyone stood are never written, and one that runs its course leaves

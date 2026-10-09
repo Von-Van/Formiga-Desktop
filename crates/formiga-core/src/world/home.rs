@@ -160,10 +160,7 @@ fn roam_target(
                         *id != creature.id && spacing::closer_than(other.target.x - x, clear)
                     })
                 })
-                .map_or(settled, |x| Point {
-                    x,
-                    y: commons.ground_y,
-                })
+                .map_or(settled, |x| commons.at(x))
         });
         roam.insert(
             creature.id,
@@ -367,10 +364,7 @@ impl Stroll<'_> {
                     },
                 )
             });
-        Point {
-            x,
-            y: commons.ground_y,
-        }
+        commons.at(x)
     }
 }
 
@@ -437,6 +431,44 @@ struct HangoutVisit {
     seat: Option<HangoutKind>,
 }
 
+/// One stretch of a walk across the village, `distance` points long: over the scenery's walk map
+/// when the village is laid out on scenery — up and down its stairs, and hand over hand on its
+/// cliffs — or straight there along a strip.
+pub(super) fn village_step(
+    commons: Option<HomeCommons>,
+    from: Point,
+    to: Point,
+    distance: f32,
+) -> (Point, Footing) {
+    if let Some(scenery) = commons.and_then(|commons| commons.scenery) {
+        return scenery.step(from, to, distance);
+    }
+    let length = from.distance(to);
+    if length <= 0.0 {
+        return (from, Footing::Walk);
+    }
+    (
+        lerp_point(from, to, (distance / length).clamp(0.0, 1.0)),
+        Footing::Walk,
+    )
+}
+
+/// Where a walk to `point` across the village ends: the place itself along a strip, and the
+/// nearest place anybody can stand to it on scenery.
+pub(super) fn village_goal(commons: Option<HomeCommons>, point: Point) -> Point {
+    commons
+        .and_then(|commons| commons.scenery)
+        .map_or(point, |scenery| scenery.nearest(point))
+}
+
+/// The clip for walking over ground crossed this way.
+pub(super) const fn walking_clip(footing: Footing) -> ActionKind {
+    match footing {
+        Footing::Walk => ActionKind::Traverse,
+        Footing::Climb => ActionKind::ClimbWindow,
+    }
+}
+
 /// The longest a walk across the village to a hangout spot may take before the companion gives
 /// up on it and does its thing wherever it has got to.
 const HANGOUT_WALK_SECS: f32 = 30.0;
@@ -447,6 +479,7 @@ fn advance_home_moment(
     moment: &mut HomeMoment,
     creature: &mut Creature,
     rest: Point,
+    commons: Option<HomeCommons>,
     dt: f32,
 ) -> Option<(ActionKind, f32)> {
     // The ground moved under the village: another display, a narrowed habitat, a new scale.
@@ -462,18 +495,21 @@ fn advance_home_moment(
             }
         }
         MomentPhase::Away | MomentPhase::Back => {
-            let goal = if moment.phase == MomentPhase::Away {
-                moment.errand.unwrap_or(rest)
-            } else {
-                rest
-            };
+            let goal = village_goal(
+                commons,
+                if moment.phase == MomentPhase::Away {
+                    moment.errand.unwrap_or(rest)
+                } else {
+                    rest
+                },
+            );
             let start = creature.state.position;
             let distance = start.distance(goal);
+            let mut footing = Footing::Walk;
             if distance > 0.0 {
                 creature.state.facing_right = goal.x >= start.x;
                 let speed = 22.0 + creature.personality.activity * 18.0;
-                creature.state.position =
-                    lerp_point(start, goal, (speed * dt / distance).clamp(0.0, 1.0));
+                (creature.state.position, footing) = village_step(commons, start, goal, speed * dt);
             }
             if let Some(visit) = moment.visit
                 && moment.phase == MomentPhase::Away
@@ -499,6 +535,8 @@ fn advance_home_moment(
                 } else {
                     return None;
                 }
+            } else if footing == Footing::Climb {
+                return Some((ActionKind::ClimbWindow, moment.remaining));
             }
         }
         MomentPhase::Poke => {
@@ -776,6 +814,7 @@ fn choose_home_moment(
 impl World {
     pub(super) fn update_home_cycle(&mut self, desktop: &DesktopSnapshot) -> bool {
         let timeline_now = self.save.maximum_seen_utc;
+        let was_active = self.save.home.is_active();
         let ritual_shelter = self
             .colony_plan
             .as_ref()
@@ -790,6 +829,9 @@ impl World {
                 .is_some_and(|started| timeline_now - started >= HOME_DURATION)
         {
             self.dismiss_home(timeline_now, false);
+        }
+        if was_active && !self.save.home.is_active() {
+            self.step_down_from_scenery(desktop);
         }
 
         let due = !self.save.home.is_active()
@@ -814,6 +856,53 @@ impl World {
             self.end_village_moment(false);
         }
         self.save.home.is_active()
+    }
+
+    /// The scenery goes with the houses, so whoever was up in it when they went hops down to the
+    /// floor below. On a strip everybody is on the floor already and nobody moves.
+    fn step_down_from_scenery(&mut self, desktop: &DesktopSnapshot) {
+        if self.save.home.scenery.is_none() {
+            return;
+        }
+        for creature in &self.save.creatures {
+            if self.window_journeys.contains_key(&creature.id)
+                || creature.state.surface.kind == SurfaceKind::WindowLedge
+                || self
+                    .interaction
+                    .as_ref()
+                    .is_some_and(|interaction| interaction.creature_id == creature.id)
+            {
+                continue;
+            }
+            let Some((monitor_id, floor)) = nearest_habitat_point(
+                &self.save.settings.habitat,
+                &desktop.monitors,
+                creature.state.position,
+                self.save.settings.display_scale,
+            ) else {
+                continue;
+            };
+            let drop = floor.y - creature.state.position.y;
+            if drop <= 0.5 {
+                continue;
+            }
+            self.window_journeys.insert(
+                creature.id,
+                WindowJourney::Hop(HopJourney {
+                    start: creature.state.position,
+                    target: floor,
+                    surface: SurfaceAttachment {
+                        kind: SurfaceKind::ScreenFloor,
+                        monitor_id,
+                        window_key: None,
+                        relative_x: 0.5,
+                    },
+                    elapsed: 0.0,
+                    duration: (drop / 320.0).clamp(0.35, 1.6),
+                    lift: 10.0,
+                }),
+            );
+        }
     }
 
     /// The home appears and everyone sets off for it. Shared by the ordinary cycle and by a
@@ -1174,6 +1263,7 @@ impl World {
                     onlookers: &onlookers,
                     frame,
                     find_allowed,
+                    commons,
                 };
                 let was_on_roof = creature
                     .state
@@ -1238,6 +1328,8 @@ impl World {
                     None => (anchored, 1.0),
                 }
             };
+            // On scenery every place to go is somewhere on its walk map.
+            let target = village_goal(commons, target);
 
             // A quiet moment in progress holds the creature where it is, or walks the two or
             // three steps of an errand. Anything that moves the village ends it at once.
@@ -1248,7 +1340,7 @@ impl World {
             let held = self
                 .home_moments
                 .get_mut(&creature.id)
-                .and_then(|moment| advance_home_moment(moment, creature, target, dt));
+                .and_then(|moment| advance_home_moment(moment, creature, target, commons, dt));
             // Sat on a bench or a swing, in a hammock, or down by the books: placed and posed
             // there for as long as it lasts, and back on its feet on the ground once it is over.
             let seated = held.and_then(|(action, remaining)| {
@@ -1319,6 +1411,50 @@ impl World {
             }
             self.home_moments.remove(&creature.id);
 
+            // On scenery, a companion still off the picture — down on the floor, come from
+            // somewhere else on the desktop — walks along the floor to below the nearest way up
+            // and hops up onto it there; it never walks through the picture's rocks.
+            let scenery = commons.and_then(|commons| commons.scenery);
+            let mut target = target;
+            if let Some(scenery) = scenery
+                && !self.window_journeys.contains_key(&creature.id)
+                && creature.state.surface.kind != SurfaceKind::WindowLedge
+                && !scenery.on_map(creature.state.position)
+                && let Some((monitor_id, floor)) = nearest_habitat_point(
+                    &self.save.settings.habitat,
+                    &desktop.monitors,
+                    creature.state.position,
+                    self.save.settings.display_scale,
+                )
+                && (floor.y - creature.state.position.y).abs() <= 0.5
+            {
+                let way_up = scenery.way_up(creature.state.position.x);
+                if (way_up.x - creature.state.position.x).abs() <= 1.0 {
+                    let rise = (creature.state.position.y - way_up.y).max(0.0);
+                    self.window_journeys.insert(
+                        creature.id,
+                        WindowJourney::Hop(HopJourney {
+                            start: creature.state.position,
+                            target: way_up,
+                            surface: SurfaceAttachment {
+                                kind: SurfaceKind::ScreenFloor,
+                                monitor_id,
+                                window_key: None,
+                                relative_x: 0.5,
+                            },
+                            elapsed: 0.0,
+                            duration: (rise / 160.0).clamp(0.45, 1.2),
+                            lift: rise * 0.25 + 12.0,
+                        }),
+                    );
+                } else {
+                    target = Point {
+                        x: way_up.x,
+                        y: creature.state.position.y,
+                    };
+                }
+            }
+
             // Come down from a ledge before walking home. Reuse the existing journey so a house
             // dismissal in mid-descent still finishes the landing through the ordinary tick path.
             if !self.window_journeys.contains_key(&creature.id)
@@ -1331,6 +1467,7 @@ impl World {
                     self.save.settings.display_scale,
                 )
                 && (floor.y - creature.state.position.y).abs() > 0.5
+                && scenery.is_none_or(|scenery| !scenery.on_map(creature.state.position))
             {
                 self.window_journeys.insert(
                     creature.id,
@@ -1407,10 +1544,14 @@ impl World {
                     wanted
                 };
                 let pace = speed / stride;
+                let mut footing = Footing::Walk;
                 if distance > 0.0 {
                     creature.state.facing_right = target.x >= previous.x;
-                    creature.state.position =
-                        lerp_point(previous, target, (speed * dt / distance).clamp(0.0, 1.0));
+                    // Off the picture, a companion walks the floor to the way up.
+                    let walk_on =
+                        commons.filter(|_| scenery.is_none_or(|scenery| scenery.on_map(previous)));
+                    (creature.state.position, footing) =
+                        village_step(walk_on, previous, target, speed * dt);
                     // A stroll's steps are slower as well as shorter, so its feet keep pace with
                     // the ground: the walk cycle runs at the stroll's own pace.
                     if pace < 1.0 && creature.state.action == ActionKind::Traverse {
@@ -1444,7 +1585,7 @@ impl World {
                         }
                     }
                 } else {
-                    ActionKind::Traverse
+                    walking_clip(footing)
                 }
             };
             // A disconnected/excluded part of the habitat is not a shortcut home. Wait at its

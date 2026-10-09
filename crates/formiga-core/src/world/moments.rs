@@ -315,10 +315,7 @@ impl World {
                 spot: if reduce_motion {
                     *at
                 } else {
-                    Point {
-                        x: centre_x - span / 2.0 + index as f32 * clear,
-                        y: commons.ground_y,
-                    }
+                    commons.at(centre_x - span / 2.0 + index as f32 * clear)
                 },
                 action: match moment {
                     VillageMoment::Picnic if index % 2 == 0 => ActionKind::Eat,
@@ -328,17 +325,11 @@ impl World {
                 },
             })
             .collect();
-        let centre = if reduce_motion {
-            Point {
-                x: places.iter().map(|place| place.spot.x).sum::<f32>() / places.len() as f32,
-                y: commons.ground_y,
-            }
+        let centre = commons.at(if reduce_motion {
+            places.iter().map(|place| place.spot.x).sum::<f32>() / places.len() as f32
         } else {
-            Point {
-                x: centre_x,
-                y: commons.ground_y,
-            }
-        };
+            centre_x
+        });
 
         // Whatever small thing each was doing at its door gives way, and each will pick a fresh
         // place to wander to once the moment is over.

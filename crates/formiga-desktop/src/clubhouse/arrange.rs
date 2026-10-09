@@ -44,6 +44,7 @@ pub(crate) struct ArrangeState {
 /// in their branches, then the belongings standing on the ground in front of the trunks.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum VillageLayer {
+    Scenery,
     Dwelling,
     Tree,
     Trinket,
@@ -188,6 +189,31 @@ impl HomeState {
         let mut lots: Vec<Lot> = Vec::new();
         let mut home_monitor = None;
         let hung = formiga_art::hung_trinkets(&save.home, &save.companion.scrapbook);
+        // A village laid out on scenery is previewed on its picture, everything on it drawn at
+        // the picture's own scale so the houses stand on it the size they do on the desktop.
+        let scenery = formiga_core::home_commons(
+            &save.home,
+            &cottages,
+            monitors,
+            &save.settings.habitat,
+            scale,
+        )
+        .and_then(|commons| commons.scenery)
+        .filter(|_| self.scenery_texture.is_some());
+        let unit = scenery.map_or(1.0, |scenery| scenery.scale);
+        if let Some(scenery) = scenery {
+            let map = scenery.map();
+            lots.push(Lot {
+                rect: egui::Rect::from_min_size(
+                    egui::pos2(scenery.origin.x, scenery.origin.y),
+                    egui::vec2(map.width as f32, map.height as f32) * unit,
+                ),
+                uv: egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                layer: VillageLayer::Scenery,
+                picks: None,
+                slot: None,
+            });
+        }
         for end in formiga_core::TreeEnd::BOTH {
             let Some((monitor_id, point)) = formiga_core::home_tree_position(
                 &save.home,
@@ -200,7 +226,7 @@ impl HomeState {
                 continue;
             };
             home_monitor.get_or_insert(monitor_id);
-            let size = SHELTER_SIZE as f32;
+            let size = SHELTER_SIZE as f32 * unit;
             let corner = egui::pos2(point.x - size / 2.0, point.y - size);
             // The inward tree is the same atlas cell sampled the other way round, so the two
             // bookends are not the same drawing twice.
@@ -222,7 +248,7 @@ impl HomeState {
             });
             // An anchor is measured in the tree's own cell, which stands in the middle of the
             // village cell on its foot.
-            let half = TRINKET_CELL as f32 / 2.0;
+            let half = TRINKET_CELL as f32 * unit / 2.0;
             let (inset_x, inset_y) = formiga_art::TREE_INSET;
             for (variant, hangs_in, anchor) in &hung {
                 if *hangs_in != end {
@@ -232,10 +258,10 @@ impl HomeState {
                     rect: egui::Rect::from_min_size(
                         corner
                             + egui::vec2(
-                                (inset_x + anchor.x) as f32 - half,
-                                (inset_y + anchor.y) as f32 - half,
+                                (inset_x + anchor.x) as f32 * unit - half,
+                                (inset_y + anchor.y) as f32 * unit - half,
                             ),
-                        egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32),
+                        egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32) * unit,
                     ),
                     uv: Shell::trinket_uv(*variant),
                     layer: VillageLayer::Trinket,
@@ -260,7 +286,7 @@ impl HomeState {
                 continue;
             }
             // Each house's own cell, the same one the desktop samples by day.
-            let size = SHELTER_SIZE as f32;
+            let size = SHELTER_SIZE as f32 * unit;
             lots.push(Lot {
                 rect: egui::Rect::from_min_size(
                     egui::pos2(point.x - size / 2.0, point.y - size),
@@ -292,7 +318,7 @@ impl HomeState {
                 continue;
             }
             let kind = save.objects.objects[slot].kind;
-            let size = COLONY_OBJECT_SIZE as f32;
+            let size = COLONY_OBJECT_SIZE as f32 * unit;
             lots.push(Lot {
                 rect: egui::Rect::from_min_size(
                     egui::pos2(point.x - size / 2.0, point.y - size),
@@ -324,7 +350,7 @@ impl HomeState {
                 .map_or(point.x, |monitor| {
                     monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0
                 });
-            let size = COLONY_OBJECT_SIZE as f32;
+            let size = COLONY_OBJECT_SIZE as f32 * unit;
             lots.push(Lot {
                 rect: egui::Rect::from_min_size(
                     egui::pos2(point.x - size / 2.0, point.y - size),
@@ -442,6 +468,10 @@ impl HomeState {
         for lot in &drawn {
             let carried = dragging.is_some_and(|drag| lot.picks == Some(drag.picked));
             let texture = match lot.layer {
+                VillageLayer::Scenery => match &self.scenery_texture {
+                    Some((_, texture)) => texture.id(),
+                    None => continue,
+                },
                 VillageLayer::Dwelling | VillageLayer::Tree => village.id(),
                 VillageLayer::Trinket => trinkets.id(),
                 VillageLayer::Belonging => objects_texture.id(),

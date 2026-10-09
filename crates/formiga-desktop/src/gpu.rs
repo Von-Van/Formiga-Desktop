@@ -94,6 +94,14 @@ struct ShelterGpu {
     look: VillageLook,
 }
 
+/// The picture the village is laid out on, uploaded the first time it is drawn on this display
+/// and dropped again whenever the village is not out on scenery here.
+struct SceneryGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    scenery: formiga_core::VillageScenery,
+}
+
 struct BubbleGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
@@ -221,6 +229,7 @@ pub struct OverlayRenderer {
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
+    scenery: Option<SceneryGpu>,
     bubble: Option<BubbleGpu>,
     ui_atlas: Option<UiAtlasGpu>,
     ui_atlas_idle: u32,
@@ -495,6 +504,7 @@ impl OverlayRenderer {
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             shelter: None,
+            scenery: None,
             bubble: None,
             ui_atlas: None,
             ui_atlas_idle: 0,
@@ -632,6 +642,14 @@ impl OverlayRenderer {
         if shelter_visible {
             self.ensure_shelter(VillageLook::of(&save.home, &save.creatures));
         }
+        // The picture under the village, when it is laid out on one on this display.
+        let scenery = shelter_visible
+            .then(|| self.scenery_placement(save))
+            .flatten();
+        match scenery {
+            Some(placement) => self.ensure_scenery(placement.scenery),
+            None => self.scenery = None,
+        }
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
         let bubble_creature = milestone.and_then(|creature_id| {
@@ -687,8 +705,15 @@ impl OverlayRenderer {
                 + usize::from(bubble_creature.is_some()) * 6,
         );
         let mut creature_draws = Vec::with_capacity(visible.len());
-        // The village first, then what the colony keeps in the two yards over the top of it:
+        // Under everything, the picture the village is laid out on.
+        if let Some(placement) = scenery {
+            vertices
+                .extend_from_slice(&self.scenery_vertices(placement, save.settings.display_scale));
+        }
+        let scenery_vertex_count = vertices.len();
+        // The village next, then what the colony keeps in the two yards over the top of it:
         // belongings stand on the ground in front of a trunk rather than behind it.
+        let shelter_vertex_start = vertices.len();
         vertices.extend_from_slice(&village_vertices);
         let shelter_vertex_count = village_vertices.len();
         let object_vertex_start = vertices.len();
@@ -870,10 +895,20 @@ impl OverlayRenderer {
                 pass.set_bind_group(1, bind_group, &[]);
                 pass.draw(start as u32..(start + count) as u32, 0..1);
             };
+            if scenery_vertex_count > 0
+                && let Some(scenery) = &self.scenery
+            {
+                draw(&mut pass, &scenery.bind_group, 0, scenery_vertex_count);
+            }
             if shelter_vertex_count > 0
                 && let Some(shelter) = &self.shelter
             {
-                draw(&mut pass, &shelter.bind_group, 0, shelter_vertex_count);
+                draw(
+                    &mut pass,
+                    &shelter.bind_group,
+                    shelter_vertex_start,
+                    shelter_vertex_count,
+                );
             }
             if object_vertex_count > 0
                 && let Some(objects) = &self.colony_objects

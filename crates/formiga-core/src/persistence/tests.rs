@@ -15,7 +15,7 @@ fn migrate(value: serde_json::Value, version: u32) -> Result<SaveFile, Persisten
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 282] = [
+const SAVED_FIELDS: [&str; 283] = [
     "Decoration",
     "Friendship",
     "Garden",
@@ -234,6 +234,7 @@ const SAVED_FIELDS: [&str; 282] = [
     "routine_affinity",
     "routines",
     "save_version",
+    "scenery",
     "schedule",
     "scrapbook",
     "settings",
@@ -379,6 +380,7 @@ fn a_file_written_mid_scene_holds_no_window_cursor_or_play_in_progress() {
         "palette",
         "gardens",
         "house_styles",
+        "scenery",
     ] {
         assert!(
             names.contains(arranged),
@@ -846,6 +848,7 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
             world.save.home.cottage_order =
                 crate::house_owners(&world.save.creatures, &[]).as_slice()[1..].to_vec();
             world.save.home.palette = Some(crate::VillagePalette::Harbour);
+            world.save.home.scenery = Some(crate::VillageScenery::Pond);
             world
                 .save
                 .home

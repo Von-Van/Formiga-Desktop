@@ -17,6 +17,7 @@ mod pixels;
 mod pose_sheets;
 mod postcard;
 mod prop_sheet;
+mod scenery_sheet;
 mod shelter_sheet;
 mod simulate;
 mod soak;
@@ -72,6 +73,10 @@ fn main() -> Result<()> {
         Some("home-yard-sheet") => home_yard_sheet(output_argument_with_default(
             &args,
             "docs/assets/home-yard-sheet.png",
+        )),
+        Some("scenery-sheet") => scenery_sheet::scenery_sheet(output_argument_with_default(
+            &args,
+            "docs/assets/scenery-sheet.png",
         )),
         Some("animation-preview") => animation_preview(
             output_argument_with_default(&args, "animation-preview.png"),
@@ -189,7 +194,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools motion-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools wonder-sheet [--output PATH]\n  formiga-tools train-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]\n  formiga-tools soak [--colonies N] [--days N] [--seed N] [--threads N] [--damage N] [--only N] [--out DIR]\n  formiga-tools dev fixtures | fixture NAME --out DIR [--now-unix SECONDS] | check-fixtures | capture NAME --out PNG"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools scenery-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools motion-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools wonder-sheet [--output PATH]\n  formiga-tools train-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]\n  formiga-tools postcard-sheet [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]\n  formiga-tools soak [--colonies N] [--days N] [--seed N] [--threads N] [--damage N] [--only N] [--out DIR]\n  formiga-tools dev fixtures | fixture NAME --out DIR [--now-unix SECONDS] | check-fixtures | capture NAME --out PNG"
             );
             Ok(())
         }

@@ -25,6 +25,7 @@ mod objects_and_decorations;
 mod offers;
 mod perches;
 mod rituals;
+mod scenery;
 mod spacing;
 mod topology_and_attention;
 mod tows;
