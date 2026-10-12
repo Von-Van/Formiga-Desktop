@@ -20,13 +20,15 @@ pub use crate::expansion::Refusal;
 use crate::expansion::files::VisitFiles;
 use formiga_core::CreatureId;
 use formiga_home_contract::{
-    ACK_FILE, HomeAck, HomeCapability, HomeEffect, HomeError, HomeRecall, HomeReceipt, HomeResult,
-    HomeSnapshot, HomeState, RECALL_FILE, RECEIPT_FILE, RESULT_FILE, RecallReason, SNAPSHOT_FILE,
-    STATE_FILE, SessionSeal, accept_result, read_document, write_document,
+    ACK_FILE, HomeAck, HomeCapability, HomeEffect, HomeError, HomeIndoors, HomeRecall, HomeReceipt,
+    HomeResult, HomeSnapshot, HomeState, INDOORS_FILE, RECALL_FILE, RECEIPT_FILE, RESULT_FILE,
+    RecallReason, SNAPSHOT_FILE, STATE_FILE, SessionSeal, accept_result, read_document,
+    write_document,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use time::{Duration, OffsetDateTime};
 
 pub const HOME_DIRECTORY: &str = "home";
@@ -58,7 +60,8 @@ pub struct OpenVisit {
     pub dir: PathBuf,
     /// Who keeps the house.
     pub keeper: CreatureId,
-    /// Everyone who went in: the household, and any friend lent for the visit.
+    /// Everyone lent for the visit: the household, and any friend from another house. All of
+    /// them go in, unless the visit follows Home's word on who is indoors.
     pub away: Vec<CreatureId>,
     /// What this visit's snapshot told Home Desktop would take back.
     pub capabilities: Vec<HomeCapability>,
@@ -200,6 +203,44 @@ impl HouseFiles {
                 })
             });
         answer
+    }
+
+    /// Who Home says is in the house just now, if it has said since `seen`, which this returns
+    /// moved on: only for a visit that offered to follow it, only those lent for the visit, and
+    /// only from a word for exactly this visit. Nothing new, or nothing that checks out, is
+    /// `None`, and the house keeps who it has.
+    pub fn indoors(
+        &self,
+        visit: &OpenVisit,
+        seen: &mut Option<SystemTime>,
+    ) -> Option<Vec<CreatureId>> {
+        if !visit.capabilities.contains(&HomeCapability::Indoors) {
+            return None;
+        }
+        let path = visit.dir.join(INDOORS_FILE);
+        let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok()?;
+        if *seen == Some(modified) {
+            return None;
+        }
+        *seen = Some(modified);
+        match read_document::<HomeIndoors>(&path) {
+            Ok((indoors, _)) if indoors.answers(&visit.seal) => Some(
+                indoors
+                    .indoors
+                    .iter()
+                    .map(|id| id.0)
+                    .filter(|id| visit.away.contains(id))
+                    .collect(),
+            ),
+            Ok(_) => {
+                tracing::warn!("Formiga Home said who is indoors for another visit");
+                None
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not read who Formiga Home has indoors");
+                None
+            }
+        }
     }
 
     /// Keep what `result` may change of the homes, by the contract's own rule, against exactly

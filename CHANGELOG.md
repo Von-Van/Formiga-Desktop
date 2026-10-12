@@ -33,6 +33,35 @@ All notable changes are documented here.
   Hill or Formiga Home is reshaped once it is back. `formiga-farm-stub` stands in for Farm while
   developing.
 
+## [0.67.5] - 2026-10-08
+
+Released together with Formiga Hill 0.67.5 and Formiga Home 0.67.5. Travel version 4 is unchanged.
+Household version 8 is new, and Formiga Home 0.67.5 uses it; a house opened by an older Home works
+as before.
+
+### Added
+
+- Household version 8: Formiga Home can say who is in the house while it is open
+  (`indoors.json`, offered by the `indoors` capability), and a home remembers which residents its
+  owner keeps out on the desktop (`stays_out`). Desktop follows it: whoever Home does not have in
+  the house just now, a resident sent out or a friend not yet come over, lives on the desktop as
+  usual, and goes indoors again when Home says so. An older Home has everyone in, as before. Every
+  earlier version's golden fixtures read and write as they did.
+
+### Changed
+
+- `formiga-core`'s `model.rs` is split into sixteen topic files under `model/`, and the tools'
+  `main.rs` into a module per kind of sheet or image. Every public item resolves under the same
+  path as before, such as `formiga_core::Name`, so Formiga Hill, Home and Farm build unchanged, and
+  every review sheet matches byte for byte. Nothing an owner sees changes.
+
+### Fixed
+
+- The train reads as one piece at the station and on the desktop. The engine's side tank now runs
+  up to the smokebox, so no strip of boiler shows between them, and the smokebox comes down to the
+  running plate instead of stopping short of it. The coaches' doors and ends are lined in cream
+  above the waist and maroon below, so no dark line runs up through the cream.
+
 ## [0.67.3] - 2026-10-06
 
 Released together with Formiga Hill 0.67.3 and Formiga Home 0.67.3, which take its version number

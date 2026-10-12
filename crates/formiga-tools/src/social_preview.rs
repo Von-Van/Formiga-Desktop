@@ -3,8 +3,8 @@
 //! Both are charming scenes of a few varied creatures among stylised windows, with a small
 //! village tucked in a corner, plus a crisp pixel-lettered "Formiga" title and tagline.
 //!
-//! This module is deliberately self-contained. `hero_image` in `main.rs` builds a similar scene
-//! with private helper functions, but keeping the distribution tooling additive (rather than
+//! This module is deliberately self-contained. `hero_image` in `demo_images.rs` builds a similar
+//! scene with private helper functions, but keeping the distribution tooling additive (rather than
 //! exporting those helpers) means this file owns its own small raster toolkit: alpha blending,
 //! rectangle/gradient fills, sprite blitting, and a hand-drawn bitmap font. Everything here is
 //! deterministic and reads only public `formiga_art` / `formiga_core` items, matching the
@@ -266,7 +266,7 @@ fn varied_creatures() -> Vec<Creature> {
 
 /// Draws the colony house and two cottages as one small village row, all standing on the same
 /// `baseline_y` ground line at `x`. `ShelterRenderer::render_village` lays every house out in its
-/// own cell of an atlas meant for per-cell placement (see `home_yard_sheet` in `main.rs`), so each
+/// own cell of an atlas meant for per-cell placement (see `home_yard_sheet.rs`), so each
 /// is extracted and cropped to its own drawn pixels - trimming the transparent padding every cell
 /// carries so a smaller cottage does not leave an awkward gap - to keep the three snug together.
 /// Returns the x just past the rightmost house, in case a caller wants to place something next
@@ -386,8 +386,8 @@ fn fixture_desktop() -> DesktopSnapshot {
 }
 
 /// Stamps a creature with its feet at `(anchor_x, anchor_y)`, matching the anchor convention
-/// `hero_image` uses in `main.rs`. The frame is chosen from the creature's own marking seed so a
-/// handful of creatures never all share one identical pose phase.
+/// `hero_image` uses in `demo_images.rs`. The frame is chosen from the creature's own marking seed
+/// so a handful of creatures never all share one identical pose phase.
 #[allow(clippy::too_many_arguments)]
 fn stamp_creature(
     pixels: &mut [u8],

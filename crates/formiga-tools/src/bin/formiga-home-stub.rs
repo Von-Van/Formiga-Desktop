@@ -17,7 +17,11 @@
 //! - `crash` stays, and then exits abnormally without a receipt, after arranging if asked;
 //! - `silent` stays and then exits without a receipt;
 //! - `garbage` writes a receipt that is not a receipt;
-//! - `stranger` writes a receipt for some other visit.
+//! - `stranger` writes a receipt for some other visit;
+//! - `out` sends the keeper back out to the desktop for the middle third of the stay.
+//!
+//! Where Desktop offers to follow who is indoors, the stand-in says at once that everyone it was
+//! lent is in.
 //!
 //! A recall from Desktop, or the snapshot disappearing, ends the visit early with nothing more
 //! written, as Home should.
@@ -25,10 +29,10 @@
 use anyhow::{Context, Result, bail};
 use formiga_home_contract::{
     ACK_FILE, AckRefusal, CatalogId, DisplayMode, HOME_FORMAT_VERSION, HomeAck, HomeCapability,
-    HomeEffect, HomeError, HomeReceipt, HomeResult, HomeSnapshot, HomeState, HouseholdHome,
-    LAUNCH_ARGUMENT, PlacedDisplay, PlacedPiece, RECALL_FILE, RECEIPT_FILE, RESULT_FILE,
-    RoomLayout, SNAPSHOT_FILE, STATE_FILE, SessionId, SessionSeal, Spot, decode, limits,
-    read_bounded, write_document,
+    HomeEffect, HomeError, HomeIndoors, HomeReceipt, HomeResult, HomeSnapshot, HomeState,
+    HouseholdHome, INDOORS_FILE, LAUNCH_ARGUMENT, PlacedDisplay, PlacedPiece, RECALL_FILE,
+    RECEIPT_FILE, RESULT_FILE, RoomLayout, SNAPSHOT_FILE, STATE_FILE, SessionId, SessionSeal, Spot,
+    TravelerId, decode, limits, read_bounded, write_document,
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -45,6 +49,7 @@ struct Options {
     silent: bool,
     garbage: bool,
     stranger: bool,
+    out: bool,
 }
 
 fn options() -> Result<Options> {
@@ -70,6 +75,7 @@ fn options() -> Result<Options> {
             "silent" => options.silent = true,
             "garbage" => options.garbage = true,
             "stranger" => options.stranger = true,
+            "out" => options.out = true,
             other => bail!("unknown FORMIGA_HOME_STUB option {other:?}"),
         }
     }
@@ -138,7 +144,38 @@ fn main() -> Result<()> {
     }
     let stay = Duration::from_secs_f32(options.stay.unwrap_or(8.0).max(0.0));
     let since = Instant::now();
+    let everyone: Vec<TravelerId> = snapshot
+        .residents
+        .iter()
+        .chain(&snapshot.visitors)
+        .map(|traveler| traveler.id)
+        .collect();
+    let say_indoors = |indoors: Vec<TravelerId>| -> Result<()> {
+        if snapshot.offers(HomeCapability::Indoors) {
+            let word = HomeIndoors::new(&seal, OffsetDateTime::now_utc(), indoors);
+            write_document(&dir.join(INDOORS_FILE), &word)?;
+        }
+        Ok(())
+    };
+    say_indoors(everyone.clone())?;
+    let mut keeper_out = false;
     while since.elapsed() < stay {
+        if options.out {
+            let third = since.elapsed().as_secs_f32() / stay.as_secs_f32().max(0.001) * 3.0;
+            let out = (1.0..2.0).contains(&third);
+            if out != keeper_out {
+                keeper_out = out;
+                let keeper = snapshot.household.keeper;
+                say_indoors(
+                    everyone
+                        .iter()
+                        .copied()
+                        .filter(|id| !out || *id != keeper)
+                        .collect(),
+                )?;
+                println!("the keeper went {}", if out { "out" } else { "back in" });
+            }
+        }
         // Called back out, or the visit cleared away: either way the house closes.
         if dir.join(RECALL_FILE).exists() || !dir.join(SNAPSHOT_FILE).exists() {
             println!("Desktop called the household back out; closing without a word");
@@ -218,6 +255,7 @@ fn arrange(snapshot: &HomeSnapshot, homes: &mut HomeState) {
         likings: Vec::new(),
         mementos: Vec::new(),
         journal: Vec::new(),
+        stays_out: Vec::new(),
     };
     homes.households.retain(|home| home.keeper != keeper);
     homes.households.push(home);

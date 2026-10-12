@@ -196,6 +196,11 @@ pub struct HouseholdHome {
     /// is structured; Home words it, and it is read by nothing else.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub journal: Vec<JournalEntry>,
+    /// The residents its owner keeps out on the desktop when the house is open, since version 8.
+    /// A Desktop that offers [`crate::HomeCapability::Indoors`] lends them for the visit but
+    /// leaves them out until Home says they are in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stays_out: Vec<TravelerId>,
 }
 
 /// What a keepsake made at home is: a fixed catalogue, so whoever reads one can name it.
@@ -467,6 +472,10 @@ impl HouseholdHome {
         if self.mementos.len() > MAX_MEMENTOS || self.journal.len() > MAX_JOURNAL {
             return Err(HomeError::invalid("a home with too much remembered in it"));
         }
+        let out: BTreeSet<_> = self.stays_out.iter().collect();
+        if self.stays_out.len() > MAX_RESIDENTS || out.len() != self.stays_out.len() {
+            return Err(HomeError::invalid("a home that keeps too many out"));
+        }
         let mut serials = BTreeSet::new();
         for memento in &self.mementos {
             if !serials.insert(memento.serial)
@@ -646,6 +655,7 @@ mod tests {
             likings: Vec::new(),
             mementos: Vec::new(),
             journal: Vec::new(),
+            stays_out: Vec::new(),
         });
         state
     }
@@ -667,6 +677,7 @@ mod tests {
             likings: Vec::new(),
             mementos: Vec::new(),
             journal: Vec::new(),
+            stays_out: Vec::new(),
         });
         assert!(twice.validate().is_err());
         twice.households[1].take_down(&DisplayId::find(3));

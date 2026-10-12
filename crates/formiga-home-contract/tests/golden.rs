@@ -132,6 +132,8 @@ fn written_now() -> Vec<(String, Vec<u8>)> {
         datetime!(2026-11-11 10:17 UTC),
         HomeMoment::AskedToMoveIn { visitor: friend },
     );
+    // Since version 8: the little one is kept out on the desktop when the house opens.
+    home.stays_out = vec![snapshot.residents[1].id];
     arranged_state.set_household(home);
     let result = HomeResult::new(&seal, closed_at(), "0.1.0", arranged_state);
     let receipt = HomeReceipt::new(
@@ -168,6 +170,8 @@ fn written_now() -> Vec<(String, Vec<u8>)> {
         ],
     );
     let recall = HomeRecall::new(session(), closed_at(), RecallReason::OwnerAsked);
+    // Since version 8: the keeper and the friend are in, and the little one out on the desktop.
+    let indoors = HomeIndoors::new(&seal, closed_at(), vec![keeper, friend]);
     let name = |kind: &str| format!("{kind}-v{HOME_FORMAT_VERSION}.json");
     vec![
         (name("snapshot"), snapshot_bytes),
@@ -176,6 +180,7 @@ fn written_now() -> Vec<(String, Vec<u8>)> {
         (name("result"), encode(&result).unwrap()),
         (name("receipt"), encode(&receipt).unwrap()),
         (name("recall"), encode(&recall).unwrap()),
+        (name("indoors"), encode(&indoors).unwrap()),
     ]
 }
 
@@ -208,6 +213,11 @@ fn every_version_ever_written_still_reads_and_still_answers_its_own_visit() {
         let receipt: HomeReceipt = decode(&read(&name("receipt"))).unwrap();
         let _: HomeRecall = decode(&read(&name("recall"))).unwrap();
         assert!(ack.answers(&seal) && result.answers(&seal) && receipt.answers(&seal));
+        // Who is indoors has been said since version 8.
+        if version >= 8 {
+            let indoors: HomeIndoors = decode(&read(&name("indoors"))).unwrap();
+            assert!(indoors.answers(&seal) && indoors.for_visit(&snapshot).is_some());
+        }
         let accepted = accept_result(&seal, &snapshot, &state, &result);
         assert!(
             accepted.set_aside.is_empty(),

@@ -76,6 +76,44 @@ fn only_companions_who_are_here_and_free_can_be_lent_and_one_visit_is_open_at_a_
 }
 
 #[test]
+fn whoever_the_house_does_not_have_just_now_is_out_on_the_desktop_and_can_go_back_in() {
+    let created = datetime!(2026-10-06 9:00 UTC);
+    let desktop = desktop();
+    let mut world = two_creature_world([83; 32], created);
+    let (keeper, friend) = (world.save.creatures[0].id, world.save.creatures[1].id);
+    // The friend is lent for the visit but waits out on the desktop until it comes over.
+    assert_eq!(world.begin_house_visit(&[keeper], &desktop), vec![keeper]);
+    assert!(
+        !world.settle_house_visit(&[keeper], &desktop),
+        "nothing to change"
+    );
+    assert!(world.settle_house_visit(&[keeper, friend], &desktop));
+    assert!(world.away_in_a_house(friend) && state_of(&world, friend).indoors);
+    // The owner sends the keeper out: it is back where it went in, and the friend stays.
+    let went_in = state_of(&world, keeper).position;
+    assert!(world.settle_house_visit(&[friend], &desktop));
+    assert!(!world.away_in_a_house(keeper) && world.away_in_a_house(friend));
+    let out = state_of(&world, keeper);
+    assert!(!out.indoors);
+    assert_eq!(out.position, went_in);
+    // Somebody in the owner's hand waits there until it is put down.
+    let cursor = out.position;
+    assert!(world.handle_command(
+        WorldCommand::BeginInteraction {
+            creature_id: keeper,
+            cursor,
+        },
+        &desktop,
+    ));
+    assert!(!world.settle_house_visit(&[keeper, friend], &desktop));
+    assert!(!world.away_in_a_house(keeper));
+    world.handle_command(WorldCommand::CancelInteraction, &desktop);
+    assert!(world.settle_house_visit(&[keeper, friend], &desktop));
+    assert!(world.end_house_visit());
+    assert!(!world.away_in_a_house(keeper) && !world.away_in_a_house(friend));
+}
+
+#[test]
 fn time_inside_a_house_is_written_once_in_desktops_own_moment() {
     let created = datetime!(2026-10-06 9:00 UTC);
     let mut world = two_creature_world([83; 32], created);

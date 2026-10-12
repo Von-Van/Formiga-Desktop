@@ -59,7 +59,8 @@ pub use model::*;
 pub use observations::{Observation, observations_of, observe};
 pub use persistence::{
     ImportRefusal, MAX_SAVE_BYTES, PERIODIC_SAVE, PersistenceError, ROUTINE_CHECKPOINT, SaveStore,
-    SaveUrgency, ValidatedSave, damage, decode, save_due, violations,
+    SaveUrgency, ValidatedSave, damage, decode, decode_unvalidated, named_version, save_due,
+    violations,
 };
 pub use rng::{SeedStream, new_colony_seed};
 pub use seed_share::{

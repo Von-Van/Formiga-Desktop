@@ -24,6 +24,7 @@
 //! | [`ACK_FILE`] | Home | Once Home has read both, saying whether it can host the household. |
 //! | [`RESULT_FILE`] | Home | Whenever the owner finishes arranging, and once more on leaving: every layout as Home would have them, whole. The last one written is Home's answer. |
 //! | [`RECEIPT_FILE`] | Home | When the owner leaves the house. |
+//! | [`INDOORS_FILE`] | Home | Whenever who is in the house changes, if the snapshot offers [`HomeCapability::Indoors`]: everyone in the house just now. Desktop keeps them indoors and everyone else out on the desktop. Since version 8. |
 //! | [`RECALL_FILE`] | Desktop | If Desktop ends the visit first. |
 //!
 //! Home is started with two arguments, [`LAUNCH_ARGUMENT`] and the session directory's absolute
@@ -55,6 +56,7 @@
 //! | 5 | The receipt's `next_door` effect and the capability that offers it: the owner going over to another house, which Desktop opens next if it will; a `stayed_over` moment |
 //! | 6 | The receipt's `move_in` effect and the `roommates` capability that offers it: a visitor asked to come and live here, which Desktop decides on; an `asked_to_move_in` moment |
 //! | 7 | Desktop 0.67.0, which adopted the contract. No new fields: residents are written in travel version 4, and the Fairground's four souvenirs may be shown |
+//! | 8 | The `indoors` capability and [`HomeIndoors`]: who is in the house, said while it is open, so whoever is not stays out on the desktop; a home's `stays_out`, the residents its owner keeps out when the house opens |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it was first written, and must
 //! keep reading.
@@ -86,8 +88,8 @@ pub use ids::{CatalogId, DisplayId};
 pub use inventory::{DisplayItem, DisplayMode, DisplaySource, Ink, find_modes, souvenir_modes};
 pub use projection::{ProjectionError, colony_key, likely_visitors, project_household};
 pub use replies::{
-    AckRefusal, HomeAck, HomeEffect, HomeRecall, HomeReceipt, HomeResult, RecallReason,
-    SessionSeal, Together,
+    AckRefusal, HomeAck, HomeEffect, HomeIndoors, HomeRecall, HomeReceipt, HomeResult,
+    RecallReason, SessionSeal, Together,
 };
 pub use snapshot::{HomeCapability, HomeSnapshot, HouseStyle, Household, Neighbour};
 pub use state::{
@@ -96,7 +98,7 @@ pub use state::{
 };
 
 /// The version of every Home document this build writes, and the newest it reads.
-pub const HOME_FORMAT_VERSION: u32 = 7;
+pub const HOME_FORMAT_VERSION: u32 = 8;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.home.snapshot";
@@ -105,6 +107,7 @@ pub const ACK_FORMAT: &str = "formiga.home.ack";
 pub const RESULT_FORMAT: &str = "formiga.home.result";
 pub const RECEIPT_FORMAT: &str = "formiga.home.receipt";
 pub const RECALL_FORMAT: &str = "formiga.home.recall";
+pub const INDOORS_FORMAT: &str = "formiga.home.indoors";
 
 /// The files of one session directory.
 pub const SNAPSHOT_FILE: &str = "snapshot.json";
@@ -113,6 +116,7 @@ pub const ACK_FILE: &str = "ack.json";
 pub const RESULT_FILE: &str = "result-state.json";
 pub const RECEIPT_FILE: &str = "receipt.json";
 pub const RECALL_FILE: &str = "recall.json";
+pub const INDOORS_FILE: &str = "indoors.json";
 
 /// The argument Home is started with, followed by the session directory's absolute path.
 pub const LAUNCH_ARGUMENT: &str = "--formiga-home";
@@ -149,6 +153,7 @@ pub mod limits {
     pub const MAX_ACK_BYTES: u64 = 4 * 1024;
     pub const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
     pub const MAX_RECALL_BYTES: u64 = 4 * 1024;
+    pub const MAX_INDOORS_BYTES: u64 = 4 * 1024;
     /// Twice Desktop's own colony cap, as for a trip: everyone in a house is in the colony.
     pub const MAX_RESIDENTS: usize = 12;
     /// Friends lent for a visit. Desktop lends two at most; the room is for that to grow.

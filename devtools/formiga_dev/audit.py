@@ -1,4 +1,4 @@
-"""`formiga audit content`: is every item named well, reachable, and known to Hill and Home?
+"""`formiga audit content`: is every item named well, reachable, and known to the expansions?
 
 Reads Formiga's content from its own code (`formiga-tools dev catalog`) and checks:
 
@@ -10,8 +10,8 @@ Reads Formiga's content from its own code (`formiga-tools dev catalog`) and chec
               of colony object turns up somewhere; every accessory can be worn once, and only
               once, its find is found; every find and wonder has a hint
   expansions  every souvenir Desktop knows is one Hill gives, and every story souvenir has a
-              story that gives it; every souvenir and find Hill and Home name by id or number is
-              one Desktop has
+              story that gives it; every souvenir and find Hill, Home and Farm name by id or
+              number is one Desktop has
 
 Errors fail the audit; warnings are listed for a look and do not.
 """
@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 
 from . import catalog, cargo
 from .report import Problem, Result, Step
-from .workspace import DEV, relative
+from .workspace import DEV, EXPANSIONS, relative
 
 ART_DOC = """`formiga art check`: draw every item in every pose, and look it over.
 
@@ -206,7 +206,7 @@ def expansions(data: dict, source: catalog.Source) -> Step:
     kinds = {kind["kind"]: kind for kind in data["kinds"]}
     souvenirs = {item["id"]: item for item in kinds["souvenir"]["items"]}
     finds = kinds["trinket"]["count"]
-    missing = [key for key in ("hill", "home") if key not in source.roots]
+    missing = [key for key in EXPANSIONS if key not in source.roots]
     givers = hill_givers(source)
     if givers is not None:
         for souvenir_id, item in souvenirs.items():
@@ -248,19 +248,20 @@ def expansions(data: dict, source: catalog.Source) -> Step:
                 "expansions", f"names find {number}; Desktop's finds go up to {finds - 1}",
                 system=hit.repo, file=f"Formiga-{hit.repo.title()}/{hit.path}",
                 line=hit.line, object=f"trinket:{number}"))
-    present = sorted(key for key in ("hill", "home") if key in source.roots)
+    present = [key for key in EXPANSIONS if key in source.roots]
     checked = f"souvenirs and finds agree with {', '.join(present) or 'nothing'}"
     step = _step("expansions", problems, checked)
-    if missing and len(missing) == 2:
+    if len(missing) == len(EXPANSIONS):
         step.status = "skipped"
-        step.summary = "no Hill or Home checkout beside this one"
+        step.summary = "no Hill, Home or Farm checkout beside this one"
     elif missing:
-        step.summary += f" (no {missing[0].title()} checkout beside this one)"
+        names = " or ".join(key.title() for key in missing)
+        step.summary += f" (no {names} checkout beside this one)"
     return step
 
 
 def art_check(kind: Optional[str] = None) -> Result:
-    result = Result("art check")
+    result = Result("art check", data={"kind": kind} if kind else {})
     args = ["art-check", "--out", str(ART_DIR)] + (["--kind", kind] if kind else [])
     document, done, problems = cargo.tools_dev(args, "art", release=True)
     if document is None:

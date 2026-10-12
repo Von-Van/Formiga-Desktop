@@ -100,7 +100,7 @@ def emit(result: Result, as_json: bool, out=None) -> int:
         json.dump(result.to_json(), out, indent=2, ensure_ascii=False)
         out.write("\n")
         return 0 if result.success else 1
-    if result.error:
+    if result.error and not result.steps:
         out.write(f"✗ {result.error}\n")
     for step in result.steps:
         took = f" ({step.seconds:.0f}s)" if step.seconds is not None and step.seconds >= 1 else ""
@@ -120,5 +120,7 @@ def emit(result: Result, as_json: bool, out=None) -> int:
         out.write(f"{line}\n")
     if result.steps and (result.verdict or not result.success):
         failed = [step.name for step in result.steps if step.status == "failed"]
-        out.write("\n" + ("All passed.\n" if not failed else f"Failed: {', '.join(failed)}\n"))
+        verdict = (f"Failed: {', '.join(failed)}" if failed else
+                   f"Failed: {result.error}" if result.error else "All passed.")
+        out.write(f"\n{verdict}\n")
     return 0 if result.success else 1

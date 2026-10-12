@@ -8,8 +8,8 @@
 //! | State | What Desktop does |
 //! |---|---|
 //! | Idle | Lives as always. |
-//! | Opening | The household, and any close friend from another house lent for the visit, let go of whatever they were doing and go indoors; the colony is saved and the visit's snapshot and the homes Desktop keeps are written. Any failure brings them straight back out, untouched. |
-//! | Open | Home has the house. Those who went in stay indoors and the world leaves them be; everyone else lives as always. The tray offers to bring them back out. |
+//! | Opening | The household, and any close friend from another house lent for the visit, let go of whatever they were doing and go indoors; the colony is saved and the visit's snapshot and the homes Desktop keeps are written. A Home that says who is indoors has every resident in but those its owner keeps out, and each friend only once it comes over. Any failure brings them straight back out, untouched. |
+//! | Open | Home has the house. Whoever is indoors stays there and the world leaves them be; everyone else lives as always. A Home that says who is indoors is followed as it says it, so whoever is not in the house is out on the desktop. The tray offers to bring them back out. |
 //! | Closing | Home has gone, or the owner asked for the household back: the homes Home left are kept as far as the contract allows, a line for the visit goes in the journal if Home sent one, the visit's files are cleared, and everyone comes back out where they went in. |
 //!
 //! It always fails toward home. Desktop never waits on Home to let the household out: if Home is
@@ -18,10 +18,11 @@
 //! the visit from the marker it left, with Home's answers if there are any and without them
 //! otherwise.
 //!
-//! Nothing here polls. Home is found, started and waited on through its slot ([`HOME`], in
-//! [`crate::expansion`]): its process is waited on by one sleeping thread, which reports through
-//! the event loop when it exits, and Desktop checks whether Home is installed only when it starts
-//! and then at most every ten minutes, from a tick it was taking anyway.
+//! Home is found, started and waited on through its slot ([`HOME`], in [`crate::expansion`]): its
+//! process is waited on by one sleeping thread, which reports through the event loop when it
+//! exits, and Desktop checks whether Home is installed only when it starts and then at most every
+//! ten minutes, from a tick it was taking anyway. While a house is open, the same tick looks at
+//! most once a second at when Home last said who is indoors, and reads it only if that changed.
 
 pub mod session;
 

@@ -9,12 +9,13 @@ failed or skipped with its reason:
               as a Windows build when the cross toolchain is installed, and skipped otherwise
   fixtures    the toolkit's fixed colonies: nothing `violations` names, a save that reads back
               unchanged, ten seconds of running (`formiga-tools dev check-fixtures`)
-  content     `formiga audit content`: names unique and fitting, everything reachable, and Hill
-              and Home naming only souvenirs and finds Desktop has (warnings do not fail it)
+  content     `formiga audit content`: names unique and fitting, everything reachable, and Hill,
+              Home and Farm naming only souvenirs and finds Desktop has (warnings do not fail it)
   tests       cargo test on every crate
   soak        a short run of the nightly soak: randomized colonies living a simulated day,
               written and read back, their files damaged and repaired
-  hill, home  (with --expansions) the expansion's own tests, built on this checkout's Desktop
+  hill, home, farm
+              (with --expansions) the expansion's own tests, built on this checkout's Desktop
               crates instead of the release they are tied to
 
 --quick runs format, lint and fixtures: seconds once things are built.
@@ -31,6 +32,7 @@ from .workspace import (
     APP_CRATE,
     DESKTOP,
     DEV,
+    EXPANSIONS,
     app_builds_here,
     desktop_version,
     find_expansion,
@@ -43,7 +45,7 @@ from .workspace import (
 
 QUICK = ["format", "lint", "fixtures"]
 DEFAULT = ["format", "lint", "app", "fixtures", "content", "tests", "soak"]
-EXPANSION_STEPS = ["hill", "home"]
+EXPANSION_STEPS = list(EXPANSIONS)
 ALL_STEPS = DEFAULT + EXPANSION_STEPS
 
 # The short soak: enough colonies to cross a simulated day's routines, reloads and damaged files
@@ -212,8 +214,7 @@ STEPS: Dict[str, Callable[[], Step]] = {
     "content": step_content,
     "tests": step_tests,
     "soak": step_soak,
-    "hill": lambda: step_expansion("hill"),
-    "home": lambda: step_expansion("home"),
+    **{key: (lambda key=key: step_expansion(key)) for key in EXPANSIONS},
 }
 
 

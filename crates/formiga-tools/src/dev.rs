@@ -6,6 +6,8 @@
 //!   cargo run -p formiga-tools -- dev capture NAME --out PNG
 //!   cargo run -p formiga-tools -- dev catalog                            (see dev_catalog.rs)
 //!   cargo run -p formiga-tools -- dev art-check --out DIR [--kind KIND]  (see dev_art.rs)
+//!   cargo run -p formiga-tools -- dev fits NAME                          (see dev_catalog.rs)
+//!   cargo run -p formiga-tools -- dev save FILE                          (see dev_save.rs)
 //!
 //! Each fixture is a colony grown from a fixed seed to a fixed age, the way a real one grows:
 //! `World::new`, then the clock run forward. `fixture` writes one as `colony.json` through the
@@ -88,6 +90,11 @@ pub fn run(args: &[String]) -> Result<()> {
                 .and_then(|at| args.get(at + 1));
             crate::dev_art::run(&out, kind.map(String::as_str))?
         }
+        Some("fits") => crate::dev_catalog::fits(args.get(1).context("dev fits needs a name")?),
+        Some("save") => {
+            let file = args.get(1).context("dev save needs a colony file")?;
+            crate::dev_save::inspect(Path::new(file))?
+        }
         Some("capture") => {
             let fixture = named(args.get(1))?;
             let out = path_option(args, "--out")?.context("dev capture needs --out PNG")?;
@@ -96,7 +103,7 @@ pub fn run(args: &[String]) -> Result<()> {
         _ => bail!(
             "usage: formiga-tools dev fixtures | fixture NAME --out DIR [--now-unix SECONDS] | \
              check-fixtures | capture NAME --out PNG [--now-unix SECONDS] | catalog | \
-             art-check --out DIR [--kind KIND]"
+             art-check --out DIR [--kind KIND] | fits NAME | save FILE"
         ),
     };
     println!("{}", serde_json::to_string_pretty(&report)?);

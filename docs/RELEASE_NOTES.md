@@ -4,6 +4,17 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.5
+
+Formiga Home now lets you choose who is home. A small card of faces in the corner of the house
+shows each resident and each friend over for the visit. Click a face to send them out to your
+desktop, where they carry on with the colony while the house stays open, and click it again to
+have them back in. A resident you keep out stays out the next time the house opens. The train also
+reads as one piece now, at Formiga Hill's station and on your desktop, and Formiga Hill's objects
+have had their joins tidied, from the Clubhouse armchairs to the burrow house's porch. Update
+Formiga Hill and Formiga Home to 0.67.5 alongside; an older Formiga Home still opens every house,
+with everyone indoors as before.
+
 ## New in 0.67.3
 
 Formiga Hill and Formiga Home have each had a round of polish, and from this release all three
