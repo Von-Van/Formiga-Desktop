@@ -4,6 +4,15 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.6
+
+Formiga can now open Formiga Farm, a preview workshop for reshaping your companions, if you have
+it installed. A companion's page in the notebook offers "Reshape in Formiga Farm", and the studio
+"Draw one in Formiga Farm". Farm only ever changes how a companion looks: its name, ways, friends
+and history stay its own, and anything Farm sends that does not check out changes nothing. Without
+Farm, Formiga is just as before. Formiga Hill and Formiga Home 0.67.5 work alongside unchanged, and
+show a reshaped companion as the companion nearest it.
+
 ## New in 0.67.5
 
 Formiga Home now lets you choose who is home. A small card of faces in the corner of the house

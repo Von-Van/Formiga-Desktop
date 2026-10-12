@@ -4,6 +4,13 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.67.6] - 2026-10-12
+
+Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub
+page. Travel version 4 and household version 8 are unchanged, so Formiga Hill 0.67.5 and Formiga
+Home 0.67.5 work with it as they are, and show a reshaped companion as the companion nearest it.
+Save version 29 is new; an earlier Formiga does not open a colony this one has saved.
+
 ### Added
 
 - Room for a companion reshaped in Formiga Farm on one of seven new body plans: compact, large and
