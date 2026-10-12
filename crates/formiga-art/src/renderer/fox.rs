@@ -248,11 +248,24 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         head: 10,
         floor: at.ground.y + FOOT_ROW + 1,
     };
+    let hanging = matches!(
+        clip,
+        BodyClip::Action(ActionKind::Dangle | ActionKind::ClimbWindow)
+    );
+    // Each paw in use, from its shoulder to its hand. The fox's forelegs are short, so a paw goes
+    // the way a companion's does but only a stub's length; holding on to a ledge is the one reach
+    // that has to arrive, and goes all the way.
     let limbs = modular::limbs(clip, frame, body, BodyPlan::Upright);
-    let neck = at.head(0, NECK_ROW as i32).y;
-    // A paw raised up beside the head goes up behind its cheek, which is wider than the body it
-    // rises from; one brought to the face, or anywhere lower, is in front.
-    let behind = |hand: PixelPoint| hand.y < neck && (hand.x - face.x).abs() > 9;
+    let arms: [Option<(PixelPoint, PixelPoint)>; 2] = std::array::from_fn(|side| {
+        let Limb::Reach(hand) = limbs[side] else {
+            return None;
+        };
+        let root = at.body(SHOULDERS[side].0, SHOULDERS[side].1);
+        Some((root, if hanging { hand } else { stub(root, hand) }))
+    });
+    // A paw stretched up to a ledge goes up behind the cheek, which is wider than the body it
+    // rises from; every other paw is in front.
+    let behind = hanging;
 
     // The body, the paws raised behind the head, then the head over its top, then the ears:
     // pricked, they grow from their base, and drooped they fold down into it, so they stay joined
@@ -261,11 +274,9 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         let p = at.body(0, y as i32);
         row(c, p.x, p.y, pixels);
     }
-    for (shoulder, limb) in SHOULDERS.into_iter().zip(limbs) {
-        if let Limb::Reach(hand) = limb
-            && behind(hand)
-        {
-            arm(c, at.body(shoulder.0, shoulder.1), hand);
+    if behind {
+        for (root, hand) in arms.into_iter().flatten() {
+            arm(c, root, hand);
         }
     }
     if at.ear > 0 {
@@ -284,16 +295,16 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         let p = at.head(0, y as i32);
         row(c, p.x, p.y, pixels);
     }
-    for ((paw, shoulder), limb) in [BACK_PAW, FRONT_PAW].into_iter().zip(SHOULDERS).zip(limbs) {
-        match limb {
-            Limb::Rest => {
+    for (paw, reach) in [BACK_PAW, FRONT_PAW].into_iter().zip(arms) {
+        match reach {
+            None => {
                 for (x, y, color) in paw {
                     let p = at.body(x, y);
                     c.set(p.x, p.y, color);
                 }
             }
-            Limb::Reach(hand) if !behind(hand) => arm(c, at.body(shoulder.0, shoulder.1), hand),
-            Limb::Reach(_) => {}
+            Some((root, hand)) if !behind => arm(c, root, hand),
+            Some(_) => {}
         }
     }
 
@@ -308,6 +319,23 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         hip: at.body(9, 18),
         back: at.body(11, 13),
         floor,
+    }
+}
+
+/// How far a forepaw reaches from its shoulder, in art pixels.
+const REACH: f32 = 6.0;
+
+/// `hand`, brought in along the way to it until it is no more than [`REACH`] from `root`.
+fn stub(root: PixelPoint, hand: PixelPoint) -> PixelPoint {
+    let (dx, dy) = ((hand.x - root.x) as f32, (hand.y - root.y) as f32);
+    let length = dx.hypot(dy);
+    if length <= REACH {
+        return hand;
+    }
+    let scale = REACH / length;
+    PixelPoint {
+        x: root.x + (dx * scale).round() as i32,
+        y: root.y + (dy * scale).round() as i32,
     }
 }
 

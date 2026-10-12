@@ -1021,9 +1021,10 @@ companion's atlas because its appearance compares unequal.
 body, two feet and two forepaws. A frame places them by the same `Pose` a companion's body uses,
 read from one posing genome so every fox moves alike: a hop lifts the whole fox, a settle or a
 crouch sinks the body over its feet, a lean carries the head, pricked or drooped ears grow from or
-fold into their base, the tail waves a pixel up or down, and steps move the feet. A paw in use goes
-wherever `modular::limbs` sends an upright companion's, up behind the cheek when it is raised
-beside the head and in front of everything else; a resting paw stays folded on the belly. The face
+fold into their base, the tail waves a pixel up or down, and steps move the feet. A paw in use goes the
+way `modular::limbs` sends an upright companion's but only a short stub's length, as the sketch's
+forelegs are; holding on to a ledge to dangle or climb is the one reach that goes all the way, up
+behind the cheek. A resting paw stays folded on the belly. The face
 is drawn in the face frame like a companion's, so blinks, gazes and expressions come from the
 same face state. Belongings and effects are still each companion's own. `formiga-tools fox-sheet`
 draws every clip and every face.
