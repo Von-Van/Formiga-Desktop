@@ -171,6 +171,11 @@ pub struct AppearanceGenome {
     pub marking_seed: u64,
     pub gait_bob: f32,
     pub face_signature: u32,
+    /// Drawn as the Echo Fox while Echo Fox Mode is on, in place of everything above, which is
+    /// kept exactly as it was. Never saved: the mode lasts until it is switched off or Formiga
+    /// quits ([`crate::World::set_echo_fox`]).
+    #[serde(skip)]
+    pub echo_fox: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

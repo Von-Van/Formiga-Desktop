@@ -13,6 +13,7 @@ mod beats;
 mod classic;
 mod effects;
 mod face;
+mod fox;
 mod modular;
 mod pose;
 mod props;
@@ -727,7 +728,12 @@ impl CreatureRenderer {
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.
         let mut fine = None;
-        let (genome, mut canvas, figure) = if let Some(sculpt) = &genome.sculpt {
+        let (genome, mut canvas, figure) = if genome.echo_fox {
+            let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            let pose = Pose::new(&fox::posing(genome), clip, frame, reduce_motion);
+            let figure = fox::draw(&mut canvas, pose, clip, frame);
+            (genome, canvas, figure)
+        } else if let Some(sculpt) = &genome.sculpt {
             face_genome = crate::forms::face_genome(sculpt, genome);
             let (canvas, figure) = crate::forms::body(sculpt, genome, clip, frame, reduce_motion);
             if detail > 1 {
@@ -747,7 +753,11 @@ impl CreatureRenderer {
             (genome, canvas, figure)
         };
         let palette = crate::palette_for(genome);
-        let pose = Pose::new(genome, clip, frame, reduce_motion);
+        let pose = if genome.echo_fox {
+            Pose::new(&fox::posing(genome), clip, frame, reduce_motion)
+        } else {
+            Pose::new(genome, clip, frame, reduce_motion)
+        };
         let mut face_anchor = figure.face;
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
@@ -837,6 +847,11 @@ impl CreatureRenderer {
     /// The face, in its 16-pixel frame. A sculpted form wears the face its layout's recipe draws,
     /// with its own eye colour, so it keeps every expression a companion has.
     pub fn render_face_frame(genome: &AppearanceGenome, state: FaceRenderState) -> Canvas {
+        if genome.echo_fox {
+            let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
+            fox::draw_face(&mut canvas, state);
+            return canvas;
+        }
         if let Some(sculpt) = &genome.sculpt {
             let face_genome = crate::forms::face_genome(sculpt, genome);
             let mut face = Self::render_face_frame(&face_genome, state);
@@ -858,7 +873,7 @@ impl CreatureRenderer {
         detail: u32,
     ) -> Canvas {
         let face = Self::render_face_frame(genome, state);
-        if genome.sculpt.is_some() {
+        if genome.sculpt.is_some() && !genome.echo_fox {
             crate::forms::rounded_face(&face, detail)
         } else {
             crate::forms::blocks(&face, detail.clamp(1, crate::forms::FINEST_DETAIL))
@@ -1010,7 +1025,7 @@ impl CreatureRenderer {
     /// A sculpted form is measured from its own resting frame, and a floater to the ground it
     /// hovers above, so it is never set down there.
     pub fn resting_baseline(genome: &AppearanceGenome, reduce_motion: bool) -> u32 {
-        if let Some(sculpt) = &genome.sculpt {
+        if let Some(sculpt) = genome.sculpt.as_ref().filter(|_| !genome.echo_fox) {
             return crate::forms::resting_baseline(sculpt, genome);
         }
         const RESTING: [ActionKind; 3] =

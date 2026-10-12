@@ -7,9 +7,10 @@ All notable changes are documented here.
 ## [0.67.6] - 2026-10-12
 
 Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub
-page. Travel version 4 and household version 8 are unchanged, so Formiga Hill 0.67.5 and Formiga
-Home 0.67.5 work with it as they are, and show a reshaped companion as the companion nearest it.
-Save version 29 is new; an earlier Formiga does not open a colony this one has saved.
+page. Travel version 5 and household version 9 add only Echo Fox Mode's optional `echo_fox`, so
+Formiga Hill 0.67.5 and Formiga Home 0.67.5 work with it as they are: they show a reshaped
+companion as the companion nearest it, and a fox as the companion it stands in for. Save version 29
+is new; an earlier Formiga does not open a colony this one has saved.
 
 ### Added
 
@@ -39,6 +40,15 @@ Save version 29 is new; an earlier Formiga does not open a colony this one has s
   Anything Farm sends that does not check out changes nothing, and a companion away in Formiga
   Hill or Formiga Home is reshaped once it is back. `formiga-farm-stub` stands in for Farm while
   developing.
+- Echo Fox Mode, an easter egg on the notebook's last page: a click on the colophon's title turns
+  every companion into the Echo Fox, and another brings them back, as does the next start. The fox
+  is one hand-drawn picture (`renderer/fox.rs`), cut into a tail, a head with its ears, a body, two
+  feet and two forepaws, and moved through every clip and gesture by the same poses and paw
+  placements a companion's body uses, with its own face in the face frame. Every fox is the same
+  fox; names, traits, memories and looks are untouched, and nothing about the mode is saved.
+  Travel version 5 carries `echo_fox` on a traveler's look and household version 9 writes its
+  residents in it, so a fox visiting a Formiga Hill or Home built on this release is a fox there
+  too. `formiga-tools fox-sheet` draws the fox through every clip and every face.
 
 ## [0.67.5] - 2026-10-08
 

@@ -2439,3 +2439,22 @@ fn the_notebook_follows_the_system_into_the_dark_and_back() {
     }
     configure_style(&context, AppearancePreferences::default());
 }
+
+/// The colophon's title is Echo Fox Mode's switch: a click asks for the mode, and while the
+/// colony is foxes the page says so and another click asks for everybody back.
+#[test]
+fn the_colophon_title_switches_echo_fox_mode() {
+    let mut h = Harness::new(SettingsTab::About);
+    let title = format!("Formiga {APP_VERSION}");
+    assert_eq!(h.click(&title).echo_fox, Some(true));
+    for creature in &mut h.save.creatures {
+        creature.appearance.echo_fox = true;
+    }
+    assert_eq!(h.click(&title).echo_fox, Some(false));
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text.starts_with("Echo Fox Mode")),
+        "the page says the mode is on"
+    );
+}

@@ -74,13 +74,14 @@ pub(super) fn silhouette_rows(canvas: &formiga_art::Canvas) -> (u8, u8) {
 /// one. A sculpted form is painted finer, as Formiga Farm draws it, and is baked as finely as the
 /// overlay draws it and no finer, so it is drawn at the same size, never shrunk and never
 /// blurred. On a Retina display at an even size the overlay draws at half resolution, and a bake
-/// finer than that would only be sampled away, a pixel here and there.
+/// finer than that would only be sampled away, a pixel here and there. The Echo Fox is pixel art
+/// too, whatever it stands in for.
 pub(super) fn baked_detail(
     appearance: &AppearanceGenome,
     display_scale: u8,
     render_divisor: u32,
 ) -> u32 {
-    if appearance.sculpt.is_none() {
+    if appearance.sculpt.is_none() || appearance.echo_fox {
         return 1;
     }
     formiga_art::forms::FINEST_DETAIL

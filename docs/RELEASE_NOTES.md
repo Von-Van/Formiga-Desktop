@@ -13,6 +13,9 @@ and history stay its own, and anything Farm sends that does not check out change
 Farm, Formiga is just as before. Formiga Hill and Formiga Home 0.67.5 work alongside unchanged, and
 show a reshaped companion as the companion nearest it.
 
+There is also something new hidden on the notebook's last page, for anyone who would like to see
+the colony as a skulk of foxes for a while.
+
 ## New in 0.67.5
 
 Formiga Home now lets you choose who is home. A small card of faces in the corner of the house

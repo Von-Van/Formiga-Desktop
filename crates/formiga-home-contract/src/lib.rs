@@ -57,6 +57,7 @@
 //! | 6 | The receipt's `move_in` effect and the `roommates` capability that offers it: a visitor asked to come and live here, which Desktop decides on; an `asked_to_move_in` moment |
 //! | 7 | Desktop 0.67.0, which adopted the contract. No new fields: residents are written in travel version 4, and the Fairground's four souvenirs may be shown |
 //! | 8 | The `indoors` capability and [`HomeIndoors`]: who is in the house, said while it is open, so whoever is not stays out on the desktop; a home's `stays_out`, the residents its owner keeps out when the house opens |
+//! | 9 | Desktop 0.67.6. No new fields: residents are written in travel version 5, so one drawn as the Echo Fox on the desktop is a fox in the house too |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it was first written, and must
 //! keep reading.
@@ -98,7 +99,7 @@ pub use state::{
 };
 
 /// The version of every Home document this build writes, and the newest it reads.
-pub const HOME_FORMAT_VERSION: u32 = 8;
+pub const HOME_FORMAT_VERSION: u32 = 9;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.home.snapshot";

@@ -229,6 +229,10 @@ pub struct TravelAppearance {
     pub marking_seed: String,
     pub gait_bob: f32,
     pub face_signature: u32,
+    /// Drawn as the Echo Fox, as it is on the desktop while Echo Fox Mode is on. Absent unless it
+    /// is; a reader from before version 5 draws the companion as itself.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub echo_fox: bool,
 }
 
 impl From<&core::AppearanceGenome> for TravelAppearance {
@@ -276,6 +280,7 @@ impl From<&core::AppearanceGenome> for TravelAppearance {
             marking_seed: hex(&genome.marking_seed.to_be_bytes()),
             gait_bob: genome.gait_bob,
             face_signature: genome.face_signature,
+            echo_fox: genome.echo_fox,
         }
     }
 }
@@ -333,6 +338,7 @@ impl TravelAppearance {
                 .ok_or_else(|| TravelError::invalid("a marking seed is 16 hex digits"))?,
             gait_bob: self.gait_bob,
             face_signature: self.face_signature,
+            echo_fox: self.echo_fox,
         })
     }
 

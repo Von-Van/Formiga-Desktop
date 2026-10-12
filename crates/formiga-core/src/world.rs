@@ -15,6 +15,7 @@ mod bonds;
 mod bubbles;
 mod colony;
 mod discovery;
+mod echo_fox;
 mod experience;
 mod generation;
 mod habits;
@@ -158,6 +159,8 @@ pub struct World {
     /// Which generator new companions come from: always the latest in the app. Only tests ask for
     /// an older one, to keep a scene that was tuned on the companions an older generator made.
     generator: Edition,
+    /// Whether Echo Fox Mode is on. Runtime only: a relaunch brings everybody back as themselves.
+    echo_fox: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -419,6 +422,7 @@ impl World {
             creature_views: Vec::new(),
             relationship_views: Vec::new(),
             generator: Edition::LATEST,
+            echo_fox: false,
             topology: DesktopTopology::default(),
             geometry_observer: crate::attention::GeometryObserver::default(),
             attention: AttentionRuntime::default(),
@@ -432,6 +436,7 @@ impl World {
             self.save.maximum_seen_utc = now;
         }
         let timeline_now = self.save.maximum_seen_utc;
+        self.keep_echo_fox();
         // Where this tick's own events start, so the pass at the end of it can tell what happened
         // just now from whatever the desk has not collected yet.
         let events_before = self.events.len();
