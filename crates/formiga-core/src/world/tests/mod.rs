@@ -11,6 +11,7 @@ mod bubbles;
 mod colony_management;
 mod companion;
 mod discovery;
+mod echo_fox;
 mod edges;
 mod experience;
 mod habits;

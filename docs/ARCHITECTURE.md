@@ -1001,6 +1001,38 @@ the choice pointed at moves out from under it and the menu shakes: the try-on li
 truncated line, and `wear_choice` keeps a chip the same size whether or not it is pointed at.
 `pointing_at_something_to_wear_leaves_every_choice_where_it_was` holds both.
 
+## Echo Fox Mode
+
+An easter egg: while it is on, every companion is drawn as the Echo Fox, one hand-drawn picture
+in place of each look. The switch is the colophon's title on the notebook's last page (About &
+backups): `about_tab` makes it a click-sensing label with nothing to say it is one, and a line under
+it says the mode is on while it is. The app passes `SettingsOutcome::echo_fox` to
+`World::set_echo_fox`.
+
+The mode is runtime state. `World` keeps whether it is on, and `world/echo_fox.rs` sets
+`AppearanceGenome::echo_fox` on every creature at the top of each tick, so a newcomer, a look
+applied from Formiga Farm or an undo is a fox by the next frame. The field is `#[serde(skip)]`: a
+colony saved with the mode on is byte for byte the colony saved without it, and a relaunch brings
+everybody back. Everything else about a companion stays as it was, and the overlay rebakes a
+companion's atlas because its appearance compares unequal.
+
+`formiga-art` checks the flag before anything else it draws a body or a face from.
+`renderer/fox.rs` holds the picture as character rows, cut into a tail, the head with its ears, the
+body, two feet and two forepaws. A frame places them by the same `Pose` a companion's body uses,
+read from one posing genome so every fox moves alike: a hop lifts the whole fox, a settle or a
+crouch sinks the body over its feet, a lean carries the head, pricked or drooped ears grow from or
+fold into their base, the tail waves a pixel up or down, and steps move the feet. A paw in use goes
+wherever `modular::limbs` sends an upright companion's, up behind the cheek when it is raised
+beside the head and in front of everything else; a resting paw stays folded on the belly. The face
+is drawn in the face frame like a companion's, so blinks, gazes and expressions come from the
+same face state. Belongings and effects are still each companion's own. `formiga-tools fox-sheet`
+draws every clip and every face.
+
+A fox visiting Formiga Hill or Formiga Home is a fox there too: `TravelAppearance` carries
+`echo_fox` from travel version 5 (household version 9), set only while it is true, and
+`to_genome` puts it back, so an app built on this release's crates draws it with the same art. An
+earlier app ignores the field and draws the companion as itself.
+
 ## Arranging the village
 
 The Home page's preview is drawn from the same layout functions the overlay uses, and in Arrange

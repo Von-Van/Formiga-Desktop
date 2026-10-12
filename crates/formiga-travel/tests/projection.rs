@@ -488,3 +488,31 @@ fn a_sculpted_form_travels_as_the_recipe_kept_beside_it() {
         }
     );
 }
+
+/// A companion drawn as the Echo Fox on the desktop is a fox wherever it goes, and one that is
+/// not says nothing about foxes at all, so a colony out of the mode reads exactly as it did.
+#[test]
+fn an_echo_fox_travels_as_a_fox_and_nobody_else_mentions_one() {
+    let plain = colony(3);
+    let written = String::from_utf8(encode(&snapshot_of(&plain)).unwrap()).unwrap();
+    assert!(!written.contains("echo_fox"));
+
+    let mut foxes = plain.clone();
+    for creature in &mut foxes.creatures {
+        creature.appearance.echo_fox = true;
+    }
+    let snapshot = snapshot_of(&foxes);
+    assert_eq!(
+        snapshot.min_reader_version,
+        snapshot_of(&plain).min_reader_version
+    );
+    let read: TravelSnapshot = decode(&encode(&snapshot).unwrap()).unwrap();
+    for (traveler, creature) in read.travelers.iter().zip(&foxes.creatures) {
+        let arrived = traveler.to_creature().unwrap();
+        assert!(arrived.appearance.echo_fox);
+        let fox = |appearance| {
+            CreatureRenderer::render_body_frame(appearance, ActionKind::Idle, 0, false).canvas
+        };
+        assert_eq!(fox(&arrived.appearance), fox(&creature.appearance));
+    }
+}

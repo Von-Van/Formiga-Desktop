@@ -807,6 +807,19 @@ impl FormigaApp {
                 self.start_update_check();
             }
         }
+        if let Some(on) = outcome.echo_fox
+            && let Some(world) = &mut self.world
+        {
+            world.set_echo_fox(on);
+            self.settings_notice(if on {
+                "Echo Fox Mode"
+            } else {
+                "Everyone is themselves again"
+            });
+            for overlay in self.overlays.values() {
+                overlay.window.request_redraw();
+            }
+        }
         if outcome.check_updates {
             self.start_update_check();
         }

@@ -54,6 +54,7 @@
 //! | 2 | Desktop 0.66.5 | `trait_ids`: each trait by an identifier as well as in Desktop's words |
 //! | 3 | Desktop 0.66.6 | `accepts_souvenirs` and [`Capability::Souvenirs`]: the souvenirs Desktop keeps, by Formiga Hill's own identifiers |
 //! | 4 | Desktop 0.67.0 | No new fields: `accepts_souvenirs` also lists the Fairground's four souvenirs |
+//! | 5 | Desktop 0.67.6 | `echo_fox` on a traveler's look: drawn as the Echo Fox while Echo Fox Mode is on |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it shipped, and must keep
 //! reading.
@@ -95,7 +96,7 @@ pub use snapshot::{
 };
 
 /// The version of every travel document this build writes, and the newest it reads.
-pub const TRAVEL_FORMAT_VERSION: u32 = 4;
+pub const TRAVEL_FORMAT_VERSION: u32 = 5;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.travel.snapshot";

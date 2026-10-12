@@ -53,6 +53,7 @@ fn genome(family: BodyFamily) -> AppearanceGenome {
         marking_seed: 42,
         gait_bob: 0.6,
         face_signature: 7,
+        echo_fox: false,
     }
 }
 
@@ -1986,4 +1987,49 @@ fn whatever_a_companion_wears_shows_on_it_in_every_pose_and_sits_on_its_body() {
             }
         }
     }
+}
+
+/// Every companion is the same Echo Fox while the mode is on: whatever it looks like underneath,
+/// every clip and every face draws the same fox, inside its frame and with its face on its head.
+#[test]
+fn every_companion_is_the_same_echo_fox_in_every_clip() {
+    let foxes: Vec<AppearanceGenome> = [BodyFamily::Blob, BodyFamily::SoftQuadruped]
+        .into_iter()
+        .map(|family| AppearanceGenome {
+            echo_fox: true,
+            ..genome(family)
+        })
+        .collect();
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let drawn: Vec<RenderedBodyFrame> = foxes
+                .iter()
+                .map(|fox| CreatureRenderer::render_body_frame(fox, clip, frame, false))
+                .collect();
+            assert_eq!(drawn[0], drawn[1], "{clip:?} frame {frame} is one fox");
+            let (min_x, min_y, max_x, max_y) = drawn[0].canvas.alpha_bounds().unwrap();
+            assert!(min_x >= 1 && min_y >= 1 && max_x < FRAME_SIZE - 1 && max_y < FRAME_SIZE - 1);
+            let face = drawn[0].face_anchor;
+            assert!(
+                drawn[0].canvas.get(face.x, face.y).a > 0,
+                "{clip:?} frame {frame} keeps its face on its head"
+            );
+        }
+    }
+    for expression in ExpressionKind::ALL {
+        let state = FaceRenderState {
+            expression,
+            eyelids: EyelidPose::Open,
+            gaze: GazeDirection::default(),
+        };
+        assert_eq!(
+            CreatureRenderer::render_face_frame(&foxes[0], state),
+            CreatureRenderer::render_face_frame(&foxes[1], state),
+        );
+    }
+    let plain = genome(BodyFamily::Blob);
+    assert_ne!(
+        CreatureRenderer::render_body_frame(&plain, ActionKind::Idle, 0, false).canvas,
+        CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
+    );
 }

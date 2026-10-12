@@ -88,6 +88,8 @@ pub struct SettingsOutcome {
     pub browse_application: bool,
     pub open_logs: bool,
     pub automatic_update_checks: Option<bool>,
+    /// Echo Fox Mode switched on or off, from the colophon's title.
+    pub echo_fox: Option<bool>,
     pub check_updates: bool,
     pub download_update: bool,
     pub install_update: bool,
@@ -1122,7 +1124,8 @@ fn draw_settings(
                     clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
                     clubhouse.recovery.backups(ui, outcome);
                     ui.add_space(18.0);
-                    about_tab(ui, outcome, save_location, update_status, automatic_update_checks);
+                    let echo_fox = save.creatures.iter().any(|creature| creature.appearance.echo_fox);
+                    about_tab(ui, outcome, save_location, update_status, automatic_update_checks, echo_fox);
                 }
             }
         });
@@ -2209,10 +2212,23 @@ fn about_tab(
     save_location: &str,
     update_status: &UpdateStatus,
     automatic_update_checks: bool,
+    echo_fox: bool,
 ) {
     clubhouse::wide_card(ui, |ui| {
         clubhouse::journal::kicker(ui, "Colophon");
-        ui.heading(format!("Formiga {APP_VERSION}"));
+        // The title is also the switch for Echo Fox Mode, and says nothing about it: a click on
+        // it turns every companion into the Echo Fox, and another brings them back.
+        let title = ui.add(
+            egui::Label::new(egui::RichText::new(format!("Formiga {APP_VERSION}")).heading())
+                .selectable(false)
+                .sense(egui::Sense::click()),
+        );
+        if title.clicked() {
+            outcome.echo_fox = Some(!echo_fox);
+        }
+        if echo_fox {
+            ui.small("Echo Fox Mode. Everyone is themselves again when Formiga next starts.");
+        }
         ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
         ui.small(format!(
             "A {} build for {}. MIT licensed; the versions of everything it is built from are \
