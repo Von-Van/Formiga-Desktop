@@ -8,6 +8,10 @@ pub(super) const ATLAS_COLUMNS: u32 = 10;
 pub(super) const FACE_ATLAS_COLUMNS: u32 = 27;
 
 pub(super) struct AtlasPixels {
+    /// How many texture pixels each art pixel is baked as, across and down: the body's cells are
+    /// this many times [`FRAME_SIZE`] square, and the face's this many times [`FACE_FRAME_SIZE`].
+    /// Face anchors and silhouettes stay in art pixels.
+    pub(super) detail: u32,
     pub(super) body_width: u32,
     pub(super) body_height: u32,
     pub(super) body_pixels: Vec<u8>,
@@ -64,11 +68,33 @@ pub(super) fn silhouette_rows(canvas: &formiga_art::Canvas) -> (u8, u8) {
     }
 }
 
+/// How many texture pixels each art pixel of `appearance` is baked as, on a display that shows it
+/// `display_scale` screen pixels to the art pixel, drawn by an overlay `render_divisor` screen
+/// pixels to each of its own. A companion is pixel art at one pixel to the unit, and is baked at
+/// one. A sculpted form is painted finer, as Formiga Farm draws it, and is baked as finely as the
+/// overlay draws it and no finer, so it is drawn at the same size, never shrunk and never
+/// blurred. On a Retina display at an even size the overlay draws at half resolution, and a bake
+/// finer than that would only be sampled away, a pixel here and there. The Echo Fox is pixel art
+/// too, whatever it stands in for.
+pub(super) fn baked_detail(
+    appearance: &AppearanceGenome,
+    display_scale: u8,
+    render_divisor: u32,
+) -> u32 {
+    if appearance.sculpt.is_none() || appearance.echo_fox {
+        return 1;
+    }
+    formiga_art::forms::FINEST_DETAIL
+        .min(u32::from(display_scale) / render_divisor.max(1))
+        .max(1)
+}
+
 pub(super) fn build_atlas_pixels(
     creature: &Creature,
     reduce_motion: bool,
     outline: bool,
     dress: Option<AccessoryArt>,
+    detail: u32,
 ) -> AtlasPixels {
     let body_slots = total_animation_frames();
     let mut body_frames = vec![Vec::new(); body_slots as usize];
@@ -77,25 +103,42 @@ pub(super) fn build_atlas_pixels(
     for clip in BodyClip::baked() {
         let spec = AnimationSpec::for_clip(clip);
         for frame in 0..spec.frames {
-            let mut rendered = CreatureRenderer::render_dressed_body_frame(
-                &creature.appearance,
-                dress,
-                clip,
-                frame,
-                reduce_motion,
-            );
+            // The frame itself, for its anchors and silhouette, and the picture baked from it.
+            let (mut rendered, mut fine) = if detail > 1 {
+                let (rendered, fine) = CreatureRenderer::render_dressed_body_frame_in_detail(
+                    &creature.appearance,
+                    dress,
+                    clip,
+                    frame,
+                    reduce_motion,
+                    detail,
+                );
+                (rendered, Some(fine))
+            } else {
+                let rendered = CreatureRenderer::render_dressed_body_frame(
+                    &creature.appearance,
+                    dress,
+                    clip,
+                    frame,
+                    reduce_motion,
+                );
+                (rendered, None)
+            };
             // Baked once into the atlas, so the edge costs nothing per frame and no draw call.
             if outline {
                 CreatureRenderer::outline_frame(&mut rendered.canvas);
+                if let Some(fine) = &mut fine {
+                    CreatureRenderer::outline_frame_in_detail(fine, detail);
+                }
             }
             let slot = atlas_slot(clip, frame) as usize;
             face_anchors[slot] = rendered.face_anchor;
             silhouette[slot] = silhouette_rows(&rendered.canvas);
-            body_frames[slot] = rendered.canvas.rgba_bytes();
+            body_frames[slot] = fine.unwrap_or(rendered.canvas).rgba_bytes();
         }
     }
     let (body_width, body_height, body_pixels, body_cells) =
-        pack(body_frames, FRAME_SIZE, ATLAS_COLUMNS);
+        pack(body_frames, FRAME_SIZE * detail, ATLAS_COLUMNS);
 
     let mut face_frames = vec![Vec::new(); face_slot_count() as usize];
     for expression in formiga_art::ExpressionKind::ALL {
@@ -107,15 +150,20 @@ pub(super) fn build_atlas_pixels(
                         eyelids,
                         gaze: formiga_art::GazeDirection::new(gaze_x, gaze_y),
                     };
-                    let face = CreatureRenderer::render_face_frame(&creature.appearance, state);
+                    let face = CreatureRenderer::render_face_frame_in_detail(
+                        &creature.appearance,
+                        state,
+                        detail,
+                    );
                     face_frames[face_atlas_slot(state) as usize] = face.rgba_bytes();
                 }
             }
         }
     }
     let (face_width, face_height, face_pixels, face_cells) =
-        pack(face_frames, FACE_FRAME_SIZE, FACE_ATLAS_COLUMNS);
+        pack(face_frames, FACE_FRAME_SIZE * detail, FACE_ATLAS_COLUMNS);
     AtlasPixels {
+        detail,
         body_width,
         body_height,
         body_pixels,
@@ -143,6 +191,25 @@ pub(super) fn blit_atlas_frame(
         target[target_start..target_start + (frame_size * 4) as usize]
             .copy_from_slice(&frame[source_start..source_start + (frame_size * 4) as usize]);
     }
+}
+
+/// Where cell `cell` of an atlas `columns` cells wide, of cells `cell_size` texture pixels square,
+/// lies in a texture `width` by `height`, as left, right, top and bottom texture coordinates. A
+/// finer atlas is the same layout at more pixels, so a cell lies in the same place in it.
+pub(super) fn cell_uv(
+    cell: u32,
+    columns: u32,
+    cell_size: u32,
+    width: u32,
+    height: u32,
+) -> [f32; 4] {
+    let (column, row) = (cell % columns, cell / columns);
+    [
+        (column * cell_size) as f32 / width as f32,
+        ((column + 1) * cell_size) as f32 / width as f32,
+        (row * cell_size) as f32 / height as f32,
+        ((row + 1) * cell_size) as f32 / height as f32,
+    ]
 }
 
 pub(super) fn total_animation_frames() -> u32 {

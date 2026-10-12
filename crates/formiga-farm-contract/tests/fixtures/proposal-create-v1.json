@@ -1,0 +1,115 @@
+{
+  "format": "formiga.farm.proposal",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "c4ea7ec4ea7ec4ea7ec4ea7ec4ea7ec4",
+  "snapshot_sha256": "9035afb7a307e16336d7e8633c8612af9ff3f5612f20e6c6ab73d24b7c976465",
+  "serial": 2,
+  "written_at_utc": "2026-10-23T09:37:00Z",
+  "farm_version": "0.1.0",
+  "kind": {
+    "kind": "create_new"
+  },
+  "design": {
+    "form": {
+      "kind": "sculpted",
+      "sculpt": {
+        "plan": "floater",
+        "shape": {
+          "head": 5,
+          "length": 5,
+          "depth": 5,
+          "neck": 5,
+          "legs": 5,
+          "arms": 5,
+          "girth": 5,
+          "tail": 5
+        },
+        "parts": [
+          {
+            "kind": "snout.button",
+            "size": 5,
+            "tilt": 0,
+            "lift": 0,
+            "uneven": 0,
+            "ink": "primary"
+          },
+          {
+            "kind": "tail.fluke",
+            "size": 5,
+            "tilt": 0,
+            "lift": 0,
+            "uneven": 0,
+            "ink": "primary"
+          },
+          {
+            "kind": "fins.pectoral",
+            "size": 5,
+            "tilt": 0,
+            "lift": 0,
+            "uneven": 0,
+            "ink": "primary"
+          },
+          {
+            "kind": "back.dorsal",
+            "size": 5,
+            "tilt": 0,
+            "lift": 0,
+            "uneven": 0,
+            "ink": "primary"
+          }
+        ],
+        "coat": {
+          "treatment": "smooth",
+          "primary": [
+            217,
+            165,
+            123
+          ],
+          "secondary": [
+            154,
+            106,
+            75
+          ],
+          "underside": [
+            244,
+            227,
+            200
+          ],
+          "accent": [
+            232,
+            138,
+            138
+          ],
+          "feature": [
+            241,
+            230,
+            210
+          ],
+          "eyes": [
+            32,
+            27,
+            41
+          ],
+          "underside_reach": 5
+        },
+        "markings": [],
+        "face_template": 1
+      }
+    },
+    "face": {
+      "eye_shape": "Round",
+      "eye_size": 2,
+      "eye_spacing": 5,
+      "vertical_offset": 0,
+      "pupil_style": "Dot",
+      "highlight_style": "Single",
+      "brow_style": "None",
+      "mouth_style": "Smile",
+      "cheek_style": "Blush"
+    }
+  },
+  "lineage": {
+    "preset": "form.floater"
+  }
+}

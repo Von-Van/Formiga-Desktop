@@ -656,25 +656,25 @@ pub(super) fn figure(design: CreatureDesign, pose: Pose, size: f32) -> Figure {
 
 /// One side's paw or wing in a frame: folded where it rests, or carried out to a point.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Limb {
+pub(super) enum Limb {
     Rest,
     Reach(PixelPoint),
 }
 
 /// The measurements every part of a modular body is placed from, in frame pixels.
 #[derive(Clone, Copy, Debug)]
-struct Body {
+pub(super) struct Body {
     /// Centre and radii of the body mass.
-    x: i32,
-    y: i32,
-    rx: i32,
-    ry: i32,
+    pub(super) x: i32,
+    pub(super) y: i32,
+    pub(super) rx: i32,
+    pub(super) ry: i32,
     /// Centre and radius of the head, which is also the face anchor.
-    hx: i32,
-    hy: i32,
-    head: i32,
+    pub(super) hx: i32,
+    pub(super) hy: i32,
+    pub(super) head: i32,
     /// The row the feet stand on.
-    floor: i32,
+    pub(super) floor: i32,
 }
 
 fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
@@ -778,7 +778,7 @@ fn shoulder(body: Body, pose: Pose, side: i32) -> PixelPoint {
 /// Where each side's limb is this frame, back side first. There is exactly one limb per side:
 /// the paw or wing a creature rests against its body is the one it raises, so no gesture ever
 /// adds an appendage beside the one that was already there.
-fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
+pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [Limb; 2] {
     if plan == BodyPlan::Long {
         return long_limbs(clip, frame, body);
     }

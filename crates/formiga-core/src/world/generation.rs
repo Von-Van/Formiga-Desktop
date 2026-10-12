@@ -171,6 +171,7 @@ fn generate_creature(
     );
     let appearance = AppearanceGenome {
         design: None,
+        sculpt: None,
         family,
         logical_size: {
             let _former_size: u8 = appearance_rng.random_range(34..=40);
@@ -283,6 +284,7 @@ fn generate_creature(
             0.9,
         ),
         face_signature,
+        echo_fox: false,
     };
     // The original generator draws every value on its own; the later ones draw a temperament first
     // and take the values from it. The original stream is left exactly as it was.

@@ -126,16 +126,7 @@ impl StudioState {
                     .add_enabled(can_add, egui::Button::new("Adopt into colony").fill(mint()))
                     .clicked()
                 {
-                    outcome.accept_creature_preview = Some(match candidate.preview.shared {
-                        Some(shared) => PreviewAcceptance::Shared {
-                            shared,
-                            replace: None,
-                        },
-                        None => PreviewAcceptance::Add {
-                            source_seed: candidate.preview.source_seed,
-                            design: candidate.preview.creature.appearance.design,
-                        },
-                    });
+                    outcome.accept_creature_preview = Some(acceptance(&candidate.preview, None));
                 }
             });
         });
@@ -149,6 +140,7 @@ impl StudioState {
         shell: &mut Shell,
         save: &SaveFile,
         selected_creature: &mut Option<CreatureId>,
+        formiga_farm: FormigaFarmView,
         outcome: &mut SettingsOutcome,
     ) {
         journal::page_heading(
@@ -167,6 +159,25 @@ impl StudioState {
                 }
                 if ui.button("Create from image…").clicked() {
                     outcome.request_reference_creature = true;
+                }
+                if formiga_farm.installed {
+                    let draw = ui
+                        .add_enabled(
+                            formiga_farm.can_open,
+                            egui::Button::new("Draw one in Formiga Farm"),
+                        )
+                        .on_hover_text(
+                            "Shape a new companion in Formiga Farm. What you apply there comes \
+                             back here as a sketch to adopt.",
+                        )
+                        .on_disabled_hover_text(if formiga_farm.open.is_some() {
+                            "Formiga Farm already has something open."
+                        } else {
+                            "Not while the colony is away."
+                        });
+                    if draw.clicked() {
+                        outcome.open_farm = Some(crate::farm::FarmRequest::Draw);
+                    }
                 }
             });
             ui.horizontal_wrapped(|ui| {
@@ -318,14 +329,10 @@ impl StudioState {
         let animate_choice = &mut self.animate;
         let mut details = |ui: &mut Ui| {
             ui.heading(&candidate.preview.creature.name);
-            ui.label(
-                candidate
-                    .preview
-                    .creature
-                    .appearance
-                    .design
-                    .map_or("Classic companion", |d| d.body.label()),
-            );
+            ui.label(candidate.preview.creature.appearance.design.map_or_else(
+                || "Classic companion".to_owned(),
+                |_| body_label(&candidate.preview.creature.appearance),
+            ));
             ui.label(&candidate.preview.summary);
             if let Some(similarity) = candidate.preview.similarity {
                 ui.small(format!("Color & shape affinity: {similarity}%"));
@@ -381,20 +388,6 @@ impl StudioState {
             });
         }
         let adults = save.creatures.iter().filter(|c| c.role.is_adult()).count();
-        let accept = |replace| match candidate.preview.shared {
-            Some(shared) => PreviewAcceptance::Shared { shared, replace },
-            None => match replace {
-                Some(creature_id) => PreviewAcceptance::Replace {
-                    creature_id,
-                    source_seed: candidate.preview.source_seed,
-                    design: candidate.preview.creature.appearance.design,
-                },
-                None => PreviewAcceptance::Add {
-                    source_seed: candidate.preview.source_seed,
-                    design: candidate.preview.creature.appearance.design,
-                },
-            },
-        };
         ui.add_space(12.0);
         ui.collapsing("Replace a companion…", |ui| {
             egui::ComboBox::from_id_salt("replacement-target").selected_text(save.creatures.iter().find(|c| Some(c.id) == *selected_creature).map_or("Choose companion", |c| c.name.as_str())).show_ui(ui, |ui| {
@@ -404,12 +397,38 @@ impl StudioState {
                 if target.kept { ui.label("This companion is kept. Turn off Keep in its Colony profile before replacing it."); }
                 ui.checkbox(&mut self.replace_confirmed, format!("Replace {} and start fresh history for this companion", target.name));
                 if ui.add_enabled(self.replace_confirmed && !target.kept && (target.role.is_adult() || adults < MAX_ADULT_CREATURES), egui::Button::new("Confirm replacement")).clicked() {
-                    outcome.accept_creature_preview = Some(accept(Some(target.id)));
+                    outcome.accept_creature_preview = Some(acceptance(&candidate.preview, Some(target.id)));
                 }
             }
         });
         if ui.small_button("Clear previews").clicked() {
             self.clear_previews();
         }
+    }
+}
+
+/// What adopting a sketch asks of the colony: a shared companion as it was shared, a drawn one
+/// with the design Formiga Farm drew it in, and any other from its seed and its recipe, as a
+/// newcomer or in place of `replace`.
+fn acceptance(preview: &GenerationPreview, replace: Option<CreatureId>) -> PreviewAcceptance {
+    let source_seed = preview.source_seed;
+    let design = preview.creature.appearance.design;
+    match (preview.shared, &preview.drawn, replace) {
+        (Some(shared), _, replace) => PreviewAcceptance::Shared { shared, replace },
+        (None, Some(drawn), replace) => PreviewAcceptance::Drawn {
+            source_seed,
+            recipe: design,
+            design: drawn.clone(),
+            replace,
+        },
+        (None, None, Some(creature_id)) => PreviewAcceptance::Replace {
+            creature_id,
+            source_seed,
+            design,
+        },
+        (None, None, None) => PreviewAcceptance::Add {
+            source_seed,
+            design,
+        },
     }
 }

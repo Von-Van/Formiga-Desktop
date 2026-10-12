@@ -4,8 +4,8 @@
 //! writes a few documents into a fresh session directory named after the visit's [`SessionId`],
 //! starts the app with that directory's path, and reads back what the app answers. What each
 //! visit carries, and what may come back from it, is the app's own contract (`formiga-travel` for
-//! Hill, `formiga-home-contract` for Home). How it is carried is the same for all of them, and
-//! lives here once:
+//! Hill, `formiga-home-contract` for Home, `formiga-farm-contract` for Formiga Farm). How it is
+//! carried is the same for all of them, and lives here once:
 //!
 //! - the visit's identifier, which is also its directory's name and so is only ever hex;
 //! - every document's header (`format`, `version`, `min_reader_version`), checked on the raw JSON

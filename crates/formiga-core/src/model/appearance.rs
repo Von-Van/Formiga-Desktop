@@ -146,6 +146,11 @@ pub enum TailStyle {
 pub struct AppearanceGenome {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub design: Option<crate::CreatureDesign>,
+    /// A form sculpted in Formiga Farm on one of the newer body plans, drawn in place of the
+    /// recipe, which is kept as the companion plan nearest it for anything that cannot draw
+    /// sculpts. Absent from the file for every creature drawn from its recipe or its genes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sculpt: Option<crate::forms::Sculpt>,
     pub family: BodyFamily,
     pub logical_size: u8,
     pub body_width: u8,
@@ -166,6 +171,11 @@ pub struct AppearanceGenome {
     pub marking_seed: u64,
     pub gait_bob: f32,
     pub face_signature: u32,
+    /// Drawn as the Echo Fox while Echo Fox Mode is on, in place of everything above, which is
+    /// kept exactly as it was. Never saved: the mode lasts until it is switched off or Formiga
+    /// quits ([`crate::World::set_echo_fox`]).
+    #[serde(skip)]
+    pub echo_fox: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

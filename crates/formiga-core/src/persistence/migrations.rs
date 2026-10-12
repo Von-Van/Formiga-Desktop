@@ -193,6 +193,9 @@ const STEPS: &[Step] = &[
     // 28: four more of Formiga Hill's souvenirs, and the journal moment for time spent inside a
     // house in Formiga Home. An older colony has neither.
     Step::adds_only(27),
+    // 29: a form sculpted in Formiga Farm, kept beside a companion's recipe. An older colony has
+    // none.
+    Step::adds_only(28),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

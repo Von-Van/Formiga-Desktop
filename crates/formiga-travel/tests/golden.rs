@@ -1,7 +1,7 @@
 //! Every travel version as it shipped. These files are never regenerated to make a test pass: a
 //! change that breaks one of them breaks every Hill already installed, or every snapshot an older
 //! Desktop already wrote. Version 1 shipped with Desktop 0.66.4, version 2 added each trait's
-//! identifier, version 3 the souvenirs Desktop keeps, and version 4 four more of them. `FORMIGA_TRAVEL_BLESS=1` writes this
+//! identifier, version 3 the souvenirs Desktop keeps, version 4 four more of them, and version 5 the Echo Fox. `FORMIGA_TRAVEL_BLESS=1` writes this
 //! build's own version's files only, so a new version's fixtures go beside the old ones and never
 //! over them.
 

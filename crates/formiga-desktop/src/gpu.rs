@@ -13,10 +13,10 @@ use formiga_art::{
     WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_core::{
-    ActionKind, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature, CreatureId,
-    CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind, HouseMotion,
-    HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble, VillageProp,
-    WonderKind, WonderView, accessible_regions, resolved_home_anchor,
+    ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature,
+    CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind,
+    HouseMotion, HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble,
+    VillageProp, WonderKind, WonderView, accessible_regions, resolved_home_anchor,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -70,6 +70,8 @@ struct SpriteGpu {
     face_bind_group: wgpu::BindGroup,
     reduce_motion: bool,
     outline: bool,
+    /// How many texture pixels each art pixel was baked as (see `atlas::baked_detail`).
+    detail: u32,
     body_atlas_width: u32,
     body_atlas_height: u32,
     /// Which cell of the body texture each baked frame is drawn from, by slot.
@@ -86,6 +88,9 @@ struct SpriteGpu {
     resting_baseline: u32,
     /// What it was baked wearing, in the inks it was baked in.
     dress: Option<AccessoryArt>,
+    /// The look it was baked in. A companion given a new look in Formiga Farm keeps its id, so
+    /// its atlas is baked again when this changes.
+    appearance: AppearanceGenome,
 }
 
 struct ShelterGpu {
@@ -1074,13 +1079,14 @@ impl OverlayRenderer {
             facing_right,
         } = BodyPresentation::for_creature(creature);
         let slot = atlas_slot(clip, frame);
-        let cell = u32::from(sprite.body_cells[slot as usize]);
-        let column = cell % ATLAS_COLUMNS;
-        let row = cell / ATLAS_COLUMNS;
-        let mut u_left = column as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
-        let mut u_right = (column + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_width as f32;
-        let v_top = row as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
-        let v_bottom = (row + 1) as f32 * FRAME_SIZE as f32 / sprite.body_atlas_height as f32;
+        // However finely the atlas was baked, its frame fills the same quad on the screen.
+        let [mut u_left, mut u_right, v_top, v_bottom] = cell_uv(
+            u32::from(sprite.body_cells[slot as usize]),
+            ATLAS_COLUMNS,
+            FRAME_SIZE * sprite.detail,
+            sprite.body_atlas_width,
+            sprite.body_atlas_height,
+        );
         if !facing_right {
             std::mem::swap(&mut u_left, &mut u_right);
         }
@@ -1137,19 +1143,16 @@ impl OverlayRenderer {
         if !facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
         }
-        let face_cell = u32::from(sprite.face_cells[face_atlas_slot(source_face_state) as usize]);
-        let face_column = face_cell % FACE_ATLAS_COLUMNS;
-        let face_row = face_cell / FACE_ATLAS_COLUMNS;
-        let mut face_u_left =
-            face_column as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
-        let mut face_u_right =
-            (face_column + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_width as f32;
+        let [mut face_u_left, mut face_u_right, face_v_top, face_v_bottom] = cell_uv(
+            u32::from(sprite.face_cells[face_atlas_slot(source_face_state) as usize]),
+            FACE_ATLAS_COLUMNS,
+            FACE_FRAME_SIZE * sprite.detail,
+            sprite.face_atlas_width,
+            sprite.face_atlas_height,
+        );
         if !facing_right {
             std::mem::swap(&mut face_u_left, &mut face_u_right);
         }
-        let face_v_top = face_row as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
-        let face_v_bottom =
-            (face_row + 1) as f32 * FACE_FRAME_SIZE as f32 / sprite.face_atlas_height as f32;
         let face = [
             Vertex {
                 position: [face_left, face_top],

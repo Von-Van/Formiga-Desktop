@@ -36,19 +36,20 @@ one feature at a time, and assumes you know where things are.
 ### The crates and where to start reading
 
 Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
-depends on neither; `formiga-travel` depends on all three, `formiga-home-contract` on those and
-`formiga-travel`; and `formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the
-desktop crate.
+depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract` and
+`formiga-farm-contract` on those and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on
+the lot. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
-| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
-| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
+| `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `forms.rs` for a creature's form, the design Formiga Farm reshapes; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
+| `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `forms.rs` with `forms/` for the seven sculpted body plans; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
 | `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through, and `app/visits.rs` for each app's tray item and who is away where; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting either companion app |
 | `formiga-tools` | `main.rs`: the subcommands, and the module each one runs | `pixels.rs` and `fixtures.rs` for what the review sheets share; `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs` and `bin/formiga-home-stub.rs`, stand-ins for Formiga Hill and Formiga Home |
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
+| `formiga-farm-contract` | `lib.rs`: the design contract with Formiga Farm | `snapshot.rs` and `replies.rs` for the documents; `projection.rs` for the one creature a session opens on; `accept.rs` for what Desktop keeps and how; [The Farm contract](#the-farm-contract) |
 
 ### How the app starts
 
@@ -999,6 +1000,39 @@ whatever the pointer is over, a frame later. Nothing in it may change size with 
 the choice pointed at moves out from under it and the menu shakes: the try-on line is always one
 truncated line, and `wear_choice` keeps a chip the same size whether or not it is pointed at.
 `pointing_at_something_to_wear_leaves_every_choice_where_it_was` holds both.
+
+## Echo Fox Mode
+
+An easter egg: while it is on, every companion is drawn as the Echo Fox, one hand-drawn picture
+in place of each look. The switch is the colophon's title on the notebook's last page (About &
+backups): `about_tab` makes it a click-sensing label with nothing to say it is one, and a line under
+it says the mode is on while it is. The app passes `SettingsOutcome::echo_fox` to
+`World::set_echo_fox`.
+
+The mode is runtime state. `World` keeps whether it is on, and `world/echo_fox.rs` sets
+`AppearanceGenome::echo_fox` on every creature at the top of each tick, so a newcomer, a look
+applied from Formiga Farm or an undo is a fox by the next frame. The field is `#[serde(skip)]`: a
+colony saved with the mode on is byte for byte the colony saved without it, and a relaunch brings
+everybody back. Everything else about a companion stays as it was, and the overlay rebakes a
+companion's atlas because its appearance compares unequal.
+
+`formiga-art` checks the flag before anything else it draws a body or a face from.
+`renderer/fox.rs` holds the picture as character rows, cut into a tail, the head with its ears, the
+body, two feet and two forepaws. A frame places them by the same `Pose` a companion's body uses,
+read from one posing genome so every fox moves alike: a hop lifts the whole fox, a settle or a
+crouch sinks the body over its feet, a lean carries the head, pricked or drooped ears grow from or
+fold into their base, the tail waves a pixel up or down, and steps move the feet. A paw in use goes the
+way `modular::limbs` sends an upright companion's but only a short stub's length, as the sketch's
+forelegs are; holding on to a ledge to dangle or climb is the one reach that goes all the way, up
+behind the cheek. A resting paw stays folded on the belly. The face
+is drawn in the face frame like a companion's, so blinks, gazes and expressions come from the
+same face state. Belongings and effects are still each companion's own. `formiga-tools fox-sheet`
+draws every clip and every face.
+
+A fox visiting Formiga Hill or Formiga Home is a fox there too: `TravelAppearance` carries
+`echo_fox` from travel version 5 (household version 9), set only while it is true, and
+`to_genome` puts it back, so an app built on this release's crates draws it with the same art. An
+earlier app ignores the field and draws the companion as itself.
 
 ## Arranging the village
 
@@ -2024,11 +2058,12 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–28: version 28 is read directly, versions 1 through 27 are
+Persistence accepts save versions 1–29: version 29 is read directly, versions 1 through 28 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
-that an older build refuses a village with a house kind chosen by hand. A missing primary can load
+that an older build refuses a village with a house kind chosen by hand, and version 29 so that it
+refuses a sculpted form ([Sculpted forms](#sculpted-forms-save-v29)). A missing primary can load
 its backup; a corrupt primary is preserved before repair, without rotating over a valid backup. If
 both files fail, the host disables writes and presents recovery choices. Explicit restores and
 resets preserve uniquely named copies; snapshot imports validate bounded input before confirmation
@@ -2434,8 +2469,8 @@ window only hides it. Preferences offers "Take the tour" to start it again from 
 Formiga Hill and Formiga Home are visited the same way: Desktop writes a few documents into a
 fresh session directory, starts the app with that directory's path, and reads back what the app
 answers. What a visit carries and what may come back is each app's own contract
-(`formiga-travel`, `formiga-home-contract`). How it is carried lives once, in
-`formiga-expansion-rulebook`:
+(`formiga-travel`, `formiga-home-contract`, and `formiga-farm-contract` for Formiga Farm's
+sessions). How it is carried lives once, in `formiga-expansion-rulebook`:
 
 | Piece | What it guarantees |
 |---|---|
@@ -2447,8 +2482,8 @@ answers. What a visit carries and what may come back is each app's own contract
 | `AckRefusal` | An app's reasons for turning a visit away, in the words every app already used: `unsupported_version`, `invalid`, `busy`, and `other` for anything newer |
 
 Each contract wraps these in its own error, which says whose file it was ("the travel file…",
-"the Home file…"), adds its own validation, and re-exports the shared items under the names Hill
-and Home have always used. The rulebook has no format version of its own: anything that would
+"the Home file…", "the Farm file…"), adds its own validation, and re-exports the shared items
+under the names Hill, Home and Farm have always used. The rulebook has no format version of its own: anything that would
 change a byte a contract writes is a change to that contract, versioned there, and each
 contract's golden fixtures still read and write byte for byte. A new `AckRefusal` reason reads as
 `other` in an older build.
@@ -2729,3 +2764,128 @@ With it, a house's pixels are cut only when the village's look changes, and the 
 from the tick that already syncs the creatures'. While a house is open nothing is drawn for those
 inside it, and looking for Home's word on who is indoors is one file's modified time a second,
 read only when it has changed.
+
+## Sculpted forms (save v29)
+
+Formiga Farm is a separate app for reshaping how a companion looks. What it reshapes is a
+`formiga_core::forms::Design`: a creature's form and the features of its face, and nothing about who
+it is. The form is a companion recipe, a look from before recipes, or a `Sculpt` on one of seven
+newer body plans (compact, large and tall quadrupeds, an upright body, a floater, a crawler and a
+percher) with eight proportions, a part in each of its slots, a coat and up to four markings. Every
+value is a small bounded step or a catalogue name, never a pixel. `Design::validate` refuses a
+design out of range, and `Design::revision` names one exactly.
+
+Save version 29 gives `AppearanceGenome` a `sculpt`, absent from the file for every creature drawn
+from its recipe or its genes. A sculpted creature keeps a recipe beside it,
+`Design::fallback_recipe`: the companion plan nearest its form, in its coat's colours. That recipe
+is what anything that cannot draw sculpts draws. A trip to Formiga Hill or a visit to Formiga Home
+carries the recipe and never the sculpt, a share code holds the recipe, and a mini's recipe grows
+from its parent's. Validation keeps a sculpt inside its bounds and never without a recipe beside
+it.
+
+`CreatureRenderer` draws a genome with a sculpt through `formiga_art::forms`, so a sculpted form is
+drawn wherever a companion is. Its body is painted there at the same 48 pixels, fitted to the frame
+and held a pixel inside it. Each plan brings every clip Desktop bakes down to one of a few intents
+and carries it out its own way: a floater hovers rather than walking on legs it does not have, and
+its resting baseline is measured to the ground below it, so it is never set down there. Its face is
+a companion's, drawn from the recipe `face_carrier` makes from the sculpt's face layout and coat,
+with the eyes in the sculpt's own colour, so it has every expression. What it wears is placed by
+its own head, neck, hip and back, and what it holds and its effects are drawn as a companion's.
+`formiga-tools forms-sheet` draws every plan in the poses it is seen in most, bare and dressed.
+`forms::DesignRenderer` draws a design over a creature's genome before any creature has it, as
+Formiga Farm's window does.
+
+The overlay bakes a sculpted form finer than one texture pixel to the art pixel, painted as Formiga
+Farm paints it. A creature is shown at exactly `display_scale` screen pixels to the art pixel (2, 3
+or 4) and sampled without smoothing, and the overlay draws at half that on a Retina display at an
+even size (`apply_render_divisor`), so `atlas::baked_detail` bakes a sculpted form at as many pixels
+as the overlay draws it, never more, and never more than `forms::FINEST_DETAIL` (4): on a Retina Mac
+that is plain at Small, three at Medium and two at Large. A companion is always baked at one. The
+finer drawing is the same pixel art: every pixel solid or clear, the outline as heavy as a
+companion's, three tones of shade, with smaller steps in its curves and a little more fur and grain.
+`forms::sculpted` lays a frame out once at one to the unit, then paints that very figure at the
+finer size, so it stands where its frame stands; at one it is the frame Desktop always drew, pixel
+for pixel. `CreatureRenderer::render_dressed_body_frame_in_detail` dresses the frame at one to the
+unit as before, and draws each frame pixel that what it wears, holds or shows changed as a square of
+that pixel over the finer body; `render_face_frame_in_detail` redraws the face larger with its
+corners rounded (Scale2x, Scale3x, or Scale2x twice), and `outline_frame_in_detail` rings it at the
+same weight. A finer atlas keeps the same layout at more pixels: the same cells, face anchors and
+silhouettes in art pixels, and each frame at the same texture coordinates (`atlas::cell_uv`), so it
+fills the same quad on the screen; only the texture grows, by the square of the detail. The click
+shape is still read from the one-to-one frame, which the finer painting covers whole and passes by
+at most two of its pixels, for a tuft or a curl of fur.
+
+### The Farm contract
+
+`formiga-farm-contract` is the agreement with Formiga Farm, kept in Desktop's workspace as
+`formiga-travel` and `formiga-home-contract` are, and Farm builds against it by Desktop's release
+tag. It was drafted beside Farm and adopted with its golden fixtures unchanged, as Farm version 1.
+Farm proposes; Desktop decides. A session opens on one creature to reshape it, or on nothing to
+draw a new one, and five documents pass through its directory: Desktop's `snapshot.json`
+(`FarmSnapshot`: what the session is for; the creature's look exactly as a trip carries it, its
+sculpt beside it, and its design's revision; what Desktop will do with a proposal; the plans it
+can draw; and the owner's reduced motion, theme and text size), Farm's `ack.json` and
+`proposal.json` (a design and what it is for, with a serial one higher each time), and Desktop's
+`verdict.json` on each serial and `recall.json`. Nothing about who the creature is leaves Desktop:
+no temperament, habits, memories, friends, family or history, and a test reads the sample
+snapshot for those words.
+
+`accept_proposal` is the whole rule, run on every proposal. Nothing is kept from another session
+or snapshot, nothing that does not validate, nothing Desktop did not offer or cannot draw, and
+nothing for a creature that is away or gone. An edit names the revision it was made from, and a
+creature whose look has changed since is answered `stale` with its design now, so nothing is
+merged silently. `apply_design` then changes the recipe (in the origin too, as always), the sculpt
+and the face's features, and nothing else; a test holds every other field of the creature, and
+everyone else in the colony, unchanged. A new companion is only a design: `Accepted::Create` hands
+it to Desktop's own welcome, which gives it an id, a name and a life, and the same `apply_design`
+puts the design on it.
+
+The sample sessions in `sample` open Desktop's own sample colony, and Farm rehearses with them
+through the same `accept_proposal` and `apply_design` a real session runs.
+
+### A session
+
+Desktop never needs Farm: without it installed nothing below runs and the notebook says nothing
+about it. With it installed, a companion's page in the notebook offers "Reshape in Formiga Farm",
+and the studio "Draw one in Formiga Farm".
+
+| State | Desktop |
+|---|---|
+| Idle | Lives as always. Looks for Farm when it starts and at most every ten minutes, from a tick it was taking anyway |
+| Open | Farm has a copy of one companion's look, or of a stand-in for a new one, and the companion goes on living on the desktop: nobody is lent to Farm. Each time the owner applies a design, Desktop decides on it at once by `accept_proposal` and answers. A kept look is the companion's straight away, noted in the journal (`World::note_new_look`, in Desktop's words) and saved before Farm is told. A new companion's design goes into the studio as a sketch, drawn over the stand-in, and joins the colony only if the owner adopts it there |
+| Closing | Farm has gone: whatever it proposed last and was not answered on is decided on, the files are closed, and a refusal is said in Farm's own words |
+
+The states are `farm::SessionState`, runtime only, and only one session is ever open. A companion
+away in Formiga Hill or Formiga Home is not opened, and one that goes away while it is open is
+answered `unavailable` until it is back (`app/visits.rs` says which app has it). A companion that
+leaves the colony ends its session with a recall; replacing the colony ends any session, and so
+does Desktop quitting, after keeping the look Farm proposed last for the companion it has open.
+While Farm runs, and only then, `farm::Watcher` looks at its proposal four times a second on a
+thread of its own and says through the event loop when there is a new serial. Without it every
+proposal is still decided, only when Farm closes.
+
+A new companion is made as any sketch is welcomed: `PreviewAcceptance::Drawn` adds the newcomer
+from the stand-in's seed with its sketch's recipe, or in place of a companion, and puts Farm's
+design on it with `apply_design`, as one undoable change. A creature's sprite atlas and its
+click shape are baked again when its look changes, since a reshaped companion keeps its id.
+
+### Files, and failing toward the look it has
+
+A session's files are under `farm/` in the data directory (`farm/session.rs`, kept by
+`expansion::files`): a fresh `farm/<session>/` with the snapshot, where Farm answers, and
+`farm/session.json`, the marker that says a session is open, holding the seal every proposal must
+match and what it was opened for: the companion, or the seed of the stand-in. A proposal is weighed
+only against the snapshot Desktop wrote, checked against the seal again first, and each serial is
+answered once. If Desktop stops while Farm is open, the next start keeps the look Farm last
+proposed for a companion, if it is still keepable, and recalls Farm; a new companion's design
+stays in Farm as a draft. Farm missing, refusing, crashing or writing anything that does not check
+out changes nothing: every companion keeps the look it has.
+
+`formiga-farm-stub` stands in for Farm (see `docs/BUILD.md`), and `formiga-tools`'s
+`farm_session` tests run whole sessions against it through the contract's own rule.
+
+### Cost
+
+Without Farm installed the addition is one LaunchServices or registry lookup every ten minutes.
+With it open, one small file is read four times a second, and a sprite is baked again only when a
+look is kept.

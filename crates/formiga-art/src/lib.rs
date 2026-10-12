@@ -2,6 +2,7 @@ mod bubble;
 mod canvas;
 mod card;
 mod colony_card;
+pub mod forms;
 mod objects;
 pub mod paint;
 mod palette;

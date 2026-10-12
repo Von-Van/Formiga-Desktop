@@ -47,6 +47,8 @@ pub struct SettingsOutcome {
     pub open_house: Option<CreatureId>,
     /// Bring the household of the house open in Formiga Home back out.
     pub bring_household_back: bool,
+    /// Reshape a companion in Formiga Farm, or draw a new one there.
+    pub open_farm: Option<crate::farm::FarmRequest>,
     /// A house built as another type, by the companion who keeps it, or with `None` as its own.
     pub house_style: Option<(CreatureId, Option<formiga_core::ShelterStyle>)>,
     /// A named palette for the village, or `Some(None)` for its own colours again.
@@ -86,6 +88,8 @@ pub struct SettingsOutcome {
     pub browse_application: bool,
     pub open_logs: bool,
     pub automatic_update_checks: Option<bool>,
+    /// Echo Fox Mode switched on or off, from the colophon's title.
+    pub echo_fox: Option<bool>,
     pub check_updates: bool,
     pub download_update: bool,
     pub install_update: bool,
@@ -126,7 +130,7 @@ pub struct SettingsOutcome {
     pub close_notebook: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PreviewAcceptance {
     Shared {
         shared: SharedCreatureSeed,
@@ -141,6 +145,15 @@ pub enum PreviewAcceptance {
         creature_id: CreatureId,
         source_seed: [u8; 32],
     },
+    /// A companion drawn in Formiga Farm: made from the seed of the stand-in it was drawn over,
+    /// keeping the recipe its sketch keeps, with Farm's design put on it, as a newcomer or in
+    /// place of `replace`.
+    Drawn {
+        source_seed: [u8; 32],
+        recipe: Option<formiga_core::CreatureDesign>,
+        design: Box<formiga_core::forms::Design>,
+        replace: Option<CreatureId>,
+    },
 }
 
 #[derive(Clone)]
@@ -150,6 +163,8 @@ pub struct GenerationPreview {
     pub source_seed: [u8; 32],
     pub similarity: Option<u8>,
     pub summary: String,
+    /// The design Formiga Farm drew it in, which `creature` already wears.
+    pub drawn: Option<Box<formiga_core::forms::Design>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1083,9 +1098,9 @@ fn draw_settings(
                 SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
                 SettingsTab::Colony => {
                     clubhouse::journal::page_heading(ui, SettingsTab::Colony, "Your colony", &clubhouse::journal::colony_observation(creatures));
-                    colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, &mut clubhouse.colony, &mut clubhouse.shell, outcome);
+                    colony_tab(ui, ColonyView { creatures, relationships, save }, creature_names, selected_creature, monitors, error, remove_confirmation, bulk_confirmation, &mut clubhouse.colony, &mut clubhouse.shell, clubhouse.formiga_farm, outcome);
                 }
-                SettingsTab::Studio => clubhouse.studio.show(ui, &mut clubhouse.shell, save, selected_creature, outcome),
+                SettingsTab::Studio => clubhouse.studio.show(ui, &mut clubhouse.shell, save, selected_creature, clubhouse.formiga_farm, outcome),
                 SettingsTab::Home => clubhouse.home.show(
                     ui,
                     &mut clubhouse.shell,
@@ -1109,7 +1124,8 @@ fn draw_settings(
                     clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
                     clubhouse.recovery.backups(ui, outcome);
                     ui.add_space(18.0);
-                    about_tab(ui, outcome, save_location, update_status, automatic_update_checks);
+                    let echo_fox = save.creatures.iter().any(|creature| creature.appearance.echo_fox);
+                    about_tab(ui, outcome, save_location, update_status, automatic_update_checks, echo_fox);
                 }
             }
         });
@@ -1275,6 +1291,48 @@ fn general_tab(
     }
 }
 
+/// The way into Formiga Farm for one companion, while Farm is installed: reshape it there, or
+/// say that it is open there already. Nothing at all without Farm.
+fn formiga_farm_group(
+    ui: &mut egui::Ui,
+    creature: &Creature,
+    formiga_farm: clubhouse::FormigaFarmView,
+    outcome: &mut SettingsOutcome,
+) {
+    use crate::farm::FarmRequest;
+    if !formiga_farm.installed {
+        return;
+    }
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        ui.strong("A new look");
+        if formiga_farm.open == Some(FarmRequest::Reshape(creature.id)) {
+            ui.label(format!(
+                "{} is open in Formiga Farm. Each look you apply there is theirs at once.",
+                creature.name
+            ));
+            return;
+        }
+        ui.small(
+            "Reshape them in Formiga Farm: a new body, colours and face. Their name, ways, \
+             friends and history stay their own, and they go on living here meanwhile.",
+        );
+        let open = ui
+            .add_enabled(
+                formiga_farm.can_open,
+                egui::Button::new("Reshape in Formiga Farm"),
+            )
+            .on_disabled_hover_text(if formiga_farm.open.is_some() {
+                "Formiga Farm already has a companion open."
+            } else {
+                "Not while the colony is away."
+            });
+        if open.clicked() {
+            outcome.open_farm = Some(FarmRequest::Reshape(creature.id));
+        }
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn colony_tab(
     ui: &mut egui::Ui,
@@ -1287,6 +1345,7 @@ fn colony_tab(
     bulk_confirmation: &mut bool,
     page: &mut clubhouse::collection::ColonyState,
     shell: &mut clubhouse::shell::Shell,
+    formiga_farm: clubhouse::FormigaFarmView,
     outcome: &mut SettingsOutcome,
 ) {
     let creatures = colony.creatures;
@@ -1375,10 +1434,7 @@ fn colony_tab(
             }
             ui.small(format!(
                 "Body: {} · observed {}",
-                creature.appearance.design.map_or_else(
-                    || clubhouse::words(&format!("{:?}", creature.appearance.family)),
-                    |d| d.body.label().to_owned(),
-                ),
+                clubhouse::body_label(&creature.appearance),
                 activity_label(creature.state.action)
             ));
             if let Some(parent_id) = creature.role.parent_id() {
@@ -1547,6 +1603,7 @@ fn colony_tab(
 
     ui.add_space(8.0);
     page.wardrobe(ui, shell, colony.save, creature, outcome);
+    formiga_farm_group(ui, creature, formiga_farm, outcome);
     ui.add_space(8.0);
     ui.group(|ui| {
         ui.strong("Colony care");
@@ -2155,10 +2212,23 @@ fn about_tab(
     save_location: &str,
     update_status: &UpdateStatus,
     automatic_update_checks: bool,
+    echo_fox: bool,
 ) {
     clubhouse::wide_card(ui, |ui| {
         clubhouse::journal::kicker(ui, "Colophon");
-        ui.heading(format!("Formiga {APP_VERSION}"));
+        // The title is also the switch for Echo Fox Mode, and says nothing about it: a click on
+        // it turns every companion into the Echo Fox, and another brings them back.
+        let title = ui.add(
+            egui::Label::new(egui::RichText::new(format!("Formiga {APP_VERSION}")).heading())
+                .selectable(false)
+                .sense(egui::Sense::click()),
+        );
+        if title.clicked() {
+            outcome.echo_fox = Some(!echo_fox);
+        }
+        if echo_fox {
+            ui.small("Echo Fox Mode. Everyone is themselves again when Formiga next starts.");
+        }
         ui.label("Procedural desktop fauna, generated and simulated entirely on your computer.");
         ui.small(format!(
             "A {} build for {}. MIT licensed; the versions of everything it is built from are \

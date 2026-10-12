@@ -134,6 +134,21 @@ impl From<SaveFile> for ValidatedSave {
             );
         }
         for creature in &mut save.creatures {
+            // A sculpted form is kept as the design model draws it, and always beside a recipe,
+            // which anything that cannot draw sculpts draws instead.
+            if let Some(sculpt) = creature.appearance.sculpt.take() {
+                let design = crate::forms::Design {
+                    form: crate::forms::Form::Sculpted {
+                        sculpt: sculpt.normalized(),
+                    },
+                    face: creature.appearance.face,
+                };
+                creature.appearance.design = creature
+                    .appearance
+                    .design
+                    .or_else(|| design.fallback_recipe(None));
+                creature.appearance.sculpt = design.form.sculpt().cloned();
+            }
             creature.appearance.design = creature
                 .appearance
                 .design
@@ -287,6 +302,12 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
         check(
             creature.appearance.design == creature.appearance.design.map(|d| d.bounded()),
             &|| format!("{name}'s recipe is out of bounds"),
+        );
+        check(
+            creature.appearance.sculpt.as_ref().is_none_or(|sculpt| {
+                *sculpt == sculpt.normalized() && creature.appearance.design.is_some()
+            }),
+            &|| format!("{name}'s sculpted form is out of bounds, or has no recipe beside it"),
         );
         check(creature.routines.len as usize <= MAX_ROUTINES, &|| {
             format!("{name} keeps {} routines", creature.routines.len)

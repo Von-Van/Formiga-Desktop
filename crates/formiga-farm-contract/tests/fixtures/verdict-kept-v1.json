@@ -1,0 +1,13 @@
+{
+  "format": "formiga.farm.verdict",
+  "version": 1,
+  "min_reader_version": 1,
+  "session_id": "fa4fa4fa4fa4fa4fa4fa4fa4fa4fa4fa",
+  "snapshot_sha256": "d8535768631c42fc4212e1b3d9de4bf16b2444d9cf8d024d4ab86a6e3c3b8ebb",
+  "serial": 1,
+  "written_at_utc": "2026-10-23T09:37:00Z",
+  "verdict": {
+    "kind": "kept",
+    "revision": "9b9261ef815b66e1b0d9f6ad0a874259"
+  }
+}

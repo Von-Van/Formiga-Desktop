@@ -39,7 +39,15 @@ pub(crate) struct PropHold {
     pub(crate) forward: i32,
 }
 
-pub(super) fn prop_hold(genome: &AppearanceGenome, pose: Pose, face: PixelPoint) -> PropHold {
+pub(super) fn prop_hold(
+    genome: &AppearanceGenome,
+    pose: Pose,
+    face: PixelPoint,
+    clip: BodyClip,
+) -> PropHold {
+    if genome.echo_fox {
+        return fox::prop_hold(pose, clip);
+    }
     if let Some(design) = genome.design {
         return modular::prop_hold(design, pose, scale(genome));
     }
@@ -88,7 +96,7 @@ pub(super) fn draw_activity_prop(
     let (toy, snack, drink) = prop_variants(genome);
     // Belongings are coloured against the creature, not from it, so a held toy stays readable.
     let palette = crate::prop_palette(palette, prop_signature(genome));
-    let hold = prop_hold(genome, pose, face);
+    let hold = prop_hold(genome, pose, face, BodyClip::Action(action));
     match action {
         ActionKind::SoloPlay => {
             // One round of keep-up, read straight off the paw: knocked up off the paw, over the

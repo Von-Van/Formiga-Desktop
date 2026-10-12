@@ -452,3 +452,67 @@ fn a_souvenir_on_the_list_is_kept_only_while_the_capability_is_offered() {
         .retain(|capability| *capability != Capability::Souvenirs);
     assert!(!snapshot.accepts_souvenir("picnic_ribbon"));
 }
+
+/// A form sculpted in Formiga Farm does not travel. The companion recipe Desktop keeps beside it
+/// does, so an app that cannot draw sculpts shows the nearest companion in its colours, and the
+/// snapshot says nothing a reader before sculpts would not understand.
+#[test]
+fn a_sculpted_form_travels_as_the_recipe_kept_beside_it() {
+    use formiga_core::forms::{Design, Form, Plan, Sculpt};
+    let plain = colony(3);
+    let mut save = plain.clone();
+    let creature = &mut save.creatures[0];
+    creature.appearance = Design {
+        form: Form::Sculpted {
+            sculpt: Sculpt::starter(Plan::Crawler),
+        },
+        face: creature.appearance.face,
+    }
+    .genome(&creature.appearance);
+    creature.origin.design = creature.appearance.design;
+    let snapshot = snapshot_of(&save);
+    let written = String::from_utf8(encode(&snapshot).unwrap()).unwrap();
+    assert!(!written.contains("sculpt"));
+    assert_eq!(
+        snapshot.min_reader_version,
+        snapshot_of(&plain).min_reader_version
+    );
+    let genome = snapshot.travelers[0].appearance.to_genome().unwrap();
+    assert_eq!(genome.sculpt, None);
+    assert_eq!(genome.design, save.creatures[0].appearance.design);
+    assert_eq!(
+        genome,
+        formiga_core::AppearanceGenome {
+            sculpt: None,
+            ..save.creatures[0].appearance.clone()
+        }
+    );
+}
+
+/// A companion drawn as the Echo Fox on the desktop is a fox wherever it goes, and one that is
+/// not says nothing about foxes at all, so a colony out of the mode reads exactly as it did.
+#[test]
+fn an_echo_fox_travels_as_a_fox_and_nobody_else_mentions_one() {
+    let plain = colony(3);
+    let written = String::from_utf8(encode(&snapshot_of(&plain)).unwrap()).unwrap();
+    assert!(!written.contains("echo_fox"));
+
+    let mut foxes = plain.clone();
+    for creature in &mut foxes.creatures {
+        creature.appearance.echo_fox = true;
+    }
+    let snapshot = snapshot_of(&foxes);
+    assert_eq!(
+        snapshot.min_reader_version,
+        snapshot_of(&plain).min_reader_version
+    );
+    let read: TravelSnapshot = decode(&encode(&snapshot).unwrap()).unwrap();
+    for (traveler, creature) in read.travelers.iter().zip(&foxes.creatures) {
+        let arrived = traveler.to_creature().unwrap();
+        assert!(arrived.appearance.echo_fox);
+        let fox = |appearance| {
+            CreatureRenderer::render_body_frame(appearance, ActionKind::Idle, 0, false).canvas
+        };
+        assert_eq!(fox(&arrived.appearance), fox(&creature.appearance));
+    }
+}

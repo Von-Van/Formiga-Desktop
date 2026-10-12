@@ -4,6 +4,7 @@ members = [
     "crates/formiga-art",
     "crates/formiga-desktop",
     "crates/formiga-expansion-rulebook",
+    "crates/formiga-farm-contract",
     "crates/formiga-home-contract",
     "crates/formiga-tools",
     "crates/formiga-travel",
@@ -11,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.67.5"
+version = "0.67.6"
 edition = "2024"
 license = "MIT"
 rust-version = "1.97"

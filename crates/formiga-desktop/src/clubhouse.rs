@@ -186,6 +186,9 @@ pub struct Clubhouse {
     /// Formiga Home as the notebook may offer it: nothing at all while it is not installed. Set
     /// by the app before every frame.
     pub formiga_home: FormigaHomeView,
+    /// Formiga Farm as the notebook may offer it: nothing at all while it is not installed. Set
+    /// by the app before every frame.
+    pub formiga_farm: FormigaFarmView,
     /// The page being turned, while it turns, and the page shown last frame, to notice a new one.
     pub(crate) page_turn: Option<journal::PageTurn>,
     pub(crate) shown_page: Option<crate::settings::SettingsTab>,
@@ -200,6 +203,27 @@ pub struct FormigaHomeView {
     pub open: Option<CreatureId>,
     /// Whether a house could be opened just now: none is open, and the colony is here.
     pub can_open: bool,
+}
+
+/// What the notebook may offer about Formiga Farm.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FormigaFarmView {
+    /// Formiga Farm is installed.
+    pub installed: bool,
+    /// What is open in it, while something is.
+    pub open: Option<crate::farm::FarmRequest>,
+    /// Whether it could be opened just now: nothing is open in it, and the colony is here.
+    pub can_open: bool,
+}
+
+/// What a companion's body is called: its sculpted form's plan, its recipe's body, or the family
+/// a look from before recipes belongs to.
+pub fn body_label(appearance: &formiga_core::AppearanceGenome) -> String {
+    match (&appearance.sculpt, appearance.design) {
+        (Some(sculpt), _) => sculpt.plan.label().to_owned(),
+        (None, Some(design)) => design.body.label().to_owned(),
+        (None, None) => words(&format!("{:?}", appearance.family)),
+    }
 }
 
 pub fn upload(context: &egui::Context, name: &str, canvas: &Canvas) -> TextureHandle {
@@ -428,6 +452,8 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
             Some(keeper) => format!("You spent a while inside {}'s house", keeper.name),
             None => "You spent a while inside a house in the village".to_owned(),
         },
+        // Nor anything Formiga Farm sent: only that a companion has a new look.
+        JournalMoment::NewLook => format!("{name} has a new look, shaped in Formiga Farm"),
     }
 }
 

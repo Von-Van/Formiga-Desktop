@@ -2,6 +2,54 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+## [0.67.6] - 2026-10-12
+
+Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub
+page. Travel version 5 and household version 9 add only Echo Fox Mode's optional `echo_fox`, so
+Formiga Hill 0.67.5 and Formiga Home 0.67.5 work with it as they are: they show a reshaped
+companion as the companion nearest it, and a fox as the companion it stands in for. Save version 29
+is new; an earlier Formiga does not open a colony this one has saved.
+
+### Added
+
+- Room for a companion reshaped in Formiga Farm on one of seven new body plans: compact, large and
+  tall four-legged bodies, an upright body, a floater, a crawler and a percher. Save version 29
+  keeps the form beside the companion recipe nearest it, and every creature drawn from a recipe or
+  its genes is written exactly as before. A reshaped companion is drawn as itself everywhere a
+  companion is, with its every expression and whatever it wears, and as the nearest companion by
+  anything that cannot draw the new bodies, such as an earlier Formiga Hill or Home or a share code.
+  `formiga-tools forms-sheet` draws every new body in the poses it is seen in most.
+- A reshaped companion is painted finer on the desktop, as Formiga Farm paints it: the same pixel
+  art and the same shapes in the same places, with smaller steps in its curves, three tones of
+  shade, and its face redrawn larger with rounded corners, as finely as the overlay draws it at the
+  companion size (up to four pixels to each; on a Retina Mac, three at Medium and two at Large).
+  Companions drawn from a recipe are drawn exactly as before.
+- `formiga-farm-contract`, the agreement with Formiga Farm, adopted with its golden fixtures
+  unchanged: what a session opens on, a design Farm proposes and what it is for, and Desktop's
+  verdict on each. Desktop keeps a proposal only through `accept_proposal`, which refuses anything
+  from another session, out of range, made from a look the creature no longer has, or for a
+  creature that is away, and `apply_design`, which changes how a creature looks and nothing else.
+  It is built on the rulebook, as Hill's and Home's contracts are.
+- A companion can be reshaped in Formiga Farm, and a new one drawn there, once Farm is installed:
+  a companion's page in the notebook offers "Reshape in Formiga Farm", and the studio "Draw one in
+  Formiga Farm". The companion goes on living on the desktop meanwhile. Each look the owner applies
+  in Farm is kept at once, noted in the journal and saved, while its name, ways, friends and
+  history stay its own; a new companion's design comes back to the studio as a sketch to adopt.
+  Anything Farm sends that does not check out changes nothing, and a companion away in Formiga
+  Hill or Formiga Home is reshaped once it is back. `formiga-farm-stub` stands in for Farm while
+  developing.
+- Echo Fox Mode, an easter egg on the notebook's last page: a click on the colophon's title turns
+  every companion into the Echo Fox, and another brings them back, as does the next start. The fox
+  is one hand-drawn picture (`renderer/fox.rs`), cut into a tail, a head with its ears, a body, two
+  feet and two forepaws, and moved through every clip and gesture by the same poses and paw
+  placements a companion's body uses, with its own face in the face frame. Every fox is the same
+  fox; names, traits, memories and looks are untouched, and nothing about the mode is saved.
+  Travel version 5 carries `echo_fox` on a traveler's look and household version 9 writes its
+  residents in it, so a fox visiting a Formiga Hill or Home built on this release is a fox there
+  too. `formiga-tools fox-sheet` draws the fox through every clip and every face.
+
 ## [0.67.5] - 2026-10-08
 
 Released together with Formiga Hill 0.67.5 and Formiga Home 0.67.5. Travel version 4 is unchanged.

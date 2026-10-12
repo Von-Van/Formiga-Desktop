@@ -13,6 +13,7 @@ mod beats;
 mod classic;
 mod effects;
 mod face;
+mod fox;
 mod modular;
 mod pose;
 mod props;
@@ -141,24 +142,24 @@ pub struct FaceRenderState {
 /// Where a body's parts are in one frame, as its drawing placed them: what anything it wears is
 /// put on against. Frames are drawn facing right.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Figure {
-    face: PixelPoint,
+pub(crate) struct Figure {
+    pub(crate) face: PixelPoint,
     /// The middle of the top of the head: its topmost drawn row.
-    crown: PixelPoint,
+    pub(crate) crown: PixelPoint,
     /// Half the head's width.
-    head_half: i32,
+    pub(crate) head_half: i32,
     /// Where a collar sits, and half its width: the neck, or for a body that carries its face on
     /// its front, a band across the body just under the face.
-    neck: PixelPoint,
-    neck_half: i32,
+    pub(crate) neck: PixelPoint,
+    pub(crate) neck_half: i32,
     /// On the front of the chest.
-    chest: PixelPoint,
+    pub(crate) chest: PixelPoint,
     /// On the back hip, where a bag hangs.
-    hip: PixelPoint,
+    pub(crate) hip: PixelPoint,
     /// The top of the back, where a pack rides.
-    back: PixelPoint,
+    pub(crate) back: PixelPoint,
     /// The lowest row anything worn may reach: the feet.
-    floor: i32,
+    pub(crate) floor: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -680,7 +681,8 @@ impl CreatureRenderer {
     }
 
     /// One body frame with whatever the creature is wearing drawn on, placed against the body as
-    /// this frame draws it.
+    /// this frame draws it. A sculpted form's body is drawn by [`crate::forms`], and what it
+    /// holds and shows is coloured as its face is.
     pub fn render_dressed_body_frame(
         genome: &AppearanceGenome,
         dress: Option<AccessoryArt>,
@@ -688,30 +690,73 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
     ) -> RenderedBodyFrame {
+        Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, 1).0
+    }
+
+    /// [`Self::render_dressed_body_frame`], and the same frame drawn `detail` pixels to each of
+    /// its own, from 1 to [`crate::forms::FINEST_DETAIL`]. A sculpted form's body is painted that
+    /// finely (see [`crate::forms`]); whatever it wears, holds and shows is drawn as at frame
+    /// size, each pixel a square, and so is all of a companion, which is pixel art at one pixel
+    /// to the unit. The face anchor, like the frame, stays in frame pixels.
+    pub fn render_dressed_body_frame_in_detail(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        reduce_motion: bool,
+        detail: u32,
+    ) -> (RenderedBodyFrame, Canvas) {
+        let detail = detail.clamp(1, crate::forms::FINEST_DETAIL);
+        let (rendered, fine) =
+            Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, detail);
+        let fine = fine.unwrap_or_else(|| crate::forms::blocks(&rendered.canvas, detail));
+        (rendered, fine)
+    }
+
+    /// A dressed body frame, and a sculpted form's painted `detail` pixels to each of its own
+    /// when that is more than one.
+    fn dress_body_frame(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
+        clip: BodyClip,
+        frame: u8,
+        reduce_motion: bool,
+        detail: u32,
+    ) -> (RenderedBodyFrame, Option<Canvas>) {
         let frame = if reduce_motion { 0 } else { frame };
-        let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        let palette = crate::palette_for(genome);
-        let clip = clip.into().body();
-        let pose = Pose::new(genome, clip, frame, reduce_motion);
-        let figure = if let Some(design) = genome.design {
-            modular::draw(
-                &mut canvas,
-                design,
-                palette,
-                pose,
-                scale(genome),
-                clip,
-                frame,
-            );
-            modular::figure(design, pose, scale(genome))
-        } else {
-            match genome.family {
-                BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
-                BodyFamily::Hopper => draw_hopper(&mut canvas, genome, palette, pose, clip, frame),
-                BodyFamily::SoftQuadruped => {
-                    draw_quadruped(&mut canvas, genome, palette, pose, clip, frame)
-                }
+        let clip = clip.body();
+        let face_genome;
+        // The body as painted, before anything is drawn on it, and the same body painted finely.
+        let mut fine = None;
+        let (genome, mut canvas, figure) = if genome.echo_fox {
+            let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            let pose = Pose::new(&fox::posing(genome), clip, frame, reduce_motion);
+            let figure = fox::draw(&mut canvas, pose, clip, frame);
+            (genome, canvas, figure)
+        } else if let Some(sculpt) = &genome.sculpt {
+            face_genome = crate::forms::face_genome(sculpt, genome);
+            let (canvas, figure) = crate::forms::body(sculpt, genome, clip, frame, reduce_motion);
+            if detail > 1 {
+                let body = crate::forms::body_in_detail(
+                    sculpt,
+                    genome,
+                    clip,
+                    frame,
+                    reduce_motion,
+                    detail,
+                );
+                fine = Some((canvas.clone(), body));
             }
+            (&face_genome, canvas, figure)
+        } else {
+            let (canvas, figure) = Self::draw_recipe_body(genome, clip, frame, reduce_motion);
+            (genome, canvas, figure)
+        };
+        let palette = crate::palette_for(genome);
+        let pose = if genome.echo_fox {
+            Pose::new(&fox::posing(genome), clip, frame, reduce_motion)
+        } else {
+            Pose::new(genome, clip, frame, reduce_motion)
         };
         let mut face_anchor = figure.face;
         if let Some(dress) = dress {
@@ -752,19 +797,87 @@ impl CreatureRenderer {
         let (dx, dy) = keep_atlas_margin(&mut canvas);
         face_anchor.x += dx;
         face_anchor.y += dy;
+        let fine = fine.map(|(mut bare, mut body)| {
+            bare.translate(dx, dy);
+            body.translate(dx * detail as i32, dy * detail as i32);
+            crate::forms::dressed_in_detail(&canvas, &bare, &body, detail)
+        });
         let alpha_mask = AlphaMask::from_canvas(&canvas);
-        RenderedBodyFrame {
+        let rendered = RenderedBodyFrame {
             canvas,
             face_anchor,
             alpha_mask,
-        }
+        };
+        (rendered, fine)
     }
 
+    /// A body drawn from its recipe, or from its genes for a look from before recipes.
+    fn draw_recipe_body(
+        genome: &AppearanceGenome,
+        clip: BodyClip,
+        frame: u8,
+        reduce_motion: bool,
+    ) -> (Canvas, Figure) {
+        let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        let palette = crate::palette_for(genome);
+        let pose = Pose::new(genome, clip, frame, reduce_motion);
+        let figure = if let Some(design) = genome.design {
+            modular::draw(
+                &mut canvas,
+                design,
+                palette,
+                pose,
+                scale(genome),
+                clip,
+                frame,
+            );
+            modular::figure(design, pose, scale(genome))
+        } else {
+            match genome.family {
+                BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
+                BodyFamily::Hopper => draw_hopper(&mut canvas, genome, palette, pose, clip, frame),
+                BodyFamily::SoftQuadruped => {
+                    draw_quadruped(&mut canvas, genome, palette, pose, clip, frame)
+                }
+            }
+        };
+        (canvas, figure)
+    }
+
+    /// The face, in its 16-pixel frame. A sculpted form wears the face its layout's recipe draws,
+    /// with its own eye colour, so it keeps every expression a companion has.
     pub fn render_face_frame(genome: &AppearanceGenome, state: FaceRenderState) -> Canvas {
+        if genome.echo_fox {
+            let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
+            fox::draw_face(&mut canvas, state);
+            return canvas;
+        }
+        if let Some(sculpt) = &genome.sculpt {
+            let face_genome = crate::forms::face_genome(sculpt, genome);
+            let mut face = Self::render_face_frame(&face_genome, state);
+            crate::forms::recolor_eyes(&mut face, &face_genome, sculpt.coat.eyes);
+            return face;
+        }
         let mut canvas = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
         let palette = crate::palette_for(genome);
         draw_face(&mut canvas, genome, palette, 8, 7, state);
         canvas
+    }
+
+    /// [`Self::render_face_frame`] drawn `detail` pixels to each of its own, from 1 to
+    /// [`crate::forms::FINEST_DETAIL`]: a sculpted form's redrawn larger with its corners
+    /// rounded, to sit on its finely painted body, and a companion's as squares.
+    pub fn render_face_frame_in_detail(
+        genome: &AppearanceGenome,
+        state: FaceRenderState,
+        detail: u32,
+    ) -> Canvas {
+        let face = Self::render_face_frame(genome, state);
+        if genome.sculpt.is_some() && !genome.echo_fox {
+            crate::forms::rounded_face(&face, detail)
+        } else {
+            crate::forms::blocks(&face, detail.clamp(1, crate::forms::FINEST_DETAIL))
+        }
     }
 
     /// One trinket at the size the prop quad samples, coloured against this creature alone. The
@@ -786,29 +899,60 @@ impl CreatureRenderer {
     /// desktop behind it — and writes only inside the existing frame, so the silhouette used for
     /// clicking and dragging is unchanged. Edges stay one pixel and hard, never blurred.
     pub fn outline_frame(canvas: &mut Canvas) {
-        let (width, height) = (canvas.width() as i32, canvas.height() as i32);
-        let solid = |canvas: &Canvas, x: i32, y: i32| canvas.get(x, y).a > 16;
-        let mut edges = Vec::new();
+        Self::outline_frame_in_detail(canvas, 1);
+    }
+
+    /// [`Self::outline_frame`] for a frame drawn `detail` pixels to each of its own: the same soft
+    /// edge, `detail` pixels wide so it is as heavy as at frame size, hugging the finer
+    /// silhouette. At one it is exactly [`Self::outline_frame`].
+    pub fn outline_frame_in_detail(canvas: &mut Canvas, detail: u32) {
+        let (width, height) = (canvas.width() as usize, canvas.height() as usize);
+        let reach = detail.max(1) as usize;
+        let solid: Vec<bool> = (0..width * height)
+            .map(|at| canvas.get((at % width) as i32, (at / width) as i32).a > 16)
+            .collect();
+        // Whether anything solid lies within `reach` along a row, along a column, and anywhere in
+        // the square around a pixel. A pixel near something solid along its row or column makes
+        // a full edge pixel; one near it only across a corner softens the corner, which is what
+        // keeps a pixel silhouette from growing a halo.
+        let near = |line: &dyn Fn(usize) -> bool, length: usize| -> Vec<bool> {
+            let mut before = vec![0_usize; length + 1];
+            for i in 0..length {
+                before[i + 1] = before[i] + usize::from(line(i));
+            }
+            (0..length)
+                .map(|i| before[(i + reach + 1).min(length)] > before[i.saturating_sub(reach)])
+                .collect()
+        };
+        let mut along_row = vec![false; width * height];
         for y in 0..height {
-            for x in 0..width {
-                if solid(canvas, x, y) {
-                    continue;
-                }
-                // A cardinal neighbour makes a full edge pixel; a diagonal one only softens the
-                // corner, which is what keeps a pixel silhouette from growing a halo.
-                let cardinal = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-                    .into_iter()
-                    .any(|(dx, dy)| solid(canvas, x + dx, y + dy));
-                let diagonal = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
-                    .into_iter()
-                    .any(|(dx, dy)| solid(canvas, x + dx, y + dy));
-                if cardinal || diagonal {
-                    edges.push((x, y, if cardinal { 150 } else { 70 }));
-                }
+            let row = near(&|x| solid[y * width + x], width);
+            along_row[y * width..(y + 1) * width].copy_from_slice(&row);
+        }
+        let mut along_column = vec![false; width * height];
+        let mut around = vec![false; width * height];
+        for x in 0..width {
+            let column = near(&|y| solid[y * width + x], height);
+            let square = near(&|y| along_row[y * width + x], height);
+            for y in 0..height {
+                along_column[y * width + x] = column[y];
+                around[y * width + x] = square[y];
             }
         }
-        for (x, y, alpha) in edges {
-            canvas.set(x, y, Rgba::new(18, 26, 22, alpha));
+        for at in 0..width * height {
+            if solid[at] || !around[at] {
+                continue;
+            }
+            let alpha = if along_row[at] || along_column[at] {
+                150
+            } else {
+                70
+            };
+            canvas.set(
+                (at % width) as i32,
+                (at / width) as i32,
+                Rgba::new(18, 26, 22, alpha),
+            );
         }
     }
 
@@ -877,7 +1021,13 @@ impl CreatureRenderer {
     /// Only resting poses are measured, and the smallest clearance among them wins, so the value
     /// is a stable property of the creature. Seating never shifts mid-animation, and airborne
     /// frames keep reading as lift instead of sinking the creature into its perch.
+    ///
+    /// A sculpted form is measured from its own resting frame, and a floater to the ground it
+    /// hovers above, so it is never set down there.
     pub fn resting_baseline(genome: &AppearanceGenome, reduce_motion: bool) -> u32 {
+        if let Some(sculpt) = genome.sculpt.as_ref().filter(|_| !genome.echo_fox) {
+            return crate::forms::resting_baseline(sculpt, genome);
+        }
         const RESTING: [ActionKind; 3] =
             [ActionKind::Idle, ActionKind::Perch, ActionKind::Homebound];
         RESTING

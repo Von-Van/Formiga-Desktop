@@ -1,7 +1,9 @@
 use crate::platform;
 use anyhow::{Context, Result};
 use formiga_art::{BodyClip, BodyPresentation, CreatureRenderer, FRAME_SIZE, FramePlacement};
-use formiga_core::{Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings};
+use formiga_core::{
+    AppearanceGenome, Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -45,6 +47,9 @@ pub struct InteractionProxy {
     visible: bool,
     interactive: bool,
     resting_baseline: Option<(bool, u32)>,
+    /// The look the mask and the baseline were read from. A companion given a new look in
+    /// Formiga Farm keeps its id, so both are read again when this changes.
+    appearance: Option<AppearanceGenome>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -87,6 +92,7 @@ impl InteractionProxy {
             visible: false,
             interactive: false,
             resting_baseline: None,
+            appearance: None,
         })
     }
 
@@ -104,6 +110,13 @@ impl InteractionProxy {
         runtime: ProxyRuntimeState,
     ) {
         self.monitor_id = monitor.id;
+        if self.appearance.as_ref() != Some(&creature.appearance) {
+            self.mask_cache.clear();
+            self.signature = None;
+            self.applied_signature = None;
+            self.resting_baseline = None;
+            self.appearance = Some(creature.appearance.clone());
+        }
         let scale = settings.display_scale;
         let physical_size = FRAME_SIZE * u32::from(scale);
         let logical_size = physical_size as f32 / monitor.scale_factor;
