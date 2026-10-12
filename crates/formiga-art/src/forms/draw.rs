@@ -803,25 +803,55 @@ impl Painter<'_> {
             self.inks.primary
         };
         let (top, foot, r) = (limb.top, limb.foot, limb.radius);
+        // The limb ends with its rounded end resting on the foot's row, not a radius below it,
+        // so the foot drawn over that end is the only foot there is.
+        let end = (foot.0, (foot.1 - r).max(top.1));
         if talons && region != Region::Arm {
             // Thin legs, drawn flat in the feature colour.
             let color = if dim { far(fill) } else { fill };
-            self.sheet.flat(&[Shape::capsule(top, foot, r, r)], color);
+            self.sheet.flat(&[Shape::capsule(top, end, r, r)], color);
         } else {
             if limb.near && matches!(region, Region::Leg { .. }) {
                 self.melt = self.body.clone();
             }
-            self.region(
-                &[Shape::capsule(top, foot, r, r * 0.95)],
-                region,
-                Frame::along(top, foot, r),
-                fill,
-                true,
-                dim,
-            );
+            // A paw is part of the leg it ends, inside the leg's own outline, so it never reads
+            // as one more foot under it.
+            let mut shapes = vec![Shape::capsule(top, end, r, r * 0.95)];
+            shapes.extend(self.paw(limb, region, 1.0));
+            self.region(&shapes, region, Frame::along(top, end, r), fill, true, dim);
             self.melt = None;
         }
         self.foot(limb, region, dim);
+    }
+
+    /// The rounded paw, pad or hand a limb ends in, if its feet are soft ones, at `inset` of its
+    /// full size. Hooves and talons are drawn on their own.
+    fn paw(&self, limb: Limb, region: Region, inset: f32) -> Option<Shape> {
+        let (fx, fy) = limb.foot;
+        let r = limb.radius;
+        let kind = match region {
+            Region::Arm => match self.part(Slot::Feet).map(|p| p.kind) {
+                Some(PartKind::FeetHands) | None => Some(PartKind::FeetHands),
+                other => other,
+            },
+            _ => self.part(Slot::Feet).map(|p| p.kind),
+        };
+        let size = self
+            .part(Slot::Feet)
+            .map_or(1.0, |p| 0.7 + f32::from(p.size) * 0.06);
+        let (dx, rise, rx, ry) = match kind? {
+            PartKind::FeetPaws => (0.8, 0.55, 1.15 * size, 0.75),
+            PartKind::FeetBigPaws => (1.0, 0.6, 1.45 * size, 0.9),
+            PartKind::FeetPads => (0.4, 0.4, 1.25 * size, 0.6),
+            PartKind::FeetHands => (0.0, 0.3, 1.0 * size, 0.85 * size),
+            _ => return None,
+        };
+        Some(Shape::ellipse(
+            fx + dx,
+            fy - r * rise,
+            r * rx * inset,
+            r * ry * inset,
+        ))
     }
 
     fn foot(&mut self, limb: Limb, region: Region, dim: bool) {
@@ -847,30 +877,12 @@ impl Painter<'_> {
                 m.kind == MarkingKind::Socks || (m.kind == MarkingKind::Shoulders && limb.front)
             })
             .map(|m| soft(m.color));
-        let paw = socks.unwrap_or(self.inks.primary);
+        if let Some(socks) = socks
+            && let Some(shape) = self.paw(limb, region, 0.8)
+        {
+            self.sheet.blob(&[shape], tone(socks));
+        }
         match kind {
-            Some(PartKind::FeetPaws) => {
-                self.sheet.flat(
-                    &[Shape::ellipse(
-                        fx + 0.8,
-                        fy - r * 0.55,
-                        r * 1.15 * size,
-                        r * 0.75,
-                    )],
-                    tone(paw),
-                );
-            }
-            Some(PartKind::FeetBigPaws) => {
-                self.sheet.flat(
-                    &[Shape::ellipse(
-                        fx + 1.0,
-                        fy - r * 0.6,
-                        r * 1.45 * size,
-                        r * 0.9,
-                    )],
-                    tone(paw),
-                );
-            }
             Some(PartKind::FeetHooves) => {
                 let band = r * 0.7 * size + 0.5;
                 self.sheet.flat(
@@ -884,15 +896,6 @@ impl Painter<'_> {
                 );
             }
             Some(PartKind::FeetPads) => {
-                self.sheet.flat(
-                    &[Shape::ellipse(
-                        fx + 0.4,
-                        fy - r * 0.4,
-                        r * 1.25 * size,
-                        r * 0.6,
-                    )],
-                    tone(paw),
-                );
                 for dx in [-0.5_f32, 1.0] {
                     let x = (fx + dx * r * 0.7).floor() as i32 + 1;
                     if self.sheet.hd() {
@@ -903,17 +906,6 @@ impl Painter<'_> {
                             .set(x, fy.floor() as i32, tone(self.inks.feature));
                     }
                 }
-            }
-            Some(PartKind::FeetHands) => {
-                self.sheet.flat(
-                    &[Shape::ellipse(
-                        fx,
-                        fy - r * 0.3,
-                        r * 1.0 * size,
-                        r * 0.85 * size,
-                    )],
-                    tone(paw),
-                );
             }
             Some(PartKind::FeetTalons) => {
                 let claw = tone(self.inks.feature);
@@ -1028,6 +1020,18 @@ impl Painter<'_> {
                     true,
                     false,
                 );
+                // A brush in the coat's own colour ends in a pale tip, as a fox's does.
+                if part.ink == Ink::Primary {
+                    let tip = (end.0 - cos * 0.6 * k, end.1 - sin * 0.6 * k);
+                    self.region(
+                        &[Shape::ellipse(tip.0, tip.1, 2.1 * k, 2.1 * k)],
+                        Region::Tail,
+                        Frame::along(root, end, 2.6 * k),
+                        self.inks.underside,
+                        true,
+                        false,
+                    );
+                }
             }
             PartKind::TailFluffy => {
                 let mid = (along(0.55).0 - 1.5, along(0.55).1 + 2.0);
