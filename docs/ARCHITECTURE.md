@@ -1995,7 +1995,15 @@ window-wide background painter, since the edge and shadow fall just outside the 
 the open page's tab is painted after the page, over the edge it is joined to. The ruling goes in a
 place `paint_page` leaves for it under the margin line, filled by `paint_ruling` once the page's
 scroll area has been laid out: the lines are spaced from the top of the page's writing, where the
-scroll has put it, so they move with the words and never sit still behind them. A page turn is
+scroll has put it, so they move with the words and never sit still behind them. They are
+`rule_pitch` apart (24 points at 100% text, growing with it), and while a page is drawn its
+`RuleGrid` is kept for the frame so that what is written on it can find them: `write` sets text on
+the next rule with every wrapped line on a rule of its own (a page's name, too tall for one, takes
+two), `ruled_row` sits a row of written things on one rule, `on_the_line` seats a checkbox or a row
+of buttons so its words rest on a rule, and `to_next_rule` brings whatever follows a picture or a
+row of controls back to the first rule clear of it. A card is a slip pinned over the page, so it
+covers the ruling and what is written on it is set as on any card; it starts on a rule, and the
+section lines of a sectioned page are slips a whole number of lines tall. A page turn is
 `journal::turn_page`: noticing the page shown change, it draws a ruled leaf over the new page for
 0.76 seconds, shrinking toward the binding going forward and toward the cover going back, with a
 shadow beside its free edge, and requests repaints only while it turns; under Reduce motion it

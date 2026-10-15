@@ -1195,12 +1195,14 @@ fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
     let celebration = Celebration::for_creature(&h.save.creatures[0]).label();
     h.frame(Vec::new());
     assert!(
-        h.labels.iter().any(|(text, _)| text == celebration),
+        h.labels
+            .iter()
+            .any(|(text, _)| *text == format!("Habits: {celebration}")),
         "a companion with no habits yet still has its own celebration"
     );
     h.save.creatures[0].memory.habits = vec![Habit::CirclesBeforeNaps, Habit::WavesHello];
     h.frame(Vec::new());
-    let wanted = format!("{celebration} · Turns in circles before a nap · Waves hello");
+    let wanted = format!("Habits: {celebration} · Turns in circles before a nap · Waves hello");
     assert!(
         h.labels.iter().any(|(text, _)| *text == wanted),
         "{:?}",
@@ -1507,35 +1509,31 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
     }
 }
 
-/// Everything drawn past the edge of the area that shows it: the first text in each such shape,
-/// where it reaches, and where it is cut off.
 #[test]
 fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
-    use crate::clubhouse::journal::ruled_lines;
-    // The same page, scrolled 100 points: every line has moved up with the writing, and the
-    // window is still ruled from top to bottom.
-    let (top, bottom) = (40.0, 640.0);
+    use crate::clubhouse::journal::{RuleGrid, ruled_lines};
+    // The same page, scrolled: every line has moved up with the writing, the first is a whole
+    // line below the top of the writing, and the window is still ruled from top to bottom.
+    let (top, bottom, pitch) = (40.0, 640.0, 24.0);
     for scrolled in [0.0, 13.0, 100.0, 1000.0] {
-        let content_top = top - scrolled;
-        let lines = ruled_lines(content_top, top, bottom);
+        let grid = RuleGrid {
+            top: top - scrolled,
+            pitch,
+        };
+        let lines = ruled_lines(grid, top, bottom);
         assert!(!lines.is_empty());
-        let first = lines[0];
         assert!(
-            first >= top && first < top + 29.0 + 74.0,
-            "{scrolled}: {first}"
+            lines[0] >= top && lines[0] < top + pitch + 0.01,
+            "{scrolled}"
         );
+        assert!(lines[0] >= grid.top + pitch - 0.01, "{scrolled}");
         for line in &lines {
-            let down_the_page = line - content_top;
-            let pitches = (down_the_page - 74.0) / 29.0;
+            let pitches = (line - grid.top) / pitch;
             assert!(
                 (pitches - pitches.round()).abs() < 1e-3,
                 "{scrolled}: {line}"
             );
             assert!(*line >= top && *line < bottom);
-        }
-        if scrolled >= 100.0 {
-            // Once the heading has scrolled away, the lines run from the top of the window.
-            assert!(first < top + 29.0, "{scrolled}: {first}");
         }
     }
     // Pictures of pages scrolled part of the way down, for review.
@@ -1554,9 +1552,24 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
                 .save(path.join(format!("{tab:?}-940-cream-100-scrolled.png")))
                 .unwrap();
         }
+        // A section open, as it reads on its own.
+        for (tab, section) in [
+            (SettingsTab::Colony, "share"),
+            (SettingsTab::General, "desktop"),
+        ] {
+            let mut h = Harness::new(tab);
+            h.screen = egui::vec2(940.0, 720.0);
+            h.clubhouse.shell.sections.open_section(tab, section);
+            h.frame(Vec::new());
+            h.picture()
+                .save(path.join(format!("{tab:?}-940-cream-100-{section}.png")))
+                .unwrap();
+        }
     }
 }
 
+/// Everything drawn past the edge of the area that shows it: the first text in each such shape,
+/// where it reaches, and where it is cut off.
 fn cut_off(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
     shapes
         .iter()

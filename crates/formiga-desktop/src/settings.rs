@@ -1096,7 +1096,11 @@ fn draw_settings(
         clubhouse.shell.tour_card(ui, save, tab, outcome);
         // Each page, and each section of one, keeps how far down it was scrolled.
         let section = clubhouse.shell.sections.open(*tab).unwrap_or("");
+        let pitch = clubhouse::journal::rule_pitch(text_scale);
         let scrolled = egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}-{section}")).auto_shrink([false, false]).show(ui, |ui| {
+            // The page's lines start from the top of its writing, wherever the scroll has put it,
+            // and whatever is written on the page finds them through the grid.
+            clubhouse::journal::RuleGrid { top: ui.max_rect().top(), pitch }.keep(ui.ctx());
             clubhouse.recovery.cards(ui, save_location, outcome);
             match tab {
                 SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
@@ -1133,11 +1137,15 @@ fn draw_settings(
         });
         // The ruling is drawn where the writing is, so the lines scroll with it; they run on down
         // under the page's bottom margin to the footer, as they did before the page scrolled.
+        clubhouse::journal::RuleGrid::forget(ui.ctx());
         clubhouse::journal::paint_ruling(
             &window_painter,
             ruling,
             page,
-            scrolled.inner_rect.top() - scrolled.state.offset.y,
+            clubhouse::journal::RuleGrid {
+                top: scrolled.inner_rect.top() - scrolled.state.offset.y,
+                pitch,
+            },
             (scrolled.inner_rect.top(), footer.top()),
         );
                 });
@@ -1280,32 +1288,45 @@ fn general_tab(
     ];
     match clubhouse::sections::show(ui, shell, SettingsTab::General, &sections) {
         Some("desktop") => {
-            ui.small(
-                "Changes here take effect when you apply them, and the footer says what changed.",
+            clubhouse::journal::write(
+                ui,
+                egui::RichText::new(
+                    "Changes here take effect when you apply them, and the footer says what changed.",
+                )
+                .small(),
             );
-            ui.checkbox(&mut settings.visible, "Show colony")
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.visible, "Show colony")
             .on_hover_text(
                 "Hidden, the colony carries on out of sight: it keeps its days, and the journal keeps \
              writing.",
             );
-            ui.checkbox(&mut settings.paused, "Pause ambient behavior")
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.paused, "Pause ambient behavior")
             .on_hover_text(
                 "Everyone holds still where they are. Nothing new happens, and nothing is replayed \
              when you resume.",
             );
-            ui.checkbox(
-                &mut settings.direct_manipulation,
-                "Allow petting and dragging",
-            )
-            .on_hover_text(
-                "Off, clicks pass straight through companions to whatever is underneath.",
-            );
-            ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement")
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(
+                    &mut settings.direct_manipulation,
+                    "Allow petting and dragging",
+                )
+                .on_hover_text(
+                    "Off, clicks pass straight through companions to whatever is underneath.",
+                );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement")
             .on_hover_text(
                 "Companions notice the pointer: a curious one comes to look, a wary one steps aside. \
                  Only where the pointer is — never what it is pointing at.",
             );
-            ui.checkbox(
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(
                 &mut settings.window_ledges,
                 "Explore application-window ledges",
             )
@@ -1313,20 +1334,25 @@ fn general_tab(
                 "Companions may climb onto the tops of your windows and ride along when one moves. \
              Formiga sees only where windows are, never what is in them.",
             );
-            ui.checkbox(&mut settings.reduce_motion, "Reduce motion")
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.reduce_motion, "Reduce motion")
             .on_hover_text(
                 "Calmer movement on the desktop — no bounces, tosses or wiggles — and no page turns in \
              this notebook.",
             );
-            ui.checkbox(&mut settings.launch_at_login, "Launch at login")
-                .on_hover_text(
-                    "Start Formiga when you sign in, so the colony is there when you are.",
-                );
-            ui.add_space(10.0);
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.launch_at_login, "Launch at login")
+                    .on_hover_text(
+                        "Start Formiga when you sign in, so the colony is there when you are.",
+                    );
+            });
+            ui.add_space(4.0);
             clubhouse::journal::kicker(ui, "Creature size").on_hover_text(
                 "How large companions are drawn. It changes nothing about what they do.",
             );
-            ui.horizontal(|ui| {
+            clubhouse::journal::on_the_line(ui, |ui| {
                 for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
                     ui.selectable_value(&mut settings.display_scale, scale, name);
                 }
@@ -1386,7 +1412,7 @@ fn formiga_farm_group(
         return;
     }
     ui.add_space(8.0);
-    ui.group(|ui| {
+    clubhouse::card(ui, |ui| {
         ui.strong("A new look");
         if formiga_farm.open == Some(FarmRequest::Reshape(creature.id)) {
             ui.label(format!(
@@ -1542,71 +1568,101 @@ fn colony_tab(
             .iter()
             .position(|c| c.id == creature.id)
             .map_or(1, |index| index + 1);
-        ui.horizontal(|ui| {
+        clubhouse::journal::ruled_row(ui, |ui| {
             ui.vertical(|ui| {
                 shell.portrait(ui, creature, 144.0);
-                ui.label(clubhouse::journal::label_job(
-                    &format!("Fig. Nº {number:02}"),
-                    clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
-                    clubhouse::muted(),
-                ));
+                clubhouse::journal::write(
+                    ui,
+                    clubhouse::journal::label_job(
+                        &format!("Fig. Nº {number:02}"),
+                        clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
+                        clubhouse::muted(),
+                    ),
+                );
             });
             ui.vertical(|ui| {
                 clubhouse::journal::kicker(ui, &format!("Specimen Nº {number:02}"));
-                ui.heading(&creature.name);
+                clubhouse::journal::write(
+                    ui,
+                    egui::RichText::new(&creature.name)
+                        .text_style(egui::TextStyle::Heading)
+                        .color(ink()),
+                );
                 // Who it is, then its three traits, then what it has come to lean toward more than
                 // anyone else here.
-                ui.label(
+                clubhouse::journal::write(
+                    ui,
                     egui::RichText::new(creature.temperament_phrase())
                         .strong()
                         .color(forest()),
                 );
-                ui.horizontal_wrapped(|ui| {
+                clubhouse::journal::on_the_line(ui, |ui| {
                     for t in creature.traits() {
-                        clubhouse::make_room(ui, clubhouse::text_width(ui, t.label()) + 10.0);
                         egui::Frame::new()
                             .fill(mint())
-                            .inner_margin(5)
+                            .inner_margin(egui::Margin::symmetric(5, 2))
                             .show(ui, |ui| {
                                 ui.label(t.label());
                             });
                     }
                 });
+                let small = |text: String| egui::RichText::new(text).small();
                 let learned = profile_descriptors(creature, creatures);
                 if !learned.is_empty() {
-                    ui.small(format!(
-                        "Lately: {}",
-                        learned
-                            .iter()
-                            .map(|descriptor| descriptor.label())
-                            .collect::<Vec<_>>()
-                            .join(" · ")
-                    ));
+                    clubhouse::journal::write(
+                        ui,
+                        small(format!(
+                            "Lately: {}",
+                            learned
+                                .iter()
+                                .map(|descriptor| descriptor.label())
+                                .collect::<Vec<_>>()
+                                .join(" · ")
+                        )),
+                    );
                 }
-                ui.small(format!(
-                    "Body: {} · observed {}",
-                    clubhouse::body_label(&creature.appearance),
-                    activity_label(creature.state.action)
-                ));
+                clubhouse::journal::write(
+                    ui,
+                    small(format!(
+                        "Body: {} · observed {}",
+                        clubhouse::body_label(&creature.appearance),
+                        activity_label(creature.state.action)
+                    )),
+                );
                 if let Some(parent_id) = creature.role.parent_id() {
-                    ui.small(format!(
-                        "Mini cared for by {}",
-                        creatures
-                            .iter()
-                            .find(|c| c.id == parent_id)
-                            .map_or("a colony adult", |c| c.name.as_str())
-                    ));
+                    clubhouse::journal::write(
+                        ui,
+                        small(format!(
+                            "Mini cared for by {}",
+                            creatures
+                                .iter()
+                                .find(|c| c.id == parent_id)
+                                .map_or("a colony adult", |c| c.name.as_str())
+                        )),
+                    );
                 }
                 // Its own little ways: how it celebrates, and the habits it has picked up here.
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(
-                        egui::RichText::new("Habits:")
-                            .small()
-                            .color(clubhouse::muted()),
+                let mut habits = egui::text::LayoutJob::default();
+                let size = ui
+                    .style()
+                    .text_styles
+                    .get(&egui::TextStyle::Small)
+                    .map_or(12.0, |font| font.size);
+                for (text, colour) in [
+                    ("Habits: ".to_owned(), clubhouse::muted()),
+                    (little_ways(creature), ink()),
+                ] {
+                    habits.append(
+                        &text,
+                        0.0,
+                        egui::text::TextFormat {
+                            font_id: egui::FontId::proportional(size),
+                            color: colour,
+                            ..Default::default()
+                        },
                     );
-                    ui.small(little_ways(creature));
-                });
+                }
+                clubhouse::journal::write(ui, habits);
             });
         });
         ui.add_space(18.0);
@@ -1713,14 +1769,23 @@ fn colony_tab(
             }
         }
         Some("name") => {
-            let name = ui.group(|ui| {
+            let name = clubhouse::card(ui, |ui| {
                 ui.strong("Name");
                 ui.small("A name for your companion. Their preferences grow through experience.");
                 let name = creature_names
                     .entry(creature.id)
                     .or_insert_with(|| creature.name.clone());
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(name).char_limit(24));
+                ui.horizontal_wrapped(|ui| {
+                    // The field leaves room beside it for its button, however large the text.
+                    let room = ui.available_width()
+                        - clubhouse::text_width(ui, "Save name")
+                        - 2.0 * ui.spacing().button_padding.x
+                        - 2.0 * ui.spacing().item_spacing.x;
+                    ui.add(
+                        egui::TextEdit::singleline(name)
+                            .char_limit(24)
+                            .desired_width(room.clamp(120.0, 280.0)),
+                    );
                     if ui.button("Save name").clicked() {
                         match validate_creature_name(name) {
                             Ok(validated) => {
@@ -1761,7 +1826,7 @@ fn colony_tab(
         }
         Some("farm") => formiga_farm_group(ui, creature, formiga_farm, outcome),
         Some("share") => {
-            let share = ui.group(|ui| {
+            let share = clubhouse::card(ui, |ui| {
                 ui.strong("Share this creature");
                 ui.label("The code recreates innate appearance and personality, not its name or history.");
                 let code = encode_creature_seed(creature.origin);
@@ -1778,7 +1843,9 @@ fn colony_tab(
                     outcome.export_creature_card = Some(creature.id);
                 }
                 ui.add_space(8.0);
-                ui.label("Or a looping sticker on a transparent background: just the drawing, animated.");
+                ui.label(
+                    "Or a looping sticker on a transparent background: just the drawing, animated.",
+                );
                 ui.horizontal_wrapped(|ui| {
                     egui::ComboBox::from_id_salt("sticker-clip")
                         .selected_text(page.sticker_clip.label())
@@ -1798,7 +1865,7 @@ fn colony_tab(
             shell.tour_mark(ui, TourMark::Share, share.response.rect);
         }
         Some("care") => {
-            ui.group(|ui| {
+            clubhouse::card(ui, |ui| {
                 ui.strong("Colony care");
                 let mut kept = creature.kept;
                 if ui
@@ -2221,7 +2288,7 @@ fn habitat_tab(
         let mut changed_zone = false;
         for (index, zone) in settings.habitat.zones.iter_mut().enumerate() {
             let before = zone.clone();
-            ui.group(|ui| {
+            clubhouse::card(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut zone.enabled, "Enabled");
                     ui.selectable_value(&mut zone.kind, HabitatZoneKind::Allowed, "Allowed");

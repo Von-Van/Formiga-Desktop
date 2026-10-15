@@ -17,6 +17,13 @@ All notable changes are documented here.
 - The tiles for putting gardens, spots and ornaments down grow with the notebook's text, so a
   name in large text still fits under its picture instead of running into it.
 
+- What is written on the notebook's pages sits on its ruled lines: page names and section
+  labels, every moment in the Journal with its time and its pin, a companion's name, nature and
+  ways beside its portrait, and the preferences' checkboxes, each line of text resting on a rule
+  however it wraps. Cards are pinned over the lines, and whatever follows one goes on the first
+  line clear of it. The lines are a little closer (24 points apart at 100% text, growing with the
+  text), and a moment new since the Journal was last read is run over with a highlighter.
+
 ### Fixed
 
 - The notebook's ruled lines scroll with the page's writing. They were painted on the window, so

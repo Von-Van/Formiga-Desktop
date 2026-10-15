@@ -351,10 +351,18 @@ pub(crate) fn combo_width(ui: &Ui, selected: &str) -> f32 {
 pub(crate) const CARD_EDGES: f32 = 2.0 * (14.0 + 2.0);
 
 pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    // A card covers the page's ruling, so what is written on it is set as on any card, not on
+    // the lines; what follows it goes back to the lines below it.
+    journal::to_next_rule(ui);
+    let grid = journal::RuleGrid::of(ui.ctx());
+    journal::RuleGrid::forget(ui.ctx());
     let shown = egui::Frame::new()
         .fill(card_fill())
         .inner_margin(14)
         .show(ui, contents);
+    if let Some(grid) = grid {
+        grid.keep(ui.ctx());
+    }
     // A card in the notebook is a slip of paper with the stepped edge every box has.
     let mut fills = journal::Fills::default();
     journal::stepped_outline(&mut fills, shown.response.rect, 2.0, line());

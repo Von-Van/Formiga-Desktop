@@ -10,6 +10,7 @@
 use super::*;
 use crate::settings::SettingsTab;
 use egui::{Align2, FontId, Pos2, Rect, pos2, vec2};
+use std::sync::Arc;
 
 /// The pages in the order their tabs run down the cover.
 pub(crate) const PAGES: [SettingsTab; 9] = [
@@ -156,31 +157,35 @@ pub(crate) fn label_job(text: &str, size: f32, color: Color32) -> egui::text::La
 /// A section's printed label on a page: "TALLY · LIFE HERE", "ON YOUR DESKTOP".
 pub(crate) fn kicker(ui: &mut Ui, text: &str) -> egui::Response {
     let size = label_size(text_scale(ui));
-    ui.label(label_job(text, size, forest()))
+    write(ui, label_job(text, size, forest()))
 }
 
 /// The head of a page: what kind of field note it is and its number, its name, and a line about
 /// it in the notebook's observing voice.
 pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observation: &str) {
     let scale = text_scale(ui);
-    ui.label(label_job(
-        &format!(
-            "Field notes · Nº {:02} · {}",
-            page_number(page),
-            page_kind(page)
+    write(
+        ui,
+        label_job(
+            &format!(
+                "Field notes · Nº {:02} · {}",
+                page_number(page),
+                page_kind(page)
+            ),
+            label_size(scale),
+            forest(),
         ),
-        label_size(scale),
-        forest(),
-    ));
-    ui.add_space(2.0);
+    );
     // The name grows with the text, but not all the way: at the largest text its glyphs would be
     // big enough to double the font atlas the whole window draws from.
-    ui.label(
+    write(
+        ui,
         RichText::new(heading)
             .size(30.0 * scale.min(1.2))
             .color(ink()),
     );
-    ui.label(RichText::new(observation).color(muted()));
+    write(ui, RichText::new(observation).color(muted()));
+    // A line left blank under the heading.
     ui.add_space(12.0);
 }
 
@@ -392,12 +397,197 @@ impl Spread {
     }
 }
 
-/// The distance between ruled lines, and how far down the page the first one is, before the page
-/// is scrolled.
-const RULE_PITCH: f32 = 29.0;
-const FIRST_RULE: f32 = 98.0;
+/// How far apart the ruling on the cover's tabs is.
+const TAB_RULE_PITCH: f32 = 29.0;
 /// How far down the page its writing begins, inside the page's top margin.
 pub(crate) const WRITING_TOP: f32 = 24.0;
+
+/// How far apart a page's ruled lines are for text scaled by `scale`: one line of body text to
+/// each, with a little room above it, the way a notebook is ruled for handwriting.
+pub(crate) fn rule_pitch(scale: f32) -> f32 {
+    (24.0 * scale).round()
+}
+
+/// Where the page's ruled lines are this frame: one every `pitch` below `top`, the top of the
+/// page's writing, wherever the scroll has put it. Kept for the frame while the page is drawn, so
+/// whatever is written on the page can find a line to sit on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RuleGrid {
+    pub(crate) top: f32,
+    pub(crate) pitch: f32,
+}
+
+impl RuleGrid {
+    fn id() -> egui::Id {
+        egui::Id::new("notebook-rule-grid")
+    }
+
+    /// Keeps this grid for what is drawn on the page from here on.
+    pub(crate) fn keep(self, ctx: &egui::Context) {
+        ctx.data_mut(|data| data.insert_temp(Self::id(), self));
+    }
+
+    /// Lets the grid go once the page has been drawn, so nothing drawn off the page lines up
+    /// with it.
+    pub(crate) fn forget(ctx: &egui::Context) {
+        ctx.data_mut(|data| data.remove::<Self>(Self::id()));
+    }
+
+    pub(crate) fn of(ctx: &egui::Context) -> Option<Self> {
+        ctx.data(|data| data.get_temp(Self::id()))
+    }
+
+    /// The first ruled line at or below `y`.
+    pub(crate) fn rule_at_or_below(self, y: f32) -> f32 {
+        self.top + ((y - self.top) / self.pitch - 1e-3).ceil() * self.pitch
+    }
+}
+
+/// Moves what is written next down to the page's next ruled line: the first at or below the
+/// bottom of whatever came before, so writing follows writing line after line, and follows a card
+/// or a row of buttons on the first line clear of it. Nothing happens off the page or in a row.
+pub(crate) fn to_next_rule(ui: &mut Ui) {
+    let Some(grid) = RuleGrid::of(ui.ctx()) else {
+        return;
+    };
+    if ui.layout().main_dir().is_horizontal() {
+        return;
+    }
+    let y = ui.cursor().top();
+    let after = y - ui.spacing().item_spacing.y;
+    let rule = grid.rule_at_or_below(after);
+    ui.add_space(rule - y);
+}
+
+/// How far above its ruled line a line of writing's baseline sits.
+const LIFT: f32 = 3.0;
+
+/// Writes `text` on the page's lines: on the next ruled line, and each line of it, however it
+/// wraps, sitting on a line of its own; text too tall for one line, like a page's name, takes two.
+/// Off the page, or on a card over it, it is an ordinary label.
+pub(crate) fn write(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
+    write_with(ui, text, None, egui::Sense::hover())
+}
+
+/// `write`, wrapped at `wrap` points rather than the room there is, and answering to `sense`. In
+/// a row (`ruled_row`), each thing written sits on the row's line.
+pub(crate) fn write_with(
+    ui: &mut Ui,
+    text: impl Into<egui::WidgetText>,
+    wrap: Option<f32>,
+    sense: egui::Sense,
+) -> egui::Response {
+    write_marked(ui, text, wrap, sense, None)
+}
+
+/// `write_with`, run over with a highlighter in `marker` if given: a band behind the letters of
+/// each line, from just above their capitals down to the rule they sit on.
+pub(crate) fn write_marked(
+    ui: &mut Ui,
+    text: impl Into<egui::WidgetText>,
+    wrap: Option<f32>,
+    sense: egui::Sense,
+    marker: Option<Color32>,
+) -> egui::Response {
+    let text = text.into();
+    let Some(grid) = RuleGrid::of(ui.ctx()) else {
+        return ui.add(egui::Label::new(text).wrap().sense(sense));
+    };
+    to_next_rule(ui);
+    let width = wrap.unwrap_or_else(|| ui.available_width()).max(24.0);
+    let mut job = Arc::unwrap_or_clone(text.into_layout_job(
+        ui.style(),
+        egui::FontSelection::Default,
+        egui::Align::Min,
+    ));
+    job.wrap.max_width = width;
+    // As many ruled lines to each line of text as it needs: one for writing, two for a name.
+    let natural = ui
+        .painter()
+        .layout_job(job.clone())
+        .rows
+        .iter()
+        .map(|row| row.height())
+        .fold(0.0_f32, f32::max);
+    let line = (natural / grid.pitch).ceil().max(1.0) * grid.pitch;
+    for section in &mut job.sections {
+        section.format.line_height = Some(line);
+    }
+    let galley = ui.painter().layout_job(job);
+    let rows = galley.rows.len().max(1) as f32;
+    let baseline = galley
+        .rows
+        .first()
+        .and_then(|row| row.glyphs.first())
+        .map_or(line - LIFT, |glyph| glyph.pos.y);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(galley.size().x, rows * line), sense);
+    if ui.is_rect_visible(rect) {
+        let at = pos2(rect.left(), rect.top() + line - LIFT - baseline);
+        if let Some(marker) = marker {
+            let cap = galley
+                .rows
+                .first()
+                .and_then(|row| row.glyphs.first())
+                .map_or(line * 0.6, |glyph| glyph.font_ascent);
+            for row in &galley.rows {
+                let rule = at.y + row.pos.y + baseline + LIFT;
+                ui.painter().rect_filled(
+                    Rect::from_min_max(
+                        pos2(at.x + row.rect().left() - 2.0, rule - LIFT - cap - 2.0),
+                        pos2(at.x + row.rect().right() + 2.0, rule),
+                    ),
+                    0.0,
+                    marker,
+                );
+            }
+        }
+        ui.painter().galley(at, galley, ui.visuals().text_color());
+    }
+    response
+}
+
+/// One control on the page's next ruled line, a checkbox or a row of buttons, set so that the
+/// words on it rest on the line as written words do. A control taller than the line stands up
+/// above it, and what follows goes on the next line clear of it.
+pub(crate) fn on_the_line<R>(
+    ui: &mut Ui,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let Some(grid) = RuleGrid::of(ui.ctx()) else {
+        return ui.scope(add);
+    };
+    to_next_rule(ui);
+    let band = ui.cursor().top();
+    let height = ui.spacing().interact_size.y;
+    let size = ui.text_style_height(&egui::TextStyle::Body) / 1.17;
+    // The middle of a control's words is about a third of their size above where they rest.
+    let middle = band + grid.pitch - LIFT - size * 0.35;
+    let top = (middle - height / 2.0).max(band - grid.pitch / 2.0);
+    let rect = Rect::from_min_size(
+        pos2(ui.cursor().left(), top),
+        vec2(ui.available_width(), height),
+    );
+    let shown = ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        add,
+    );
+    // The control's clickable edge may hang a little past the line under its words; what follows
+    // still goes on the very next line, unless the control reaches half a line past it.
+    let lines = ((shown.response.rect.bottom() - band) / grid.pitch - 0.5)
+        .ceil()
+        .max(1.0);
+    let next = band + lines * grid.pitch + ui.spacing().item_spacing.y;
+    ui.add_space(next - ui.cursor().top());
+    shown
+}
+
+/// A row on the page's next ruled line: whatever is written in it with `write` sits on that line.
+pub(crate) fn ruled_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    to_next_rule(ui);
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), add)
+}
 
 /// The leather all of the window is bound in, its stitching, and the brass at its corners.
 pub(crate) fn paint_cover(painter: &egui::Painter, window: Rect) {
@@ -645,7 +835,7 @@ fn paint_tab(
                     Rect::from_min_size(pos2(rect.left(), rule_y), vec2(rect.width(), 2.0)),
                     rule(),
                 );
-                rule_y += RULE_PITCH;
+                rule_y += TAB_RULE_PITCH;
             }
             let (l, r, t, b) = (rect.left(), rect.right(), rect.top(), rect.bottom());
             fills.rect(Rect::from_min_max(pos2(l - 2.0, t), pos2(l, b)), line());
@@ -863,19 +1053,18 @@ pub(crate) fn paint_page(
 }
 
 /// The page's ruling, in the place `paint_page` left for it, scrolled with the writing: the lines
-/// are where they are on the page's paper, not on the window, so a line stays under the words it
-/// was under however far the page is scrolled. `content_top` is where the top of the page's
-/// writing is now (above the window once it has scrolled), and the lines are drawn only between
-/// `top` and `bottom`, across the page from edge to edge.
+/// are where `grid` puts them on the page's paper, not on the window, so a line stays under the
+/// words written on it however far the page is scrolled. They are drawn only between `top` and
+/// `bottom`, across the page from edge to edge.
 pub(crate) fn paint_ruling(
     painter: &egui::Painter,
     slot: egui::layers::ShapeIdx,
     page: Rect,
-    content_top: f32,
+    grid: RuleGrid,
     (top, bottom): (f32, f32),
 ) {
     let mut fills = Fills::default();
-    for y in ruled_lines(content_top, top, bottom) {
+    for y in ruled_lines(grid, top, bottom) {
         fills.rect(
             Rect::from_min_max(pos2(page.left(), y), pos2(page.right(), y + 2.0)),
             rule(),
@@ -884,17 +1073,14 @@ pub(crate) fn paint_ruling(
     painter.set(slot, egui::Shape::mesh(fills.0));
 }
 
-/// Where the page's ruled lines are between `top` and `bottom`, for writing whose top is at
-/// `content_top`: the first a heading's height down the writing, then one every `RULE_PITCH`.
-pub(crate) fn ruled_lines(content_top: f32, top: f32, bottom: f32) -> Vec<f32> {
-    let first = content_top + FIRST_RULE - WRITING_TOP;
-    // The first line at or below `top`, counting whole pitches on from the first line there is.
-    let skipped = ((top - first) / RULE_PITCH).ceil().max(0.0);
-    let mut y = first + skipped * RULE_PITCH;
+/// Where the page's ruled lines are between `top` and `bottom`: every line of `grid` below the top
+/// of the writing.
+pub(crate) fn ruled_lines(grid: RuleGrid, top: f32, bottom: f32) -> Vec<f32> {
+    let mut y = grid.rule_at_or_below(top.max(grid.top + grid.pitch));
     let mut lines = Vec::new();
     while y < bottom - 2.0 {
         lines.push(y);
-        y += RULE_PITCH;
+        y += grid.pitch;
     }
     lines
 }
@@ -1063,13 +1249,14 @@ pub(crate) fn turn_page(
         );
     }
     fills.rect(leaf, paper());
-    let mut y = page.top() + FIRST_RULE;
+    let pitch = rule_pitch(text_scale(ui));
+    let mut y = page.top() + WRITING_TOP + pitch;
     while y < page.bottom() {
         fills.rect(
             Rect::from_min_max(pos2(leaf.left(), y), pos2(leaf.right(), y + 2.0)),
             rule(),
         );
-        y += RULE_PITCH;
+        y += pitch;
     }
     fills.rect(leaf, Color32::from_black_alpha((eased * 60.0) as u8));
     fills.paint(&painter);

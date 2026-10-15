@@ -115,21 +115,24 @@ pub(crate) fn show(
             let escape = !ui.ctx().text_edit_focused()
                 && ui
                     .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-            let back = ui
-                .button(format!("\u{2039} {}", journal::page_label(page)))
-                .on_hover_text("Back to the rest of this page (Esc)");
+            let back = journal::on_the_line(ui, |ui| {
+                ui.button(format!("\u{2039} {}", journal::page_label(page)))
+                    .on_hover_text("Back to the rest of this page (Esc)")
+            })
+            .inner;
             if back.clicked() || escape {
                 shell.sections.close(page);
                 ui.ctx().request_repaint();
                 return None;
             }
+            // A framed button stands taller than a line, so the name goes a line further down.
             ui.add_space(4.0);
-            ui.label(
+            journal::write(
+                ui,
                 RichText::new(&section.title)
                     .size(20.0 * journal::text_scale(ui).min(1.2))
                     .color(ink()),
             );
-            ui.add_space(6.0);
             Some(section.key)
         }
         None => {
@@ -171,6 +174,14 @@ fn entry(ui: &mut Ui, section: &Section, last: bool) -> egui::Response {
         + summary
             .as_ref()
             .map_or(0.0, |summary| summary.size().y + 2.0);
+    // A slip pinned on the page's lines: from one line down to just above another.
+    let height = match journal::RuleGrid::of(ui.ctx()) {
+        Some(grid) => {
+            journal::to_next_rule(ui);
+            (height / grid.pitch).ceil() * grid.pitch - 6.0
+        }
+        None => height,
+    };
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &section.title));
@@ -218,6 +229,5 @@ fn entry(ui: &mut Ui, section: &Section, last: bool) -> egui::Response {
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    ui.add_space(2.0);
     response
 }
