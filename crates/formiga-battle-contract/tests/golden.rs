@@ -22,10 +22,14 @@ const WRITTEN: std::ops::RangeInclusive<u32> = 1..=BATTLE_FORMAT_VERSION;
 /// The fixtures as this build writes them, named for this build's version.
 fn written_now() -> Vec<(String, Vec<u8>)> {
     let v = BATTLE_FORMAT_VERSION;
-    let snapshot = sample::snapshot();
+    let snapshot = sample::snapshot_with_record();
     let session = snapshot.session_id.clone();
     let mut out = vec![
         (format!("snapshot-v{v}.json"), snapshot.encode().unwrap()),
+        (
+            format!("result-v{v}.json"),
+            sample::result().encode().unwrap(),
+        ),
         (
             format!("ack-v{v}.json"),
             BattleAck::new(session.clone(), "0.1.0", None)
@@ -68,6 +72,11 @@ fn every_version_ever_written_still_reads() {
         assert!(ack.accepted && ack.session_id == snapshot.session_id);
         let refused = BattleAck::decode(&read(&name("ack-refused"))).unwrap();
         assert_eq!(refused.refusal, Some(AckRefusal::Invalid));
+        if version >= 2 {
+            let result = BattleResult::decode(&read(&name("result"))).unwrap();
+            assert_eq!(result.session_id, snapshot.session_id);
+            assert!(snapshot.record.is_some());
+        }
     }
 }
 

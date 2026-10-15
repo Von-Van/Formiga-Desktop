@@ -1,6 +1,7 @@
 mod accessories;
 mod ambience;
 mod attention;
+mod battle;
 mod behavior;
 mod bubble;
 mod companion;
@@ -30,6 +31,10 @@ pub use accessories::{
 };
 pub use ambience::DesktopAmbience;
 pub use attention::{AttentionEmotion, AttentionPose, Gesture, WindowSample};
+pub use battle::{
+    BattleCupWins, BattleKeepsake, BattleKeepsakeRecord, BattleLog, BattleMatchSummary, BattleMode,
+    BattleNotebookPage, BattleRecord, BattleShowing, is_battle_id, is_battle_line,
+};
 pub use behavior::{BehaviorContext, BondContext, ObjectUtility, choose_action};
 pub use bubble::BubbleIcon;
 pub use companion::*;
@@ -92,4 +97,4 @@ pub use world::{
     wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 30;
+pub const SAVE_VERSION: u32 = 31;

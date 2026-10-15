@@ -42,6 +42,9 @@ pub enum JournalMoment {
     /// The owner gave a companion a new look in Formiga Farm. The entry's companion is the one
     /// reshaped.
     NewLook,
+    /// A match in Formiga Battle, in the line Battle wrote for it: one line of plain text
+    /// (`is_battle_line`), since the match's team and opponents are Battle's to name.
+    Battle(String),
 }
 
 /// How many moments the journal holds on to past their turn to roll out because they are the
@@ -69,6 +72,7 @@ impl JournalMoment {
                 | Self::Habit(_)
                 | Self::Wonder(_)
                 | Self::Trip
+                | Self::Battle(_)
         )
     }
 
@@ -79,7 +83,7 @@ impl JournalMoment {
             Self::Friendship(_) => MomentKind::Friendships,
             Self::Discovery | Self::Wonder(_) => MomentKind::Finds,
             Self::Preference(_) | Self::Habit(_) | Self::NewLook => MomentKind::Ways,
-            Self::Ritual(_) | Self::Trip => MomentKind::Together,
+            Self::Ritual(_) | Self::Trip | Self::Battle(_) => MomentKind::Together,
             Self::Object(_) | Self::Decoration(_) | Self::Unlocked(_) | Self::HouseVisit => {
                 MomentKind::Village
             }

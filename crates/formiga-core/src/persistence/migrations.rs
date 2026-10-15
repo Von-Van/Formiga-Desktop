@@ -199,6 +199,9 @@ const STEPS: &[Step] = &[
     // 30: how far back on the village ground a house was put by hand. An older colony put none
     // anywhere, and its houses stand where their slots put them.
     Step::adds_only(29),
+    // 31: the colony's record in Formiga Battle, the keepsakes its matches earned, and the journal
+    // moment for a match. An older colony has never played.
+    Step::adds_only(30),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

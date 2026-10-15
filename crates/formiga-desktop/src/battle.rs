@@ -20,6 +20,7 @@
 //! and Desktop checks whether it is installed only when it starts and then at most every ten
 //! minutes, from a tick it was taking anyway.
 
+pub mod record;
 pub mod session;
 
 use crate::expansion::files::Folder;

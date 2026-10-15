@@ -2,10 +2,12 @@
 //!
 //! Everything lives under `battle/` in the data directory, beside the colony and never inside it:
 //!
-//! - `battle/session.json`, while a session is open: which session it is, and nothing else about
-//!   the colony. It is what lets the next start clear a session Desktop stopped in the middle of.
+//! - `battle/session.json`, while a session is open: which session it is, and the checksum of the
+//!   snapshot Desktop wrote for it, which every result must name. It holds nothing else about the
+//!   colony, and it is what lets the next start keep what a session Desktop stopped in the middle
+//!   of earned.
 //! - `battle/<session>/`, the session directory Battle is given: the roster Desktop wrote, and
-//!   Battle's acknowledgement.
+//!   Battle's acknowledgement and result.
 //!
 //! Once Battle has gone, the marker and the session directory are deleted. Anything else under
 //! `battle/` is swept away when Desktop starts and before each new session. All of that is done as
@@ -13,10 +15,12 @@
 
 pub use crate::expansion::Refusal;
 use crate::expansion::files::VisitFiles;
+use formiga_battle_contract::result::result_limits::MAX_RESULT_BYTES;
 use formiga_battle_contract::{
-    ACK_FILE, BattleAck, BattleError, BattleSnapshot, SNAPSHOT_FILE, SessionId, limits,
+    ACK_FILE, BattleAck, BattleError, BattleResult, BattleSnapshot, RESULT_FILE, SNAPSHOT_FILE,
+    SessionId, limits,
 };
-use formiga_expansion_rulebook::{read_bounded, write_atomically};
+use formiga_expansion_rulebook::{read_bounded, sha256_hex, write_atomically};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -24,15 +28,18 @@ pub const BATTLE_DIRECTORY: &str = "battle";
 pub const MARKER_FILE: &str = "session.json";
 pub const MARKER_FORMAT: &str = "formiga.desktop.battle-session";
 
-/// What Desktop remembers of an open session across a restart, beside its session: nothing, for
-/// nothing comes back from Battle that would need it.
+/// What Desktop remembers of an open session across a restart, beside its session.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-struct Marker {}
+struct Marker {
+    snapshot_sha256: String,
+}
 
 /// A session that has been written and not yet closed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OpenSession {
     pub session_id: SessionId,
+    /// The checksum of the snapshot Desktop wrote, which a result must name to be applied.
+    pub snapshot_sha256: String,
     pub dir: PathBuf,
 }
 
@@ -52,23 +59,50 @@ impl BattleFiles {
     /// session is open. Either everything is written or nothing is left behind.
     pub fn open(&self, snapshot: &BattleSnapshot) -> Result<OpenSession, BattleError> {
         self.sessions.open(&snapshot.session_id, |dir| {
-            write_atomically(&dir.join(SNAPSHOT_FILE), &snapshot.encode()?)?;
+            let bytes = snapshot.encode()?;
+            write_atomically(&dir.join(SNAPSHOT_FILE), &bytes)?;
             let open = OpenSession {
                 session_id: snapshot.session_id.clone(),
+                snapshot_sha256: sha256_hex(&bytes),
                 dir: dir.to_owned(),
             };
-            Ok((open, Marker {}))
+            let marker = Marker {
+                snapshot_sha256: open.snapshot_sha256.clone(),
+            };
+            Ok((open, marker))
         })
     }
 
     /// The session left open, if Desktop stopped before closing one. A marker that cannot be
     /// read is no session at all.
     pub fn open_session(&self) -> Option<OpenSession> {
-        let (session_id, Marker {}) = self.sessions.open_visit()?;
+        let (session_id, marker) = self.sessions.open_visit()?;
         Some(OpenSession {
             dir: self.sessions.session_dir(&session_id),
             session_id,
+            snapshot_sha256: marker.snapshot_sha256,
         })
+    }
+
+    /// What Battle says the session's matches earned, if it has said anything yet. A result that
+    /// is damaged, oversized, from a version Desktop cannot read, or for another session or
+    /// snapshot is none at all, and why is said.
+    pub fn result(&self, open: &OpenSession) -> Result<Option<BattleResult>, String> {
+        let bytes = match read_bounded(&open.dir.join(RESULT_FILE), MAX_RESULT_BYTES) {
+            Ok(bytes) => bytes,
+            Err(formiga_expansion_rulebook::RulebookError::Io(error))
+                if error.kind() == std::io::ErrorKind::NotFound =>
+            {
+                return Ok(None);
+            }
+            Err(error) => return Err(format!("the result: {error}")),
+        };
+        let result =
+            BattleResult::decode(&bytes).map_err(|error| format!("the result: {error}"))?;
+        if result.session_id != open.session_id || result.snapshot_sha256 != open.snapshot_sha256 {
+            return Err("a result for another session".to_owned());
+        }
+        Ok(Some(result))
     }
 
     /// Battle's refusal of the session, if it said no. An acknowledgement that does not read, or
