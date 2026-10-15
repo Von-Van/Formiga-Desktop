@@ -3,6 +3,7 @@
 mod app;
 #[cfg(test)]
 mod attention_review;
+mod battle;
 mod card_export;
 mod clubhouse;
 mod creature_menu;

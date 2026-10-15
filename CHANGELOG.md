@@ -17,6 +17,14 @@ All notable changes are documented here.
   mode), and given back its own place with "Its own place". It can be undone, follows the house
   along the row and to a replacement, and is cleared by putting the village back. A colony this
   release has saved does not open in an earlier Formiga.
+- `formiga-battle-contract`, the roster contract with Formiga Battle, adopted from Battle as
+  version 1 with golden fixtures: every companion as a trip to Formiga Hill carries it, with the
+  leanings it has learned, and Battle's answer. Battle's own rules stay Battle's.
+- With Formiga Battle installed, the tray offers "Play Formiga Battle…": Battle is handed a copy of
+  the colony's roster and everyone goes on living on the desktop, so a match never waits for a
+  trip or a visit, nor they for it. A refusal is said in Battle's own words. Nothing comes back
+  from a match yet, so the save is unchanged.
+- `formiga-battle-stub`, a stand-in for Battle, and end-to-end tests of a session against it.
 
 ## [0.67.7] - 2026-10-15
 

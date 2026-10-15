@@ -11,6 +11,7 @@ anyhow.workspace = true
 epaint.workspace = true
 serde.workspace = true
 formiga-art = { path = "../formiga-art" }
+formiga-battle-contract = { path = "../formiga-battle-contract" }
 formiga-core = { path = "../formiga-core" }
 formiga-farm-contract = { path = "../formiga-farm-contract" }
 formiga-home-contract = { path = "../formiga-home-contract" }

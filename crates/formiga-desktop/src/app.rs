@@ -39,6 +39,7 @@ use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId, WindowLevel};
+mod battle;
 mod cadence;
 mod farm;
 mod habitat_editor;
@@ -48,6 +49,7 @@ mod menus;
 mod settings_window;
 mod updates;
 mod visits;
+use battle::BattleLink;
 use cadence::*;
 use farm::FarmLink;
 use habitat_editor::*;
@@ -66,6 +68,8 @@ pub enum UserEvent {
     House(crate::house::HouseEvent),
     /// Formiga Farm has proposed a design, or exited.
     Farm(crate::farm::FarmEvent),
+    /// Formiga Battle has exited.
+    Battle(crate::battle::BattleEvent),
 }
 
 impl From<egui_winit::accesskit_winit::Event> for UserEvent {
@@ -146,6 +150,8 @@ pub struct FormigaApp {
     house: HouseLink,
     /// Formiga Farm, if it is installed, and the companion open in it, if there is one.
     farm: FarmLink,
+    /// Formiga Battle, if it is installed, and the match open in it, if there is one.
+    battle: BattleLink,
 }
 
 impl FormigaApp {
@@ -190,6 +196,7 @@ impl FormigaApp {
             hill: HillLink::new(&data_dir),
             house: HouseLink::new(&data_dir),
             farm: FarmLink::new(&data_dir),
+            battle: BattleLink::new(&data_dir),
             data_dir,
             save_trouble: None,
         })
@@ -224,6 +231,8 @@ impl FormigaApp {
         self.resume_open_visit();
         self.check_for_farm(true);
         self.resume_farm_session();
+        self.check_for_battle(true);
+        self.resume_battle_session();
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
@@ -446,6 +455,7 @@ impl FormigaApp {
         self.check_for_hill(false);
         self.check_for_home(false);
         self.check_for_farm(false);
+        self.check_for_battle(false);
         let desktop = self.snapshot();
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
@@ -964,6 +974,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             UserEvent::Hill(event) => self.handle_hill_event(event),
             UserEvent::House(event) => self.handle_house_event(event),
             UserEvent::Farm(event) => self.handle_farm_event(event_loop, event),
+            UserEvent::Battle(event) => self.handle_battle_event(event),
             UserEvent::AccessKit(event) => {
                 if let Some(window) = &mut self.settings_window
                     && window.id() == event.window_id
