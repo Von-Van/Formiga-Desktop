@@ -352,3 +352,48 @@ fn only_those_who_live_here_can_be_kept_out_and_whoever_moves_out_is_let_go() {
             .is_empty()
     );
 }
+
+#[test]
+fn a_home_older_than_projects_leaves_the_household_s_projects_as_they_were() {
+    let mut visit = visit();
+    let keeper = visit.snapshot.household.keeper;
+    let mut kept = arranged(&visit.snapshot);
+    kept.projects.push(Project {
+        project: CatalogId::known("project.hearth"),
+        stages: vec![StageDone {
+            at_utc: closed_at(),
+        }],
+    });
+    kept.tallies.push(Tally {
+        what: CatalogId::known("tally.snack"),
+        count: 4,
+    });
+    visit.previous.set_household(kept.clone());
+    let snapshot_bytes = encode(&visit.snapshot).unwrap();
+    let state_bytes = encode(&visit.previous).unwrap();
+    visit.seal = SessionSeal::of(&visit.snapshot, &snapshot_bytes, &state_bytes);
+
+    // An older Home rearranges the room and, knowing nothing of projects, writes none.
+    let mut rearranged = kept.clone();
+    rearranged.rooms[0].pieces[0].x += 1;
+    rearranged.projects.clear();
+    rearranged.tallies.clear();
+    let mut older = proposing(&visit, rearranged.clone());
+    older.version = 9;
+    let accepted = accept_result(&visit.seal, &visit.snapshot, &visit.previous, &older);
+    let home = accepted.state.household(keeper).unwrap();
+    assert_eq!(home.rooms, rearranged.rooms, "the room is as it was left");
+    assert_eq!(
+        (&home.projects, &home.tallies),
+        (&kept.projects, &kept.tallies)
+    );
+
+    // This Home's word on them stands.
+    let accepted = accept_result(
+        &visit.seal,
+        &visit.snapshot,
+        &visit.previous,
+        &proposing(&visit, rearranged.clone()),
+    );
+    assert_eq!(accepted.state.household(keeper), Some(&rearranged));
+}

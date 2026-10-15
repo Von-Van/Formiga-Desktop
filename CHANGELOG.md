@@ -4,6 +4,63 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.67.7] - 2026-10-15
+
+Released alongside Formiga Hill 0.67.7 and Formiga Home 0.67.7, which are built on it and draw the
+redrawn finds and wearables too. Household version 10 adds only the optional projects a home
+keeps, so Formiga Home 0.67.6 works with it as it is and the projects a newer Home made are kept
+as they were. Travel version 5 and save version 29 are unchanged, so Formiga Hill 0.67.6 works
+with it as it is. A colony this release has saved still opens in Formiga 0.67.6.
+
+### Added
+
+- Household version 10: a home may keep its household's projects, each with the stages finished
+  and when, and a few counts of what has happened at home for them to count towards. Formiga Home
+  makes and reads them; Desktop keeps them in `home/state.json` with the rest of the home, and
+  keeps them as they were when a Home that predates them answers a visit. Nothing in the colony
+  file changes.
+
+### Changed
+
+- Every find and everything a companion wears is redrawn to be told apart at a glance. Each is
+  painted in what it is made of — acorns are brown, clover green, buckles brass, teacups china —
+  with three or four tones of shade lit from the upper left; only what is dyed, painted or
+  printed (ribbons, buttons, wool, cloth) keeps the colony's own colour, still chosen to stand
+  clear of every coat. The 160 finds keep their 16-pixel cells and the wearables the companions'
+  own pixel size, so nothing is drawn finer or blurrier than the companion holding it. The first
+  sixteen finds, once drawn by hand in code, are grids like the rest.
+- The wardrobe pictures each thing to wear beside its name, as it would sit on that companion,
+  and shows the companion trying something on larger, standing at half as large again as the
+  other poses. The Collection draws its finds crisply, at a whole number of points to the pixel
+  (they were stretched by a quarter, which blurred them), and shows a find large beside what is
+  known about it while the pointer rests on it.
+- The notebook's longest pages open on what matters most and a short list of the rest. Your
+  colony shows the companion, its traits and its tally, then a line for each of its notes, name,
+  wardrobe, sharing, keeping, how everyone gets along, and the collection; Home & keepsakes keeps
+  the village at the top; Preferences keeps a quiet moment; About keeps the colophon. Each line
+  says how its section stands ("Wearing a paper crown", "Formiga 0.67.7 is available"), and
+  choosing one opens it alone under a way back to the page, which Escape takes too. Coming back
+  finds the page where it was scrolled, with the section just read marked, and each section keeps
+  its own place. The tour opens whichever section it is pointing at.
+- The tiles for putting gardens, spots and ornaments down grow with the notebook's text, so a
+  name in large text still fits under its picture instead of running into it.
+- What is written on the notebook's pages sits on its ruled lines: page names and section
+  labels, every moment in the Journal with its time and its pin, a companion's name, nature and
+  ways beside its portrait, and the preferences' checkboxes, each line of text resting on a rule
+  however it wraps. Cards are pinned over the lines, and whatever follows one goes on the first
+  line clear of it. The lines are a little closer (24 points apart at 100% text, growing with the
+  text), and a moment new since the Journal was last read is run over with a highlighter.
+
+### Fixed
+
+- The notebook's ruled lines scroll with the page's writing. They were painted on the window, so
+  a scrolled page slid its words across lines that stayed put; now a line stays under whatever it
+  was under, and the lines run on from the top of the page once its heading has scrolled away.
+- Quieter text reads easily in both themes: secondary text is darker by daylight and lighter after
+  dark (better than 4.5:1 on the page, a card or a chosen row), small print is a step under body
+  text rather than two, and the tabs of pages already turned past are lettered at about 6:1 on
+  their leather instead of 2.5:1 by daylight and 2:1 after dark.
+
 ## [0.67.6] - 2026-10-12
 
 Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub

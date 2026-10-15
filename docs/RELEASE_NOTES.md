@@ -4,6 +4,19 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.7
+
+Everything a companion finds or wears has been redrawn in what it is made of, so an acorn is
+brown, a buckle brass and a teacup china, and each can be told apart at a glance. The wardrobe
+now shows each thing to wear on the companion beside its name, the try-on is larger, and the
+Collection draws its finds crisply and shows one large when the pointer rests on it. The
+notebook is easier to read: its longest pages open on a short summary with a line for each
+section, its writing sits on the ruled lines and scrolls with them, and quieter text is darker
+by daylight and lighter after dark. Update Formiga Hill and Formiga Home to 0.67.7 alongside:
+Hill's dress-up box shows a costume on whoever the pointer is over before it is put on, and its
+journal opens on a list of chapters, while Formiga Home gives each household a project board of
+things to build and improve at home, such as a window garden, a puppet theatre and a hearth.
+
 ## New in 0.67.6
 
 Formiga can now open Formiga Farm, a preview workshop for reshaping your companions, if you have

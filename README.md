@@ -1,4 +1,4 @@
-# Formiga · v0.67.6
+# Formiga · v0.67.7
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.6-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.7-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,17 +107,18 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.6
+## New in 0.67.7
 
-Formiga can now open Formiga Farm, a preview workshop for reshaping your companions, if you have
-it installed. A companion's page in the notebook offers "Reshape in Formiga Farm", and the studio
-"Draw one in Formiga Farm". Farm only ever changes how a companion looks: its name, ways, friends
-and history stay its own, and anything Farm sends that does not check out changes nothing. Without
-Farm, Formiga is just as before. Formiga Hill and Formiga Home 0.67.5 work alongside unchanged, and
-show a reshaped companion as the companion nearest it.
-
-There is also something new hidden on the notebook's last page, for anyone who would like to see
-the colony as a skulk of foxes for a while.
+Everything a companion finds or wears has been redrawn in what it is made of, so an acorn is
+brown, a buckle brass and a teacup china, and each can be told apart at a glance. The wardrobe
+now shows each thing to wear on the companion beside its name, the try-on is larger, and the
+Collection draws its finds crisply and shows one large when the pointer rests on it. The
+notebook is easier to read: its longest pages open on a short summary with a line for each
+section, its writing sits on the ruled lines and scrolls with them, and quieter text is darker
+by daylight and lighter after dark. Update Formiga Hill and Formiga Home to 0.67.7 alongside:
+Hill's dress-up box shows a costume on whoever the pointer is over before it is put on, and its
+journal opens on a list of chapters, while Formiga Home gives each household a project board of
+things to build and improve at home, such as a window garden, a puppet theatre and a hearth.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

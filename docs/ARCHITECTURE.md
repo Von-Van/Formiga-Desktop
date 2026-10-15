@@ -991,12 +991,21 @@ found. A share code never carries one.
 
 `renderer/accessories.rs` draws the piece onto every body frame as the atlas is baked, placed from
 the `Figure` that frame's body reports — the top of the head, the neck, the chest, the hip — so it
-follows every pose at a mini's size as well as an adult's, in the inks the colony's trinket sheet
-gives the find it is made from. The overlay rebakes a companion's atlas only when what it wears
+follows every pose at a mini's size as well as an adult's. Each piece is painted in what it is
+made of, from the same material ramps as the finds, with what is dyed in the colours the colony's
+trinket sheet gives the find it is made from, and then outlined all round in one pass so it holds
+its shape against any coat. `CreatureRenderer::render_worn_piece` cuts a piece out of a
+companion's standing frame on its own, as it sits on that companion, for a page to picture it
+beside its name. The overlay rebakes a companion's atlas only when what it wears
 changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
 
-The wardrobe on the Your colony page, in `clubhouse/collection.rs`, shows the companion wearing
-whatever the pointer is over, a frame later. Nothing in it may change size with the pointer, or
+The wardrobe on the Your colony page, in `clubhouse/collection.rs`, pictures each choice beside its
+name as it would sit on the companion — one strip of twenty boxes cut by `render_worn_piece`, drawn
+again only when the companion changes — and shows the companion wearing whatever the pointer is
+over, a frame later: standing at three points to the pixel and in three more poses at two. The
+Collection draws each find at two points to the pixel on its tile, and four beside what is known
+about it while the pointer rests on it; every picture in the notebook is at a whole number of
+points to the pixel, so none is blurred. Nothing in it may change size with the pointer, or
 the choice pointed at moves out from under it and the menu shakes: the try-on line is always one
 truncated line, and `wear_choice` keeps a chip the same size whether or not it is pointed at.
 `pointing_at_something_to_wear_leaves_every_choice_where_it_was` holds both.
@@ -1990,15 +1999,41 @@ window's width and the text scale: at 940 points and 100% text the cover is 196 
 712, with the margin line 50 points in; where the page would be narrower than 640 points the
 margins and the binding give up their room before the page's contents do. The tabs share the
 cover's height below the patch, so all nine always fit, and the conditions note is left off a
-cover too short for it. The page's ruling, margin line, stepped edge and shadow are painted with
-the window-wide background painter, since the edge and shadow fall just outside the page's panel,
-and the open page's tab is painted after the page, over the edge it is joined to. A page turn is
+cover too short for it. The page's margin line, stepped edge and shadow are painted with the
+window-wide background painter, since the edge and shadow fall just outside the page's panel, and
+the open page's tab is painted after the page, over the edge it is joined to. The ruling goes in a
+place `paint_page` leaves for it under the margin line, filled by `paint_ruling` once the page's
+scroll area has been laid out: the lines are spaced from the top of the page's writing, where the
+scroll has put it, so they move with the words and never sit still behind them. They are
+`rule_pitch` apart (24 points at 100% text, growing with it), and while a page is drawn its
+`RuleGrid` is kept for the frame so that what is written on it can find them: `write` sets text on
+the next rule with every wrapped line on a rule of its own (a page's name, too tall for one, takes
+two), `ruled_row` sits a row of written things on one rule, `on_the_line` seats a checkbox or a row
+of buttons so its words rest on a rule, and `to_next_rule` brings whatever follows a picture or a
+row of controls back to the first rule clear of it. A card is a slip pinned over the page, so it
+covers the ruling and what is written on it is set as on any card; it starts on a rule, and the
+section lines of a sectioned page are slips a whole number of lines tall. A page turn is
 `journal::turn_page`: noticing the page shown change, it draws a ruled leaf over the new page for
 0.76 seconds, shrinking toward the binding going forward and toward the cover going back, with a
 shadow beside its free edge, and requests repaints only while it turns; under Reduce motion it
 never starts. Every box with a stepped edge — cards, tally boxes, tabs, the patch, the notes — is
 a fill and four edge rectangles that leave the corner pixels out; egui's own widgets are drawn
 square with a two-pixel outline.
+A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
+Your colony shows the companion, its traits and its tally, then a line for each of its notes, its
+name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
+over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
+picked out in it above lines for the ground's gardens, spots and ornaments, where the village
+lives, pictures, and the belongings in the yards; Preferences keeps a quiet moment above lines for
+the desktop, routines and this notebook; About keeps the colophon above backups, updates, privacy
+and where things are kept. Each line names its section and says how it stands. A section opens in
+the list's place under a way back, which Escape also takes while no text field has the keyboard;
+the list comes back as it was scrolled, with the section just read barred down its edge, since the
+page's scroll area is keyed by the page and its open section. Which section is open is kept in the
+shell for as long as the window is open and in nothing saved, and a step of the tour that points at
+something in a section opens it. `no_page_is_drawn_past_the_edge_of_its_window` draws every section
+of every page open as well as each page's list.
+
 Every colour the pages draw reads from one palette so a single switch moves the whole window
 between cream and charcoal, and keyboard focus is drawn in the accent rather than the platform's
 fainter default. The existing egui font atlas and window/GPU resources are separate. Artwork is regenerated
@@ -2695,6 +2730,9 @@ other house, everything the colony can show, and what Desktop offers to take bac
 no field: its residents are written in travel version 4, and the Fairground's souvenirs may be
 shown. Version 8 adds `indoors.json`, the `indoors` capability that offers to follow it, and a
 home's `stays_out`: the residents its owner keeps out on the desktop when the house opens.
+Version 10 adds a home's `projects` and `tallies`: each household project Home has shown the owner
+and every stage of it finished, and the counts of things at home they count towards. Desktop keeps
+them with the home and never reads them, and keeps them as they were when an older Home answers.
 `project_household` takes the capabilities Desktop offers, and Desktop offers `visit_record`, and
 `indoors` to a Home that reads version 8: time together, moments for the journal, going next door
 and moving in all stay with Home until Desktop applies them.

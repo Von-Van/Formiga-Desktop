@@ -671,6 +671,33 @@ impl CreatureRenderer {
         )
     }
 
+    /// A piece on its own, as it sits on this creature: every pixel wearing it changes in the
+    /// creature's standing frame, cropped to them with a clear pixel all round, so it can be
+    /// pictured beside its name at whatever whole-number size a page shows it. `None` when the
+    /// piece changes nothing.
+    pub fn render_worn_piece(genome: &AppearanceGenome, dress: AccessoryArt) -> Option<Canvas> {
+        let bare = Self::render_dressed_frame(genome, None, ActionKind::Idle, 0, true);
+        let dressed = Self::render_dressed_frame(genome, Some(dress), ActionKind::Idle, 0, true);
+        let mut piece = Canvas::new(dressed.width(), dressed.height());
+        for y in 0..dressed.height() as i32 {
+            for x in 0..dressed.width() as i32 {
+                let pixel = dressed.get(x, y);
+                if pixel.a > 0 && pixel != bare.get(x, y) {
+                    piece.set(x, y, pixel);
+                }
+            }
+        }
+        let (left, top, right, bottom) = piece.alpha_bounds()?;
+        let mut cropped = Canvas::new(right - left + 3, bottom - top + 3);
+        for y in top..=bottom {
+            for x in left..=right {
+                let pixel = piece.get(x as i32, y as i32);
+                cropped.set((x - left + 1) as i32, (y - top + 1) as i32, pixel);
+            }
+        }
+        Some(cropped)
+    }
+
     pub fn render_body_frame(
         genome: &AppearanceGenome,
         clip: impl Into<BodyClip>,

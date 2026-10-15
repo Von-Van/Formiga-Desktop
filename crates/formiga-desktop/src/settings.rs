@@ -1,3 +1,4 @@
+use crate::clubhouse::sections::Section;
 use crate::clubhouse::tour::TourMark;
 use crate::clubhouse::{self, Clubhouse, forest, gold, ink, mint, paper};
 use crate::updater::{APP_VERSION, UpdateStatus};
@@ -841,7 +842,8 @@ fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
             (egui::TextStyle::Body, 14.0),
             (egui::TextStyle::Button, 14.0),
             (egui::TextStyle::Heading, 25.0),
-            (egui::TextStyle::Small, 10.5),
+            // Small print is for asides, not for squinting at: a step under the body, no more.
+            (egui::TextStyle::Small, 12.0),
             (egui::TextStyle::Monospace, 13.0),
         ] {
             style
@@ -957,7 +959,7 @@ fn draw_settings(
             // Painted for the whole window rather than for this panel, since the page's edge and
             // its shadow fall just outside it, on the binding.
             let window_painter = ui.ctx().layer_painter(egui::LayerId::background());
-            clubhouse::journal::paint_page(&window_painter, page, spread, page.bottom(), open_tab);
+            let ruling = clubhouse::journal::paint_page(&window_painter, page, spread, open_tab);
             let footer = egui::Panel::bottom("settings-footer")
                 .frame(egui::Frame::NONE.fill(paper()).inner_margin(egui::Margin {
                     left: spread.left as i8,
@@ -1085,14 +1087,20 @@ fn draw_settings(
                 .frame(egui::Frame::NONE.inner_margin(egui::Margin {
                     left: spread.left as i8,
                     right: spread.right as i8,
-                    top: 24,
+                    top: clubhouse::journal::WRITING_TOP as i8,
                     bottom: 22,
                 }))
                 .show(ui, |ui| {
         // The tour, above the page rather than on it, so it stays in view while the page scrolls
         // to whatever it is pointing at.
         clubhouse.shell.tour_card(ui, save, tab, outcome);
-        egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
+        // Each page, and each section of one, keeps how far down it was scrolled.
+        let section = clubhouse.shell.sections.open(*tab).unwrap_or("");
+        let pitch = clubhouse::journal::rule_pitch(text_scale);
+        let scrolled = egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}-{section}")).auto_shrink([false, false]).show(ui, |ui| {
+            // The page's lines start from the top of its writing, wherever the scroll has put it,
+            // and whatever is written on the page finds them through the grid.
+            clubhouse::journal::RuleGrid { top: ui.max_rect().top(), pitch }.keep(ui.ctx());
             clubhouse.recovery.cards(ui, save_location, outcome);
             match tab {
                 SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
@@ -1122,13 +1130,24 @@ fn draw_settings(
                 }
                 SettingsTab::About => {
                     clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
-                    clubhouse.recovery.backups(ui, outcome);
-                    ui.add_space(18.0);
                     let echo_fox = save.creatures.iter().any(|creature| creature.appearance.echo_fox);
-                    about_tab(ui, outcome, save_location, update_status, automatic_update_checks, echo_fox);
+                    about_tab(ui, &mut clubhouse.shell, &mut clubhouse.recovery, outcome, save_location, update_status, automatic_update_checks, echo_fox);
                 }
             }
         });
+        // The ruling is drawn where the writing is, so the lines scroll with it; they run on down
+        // under the page's bottom margin to the footer, as they did before the page scrolled.
+        clubhouse::journal::RuleGrid::forget(ui.ctx());
+        clubhouse::journal::paint_ruling(
+            &window_painter,
+            ruling,
+            page,
+            clubhouse::journal::RuleGrid {
+                top: scrolled.inner_rect.top() - scrolled.state.offset.y,
+                pitch,
+            },
+            (scrolled.inner_rect.top(), footer.top()),
+        );
                 });
             clubhouse::journal::paint_open_tab(
                 &ui.ctx().layer_painter(egui::LayerId::background()),
@@ -1208,86 +1227,175 @@ fn general_tab(
         .rect;
     shell.tour_mark(ui, TourMark::Quiet, quiet);
     ui.add_space(16.0);
-    clubhouse::card(ui, |ui| {
-        ui.strong("Saved routines").on_hover_text(
-            "A routine is a snapshot of where the colony may go, whether it climbs windows, \
-             whether it reacts to the cursor, and whether motion is reduced.",
-        );
-        ui.small("Keep a Work and Relax setup for habitat, movement, and cursor reactions. Loading a routine previews its preferences before Apply.");
-        for (index, name) in ["Work", "Relax"].into_iter().enumerate() {
-            ui.horizontal(|ui| {
-                ui.strong(name);
-                if ui.button("Save current preferences").clicked() {
-                    outcome.save_mode =
-                        Some((index, formiga_core::BehaviorPreset::capture(settings)));
+    // A quiet moment stays at the top, where it is reached for most; the rest is in sections.
+    let size = match settings.display_scale {
+        2 => "small",
+        4 => "large",
+        _ => "medium",
+    };
+    let routines_saved = save
+        .companion
+        .modes
+        .iter()
+        .filter(|mode| mode.is_some())
+        .count();
+    let appearance = save.companion.appearance;
+    let sections = [
+        Section::new(
+            "desktop",
+            "On your desktop",
+            format!(
+                "{}, drawn {size}",
+                if !settings.visible {
+                    "Hidden"
+                } else if settings.paused {
+                    "Paused"
+                } else {
+                    "Out and about"
                 }
-                if ui
-                    .add_enabled(
-                        save.companion.modes[index].is_some(),
-                        egui::Button::new("Load"),
-                    )
-                    .clicked()
-                    && let Some(mode) = &save.companion.modes[index]
-                {
-                    mode.apply(settings);
-                    shell.notify(format!("{name} routine loaded · Apply to use it"));
+            ),
+        ),
+        Section::new(
+            "routines",
+            "Routines",
+            format!(
+                "{} \u{b7} {}",
+                match routines_saved {
+                    0 => "No routines saved yet".to_owned(),
+                    2 => "Work and Relax saved".to_owned(),
+                    _ => "One routine saved".to_owned(),
+                },
+                if save.companion.schedule.enabled {
+                    "following a weekly routine"
+                } else {
+                    "no weekly routine"
+                }
+            ),
+        ),
+        Section::new(
+            "notebook",
+            "This notebook",
+            format!(
+                "{} \u{b7} text at {}%",
+                match appearance.theme {
+                    formiga_core::ThemeChoice::System => "Matches the system",
+                    formiga_core::ThemeChoice::Light => "Cream",
+                    formiga_core::ThemeChoice::Dark => "Charcoal",
+                },
+                appearance.text_scale
+            ),
+        ),
+    ];
+    match clubhouse::sections::show(ui, shell, SettingsTab::General, &sections) {
+        Some("desktop") => {
+            clubhouse::journal::write(
+                ui,
+                egui::RichText::new(
+                    "Changes here take effect when you apply them, and the footer says what changed.",
+                )
+                .small(),
+            );
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.visible, "Show colony")
+            .on_hover_text(
+                "Hidden, the colony carries on out of sight: it keeps its days, and the journal keeps \
+             writing.",
+            );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.paused, "Pause ambient behavior")
+            .on_hover_text(
+                "Everyone holds still where they are. Nothing new happens, and nothing is replayed \
+             when you resume.",
+            );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(
+                    &mut settings.direct_manipulation,
+                    "Allow petting and dragging",
+                )
+                .on_hover_text(
+                    "Off, clicks pass straight through companions to whatever is underneath.",
+                );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement")
+            .on_hover_text(
+                "Companions notice the pointer: a curious one comes to look, a wary one steps aside. \
+                 Only where the pointer is — never what it is pointing at.",
+            );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(
+                &mut settings.window_ledges,
+                "Explore application-window ledges",
+            )
+            .on_hover_text(
+                "Companions may climb onto the tops of your windows and ride along when one moves. \
+             Formiga sees only where windows are, never what is in them.",
+            );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.reduce_motion, "Reduce motion")
+            .on_hover_text(
+                "Calmer movement on the desktop — no bounces, tosses or wiggles — and no page turns in \
+             this notebook.",
+            );
+            });
+            clubhouse::journal::on_the_line(ui, |ui| {
+                ui.checkbox(&mut settings.launch_at_login, "Launch at login")
+                    .on_hover_text(
+                        "Start Formiga when you sign in, so the colony is there when you are.",
+                    );
+            });
+            ui.add_space(4.0);
+            clubhouse::journal::kicker(ui, "Creature size").on_hover_text(
+                "How large companions are drawn. It changes nothing about what they do.",
+            );
+            clubhouse::journal::on_the_line(ui, |ui| {
+                for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
+                    ui.selectable_value(&mut settings.display_scale, scale, name);
                 }
             });
         }
-    });
-    ui.add_space(16.0);
-    clubhouse::schedule_controls(ui, save, outcome);
-    ui.add_space(16.0);
-    clubhouse::appearance_controls(ui, save, outcome);
-    ui.add_space(18.0);
-    clubhouse::journal::kicker(ui, "On your desktop");
-    ui.small("Changes here take effect when you apply them, and the footer says what changed.");
-    ui.checkbox(&mut settings.visible, "Show colony")
-        .on_hover_text(
-            "Hidden, the colony carries on out of sight: it keeps its days, and the journal keeps \
-         writing.",
-        );
-    ui.checkbox(&mut settings.paused, "Pause ambient behavior")
-        .on_hover_text(
-            "Everyone holds still where they are. Nothing new happens, and nothing is replayed \
-         when you resume.",
-        );
-    ui.checkbox(
-        &mut settings.direct_manipulation,
-        "Allow petting and dragging",
-    )
-    .on_hover_text("Off, clicks pass straight through companions to whatever is underneath.");
-    ui.checkbox(&mut settings.cursor_reactions, "React to cursor movement")
-        .on_hover_text(
-            "Companions notice the pointer: a curious one comes to look, a wary one steps aside. \
-             Only where the pointer is — never what it is pointing at.",
-        );
-    ui.checkbox(
-        &mut settings.window_ledges,
-        "Explore application-window ledges",
-    )
-    .on_hover_text(
-        "Companions may climb onto the tops of your windows and ride along when one moves. \
-         Formiga sees only where windows are, never what is in them.",
-    );
-    ui.checkbox(&mut settings.reduce_motion, "Reduce motion")
-        .on_hover_text(
-            "Calmer movement on the desktop — no bounces, tosses or wiggles — and no page turns in \
-         this notebook.",
-        );
-    ui.checkbox(&mut settings.launch_at_login, "Launch at login")
-        .on_hover_text("Start Formiga when you sign in, so the colony is there when you are.");
-    ui.add_space(10.0);
-    clubhouse::journal::kicker(ui, "Creature size")
-        .on_hover_text("How large companions are drawn. It changes nothing about what they do.");
-    ui.horizontal(|ui| {
-        for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
-            ui.selectable_value(&mut settings.display_scale, scale, name);
+        Some("routines") => {
+            clubhouse::card(ui, |ui| {
+                ui.strong("Saved routines").on_hover_text(
+                "A routine is a snapshot of where the colony may go, whether it climbs windows, \
+                 whether it reacts to the cursor, and whether motion is reduced.",
+            );
+                ui.small("Keep a Work and Relax setup for habitat, movement, and cursor reactions. Loading a routine previews its preferences before Apply.");
+                for (index, name) in ["Work", "Relax"].into_iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.strong(name);
+                        if ui.button("Save current preferences").clicked() {
+                            outcome.save_mode =
+                                Some((index, formiga_core::BehaviorPreset::capture(settings)));
+                        }
+                        if ui
+                            .add_enabled(
+                                save.companion.modes[index].is_some(),
+                                egui::Button::new("Load"),
+                            )
+                            .clicked()
+                            && let Some(mode) = &save.companion.modes[index]
+                        {
+                            mode.apply(settings);
+                            shell.notify(format!("{name} routine loaded · Apply to use it"));
+                        }
+                    });
+                }
+            });
+            ui.add_space(16.0);
+            clubhouse::schedule_controls(ui, save, outcome);
         }
-    });
-    ui.add_space(18.0);
-    if ui.button("Take the tour").clicked() {
-        shell.take_the_tour();
+        Some("notebook") => clubhouse::appearance_controls(ui, save, outcome),
+        _ => {
+            ui.add_space(12.0);
+            if ui.button("Take the tour").clicked() {
+                shell.take_the_tour();
+            }
+        }
     }
 }
 
@@ -1304,7 +1412,7 @@ fn formiga_farm_group(
         return;
     }
     ui.add_space(8.0);
-    ui.group(|ui| {
+    clubhouse::card(ui, |ui| {
         ui.strong("A new look");
         if formiga_farm.open == Some(FarmRequest::Reshape(creature.id)) {
             ui.label(format!(
@@ -1386,336 +1494,450 @@ fn colony_tab(
     };
     *selected_creature = Some(creature.id);
     outcome.viewed_profile = Some(creature.id);
-    ui.add_space(16.0);
-    let number = creatures
-        .iter()
-        .position(|c| c.id == creature.id)
-        .map_or(1, |index| index + 1);
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            shell.portrait(ui, creature, 144.0);
-            ui.label(clubhouse::journal::label_job(
-                &format!("Fig. Nº {number:02}"),
-                clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
-                clubhouse::muted(),
-            ));
-        });
-        ui.vertical(|ui| {
-            clubhouse::journal::kicker(ui, &format!("Specimen Nº {number:02}"));
-            ui.heading(&creature.name);
-            // Who it is, then its three traits, then what it has come to lean toward more than
-            // anyone else here.
-            ui.label(
-                egui::RichText::new(creature.temperament_phrase())
-                    .strong()
-                    .color(forest()),
-            );
-            ui.horizontal_wrapped(|ui| {
-                for t in creature.traits() {
-                    clubhouse::make_room(ui, clubhouse::text_width(ui, t.label()) + 10.0);
-                    egui::Frame::new()
-                        .fill(mint())
-                        .inner_margin(5)
-                        .show(ui, |ui| {
-                            ui.label(t.label());
-                        });
-                }
-            });
-            let learned = profile_descriptors(creature, creatures);
-            if !learned.is_empty() {
-                ui.small(format!(
-                    "Lately: {}",
-                    learned
-                        .iter()
-                        .map(|descriptor| descriptor.label())
-                        .collect::<Vec<_>>()
-                        .join(" · ")
-                ));
-            }
-            ui.small(format!(
-                "Body: {} · observed {}",
-                clubhouse::body_label(&creature.appearance),
-                activity_label(creature.state.action)
-            ));
-            if let Some(parent_id) = creature.role.parent_id() {
-                ui.small(format!(
-                    "Mini cared for by {}",
-                    creatures
-                        .iter()
-                        .find(|c| c.id == parent_id)
-                        .map_or("a colony adult", |c| c.name.as_str())
-                ));
-            }
-            // Its own little ways: how it celebrates, and the habits it has picked up here.
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(
-                    egui::RichText::new("Habits:")
-                        .small()
-                        .color(clubhouse::muted()),
-                );
-                ui.small(little_ways(creature));
-            });
-        });
-    });
-    ui.add_space(18.0);
-    clubhouse::journal::kicker(ui, "Tally · Life here");
-    let days_alive = (time::OffsetDateTime::now_utc() - creature.born_at_utc)
-        .whole_days()
-        .max(0);
-    ui.horizontal_wrapped(|ui| {
-        for (number, label) in [
-            (days_alive.to_string(), "days together"),
-            (creature.memory.times_petted.to_string(), "pets received"),
-            (
-                creature.memory.discoveries_found.to_string(),
-                "treasures found",
-            ),
-            (creature.memory.window_climbs.to_string(), "windows climbed"),
-        ] {
-            // The number over its label, a tally box no narrower than 96.
-            let width = clubhouse::text_width(ui, egui::RichText::new(&number).size(24.0))
-                .max(clubhouse::text_width(
-                    ui,
-                    egui::RichText::new(label).small(),
-                ))
-                .max(96.0);
-            clubhouse::make_room(ui, width + clubhouse::CARD_EDGES);
-            clubhouse::card(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.set_min_width(96.0);
-                    ui.label(egui::RichText::new(number).size(24.0).color(ink()));
-                    ui.small(label);
-                });
-            });
-        }
-    });
-    ui.add_space(8.0);
-    clubhouse::journal::kicker(ui, "Observations");
-    if let Some(preferred) = creature.memory.preferred_region {
-        ui.label(format!(
-            "Favorite region: {} on {}",
-            region_label(preferred.cell),
-            display_label(preferred.display, monitors)
-        ));
-    } else if let Some(favorite) = creature.memory.favorite_display {
-        ui.label(format!(
-            "Favorite display: {}",
-            display_label(favorite.display, monitors)
-        ));
-    } else {
-        ui.label("Favorite place: still deciding");
-    }
-
+    // The companion's own page shows who it is and its tally first, then a line for each part of
+    // the rest; a part opens on its own, under a way back.
     let closest_friend = closest_companion(relationships, creature.id)
         .and_then(|id| creatures.iter().find(|other| other.id == id));
-    if let Some(friend) = closest_friend {
-        ui.label(format!("Closest to {}", friend.name));
-        if let Some(relationship) = relationship_between(relationships, creature.id, friend.id) {
-            ui.label(format!(
-                "Bond: {} • {}",
-                bond_label(relationship.affinity, relationship.avoidance),
-                together_label(creature, friend, relationship)
-            ));
-        }
-    } else {
-        ui.label("Closest friend: still getting acquainted");
+    let mut sections = vec![
+        Section::new(
+            "notes",
+            format!("Notes on {}", creature.name),
+            closest_friend.map_or_else(
+                || "Still getting acquainted".to_owned(),
+                |friend| format!("Closest to {}", friend.name),
+            ),
+        ),
+        Section::new(
+            "name",
+            "Name and where they like to be",
+            format!("Likes to be {}", creature.leaning.label().to_lowercase()),
+        )
+        .marked(TourMark::Name),
+        Section::new(
+            "wardrobe",
+            "Something to wear",
+            creature.accessory.map_or_else(
+                || "Wearing nothing just now".to_owned(),
+                |accessory| format!("Wearing {}", accessory.label().to_lowercase()),
+            ),
+        )
+        .marked(TourMark::Wardrobe),
+    ];
+    if formiga_farm.installed {
+        sections.push(Section::new(
+            "farm",
+            "A new look",
+            "Reshape them in Formiga Farm",
+        ));
     }
-    // What the notebook can say about this companion with evidence, and the moments it shared
-    // most recently, read from what was recorded and from nothing else.
-    let now = time::OffsetDateTime::now_utc();
-    let offset = clubhouse::local_offset();
-    if let Some(friend) = closest_friend {
-        let (low, high) = (creature.id.min(friend.id), creature.id.max(friend.id));
-        if let Some(grew_close) = colony.save.companion.journal.iter().find(|e| {
-            e.creature == Some(low) && e.moment == formiga_core::JournalMoment::Friendship(high)
-        }) {
-            ui.small(format!(
-                "Grew close to {} on {}, as the journal has it.",
-                friend.name,
-                grew_close.at.to_offset(offset).date()
-            ));
-        }
-        if let Some(memory) =
-            formiga_core::tally_between(&colony.save.tallies, creature.id, friend.id)
-                .and_then(|pair| pair.tally.memory)
-        {
-            ui.small(format!(
-                "Last time together: {} {}.",
-                clubhouse::today::shared_text(memory.kind),
-                clubhouse::today::ago_text(memory.at, now, offset)
-            ));
-        }
-    }
-    let noticed = formiga_core::observations_of(colony.save, creature.id);
-    if !noticed.is_empty() {
-        ui.add_space(6.0);
-        for observation in &noticed {
-            let (said, evidence) =
-                clubhouse::today::observation_text(colony.save, monitors, observation);
-            ui.label(said);
-            ui.small(egui::RichText::new(evidence).color(clubhouse::muted()));
-        }
-    }
-    ui.add_space(18.0);
-    let name = ui.group(|ui| {
-        ui.strong("Name");
-        ui.small("A name for your companion. Their preferences grow through experience.");
-        let name = creature_names
-            .entry(creature.id)
-            .or_insert_with(|| creature.name.clone());
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(name).char_limit(24));
-            if ui.button("Save name").clicked() {
-                match validate_creature_name(name) {
-                    Ok(validated) => {
-                        *name = validated.clone();
-                        outcome.rename_creature = Some((creature.id, validated));
-                        *error = None;
+    sections.extend([
+        Section::new(
+            "share",
+            format!("Share {}", creature.name),
+            "A code for a friend, a picture card, or a sticker",
+        )
+        .marked(TourMark::Share),
+        Section::new(
+            "care",
+            "Keeping and starting over",
+            if creature.kept {
+                "Kept when the others are made anew"
+            } else {
+                "Not kept when the others are made anew"
+            },
+        ),
+        Section::new(
+            "together",
+            "How everyone gets along",
+            "Friendships, playmates and tensions across the colony",
+        ),
+        Section::new(
+            "collection",
+            "The collection",
+            format!(
+                "{} of {} found",
+                colony.save.companion.scrapbook.len(),
+                formiga_core::TRINKET_VARIANTS
+            ),
+        )
+        .marked(TourMark::Collection),
+    ]);
+    if clubhouse::sections::current(shell, SettingsTab::Colony, &sections).is_none() {
+        ui.add_space(16.0);
+        let number = creatures
+            .iter()
+            .position(|c| c.id == creature.id)
+            .map_or(1, |index| index + 1);
+        clubhouse::journal::ruled_row(ui, |ui| {
+            ui.vertical(|ui| {
+                shell.portrait(ui, creature, 144.0);
+                clubhouse::journal::write(
+                    ui,
+                    clubhouse::journal::label_job(
+                        &format!("Fig. Nº {number:02}"),
+                        clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
+                        clubhouse::muted(),
+                    ),
+                );
+            });
+            ui.vertical(|ui| {
+                clubhouse::journal::kicker(ui, &format!("Specimen Nº {number:02}"));
+                clubhouse::journal::write(
+                    ui,
+                    egui::RichText::new(&creature.name)
+                        .text_style(egui::TextStyle::Heading)
+                        .color(ink()),
+                );
+                // Who it is, then its three traits, then what it has come to lean toward more than
+                // anyone else here.
+                clubhouse::journal::write(
+                    ui,
+                    egui::RichText::new(creature.temperament_phrase())
+                        .strong()
+                        .color(forest()),
+                );
+                clubhouse::journal::on_the_line(ui, |ui| {
+                    for t in creature.traits() {
+                        egui::Frame::new()
+                            .fill(mint())
+                            .inner_margin(egui::Margin::symmetric(5, 2))
+                            .show(ui, |ui| {
+                                ui.label(t.label());
+                            });
                     }
-                    Err(message) => *error = Some(message.to_string()),
+                });
+                let small = |text: String| egui::RichText::new(text).small();
+                let learned = profile_descriptors(creature, creatures);
+                if !learned.is_empty() {
+                    clubhouse::journal::write(
+                        ui,
+                        small(format!(
+                            "Lately: {}",
+                            learned
+                                .iter()
+                                .map(|descriptor| descriptor.label())
+                                .collect::<Vec<_>>()
+                                .join(" · ")
+                        )),
+                    );
                 }
+                clubhouse::journal::write(
+                    ui,
+                    small(format!(
+                        "Body: {} · observed {}",
+                        clubhouse::body_label(&creature.appearance),
+                        activity_label(creature.state.action)
+                    )),
+                );
+                if let Some(parent_id) = creature.role.parent_id() {
+                    clubhouse::journal::write(
+                        ui,
+                        small(format!(
+                            "Mini cared for by {}",
+                            creatures
+                                .iter()
+                                .find(|c| c.id == parent_id)
+                                .map_or("a colony adult", |c| c.name.as_str())
+                        )),
+                    );
+                }
+                // Its own little ways: how it celebrates, and the habits it has picked up here.
+                let mut habits = egui::text::LayoutJob::default();
+                let size = ui
+                    .style()
+                    .text_styles
+                    .get(&egui::TextStyle::Small)
+                    .map_or(12.0, |font| font.size);
+                for (text, colour) in [
+                    ("Habits: ".to_owned(), clubhouse::muted()),
+                    (little_ways(creature), ink()),
+                ] {
+                    habits.append(
+                        &text,
+                        0.0,
+                        egui::text::TextFormat {
+                            font_id: egui::FontId::proportional(size),
+                            color: colour,
+                            ..Default::default()
+                        },
+                    );
+                }
+                clubhouse::journal::write(ui, habits);
+            });
+        });
+        ui.add_space(18.0);
+        clubhouse::journal::kicker(ui, "Tally · Life here");
+        let days_alive = (time::OffsetDateTime::now_utc() - creature.born_at_utc)
+            .whole_days()
+            .max(0);
+        ui.horizontal_wrapped(|ui| {
+            for (number, label) in [
+                (days_alive.to_string(), "days together"),
+                (creature.memory.times_petted.to_string(), "pets received"),
+                (
+                    creature.memory.discoveries_found.to_string(),
+                    "treasures found",
+                ),
+                (creature.memory.window_climbs.to_string(), "windows climbed"),
+            ] {
+                // The number over its label, a tally box no narrower than 96.
+                let width = clubhouse::text_width(ui, egui::RichText::new(&number).size(24.0))
+                    .max(clubhouse::text_width(
+                        ui,
+                        egui::RichText::new(label).small(),
+                    ))
+                    .max(96.0);
+                clubhouse::make_room(ui, width + clubhouse::CARD_EDGES);
+                clubhouse::card(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.set_min_width(96.0);
+                        ui.label(egui::RichText::new(number).size(24.0).color(ink()));
+                        ui.small(label);
+                    });
+                });
             }
         });
-        // Where they like to be: a leaning, not a rule. The habitat, pausing, and hiding still
-        // decide where they can go.
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Likes to be");
-            egui::ComboBox::from_id_salt(("roaming-leaning", creature.id))
-                .selected_text(creature.leaning.label())
-                .show_ui(ui, |ui| {
-                    for leaning in formiga_core::RoamingLeaning::ALL {
-                        let chosen = creature.leaning == leaning;
-                        if ui
-                            .selectable_label(chosen, leaning.label())
-                            .on_hover_text(leaning.description())
-                            .clicked()
-                            && !chosen
-                        {
-                            outcome.set_roaming_leaning = Some((creature.id, leaning));
+        ui.add_space(14.0);
+    }
+    match clubhouse::sections::show(ui, shell, SettingsTab::Colony, &sections) {
+        Some("notes") => {
+            if let Some(preferred) = creature.memory.preferred_region {
+                ui.label(format!(
+                    "Favorite region: {} on {}",
+                    region_label(preferred.cell),
+                    display_label(preferred.display, monitors)
+                ));
+            } else if let Some(favorite) = creature.memory.favorite_display {
+                ui.label(format!(
+                    "Favorite display: {}",
+                    display_label(favorite.display, monitors)
+                ));
+            } else {
+                ui.label("Favorite place: still deciding");
+            }
+
+            if let Some(friend) = closest_friend {
+                ui.label(format!("Closest to {}", friend.name));
+                if let Some(relationship) =
+                    relationship_between(relationships, creature.id, friend.id)
+                {
+                    ui.label(format!(
+                        "Bond: {} • {}",
+                        bond_label(relationship.affinity, relationship.avoidance),
+                        together_label(creature, friend, relationship)
+                    ));
+                }
+            } else {
+                ui.label("Closest friend: still getting acquainted");
+            }
+            // What the notebook can say about this companion with evidence, and the moments it shared
+            // most recently, read from what was recorded and from nothing else.
+            let now = time::OffsetDateTime::now_utc();
+            let offset = clubhouse::local_offset();
+            if let Some(friend) = closest_friend {
+                let (low, high) = (creature.id.min(friend.id), creature.id.max(friend.id));
+                if let Some(grew_close) = colony.save.companion.journal.iter().find(|e| {
+                    e.creature == Some(low)
+                        && e.moment == formiga_core::JournalMoment::Friendship(high)
+                }) {
+                    ui.small(format!(
+                        "Grew close to {} on {}, as the journal has it.",
+                        friend.name,
+                        grew_close.at.to_offset(offset).date()
+                    ));
+                }
+                if let Some(memory) =
+                    formiga_core::tally_between(&colony.save.tallies, creature.id, friend.id)
+                        .and_then(|pair| pair.tally.memory)
+                {
+                    ui.small(format!(
+                        "Last time together: {} {}.",
+                        clubhouse::today::shared_text(memory.kind),
+                        clubhouse::today::ago_text(memory.at, now, offset)
+                    ));
+                }
+            }
+            let noticed = formiga_core::observations_of(colony.save, creature.id);
+            if !noticed.is_empty() {
+                ui.add_space(6.0);
+                for observation in &noticed {
+                    let (said, evidence) =
+                        clubhouse::today::observation_text(colony.save, monitors, observation);
+                    ui.label(said);
+                    ui.small(egui::RichText::new(evidence).color(clubhouse::muted()));
+                }
+            }
+        }
+        Some("name") => {
+            let name = clubhouse::card(ui, |ui| {
+                ui.strong("Name");
+                ui.small("A name for your companion. Their preferences grow through experience.");
+                let name = creature_names
+                    .entry(creature.id)
+                    .or_insert_with(|| creature.name.clone());
+                ui.horizontal_wrapped(|ui| {
+                    // The field leaves room beside it for its button, however large the text.
+                    let room = ui.available_width()
+                        - clubhouse::text_width(ui, "Save name")
+                        - 2.0 * ui.spacing().button_padding.x
+                        - 2.0 * ui.spacing().item_spacing.x;
+                    ui.add(
+                        egui::TextEdit::singleline(name)
+                            .char_limit(24)
+                            .desired_width(room.clamp(120.0, 280.0)),
+                    );
+                    if ui.button("Save name").clicked() {
+                        match validate_creature_name(name) {
+                            Ok(validated) => {
+                                *name = validated.clone();
+                                outcome.rename_creature = Some((creature.id, validated));
+                                *error = None;
+                            }
+                            Err(message) => *error = Some(message.to_string()),
                         }
                     }
                 });
-            ui.small(creature.leaning.description());
-        });
-    });
-    shell.tour_mark(ui, TourMark::Name, name.response.rect);
-
-    ui.add_space(8.0);
-    page.wardrobe(ui, shell, colony.save, creature, outcome);
-    formiga_farm_group(ui, creature, formiga_farm, outcome);
-    ui.add_space(8.0);
-    ui.group(|ui| {
-        ui.strong("Colony care");
-        let mut kept = creature.kept;
-        if ui
-            .checkbox(&mut kept, "Keep this creature during bulk regeneration")
-            .changed()
-        {
-            outcome.set_creature_kept = Some((creature.id, kept));
-            *error = None;
-        }
-        ui.label(
-            egui::RichText::new(
-                "Individual replacement also requires Keep to be turned off first.",
-            )
-            .small(),
-        );
-
-        let adult_count = creatures
-            .iter()
-            .filter(|candidate| candidate.role.is_adult())
-            .count();
-        let can_remove = !(creature.role.is_adult() && adult_count == 1);
-        if *remove_confirmation == Some(creature.id) {
-            ui.colored_label(
-                egui::Color32::from_rgb(241, 181, 102),
-                format!("Remove {} and its local history?", creature.name),
-            );
-            ui.horizontal(|ui| {
-                if ui.button("Remove permanently").clicked() {
-                    outcome.remove_creature = Some(creature.id);
-                    *remove_confirmation = None;
-                }
-                if ui.button("Cancel").clicked() {
-                    *remove_confirmation = None;
-                }
+                // Where they like to be: a leaning, not a rule. The habitat, pausing, and hiding still
+                // decide where they can go.
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Likes to be");
+                    egui::ComboBox::from_id_salt(("roaming-leaning", creature.id))
+                        .selected_text(creature.leaning.label())
+                        .show_ui(ui, |ui| {
+                            for leaning in formiga_core::RoamingLeaning::ALL {
+                                let chosen = creature.leaning == leaning;
+                                if ui
+                                    .selectable_label(chosen, leaning.label())
+                                    .on_hover_text(leaning.description())
+                                    .clicked()
+                                    && !chosen
+                                {
+                                    outcome.set_roaming_leaning = Some((creature.id, leaning));
+                                }
+                            }
+                        });
+                    ui.small(creature.leaning.description());
+                });
             });
-        } else if ui
-            .add_enabled(can_remove, egui::Button::new("Remove from colony…"))
-            .clicked()
-        {
-            *remove_confirmation = Some(creature.id);
+            shell.tour_mark(ui, TourMark::Name, name.response.rect);
         }
-        if !can_remove {
-            ui.label(
-                egui::RichText::new("A colony must keep at least one full-size creature.").small(),
-            );
+        Some("wardrobe") => {
+            page.wardrobe(ui, shell, colony.save, creature, outcome);
         }
-    });
-
-    ui.add_space(8.0);
-    let share = ui.group(|ui| {
-        ui.strong("Share this creature");
-        ui.label("The code recreates innate appearance and personality, not its name or history.");
-        let code = encode_creature_seed(creature.origin);
-        ui.horizontal(|ui| {
-            ui.monospace(format!("{}…{}", &code[..15], &code[code.len() - 8..]));
-            if ui.button("Copy seed").clicked() {
-                ui.ctx().copy_text(code);
-                shell.notify("Creature code copied");
-            }
-        });
-        ui.add_space(5.0);
-        ui.label("Make a 960×600 illustrated keepsake using the visible profile details.");
-        if ui.button("Export creature card…").clicked() {
-            outcome.export_creature_card = Some(creature.id);
-        }
-        ui.add_space(8.0);
-        ui.label("Or a looping sticker on a transparent background: just the drawing, animated.");
-        ui.horizontal_wrapped(|ui| {
-            egui::ComboBox::from_id_salt("sticker-clip")
-                .selected_text(page.sticker_clip.label())
-                .show_ui(ui, |ui| {
-                    for clip in formiga_art::StickerClip::ALL {
-                        ui.selectable_value(&mut page.sticker_clip, clip, clip.label());
+        Some("farm") => formiga_farm_group(ui, creature, formiga_farm, outcome),
+        Some("share") => {
+            let share = clubhouse::card(ui, |ui| {
+                ui.strong("Share this creature");
+                ui.label("The code recreates innate appearance and personality, not its name or history.");
+                let code = encode_creature_seed(creature.origin);
+                ui.horizontal(|ui| {
+                    ui.monospace(format!("{}…{}", &code[..15], &code[code.len() - 8..]));
+                    if ui.button("Copy seed").clicked() {
+                        ui.ctx().copy_text(code);
+                        shell.notify("Creature code copied");
                     }
                 });
-            ui.selectable_value(&mut page.small_sticker, false, "8×");
-            ui.selectable_value(&mut page.small_sticker, true, "4×");
-            if ui.button("Export sticker…").clicked() {
-                outcome.export_creature_sticker =
-                    Some((creature.id, page.sticker_clip, page.sticker_scale()));
-            }
-        });
-    });
-    shell.tour_mark(ui, TourMark::Share, share.response.rect);
-
-    ui.add_space(8.0);
-
-    ui.collapsing("Start over with unkept companions…", |ui| {
-        let count = creatures.iter().filter(|c| !c.kept).count();
-        ui.checkbox(
-            bulk_confirmation,
-            format!("Replace {count} unkept companions and their histories"),
-        );
-        if ui
-            .add_enabled(
-                *bulk_confirmation && count > 0,
-                egui::Button::new("Regenerate unkept companions"),
-            )
-            .clicked()
-        {
-            outcome.regenerate_unkept = true;
-            *bulk_confirmation = false;
+                ui.add_space(5.0);
+                ui.label("Make a 960×600 illustrated keepsake using the visible profile details.");
+                if ui.button("Export creature card…").clicked() {
+                    outcome.export_creature_card = Some(creature.id);
+                }
+                ui.add_space(8.0);
+                ui.label(
+                    "Or a looping sticker on a transparent background: just the drawing, animated.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    egui::ComboBox::from_id_salt("sticker-clip")
+                        .selected_text(page.sticker_clip.label())
+                        .show_ui(ui, |ui| {
+                            for clip in formiga_art::StickerClip::ALL {
+                                ui.selectable_value(&mut page.sticker_clip, clip, clip.label());
+                            }
+                        });
+                    ui.selectable_value(&mut page.small_sticker, false, "8×");
+                    ui.selectable_value(&mut page.small_sticker, true, "4×");
+                    if ui.button("Export sticker…").clicked() {
+                        outcome.export_creature_sticker =
+                            Some((creature.id, page.sticker_clip, page.sticker_scale()));
+                    }
+                });
+            });
+            shell.tour_mark(ui, TourMark::Share, share.response.rect);
         }
-    });
-    // The whole colony after the one companion: everyone's friendships, playmates and tensions.
-    ui.add_space(18.0);
-    colony_standings_card(ui, creatures, relationships, selected_creature);
-    // Everything the colony can find, and which of it hangs in the trees.
-    ui.add_space(18.0);
-    page.collection(ui, shell, colony.save, outcome);
+        Some("care") => {
+            clubhouse::card(ui, |ui| {
+                ui.strong("Colony care");
+                let mut kept = creature.kept;
+                if ui
+                    .checkbox(&mut kept, "Keep this creature during bulk regeneration")
+                    .changed()
+                {
+                    outcome.set_creature_kept = Some((creature.id, kept));
+                    *error = None;
+                }
+                ui.label(
+                    egui::RichText::new(
+                        "Individual replacement also requires Keep to be turned off first.",
+                    )
+                    .small(),
+                );
+
+                let adult_count = creatures
+                    .iter()
+                    .filter(|candidate| candidate.role.is_adult())
+                    .count();
+                let can_remove = !(creature.role.is_adult() && adult_count == 1);
+                if *remove_confirmation == Some(creature.id) {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(241, 181, 102),
+                        format!("Remove {} and its local history?", creature.name),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Remove permanently").clicked() {
+                            outcome.remove_creature = Some(creature.id);
+                            *remove_confirmation = None;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            *remove_confirmation = None;
+                        }
+                    });
+                } else if ui
+                    .add_enabled(can_remove, egui::Button::new("Remove from colony…"))
+                    .clicked()
+                {
+                    *remove_confirmation = Some(creature.id);
+                }
+                if !can_remove {
+                    ui.label(
+                        egui::RichText::new("A colony must keep at least one full-size creature.")
+                            .small(),
+                    );
+                }
+            });
+
+            ui.add_space(8.0);
+            ui.collapsing("Start over with unkept companions…", |ui| {
+                let count = creatures.iter().filter(|c| !c.kept).count();
+                ui.checkbox(
+                    bulk_confirmation,
+                    format!("Replace {count} unkept companions and their histories"),
+                );
+                if ui
+                    .add_enabled(
+                        *bulk_confirmation && count > 0,
+                        egui::Button::new("Regenerate unkept companions"),
+                    )
+                    .clicked()
+                {
+                    outcome.regenerate_unkept = true;
+                    *bulk_confirmation = false;
+                }
+            });
+        }
+        Some("together") => colony_standings_card(ui, creatures, relationships, selected_creature),
+        Some("collection") => page.collection(ui, shell, colony.save, outcome),
+        _ => {}
+    }
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_secs(1));
 }
@@ -2066,7 +2288,7 @@ fn habitat_tab(
         let mut changed_zone = false;
         for (index, zone) in settings.habitat.zones.iter_mut().enumerate() {
             let before = zone.clone();
-            ui.group(|ui| {
+            clubhouse::card(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut zone.enabled, "Enabled");
                     ui.selectable_value(&mut zone.kind, HabitatZoneKind::Allowed, "Allowed");
@@ -2206,8 +2428,11 @@ fn applications_tab(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn about_tab(
     ui: &mut egui::Ui,
+    shell: &mut clubhouse::shell::Shell,
+    recovery: &mut clubhouse::recovery::RecoveryState,
     outcome: &mut SettingsOutcome,
     save_location: &str,
     update_status: &UpdateStatus,
@@ -2250,123 +2475,167 @@ fn about_tab(
         );
     });
     ui.add_space(12.0);
-    clubhouse::wide_card(ui, |ui| {
-        clubhouse::journal::kicker(ui, "Privacy");
-        ui.label(
-            "No accounts, screenshots, window titles, keystrokes, behavioral uploads, or \
-             telemetry. Formiga sees where windows are, never what is in them.",
-        );
-        ui.small("Optional update checks contact only the public Formiga repository on GitHub.");
-    });
-    ui.add_space(12.0);
-    clubhouse::wide_card(ui, |ui| {
-        clubhouse::journal::kicker(ui, "Updates");
-        let mut automatic = automatic_update_checks;
-        if ui
-            .checkbox(&mut automatic, "Check GitHub for updates automatically")
-            .on_hover_text(
-                "At most once a day, when Formiga starts. Nothing is downloaded without asking.",
-            )
-            .changed()
-        {
-            outcome.automatic_update_checks = Some(automatic);
+    let updates_now = match update_status {
+        UpdateStatus::Idle if automatic_update_checks => {
+            "Checked automatically, once a day".to_owned()
         }
-        match update_status {
-            UpdateStatus::Idle => {
-                ui.label("No update check has run in this session.");
-                if ui.button("Check for Updates…").clicked() {
-                    outcome.check_updates = true;
-                }
-            }
-            UpdateStatus::Checking => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Checking GitHub Releases…");
-                });
-            }
-            UpdateStatus::UpToDate { checked_at_unix } => {
-                let checked = time::OffsetDateTime::from_unix_timestamp(*checked_at_unix)
-                    .map(|at| at.to_offset(clubhouse::local_offset()));
-                ui.label(match checked {
-                    Ok(at) => format!(
-                        "Formiga is up to date, as of {:02}:{:02}.",
-                        at.hour(),
-                        at.minute()
-                    ),
-                    Err(_) => "Formiga is up to date.".to_owned(),
-                });
-                if ui.button("Check Again").clicked() {
-                    outcome.check_updates = true;
-                }
-            }
-            UpdateStatus::Available(release) => {
-                let preview = if release.prerelease { " preview" } else { "" };
-                ui.label(format!(
-                    "Formiga {}{preview} is available.",
-                    release.version
-                ));
-                if !release.notes.trim().is_empty() {
-                    ui.collapsing("Release notes", |ui| {
-                        ui.label(release.notes.trim());
-                    });
-                }
-                ui.hyperlink_to("View this release on GitHub", &release.page_url);
+        UpdateStatus::Idle => "Not checked in this session".to_owned(),
+        UpdateStatus::Checking => "Checking now\u{2026}".to_owned(),
+        UpdateStatus::UpToDate { .. } => "Formiga is up to date".to_owned(),
+        UpdateStatus::Available(release) => format!("Formiga {} is available", release.version),
+        UpdateStatus::Downloading(release) => {
+            format!("Downloading Formiga {}\u{2026}", release.version)
+        }
+        UpdateStatus::Ready(downloaded) => {
+            format!("Formiga {} is ready to install", downloaded.release.version)
+        }
+        UpdateStatus::Failed(_) => "The last check didn't work".to_owned(),
+    };
+    let sections = [
+        Section::new(
+            "backups",
+            "Colony backups",
+            "Export the whole colony, or restore one",
+        ),
+        Section::new("updates", "Updates", updates_now),
+        Section::new(
+            "privacy",
+            "Privacy",
+            "Nothing leaves this computer but an optional update check",
+        ),
+        Section::new(
+            "kept",
+            "Where things are kept",
+            "The colony file, its backup, and the logs",
+        ),
+    ];
+    match clubhouse::sections::show(ui, shell, SettingsTab::About, &sections) {
+        Some("backups") => recovery.backups(ui, outcome),
+        Some("updates") => {
+            clubhouse::wide_card(ui, |ui| {
+                clubhouse::journal::kicker(ui, "Updates");
+                let mut automatic = automatic_update_checks;
                 if ui
-                    .button("Download Verified Update")
-                    .on_hover_text(
-                        "Downloaded in the background and checked against the release's SHA-256 \
-                         before it can be opened. Your colony carries on meanwhile.",
-                    )
-                    .clicked()
-                {
-                    outcome.download_update = true;
+                .checkbox(&mut automatic, "Check GitHub for updates automatically")
+                .on_hover_text(
+                    "At most once a day, when Formiga starts. Nothing is downloaded without asking.",
+                )
+                .changed()
+            {
+                outcome.automatic_update_checks = Some(automatic);
+            }
+                match update_status {
+                    UpdateStatus::Idle => {
+                        ui.label("No update check has run in this session.");
+                        if ui.button("Check for Updates…").clicked() {
+                            outcome.check_updates = true;
+                        }
+                    }
+                    UpdateStatus::Checking => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Checking GitHub Releases…");
+                        });
+                    }
+                    UpdateStatus::UpToDate { checked_at_unix } => {
+                        let checked = time::OffsetDateTime::from_unix_timestamp(*checked_at_unix)
+                            .map(|at| at.to_offset(clubhouse::local_offset()));
+                        ui.label(match checked {
+                            Ok(at) => format!(
+                                "Formiga is up to date, as of {:02}:{:02}.",
+                                at.hour(),
+                                at.minute()
+                            ),
+                            Err(_) => "Formiga is up to date.".to_owned(),
+                        });
+                        if ui.button("Check Again").clicked() {
+                            outcome.check_updates = true;
+                        }
+                    }
+                    UpdateStatus::Available(release) => {
+                        let preview = if release.prerelease { " preview" } else { "" };
+                        ui.label(format!(
+                            "Formiga {}{preview} is available.",
+                            release.version
+                        ));
+                        if !release.notes.trim().is_empty() {
+                            ui.collapsing("Release notes", |ui| {
+                                ui.label(release.notes.trim());
+                            });
+                        }
+                        ui.hyperlink_to("View this release on GitHub", &release.page_url);
+                        if ui
+                        .button("Download Verified Update")
+                        .on_hover_text(
+                            "Downloaded in the background and checked against the release's SHA-256 \
+                             before it can be opened. Your colony carries on meanwhile.",
+                        )
+                        .clicked()
+                    {
+                        outcome.download_update = true;
+                    }
+                    }
+                    UpdateStatus::Downloading(release) => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(format!("Downloading Formiga {}…", release.version));
+                        });
+                    }
+                    UpdateStatus::Ready(downloaded) => {
+                        ui.label(format!(
+                            "Formiga {} is downloaded and SHA-256 verified.",
+                            downloaded.release.version
+                        ));
+                        ui.small(
+                        "Your colony is saved before the installer opens, and carries on afterwards.",
+                    );
+                        #[cfg(target_os = "windows")]
+                        let install_label = "Run Update Installer and Quit Formiga";
+                        #[cfg(target_os = "macos")]
+                        let install_label = "Open Update Disk Image";
+                        if ui.button(install_label).clicked() {
+                            outcome.install_update = true;
+                        }
+                    }
+                    UpdateStatus::Failed(message) => {
+                        let (headline, advice) = crate::explain::update(message);
+                        ui.colored_label(egui::Color32::from_rgb(196, 88, 64), headline);
+                        ui.label(advice);
+                        if ui.button("Try Again").clicked() {
+                            outcome.check_updates = true;
+                        }
+                    }
                 }
-            }
-            UpdateStatus::Downloading(release) => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label(format!("Downloading Formiga {}…", release.version));
-                });
-            }
-            UpdateStatus::Ready(downloaded) => {
-                ui.label(format!(
-                    "Formiga {} is downloaded and SHA-256 verified.",
-                    downloaded.release.version
-                ));
-                ui.small(
-                    "Your colony is saved before the installer opens, and carries on afterwards.",
+            });
+        }
+        Some("privacy") => {
+            clubhouse::wide_card(ui, |ui| {
+                clubhouse::journal::kicker(ui, "Privacy");
+                ui.label(
+                    "No accounts, screenshots, window titles, keystrokes, behavioral uploads, or \
+                 telemetry. Formiga sees where windows are, never what is in them.",
                 );
-                #[cfg(target_os = "windows")]
-                let install_label = "Run Update Installer and Quit Formiga";
-                #[cfg(target_os = "macos")]
-                let install_label = "Open Update Disk Image";
-                if ui.button(install_label).clicked() {
-                    outcome.install_update = true;
-                }
-            }
-            UpdateStatus::Failed(message) => {
-                let (headline, advice) = crate::explain::update(message);
-                ui.colored_label(egui::Color32::from_rgb(196, 88, 64), headline);
-                ui.label(advice);
-                if ui.button("Try Again").clicked() {
-                    outcome.check_updates = true;
-                }
-            }
+                ui.small(
+                    "Optional update checks contact only the public Formiga repository on GitHub.",
+                );
+            });
         }
-    });
-    ui.add_space(12.0);
-    clubhouse::wide_card(ui, |ui| {
-        clubhouse::journal::kicker(ui, "Where things are kept");
-        ui.label(format!("Colony: {save_location}"));
-        ui.small(
-            "A backup copy sits beside it, and the notebook remembers its own window position in \
-             a small file next to them. The logs say what Formiga did, never what was on your \
-             screen.",
-        );
-        if ui.button("Open diagnostic logs").clicked() {
-            outcome.open_logs = true;
+        Some("kept") => {
+            clubhouse::wide_card(ui, |ui| {
+                clubhouse::journal::kicker(ui, "Where things are kept");
+                ui.label(format!("Colony: {save_location}"));
+                ui.small(
+                "A backup copy sits beside it, and the notebook remembers its own window position in \
+                 a small file next to them. The logs say what Formiga did, never what was on your \
+                 screen.",
+            );
+                if ui.button("Open diagnostic logs").clicked() {
+                    outcome.open_logs = true;
+                }
+            });
         }
-    });
+        _ => {}
+    }
 }
 
 #[cfg(test)]
