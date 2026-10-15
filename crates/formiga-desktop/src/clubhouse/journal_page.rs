@@ -70,18 +70,18 @@ fn moment_card(
     } else {
         format!("{:02}:{:02}", local.hour(), local.minute())
     };
-    ui.horizontal(|ui| {
+    // On a ruled line of its own, with the time, the moment and its pin all sitting on it.
+    journal::ruled_row(ui, |ui| {
         let when_width = if pinned { 104.0 } else { 46.0 } * scale;
         ui.allocate_ui_with_layout(
             egui::vec2(when_width, 0.0),
-            egui::Layout::left_to_right(egui::Align::Center),
+            egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.set_min_width(when_width);
-                ui.label(journal::label_job(
-                    &when,
-                    journal::label_size(scale),
-                    muted(),
-                ));
+                journal::write(
+                    ui,
+                    journal::label_job(&when, journal::label_size(scale), muted()),
+                );
             },
         );
         let action = if pinned { "Unpin" } else { "Pin" };
@@ -101,31 +101,40 @@ fn moment_card(
                 } else {
                     RichText::new(text)
                 };
-                let text = if new {
-                    text.background_color(note_fill())
-                } else {
-                    text
-                };
-                let label = ui.add(egui::Label::new(text).wrap());
+                let label = journal::write_marked(
+                    ui,
+                    text,
+                    None,
+                    egui::Sense::hover(),
+                    new.then(note_fill),
+                );
                 if new {
                     label.on_hover_text("New since the journal was last read");
                 }
             },
         );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+            let pin = |ui: &mut Ui, text: &str, enabled: bool| {
+                let colour = if enabled { forest() } else { muted() };
+                let sense = if enabled {
+                    egui::Sense::click()
+                } else {
+                    egui::Sense::hover()
+                };
+                let response =
+                    journal::write_with(ui, RichText::new(text).small().color(colour), None, sense);
+                if enabled && response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                response
+            };
             if pinned {
-                if ui
-                    .add(egui::Button::new(RichText::new("Unpin").small()).frame(false))
-                    .clicked()
-                {
+                if pin(ui, "Unpin", true).clicked() {
                     outcome.unpin_moment = Some(entry.clone());
                 }
             } else {
                 let room = save.companion.pins.len() < MAX_PINNED_ENTRIES;
-                let button = ui.add_enabled(
-                    room,
-                    egui::Button::new(RichText::new("Pin").small()).frame(false),
-                );
+                let button = pin(ui, "Pin", room);
                 if button.clicked() {
                     outcome.pin_moment = Some(entry.clone());
                 }
@@ -137,7 +146,6 @@ fn moment_card(
             }
         });
     });
-    ui.add_space(4.0);
 }
 
 fn label_was_shortened(name: &str) -> bool {
@@ -591,8 +599,12 @@ fn page(
     let filtering =
         state.filter.is_some() || state.kind.is_some() || !state.search.trim().is_empty();
     if filtering {
-        ui.small(format!("Showing {} of {unpinned} moments", showing.len()));
-        ui.add_space(4.0);
+        journal::write(
+            ui,
+            RichText::new(format!("Showing {} of {unpinned} moments", showing.len()))
+                .small()
+                .color(muted()),
+        );
     }
     if showing.is_empty() {
         card(ui, |ui| {
@@ -616,9 +628,9 @@ fn page(
     for entry in showing {
         let day = day_heading(entry.at, now, offset);
         if day != heading {
+            // A line left blank before each day.
             ui.add_space(4.0);
             journal::kicker(ui, &day);
-            ui.add_space(6.0);
             heading = day;
         }
         moment_card(
@@ -630,11 +642,17 @@ fn page(
             reading.is_new(entry),
         );
     }
-    ui.small(format!(
-        "The most recent {MAX_JOURNAL_ENTRIES} moments stay on this computer, holding on to up to \
-         {MAX_LANDMARK_ENTRIES} milestones longer, plus up to {MAX_PINNED_ENTRIES} you keep. \
-         Missed time is never replayed."
-    ));
+    ui.add_space(4.0);
+    journal::write(
+        ui,
+        RichText::new(format!(
+            "The most recent {MAX_JOURNAL_ENTRIES} moments stay on this computer, holding on to \
+             up to {MAX_LANDMARK_ENTRIES} milestones longer, plus up to {MAX_PINNED_ENTRIES} you \
+             keep. Missed time is never replayed."
+        ))
+        .small()
+        .color(muted()),
+    );
     ui.add_space(20.0);
     ui.separator();
     ui.add_space(14.0);

@@ -122,125 +122,167 @@ impl HomeState {
         ui.add_space(10.0);
         self.picked_house(ui, save, formiga_home, outcome);
         ui.add_space(10.0);
-        self.ground_catalogue(ui, save, outcome);
-        ui.add_space(10.0);
-        let corner = card(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.strong("Home corner");
-                let mut corner = save.home.corner;
-                ui.selectable_value(&mut corner, HomeCorner::BottomLeft, "Bottom left");
-                ui.selectable_value(&mut corner, HomeCorner::BottomRight, "Bottom right");
-                if corner != save.home.corner {
-                    outcome.home_corner = Some(corner);
+        // The village and the house picked out in it stay at the top, where arranging happens;
+        // the rest is in sections.
+        let things = save.objects.objects.len();
+        let sections = [
+            sections::Section::new(
+                "ground",
+                "Gardens, spots and ornaments",
+                "Things to put out around the village",
+            ),
+            sections::Section::new(
+                "where",
+                "Where the village lives",
+                format!(
+                    "{}, in {} colours",
+                    match save.home.corner {
+                        HomeCorner::BottomLeft => "Bottom left",
+                        HomeCorner::BottomRight => "Bottom right",
+                    },
+                    village_palette_name(save)
+                ),
+            )
+            .marked(tour::TourMark::HomeCorner),
+            sections::Section::new(
+                "pictures",
+                "Pictures of the colony",
+                "A portrait of everyone, or a postcard",
+            ),
+            sections::Section::new(
+                "belongings",
+                "Belongings in the yards",
+                match things {
+                    0 => "Nothing yet".to_owned(),
+                    1 => "One thing".to_owned(),
+                    n => format!("{n} things"),
+                },
+            ),
+        ];
+        match sections::show(ui, shell, crate::settings::SettingsTab::Home, &sections) {
+            Some("ground") => self.ground_catalogue(ui, save, outcome),
+            Some("where") => {
+                let corner = card(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong("Home corner");
+                        let mut corner = save.home.corner;
+                        ui.selectable_value(&mut corner, HomeCorner::BottomLeft, "Bottom left");
+                        ui.selectable_value(&mut corner, HomeCorner::BottomRight, "Bottom right");
+                        if corner != save.home.corner {
+                            outcome.home_corner = Some(corner);
+                        }
+                        let choose = "Choose home display";
+                        make_room(ui, combo_width(ui, choose));
+                        egui::ComboBox::from_id_salt("home-display")
+                            .selected_text(choose)
+                            .show_ui(ui, |ui| {
+                                for (index, monitor) in monitors.iter().enumerate() {
+                                    if ui
+                                        .selectable_label(
+                                            save.home.display == Some(monitor.display_key),
+                                            format!(
+                                                "Display {}{}",
+                                                index + 1,
+                                                if monitor.primary { " · primary" } else { "" }
+                                            ),
+                                        )
+                                        .clicked()
+                                    {
+                                        outcome.home_display = Some(monitor.display_key);
+                                    }
+                                }
+                            });
+                    });
+                });
+                shell.tour_mark(ui, tour::TourMark::HomeCorner, corner.response.rect);
+                ui.add_space(10.0);
+                self.village_colours(ui, save, outcome);
+            }
+            Some("pictures") => {
+                card(ui, |ui| {
+                    ui.strong("A portrait of everyone");
+                    ui.small("The village as it stands and every companion in front of it, as one 960×600 picture.");
+                    if ui.button("Export colony portrait…").clicked() {
+                        outcome.export_colony_card = true;
+                    }
+                });
+                ui.add_space(10.0);
+                card(ui, |ui| {
+                    ui.strong("A postcard from the village");
+                    ui.small("Everyone together in a little scene, with a line of your own under it if you like.");
+                    ui.horizontal_wrapped(|ui| {
+                        for scene in formiga_art::PostcardScene::ALL {
+                            ui.selectable_value(&mut self.postcard_scene, scene, scene.label());
+                        }
+                    });
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.postcard_caption)
+                            .hint_text("A caption (optional)")
+                            .char_limit(formiga_art::POSTCARD_CAPTION_LIMIT)
+                            .desired_width(320.0),
+                    );
+                    if ui.button("Export postcard…").clicked() {
+                        outcome.export_postcard = Some((
+                            self.postcard_scene,
+                            formiga_art::postcard_caption(&self.postcard_caption),
+                        ));
+                    }
+                });
+            }
+            Some("belongings") => {
+                ui.small("The colony keeps its things in the two trees' yards, one end then the other. Slots run outward from a trunk; moving one changes where its influence is felt.");
+                if save.objects.objects.is_empty() {
+                    ui.label("The first keepsake will find its way here in a few days.");
                 }
-                let choose = "Choose home display";
-                make_room(ui, combo_width(ui, choose));
-                egui::ComboBox::from_id_salt("home-display")
-                    .selected_text(choose)
-                    .show_ui(ui, |ui| {
-                        for (index, monitor) in monitors.iter().enumerate() {
+                for (index, object) in save.objects.objects.iter().enumerate() {
+                    card(ui, |ui| {
+                        // Closer and Further go under the rest when there is no room beside it.
+                        ui.horizontal_wrapped(|ui| {
+                            if let Some((_, texture)) = &self.object_texture {
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .uv(arrange::object_uv(
+                                            ColonyObjectRenderer::object_cell(object.kind),
+                                            false,
+                                        ))
+                                        .maintain_aspect_ratio(false)
+                                        .fit_to_exact_size(egui::vec2(40.0, 40.0)),
+                                );
+                            }
+                            ui.vertical(|ui| {
+                                ui.strong(format!(
+                                    "{} · {}",
+                                    index + 1,
+                                    words(&format!("{:?}", object.kind))
+                                ));
+                                ui.small(match object.role {
+                                    ColonyObjectRole::Sleep => "A cozy place to rest",
+                                    ColonyObjectRole::Play => "Invites a little play",
+                                    ColonyObjectRole::Comfort => "A comforting presence",
+                                    ColonyObjectRole::Social => "A place to spend time together",
+                                    ColonyObjectRole::Curiosity => "Something worth investigating",
+                                });
+                            });
                             if ui
-                                .selectable_label(
-                                    save.home.display == Some(monitor.display_key),
-                                    format!(
-                                        "Display {}{}",
-                                        index + 1,
-                                        if monitor.primary { " · primary" } else { "" }
-                                    ),
+                                .add_enabled(index > 0, egui::Button::new("Closer"))
+                                .clicked()
+                            {
+                                outcome.move_object = Some((index, index - 1));
+                            }
+                            if ui
+                                .add_enabled(
+                                    index + 1 < save.objects.objects.len(),
+                                    egui::Button::new("Further"),
                                 )
                                 .clicked()
                             {
-                                outcome.home_display = Some(monitor.display_key);
+                                outcome.move_object = Some((index, index + 1));
                             }
-                        }
-                    });
-            });
-        });
-        shell.tour_mark(ui, tour::TourMark::HomeCorner, corner.response.rect);
-        ui.add_space(10.0);
-        self.village_colours(ui, save, outcome);
-        ui.add_space(10.0);
-        card(ui, |ui| {
-            ui.strong("A portrait of everyone");
-            ui.small("The village as it stands and every companion in front of it, as one 960×600 picture.");
-            if ui.button("Export colony portrait…").clicked() {
-                outcome.export_colony_card = true;
-            }
-        });
-        ui.add_space(10.0);
-        card(ui, |ui| {
-            ui.strong("A postcard from the village");
-            ui.small("Everyone together in a little scene, with a line of your own under it if you like.");
-            ui.horizontal_wrapped(|ui| {
-                for scene in formiga_art::PostcardScene::ALL {
-                    ui.selectable_value(&mut self.postcard_scene, scene, scene.label());
-                }
-            });
-            ui.add(
-                egui::TextEdit::singleline(&mut self.postcard_caption)
-                    .hint_text("A caption (optional)")
-                    .char_limit(formiga_art::POSTCARD_CAPTION_LIMIT)
-                    .desired_width(320.0),
-            );
-            if ui.button("Export postcard…").clicked() {
-                outcome.export_postcard = Some((
-                    self.postcard_scene,
-                    formiga_art::postcard_caption(&self.postcard_caption),
-                ));
-            }
-        });
-        ui.add_space(16.0);
-        ui.strong("Belongings in the yards");
-        ui.small("The colony keeps its things in the two trees' yards, one end then the other. Slots run outward from a trunk; moving one changes where its influence is felt.");
-        if save.objects.objects.is_empty() {
-            ui.label("The first keepsake will find its way here in a few days.");
-        }
-        for (index, object) in save.objects.objects.iter().enumerate() {
-            card(ui, |ui| {
-                // Closer and Further go under the rest when there is no room beside it.
-                ui.horizontal_wrapped(|ui| {
-                    if let Some((_, texture)) = &self.object_texture {
-                        ui.add(
-                            egui::Image::new(texture)
-                                .uv(arrange::object_uv(
-                                    ColonyObjectRenderer::object_cell(object.kind),
-                                    false,
-                                ))
-                                .maintain_aspect_ratio(false)
-                                .fit_to_exact_size(egui::vec2(40.0, 40.0)),
-                        );
-                    }
-                    ui.vertical(|ui| {
-                        ui.strong(format!(
-                            "{} · {}",
-                            index + 1,
-                            words(&format!("{:?}", object.kind))
-                        ));
-                        ui.small(match object.role {
-                            ColonyObjectRole::Sleep => "A cozy place to rest",
-                            ColonyObjectRole::Play => "Invites a little play",
-                            ColonyObjectRole::Comfort => "A comforting presence",
-                            ColonyObjectRole::Social => "A place to spend time together",
-                            ColonyObjectRole::Curiosity => "Something worth investigating",
                         });
                     });
-                    if ui
-                        .add_enabled(index > 0, egui::Button::new("Closer"))
-                        .clicked()
-                    {
-                        outcome.move_object = Some((index, index - 1));
-                    }
-                    if ui
-                        .add_enabled(
-                            index + 1 < save.objects.objects.len(),
-                            egui::Button::new("Further"),
-                        )
-                        .clicked()
-                    {
-                        outcome.move_object = Some((index, index + 1));
-                    }
-                });
-            });
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -346,4 +388,13 @@ pub(super) fn swatch(ui: &mut Ui, main: formiga_art::Rgba, accent: formiga_art::
         egui::Stroke::new(1.0, gold()),
         egui::StrokeKind::Inside,
     );
+}
+
+/// The village's colours, as a few words can say them.
+fn village_palette_name(save: &SaveFile) -> String {
+    save.home
+        .palette
+        .map_or("the colony's own".to_owned(), |palette| {
+            palette.label().to_lowercase()
+        })
 }

@@ -411,6 +411,9 @@ struct Harness {
     cut: Vec<String>,
     textures: Textures,
     time: f64,
+    /// The last frame as a picture, when one was asked for with `picture`.
+    pictured: Option<image::RgbaImage>,
+    picture_next: bool,
 }
 impl Harness {
     fn new(tab: SettingsTab) -> Self {
@@ -435,6 +438,30 @@ impl Harness {
             cut: Vec::new(),
             textures: Textures::new(),
             time: 0.0,
+            pictured: None,
+            picture_next: false,
+        }
+    }
+
+    /// The window as it is now, drawn as the review pictures are.
+    fn picture(&mut self) -> image::RgbaImage {
+        self.picture_next = true;
+        self.frame(Vec::new());
+        self.pictured.take().expect("the frame was pictured")
+    }
+
+    /// Turns the mouse wheel over the page by `points`, downward, and lets the scroll settle.
+    fn scroll_page(&mut self, points: f32) {
+        let over = egui::pos2(self.screen.x * 0.6, self.screen.y * 0.5);
+        self.frame(vec![egui::Event::PointerMoved(over)]);
+        self.frame(vec![egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -points),
+            phase: egui::TouchPhase::Move,
+            modifiers: Default::default(),
+        }]);
+        for _ in 0..40 {
+            self.frame(Vec::new());
         }
     }
 
@@ -488,6 +515,17 @@ impl Harness {
         }
         apply_textures(&mut self.textures, &output.textures_delta);
         output.textures_delta.clear();
+        if std::mem::take(&mut self.picture_next) {
+            let jobs = self
+                .context
+                .tessellate(output.shapes, output.pixels_per_point);
+            self.pictured = Some(rasterize(
+                &jobs,
+                &self.textures,
+                self.screen.x as u32,
+                self.screen.y as u32,
+            ));
+        }
         outcome
     }
     /// Where the Home page's preview drew something that can be picked out, last frame.
@@ -523,6 +561,16 @@ impl Harness {
             pressed: false,
             modifiers: Default::default(),
         }])
+    }
+
+    /// Where the top of `label` was drawn last frame.
+    fn text_top(&self, label: &str) -> f32 {
+        self.labels
+            .iter()
+            .find(|(text, _)| text == label)
+            .unwrap_or_else(|| panic!("No visible label {label:?}"))
+            .1
+            .top()
     }
 
     fn click(&mut self, label: &str) -> SettingsOutcome {
@@ -655,10 +703,15 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
     let mut h = Harness::new(SettingsTab::General);
     assert_eq!(h.click("30 minutes").quiet_minutes, Some(30));
     h.draft.reduce_motion = true;
+    h.click("Routines");
     let (index, preset) = h.click("Save current preferences").save_mode.unwrap();
     assert_eq!(index, 0);
     assert!(preset.reduce_motion);
     h.tab = SettingsTab::Home;
+    h.clubhouse
+        .shell
+        .sections
+        .open_section(SettingsTab::Home, "where");
     assert_eq!(
         h.click("Bottom left").home_corner,
         Some(HomeCorner::BottomLeft)
@@ -676,6 +729,10 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
             Some(ShelterDecorationKind::RoofOrnament)
         ))
     );
+    h.clubhouse
+        .shell
+        .sections
+        .open_section(SettingsTab::Home, "belongings");
     assert_eq!(h.click("Further").move_object, Some((0, 1)));
     h.tab = SettingsTab::Colony;
     h.save.companion.onboarding_complete = false;
@@ -694,10 +751,15 @@ fn the_sticker_and_colony_portrait_controls_ask_the_app_for_an_export() {
 
     let mut h = Harness::new(SettingsTab::Home);
     let before = (h.save.clone(), h.draft.clone());
+    h.clubhouse
+        .shell
+        .sections
+        .open_section(SettingsTab::Home, "pictures");
     assert!(h.click("Export colony portrait…").export_colony_card);
 
     h.tab = SettingsTab::Colony;
     let creature = h.save.creatures[0].id;
+    h.click("Share Mallow");
     // The clip is chosen right beside the button, and carried with the request.
     h.clubhouse.colony.sticker_clip = StickerClip::Dance;
     assert_eq!(
@@ -897,12 +959,15 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
         for tab in [SettingsTab::Colony, SettingsTab::Home, SettingsTab::Studio] {
             h.tab = tab;
             if tab == SettingsTab::Colony {
-                // Looking at each companion in turn is how all four portraits come to be drawn.
+                // Looking at each companion in turn is how all four portraits come to be drawn,
+                // and opening the last one's wardrobe how it comes to try something on.
+                h.clubhouse.shell.sections.close(tab);
                 for index in 0..h.save.creatures.len() {
                     h.selected = Some(h.save.creatures[index].id);
                     h.frame(Vec::new());
                     h.frame(Vec::new());
                 }
+                h.clubhouse.shell.sections.open_section(tab, "wardrobe");
             }
             if tab == SettingsTab::Studio {
                 for index in 0..4 {
@@ -1130,12 +1195,14 @@ fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
     let celebration = Celebration::for_creature(&h.save.creatures[0]).label();
     h.frame(Vec::new());
     assert!(
-        h.labels.iter().any(|(text, _)| text == celebration),
+        h.labels
+            .iter()
+            .any(|(text, _)| *text == format!("Habits: {celebration}")),
         "a companion with no habits yet still has its own celebration"
     );
     h.save.creatures[0].memory.habits = vec![Habit::CirclesBeforeNaps, Habit::WavesHello];
     h.frame(Vec::new());
-    let wanted = format!("{celebration} · Turns in circles before a nap · Waves hello");
+    let wanted = format!("Habits: {celebration} · Turns in circles before a nap · Waves hello");
     assert!(
         h.labels.iter().any(|(text, _)| *text == wanted),
         "{:?}",
@@ -1159,6 +1226,10 @@ fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
 fn things_are_put_down_on_the_ground_and_taken_up_again_from_the_shelves() {
     let mut h = Harness::new(SettingsTab::Home);
     let before = h.save.clone();
+    h.clubhouse
+        .shell
+        .sections
+        .open_section(SettingsTab::Home, "ground");
     for shelf in ["Gardens", "Hangout spots", "Ornaments"] {
         h.frame(Vec::new());
         assert!(
@@ -1239,6 +1310,10 @@ fn the_village_is_arranged_in_its_preview() {
         .expect("the cushion was let go somewhere");
     assert_eq!(kind, HangoutKind::Cushion);
     assert!(along.is_some_and(|along| along > 0.2), "{along:?}");
+    h.clubhouse
+        .shell
+        .sections
+        .open_section(SettingsTab::Home, "where");
     h.click("From the colony");
     assert_eq!(
         h.click("Autumn").village_palette,
@@ -1270,6 +1345,10 @@ fn the_village_is_arranged_in_its_preview() {
 #[test]
 fn a_postcard_is_chosen_and_captioned_from_the_home_page() {
     let mut h = Harness::new(SettingsTab::Home);
+    h.clubhouse
+        .shell
+        .sections
+        .open_section(SettingsTab::Home, "pictures");
     h.frame(Vec::new());
     let before = h.artwork_bytes();
     assert_eq!(
@@ -1364,6 +1443,7 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
         .into_iter()
         .filter(|accessory| matches!(accessory, Accessory::Pin(_)))
         .collect();
+    h.click("Something to wear");
     h.click(&format!("Wear a find as a pin · {}", pins.len()));
     h.frame(vec![egui::Event::PointerGone]);
     h.frame(Vec::new());
@@ -1429,6 +1509,65 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
     }
 }
 
+#[test]
+fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
+    use crate::clubhouse::journal::{RuleGrid, ruled_lines};
+    // The same page, scrolled: every line has moved up with the writing, the first is a whole
+    // line below the top of the writing, and the window is still ruled from top to bottom.
+    let (top, bottom, pitch) = (40.0, 640.0, 24.0);
+    for scrolled in [0.0, 13.0, 100.0, 1000.0] {
+        let grid = RuleGrid {
+            top: top - scrolled,
+            pitch,
+        };
+        let lines = ruled_lines(grid, top, bottom);
+        assert!(!lines.is_empty());
+        assert!(
+            lines[0] >= top && lines[0] < top + pitch + 0.01,
+            "{scrolled}"
+        );
+        assert!(lines[0] >= grid.top + pitch - 0.01, "{scrolled}");
+        for line in &lines {
+            let pitches = (line - grid.top) / pitch;
+            assert!(
+                (pitches - pitches.round()).abs() < 1e-3,
+                "{scrolled}: {line}"
+            );
+            assert!(*line >= top && *line < bottom);
+        }
+    }
+    // Pictures of pages scrolled part of the way down, for review.
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        for tab in [
+            SettingsTab::Colony,
+            SettingsTab::Journal,
+            SettingsTab::General,
+        ] {
+            let mut h = Harness::new(tab);
+            h.screen = egui::vec2(940.0, 720.0);
+            h.frame(Vec::new());
+            h.scroll_page(115.0);
+            h.picture()
+                .save(path.join(format!("{tab:?}-940-cream-100-scrolled.png")))
+                .unwrap();
+        }
+        // A section open, as it reads on its own.
+        for (tab, section) in [
+            (SettingsTab::Colony, "share"),
+            (SettingsTab::General, "desktop"),
+        ] {
+            let mut h = Harness::new(tab);
+            h.screen = egui::vec2(940.0, 720.0);
+            h.clubhouse.shell.sections.open_section(tab, section);
+            h.frame(Vec::new());
+            h.picture()
+                .save(path.join(format!("{tab:?}-940-cream-100-{section}.png")))
+                .unwrap();
+        }
+    }
+}
+
 /// Everything drawn past the edge of the area that shows it: the first text in each such shape,
 /// where it reaches, and where it is cut off.
 fn cut_off(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
@@ -1468,6 +1607,76 @@ fn first_text(shape: &egui::Shape) -> Option<String> {
 /// egui widens a page to fit whatever is too wide for it, so one line that would not wrap took
 /// the rest of the page past the window's edge with it, where the scroll area cut it off: at
 /// larger text the Your colony page lost the right-hand end of each row of things to wear.
+#[test]
+fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 720.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    // The page opens on who the companion is, with a line for each of the rest.
+    assert!(shown(&h, "Mallow"));
+    assert!(shown(&h, "Notes on Mallow"));
+    assert!(!shown(&h, "Save name"), "the name is in its own section");
+    h.scroll_page(200.0);
+    let list = h.text_top("Share Mallow");
+    // Opened, the section stands alone under a way back, and the companion's summary is gone.
+    h.click("Share Mallow");
+    h.frame(Vec::new());
+    assert!(shown(&h, "Copy seed"));
+    assert!(shown(&h, "\u{2039} Your colony"));
+    assert!(!shown(&h, "Notes on Mallow"));
+    // Back finds the list where it was left.
+    h.click("\u{2039} Your colony");
+    h.frame(Vec::new());
+    assert!(!shown(&h, "Copy seed"));
+    assert!((h.text_top("Share Mallow") - list).abs() < 1.0);
+    // Escape goes back the same way, but not while something is being typed.
+    h.click("Name and where they like to be");
+    h.frame(Vec::new());
+    assert!(shown(&h, "Save name"));
+    h.frame(key(egui::Key::Escape, egui::Modifiers::NONE));
+    h.frame(Vec::new());
+    assert!(!shown(&h, "Save name"));
+    assert_eq!(h.clubhouse.shell.sections.open(SettingsTab::Colony), None);
+    // Other pages keep sections of their own.
+    h.tab = SettingsTab::About;
+    h.click("Privacy");
+    h.tab = SettingsTab::Colony;
+    h.frame(Vec::new());
+    assert!(
+        shown(&h, "Notes on Mallow"),
+        "Your colony is still on its list"
+    );
+    // A step of the tour pointing into a section opens it.
+    h.save.companion.onboarding_complete = false;
+    h.clubhouse.shell.take_the_tour();
+    while h.clubhouse.shell.tour.pointing_at() != Some(TourMark::Share) {
+        h.click("Next");
+    }
+    h.frame(Vec::new());
+    assert!(shown(&h, "Copy seed"), "the tour opened Share");
+}
+
+/// The sections each page keeps beyond its first view, by the keys the page opens them by.
+fn sections_of(page: SettingsTab) -> &'static [&'static str] {
+    match page {
+        SettingsTab::Colony => &[
+            "notes",
+            "name",
+            "wardrobe",
+            "farm",
+            "share",
+            "care",
+            "together",
+            "collection",
+        ],
+        SettingsTab::Home => &["ground", "where", "pictures", "belongings"],
+        SettingsTab::General => &["desktop", "routines", "notebook"],
+        SettingsTab::About => &["backups", "updates", "privacy", "kept"],
+        _ => &[],
+    }
+}
+
 #[test]
 fn no_page_is_drawn_past_the_edge_of_its_window() {
     let (mut save, monitors) = fixture();
@@ -1512,7 +1721,18 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
             },
         );
         for width in [760.0, 940.0] {
-            for page in crate::clubhouse::journal::PAGES {
+            // Every page as it opens, and every section of it opened in turn.
+            let views = crate::clubhouse::journal::PAGES
+                .into_iter()
+                .flat_map(|page| {
+                    std::iter::once((page, None))
+                        .chain(sections_of(page).iter().map(move |key| (page, Some(*key))))
+                });
+            for (page, section) in views {
+                match section {
+                    Some(key) => clubhouse.shell.sections.open_section(page, key),
+                    None => clubhouse.shell.sections.close(page),
+                }
                 let mut settings = save.settings.clone();
                 let mut tab = page;
                 let mut names = BTreeMap::new();
@@ -1562,7 +1782,7 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
                     }
                     for what in cut_off(&output.shapes) {
                         cut.push(format!(
-                            "{page:?}, {width} wide, text at {text_scale}%: {what}"
+                            "{page:?} {section:?}, {width} wide, text at {text_scale}%: {what}"
                         ));
                     }
                 }
@@ -2167,6 +2387,7 @@ fn formiga_farm_is_offered_only_while_it_is_installed() {
     };
     h.clubhouse.formiga_farm = installed;
     let id = h.selected.expect("a companion's page");
+    h.click("A new look");
     assert_eq!(
         h.click("Reshape in Formiga Farm").open_farm,
         Some(FarmRequest::Reshape(id))

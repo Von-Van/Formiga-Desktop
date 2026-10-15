@@ -1994,15 +1994,41 @@ window's width and the text scale: at 940 points and 100% text the cover is 196 
 712, with the margin line 50 points in; where the page would be narrower than 640 points the
 margins and the binding give up their room before the page's contents do. The tabs share the
 cover's height below the patch, so all nine always fit, and the conditions note is left off a
-cover too short for it. The page's ruling, margin line, stepped edge and shadow are painted with
-the window-wide background painter, since the edge and shadow fall just outside the page's panel,
-and the open page's tab is painted after the page, over the edge it is joined to. A page turn is
+cover too short for it. The page's margin line, stepped edge and shadow are painted with the
+window-wide background painter, since the edge and shadow fall just outside the page's panel, and
+the open page's tab is painted after the page, over the edge it is joined to. The ruling goes in a
+place `paint_page` leaves for it under the margin line, filled by `paint_ruling` once the page's
+scroll area has been laid out: the lines are spaced from the top of the page's writing, where the
+scroll has put it, so they move with the words and never sit still behind them. They are
+`rule_pitch` apart (24 points at 100% text, growing with it), and while a page is drawn its
+`RuleGrid` is kept for the frame so that what is written on it can find them: `write` sets text on
+the next rule with every wrapped line on a rule of its own (a page's name, too tall for one, takes
+two), `ruled_row` sits a row of written things on one rule, `on_the_line` seats a checkbox or a row
+of buttons so its words rest on a rule, and `to_next_rule` brings whatever follows a picture or a
+row of controls back to the first rule clear of it. A card is a slip pinned over the page, so it
+covers the ruling and what is written on it is set as on any card; it starts on a rule, and the
+section lines of a sectioned page are slips a whole number of lines tall. A page turn is
 `journal::turn_page`: noticing the page shown change, it draws a ruled leaf over the new page for
 0.76 seconds, shrinking toward the binding going forward and toward the cover going back, with a
 shadow beside its free edge, and requests repaints only while it turns; under Reduce motion it
 never starts. Every box with a stepped edge — cards, tally boxes, tabs, the patch, the notes — is
 a fill and four edge rectangles that leave the corner pixels out; egui's own widgets are drawn
 square with a two-pixel outline.
+A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
+Your colony shows the companion, its traits and its tally, then a line for each of its notes, its
+name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
+over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
+picked out in it above lines for the ground's gardens, spots and ornaments, where the village
+lives, pictures, and the belongings in the yards; Preferences keeps a quiet moment above lines for
+the desktop, routines and this notebook; About keeps the colophon above backups, updates, privacy
+and where things are kept. Each line names its section and says how it stands. A section opens in
+the list's place under a way back, which Escape also takes while no text field has the keyboard;
+the list comes back as it was scrolled, with the section just read barred down its edge, since the
+page's scroll area is keyed by the page and its open section. Which section is open is kept in the
+shell for as long as the window is open and in nothing saved, and a step of the tour that points at
+something in a section opens it. `no_page_is_drawn_past_the_edge_of_its_window` draws every section
+of every page open as well as each page's list.
+
 Every colour the pages draw reads from one palette so a single switch moves the whole window
 between cream and charcoal, and keyboard focus is drawn in the accent rather than the platform's
 fainter default. The existing egui font atlas and window/GPU resources are separate. Artwork is regenerated

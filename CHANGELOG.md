@@ -13,6 +13,33 @@ All notable changes are documented here.
   clear of every coat. The 160 finds keep their 16-pixel cells and the wearables the companions'
   own pixel size, so nothing is drawn finer or blurrier than the companion holding it. The first
   sixteen finds, once drawn by hand in code, are grids like the rest.
+- The notebook's longest pages open on what matters most and a short list of the rest. Your
+  colony shows the companion, its traits and its tally, then a line for each of its notes, name,
+  wardrobe, sharing, keeping, how everyone gets along, and the collection; Home & keepsakes keeps
+  the village at the top; Preferences keeps a quiet moment; About keeps the colophon. Each line
+  says how its section stands ("Wearing a paper crown", "Formiga 0.67.7 is available"), and
+  choosing one opens it alone under a way back to the page, which Escape takes too. Coming back
+  finds the page where it was scrolled, with the section just read marked, and each section keeps
+  its own place. The tour opens whichever section it is pointing at.
+- The tiles for putting gardens, spots and ornaments down grow with the notebook's text, so a
+  name in large text still fits under its picture instead of running into it.
+
+- What is written on the notebook's pages sits on its ruled lines: page names and section
+  labels, every moment in the Journal with its time and its pin, a companion's name, nature and
+  ways beside its portrait, and the preferences' checkboxes, each line of text resting on a rule
+  however it wraps. Cards are pinned over the lines, and whatever follows one goes on the first
+  line clear of it. The lines are a little closer (24 points apart at 100% text, growing with the
+  text), and a moment new since the Journal was last read is run over with a highlighter.
+
+### Fixed
+
+- The notebook's ruled lines scroll with the page's writing. They were painted on the window, so
+  a scrolled page slid its words across lines that stayed put; now a line stays under whatever it
+  was under, and the lines run on from the top of the page once its heading has scrolled away.
+- Quieter text reads easily in both themes: secondary text is darker by daylight and lighter after
+  dark (better than 4.5:1 on the page, a card or a chosen row), small print is a step under body
+  text rather than two, and the tabs of pages already turned past are lettered at about 6:1 on
+  their leather instead of 2.5:1 by daylight and 2:1 after dark.
 
 ## [0.67.6] - 2026-10-12
 

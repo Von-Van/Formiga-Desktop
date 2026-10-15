@@ -16,6 +16,7 @@ pub(crate) mod home;
 pub(crate) mod journal;
 pub(crate) mod journal_page;
 pub(crate) mod recovery;
+pub(crate) mod sections;
 pub(crate) mod shell;
 pub(crate) mod studio;
 pub(crate) mod today;
@@ -69,9 +70,10 @@ pub fn card_fill() -> Color32 {
     shade((255, 248, 228), (38, 46, 42))
 }
 
-/// Text that is present but not being asked for attention.
+/// Text that is present but not being asked for attention: quieter than `ink`, but still easily
+/// read, at better than 4.5:1 on the page, a card, or a chosen row, in either theme.
 pub fn muted() -> Color32 {
-    shade((110, 119, 108), (150, 162, 148))
+    shade((80, 90, 79), (184, 194, 180))
 }
 
 /// The notebook's outlines: plum by daylight, as the creatures are outlined, and sage after dark.
@@ -146,8 +148,9 @@ pub fn indent() -> Color32 {
     shade((74, 47, 31), (31, 22, 17))
 }
 
+/// Pressed in, but still a tab to read and turn to: about 6:1 on the leather it is pressed into.
 pub fn deboss() -> Color32 {
-    shade((138, 106, 82), (90, 70, 54))
+    shade((204, 175, 140), (170, 148, 120))
 }
 
 /// The tape holding a note to the cover.
@@ -348,10 +351,18 @@ pub(crate) fn combo_width(ui: &Ui, selected: &str) -> f32 {
 pub(crate) const CARD_EDGES: f32 = 2.0 * (14.0 + 2.0);
 
 pub fn card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    // A card covers the page's ruling, so what is written on it is set as on any card, not on
+    // the lines; what follows it goes back to the lines below it.
+    journal::to_next_rule(ui);
+    let grid = journal::RuleGrid::of(ui.ctx());
+    journal::RuleGrid::forget(ui.ctx());
     let shown = egui::Frame::new()
         .fill(card_fill())
         .inner_margin(14)
         .show(ui, contents);
+    if let Some(grid) = grid {
+        grid.keep(ui.ctx());
+    }
     // A card in the notebook is a slip of paper with the stepped edge every box has.
     let mut fills = journal::Fills::default();
     journal::stepped_outline(&mut fills, shown.response.rect, 2.0, line());
