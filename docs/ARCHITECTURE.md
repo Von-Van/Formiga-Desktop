@@ -2929,29 +2929,49 @@ Without Farm installed the addition is one LaunchServices or registry lookup eve
 With it open, one small file is read four times a second, and a sprite is baked again only when a
 look is kept.
 
-## Matches in Formiga Battle
+## Matches in Formiga Battle (save v30)
 
 Formiga Battle is a separate app for playing matches with the colony's companions. It reads a copy
-of the colony and changes nothing in it, so nothing about Battle is saved.
+of the colony and changes nothing in it. Battle keeps nothing of its own: what its matches earn is
+the colony's, kept by Desktop and handed back to Battle at the start of every session.
 
 ### The Battle contract
 
 `formiga-battle-contract` is the agreement with Formiga Battle, kept in Desktop's workspace as the
-other contracts are. It was drafted beside Battle and adopted as Battle version 1, without Battle's
-own rules: how a contender becomes a match profile stays Battle's, so the contract depends only on
-Desktop's crates. Two documents pass through a session's directory: Desktop's `snapshot.json`
-(`BattleSnapshot`: every companion as the very `Traveler` a trip to Formiga Hill carries, with its
-learned tendencies beside it as `leanings`, whole numbers from -100 to 100; the bonds between them
-in the travel contract's bands; the colony's one-way digest; and the owner's presentation), and
-Battle's `ack.json`, which accepts the roster or says why not. `project_roster` builds the snapshot
-from a save through `formiga_travel::project_colony`, so a companion reads the same in Battle as in
-Hill. `open_session` is how Battle reads a session and answers: a directory not named after its
-snapshot's session is refused, and so is a snapshot from a newer Desktop, for its version.
+other contracts are and taken from Battle byte for byte. How a contender becomes a match profile
+stays Battle's, so the contract depends only on Desktop's crates. Three documents pass through a
+session's directory: Desktop's `snapshot.json` (`BattleSnapshot`: every companion as the very
+`Traveler` a trip to Formiga Hill carries, with its learned tendencies beside it as `leanings`,
+whole numbers from -100 to 100; the bonds between them in the travel contract's bands; the colony's
+one-way digest; the owner's presentation; and, since version 2, the colony's `record`), Battle's
+`ack.json`, which accepts the roster or says why not, and Battle's `result.json` (`BattleResult`),
+written whole after every match: each match the session played, by a unique id, with what it
+earned. `project_roster` builds the snapshot from a save through `formiga_travel::project_colony`,
+so a companion reads the same in Battle as in Hill. `open_session` is how Battle reads a session and
+answers. `BattleRecord::apply` is the one rule both sides use to add a match to the record (Open
+Circuit points, the match history, the notebook, cup wins and unlocks), once per match id, and a
+result is refused if a friend match carries what only a match against the visitors earns or the
+other way round.
 
-The sample roster in `sample` is Desktop's own sample colony having lived a little, and Battle
-rehearses with it. `tests/fixtures` keeps every version's snapshot and acknowledgements, and
+The sample roster, record and result in `sample` are Desktop's own sample colony, and Battle
+rehearses with them. `tests/fixtures` keeps every version's documents, and
 `FORMIGA_BATTLE_BLESS=1 cargo test -p formiga-battle-contract --test golden` writes a new
 version's files beside the others.
+
+### What the colony keeps
+
+Save version 30 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
+played): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
+`keepsakes` its matches earned. The record crosses between the two only through that shape
+(`battle/record.rs`), and validation holds it to the contract's own bounds, keeping the newest of
+anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
+Backyard Cup's trophy and medal, by Battle's own identifiers), once each, with Desktop's own name
+and words for it. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
+line, since the team and the match are Battle's to name; it is one line of plain text, checked by
+`is_battle_line` (the contract's own rule for text that crosses) when it comes and whenever the
+colony is read. Formiga Home is offered each keepsake in its inventory as a `battle_keepsake`
+source (household version 11): the trophy stands, the medal hangs, and an older Home shows either
+on its card.
 
 ### A session
 
@@ -2962,20 +2982,30 @@ companion apps' items.
 | State | Desktop |
 |---|---|
 | Idle | Lives as always. Looks for Battle when it starts and at most every ten minutes, from a tick it was taking anyway |
-| Open | Battle has the roster, and everyone goes on living on the desktop: nobody is lent to Battle (`Holding::Nobody` in `app/visits.rs`), so no trip or visit waits for a match, and no match waits for a trip or visit. The tray says Battle is open |
-| Closing | Battle has gone: a refusal is said in Battle's own words, and the files are closed |
+| Open | Battle has the roster and the record, and everyone goes on living on the desktop: nobody is lent to Battle (`Holding::Nobody` in `app/visits.rs`), so no trip or visit waits for a match, and no match waits for a trip or visit. The tray says Battle is open |
+| Closing | Battle has gone: what its matches earned is kept, a refusal is said in Battle's own words, and the files are closed |
+
+What a session earned is kept by `battle::record::keep_result`, and only once Battle has closed. A
+result is read only if it names the session and the checksum of the snapshot Desktop wrote for it.
+Every match is applied to a copy of the record first, and the colony takes the new record, the
+journal lines and the keepsakes of the matches applied for the first time all together, or nothing;
+reading the same result again changes nothing. The colony is saved at once. Nothing is kept while
+the colony is being recovered, and replacing the colony ends the session without reading anything
+more of it.
 
 The states are `battle::SessionState`, runtime only, and only one session is ever open. A session's
 files are under `battle/` in the data directory (`battle/session.rs`, kept by `expansion::files`):
 a fresh `battle/<session>/` with the snapshot, where Battle answers, and `battle/session.json`, the
-marker that says a session is open, holding nothing but the session. If Desktop stops while Battle
-is open, Battle keeps the roster it read, and the next start clears the files.
+marker that says a session is open, holding the session and its snapshot's checksum. If Desktop
+stops while Battle is open, the next start keeps what the result says so far and clears the files;
+a match Battle finishes after that is not kept.
 
 `formiga-battle-stub` stands in for Battle (see `docs/BUILD.md`), reading and answering through the
-contract's own `open_session`, and `formiga-tools`'s `battle_session` tests run whole sessions
-against it.
+contract's own `open_session` and winning the Backyard Cup, and `formiga-tools`'s `battle_session`
+tests run whole sessions against it.
 
 ### Cost
 
 Without Battle installed the addition is one LaunchServices or registry lookup every ten minutes.
-Opening a match writes one file; nothing is read while it is open.
+Opening a match writes one file; nothing is read while it is open, and its result is read once,
+when it closes.

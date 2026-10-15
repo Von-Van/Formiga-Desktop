@@ -14,6 +14,14 @@ All notable changes are documented here.
   trip or a visit, nor they for it. A refusal is said in Battle's own words. Nothing comes back
   from a match yet, so the save is unchanged.
 - `formiga-battle-stub`, a stand-in for Battle, and end-to-end tests of a session against it.
+- What a match in Formiga Battle earns is the colony's (save version 30, contract version 2): the
+  colony's Battle record (Open Circuit points, match history, notebook, cup wins and unlocks) is
+  kept in the colony and handed to Battle with every roster, and when Battle closes each match it
+  played is kept once, by its id, with its line in the journal and any keepsake Desktop knows (the
+  Backyard Cup's trophy and medal). A colony saved by this version does not open in an earlier
+  Formiga.
+- Household version 11: Formiga Home is offered the colony's keepsakes from Formiga Battle to show.
+  An older Home shows them on their cards.
 
 ## [0.67.7] - 2026-10-15
 

@@ -1,0 +1,42 @@
+{
+  "format": "formiga.home.receipt",
+  "version": 11,
+  "min_reader_version": 1,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "248b0a24475985ff043825d8405a8ddea1ba6a2602367acb33c2c051d420bdee",
+  "state_sha256": "16d3ae880dc2396a58ac7ee8a8cdaade09a08df1412775f4714acd287ecc1296",
+  "closed_at_utc": "2026-11-11T10:20:00Z",
+  "home_version": "0.1.0",
+  "effects": [
+    {
+      "kind": "home_visit",
+      "household": "876a55d6a17221ef",
+      "arrived_at_utc": "2026-11-11T09:31:00Z",
+      "left_at_utc": "2026-11-11T10:19:00Z"
+    },
+    {
+      "kind": "together",
+      "a": "876a55d6a17221ef",
+      "b": "66cd447617ba3991",
+      "together": "play",
+      "times": 2
+    },
+    {
+      "kind": "moment",
+      "moment": {
+        "kind": "memento",
+        "memento": "postcard",
+        "by": "66cd447617ba3991"
+      }
+    },
+    {
+      "kind": "next_door",
+      "household": "66cd447617ba3991"
+    },
+    {
+      "kind": "move_in",
+      "resident": "66cd447617ba3991",
+      "household": "876a55d6a17221ef"
+    }
+  ]
+}

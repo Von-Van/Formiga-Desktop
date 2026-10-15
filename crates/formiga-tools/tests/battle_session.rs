@@ -1,11 +1,12 @@
 //! A whole session in Formiga Battle, end to end, against the stand-in Battle: the roster written
 //! as Desktop writes it, the stub started as Desktop starts Battle, and its answer read back. A
-//! roster Battle can read is accepted, and every way of turning one away is said in an
-//! acknowledgement for that session.
+//! roster Battle can read is accepted, every way of turning one away is said in an
+//! acknowledgement for that session, and what a match earned names the very snapshot it was played
+//! from and is applied to the colony's record once.
 
 use formiga_battle_contract::{
-    ACK_FILE, AckRefusal, BATTLE_FORMAT_VERSION, BattleAck, BattleSnapshot, LAUNCH_ARGUMENT,
-    SNAPSHOT_FILE, SessionId, project_roster, sample,
+    ACK_FILE, AckRefusal, BATTLE_FORMAT_VERSION, BattleAck, BattleResult, BattleSnapshot,
+    LAUNCH_ARGUMENT, RESULT_FILE, SNAPSHOT_FILE, SessionId, project_roster, sample,
 };
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -39,7 +40,8 @@ fn open(name: &str) -> Session {
         OffsetDateTime::now_utc(),
         "0.67.6",
     )
-    .unwrap();
+    .unwrap()
+    .with_record(sample::record());
     formiga_travel::write_atomically(&dir.join(SNAPSHOT_FILE), &snapshot.encode().unwrap())
         .unwrap();
     Session {
@@ -141,4 +143,40 @@ fn a_roster_copied_into_another_sessions_directory_is_not_mistaken_for_it() {
     assert!(!out.status.success());
     let ack = BattleAck::decode(&std::fs::read(elsewhere.join(ACK_FILE)).unwrap()).unwrap();
     assert_eq!(ack.refusal, Some(AckRefusal::Invalid));
+}
+
+#[test]
+fn a_match_won_is_written_for_this_snapshot_and_applied_once() {
+    let session = open("result");
+    assert!(run(&session, "stay=0").status.success());
+    let bytes = std::fs::read(session.dir.join(SNAPSHOT_FILE)).unwrap();
+    let result =
+        BattleResult::decode(&std::fs::read(session.dir.join(RESULT_FILE)).unwrap()).unwrap();
+    assert_eq!(result.session_id, session.snapshot.session_id);
+    assert_eq!(
+        result.snapshot_sha256,
+        formiga_expansion_rulebook::sha256_hex(&bytes)
+    );
+    let won = &result.matches[0];
+    assert_eq!(won.rewards.cup_win.as_deref(), Some("cup.backyard"));
+    assert!(
+        won.rewards
+            .keepsakes
+            .contains(&"battle.trophy.backyard_cup".to_owned())
+    );
+
+    let mut record = session.snapshot.record.clone().unwrap();
+    let cups = record.cup_wins("cup.backyard");
+    assert!(record.apply(won));
+    assert_eq!(record.cup_wins("cup.backyard"), cups + 1);
+    let once = record.clone();
+    assert!(!record.apply(won), "a match is applied once");
+    assert_eq!(record, once);
+}
+
+#[test]
+fn a_silent_battle_writes_no_result() {
+    let session = open("silent");
+    assert!(run(&session, "stay=0,silent").status.success());
+    assert!(!session.dir.join(RESULT_FILE).exists());
 }

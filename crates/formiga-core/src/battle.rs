@@ -159,10 +159,7 @@ impl BattleMatchSummary {
     fn holds(&self) -> bool {
         is_battle_id(&self.ended_by)
             && self.team.len() <= MAX_TEAM
-            && self
-                .opponent
-                .as_deref()
-                .is_none_or(|opponent| is_battle_line(opponent))
+            && self.opponent.as_deref().is_none_or(is_battle_line)
     }
 }
 

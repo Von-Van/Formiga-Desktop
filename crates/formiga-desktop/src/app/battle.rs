@@ -1,8 +1,10 @@
 //! The app's side of a match in Formiga Battle: offering it in the tray only while Battle is
-//! installed, writing the colony's roster for it, and telling the owner in Battle's own words if
-//! it turned the roster away. The states and the guarantees are described in [`crate::battle`].
+//! installed, writing the colony's roster and its Battle record for it, keeping what its matches
+//! earned once it closes, and telling the owner in Battle's own words if it turned the roster
+//! away. The states and the guarantees are described in [`crate::battle`].
 
 use super::*;
+use crate::battle::record;
 use crate::battle::session::{BattleFiles, OpenSession, refusal_text};
 use crate::battle::{BATTLE, BattleEvent, SessionState};
 use crate::expansion::Slot;
@@ -108,6 +110,7 @@ impl FormigaApp {
                     )
                     .map_err(|error| error.to_string())
                 })
+                .map(|roster| with_record(roster, &world.save.battle.record))
         };
         let snapshot = match snapshot {
             Ok(snapshot) => snapshot,
@@ -160,6 +163,7 @@ impl FormigaApp {
                     return;
                 };
                 let refusal = self.battle.files.refusal(&open);
+                self.keep_battle_result(&open);
                 self.battle.files.close(&open);
                 self.battle.session = SessionState::Idle;
                 self.sync_battle_menu();
@@ -188,7 +192,79 @@ impl FormigaApp {
         let Some(open) = self.battle.files.open_session() else {
             return;
         };
-        tracing::info!("clearing a session in Formiga Battle after a restart");
+        tracing::info!("keeping what a session in Formiga Battle earned, after a restart");
+        self.keep_battle_result(&open);
         self.battle.files.close(&open);
+    }
+
+    /// The colony is about to be replaced: whatever Battle goes on to say belongs to the colony
+    /// it was given, so nothing more of it is read.
+    pub(super) fn abandon_battle_session(&mut self) {
+        let Some(open) = self.battle.session.open().cloned() else {
+            return;
+        };
+        self.battle.files.close(&open);
+        self.battle.session = SessionState::Idle;
+        self.sync_battle_menu();
+    }
+
+    /// Keep what the session's matches earned: each match Battle names is applied to the colony's
+    /// record by the contract's own rule, once, by its id, and only a match applied for the first
+    /// time adds its lines to the journal and its keepsakes to the colony's. The colony is saved
+    /// at once. A result that does not check out, or one that comes while the colony is being
+    /// recovered, keeps nothing.
+    fn keep_battle_result(&mut self, open: &OpenSession) {
+        let result = match self.battle.files.result(open) {
+            Ok(Some(result)) => result,
+            Ok(None) => return,
+            Err(problem) => {
+                tracing::warn!(%problem, "what Formiga Battle said a session earned was not kept");
+                return;
+            }
+        };
+        if self.recovery_pending {
+            tracing::warn!("what Formiga Battle earned was not kept while the colony is recovered");
+            return;
+        }
+        let Some(world) = &mut self.world else { return };
+        match record::keep_result(world, &result, OffsetDateTime::now_utc()) {
+            Ok(kept) if kept.matches == 0 => return,
+            Ok(kept) => tracing::info!(
+                matches = kept.matches,
+                keepsakes = kept.keepsakes,
+                "kept what Formiga Battle's matches earned"
+            ),
+            Err(problem) => {
+                tracing::warn!(%problem, "what Formiga Battle earned was not kept");
+                return;
+            }
+        }
+        if let Err(error) = self.save() {
+            tracing::error!(%error, "could not save what Formiga Battle's matches earned");
+        }
+    }
+}
+
+/// The roster, carrying the colony's Battle record once it has one. A record that cannot be sent
+/// as Battle reads it is left out, and Battle opens as for a colony that has never played; what
+/// it earns is still kept.
+fn with_record(
+    roster: formiga_battle_contract::BattleSnapshot,
+    kept: &formiga_core::BattleRecord,
+) -> formiga_battle_contract::BattleSnapshot {
+    if kept.is_empty() {
+        return roster;
+    }
+    let sent = record::to_contract(kept).map(|record| roster.clone().with_record(record));
+    match sent {
+        Ok(sent) if sent.validate().is_ok() => sent,
+        Ok(_) => {
+            tracing::warn!("the colony's Battle record is outside what Battle reads; not sent");
+            roster
+        }
+        Err(problem) => {
+            tracing::warn!(%problem, "the colony's Battle record was not sent");
+            roster
+        }
     }
 }
