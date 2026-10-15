@@ -44,8 +44,10 @@ pub(crate) struct ArrangeState {
 /// in their branches, then the belongings standing on the ground in front of the trunks.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum VillageLayer {
+    GroundBack,
     Dwelling,
     Tree,
+    GroundFront,
     Trinket,
     Belonging,
 }
@@ -63,6 +65,25 @@ struct Lot {
 
 /// How far one press of an arrow key moves something along the ground.
 const NUDGE: f32 = 0.04;
+
+/// The five places a house can be put, front to back, in shelter pixels back from the front of the
+/// grass, and what each is called.
+const DEPTH_STEPS: [(u8, &str); 5] = [
+    (0, "Front"),
+    (2, "Near"),
+    (4, "Middle"),
+    (6, "Far"),
+    (8, "Back"),
+];
+
+/// The step nearest a depth, for a house standing wherever its slot puts it.
+fn nearest_step(depth: u8) -> usize {
+    DEPTH_STEPS
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, (step, _))| step.abs_diff(depth))
+        .map_or(0, |(index, _)| index)
+}
 
 /// Where a cell sits in the atlas's top row — every house by day with nobody home, and the tree —
 /// the only row the Home page holds, as texture coordinates.
@@ -181,8 +202,20 @@ impl HomeState {
             return;
         };
         let (village, objects_texture) = (home.texture.clone(), objects_texture.clone());
+        let look = home.look.clone();
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let scale = save.settings.display_scale;
+        // The ground the village stands on, and how many of the desktop's points one of the
+        // village's pixels covers there, which everything in the preview is drawn at.
+        let plan = formiga_core::home_ground_plan(
+            &save.home,
+            &cottages,
+            monitors,
+            &save.settings.habitat,
+            scale,
+        );
+        let pp = plan.as_ref().map_or(1.0, |plan| plan.scale);
+        let depths = save.home.house_depth_list(&save.creatures);
         let owners = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
         let owners = owners.as_slice();
         let mut lots: Vec<Lot> = Vec::new();
@@ -200,7 +233,7 @@ impl HomeState {
                 continue;
             };
             home_monitor.get_or_insert(monitor_id);
-            let size = SHELTER_SIZE as f32;
+            let size = SHELTER_SIZE as f32 * pp;
             let corner = egui::pos2(point.x - size / 2.0, point.y - size);
             // The inward tree is the same atlas cell sampled the other way round, so the two
             // bookends are not the same drawing twice.
@@ -222,7 +255,7 @@ impl HomeState {
             });
             // An anchor is measured in the tree's own cell, which stands in the middle of the
             // village cell on its foot.
-            let half = TRINKET_CELL as f32 / 2.0;
+            let half = TRINKET_CELL as f32 * pp / 2.0;
             let (inset_x, inset_y) = formiga_art::TREE_INSET;
             for (variant, hangs_in, anchor) in &hung {
                 if *hangs_in != end {
@@ -232,10 +265,10 @@ impl HomeState {
                     rect: egui::Rect::from_min_size(
                         corner
                             + egui::vec2(
-                                (inset_x + anchor.x) as f32 - half,
-                                (inset_y + anchor.y) as f32 - half,
+                                (inset_x + anchor.x) as f32 * pp - half,
+                                (inset_y + anchor.y) as f32 * pp - half,
                             ),
-                        egui::vec2(TRINKET_CELL as f32, TRINKET_CELL as f32),
+                        egui::vec2(TRINKET_CELL as f32 * pp, TRINKET_CELL as f32 * pp),
                     ),
                     uv: Shell::trinket_uv(*variant),
                     layer: VillageLayer::Trinket,
@@ -259,11 +292,13 @@ impl HomeState {
             if home_monitor != Some(monitor_id) {
                 continue;
             }
-            // Each house's own cell, the same one the desktop samples by day.
-            let size = SHELTER_SIZE as f32;
+            // Each house's own cell, the same one the desktop samples by day, as far back on the
+            // ground as it stands.
+            let size = SHELTER_SIZE as f32 * pp;
+            let foot = point.y - f32::from(depths.get(slot).copied().unwrap_or(0)) * pp;
             lots.push(Lot {
                 rect: egui::Rect::from_min_size(
-                    egui::pos2(point.x - size / 2.0, point.y - size),
+                    egui::pos2(point.x - size / 2.0, foot - size),
                     egui::vec2(size, size),
                 ),
                 uv: village_uv(formiga_art::VillageCell::House {
@@ -292,7 +327,7 @@ impl HomeState {
                 continue;
             }
             let kind = save.objects.objects[slot].kind;
-            let size = COLONY_OBJECT_SIZE as f32;
+            let size = COLONY_OBJECT_SIZE as f32 * pp;
             lots.push(Lot {
                 rect: egui::Rect::from_min_size(
                     egui::pos2(point.x - size / 2.0, point.y - size),
@@ -324,7 +359,7 @@ impl HomeState {
                 .map_or(point.x, |monitor| {
                     monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0
                 });
-            let size = COLONY_OBJECT_SIZE as f32;
+            let size = COLONY_OBJECT_SIZE as f32 * pp;
             lots.push(Lot {
                 rect: egui::Rect::from_min_size(
                     egui::pos2(point.x - size / 2.0, point.y - size),
@@ -339,6 +374,58 @@ impl HomeState {
                 slot: None,
             });
         }
+        // The grass under the village and along its front, by day.
+        if let Some(plan) = plan
+            .as_ref()
+            .filter(|plan| Some(plan.monitor_id) == home_monitor)
+        {
+            let ground = formiga_art::VillageGroundLook::of(plan, &look);
+            if self
+                .ground_texture
+                .as_ref()
+                .is_none_or(|(drawn, _)| *drawn != ground)
+            {
+                // Only the daylit layers, and only as long as the village is.
+                let sheet = formiga_art::VillageGroundRenderer::render(&ground);
+                let mut daylit = formiga_art::Canvas::new(
+                    u32::from(ground.length).max(1),
+                    formiga_art::GROUND_STRIP_HEIGHT * 2,
+                );
+                for y in 0..daylit.height() as i32 {
+                    for x in 0..daylit.width() as i32 {
+                        daylit.set(x, y, sheet.get(x, y));
+                    }
+                }
+                let texture = upload(ui.ctx(), "home-ground", &daylit);
+                self.ground_texture = Some((ground, texture));
+            }
+            let size = egui::vec2(
+                plan.length.round().max(1.0) * pp,
+                formiga_art::GROUND_STRIP_HEIGHT as f32 * pp,
+            );
+            for (layer, half) in [
+                (VillageLayer::GroundBack, 0.0),
+                (VillageLayer::GroundFront, 0.5),
+            ] {
+                lots.push(Lot {
+                    rect: egui::Rect::from_min_size(
+                        egui::pos2(plan.origin.x, plan.origin.y - size.y),
+                        size,
+                    ),
+                    uv: egui::Rect::from_min_max(
+                        egui::pos2(0.0, half),
+                        egui::pos2(1.0, half + 0.5),
+                    ),
+                    layer,
+                    picks: None,
+                    slot: None,
+                });
+            }
+        }
+        let ground_texture = self
+            .ground_texture
+            .as_ref()
+            .map(|(_, texture)| texture.id());
         let arranging = self.arrange.arranging;
         let width = ui.available_width().clamp(280.0, 720.0);
         let frame = egui::vec2(width, if arranging { 230.0 } else { 170.0 });
@@ -364,10 +451,23 @@ impl HomeState {
             );
             return;
         }
-        // Fit the whole strip, without ever stretching a pixel out of square.
-        let bounds = lots
+        // Fit the whole strip, without ever stretching a pixel out of square. The ground's sheet is
+        // longer than any village, so it is left out of what has to fit.
+        let standing: Vec<&Lot> = lots
             .iter()
-            .fold(lots[0].rect, |acc, lot| acc.union(lot.rect))
+            .filter(|lot| {
+                !matches!(
+                    lot.layer,
+                    VillageLayer::GroundBack | VillageLayer::GroundFront
+                )
+            })
+            .collect();
+        let Some(first) = standing.first() else {
+            return;
+        };
+        let bounds = standing
+            .iter()
+            .fold(first.rect, |acc, lot| acc.union(lot.rect))
             .expand(4.0);
         let fit = (area.width() / bounds.width().max(1.0))
             .min(area.height() / bounds.height().max(1.0))
@@ -442,6 +542,12 @@ impl HomeState {
         for lot in &drawn {
             let carried = dragging.is_some_and(|drag| lot.picks == Some(drag.picked));
             let texture = match lot.layer {
+                VillageLayer::GroundBack | VillageLayer::GroundFront => {
+                    let Some(ground) = ground_texture else {
+                        continue;
+                    };
+                    ground
+                }
                 VillageLayer::Dwelling | VillageLayer::Tree => village.id(),
                 VillageLayer::Trinket => trinkets.id(),
                 VillageLayer::Belonging => objects_texture.id(),
@@ -508,7 +614,8 @@ impl HomeState {
             Some(picked_label(save, picked))
         } else if arranging {
             Some(
-                "Drag a cottage along the row, or anything on the ground along the ground."
+                "Drag a cottage along the row, or anything on the ground along the ground. Up and \
+                 down move a picked house back or forward."
                     .to_owned(),
             )
         } else {
@@ -684,12 +791,31 @@ impl HomeState {
         owners: &[CreatureId],
         outcome: &mut SettingsOutcome,
     ) {
-        let (left, right) = ui.input(|input| {
+        let (left, right, up, down) = ui.input(|input| {
             (
                 input.key_pressed(egui::Key::ArrowLeft),
                 input.key_pressed(egui::Key::ArrowRight),
+                input.key_pressed(egui::Key::ArrowUp),
+                input.key_pressed(egui::Key::ArrowDown),
             )
         });
+        // Up puts a house a step further back on the ground and down a step nearer the front.
+        if (up || down)
+            && let Some(Picked::House(keeper)) = self.arrange.picked
+            && let Some(slot) = owners.iter().position(|id| *id == keeper)
+        {
+            let depth = save.home.house_depth_list(&save.creatures)[slot];
+            let step = nearest_step(depth);
+            let next = if up {
+                (step + 1).min(DEPTH_STEPS.len() - 1)
+            } else {
+                step.saturating_sub(1)
+            };
+            if DEPTH_STEPS[next].0 != depth {
+                outcome.house_depth = Some((keeper, Some(DEPTH_STEPS[next].0)));
+            }
+            return;
+        }
         if !left && !right {
             return;
         }
@@ -796,6 +922,23 @@ impl HomeState {
                             }
                         }
                     });
+            });
+            ui.horizontal(|ui| {
+                ui.label("Stands");
+                let chosen = save.home.house_depth(keeper.id);
+                let standing = save.home.house_depth_list(&save.creatures)[slot];
+                for (index, (depth, label)) in DEPTH_STEPS.into_iter().enumerate() {
+                    let selected = match chosen {
+                        Some(chosen) => chosen == depth,
+                        None => nearest_step(standing) == index,
+                    };
+                    if ui.selectable_label(selected, label).clicked() && chosen != Some(depth) {
+                        outcome.house_depth = Some((keeper.id, Some(depth)));
+                    }
+                }
+                if chosen.is_some() && ui.small_button("Its own place").clicked() {
+                    outcome.house_depth = Some((keeper.id, None));
+                }
             });
             ui.add_space(6.0);
             ui.small("What it wears, one thing in each place:");

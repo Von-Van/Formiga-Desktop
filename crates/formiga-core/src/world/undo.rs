@@ -32,6 +32,8 @@ pub enum ColonyEdit {
     Hangout(HangoutKind),
     /// A house built as another type, or given back its own.
     HouseType,
+    /// A house moved further back on the ground or nearer the front.
+    HouseDepth,
     /// The home moved to another corner or display.
     MovedHome,
     /// A house's decorations hung or taken down.
@@ -58,6 +60,7 @@ impl ColonyEdit {
             Self::PutVillageBack => "putting the village back".to_owned(),
             Self::Hangout(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::HouseType => "changing a house".to_owned(),
+            Self::HouseDepth => "moving a house back or forward".to_owned(),
             Self::MovedHome => "moving the home".to_owned(),
             Self::Decorations => "changing a house's decorations".to_owned(),
             Self::Ornament(kind) => format!("changing the {}", kind.label().to_lowercase()),
@@ -174,6 +177,7 @@ impl World {
             self.look_again_at_displays();
             self.save.home.cottage_order = point.home.cottage_order.clone();
             self.save.home.house_styles = point.home.house_styles.clone();
+            self.save.home.house_depths = point.home.house_depths.clone();
             self.save.home.dressing = point.home.dressing.clone();
         } else {
             let home = &mut self.save.home;
@@ -184,6 +188,7 @@ impl World {
             home.palette = point.home.palette;
             home.gardens = point.home.gardens.clone();
             home.house_styles = point.home.house_styles.clone();
+            home.house_depths = point.home.house_depths.clone();
             home.dressing = point.home.dressing.clone();
             home.ornaments = point.home.ornaments.clone();
             home.tree_keepsakes = point.home.tree_keepsakes;

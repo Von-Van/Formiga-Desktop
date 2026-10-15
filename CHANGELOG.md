@@ -4,6 +4,20 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- The village stands on a shallow strip of grass seen a little from above, with a trodden path
+  along it, a path back to every door, small pale bushes beyond it, and grass and flowers along
+  its front edge over the nearer houses' feet. The houses stand at different depths on it — the
+  colony house at the front and the cottages taking turns further back and nearer — and a house
+  further back is drawn a little higher and a little paler. The village is as wide as before, and
+  a house set furthest back stands eight shelter pixels higher than it did.
+- Save version 30: where each house stands front to back, chosen on the Home page for the picked
+  house from Front, Near, Middle, Far and Back (or with the up and down arrow keys in Arrange
+  mode), and given back its own place with "Its own place". It can be undone, follows the house
+  along the row and to a replacement, and is cleared by putting the village back. A colony this
+  release has saved does not open in an earlier Formiga.
+
 ## [0.67.7] - 2026-10-15
 
 Released alongside Formiga Hill 0.67.7 and Formiga Home 0.67.7, which are built on it and draw the

@@ -428,6 +428,21 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
         &|| "a cottage stands twice".to_owned(),
     );
     check(
+        home.house_depths.len() <= MAX_COLONY_CREATURES
+            && home
+                .house_depths
+                .iter()
+                .all(|choice| choice.depth <= crate::MAX_HOUSE_DEPTH)
+            && home
+                .house_depths
+                .iter()
+                .map(|choice| choice.keeper)
+                .collect::<BTreeSet<_>>()
+                .len()
+                == home.house_depths.len(),
+        &|| "a house stands further back than the ground goes, or twice".to_owned(),
+    );
+    check(
         home.dressing.len() <= MAX_COLONY_CREATURES
             && home.dressing.iter().all(|dressing| {
                 dressing.decorations.len() <= MAX_HOUSE_DECORATIONS
@@ -501,7 +516,7 @@ mod tests {
     #[test]
     fn every_violation_is_noticed_and_repaired() {
         type Breakage = (&'static str, fn(&mut SaveFile));
-        let breakages: [Breakage; 10] = [
+        let breakages: [Breakage; 11] = [
             ("text", |save| save.companion.appearance.text_scale = 233),
             ("bond", |save| {
                 let first = save.relationships[0];
@@ -533,6 +548,13 @@ mod tests {
                         ..Default::default()
                     })
                     .collect()
+            }),
+            ("depth", |save| {
+                let keeper = save.creatures[0].id;
+                save.home.house_depths = vec![
+                    crate::HouseDepthChoice { keeper, depth: 200 },
+                    crate::HouseDepthChoice { keeper, depth: 1 },
+                ];
             }),
             ("version", |save| save.save_version = 3),
             ("trip", |save| {

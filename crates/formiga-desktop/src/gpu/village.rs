@@ -421,6 +421,7 @@ impl OverlayRenderer {
         }
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let styles = save.home.house_style_list(&save.creatures);
+        let depths = save.home.house_depth_list(&save.creatures);
         let house = |slot: usize| {
             formiga_core::home_dwelling_position(
                 &save.home,
@@ -437,7 +438,10 @@ impl OverlayRenderer {
                     styles[slot.min(styles.len() - 1)],
                     slot == 0,
                 );
+                // A house set back on the ground stands that much higher up the display.
+                let depth = f32::from(depths[slot.min(depths.len() - 1)]);
                 let (x, ground) = local(point);
+                let ground = ground - depth * unit;
                 (x, ground, ground - roof * unit)
             })
         };
@@ -492,6 +496,9 @@ impl OverlayRenderer {
         scene: VillageScene<'_>,
     ) -> Vec<Vertex> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
+        let depths = save.home.house_depth_list(&save.creatures);
+        let points_per_pixel =
+            f32::from(save.settings.display_scale) / self.monitor.scale_factor.max(1.0);
         let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
@@ -515,6 +522,11 @@ impl OverlayRenderer {
                 .iter()
                 .copied()
                 .find(|motion| motion.slot == slot);
+            // Set back on the ground, which is higher up the display.
+            let point = formiga_core::Point {
+                y: point.y - f32::from(depths[slot.min(depths.len() - 1)]) * points_per_pixel,
+                ..point
+            };
             vertices.extend_from_slice(&self.village_cell_vertices(
                 point,
                 village_cell(VillageCell::House {
@@ -549,6 +561,42 @@ impl OverlayRenderer {
             }
         }
         vertices
+    }
+
+    /// One layer of the ground the village stands on, its foot on the village's ground line from
+    /// the left end of the strip.
+    pub(super) fn ground_vertices(
+        &self,
+        plan: &formiga_core::VillageGroundPlan,
+        layer: GroundLayer,
+        night: bool,
+        display_scale: u8,
+    ) -> [Vertex; 6] {
+        let unit = f32::from(display_scale);
+        let local_x =
+            self.snap((plan.origin.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let local_y =
+            self.snap((plan.origin.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let x = |value: f32| value / self.layout.width as f32 * 2.0 - 1.0;
+        let y = |value: f32| 1.0 - value / self.layout.height as f32 * 2.0;
+        let (left, right) = (x(local_x), x(local_x + GROUND_STRIP_WIDTH as f32 * unit));
+        let (top, bottom) = (y(local_y - GROUND_STRIP_HEIGHT as f32 * unit), y(local_y));
+        let (_, row) = VillageGroundLook::layer_origin(layer, night);
+        let v_top = row as f32 / GROUND_ATLAS_HEIGHT as f32;
+        let v_bottom = (row + GROUND_STRIP_HEIGHT) as f32 / GROUND_ATLAS_HEIGHT as f32;
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        [
+            vertex([left, top], [0.0, v_top]),
+            vertex([right, top], [1.0, v_top]),
+            vertex([right, bottom], [1.0, v_bottom]),
+            vertex([left, top], [0.0, v_top]),
+            vertex([right, bottom], [1.0, v_bottom]),
+            vertex([left, bottom], [0.0, v_bottom]),
+        ]
     }
 
     /// One quadrant of the village atlas, standing on the ground line at `anchor`. `mirror` swaps

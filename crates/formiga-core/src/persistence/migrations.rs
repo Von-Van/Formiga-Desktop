@@ -196,6 +196,9 @@ const STEPS: &[Step] = &[
     // 29: a form sculpted in Formiga Farm, kept beside a companion's recipe. An older colony has
     // none.
     Step::adds_only(28),
+    // 30: how far back on the village ground a house was put by hand. An older colony put none
+    // anywhere, and its houses stand where their slots put them.
+    Step::adds_only(29),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

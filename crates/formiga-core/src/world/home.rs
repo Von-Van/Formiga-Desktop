@@ -1046,6 +1046,7 @@ impl World {
             .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
             .count();
         let house_styles = self.save.home.house_style_list(&self.save.creatures);
+        let house_depths = self.save.home.house_depth_list(&self.save.creatures);
         // Whose roof somebody is already sitting on.
         let roofs_taken: Vec<usize> = self
             .village_life
@@ -1559,7 +1560,9 @@ impl World {
             if let Some(commons) = commons {
                 let house = houses.get(&creature.id).map(|(at, half, slot)| {
                     let style = house_styles[(*slot).min(house_styles.len() - 1)];
-                    let height = house_roof_height(&self.save.home.shelter, style, *slot == 0);
+                    // A house set back on the ground stands that much higher up the display.
+                    let height = house_roof_height(&self.save.home.shelter, style, *slot == 0)
+                        + f32::from(house_depths[(*slot).min(house_depths.len() - 1)]);
                     village_life::OwnHouse {
                         slot: *slot,
                         at: *at,

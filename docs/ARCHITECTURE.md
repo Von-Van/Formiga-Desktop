@@ -1052,9 +1052,50 @@ direction the village runs, is its new place — and the colony house, always fi
 carried. Something on the ground carried along it is let go as a fraction of the ground a companion
 may stand on, and the layout keeps its usual room between things. The arrow keys nudge whatever is
 picked out: a thing on the ground by four hundredths of the ground, a cottage one place along the
-row. A house picked out shows its keeper, anyone else who lives there, its kind and its six places
-to decorate. Nothing is written until something is let go, and every change goes through the same
+row, and — up and down — a house a step further back on the ground or nearer the front. A house
+picked out shows its keeper, anyone else who lives there, its kind, where it stands front to back,
+and its six places to decorate. Nothing is written until something is let go, and every change goes through the same
 outcomes as the rest of the page, so each can be undone.
+
+## The ground the village stands on (save v30)
+
+The village stands on a shallow strip of grass seen a little from above, `GROUND_BAND` = 11
+shelter pixels from its front edge on the ground line to its back. Each house stands somewhere on
+it front to back: `ColonyHome::house_depth_list` gives every slot its depth in shelter pixels, from
+`house_depths` — at most one `HouseDepthChoice` per keeper, up to `MAX_HOUSE_DEPTH` = 8, chosen on
+the Home page from five steps, Front, Near, Middle, Far and Back — or else
+`DEFAULT_HOUSE_DEPTHS` = `[0, 7, 2, 8, 3, 6]`, which keeps the colony house at the front and has
+the cottages take turns further back and nearer. Save version 30 adds `house_depths`; an older
+colony has none, so its houses stand where their slots put them. A choice follows its house: it
+moves with the cottage along the row, passes to a replacement, leaves with a keeper who leaves, is
+cleared by putting the village back, and is one undoable change (`ColonyEdit::HouseDepth`). The
+two trees and everything in their yards stay at the front.
+
+Depth changes where a house is drawn and nothing about where it stands in the walk: the lot, its
+width, the commons in front and every resting place are as they were. A house set back is drawn
+that many shelter pixels higher up the display, and the things measured from the drawing follow
+it — the house's click area, a resident's hop up onto its roof (`house_roof_height` plus its
+depth), the Zs out of a sleeping house and a leaf coming off a leaf house's eaves. `VillageLook`
+carries the depths, and a house further back is baked into the village atlas a little paler, up to
+a seventh of the way toward a pale sky by day and toward the night after dark, its ground shadow
+left as it is.
+
+`home_ground_plan` gives the strip as it is laid out on its display — its left end on the ground
+line, points per shelter pixel, and every lot shown with its middle and width — and
+`VillageGroundLook::of` turns it, with the drawn width of each house, into what
+`VillageGroundRenderer` draws: one 640×96 sheet of four 24-row layers, the back and the front by
+day and the same after dark. The back layer is drawn before the houses: the grass, rounded off at
+both ends and paler toward the back with blades standing up along its back edge; a trodden path
+along its middle from the first house to the last, in lengths; a path in from the front edge to
+every door, narrowing as it goes back; and small pale bushes or a sapling beyond the grass in the
+gaps between houses, half behind the houses either side. The front layer is drawn after the houses
+and trees and before the belongings and the companions: a tuft in each gap, and grass and flowers
+half over the corners of the houses that stand at the front, which is what puts them in front of
+the rest. The overlay keeps the sheet as a texture of its own, keyed on the whole
+`VillageGroundLook`, so it is drawn again only when the village is laid out again or a house moves,
+and it adds two quads and two draws to a frame. The Home page's preview draws the same day layers.
+Nothing on the ground moves, so reduced motion changes nothing. `formiga-tools home-yard-sheet`
+shows it under every panel.
 
 ## How high companions go
 
@@ -2093,7 +2134,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–29: version 29 is read directly, versions 1 through 28 are
+Persistence accepts save versions 1–30: version 30 is read directly, versions 1 through 29 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so

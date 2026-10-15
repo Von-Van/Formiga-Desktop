@@ -52,6 +52,9 @@ pub struct SettingsOutcome {
     pub open_farm: Option<crate::farm::FarmRequest>,
     /// A house built as another type, by the companion who keeps it, or with `None` as its own.
     pub house_style: Option<(CreatureId, Option<formiga_core::ShelterStyle>)>,
+    /// A house moved back on the ground or forward, by the companion who keeps it, or with `None`
+    /// back to its own place.
+    pub house_depth: Option<(CreatureId, Option<u8>)>,
     /// A named palette for the village, or `Some(None)` for its own colours again.
     pub village_palette: Option<Option<formiga_core::VillagePalette>>,
     /// Plant a garden patch at a fraction along the village ground, move it, or with `None` dig

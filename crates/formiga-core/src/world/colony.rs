@@ -304,6 +304,10 @@ impl World {
             .home
             .house_styles
             .retain(|choice| choice.keeper != creature_id);
+        self.save
+            .home
+            .house_depths
+            .retain(|choice| choice.keeper != creature_id);
         // A cottage's decorations go with it. The colony house stays, and so does everything
         // hung on it: they pass to whoever keeps it now.
         let successor = house_owners(&self.save.creatures, &self.save.home.cottage_order)
@@ -391,13 +395,18 @@ impl World {
                 creature.role = CreatureRole::Mini { parent_id: new_id };
             }
         }
-        // The newcomer keeps the cottage where it stood, and whatever it was built as.
+        // The newcomer keeps the cottage where it stood, as far back as it stood, and whatever it was built as.
         for id in &mut self.save.home.cottage_order {
             if *id == old_id {
                 *id = new_id;
             }
         }
         for choice in &mut self.save.home.house_styles {
+            if choice.keeper == old_id {
+                choice.keeper = new_id;
+            }
+        }
+        for choice in &mut self.save.home.house_depths {
             if choice.keeper == old_id {
                 choice.keeper = new_id;
             }

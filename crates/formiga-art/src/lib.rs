@@ -15,6 +15,7 @@ mod train;
 mod tree;
 mod trinkets;
 mod ui_atlas;
+mod village_ground;
 mod wonders;
 
 pub use bubble::MilestoneBubbleRenderer;
@@ -63,6 +64,10 @@ pub use ui_atlas::{
     MENU_ICON_BOX, MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MenuIcon,
     MenuLayout, MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
     menu_label_text,
+};
+pub use village_ground::{
+    GROUND_ATLAS_HEIGHT, GROUND_BAND, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundHouse,
+    GroundLayer, VillageGroundLook, VillageGroundRenderer, depth_haze,
 };
 pub use wonders::{
     WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE, WonderRenderer,

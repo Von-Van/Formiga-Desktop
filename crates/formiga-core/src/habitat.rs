@@ -998,6 +998,65 @@ pub fn home_lot_widths(
     widths
 }
 
+/// The village's ground as it is laid out where it stands now: the left end of the strip on the
+/// ground line, how many desktop points one shelter pixel covers, and every lot shown, by where
+/// its middle is in shelter pixels from that end, left to right whichever way the village runs.
+/// The overlay draws the grass the village stands on from it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VillageGroundPlan {
+    pub monitor_id: u64,
+    /// The left end of the strip, on the ground line, in desktop points.
+    pub origin: Point,
+    /// Desktop points per shelter pixel.
+    pub scale: f32,
+    /// Every lot shown, with its middle in shelter pixels from `origin` and the ground it claims.
+    pub lots: Vec<(VillageLot, f32, f32)>,
+    /// How far the strip reaches, in shelter pixels, from the outer edge of one end lot to the
+    /// outer edge of the other.
+    pub length: f32,
+}
+
+/// The ground the village stands on where it stands now, or `None` while it has nowhere to stand
+/// or not one lot fits.
+pub fn home_ground_plan(
+    home: &ColonyHome,
+    cottages: &[DwellingKind],
+    monitors: &[MonitorInfo],
+    policy: &HabitatPolicy,
+    display_scale: u8,
+) -> Option<VillageGroundPlan> {
+    let ground = VillageGround::resolve(home, cottages, monitors, policy, display_scale)?;
+    let shown: Vec<(VillageLot, Point, f32)> = ground
+        .walk(cottages)
+        .iter()
+        .filter_map(|(lot, centre)| {
+            let point = ground.place(lot, centre, cottages)?;
+            Some((lot, point, ground.lot_width(lot, cottages)))
+        })
+        .collect();
+    let left = shown
+        .iter()
+        .map(|(_, point, width)| point.x - width / 2.0 * ground.scale)
+        .reduce(f32::min)?;
+    let right = shown
+        .iter()
+        .map(|(_, point, width)| point.x + width / 2.0 * ground.scale)
+        .reduce(f32::max)?;
+    Some(VillageGroundPlan {
+        monitor_id: ground.monitor.id,
+        origin: Point {
+            x: left,
+            y: ground.anchor.y,
+        },
+        scale: ground.scale,
+        lots: shown
+            .iter()
+            .map(|(lot, point, width)| (*lot, (point.x - left) / ground.scale, *width))
+            .collect(),
+        length: (right - left) / ground.scale,
+    })
+}
+
 /// Position of one companion house in the village. Slot 0 is the colony house itself.
 pub fn home_dwelling_position(
     home: &ColonyHome,

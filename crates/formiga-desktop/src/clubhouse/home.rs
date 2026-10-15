@@ -20,6 +20,8 @@ pub(crate) struct HomeState {
     /// change.
     pub(super) home_texture: Option<HomeTexture>,
     pub(super) object_texture: Option<([u8; 32], TextureHandle)>,
+    /// The ground the village stands on, by day, as it is laid out now.
+    pub(super) ground_texture: Option<(formiga_art::VillageGroundLook, TextureHandle)>,
     /// Whether putting the village back as it grew has been asked for once, and is waiting to be
     /// confirmed.
     village_reset_asked: bool,
@@ -35,11 +37,13 @@ impl HomeState {
             .iter()
             .map(|home| home.texture.id())
             .chain(self.object_texture.iter().map(|(_, t)| t.id()))
+            .chain(self.ground_texture.iter().map(|(_, t)| t.id()))
     }
 
     pub(super) fn release_images(&mut self) {
         self.home_texture = None;
         self.object_texture = None;
+        self.ground_texture = None;
     }
 
     /// The Home page.
@@ -334,7 +338,8 @@ impl HomeState {
             || save.home.palette.is_some()
             || !save.home.gardens.is_empty()
             || !save.home.ornaments.is_empty()
-            || !save.home.house_styles.is_empty();
+            || !save.home.house_styles.is_empty()
+            || !save.home.house_depths.is_empty();
         ui.vertical(|ui| {
             if self.village_reset_asked && arranged {
                 ui.label(
