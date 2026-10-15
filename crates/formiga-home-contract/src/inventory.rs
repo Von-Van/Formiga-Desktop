@@ -1,6 +1,6 @@
-//! The things a colony has that can be shown in a house: every find in its scrapbook and every
-//! souvenir it has brought home from Formiga Hill, by stable identifier, with only what Home
-//! needs to show one. Never the scrapbook itself, and never a trip's receipt.
+//! The things a colony has that can be shown in a house: every find in its scrapbook, every
+//! souvenir it has brought home from Formiga Hill, and every keepsake its matches in Formiga
+//! Battle have earned, by stable identifier, with only what Home needs to show one. Never the scrapbook itself, and never a trip's receipt.
 //!
 //! Each thing says how it may be shown rather than leaving Home to guess from its picture, so
 //! where it can go is the same on every visit and in every version of Home. Every thing can be
@@ -10,7 +10,7 @@
 use crate::document::HomeError;
 use crate::ids::DisplayId;
 use crate::limits::*;
-use formiga_core::Souvenir;
+use formiga_core::{BattleKeepsake, Souvenir};
 use formiga_expansion_rulebook::is_sanitized;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -50,6 +50,10 @@ pub enum DisplaySource {
     /// One of the household's own keepsakes, made at home. Never sent by Desktop: Home makes
     /// these for itself, from the household's home. Since version 4.
     HomeMemento { memento: crate::state::MementoKind },
+    /// One of Formiga Battle's keepsakes that Desktop has kept, by Battle's own identifier, which
+    /// is also its display id: `battle.trophy.backyard_cup`. Since version 11; an older Home reads
+    /// it as a source it does not know, and shows it on its card.
+    BattleKeepsake { id: String },
     /// A source a newer Desktop has. Shown on its card, by its name.
     #[serde(other)]
     Unknown,
@@ -128,6 +132,9 @@ impl DisplayItem {
             }
             // Desktop never sends a keepsake: Home makes those for itself.
             DisplaySource::HomeMemento { .. } => false,
+            DisplaySource::BattleKeepsake { id } => {
+                self.id.source() == DisplayId::BATTLE && self.id.as_str() == id
+            }
             DisplaySource::Unknown => true,
         };
         if !names_itself {
@@ -197,6 +204,15 @@ pub fn find_modes(variant: u8) -> Vec<DisplayMode> {
 }
 
 /// How one of Formiga Hill's souvenirs may be shown, best first.
+/// How a keepsake from Formiga Battle may be shown: the trophy stands, the medal hangs.
+pub fn battle_keepsake_modes(keepsake: BattleKeepsake) -> Vec<DisplayMode> {
+    use DisplayMode::*;
+    match keepsake {
+        BattleKeepsake::BackyardCupTrophy => vec![SurfaceSmall, Case, FallbackCard],
+        BattleKeepsake::BackyardCupMedal => vec![Wall, Case, SurfaceSmall, FallbackCard],
+    }
+}
+
 pub fn souvenir_modes(souvenir: Souvenir) -> Vec<DisplayMode> {
     use DisplayMode::*;
     match souvenir {

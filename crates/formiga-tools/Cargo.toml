@@ -13,6 +13,7 @@ serde.workspace = true
 formiga-art = { path = "../formiga-art" }
 formiga-battle-contract = { path = "../formiga-battle-contract" }
 formiga-core = { path = "../formiga-core" }
+formiga-expansion-rulebook = { path = "../formiga-expansion-rulebook" }
 formiga-farm-contract = { path = "../formiga-farm-contract" }
 formiga-home-contract = { path = "../formiga-home-contract" }
 formiga-travel = { path = "../formiga-travel" }

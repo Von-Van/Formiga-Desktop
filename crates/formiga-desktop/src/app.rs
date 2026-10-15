@@ -602,10 +602,11 @@ impl FormigaApp {
                     self.settings_error(format!("Could not preserve the previous colony: {error}"));
                     return;
                 }
-                // A house open in Home, and a companion open in Farm, belong to the colony
-                // being replaced.
+                // A house open in Home, a companion open in Farm, and a match open in Battle
+                // belong to the colony being replaced.
                 self.abandon_house_visit();
                 self.abandon_farm_session();
+                self.abandon_battle_session();
                 let desktop = self.snapshot();
                 match new_colony_seed() {
                     Ok(seed) => {

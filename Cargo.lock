@@ -1378,6 +1378,7 @@ dependencies = [
  "formiga-art",
  "formiga-battle-contract",
  "formiga-core",
+ "formiga-expansion-rulebook",
  "formiga-farm-contract",
  "formiga-home-contract",
  "formiga-travel",

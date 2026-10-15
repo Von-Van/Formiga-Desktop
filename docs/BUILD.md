@@ -130,7 +130,8 @@ files beside the others, never over one that has shipped.
 
 Desktop's side of a match can be tried without Formiga Battle too. `formiga-battle-stub` stands
 in for Battle: it reads the roster it is handed exactly as Battle does, says it can open it, prints
-who is on it, waits, and exits, all without a window.
+who is on it, wins the Backyard Cup as if the owner had played, waits, and exits, all without a
+window. Desktop keeps the cup's line in the journal and its trophy and medal when the stub closes.
 
 ```sh
 cargo build -p formiga-tools --bin formiga-battle-stub
@@ -144,7 +145,7 @@ cargo run -p formiga-desktop
 build of Formiga Battle, and makes the tray offer it. `FORMIGA_BATTLE_SESSION_AFTER` opens a match
 that many seconds after launch, once, as if the tray had been used; it is ignored unless
 `FORMIGA_BATTLE_PATH` is set too. `FORMIGA_BATTLE_STUB` takes a comma-separated list:
-`stay=SECONDS`, `refuse=version|busy|invalid` and `crash`. A session's files are under `battle/` in
+`stay=SECONDS`, `silent` to play no match, `refuse=version|busy|invalid` and `crash`. A session's files are under `battle/` in
 the scratch data directory while it is open.
 
 The roster contract keeps fixtures for every version in

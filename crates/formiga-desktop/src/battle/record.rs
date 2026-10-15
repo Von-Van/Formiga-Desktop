@@ -4,7 +4,48 @@
 //! `BattleRecord` writes, so it crosses between the two through that shape and nothing else.
 //! Whatever does not cross whole is not taken.
 
-use formiga_battle_contract::BattleRecord;
+use formiga_battle_contract::{BattleRecord, BattleResult};
+use formiga_core::World;
+use time::OffsetDateTime;
+
+/// What keeping a result kept: the matches applied for the first time, and the keepsakes new to
+/// the colony.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Kept {
+    pub matches: usize,
+    pub keepsakes: usize,
+}
+
+/// Keep what a session's matches earned: each match is applied to the colony's record by the
+/// contract's own rule, once, by its id, and only a match applied for the first time adds its
+/// lines to the journal and its keepsakes to the colony's. Everything is weighed before anything
+/// changes, so the colony keeps all of it or none, and keeping the same result again changes
+/// nothing.
+pub fn keep_result(
+    world: &mut World,
+    result: &BattleResult,
+    now: OffsetDateTime,
+) -> Result<Kept, String> {
+    let mut applied = to_contract(&world.save.battle.record)?;
+    let new: Vec<_> = result
+        .matches
+        .iter()
+        .filter(|played| applied.apply(played))
+        .collect();
+    if new.is_empty() {
+        return Ok(Kept::default());
+    }
+    world.save.battle.record = from_contract(&applied)?;
+    let mut kept = Kept {
+        matches: new.len(),
+        keepsakes: 0,
+    };
+    for played in new {
+        kept.keepsakes +=
+            world.keep_battle_match(&played.rewards.journal, &played.rewards.keepsakes, now);
+    }
+    Ok(kept)
+}
 
 /// The record as the contract reads it, to send to Battle and to apply a result to.
 pub fn to_contract(record: &formiga_core::BattleRecord) -> Result<BattleRecord, String> {
@@ -28,7 +69,93 @@ pub fn from_contract(record: &BattleRecord) -> Result<formiga_core::BattleRecord
 #[cfg(test)]
 mod tests {
     use super::*;
-    use formiga_battle_contract::{BattleSnapshot, sample};
+    use formiga_battle_contract::{BattleSnapshot, MatchResult, Mode, Rewards, sample};
+    use formiga_core::{BattleKeepsake, JournalMoment};
+    use time::macros::datetime;
+
+    fn colony() -> World {
+        let now = datetime!(2026-10-15 12:00 UTC);
+        World::new([7; 32], now, &formiga_core::DesktopSnapshot::default())
+    }
+
+    fn cup_won() -> MatchResult {
+        MatchResult {
+            id: "abcdefabcdefabcdefabcdefabcdef01".to_owned(),
+            mode: Mode::Ai,
+            rewards: Rewards {
+                cup_win: Some("cup.backyard".to_owned()),
+                unlocks: vec!["cup.woodland".to_owned()],
+                journal: vec!["Mochi, Biscuit and Fig won the Backyard Cup.".to_owned()],
+                keepsakes: vec![
+                    "battle.trophy.backyard_cup".to_owned(),
+                    "battle.medal.backyard_cup".to_owned(),
+                ],
+                ..Rewards::default()
+            },
+        }
+    }
+
+    #[test]
+    fn a_result_is_kept_once_however_often_it_is_read() {
+        let mut world = colony();
+        let mut result = sample::result();
+        result.matches.push(cup_won());
+        let now = datetime!(2026-10-15 13:00 UTC);
+        let kept = keep_result(&mut world, &result, now).unwrap();
+        assert_eq!(
+            kept,
+            Kept {
+                matches: 3,
+                keepsakes: 2
+            }
+        );
+        let battle = world.save.battle.clone();
+        assert_eq!(battle.record.circuit_points, 15);
+        assert_eq!(battle.record.applied.len(), 3);
+        assert_eq!(battle.record.history.len(), 1);
+        assert!(battle.record.unlocked.contains(&"cup.woodland".to_owned()));
+        assert!(BattleKeepsake::ALL.iter().all(|k| battle.has_keepsake(*k)));
+        let lines = |world: &World| {
+            world
+                .save
+                .companion
+                .journal
+                .iter()
+                .filter(|entry| matches!(entry.moment, JournalMoment::Battle(_)))
+                .count()
+        };
+        assert_eq!(lines(&world), 2);
+        let journal = world.save.companion.journal.clone();
+
+        let later = now + time::Duration::days(2);
+        assert_eq!(
+            keep_result(&mut world, &result, later).unwrap(),
+            Kept::default()
+        );
+        assert_eq!(
+            world.save.battle, battle,
+            "applying it twice changes nothing"
+        );
+        assert_eq!(world.save.companion.journal, journal);
+    }
+
+    #[test]
+    fn a_keepsake_desktop_does_not_know_is_left_out() {
+        let mut world = colony();
+        let mut played = cup_won();
+        played.rewards.keepsakes = vec!["battle.trophy.someday_cup".to_owned()];
+        let mut result = sample::result();
+        result.matches = vec![played];
+        let kept = keep_result(&mut world, &result, datetime!(2026-10-15 13:00 UTC)).unwrap();
+        assert_eq!(
+            kept,
+            Kept {
+                matches: 1,
+                keepsakes: 0
+            }
+        );
+        assert!(world.save.battle.keepsakes.is_empty());
+    }
 
     #[test]
     fn the_record_crosses_both_ways_unchanged() {
