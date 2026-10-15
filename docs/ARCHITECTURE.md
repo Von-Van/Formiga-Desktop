@@ -991,8 +991,12 @@ found. A share code never carries one.
 
 `renderer/accessories.rs` draws the piece onto every body frame as the atlas is baked, placed from
 the `Figure` that frame's body reports — the top of the head, the neck, the chest, the hip — so it
-follows every pose at a mini's size as well as an adult's, in the inks the colony's trinket sheet
-gives the find it is made from. The overlay rebakes a companion's atlas only when what it wears
+follows every pose at a mini's size as well as an adult's. Each piece is painted in what it is
+made of, from the same material ramps as the finds, with what is dyed in the colours the colony's
+trinket sheet gives the find it is made from, and then outlined all round in one pass so it holds
+its shape against any coat. `CreatureRenderer::render_worn_piece` cuts a piece out of a
+companion's standing frame on its own, as it sits on that companion, for a page to picture it
+beside its name. The overlay rebakes a companion's atlas only when what it wears
 changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
 
 The wardrobe on the Your colony page, in `clubhouse/collection.rs`, shows the companion wearing

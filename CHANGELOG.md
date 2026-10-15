@@ -4,6 +4,16 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Every find and everything a companion wears is redrawn to be told apart at a glance. Each is
+  painted in what it is made of — acorns are brown, clover green, buckles brass, teacups china —
+  with three or four tones of shade lit from the upper left; only what is dyed, painted or
+  printed (ribbons, buttons, wool, cloth) keeps the colony's own colour, still chosen to stand
+  clear of every coat. The 160 finds keep their 16-pixel cells and the wearables the companions'
+  own pixel size, so nothing is drawn finer or blurrier than the companion holding it. The first
+  sixteen finds, once drawn by hand in code, are grids like the rest.
+
 ## [0.67.6] - 2026-10-12
 
 Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub

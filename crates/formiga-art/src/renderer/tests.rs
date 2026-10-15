@@ -2033,3 +2033,40 @@ fn every_companion_is_the_same_echo_fox_in_every_clip() {
         CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
     );
 }
+
+/// Every piece, pictured on its own as it sits on a companion, is the piece and nothing else: it
+/// is there, it is smaller than the companion's frame, and it has a clear pixel all round.
+#[test]
+fn every_piece_can_be_pictured_on_its_own() {
+    use formiga_core::{Accessory, AccessoryKind};
+    let preview = World::preview_adult(
+        [29; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    let members = [crate::palette_for(&preview.appearance)];
+    for family in [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ] {
+        let genome = genome(family);
+        for accessory in AccessoryKind::ALL
+            .into_iter()
+            .map(Accessory::Worn)
+            .chain([Accessory::Pin(16)])
+        {
+            let art = AccessoryArt::resolve(accessory, [29; 32], &members);
+            let piece = CreatureRenderer::render_worn_piece(&genome, art)
+                .unwrap_or_else(|| panic!("{family:?}: {accessory:?} pictures as nothing"));
+            assert!(piece.width() < FRAME_SIZE && piece.height() < FRAME_SIZE);
+            let (left, top, right, bottom) = piece.alpha_bounds().expect("something drawn");
+            assert_eq!((left, top), (1, 1), "{family:?}: {accessory:?}");
+            assert_eq!(
+                (right + 2, bottom + 2),
+                (piece.width(), piece.height()),
+                "{family:?}: {accessory:?}"
+            );
+        }
+    }
+}

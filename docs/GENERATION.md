@@ -308,14 +308,18 @@ drawn through `modular::prop_hold`, so a toy is held in a real hand rather than 
 Trinkets are a colony's, not a creature's. `formiga-core::trinkets` is the catalogue — a hundred
 and sixty entries of name, description, hint, and condition, with `TRINKET_VARIANTS = 160` — and
 `formiga-art::TrinketAtlasRenderer` bakes it into one 256×320 sheet of sixteen columns, ten rows of
-resting drawings and ten of the same with a glint. Its colours come from the colony seed and are
-chosen to stay clear of every member's coat, so a found keepsake reads as a separate object however
-the colony is coloured and whoever is holding it. A new variant is a new cell, not a new texture per
-creature.
+resting drawings and ten of the same with a glint. Each find is a 12×12 grid of letters in
+`trinkets/sprites`, painted in what it is made of — an acorn's brown, a brass buckle, a china
+teacup, from the ramps in `trinkets/materials` — so it can be told for what it is in any colony.
+What is dyed, painted or printed is in the colony's own colours, which come from the colony seed and
+are chosen to stay clear of every member's coat, and every find is outlined in one dark pixel, so a
+found keepsake reads as a separate object however the colony is coloured and whoever is holding it.
+A new variant is a new cell, not a new texture per creature.
 
 What a companion wears is a colony's finds too. Each of the twenty accessories in
-`formiga-core::accessories` is made from one variant and drawn in that variant's inks, and any find
-can be worn as a pin. `renderer/accessories.rs` draws the piece onto every body frame as the atlas is
+`formiga-core::accessories` is made from one variant, painted in what it is made of — leaf green,
+an acorn's cup, brass — with its dyed parts in that variant's colony colours, and outlined all round
+in one pass; any find can be worn as a pin. `renderer/accessories.rs` draws the piece onto every body frame as the atlas is
 baked, from the `Figure` the frame's body reports — the top of the head, the neck, the chest and the
 hip — so it adds no gene, no texture, and no quad.
 
