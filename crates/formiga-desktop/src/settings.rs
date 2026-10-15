@@ -841,7 +841,8 @@ fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
             (egui::TextStyle::Body, 14.0),
             (egui::TextStyle::Button, 14.0),
             (egui::TextStyle::Heading, 25.0),
-            (egui::TextStyle::Small, 10.5),
+            // Small print is for asides, not for squinting at: a step under the body, no more.
+            (egui::TextStyle::Small, 12.0),
             (egui::TextStyle::Monospace, 13.0),
         ] {
             style
@@ -957,7 +958,7 @@ fn draw_settings(
             // Painted for the whole window rather than for this panel, since the page's edge and
             // its shadow fall just outside it, on the binding.
             let window_painter = ui.ctx().layer_painter(egui::LayerId::background());
-            clubhouse::journal::paint_page(&window_painter, page, spread, page.bottom(), open_tab);
+            let ruling = clubhouse::journal::paint_page(&window_painter, page, spread, open_tab);
             let footer = egui::Panel::bottom("settings-footer")
                 .frame(egui::Frame::NONE.fill(paper()).inner_margin(egui::Margin {
                     left: spread.left as i8,
@@ -1085,14 +1086,14 @@ fn draw_settings(
                 .frame(egui::Frame::NONE.inner_margin(egui::Margin {
                     left: spread.left as i8,
                     right: spread.right as i8,
-                    top: 24,
+                    top: clubhouse::journal::WRITING_TOP as i8,
                     bottom: 22,
                 }))
                 .show(ui, |ui| {
         // The tour, above the page rather than on it, so it stays in view while the page scrolls
         // to whatever it is pointing at.
         clubhouse.shell.tour_card(ui, save, tab, outcome);
-        egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
+        let scrolled = egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}")).auto_shrink([false, false]).show(ui, |ui| {
             clubhouse.recovery.cards(ui, save_location, outcome);
             match tab {
                 SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
@@ -1129,6 +1130,15 @@ fn draw_settings(
                 }
             }
         });
+        // The ruling is drawn where the writing is, so the lines scroll with it; they run on down
+        // under the page's bottom margin to the footer, as they did before the page scrolled.
+        clubhouse::journal::paint_ruling(
+            &window_painter,
+            ruling,
+            page,
+            scrolled.inner_rect.top() - scrolled.state.offset.y,
+            (scrolled.inner_rect.top(), footer.top()),
+        );
                 });
             clubhouse::journal::paint_open_tab(
                 &ui.ctx().layer_painter(egui::LayerId::background()),

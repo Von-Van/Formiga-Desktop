@@ -411,6 +411,9 @@ struct Harness {
     cut: Vec<String>,
     textures: Textures,
     time: f64,
+    /// The last frame as a picture, when one was asked for with `picture`.
+    pictured: Option<image::RgbaImage>,
+    picture_next: bool,
 }
 impl Harness {
     fn new(tab: SettingsTab) -> Self {
@@ -435,6 +438,30 @@ impl Harness {
             cut: Vec::new(),
             textures: Textures::new(),
             time: 0.0,
+            pictured: None,
+            picture_next: false,
+        }
+    }
+
+    /// The window as it is now, drawn as the review pictures are.
+    fn picture(&mut self) -> image::RgbaImage {
+        self.picture_next = true;
+        self.frame(Vec::new());
+        self.pictured.take().expect("the frame was pictured")
+    }
+
+    /// Turns the mouse wheel over the page by `points`, downward, and lets the scroll settle.
+    fn scroll_page(&mut self, points: f32) {
+        let over = egui::pos2(self.screen.x * 0.6, self.screen.y * 0.5);
+        self.frame(vec![egui::Event::PointerMoved(over)]);
+        self.frame(vec![egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -points),
+            phase: egui::TouchPhase::Move,
+            modifiers: Default::default(),
+        }]);
+        for _ in 0..40 {
+            self.frame(Vec::new());
         }
     }
 
@@ -488,6 +515,17 @@ impl Harness {
         }
         apply_textures(&mut self.textures, &output.textures_delta);
         output.textures_delta.clear();
+        if std::mem::take(&mut self.picture_next) {
+            let jobs = self
+                .context
+                .tessellate(output.shapes, output.pixels_per_point);
+            self.pictured = Some(rasterize(
+                &jobs,
+                &self.textures,
+                self.screen.x as u32,
+                self.screen.y as u32,
+            ));
+        }
         outcome
     }
     /// Where the Home page's preview drew something that can be picked out, last frame.
@@ -1431,6 +1469,54 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
 
 /// Everything drawn past the edge of the area that shows it: the first text in each such shape,
 /// where it reaches, and where it is cut off.
+#[test]
+fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
+    use crate::clubhouse::journal::ruled_lines;
+    // The same page, scrolled 100 points: every line has moved up with the writing, and the
+    // window is still ruled from top to bottom.
+    let (top, bottom) = (40.0, 640.0);
+    for scrolled in [0.0, 13.0, 100.0, 1000.0] {
+        let content_top = top - scrolled;
+        let lines = ruled_lines(content_top, top, bottom);
+        assert!(!lines.is_empty());
+        let first = lines[0];
+        assert!(
+            first >= top && first < top + 29.0 + 74.0,
+            "{scrolled}: {first}"
+        );
+        for line in &lines {
+            let down_the_page = line - content_top;
+            let pitches = (down_the_page - 74.0) / 29.0;
+            assert!(
+                (pitches - pitches.round()).abs() < 1e-3,
+                "{scrolled}: {line}"
+            );
+            assert!(*line >= top && *line < bottom);
+        }
+        if scrolled >= 100.0 {
+            // Once the heading has scrolled away, the lines run from the top of the window.
+            assert!(first < top + 29.0, "{scrolled}: {first}");
+        }
+    }
+    // Pictures of pages scrolled part of the way down, for review.
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        for tab in [
+            SettingsTab::Colony,
+            SettingsTab::Journal,
+            SettingsTab::General,
+        ] {
+            let mut h = Harness::new(tab);
+            h.screen = egui::vec2(940.0, 720.0);
+            h.frame(Vec::new());
+            h.scroll_page(115.0);
+            h.picture()
+                .save(path.join(format!("{tab:?}-940-cream-100-scrolled.png")))
+                .unwrap();
+        }
+    }
+}
+
 fn cut_off(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
     shapes
         .iter()

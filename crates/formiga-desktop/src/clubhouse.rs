@@ -69,9 +69,10 @@ pub fn card_fill() -> Color32 {
     shade((255, 248, 228), (38, 46, 42))
 }
 
-/// Text that is present but not being asked for attention.
+/// Text that is present but not being asked for attention: quieter than `ink`, but still easily
+/// read, at better than 4.5:1 on the page, a card, or a chosen row, in either theme.
 pub fn muted() -> Color32 {
-    shade((110, 119, 108), (150, 162, 148))
+    shade((80, 90, 79), (184, 194, 180))
 }
 
 /// The notebook's outlines: plum by daylight, as the creatures are outlined, and sage after dark.
@@ -146,8 +147,9 @@ pub fn indent() -> Color32 {
     shade((74, 47, 31), (31, 22, 17))
 }
 
+/// Pressed in, but still a tab to read and turn to: about 6:1 on the leather it is pressed into.
 pub fn deboss() -> Color32 {
-    shade((138, 106, 82), (90, 70, 54))
+    shade((204, 175, 140), (170, 148, 120))
 }
 
 /// The tape holding a note to the cover.

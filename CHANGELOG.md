@@ -4,6 +4,16 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The notebook's ruled lines scroll with the page's writing. They were painted on the window, so
+  a scrolled page slid its words across lines that stayed put; now a line stays under whatever it
+  was under, and the lines run on from the top of the page once its heading has scrolled away.
+- Quieter text reads easily in both themes: secondary text is darker by daylight and lighter after
+  dark (better than 4.5:1 on the page, a card or a chosen row), small print is a step under body
+  text rather than two, and the tabs of pages already turned past are lettered at about 6:1 on
+  their leather instead of 2.5:1 by daylight and 2:1 after dark.
+
 ## [0.67.6] - 2026-10-12
 
 Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub

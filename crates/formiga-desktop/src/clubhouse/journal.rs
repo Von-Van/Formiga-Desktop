@@ -392,9 +392,12 @@ impl Spread {
     }
 }
 
-/// The distance between ruled lines, and how far down the page the first one is.
+/// The distance between ruled lines, and how far down the page the first one is, before the page
+/// is scrolled.
 const RULE_PITCH: f32 = 29.0;
 const FIRST_RULE: f32 = 98.0;
+/// How far down the page its writing begins, inside the page's top margin.
+pub(crate) const WRITING_TOP: f32 = 24.0;
 
 /// The leather all of the window is bound in, its stitching, and the brass at its corners.
 pub(crate) fn paint_cover(painter: &egui::Painter, window: Rect) {
@@ -805,30 +808,27 @@ pub(crate) fn paint_binding(painter: &egui::Painter, rect: Rect) {
     fills.paint(painter);
 }
 
-/// The page itself: paper with its ruling and margin line, a stepped edge, and the shade of the
-/// binding down its right side. `open_tab` is left out of the edge, since that tab is joined to
-/// the page.
+/// The page itself: paper with its margin line, a stepped edge, and the shade of the binding down
+/// its right side. `open_tab` is left out of the edge, since that tab is joined to the page.
+///
+/// The ruling is not painted here, since it scrolls with the writing on the page: what is returned
+/// is the place for it, under the margin line, which `paint_ruling` fills once the page knows how
+/// far it has been scrolled.
 pub(crate) fn paint_page(
     painter: &egui::Painter,
     page: Rect,
     spread: Spread,
-    footer_top: f32,
     open_tab: Rect,
-) {
+) -> egui::layers::ShapeIdx {
     let mut fills = Fills::default();
     fills.rect(
         page.translate(vec2(6.0, 6.0)),
         Color32::from_black_alpha(64),
     );
     fills.rect(page, paper());
-    let mut y = page.top() + FIRST_RULE;
-    while y < footer_top - 2.0 {
-        fills.rect(
-            Rect::from_min_max(pos2(page.left(), y), pos2(page.right(), y + 2.0)),
-            rule(),
-        );
-        y += RULE_PITCH;
-    }
+    fills.paint(painter);
+    let ruling = painter.add(egui::Shape::Noop);
+    let mut fills = Fills::default();
     fills.rect(
         Rect::from_min_size(
             pos2(page.left() + spread.margin, page.top()),
@@ -859,6 +859,44 @@ pub(crate) fn paint_page(
         fills.rect(Rect::from_min_max(pos2(l - 2.0, t), pos2(l, b)), line());
     }
     fills.paint(painter);
+    ruling
+}
+
+/// The page's ruling, in the place `paint_page` left for it, scrolled with the writing: the lines
+/// are where they are on the page's paper, not on the window, so a line stays under the words it
+/// was under however far the page is scrolled. `content_top` is where the top of the page's
+/// writing is now (above the window once it has scrolled), and the lines are drawn only between
+/// `top` and `bottom`, across the page from edge to edge.
+pub(crate) fn paint_ruling(
+    painter: &egui::Painter,
+    slot: egui::layers::ShapeIdx,
+    page: Rect,
+    content_top: f32,
+    (top, bottom): (f32, f32),
+) {
+    let mut fills = Fills::default();
+    for y in ruled_lines(content_top, top, bottom) {
+        fills.rect(
+            Rect::from_min_max(pos2(page.left(), y), pos2(page.right(), y + 2.0)),
+            rule(),
+        );
+    }
+    painter.set(slot, egui::Shape::mesh(fills.0));
+}
+
+/// Where the page's ruled lines are between `top` and `bottom`, for writing whose top is at
+/// `content_top`: the first a heading's height down the writing, then one every `RULE_PITCH`.
+pub(crate) fn ruled_lines(content_top: f32, top: f32, bottom: f32) -> Vec<f32> {
+    let first = content_top + FIRST_RULE - WRITING_TOP;
+    // The first line at or below `top`, counting whole pitches on from the first line there is.
+    let skipped = ((top - first) / RULE_PITCH).ceil().max(0.0);
+    let mut y = first + skipped * RULE_PITCH;
+    let mut lines = Vec::new();
+    while y < bottom - 2.0 {
+        lines.push(y);
+        y += RULE_PITCH;
+    }
+    lines
 }
 
 /// The open page's tab, drawn over the page's edge it is joined to.

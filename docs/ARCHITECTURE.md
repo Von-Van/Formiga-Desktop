@@ -1990,9 +1990,12 @@ window's width and the text scale: at 940 points and 100% text the cover is 196 
 712, with the margin line 50 points in; where the page would be narrower than 640 points the
 margins and the binding give up their room before the page's contents do. The tabs share the
 cover's height below the patch, so all nine always fit, and the conditions note is left off a
-cover too short for it. The page's ruling, margin line, stepped edge and shadow are painted with
-the window-wide background painter, since the edge and shadow fall just outside the page's panel,
-and the open page's tab is painted after the page, over the edge it is joined to. A page turn is
+cover too short for it. The page's margin line, stepped edge and shadow are painted with the
+window-wide background painter, since the edge and shadow fall just outside the page's panel, and
+the open page's tab is painted after the page, over the edge it is joined to. The ruling goes in a
+place `paint_page` leaves for it under the margin line, filled by `paint_ruling` once the page's
+scroll area has been laid out: the lines are spaced from the top of the page's writing, where the
+scroll has put it, so they move with the words and never sit still behind them. A page turn is
 `journal::turn_page`: noticing the page shown change, it draws a ruled leaf over the new page for
 0.76 seconds, shrinking toward the binding going forward and toward the cover going back, with a
 shadow beside its free edge, and requests repaints only while it turns; under Reduce motion it
