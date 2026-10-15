@@ -16,6 +16,7 @@ pub(crate) mod home;
 pub(crate) mod journal;
 pub(crate) mod journal_page;
 pub(crate) mod recovery;
+pub(crate) mod sections;
 pub(crate) mod shell;
 pub(crate) mod studio;
 pub(crate) mod today;

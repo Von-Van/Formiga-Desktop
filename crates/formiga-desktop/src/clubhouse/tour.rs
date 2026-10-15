@@ -194,8 +194,8 @@ const STEPS: [Step; 19] = [
         TourMark::Quiet,
         "At your own pace",
         "Let everyone settle at home for a quiet while, keep a Work and a Relax routine and \
-         switch between them on a schedule, and choose this window's look and text size. Further \
-         down: what companions may do on your desktop, and how big they are.",
+         switch between them on a schedule. Below that are what companions may do on your desktop \
+         and how big they are, your routines, and this window's look and text size.",
     ),
     step(
         SettingsTab::About,
@@ -262,6 +262,11 @@ impl TourState {
     /// The mark the step showing points at, if it points at one.
     fn mark(&self) -> Option<TourMark> {
         self.step.and_then(|step| STEPS[step].mark)
+    }
+
+    /// What the tour's step is pointing at, while it is pointing at something.
+    pub(crate) fn pointing_at(&self) -> Option<TourMark> {
+        self.mark()
     }
 
     /// How many steps the tour has.

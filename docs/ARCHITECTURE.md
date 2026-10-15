@@ -2002,6 +2002,21 @@ shadow beside its free edge, and requests repaints only while it turns; under Re
 never starts. Every box with a stepped edge — cards, tally boxes, tabs, the patch, the notes — is
 a fill and four edge rectangles that leave the corner pixels out; egui's own widgets are drawn
 square with a two-pixel outline.
+A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
+Your colony shows the companion, its traits and its tally, then a line for each of its notes, its
+name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
+over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
+picked out in it above lines for the ground's gardens, spots and ornaments, where the village
+lives, pictures, and the belongings in the yards; Preferences keeps a quiet moment above lines for
+the desktop, routines and this notebook; About keeps the colophon above backups, updates, privacy
+and where things are kept. Each line names its section and says how it stands. A section opens in
+the list's place under a way back, which Escape also takes while no text field has the keyboard;
+the list comes back as it was scrolled, with the section just read barred down its edge, since the
+page's scroll area is keyed by the page and its open section. Which section is open is kept in the
+shell for as long as the window is open and in nothing saved, and a step of the tour that points at
+something in a section opens it. `no_page_is_drawn_past_the_edge_of_its_window` draws every section
+of every page open as well as each page's list.
+
 Every colour the pages draw reads from one palette so a single switch moves the whole window
 between cream and charcoal, and keyboard focus is drawn in the accent rather than the platform's
 fainter default. The existing egui font atlas and window/GPU resources are separate. Artwork is regenerated

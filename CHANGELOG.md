@@ -4,6 +4,19 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- The notebook's longest pages open on what matters most and a short list of the rest. Your
+  colony shows the companion, its traits and its tally, then a line for each of its notes, name,
+  wardrobe, sharing, keeping, how everyone gets along, and the collection; Home & keepsakes keeps
+  the village at the top; Preferences keeps a quiet moment; About keeps the colophon. Each line
+  says how its section stands ("Wearing a paper crown", "Formiga 0.67.7 is available"), and
+  choosing one opens it alone under a way back to the page, which Escape takes too. Coming back
+  finds the page where it was scrolled, with the section just read marked, and each section keeps
+  its own place. The tour opens whichever section it is pointing at.
+- The tiles for putting gardens, spots and ornaments down grow with the notebook's text, so a
+  name in large text still fits under its picture instead of running into it.
+
 ### Fixed
 
 - The notebook's ruled lines scroll with the page's writing. They were painted on the window, so
