@@ -10,6 +10,7 @@ use time::{Duration, OffsetDateTime, UtcOffset};
 mod antics;
 mod arrivals;
 mod attention;
+mod battle;
 mod beats;
 mod bonds;
 mod bubbles;
@@ -330,6 +331,7 @@ impl World {
             finds_today: FindsToday::default(),
             day_book: DayBook::default(),
             trips: TripLog::default(),
+            battle: crate::BattleLog::default(),
         };
         let mut world = Self::from_save(save);
         world.generator = generator;

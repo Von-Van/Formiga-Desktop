@@ -196,6 +196,9 @@ const STEPS: &[Step] = &[
     // 29: a form sculpted in Formiga Farm, kept beside a companion's recipe. An older colony has
     // none.
     Step::adds_only(28),
+    // 30: the colony's record in Formiga Battle, the keepsakes its matches earned, and the journal
+    // moment for a match. An older colony has never played.
+    Step::adds_only(29),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

@@ -465,6 +465,10 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
         },
         // Nor anything Formiga Farm sent: only that a companion has a new look.
         JournalMoment::NewLook => format!("{name} has a new look, shaped in Formiga Farm"),
+        // Formiga Battle's own line for a match, as it wrote it: the team and the match are
+        // Battle's to name. It is one line of plain text, checked when it came and again whenever
+        // the colony is read, and it reads as every other moment does, without a full stop.
+        JournalMoment::Battle(ref line) => line.trim_end_matches('.').to_owned(),
     }
 }
 

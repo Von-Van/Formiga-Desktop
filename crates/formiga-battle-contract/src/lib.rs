@@ -20,6 +20,7 @@
 //! |---|---|---|
 //! | [`SNAPSHOT_FILE`] | Desktop | Before Battle is started. Never changed afterwards |
 //! | [`ACK_FILE`] | Battle | Once it has read the snapshot, saying whether it can open it |
+//! | [`RESULT_FILE`] | Battle | After every match, whole: every match the session played and what each earned. Desktop applies it when Battle closes |
 //!
 //! Battle is started with two arguments, [`LAUNCH_ARGUMENT`] and the session directory's
 //! absolute path, and with nothing else. Every file is written whole to a temporary name and
@@ -28,6 +29,7 @@
 //! | Version | What it added |
 //! |---|---|
 //! | 1 | The roster snapshot and the acknowledgement |
+//! | 2 | The Battle record in the snapshot, and the result Battle answers with ([`result`]) |
 
 use formiga_expansion_rulebook::{self as rulebook, Kind, sanitize_text};
 pub use formiga_expansion_rulebook::{AckRefusal, SessionId};
@@ -37,10 +39,16 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use time::OffsetDateTime;
 
+pub mod result;
 pub mod sample;
 
+pub use result::{
+    BattleRecord, BattleResult, CupWins, MatchResult, MatchSummary, Mode, NotebookAddition,
+    NotebookPage, RESULT_FILE, RESULT_FORMAT, Rewards, Showing,
+};
+
 /// The version of every Battle document this build writes, and the newest it reads.
-pub const BATTLE_FORMAT_VERSION: u32 = 1;
+pub const BATTLE_FORMAT_VERSION: u32 = 2;
 pub const SNAPSHOT_FORMAT: &str = "formiga.battle.snapshot";
 pub const SNAPSHOT_FILE: &str = "snapshot.json";
 pub const ACK_FORMAT: &str = "formiga.battle.ack";
@@ -156,6 +164,10 @@ pub struct BattleSnapshot {
     pub relationships: Vec<TravelRelationship>,
     #[serde(default)]
     pub presentation: Presentation,
+    /// What Desktop keeps of Battle for this colony. Since version 2; absent before, and for a
+    /// colony that has never played.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record: Option<BattleRecord>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -205,6 +217,7 @@ pub fn project_roster(
         contenders,
         relationships: travel.relationships,
         presentation: travel.presentation,
+        record: None,
     };
     snapshot.validate()?;
     Ok(snapshot)
@@ -270,7 +283,16 @@ impl BattleSnapshot {
         {
             return Err(invalid("a bond names someone not on the roster"));
         }
+        if let Some(record) = &self.record {
+            record.validate()?;
+        }
         Ok(())
+    }
+
+    /// The same snapshot, carrying what Desktop keeps of Battle for the colony.
+    pub fn with_record(mut self, record: BattleRecord) -> Self {
+        self.record = Some(record);
+        self
     }
 
     /// The snapshot's bytes, once validated. The same snapshot always gives the same bytes.
@@ -356,7 +378,7 @@ impl BattleAck {
 /// into the directory for Desktop to read.
 #[derive(Debug)]
 pub enum Opened {
-    Roster(BattleSnapshot),
+    Roster(Box<BattleSnapshot>),
     Refused(AckRefusal, BattleError),
 }
 
@@ -382,7 +404,7 @@ pub fn open_session(directory: &Path, battle_version: &str) -> Result<Opened, Ba
     let (ack, opened) = match read {
         Ok(snapshot) => (
             BattleAck::new(snapshot.session_id.clone(), battle_version, None),
-            Opened::Roster(snapshot),
+            Opened::Roster(Box::new(snapshot)),
         ),
         Err(error) => {
             let refusal = match error {
@@ -446,7 +468,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(SNAPSHOT_FILE), snapshot.encode().unwrap()).unwrap();
         let opened = open_session(&dir, "0.1.0").unwrap();
-        assert!(matches!(opened, Opened::Roster(ref read) if *read == snapshot));
+        assert!(matches!(opened, Opened::Roster(ref read) if **read == snapshot));
         let ack = BattleAck::decode(&std::fs::read(dir.join(ACK_FILE)).unwrap()).unwrap();
         assert!(ack.accepted);
         assert_eq!(ack.session_id, snapshot.session_id);
@@ -500,6 +522,35 @@ mod tests {
         };
         let leanings = ContenderLeanings::from(&tendencies);
         assert_eq!((leanings.play, leanings.routine), (0, 100));
+    }
+
+    #[test]
+    fn a_result_applies_to_the_record_once_and_only_once() {
+        let mut record = sample::record();
+        let result = sample::result();
+        let points = record.circuit_points;
+        for m in &result.matches {
+            assert!(record.apply(m));
+        }
+        assert_eq!(record.circuit_points, points + 15);
+        assert_eq!(record.cup_wins("cup.backyard"), 2);
+        assert_eq!(record.history.len(), 2);
+        let again = record.clone();
+        for m in &result.matches {
+            assert!(!record.apply(m), "a match already applied changes nothing");
+        }
+        assert_eq!(record, again);
+        assert!(record.validate().is_ok());
+    }
+
+    #[test]
+    fn a_friend_match_cannot_earn_keepsakes_nor_an_ai_match_points() {
+        let mut result = sample::result();
+        result.matches[0].rewards.keepsakes = vec!["battle.trophy".to_owned()];
+        assert!(result.validate().is_err());
+        let mut result = sample::result();
+        result.matches[1].rewards.circuit_points = 5;
+        assert!(result.validate().is_err());
     }
 
     #[test]

@@ -1,0 +1,61 @@
+{
+  "format": "formiga.battle.result",
+  "version": 2,
+  "min_reader_version": 2,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "snapshot_sha256": "0b83e2400e191caf07432a2926b3c4fdc100b404d644832fcc6df9c320aa729a",
+  "battle_version": "0.1.0",
+  "matches": [
+    {
+      "id": "0123456789abcdef0123456789abcdef",
+      "mode": "friend",
+      "rewards": {
+        "circuit_points": 15,
+        "participation": [
+          9757705922971574767,
+          11947463641044884705,
+          15696194872227323902
+        ],
+        "notebook": [
+          {
+            "creature_id": 9757705922971574767,
+            "won": true,
+            "showing": {
+              "steps": 12,
+              "signs": {
+                "hung_back": 2
+              }
+            },
+            "moments": [
+              "Was holding the beacon when it lit"
+            ]
+          }
+        ],
+        "history": {
+          "finished_at_utc": "2026-10-02T09:30:00Z",
+          "mode": "friend",
+          "won": true,
+          "ended_by": "capture",
+          "turns": 8,
+          "team": [
+            9757705922971574767,
+            11947463641044884705,
+            15696194872227323902
+          ],
+          "opponent": "Sam"
+        }
+      }
+    },
+    {
+      "id": "fedcba9876543210fedcba9876543210",
+      "mode": "ai",
+      "rewards": {
+        "circuit_points": 0,
+        "cup_win": "cup.backyard",
+        "journal": [
+          "Mochi, Biscuit and Fig won a Backyard Cup match."
+        ]
+      }
+    }
+  ]
+}

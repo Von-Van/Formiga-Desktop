@@ -1,0 +1,11 @@
+{
+  "format": "formiga.battle.ack",
+  "version": 2,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "battle_version": "0.1.0",
+  "accepted": false,
+  "refusal": {
+    "kind": "invalid"
+  }
+}
