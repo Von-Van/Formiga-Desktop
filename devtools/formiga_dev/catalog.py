@@ -6,7 +6,7 @@ identifier a save keeps, how it is come by, and whether its name fits where it i
 here re-reads the game's rules from the source.
 
 What the source is used for is finding things: the line an item is defined on, the line that
-names it, the function that draws it, and every place in Desktop, Hill, Home and Farm that
+names it, the function that draws it, and every place in Desktop, Hill, Home, Farm and Battle that
 mentions it.
 """
 
@@ -139,7 +139,7 @@ class Hit:
 
 
 class Source:
-    """The text of Desktop, Hill, Home and Farm (whichever are here), read once."""
+    """The text of Desktop and the expansions beside it (whichever are here), read once."""
 
     def __init__(self) -> None:
         self.roots: Dict[str, Path] = {"desktop": DESKTOP}
@@ -287,8 +287,9 @@ def defined_at(source: Source, kind: dict, item: dict) -> Dict[str, Optional[int
 
 
 def uses(source: Source, kind: dict, item: dict) -> List[Hit]:
-    """Every place in Desktop, Hill, Home and Farm that mentions the item by its Rust name, by
-    the name a save or a trip file keeps, or (for finds) by its number where a find is expected."""
+    """Every place in Desktop, Hill, Home, Farm and Battle that mentions the item by its Rust name,
+    by the name a save or a trip file keeps, or (for finds) by its number where a find is
+    expected."""
     patterns = []
     variant = variant_of(kind, item)
     type_name = kind["type"].split()[0]

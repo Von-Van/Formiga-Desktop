@@ -10,13 +10,15 @@ failed or skipped with its reason:
   fixtures    the toolkit's fixed colonies: nothing `violations` names, a save that reads back
               unchanged, ten seconds of running (`formiga-tools dev check-fixtures`)
   content     `formiga audit content`: names unique and fitting, everything reachable, and Hill,
-              Home and Farm naming only souvenirs and finds Desktop has (warnings do not fail it)
+              Home, Farm and Battle naming only souvenirs and finds Desktop has (warnings do not
+              fail it)
   tests       cargo test on every crate
   soak        a short run of the nightly soak: randomized colonies living a simulated day,
               written and read back, their files damaged and repaired
-  hill, home, farm
+  hill, home, farm, battle
               (with --expansions) the expansion's own tests, built on this checkout's Desktop
-              crates instead of the release they are tied to
+              crates instead of the release they are tied to. Battle has no CI, so this is the
+              only place its tests meet a Desktop change.
 
 --quick runs format, lint and fixtures: seconds once things are built.
 """
@@ -182,6 +184,8 @@ def step_expansion(key: str) -> Step:
         problems = [Problem(key, _last_error(done.output), system=expansion.package)]
     passed = sum(_count(line, "passed") for line in done.output.splitlines())
     tied = f"tied to Desktop {', '.join(pins)}" if pins else "tied to no Desktop tag"
+    if not expansion.has_ci():
+        tied += "; no CI, checked only here"
     summary = (f"{passed} tests pass on this Desktop ({desktop_version()}); {tied}"
                if done.code == 0 else f"fails on this Desktop ({desktop_version()}); {tied}")
     return Step(key, "failed" if done.code else "passed", summary, done.seconds, problems)

@@ -1,15 +1,15 @@
 """`formiga uses [KIND] ITEM`: can I rename or remove this, and what would it take?
 
-Finds every place Desktop, Hill, Home and Farm use an item (as `formiga inspect` does), sorts
-them by what they mean for a change, and answers three questions:
+Finds every place Desktop, Hill, Home, Farm and Battle use an item (as `formiga inspect` does),
+sorts them by what they mean for a change, and answers three questions:
 
   name        changing the name players see
   rename      renaming it in the code, which saves and the expansions may spell
   remove      removing it, which colonies that hold it, the expansions and the code all feel
 
 The places are grouped as: saves (where a colony file keeps it, and data files holding it), the
-expansions (Hill, Home and Farm), the trip, Home and Farm contracts, the save upgrades, Desktop's
-code, the review tools, tests, and other places that spell its name out.
+expansions (Hill, Home, Farm and Battle), the trip, Home and Farm contracts, the save upgrades,
+Desktop's code, the review tools, tests, and other places that spell its name out.
 
 Nothing is changed: it only reads.
 """
@@ -28,7 +28,7 @@ from .workspace import EXPANSIONS, find_expansion
 # The groups, in the order they are shown, and what each holds.
 GROUPS = {
     "data": "data files holding it (saves, fixtures, story packages)",
-    "expansions": "Hill, Home and Farm",
+    "expansions": "Hill, Home, Farm and Battle",
     "contracts": "the trip, Home and Farm contracts in Desktop",
     "upgrades": "Desktop's save upgrades",
     "code": "Desktop's code",

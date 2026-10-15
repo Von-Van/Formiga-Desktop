@@ -1,11 +1,12 @@
 """Where Formiga lives on this machine, and how to run cargo against it.
 
-Desktop is the repository this folder is in. Hill, Home and Farm are found beside it, under
-either spelling a checkout gets ("Formiga-Hill" from git, "Formiga Hill" from GitHub Desktop), or
-wherever FORMIGA_HILL_REPO / FORMIGA_HOME_REPO / FORMIGA_FARM_REPO point. When this folder is a git worktree
-(under .claude/worktrees/, say), they are also looked for beside the main checkout it belongs to.
+Desktop is the repository this folder is in. Hill, Home, Farm and Battle are found beside it,
+under either spelling a checkout gets ("Formiga-Hill" from git, "Formiga Hill" from GitHub
+Desktop), or wherever FORMIGA_HILL_REPO / FORMIGA_HOME_REPO / FORMIGA_FARM_REPO /
+FORMIGA_BATTLE_REPO point. When this folder is a git worktree (under .claude/worktrees/, say), they
+are also looked for beside the main checkout it belongs to.
 
-Hill, Home and Farm take Desktop's crates from a release tag. To try them against the Desktop in this
+The expansions take Desktop's crates from a release tag. To try them against the Desktop in this
 checkout, cargo is told to patch those crates to local paths for one run (`patched`); that rewrites
 the expansion's Cargo.lock, so `lockfile_kept` puts the file back afterwards, and the patched build
 gets a target folder of its own under .dev/ so the expansion's usual build is not thrown away.
@@ -46,10 +47,10 @@ def desktop_version() -> str:
 class Expansion:
     """An expansion app that builds on Desktop's crates."""
 
-    key: str  # "hill" | "home" | "farm"
+    key: str  # "hill" | "home" | "farm" | "battle"
     title: str  # "Formiga Hill"
     package: str  # its cargo package and binary
-    data_env: str  # the variable that moves its data folder
+    data_env: Optional[str]  # the variable that moves its data folder; Battle keeps none yet
     path: Optional[Path] = None
 
     def pins(self) -> Dict[str, str]:
@@ -66,11 +67,20 @@ class Expansion:
             pins[match.group(1)] = match.group(2)
         return pins
 
+    def has_ci(self) -> bool:
+        """Whether its repository runs its checks on GitHub Actions. Battle's does not, by choice:
+        the toolkit's `validate --expansions` is where its tests meet Desktop."""
+        if not self.path:
+            return False
+        workflows = self.path / ".github" / "workflows"
+        return any(workflows.glob("*.yml")) or any(workflows.glob("*.yaml"))
+
 
 EXPANSIONS = {
     "hill": Expansion("hill", "Formiga Hill", "formiga-hill", "FORMIGA_HILL_DATA_DIR"),
     "home": Expansion("home", "Formiga Home", "formiga-home", "FORMIGA_HOME_DATA_DIR"),
     "farm": Expansion("farm", "Formiga Farm", "formiga-farm", "FORMIGA_FARM_DATA_DIR"),
+    "battle": Expansion("battle", "Formiga Battle", "formiga-battle", None),
 }
 
 
