@@ -4,6 +4,14 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Household version 10: a home may keep its household's projects, each with the stages finished
+  and when, and a few counts of what has happened at home for them to count towards. Formiga Home
+  makes and reads them; Desktop keeps them in `home/state.json` with the rest of the home, and
+  keeps them as they were when a Home that predates them answers a visit. Nothing in the colony
+  file changes.
+
 ## [0.67.6] - 2026-10-12
 
 Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub

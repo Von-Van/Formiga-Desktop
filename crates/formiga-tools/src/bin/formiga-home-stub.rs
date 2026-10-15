@@ -256,6 +256,8 @@ fn arrange(snapshot: &HomeSnapshot, homes: &mut HomeState) {
         mementos: Vec::new(),
         journal: Vec::new(),
         stays_out: Vec::new(),
+        projects: Vec::new(),
+        tallies: Vec::new(),
     };
     homes.households.retain(|home| home.keeper != keeper);
     homes.households.push(home);

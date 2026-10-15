@@ -2695,6 +2695,9 @@ other house, everything the colony can show, and what Desktop offers to take bac
 no field: its residents are written in travel version 4, and the Fairground's souvenirs may be
 shown. Version 8 adds `indoors.json`, the `indoors` capability that offers to follow it, and a
 home's `stays_out`: the residents its owner keeps out on the desktop when the house opens.
+Version 10 adds a home's `projects` and `tallies`: each household project Home has shown the owner
+and every stage of it finished, and the counts of things at home they count towards. Desktop keeps
+them with the home and never reads them, and keeps them as they were when an older Home answers.
 `project_household` takes the capabilities Desktop offers, and Desktop offers `visit_record`, and
 `indoors` to a Home that reads version 8: time together, moments for the journal, going next door
 and moving in all stay with Home until Desktop applies them.
