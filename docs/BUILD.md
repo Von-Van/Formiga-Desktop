@@ -126,7 +126,33 @@ The design contract keeps fixtures for every version in
 `FORMIGA_FARM_BLESS=1 cargo test -p formiga-farm-contract --test golden` writes a new version's
 files beside the others, never over one that has shipped.
 
-The Windows half of finding Hill, Home and Farm, which reads the registry, can be type-checked from a
+## Trying a match in Formiga Battle
+
+Desktop's side of a match can be tried without Formiga Battle too. `formiga-battle-stub` stands
+in for Battle: it reads the roster it is handed exactly as Battle does, says it can open it, prints
+who is on it, waits, and exits, all without a window.
+
+```sh
+cargo build -p formiga-tools --bin formiga-battle-stub
+FORMIGA_DATA_DIR=/tmp/formiga-dev \
+FORMIGA_BATTLE_PATH="$PWD/target/debug/formiga-battle-stub" \
+FORMIGA_BATTLE_SESSION_AFTER=5 \
+cargo run -p formiga-desktop
+```
+
+`FORMIGA_BATTLE_PATH` names a Battle executable (or, on macOS, an `.app`), which may be a real
+build of Formiga Battle, and makes the tray offer it. `FORMIGA_BATTLE_SESSION_AFTER` opens a match
+that many seconds after launch, once, as if the tray had been used; it is ignored unless
+`FORMIGA_BATTLE_PATH` is set too. `FORMIGA_BATTLE_STUB` takes a comma-separated list:
+`stay=SECONDS`, `refuse=version|busy|invalid` and `crash`. A session's files are under `battle/` in
+the scratch data directory while it is open.
+
+The roster contract keeps fixtures for every version in
+`crates/formiga-battle-contract/tests/fixtures`, and
+`FORMIGA_BATTLE_BLESS=1 cargo test -p formiga-battle-contract --test golden` writes a new version's
+files beside the others, never over one that has shipped.
+
+The Windows half of finding Hill, Home, Farm and Battle, which reads the registry, can be type-checked from a
 Mac without the desktop crate's `ring` dependency by compiling `platform/companion_app.rs` on its
 own, as a `platform` module, against `formiga-expansion-rulebook` and the `windows` crate for
 `x86_64-pc-windows-msvc`.

@@ -36,9 +36,9 @@ one feature at a time, and assumes you know where things are.
 ### The crates and where to start reading
 
 Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
-depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract` and
-`formiga-farm-contract` on those and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on
-the lot. Nothing depends on the desktop crate.
+depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract`,
+`formiga-farm-contract` and `formiga-battle-contract` on those and `formiga-travel`; and
+`formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
@@ -50,6 +50,7 @@ the lot. Nothing depends on the desktop crate.
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | `formiga-farm-contract` | `lib.rs`: the design contract with Formiga Farm | `snapshot.rs` and `replies.rs` for the documents; `projection.rs` for the one creature a session opens on; `accept.rs` for what Desktop keeps and how; [The Farm contract](#the-farm-contract) |
+| `formiga-battle-contract` | `lib.rs`: the roster contract with Formiga Battle | `project_roster` for the colony as Battle reads it; `open_session` for how Battle answers; [Matches in Formiga Battle](#matches-in-formiga-battle) |
 
 ### How the app starts
 
@@ -2469,8 +2470,8 @@ window only hides it. Preferences offers "Take the tour" to start it again from 
 Formiga Hill and Formiga Home are visited the same way: Desktop writes a few documents into a
 fresh session directory, starts the app with that directory's path, and reads back what the app
 answers. What a visit carries and what may come back is each app's own contract
-(`formiga-travel`, `formiga-home-contract`, and `formiga-farm-contract` for Formiga Farm's
-sessions). How it is carried lives once, in `formiga-expansion-rulebook`:
+(`formiga-travel`, `formiga-home-contract`, `formiga-farm-contract` for Formiga Farm's
+sessions, and `formiga-battle-contract` for Formiga Battle's). How it is carried lives once, in `formiga-expansion-rulebook`:
 
 | Piece | What it guarantees |
 |---|---|
@@ -2889,3 +2890,54 @@ out changes nothing: every companion keeps the look it has.
 Without Farm installed the addition is one LaunchServices or registry lookup every ten minutes.
 With it open, one small file is read four times a second, and a sprite is baked again only when a
 look is kept.
+
+## Matches in Formiga Battle
+
+Formiga Battle is a separate app for playing matches with the colony's companions. It reads a copy
+of the colony and changes nothing in it, so nothing about Battle is saved.
+
+### The Battle contract
+
+`formiga-battle-contract` is the agreement with Formiga Battle, kept in Desktop's workspace as the
+other contracts are. It was drafted beside Battle and adopted as Battle version 1, without Battle's
+own rules: how a contender becomes a match profile stays Battle's, so the contract depends only on
+Desktop's crates. Two documents pass through a session's directory: Desktop's `snapshot.json`
+(`BattleSnapshot`: every companion as the very `Traveler` a trip to Formiga Hill carries, with its
+learned tendencies beside it as `leanings`, whole numbers from -100 to 100; the bonds between them
+in the travel contract's bands; the colony's one-way digest; and the owner's presentation), and
+Battle's `ack.json`, which accepts the roster or says why not. `project_roster` builds the snapshot
+from a save through `formiga_travel::project_colony`, so a companion reads the same in Battle as in
+Hill. `open_session` is how Battle reads a session and answers: a directory not named after its
+snapshot's session is refused, and so is a snapshot from a newer Desktop, for its version.
+
+The sample roster in `sample` is Desktop's own sample colony having lived a little, and Battle
+rehearses with it. `tests/fixtures` keeps every version's snapshot and acknowledgements, and
+`FORMIGA_BATTLE_BLESS=1 cargo test -p formiga-battle-contract --test golden` writes a new
+version's files beside the others.
+
+### A session
+
+Desktop never needs Battle: without it installed nothing below runs and nothing in the tray or the
+notebook mentions it. With it installed, the tray offers "Play Formiga Battle…" after the other
+companion apps' items.
+
+| State | Desktop |
+|---|---|
+| Idle | Lives as always. Looks for Battle when it starts and at most every ten minutes, from a tick it was taking anyway |
+| Open | Battle has the roster, and everyone goes on living on the desktop: nobody is lent to Battle (`Holding::Nobody` in `app/visits.rs`), so no trip or visit waits for a match, and no match waits for a trip or visit. The tray says Battle is open |
+| Closing | Battle has gone: a refusal is said in Battle's own words, and the files are closed |
+
+The states are `battle::SessionState`, runtime only, and only one session is ever open. A session's
+files are under `battle/` in the data directory (`battle/session.rs`, kept by `expansion::files`):
+a fresh `battle/<session>/` with the snapshot, where Battle answers, and `battle/session.json`, the
+marker that says a session is open, holding nothing but the session. If Desktop stops while Battle
+is open, Battle keeps the roster it read, and the next start clears the files.
+
+`formiga-battle-stub` stands in for Battle (see `docs/BUILD.md`), reading and answering through the
+contract's own `open_session`, and `formiga-tools`'s `battle_session` tests run whole sessions
+against it.
+
+### Cost
+
+Without Battle installed the addition is one LaunchServices or registry lookup every ten minutes.
+Opening a match writes one file; nothing is read while it is open.

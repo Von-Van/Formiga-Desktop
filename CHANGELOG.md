@@ -4,6 +4,17 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- `formiga-battle-contract`, the roster contract with Formiga Battle, adopted from Battle as
+  version 1 with golden fixtures: every companion as a trip to Formiga Hill carries it, with the
+  leanings it has learned, and Battle's answer. Battle's own rules stay Battle's.
+- With Formiga Battle installed, the tray offers "Play Formiga Battle…": Battle is handed a copy of
+  the colony's roster and everyone goes on living on the desktop, so a match never waits for a
+  trip or a visit, nor they for it. A refusal is said in Battle's own words. Nothing comes back
+  from a match yet, so the save is unchanged.
+- `formiga-battle-stub`, a stand-in for Battle, and end-to-end tests of a session against it.
+
 ## [0.67.6] - 2026-10-12
 
 Released alongside the first preview of Formiga Farm (0.1.0), which is offered from its own GitHub
