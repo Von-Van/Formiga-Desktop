@@ -13,6 +13,8 @@ pub(crate) struct Shell {
     trinket_atlas: Option<([u8; 32], TextureHandle)>,
     /// Where the tour has got to, while it is being taken.
     pub(crate) tour: tour::TourState,
+    /// Which section of each page is open, and which was read last.
+    pub(crate) sections: sections::Sections,
     /// A line of feedback for the footer, and when it was given.
     pub feedback: Option<(String, std::time::Instant)>,
 }

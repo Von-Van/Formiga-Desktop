@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1276,7 +1276,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-expansion-rulebook"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-farm-contract"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "formiga-core",
  "formiga-expansion-rulebook",
@@ -1356,7 +1356,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-home-contract"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "formiga-art",
  "formiga-core",
@@ -1371,7 +1371,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "anyhow",
  "epaint",
@@ -1393,7 +1393,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.67.6"
+version = "0.67.7"
 dependencies = [
  "formiga-art",
  "formiga-core",

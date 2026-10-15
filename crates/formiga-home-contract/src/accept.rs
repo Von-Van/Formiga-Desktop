@@ -11,6 +11,9 @@ use crate::state::{HomeState, HouseholdHome, Liked, Spot};
 use crate::{HomeDocument, TravelerId};
 use std::collections::BTreeSet;
 
+/// The first Home version that keeps a household's projects.
+const PROJECTS_SINCE: u32 = 10;
+
 /// The homes as Desktop will keep them, and the kinds of what it set aside, for its log.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Accepted {
@@ -101,7 +104,15 @@ pub fn accept_result(
     }
 
     let mut state = previous.settled_for(snapshot);
-    let home = proposed_home(snapshot, keeper, proposed, &mut set_aside);
+    let mut home = proposed_home(snapshot, keeper, proposed, &mut set_aside);
+    // A Home older than version 10 knows nothing of projects: what the household has made of
+    // its home stays as it was.
+    if result.version < PROJECTS_SINCE
+        && let Some(before) = previous.household(keeper)
+    {
+        home.projects = before.projects.clone();
+        home.tallies = before.tallies.clone();
+    }
     for item in home.shown() {
         for other in &mut state.households {
             if other.keeper != keeper {

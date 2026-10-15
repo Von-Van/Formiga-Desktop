@@ -201,6 +201,38 @@ pub struct HouseholdHome {
     /// leaves them out until Home says they are in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stays_out: Vec<TravelerId>,
+    /// The household's projects, since version 10: each one the owner has been shown, and every
+    /// stage of it finished. Home's alone to make and read; Desktop only keeps them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub projects: Vec<Project>,
+    /// How often things worth counting have happened at home, since version 10, for its
+    /// projects to count towards. Only ever counted up.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tallies: Vec<Tally>,
+}
+
+/// One of a household's projects, by Home's catalogue identifier, and how far it has come. A
+/// project Home has shown the owner is kept with no stage finished, so it is only new once.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Project {
+    pub project: CatalogId,
+    /// Each stage finished, in order. None is ever let go: they are the house's history.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<StageDone>,
+}
+
+/// A stage of a project, finished, and when.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageDone {
+    #[serde(with = "time::serde::rfc3339")]
+    pub at_utc: OffsetDateTime,
+}
+
+/// How many times something has happened at home, by Home's catalogue identifier for it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tally {
+    pub what: CatalogId,
+    pub count: u32,
 }
 
 /// What a keepsake made at home is: a fixed catalogue, so whoever reads one can name it.
@@ -269,6 +301,9 @@ pub enum HomeMoment {
     StayedOver { visitor: TravelerId },
     /// The owner asked a friend to come and live here, and it would like to. Since version 6.
     AskedToMoveIn { visitor: TravelerId },
+    /// A stage of one of the household's projects was finished, counting from 1. Since
+    /// version 10.
+    Project { project: CatalogId, stage: u8 },
     /// A moment a newer Home records.
     #[serde(other)]
     Unknown,
@@ -472,6 +507,20 @@ impl HouseholdHome {
         if self.mementos.len() > MAX_MEMENTOS || self.journal.len() > MAX_JOURNAL {
             return Err(HomeError::invalid("a home with too much remembered in it"));
         }
+        let mut projects = BTreeSet::new();
+        if self.projects.len() > MAX_PROJECTS
+            || self.projects.iter().any(|project| {
+                !projects.insert(&project.project) || project.stages.len() > MAX_STAGES
+            })
+        {
+            return Err(HomeError::invalid("a project that does not add up"));
+        }
+        let mut tallies = BTreeSet::new();
+        if self.tallies.len() > MAX_TALLIES
+            || !self.tallies.iter().all(|tally| tallies.insert(&tally.what))
+        {
+            return Err(HomeError::invalid("a tally that does not add up"));
+        }
         let out: BTreeSet<_> = self.stays_out.iter().collect();
         if self.stays_out.len() > MAX_RESIDENTS || out.len() != self.stays_out.len() {
             return Err(HomeError::invalid("a home that keeps too many out"));
@@ -656,6 +705,8 @@ mod tests {
             mementos: Vec::new(),
             journal: Vec::new(),
             stays_out: Vec::new(),
+            projects: Vec::new(),
+            tallies: Vec::new(),
         });
         state
     }
@@ -678,6 +729,8 @@ mod tests {
             mementos: Vec::new(),
             journal: Vec::new(),
             stays_out: Vec::new(),
+            projects: Vec::new(),
+            tallies: Vec::new(),
         });
         assert!(twice.validate().is_err());
         twice.households[1].take_down(&DisplayId::find(3));
@@ -871,5 +924,92 @@ mod tests {
         for state in [from_elsewhere, doubled, crowded, overdrawn] {
             assert!(state.validate().is_err(), "{state:?} was accepted");
         }
+    }
+
+    #[test]
+    fn a_household_s_projects_and_tallies_are_bounded() {
+        let mut house = state();
+        let home = &mut house.households[0];
+        home.projects.push(Project {
+            project: CatalogId::known("project.hearth"),
+            stages: vec![StageDone {
+                at_utc: time::macros::datetime!(2026-10-05 12:00 UTC),
+            }],
+        });
+        home.tallies.push(Tally {
+            what: CatalogId::known("tally.snack"),
+            count: 3,
+        });
+        home.note(
+            time::macros::datetime!(2026-10-05 12:00 UTC),
+            HomeMoment::Project {
+                project: CatalogId::known("project.hearth"),
+                stage: 1,
+            },
+        );
+        house.validate().unwrap();
+        let bytes = encode(&house).unwrap();
+        assert_eq!(decode::<HomeState>(&bytes).unwrap(), house);
+
+        let mut twice = house.clone();
+        let copy = twice.households[0].projects[0].clone();
+        twice.households[0].projects.push(copy);
+        let mut long = house.clone();
+        let stage = long.households[0].projects[0].stages[0].clone();
+        long.households[0].projects[0].stages = vec![stage; MAX_STAGES + 1];
+        let mut counted_twice = house.clone();
+        let tally = counted_twice.households[0].tallies[0].clone();
+        counted_twice.households[0].tallies.push(tally);
+        for state in [twice, long, counted_twice] {
+            assert!(state.validate().is_err(), "{state:?} was accepted");
+        }
+    }
+
+    /// Projects and tallies add little to a state: twelve households with every one each may
+    /// hold, every identifier and time as long as it may be, are under 96 KiB of it, and a few
+    /// KiB as Home names them.
+    #[test]
+    fn a_state_full_of_projects_stays_small() {
+        let id = |prefix: &str, n: usize| {
+            let text = format!("{prefix}.{n}");
+            CatalogId::parse(&format!("{text}{}", "x".repeat(MAX_ID_CHARS - text.len()))).unwrap()
+        };
+        let at = time::macros::datetime!(2026-10-05 12:00:00.123456789 UTC);
+        let mut state = HomeState::new("0123456789abcdef");
+        state.households.clear();
+        let mut empty = state.clone();
+        for h in 0..MAX_HOUSEHOLDS {
+            let mut home = HouseholdHome {
+                keeper: TravelerId(u64::MAX - h as u64),
+                ..state_home()
+            };
+            empty.households.push(home.clone());
+            home.projects = (0..MAX_PROJECTS)
+                .map(|n| Project {
+                    project: id("project", n),
+                    stages: vec![StageDone { at_utc: at }; MAX_STAGES],
+                })
+                .collect();
+            home.tallies = (0..MAX_TALLIES)
+                .map(|n| Tally {
+                    what: id("tally", n),
+                    count: u32::MAX,
+                })
+                .collect();
+            state.households.push(home);
+        }
+        state.validate().unwrap();
+        let added = encode(&state).unwrap().len() - encode(&empty).unwrap().len();
+        assert!(
+            added <= 96 * 1024,
+            "projects and tallies take {added} bytes"
+        );
+    }
+
+    /// The sample household, showing nothing, so any number of them can share a state.
+    fn state_home() -> HouseholdHome {
+        let mut home = state().households.remove(0);
+        home.rooms[0].displays.clear();
+        home
     }
 }

@@ -29,15 +29,22 @@ const REACH_START: OffsetDateTime = time::macros::datetime!(2026-01-05 09:00 UTC
 
 /// Where the village's ground pieces are named on screen: the tiles of the Village page's
 /// "Put something down" catalogue (formiga-desktop/src/clubhouse/arrange.rs, `ground_catalogue`).
-/// Each tile is 96 by 78; the name is laid out in the Small text style, wrapped to the tile less
-/// four points either side, and sits with its foot four points above the tile's bottom edge.
-/// The picture above it is 40 high and centred 26 below the tile's top, so its foot is 46 down.
-/// The name has the 28 points between the two.
+/// Each tile is 96 by 78 at 100% text, and grows with the text; the name is laid out in the Small
+/// text style, wrapped to the tile less four points either side, and sits with its foot four
+/// points above the tile's bottom edge. The picture above it is 40 high and centred 26 below the
+/// tile's top, so its foot is 46 down. The name has the 28 points between the two at 100%.
 pub(crate) const GROUND_TILE_WRAP: f32 = 96.0 - 8.0;
 pub(crate) const GROUND_TILE_NAME_ROOM: f32 = 78.0 - 4.0 - (26.0 + 20.0);
+
+/// How wide a ground tile's name may run, and how much height it has, with text at `scale`
+/// percent.
+fn ground_tile_room(scale: u8) -> (f32, f32) {
+    let grow = f32::from(scale) / 100.0;
+    (96.0 * grow - 8.0, 78.0 * grow - 4.0 - (26.0 + 20.0))
+}
 /// The Small text style, and the largest text size the settings offer
 /// (formiga-desktop/src/settings.rs, the style set up for every window).
-pub(crate) const SMALL_TEXT: f32 = 10.5;
+pub(crate) const SMALL_TEXT: f32 = 12.0;
 pub(crate) const TEXT_SCALES: [u8; 2] = [100, 150];
 
 pub fn catalog() -> Value {
@@ -635,12 +642,13 @@ impl NameText {
             .iter()
             .map(|&scale| {
                 let size = SMALL_TEXT * f32::from(scale) / 100.0;
+                let (wrap, room) = ground_tile_room(scale);
                 let mut view = self.fonts.with_pixels_per_point(1.0);
                 let galley = view.layout(
                     name.to_owned(),
                     FontId::new(size, FontFamily::Proportional),
                     Color32::WHITE,
-                    GROUND_TILE_WRAP,
+                    wrap,
                 );
                 // A word too long for the tile is broken partway through: egui wraps a word
                 // that cannot fit on a line of its own at any letter.
@@ -661,9 +669,9 @@ impl NameText {
                     "text_scale": scale,
                     "lines": galley.rows.len(),
                     "height": (height * 10.0).round() / 10.0,
-                    "room": GROUND_TILE_NAME_ROOM,
-                    "word_broken": longest > GROUND_TILE_WRAP,
-                    "fits": height <= GROUND_TILE_NAME_ROOM && longest <= GROUND_TILE_WRAP,
+                    "room": room,
+                    "word_broken": longest > wrap,
+                    "fits": height <= room && longest <= wrap,
                 })
             })
             .collect();
@@ -680,7 +688,14 @@ mod tests {
     #[test]
     fn the_ground_tile_is_measured_as_the_app_draws_it() {
         let arrange = include_str!("../../formiga-desktop/src/clubhouse/arrange.rs");
-        assert!(arrange.contains("egui::vec2(96.0, 78.0)"), "tile size");
+        assert!(
+            arrange.contains("egui::vec2(96.0, 78.0) * grow"),
+            "tile size"
+        );
+        assert!(
+            arrange.contains("let grow = journal::text_scale(ui);"),
+            "tile growth"
+        );
         assert!(arrange.contains("rect.top() + 26.0"), "picture centre");
         assert!(arrange.contains("egui::vec2(40.0, 40.0)"), "picture size");
         assert!(arrange.contains("rect.width() - 8.0"), "name wrap");
@@ -690,7 +705,7 @@ mod tests {
         );
         let settings = include_str!("../../formiga-desktop/src/settings.rs");
         assert!(
-            settings.contains("(egui::TextStyle::Small, 10.5)"),
+            settings.contains("(egui::TextStyle::Small, 12.0)"),
             "small text"
         );
         assert!(

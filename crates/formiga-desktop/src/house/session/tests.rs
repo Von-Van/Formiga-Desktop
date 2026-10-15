@@ -75,6 +75,8 @@ fn arranged(keeper: TravelerId) -> HouseholdHome {
         mementos: Vec::new(),
         journal: Vec::new(),
         stays_out: Vec::new(),
+        projects: Vec::new(),
+        tallies: Vec::new(),
     }
 }
 

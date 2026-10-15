@@ -58,6 +58,7 @@
 //! | 7 | Desktop 0.67.0, which adopted the contract. No new fields: residents are written in travel version 4, and the Fairground's four souvenirs may be shown |
 //! | 8 | The `indoors` capability and [`HomeIndoors`]: who is in the house, said while it is open, so whoever is not stays out on the desktop; a home's `stays_out`, the residents its owner keeps out when the house opens |
 //! | 9 | Desktop 0.67.6. No new fields: residents are written in travel version 5, so one drawn as the Echo Fox on the desktop is a fox in the house too |
+//! | 10 | A home's `projects` and `tallies`: what each household has made of its home over time, kept by Desktop and read only by Home; a `project` moment. A result from an older Home leaves them as they were |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it was first written, and must
 //! keep reading.
@@ -95,11 +96,12 @@ pub use replies::{
 pub use snapshot::{HomeCapability, HomeSnapshot, HouseStyle, Household, Neighbour};
 pub use state::{
     Door, FavouriteKind, HomeMoment, HomeState, HouseholdHome, JournalEntry, Liked, Liking,
-    Memento, MementoKind, PlacedDisplay, PlacedPiece, PlanPoint, RoomLayout, Spot, WallSide,
+    Memento, MementoKind, PlacedDisplay, PlacedPiece, PlanPoint, Project, RoomLayout, Spot,
+    StageDone, Tally, WallSide,
 };
 
 /// The version of every Home document this build writes, and the newest it reads.
-pub const HOME_FORMAT_VERSION: u32 = 9;
+pub const HOME_FORMAT_VERSION: u32 = 10;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.home.snapshot";
@@ -164,6 +166,11 @@ pub mod limits {
     /// Keepsakes one household keeps, and moments in its journal.
     pub const MAX_MEMENTOS: usize = 24;
     pub const MAX_JOURNAL: usize = 40;
+    /// Projects one household has been shown, the stages one project has, and the things its
+    /// home counts. Small, so twelve households of everything still fit in a state.
+    pub const MAX_PROJECTS: usize = 12;
+    pub const MAX_STAGES: usize = 4;
+    pub const MAX_TALLIES: usize = 16;
     /// Companions in one keepsake or one moment: who is in a photo.
     pub const MAX_IN_A_MEMENTO: usize = 6;
     /// Moments one visit names for Desktop's journal, and how many times a visit may count for

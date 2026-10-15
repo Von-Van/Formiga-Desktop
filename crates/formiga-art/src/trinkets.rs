@@ -6,15 +6,18 @@
 //! ten rows again with a glint on each, 256x320 pixels in total, built once per colony and shared
 //! by every member, by the scrapbook and collection, and by the review sheets.
 //!
-//! Colour comes from the colony seed, but it is *chosen against* the colony: the search below
-//! scores candidate hues by how far they land from the coat, accent, and highlight of every member
-//! who might hold one, and spreads the kinds through the colours that survive. A keepsake never
-//! reads as another patch of the fur holding it.
+//! A find is drawn in what it is made of (see `materials`): an acorn is an acorn's brown and a
+//! buckle brass in every colony, so each can be told at a glance for what it is. What is dyed,
+//! painted or printed — a ribbon, a button, a bead — is in the colony's own colour, which comes
+//! from the colony seed but is *chosen against* the colony: the search below scores candidate hues
+//! by how far they land from the coat, accent, and highlight of every member who might hold one,
+//! and spreads the kinds through the colours that survive.
 //!
-//! Every kind is drawn as a solid interior and then outlined in one pass, so each one leaves the
-//! atlas with the same crisp single-pixel dark edge and stays legible at 2x on a bright desktop.
-//! The first sixteen are drawn by hand below; the rest are grids in `sprites`.
+//! Every kind is a grid in `sprites`, painted as a solid interior and then outlined in one pass,
+//! so each one leaves the atlas with the same crisp single-pixel dark edge and stays legible at 2x
+//! on a bright desktop and against any coat.
 
+pub(crate) mod materials;
 mod sprites;
 
 use crate::palette::{from_hsl, to_hsl};
@@ -267,56 +270,6 @@ impl Cell<'_> {
         }
     }
 
-    fn span(&mut self, x0: i32, x1: i32, y: i32, color: Rgba) {
-        for x in x0..=x1 {
-            self.px(x, y, color);
-        }
-    }
-
-    fn rect(&mut self, x: i32, y: i32, width: i32, height: i32, color: Rgba) {
-        for py in y..y + height {
-            self.span(x, x + width - 1, py, color);
-        }
-    }
-
-    fn ellipse(&mut self, cx: i32, cy: i32, rx: i32, ry: i32, color: Rgba) {
-        if rx <= 0 || ry <= 0 {
-            self.px(cx, cy, color);
-            return;
-        }
-        let (rx2, ry2) = ((rx * rx) as i64, (ry * ry) as i64);
-        for dy in -ry..=ry {
-            for dx in -rx..=rx {
-                if dx as i64 * dx as i64 * ry2 + dy as i64 * dy as i64 * rx2 <= rx2 * ry2 {
-                    self.px(cx + dx, cy + dy, color);
-                }
-            }
-        }
-    }
-
-    fn line(&mut self, mut x0: i32, mut y0: i32, x1: i32, y1: i32, color: Rgba) {
-        let dx = (x1 - x0).abs();
-        let sx = if x0 < x1 { 1 } else { -1 };
-        let dy = -(y1 - y0).abs();
-        let sy = if y0 < y1 { 1 } else { -1 };
-        let mut error = dx + dy;
-        loop {
-            self.px(x0, y0, color);
-            if x0 == x1 && y0 == y1 {
-                break;
-            }
-            let twice = 2 * error;
-            if twice >= dy {
-                error += dy;
-                x0 += sx;
-            }
-            if twice <= dx {
-                error += dx;
-                y0 += sy;
-            }
-        }
-    }
-
     /// The held-up quad is a face-width down and one forward of the face anchor and is not
     /// mirrored with its holder, so whichever way a companion faces, one of these two corners
     /// lands on its eyes. Every kind is drawn to keep out of them; this makes that structural
@@ -353,398 +306,17 @@ impl Cell<'_> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The sixteen kinds. Interiors only: the outline pass draws every edge.
+// The finds themselves, read from their grids.
 // ---------------------------------------------------------------------------------------------
 
+/// The interior of one find. The outline pass draws every edge.
 fn shape(cell: &mut Cell, ink: TrinketInk, variant: u8) {
-    if let Some(grid) = sprites::grid(variant) {
-        draw_grid(cell, ink, grid);
-        return;
-    }
-    match variant {
-        0 => gem(cell, ink),
-        1 => key(cell, ink),
-        2 => leaf(cell, ink),
-        3 => shell(cell, ink),
-        4 => ring_charm(cell, ink),
-        5 => tiny_bottle(cell, ink),
-        6 => star_relic(cell, ink),
-        7 => tablet(cell, ink),
-        8 => moon_shard(cell, ink),
-        9 => firefly_jar(cell, ink),
-        10 => feather(cell, ink),
-        11 => cloud_puff(cell, ink),
-        12 => ticket_stub(cell, ink),
-        13 => pinwheel(cell, ink),
-        14 => friendship_knot(cell, ink),
-        _ => matching_charms(cell, ink),
-    }
-}
-
-/// A cut stone: flat table, wide girdle, long pavilion.
-fn gem(cell: &mut Cell, ink: TrinketInk) {
-    const ROWS: [(i32, i32); 10] = [
-        (7, 9),
-        (6, 10),
-        (4, 12),
-        (3, 13),
-        (4, 12),
-        (4, 12),
-        (5, 11),
-        (6, 10),
-        (7, 9),
-        (8, 8),
-    ];
-    for (index, (x0, x1)) in ROWS.into_iter().enumerate() {
-        cell.span(x0, x1, 3 + index as i32, ink.body);
-    }
-    // The table catches the light; the right flank falls away.
-    cell.span(7, 9, 3, ink.light);
-    cell.span(6, 8, 4, ink.light);
-    cell.span(4, 7, 5, ink.light);
-    for (index, (_, x1)) in ROWS.into_iter().enumerate().skip(2) {
-        cell.span(x1 - 1, x1, 3 + index as i32, ink.deep);
-    }
-    cell.line(6, 6, 9, 11, ink.accent);
-}
-
-/// A key laid flat, which is the shape a key actually has: bow on the left, a long shaft, and two
-/// teeth stepping down off the far end.
-fn key(cell: &mut Cell, ink: TrinketInk) {
-    cell.ellipse(5, 8, 3, 3, ink.body);
-    cell.ellipse(5, 8, 1, 1, Rgba::TRANSPARENT);
-    cell.rect(7, 7, 6, 2, ink.body);
-    cell.rect(10, 9, 1, 2, ink.body);
-    cell.rect(12, 9, 1, 3, ink.body);
-    cell.span(3, 4, 6, ink.light);
-    cell.span(7, 12, 7, ink.light);
-    cell.px(12, 11, ink.accent);
-    cell.px(3, 10, ink.deep);
-}
-
-/// A pressed leaf: broad, upright, and stemmed, so it never reads as the feather two cells along.
-fn leaf(cell: &mut Cell, ink: TrinketInk) {
-    const ROWS: [(i32, i32); 9] = [
-        (7, 9),
-        (6, 10),
-        (4, 12),
-        (3, 12),
-        (3, 12),
-        (4, 11),
-        (5, 10),
-        (6, 9),
-        (7, 9),
-    ];
-    for (index, (x0, x1)) in ROWS.into_iter().enumerate() {
-        cell.span(x0, x1, 2 + index as i32, ink.body);
-    }
-    // The midrib runs the whole length; the veins fan off it on one side only.
-    cell.line(8, 2, 8, 11, ink.deep);
-    for (y, reach) in [(5, 3), (7, 4), (9, 3)] {
-        cell.line(8, y, 8 + reach, y - 1, ink.deep);
-        cell.line(8, y, 8 - reach, y - 1, ink.light);
-    }
-    cell.span(5, 7, 5, ink.light);
-    cell.line(8, 11, 8, 13, ink.accent);
-}
-
-/// A scallop: hinge at the foot, a fan opening upward, and a lip notched between its ribs.
-fn shell(cell: &mut Cell, ink: TrinketInk) {
-    const ROWS: [(i32, i32); 9] = [
-        (3, 13),
-        (3, 13),
-        (3, 13),
-        (3, 13),
-        (4, 12),
-        (5, 11),
-        (6, 10),
-        (7, 9),
-        (7, 9),
-    ];
-    for (index, (x0, x1)) in ROWS.into_iter().enumerate() {
-        cell.span(x0, x1, 5 + index as i32, ink.body);
-    }
-    // A scalloped lip: two pixels deep, so the notches survive being halved.
-    for notch in [5, 8, 11] {
-        cell.px(notch, 5, Rgba::TRANSPARENT);
-        cell.px(notch, 6, Rgba::TRANSPARENT);
-    }
-    for (tip, shade) in [
-        ((4, 7), ink.light),
-        ((8, 6), ink.light),
-        ((12, 7), ink.deep),
-    ] {
-        cell.line(8, 13, tip.0, tip.1, shade);
-    }
-    cell.span(4, 6, 9, ink.light);
-    cell.span(7, 9, 13, ink.accent);
-}
-
-/// A ring far too small for anyone here, with one bead at the top of it.
-fn ring_charm(cell: &mut Cell, ink: TrinketInk) {
-    cell.ellipse(8, 9, 5, 4, ink.body);
-    cell.ellipse(8, 9, 2, 2, Rgba::TRANSPARENT);
-    cell.rect(7, 5, 2, 2, ink.body);
-    cell.ellipse(8, 4, 2, 2, ink.accent);
-    for (x, y) in [(4, 8), (4, 9), (5, 7), (6, 6)] {
-        cell.px(x, y, ink.light);
-    }
-    for (x, y) in [(11, 10), (11, 11), (10, 12)] {
-        cell.px(x, y, ink.deep);
-    }
-}
-
-/// A stoppered bottle, something cloudy still in the bottom of it.
-fn tiny_bottle(cell: &mut Cell, ink: TrinketInk) {
-    cell.rect(7, 2, 3, 2, ink.accent);
-    cell.rect(7, 4, 3, 2, ink.body);
-    cell.rect(5, 6, 7, 7, ink.body);
-    for (x, y) in [(5, 6), (11, 6), (5, 12), (11, 12)] {
-        cell.px(x, y, Rgba::TRANSPARENT);
-    }
-    cell.rect(6, 9, 5, 3, ink.accent);
-    cell.px(6, 7, ink.light);
-    cell.px(6, 8, ink.light);
-    cell.px(7, 7, ink.light);
-    cell.span(6, 10, 9, ink.light);
-    cell.px(10, 11, ink.deep);
-}
-
-/// A little star of worn metal.
-fn star_relic(cell: &mut Cell, ink: TrinketInk) {
-    const ROWS: [&[(i32, i32)]; 11] = [
-        &[(8, 8)],
-        &[(7, 9)],
-        &[(7, 9)],
-        &[(3, 13)],
-        &[(4, 12)],
-        &[(5, 11)],
-        &[(5, 11)],
-        &[(4, 12)],
-        &[(3, 5), (11, 13)],
-        &[(3, 4), (12, 13)],
-        &[(3, 3), (13, 13)],
-    ];
-    for (index, spans) in ROWS.into_iter().enumerate() {
-        for (x0, x1) in spans {
-            cell.span(*x0, *x1, 2 + index as i32, ink.body);
-        }
-    }
-    for (x, y) in [(7, 3), (6, 5), (5, 6), (6, 6), (4, 9)] {
-        cell.px(x, y, ink.light);
-    }
-    for (x, y) in [(11, 7), (12, 8), (11, 9), (12, 10)] {
-        cell.px(x, y, ink.deep);
-    }
-    cell.ellipse(8, 7, 1, 1, ink.accent);
-}
-
-/// A flat tablet with lines nobody can read.
-fn tablet(cell: &mut Cell, ink: TrinketInk) {
-    cell.rect(3, 5, 11, 9, ink.body);
-    for (x, y) in [(3, 5), (13, 5), (3, 13), (13, 13)] {
-        cell.px(x, y, Rgba::TRANSPARENT);
-    }
-    cell.rect(4, 6, 1, 7, ink.light);
-    cell.rect(12, 6, 1, 7, ink.deep);
-    for (y, x1) in [(7, 11), (9, 9), (11, 11)] {
-        cell.span(6, x1, y, ink.deep);
-    }
-    cell.px(11, 9, ink.accent);
-    cell.px(12, 9, ink.accent);
-}
-
-/// A sliver of the moon, keeping a little light of its own.
-fn moon_shard(cell: &mut Cell, ink: TrinketInk) {
-    cell.ellipse(8, 8, 5, 5, ink.body);
-    cell.ellipse(12, 6, 5, 5, Rgba::TRANSPARENT);
-    for (x, y) in [(3, 7), (3, 8), (3, 9), (4, 5), (4, 11), (5, 4), (5, 12)] {
-        cell.px(x, y, ink.light);
-    }
-    for (x, y) in [(7, 13), (8, 12), (6, 12), (9, 11)] {
-        cell.px(x, y, ink.deep);
-    }
-    cell.px(5, 8, ink.accent);
-}
-
-/// A jar still faintly warm, with nothing in it now.
-fn firefly_jar(cell: &mut Cell, ink: TrinketInk) {
-    cell.rect(6, 3, 4, 2, ink.accent);
-    cell.rect(5, 5, 7, 1, ink.deep);
-    cell.rect(4, 6, 9, 8, ink.body);
-    for (x, y) in [(4, 6), (12, 6), (4, 13), (12, 13)] {
-        cell.px(x, y, Rgba::TRANSPARENT);
-    }
-    cell.rect(5, 7, 1, 6, ink.light);
-    for (x, y) in [(7, 9), (10, 8), (8, 12)] {
-        cell.ellipse(x, y, 1, 1, ink.accent);
-        cell.px(x, y, ink.light);
-    }
-    cell.px(11, 12, ink.deep);
-    cell.px(11, 11, ink.deep);
-}
-
-/// A long feather: a straight rachis running corner to corner, barbs swept back off it, and a
-/// split at the tip that no leaf has.
-fn feather(cell: &mut Cell, ink: TrinketInk) {
-    const BARBS: [(i32, i32, i32, i32); 10] = [
-        (9, 3, 0, 0),
-        (9, 4, 1, 1),
-        (8, 5, 2, 2),
-        (8, 6, 3, 2),
-        (7, 7, 3, 2),
-        (7, 8, 4, 2),
-        (6, 9, 3, 2),
-        (6, 10, 3, 1),
-        (5, 11, 2, 1),
-        (5, 12, 1, 1),
-    ];
-    for (x, y, left, right) in BARBS {
-        cell.span(x - left, x + right, y, ink.body);
-    }
-    for (x, y, left, _) in BARBS {
-        cell.span(x - left, x - left + 1, y, ink.light);
-    }
-    cell.line(9, 3, 4, 13, ink.deep);
-    // The split the vane ends in, which no leaf has.
-    cell.px(9, 5, Rgba::TRANSPARENT);
-    cell.px(8, 4, Rgba::TRANSPARENT);
-}
-
-/// A tuft of something soft: three separate bumps along the top, a flat underside, and gaps
-/// between the lobes deep enough to survive being halved.
-fn cloud_puff(cell: &mut Cell, ink: TrinketInk) {
-    // A puff is the one keepsake that is mostly light: filling it with the body colour turns it
-    // into a potato, so the mass is pale and only its underside carries weight.
-    cell.rect(3, 8, 11, 4, ink.light);
-    for (cx, cy, rx, ry) in [(5, 7, 2, 2), (8, 5, 2, 3), (11, 7, 2, 2)] {
-        cell.ellipse(cx, cy, rx, ry, ink.light);
-    }
-    // The dips between the lobes, cut back into the mass two pixels deep.
-    for (x, y) in [
-        (6, 7),
-        (7, 7),
-        (10, 7),
-        (9, 7),
-        (6, 6),
-        (10, 6),
-        (7, 6),
-        (9, 6),
-    ] {
-        cell.px(x, y, Rgba::TRANSPARENT);
-    }
-    // Under-lit edges, so the lobes read as three rather than one.
-    for (cx, cy, rx) in [(5, 7, 2), (8, 5, 2), (11, 7, 2)] {
-        cell.span(cx - rx, cx + rx, cy + 2, ink.body);
-    }
-    cell.span(4, 12, 11, ink.body);
-    cell.span(5, 11, 12, ink.deep);
-    cell.px(3, 10, ink.accent);
-    cell.px(13, 10, ink.accent);
-}
-
-/// Half a ticket, torn along one edge, for a ride nobody remembers.
-fn ticket_stub(cell: &mut Cell, ink: TrinketInk) {
-    cell.rect(3, 5, 10, 9, ink.body);
-    for y in [6, 8, 10, 12] {
-        cell.px(12, y, Rgba::TRANSPARENT);
-    }
-    cell.ellipse(5, 9, 1, 1, Rgba::TRANSPARENT);
-    cell.span(3, 11, 5, ink.light);
-    cell.rect(8, 7, 4, 5, ink.accent);
-    cell.span(3, 7, 12, ink.deep);
-    cell.span(7, 11, 13, ink.deep);
-}
-
-/// A paper wheel on a stick: four solid sails, each one a triangle off the hub, in two colours so
-/// the turn is visible even when the whole thing is four pixels across.
-fn pinwheel(cell: &mut Cell, ink: TrinketInk) {
-    // One sail, as offsets from the hub. Rotating it three times makes the wheel.
-    const SAIL: [(i32, i32); 10] = [
-        (0, -1),
-        (0, -2),
-        (0, -3),
-        (0, -4),
-        (1, -2),
-        (1, -3),
-        (1, -4),
-        (2, -3),
-        (2, -4),
-        (3, -4),
-    ];
-    let (hub_x, hub_y) = (9, 9);
-    cell.rect(8, 10, 2, 4, ink.deep);
-    cell.rect(8, 10, 1, 4, ink.body);
-    let mut sail = SAIL;
-    for turn in 0..4 {
-        let color = if turn % 2 == 0 { ink.body } else { ink.accent };
-        for (dx, dy) in sail {
-            cell.px(hub_x + dx, hub_y + dy, color);
-        }
-        // The leading edge of each sail catches the light, which is what makes it read as
-        // four sails rather than one star.
-        cell.px(hub_x + sail[3].0, hub_y + sail[3].1, ink.light);
-        sail = sail.map(|(dx, dy)| (-dy, dx));
-    }
-    cell.ellipse(hub_x, hub_y, 1, 1, ink.deep);
-    cell.px(hub_x, hub_y, ink.light);
-}
-
-/// A cord tied in a bow: two loops swept up and outward from one knot, and two ends hanging from
-/// it. Deliberately not two matching circles — a symmetrical pair of rings reads as a face.
-fn friendship_knot(cell: &mut Cell, ink: TrinketInk) {
-    for side in [-1, 1] {
-        let cx = 8 + side * 2;
-        // A loop that leans away from the knot, open toward its own outer corner.
-        cell.ellipse(cx, 6, 3, 2, ink.body);
-        cell.ellipse(cx + side, 5, 1, 1, Rgba::TRANSPARENT);
-        cell.px(cx + side * 2, 8, Rgba::TRANSPARENT);
-        cell.px(cx - side * 2, 4, ink.light);
-    }
-    // The knot itself, and the two ends falling from it at different lengths.
-    cell.ellipse(8, 8, 2, 2, ink.accent);
-    cell.px(7, 7, ink.light);
-    cell.line(7, 10, 5, 13, ink.body);
-    cell.line(9, 10, 11, 13, ink.body);
-    cell.px(5, 13, ink.deep);
-    cell.px(11, 13, ink.deep);
-}
-
-/// Two charms cut from the same piece, hung from one ring at different lengths so the pair reads
-/// as two pendants on a chain rather than as something worn on a head.
-fn matching_charms(cell: &mut Cell, ink: TrinketInk) {
-    // The split ring they both hang from.
-    cell.ellipse(8, 4, 2, 2, ink.deep);
-    cell.px(8, 4, Rgba::TRANSPARENT);
-    for (cx, cy, fill, mark) in [
-        (5, 9, ink.body, ink.accent),
-        (11, 11, ink.accent, ink.light),
-    ] {
-        cell.line(8, 5, cx, cy - 3, ink.deep);
-        // A teardrop: wide at the bottom, drawn to a point at the top.
-        cell.ellipse(cx, cy, 2, 2, fill);
-        cell.px(cx, cy - 3, fill);
-        cell.span(cx - 1, cx + 1, cy - 2, fill);
-        cell.px(cx, cy, mark);
-        cell.px(cx - 1, cy - 1, ink.light);
-    }
-}
-
-/// One of the grid-drawn finds: its interior, two pixels in from the cell's corner.
-fn draw_grid(cell: &mut Cell, ink: TrinketInk, grid: &[&str; 12]) {
-    for (row, line) in grid.iter().enumerate() {
-        for (column, ch) in line.chars().enumerate() {
-            let color = match ch {
-                'b' => ink.body,
-                'd' => ink.deep,
-                'l' => ink.light,
-                'a' => ink.accent,
-                'k' => ink.outline,
-                'w' => sprites::WHITE,
-                'c' => sprites::CREAM,
-                _ => continue,
-            };
-            cell.px(column as i32 + 2, row as i32 + 2, color);
+    let sprite = sprites::sprite(variant);
+    for (row, line) in sprite.rows.iter().enumerate() {
+        for (column, letter) in line.chars().enumerate() {
+            if let Some((color, _)) = sprite.paint(letter, ink) {
+                cell.px(column as i32 + 2, row as i32 + 2, color);
+            }
         }
     }
 }
@@ -752,36 +324,14 @@ fn draw_grid(cell: &mut Cell, ink: TrinketInk, grid: &[&str; 12]) {
 /// The twinkle on the second frame. Drawn after the outline, so it stays a spark of light rather
 /// than another outlined object.
 fn glint(cell: &mut Cell, ink: TrinketInk, variant: u8) {
-    // Every spark sits where its own object catches the light, and far enough inside the cell for
-    // its four rays to stay in it.
-    const SPOTS: [(i32, i32); 16] = [
-        (6, 5),
-        (8, 5),
-        (5, 4),
-        (11, 6),
-        (5, 7),
-        (8, 4),
-        (6, 5),
-        (6, 4),
-        (4, 8),
-        (7, 8),
-        (10, 5),
-        (6, 6),
-        (5, 5),
-        (10, 4),
-        (5, 6),
-        (4, 9),
-    ];
-    let (x, y) = match sprites::grid(variant) {
-        Some(grid) => sprites::glint_spot(grid),
-        None => SPOTS[usize::from(variant) % SPOTS.len()],
-    };
-    cell.px(x, y, ink.light);
+    let (x, y) = sprites::glint_spot(sprites::sprite(variant), ink);
+    let spark = Rgba::new(255, 252, 236, 255);
+    cell.px(x, y, spark);
     for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-        cell.px(x + dx, y + dy, ink.light);
+        cell.px(x + dx, y + dy, spark);
     }
     for (dx, dy) in [(2, 0), (-2, 0), (0, 2), (0, -2)] {
-        cell.px(x + dx, y + dy, ink.accent);
+        cell.px(x + dx, y + dy, ink.light);
     }
 }
 
@@ -956,20 +506,38 @@ mod tests {
         assert!(x < TRINKET_ATLAS_WIDTH && y < TRINKET_ATLAS_HEIGHT);
     }
 
-    /// Every grid is exactly twelve by twelve, uses only the characters it may, and keeps out of
-    /// the corners of the cell that land on a holder's eyes.
+    /// Every drawing is exactly twelve by twelve, paints only with letters its inks name, gives each
+    /// letter one meaning, and keeps out of the corners of the cell that land on a holder's eyes.
     #[test]
     fn every_grid_is_well_formed_and_keeps_to_where_it_may_draw() {
-        const INKS: &str = ".bdlakwc";
-        for (index, grid) in sprites::GRIDS.iter().enumerate() {
-            let variant = usize::from(sprites::FIRST) + index;
-            for (row, line) in grid.iter().enumerate() {
+        let ink = TrinketAtlasRenderer::ink([7; 32], &[], 0);
+        for variant in 0..formiga_core::TRINKET_VARIANTS {
+            let sprite = sprites::sprite(variant);
+            let named: Vec<char> = sprite
+                .inks
+                .iter()
+                .flat_map(|(letters, _)| letters.chars().filter(|letter| *letter != '.'))
+                .collect();
+            let unique: BTreeSet<char> = named.iter().copied().collect();
+            assert_eq!(
+                unique.len(),
+                named.len(),
+                "variant {variant} names a letter twice"
+            );
+            assert!(
+                !unique.contains(&'k'),
+                "variant {variant} renames the outline"
+            );
+            for (row, line) in sprite.rows.iter().enumerate() {
                 assert_eq!(line.chars().count(), 12, "variant {variant} row {row}");
-                for (column, ch) in line.chars().enumerate() {
-                    assert!(INKS.contains(ch), "variant {variant} uses {ch:?}");
-                    if ch == '.' {
+                for (column, letter) in line.chars().enumerate() {
+                    if letter == '.' {
                         continue;
                     }
+                    assert!(
+                        sprite.paint(letter, ink).is_some(),
+                        "variant {variant} paints with {letter:?}, which no ink names"
+                    );
                     let allowed = match row {
                         0 | 1 => 4..=7,
                         2 => 3..=8,
@@ -982,9 +550,5 @@ mod tests {
                 }
             }
         }
-        assert_eq!(
-            usize::from(sprites::FIRST) + sprites::GRIDS.len(),
-            usize::from(formiga_core::TRINKET_VARIANTS)
-        );
     }
 }
