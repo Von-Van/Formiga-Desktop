@@ -134,6 +134,34 @@ fn written_now() -> Vec<(String, Vec<u8>)> {
     );
     // Since version 8: the little one is kept out on the desktop when the house opens.
     home.stays_out = vec![snapshot.residents[1].id];
+    // Since version 10: the hearth built and then made cosier, the snacks it counts, and the
+    // journal of it.
+    home.projects.push(Project {
+        project: CatalogId::known("project.hearth"),
+        stages: vec![
+            StageDone {
+                at_utc: datetime!(2026-11-11 10:05 UTC),
+            },
+            StageDone {
+                at_utc: datetime!(2026-11-11 10:18 UTC),
+            },
+        ],
+    });
+    home.projects.push(Project {
+        project: CatalogId::known("project.gallery"),
+        stages: Vec::new(),
+    });
+    home.tallies.push(Tally {
+        what: CatalogId::known("tally.snack"),
+        count: 7,
+    });
+    home.note(
+        datetime!(2026-11-11 10:18 UTC),
+        HomeMoment::Project {
+            project: CatalogId::known("project.hearth"),
+            stage: 2,
+        },
+    );
     arranged_state.set_household(home);
     let result = HomeResult::new(&seal, closed_at(), "0.1.0", arranged_state);
     let receipt = HomeReceipt::new(

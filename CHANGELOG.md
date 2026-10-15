@@ -4,6 +4,14 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Household version 10: a home may keep its household's projects, each with the stages finished
+  and when, and a few counts of what has happened at home for them to count towards. Formiga Home
+  makes and reads them; Desktop keeps them in `home/state.json` with the rest of the home, and
+  keeps them as they were when a Home that predates them answers a visit. Nothing in the colony
+  file changes.
+
 ### Changed
 
 - Every find and everything a companion wears is redrawn to be told apart at a glance. Each is
@@ -28,7 +36,6 @@ All notable changes are documented here.
   its own place. The tour opens whichever section it is pointing at.
 - The tiles for putting gardens, spots and ornaments down grow with the notebook's text, so a
   name in large text still fits under its picture instead of running into it.
-
 - What is written on the notebook's pages sits on its ruled lines: page names and section
   labels, every moment in the Journal with its time and its pin, a companion's name, nature and
   ways beside its portrait, and the preferences' checkboxes, each line of text resting on a rule
