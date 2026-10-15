@@ -4,6 +4,14 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.67.7] - 2026-10-15
+
+Released alongside Formiga Hill 0.67.7 and Formiga Home 0.67.7, which are built on it and draw the
+redrawn finds and wearables too. Household version 10 adds only the optional projects a home
+keeps, so Formiga Home 0.67.6 works with it as it is and the projects a newer Home made are kept
+as they were. Travel version 5 and save version 29 are unchanged, so Formiga Hill 0.67.6 works
+with it as it is. A colony this release has saved still opens in Formiga 0.67.6.
+
 ### Added
 
 - Household version 10: a home may keep its household's projects, each with the stages finished
