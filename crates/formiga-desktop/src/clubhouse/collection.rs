@@ -4,8 +4,11 @@
 //! colour, and what has not as a shape with a hint beside it, with sixteen of the found ones picked
 //! to hang in the village's two trees. The Journal keeps its own record of the finds themselves —
 //! only what has actually turned up, with who found it and when. And each companion has a place to
-//! choose one thing to wear, made from a find, with a look at how it sits in each of a few poses
-//! before it is put on.
+//! choose one thing to wear, made from a find, each pictured beside its name as it would sit on
+//! that companion, with a larger look at how it sits in each of a few poses before it is put on.
+//!
+//! Every picture is drawn at a whole number of points to its pixels, so the art is as crisp in the
+//! notebook as on the desktop.
 
 use super::shell::Shell;
 use super::tour::TourMark;
@@ -39,11 +42,34 @@ struct TryOn {
     poses: Vec<TextureHandle>,
 }
 
+/// Each thing there is to wear, pictured on its own as it sits on one companion as they look now:
+/// one strip of boxes in the order of `AccessoryKind::ALL`, and which of them show anything.
+struct Pieces {
+    creature: CreatureId,
+    appearance: AppearanceGenome,
+    strip: TextureHandle,
+    shown: Vec<bool>,
+}
+
+/// The box a piece's picture is drawn in beside its name, in pixels, drawn at two points to the
+/// pixel. Every picture is the same size, so every choice is too; a piece larger than the box,
+/// which none is on any body Formiga draws, would be cut to it.
+const PIECE_BOX: (u32, u32) = (28, 18);
+/// How large the standing pose is shown, and the other poses.
+const STANDING_SIZE: f32 = 144.0;
+const POSE_SIZE: f32 = 96.0;
+/// A find's tile in the Collection, and the find drawn on it at two points to the pixel.
+const FIND_TILE: f32 = 38.0;
+const FIND_SIZE: f32 = 32.0;
+/// A pin's tile in the wardrobe.
+const PIN_TILE: f32 = 36.0;
+
 /// The Collection's and the wardrobe's view state. Never saved.
 #[derive(Default)]
 pub(super) struct CollectionState {
     view: CollectionView,
     try_on: Option<TryOn>,
+    pieces: Option<Pieces>,
     /// What the pointer was over among the things to wear last frame, shown on the companion
     /// until it moves off.
     trying: Option<(CreatureId, Option<Accessory>)>,
@@ -54,12 +80,39 @@ impl CollectionState {
         self.try_on
             .iter()
             .flat_map(|try_on| try_on.poses.iter().map(TextureHandle::id))
+            .chain(self.pieces.iter().map(|pieces| pieces.strip.id()))
             .collect()
     }
 
     pub(super) fn release_images(&mut self) {
         self.try_on = None;
+        self.pieces = None;
     }
+}
+
+/// Puts a piece's picture in box `index` of a strip, centred, and cut to the box if it is larger.
+fn box_piece(strip: &mut Canvas, index: usize, piece: &Canvas) {
+    let (width, height) = PIECE_BOX;
+    let left = index as i32 * width as i32 + (width as i32 - piece.width() as i32) / 2;
+    let top = (height as i32 - piece.height() as i32) / 2;
+    let cell = index as i32 * width as i32..(index as i32 + 1) * width as i32;
+    for y in 0..piece.height() as i32 {
+        for x in 0..piece.width() as i32 {
+            let pixel = piece.get(x, y);
+            if pixel.a > 0 && cell.contains(&(left + x)) {
+                strip.set(left + x, top + y, pixel);
+            }
+        }
+    }
+}
+
+/// Where box `index` is in the strip of pieces, as texture coordinates.
+fn piece_uv(index: usize) -> egui::Rect {
+    let count = AccessoryKind::ALL.len() as f32;
+    egui::Rect::from_min_max(
+        egui::pos2(index as f32 / count, 0.0),
+        egui::pos2((index + 1) as f32 / count, 1.0),
+    )
 }
 
 /// What hangs in the trees with `variant` taken down if it is up, or put up on the first free
@@ -80,12 +133,37 @@ fn toggled_in_trees(save: &SaveFile, variant: u8) -> Option<[Option<u8>; TREE_HO
 /// frame until it is pointed at, so under this window's bordered style it would grow by a pixel
 /// all round when pointed at, and nudge every choice after it along the row, or over onto the
 /// next. Wrapped in a scope it would stop wrapping, so the border is set and put back instead.
-fn wear_choice(ui: &mut Ui, chosen: bool, enabled: bool, label: &str) -> egui::Response {
+/// A choice with a picture of the piece shows it beside its name, greyed out with the choice
+/// while it cannot be worn.
+fn wear_choice(
+    ui: &mut Ui,
+    chosen: bool,
+    enabled: bool,
+    label: &str,
+    picture: Option<(&TextureHandle, egui::Rect)>,
+) -> egui::Response {
     let border = ui.visuals().widgets.inactive.bg_stroke;
     if !chosen {
         ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
     }
-    let response = ui.add_enabled(enabled, egui::Button::selectable(chosen, label));
+    let (width, height) = PIECE_BOX;
+    let button = match picture {
+        Some((strip, uv)) => egui::Button::image_and_text(
+            egui::Image::new(strip)
+                .uv(uv)
+                .maintain_aspect_ratio(false)
+                .fit_to_exact_size(egui::vec2(width as f32 * 2.0, height as f32 * 2.0))
+                .tint(if enabled {
+                    Color32::WHITE
+                } else {
+                    Color32::from_white_alpha(90)
+                }),
+            label,
+        )
+        .selected(chosen),
+        None => egui::Button::selectable(chosen, label),
+    };
+    let response = ui.add_enabled(enabled, button);
     ui.visuals_mut().widgets.inactive.bg_stroke = border;
     response
 }
@@ -209,7 +287,7 @@ impl ColonyState {
                     };
                     let (response, rect) = tile(
                         ui,
-                        egui::vec2(42.0, 42.0),
+                        egui::vec2(FIND_TILE, FIND_TILE),
                         if in_trees { mint() } else { card_fill() },
                         if in_trees { forest() } else { gold() },
                         &spoken,
@@ -217,7 +295,10 @@ impl ColonyState {
                     );
                     ui.painter().image(
                         atlas.id(),
-                        rect.shrink(3.0),
+                        egui::Rect::from_center_size(
+                            rect.center(),
+                            egui::vec2(FIND_SIZE, FIND_SIZE),
+                        ),
                         Shell::trinket_uv(info.variant),
                         tint,
                     );
@@ -228,7 +309,7 @@ impl ColonyState {
                                 .and_then(|id| save.creatures.iter().find(|c| c.id == id))
                                 .map_or(record.finder_name.as_str(), |c| c.name.as_str());
                             let at = record.first_at.to_offset(offset);
-                            response.on_hover_text(format!(
+                            let text = format!(
                                 "{}\n{}\nFound by {finder} · {}\n{}",
                                 info.name,
                                 info.description,
@@ -238,7 +319,24 @@ impl ColonyState {
                                 } else {
                                     "Click to hang it in the trees"
                                 }
-                            ))
+                            );
+                            // The find large, at four points to the pixel, beside what is
+                            // known about it.
+                            response.on_hover_ui(|ui| {
+                                ui.horizontal(|ui| {
+                                    let (rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(FIND_SIZE * 2.0, FIND_SIZE * 2.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().image(
+                                        atlas.id(),
+                                        rect,
+                                        Shell::trinket_uv(info.variant),
+                                        Color32::WHITE,
+                                    );
+                                    ui.label(text);
+                                });
+                            })
                         }
                         None => response.on_hover_text(format!("Still to find\n{}", info.hint)),
                     };
@@ -310,10 +408,53 @@ impl ColonyState {
             .unwrap_or_default()
     }
 
+    /// Each thing there is to wear, pictured on its own as it would sit on `creature`. Drawn again
+    /// only when who it is or how they look changes.
+    fn piece_pictures(
+        &mut self,
+        ui: &Ui,
+        save: &SaveFile,
+        creature: &Creature,
+    ) -> Option<(TextureHandle, Vec<bool>)> {
+        let current = self.collection.pieces.as_ref().is_some_and(|pieces| {
+            pieces.creature == creature.id && pieces.appearance == creature.appearance
+        });
+        if !current {
+            let members: Vec<formiga_art::Palette> = save
+                .creatures
+                .iter()
+                .map(|member| formiga_art::palette_for(&member.appearance))
+                .collect();
+            let (width, height) = PIECE_BOX;
+            let mut strip = Canvas::new(width * AccessoryKind::ALL.len() as u32, height);
+            let shown = AccessoryKind::ALL
+                .into_iter()
+                .enumerate()
+                .map(|(index, kind)| {
+                    let art =
+                        AccessoryArt::resolve(Accessory::Worn(kind), save.colony_seed, &members);
+                    CreatureRenderer::render_worn_piece(&creature.appearance, art)
+                        .map(|piece| box_piece(&mut strip, index, &piece))
+                        .is_some()
+                })
+                .collect();
+            self.collection.pieces = Some(Pieces {
+                creature: creature.id,
+                appearance: creature.appearance.clone(),
+                strip: upload(ui.ctx(), "wear-pieces", &strip),
+                shown,
+            });
+        }
+        self.collection
+            .pieces
+            .as_ref()
+            .map(|pieces| (pieces.strip.clone(), pieces.shown.clone()))
+    }
+
     /// One thing to wear, chosen from what the colony has found: something made from a find, or
-    /// a find itself worn as a pin — or nothing at all. Pointing at a choice shows the companion
-    /// wearing it in each pose before it is put on; clicking puts it on, and clicking Nothing
-    /// takes it off again.
+    /// a find itself worn as a pin — or nothing at all. Each choice is pictured as it would sit on
+    /// this companion. Pointing at one shows the companion wearing it, large and in each pose,
+    /// before it is put on; clicking puts it on, and clicking Nothing takes it off again.
     pub fn wardrobe(
         &mut self,
         ui: &mut Ui,
@@ -329,9 +470,10 @@ impl ColonyState {
             .filter(|(id, _)| *id == creature.id)
             .map_or(creature.accessory, |(_, candidate)| candidate);
         let poses = self.try_on_poses(ui, save, creature, trying);
+        let pieces = self.piece_pictures(ui, save, creature);
         let atlas = shell.trinket_atlas(ui, save);
         let mut pointed: Option<Option<Accessory>> = None;
-        let wardrobe = ui.group(|ui| {
+        let wardrobe = card(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.strong("Wears");
                 ui.label(creature.accessory.map_or_else(
@@ -339,13 +481,15 @@ impl ColonyState {
                     |accessory| accessory.label(),
                 ));
             });
-            // Where four poses do not fit beside one another, at the largest text in the
-            // smallest window, the last goes on to a row of its own.
+            // Standing, large, then the other poses beside it; where they do not all fit, at the
+            // largest text in the smallest window, the rest go on to a row of their own.
             ui.horizontal_wrapped(|ui| {
-                for (texture, (_, _, label)) in poses.iter().zip(TRY_ON_POSES) {
-                    make_room(ui, 96.0 + 2.0 * 4.0);
+                for (index, (texture, (_, _, label))) in poses.iter().zip(TRY_ON_POSES).enumerate()
+                {
+                    let size = if index == 0 { STANDING_SIZE } else { POSE_SIZE };
+                    make_room(ui, size + 2.0 * 4.0);
                     ui.vertical(|ui| {
-                        // Twice the size it is drawn at, so every pixel stays square.
+                        // A whole number of points to each pixel, so every pixel stays square.
                         egui::Frame::new()
                             .fill(forest())
                             .inner_margin(4)
@@ -353,7 +497,7 @@ impl ColonyState {
                                 ui.add(
                                     egui::Image::new(texture)
                                         .maintain_aspect_ratio(false)
-                                        .fit_to_exact_size(egui::vec2(96.0, 96.0)),
+                                        .fit_to_exact_size(egui::vec2(size, size)),
                                 );
                             });
                         ui.small(label);
@@ -371,21 +515,26 @@ impl ColonyState {
             ui.add(egui::Label::new(RichText::new(note).small()).truncate());
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                let none = wear_choice(ui, creature.accessory.is_none(), true, "Nothing");
+                let none = wear_choice(ui, creature.accessory.is_none(), true, "Nothing", None);
                 if none.hovered() {
                     pointed = Some(None);
                 }
                 if none.clicked() && creature.accessory.is_some() {
                     outcome.set_accessory = Some((creature.id, None));
                 }
-                for kind in AccessoryKind::ALL {
+                for (index, kind) in AccessoryKind::ALL.into_iter().enumerate() {
                     let accessory = Accessory::Worn(kind);
+                    let picture = pieces
+                        .as_ref()
+                        .filter(|(_, shown)| shown[index])
+                        .map(|(strip, _)| (strip, piece_uv(index)));
                     let made = available.contains(&accessory);
                     let chip = wear_choice(
                         ui,
                         creature.accessory == Some(accessory),
                         made,
                         kind.label(),
+                        picture,
                     );
                     if !made {
                         chip.on_disabled_hover_text(
@@ -420,7 +569,7 @@ impl ColonyState {
                                 let worn = creature.accessory == Some(pin);
                                 let (response, rect) = tile(
                                     ui,
-                                    egui::vec2(32.0, 32.0),
+                                    egui::vec2(PIN_TILE, PIN_TILE),
                                     if worn { mint() } else { card_fill() },
                                     gold(),
                                     &pin.label(),
@@ -428,7 +577,10 @@ impl ColonyState {
                                 );
                                 ui.painter().image(
                                     atlas.id(),
-                                    rect.shrink(2.0),
+                                    egui::Rect::from_center_size(
+                                        rect.center(),
+                                        egui::vec2(FIND_SIZE, FIND_SIZE),
+                                    ),
                                     Shell::trinket_uv(variant),
                                     Color32::WHITE,
                                 );

@@ -13,6 +13,11 @@ All notable changes are documented here.
   clear of every coat. The 160 finds keep their 16-pixel cells and the wearables the companions'
   own pixel size, so nothing is drawn finer or blurrier than the companion holding it. The first
   sixteen finds, once drawn by hand in code, are grids like the rest.
+- The wardrobe pictures each thing to wear beside its name, as it would sit on that companion,
+  and shows the companion trying something on larger, standing at half as large again as the
+  other poses. The Collection draws its finds crisply, at a whole number of points to the pixel
+  (they were stretched by a quarter, which blurred them), and shows a find large beside what is
+  known about it while the pointer rests on it.
 - The notebook's longest pages open on what matters most and a short list of the rest. Your
   colony shows the companion, its traits and its tally, then a line for each of its notes, name,
   wardrobe, sharing, keeping, how everyone gets along, and the collection; Home & keepsakes keeps

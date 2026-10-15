@@ -937,9 +937,10 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 /// the Collection of 160 keepsakes, of which the pages hold only the resting half of the sheet
 /// (160 KiB); the object sheet, with every garden at every stage, fifteen hangout spots, fifteen
 /// ornaments and the village's props (112 KiB); a companion trying something on, in four poses
-/// (36 KiB); and the village tree the creature studio stands its large preview beside, one 64x64
+/// (36 KiB), and everything there is to wear pictured on that companion, one strip of twenty boxes
+/// (40 KiB); and the village tree the creature studio stands its large preview beside, one 64x64
 /// texture shared by every candidate (16 KiB).
-const ARTWORK_BUDGET: usize = 900 * 1024;
+const ARTWORK_BUDGET: usize = 940 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -1013,8 +1014,8 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
     );
     // Four portraits, four candidate strips and the tree the large preview stands beside, the
     // village atlas, the object atlas, one sheet holding every trinket, and the last companion
-    // looked at trying something on in four poses.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 4);
+    // looked at trying something on in four poses, with everything to wear pictured on it.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 4 + 1);
 }
 
 #[test]
@@ -1462,7 +1463,7 @@ fn pointing_at_something_to_wear_leaves_every_choice_where_it_was() {
         let mut tiles: Vec<egui::Rect> = h
             .rects
             .iter()
-            .filter(|rect| rect.size() == egui::vec2(32.0, 32.0))
+            .filter(|rect| rect.size() == egui::vec2(36.0, 36.0))
             .copied()
             .collect();
         // Each tile is filled and then outlined.
@@ -1564,6 +1565,54 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
             h.picture()
                 .save(path.join(format!("{tab:?}-940-cream-100-{section}.png")))
                 .unwrap();
+        }
+        // The wardrobe and the Collection with everything found, so every choice has its picture
+        // and every keepsake its colours; the wardrobe trying something on.
+        for (section, theme) in [
+            ("wardrobe", ThemeChoice::Light),
+            ("wardrobe", ThemeChoice::Dark),
+            ("collection", ThemeChoice::Light),
+        ] {
+            let mut h = Harness::new(SettingsTab::Colony);
+            // Tall enough for the page's list of sections to be on it.
+            h.screen = egui::vec2(940.0, 1400.0);
+            configure_style(
+                &h.context,
+                AppearancePreferences {
+                    theme,
+                    ..AppearancePreferences::default()
+                },
+            );
+            h.save.companion.scrapbook = (0..TRINKET_VARIANTS)
+                .map(|variant| ScrapbookRecord {
+                    variant,
+                    first_at: h.save.created_at_utc,
+                    finder: Some(h.save.creatures[0].id),
+                    finder_name: h.save.creatures[0].name.clone(),
+                })
+                .collect();
+            h.frame(Vec::new());
+            h.click(if section == "wardrobe" {
+                "Something to wear"
+            } else {
+                "The collection"
+            });
+            h.frame(Vec::new());
+            if section == "wardrobe" {
+                let chip = h
+                    .labels
+                    .iter()
+                    .find(|(text, _)| text == AccessoryKind::MushroomCap.label())
+                    .map(|(_, rect)| rect.center())
+                    .expect("the toadstool cap is a choice");
+                h.frame(vec![egui::Event::PointerMoved(chip)]);
+                h.frame(Vec::new());
+            }
+            h.frame(Vec::new());
+            h.picture()
+                .save(path.join(format!("Colony-940-{theme:?}-100-{section}.png")))
+                .unwrap();
+            configure_style(&h.context, AppearancePreferences::default());
         }
     }
 }
