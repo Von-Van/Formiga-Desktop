@@ -228,14 +228,33 @@ fn draw_yard_panel(
         .iter()
         .map(|resident| Some(formiga_art::ResidentMark::of(resident)))
         .collect();
-    // The colony house wearing the first six decorations, as it always has on this sheet.
-    let village = ShelterRenderer::render_village(
-        &home.drawn_shelter(),
-        &[ShelterDecorationKind::ALL[..6].to_vec()],
-        &marks,
-        &panel.styles,
-        true,
-    );
+    // The colony house wearing the first six decorations, as it always has on this sheet, and
+    // every house as far back on the ground as its slot puts it.
+    let mut decorations: [Vec<ShelterDecorationKind>; MAX_COLONY_CREATURES] = Default::default();
+    decorations[0] = ShelterDecorationKind::ALL[..6].to_vec();
+    let look = formiga_art::VillageLook {
+        genome: home.drawn_shelter(),
+        styles: std::array::from_fn(|slot| {
+            panel
+                .styles
+                .get(slot)
+                .copied()
+                .unwrap_or(home.drawn_shelter().style)
+        }),
+        decorations,
+        marks: std::array::from_fn(|slot| marks.get(slot).copied().flatten()),
+        depths: DEFAULT_HOUSE_DEPTHS,
+    };
+    let village = ShelterRenderer::render_look(&look, true);
+    let ground_plan = home_ground_plan(&home, cottages, monitors, &policy, 1);
+    let ground = ground_plan.as_ref().map(|plan| {
+        (
+            plan.origin,
+            formiga_art::VillageGroundRenderer::render(&formiga_art::VillageGroundLook::of(
+                plan, &look,
+            )),
+        )
+    });
 
     // Everything is blitted by the top-left of its own square, so a quad hung in a tree lands
     // by its anchor and a house lands by its footprint's middle on the ground line.
@@ -266,10 +285,50 @@ fn draw_yard_panel(
         )
     };
 
+    // The grass the village stands on, before anything stands on it.
+    let ground_layer = |layer: formiga_art::GroundLayer| {
+        let (origin, sheet) = ground.as_ref()?;
+        let (_, row) = formiga_art::VillageGroundLook::layer_origin(layer, panel.night);
+        let mut strip = formiga_art::Canvas::new(
+            formiga_art::GROUND_STRIP_WIDTH,
+            formiga_art::GROUND_STRIP_HEIGHT,
+        );
+        for y in 0..formiga_art::GROUND_STRIP_HEIGHT as i32 {
+            for x in 0..formiga_art::GROUND_STRIP_WIDTH as i32 {
+                strip.set(x, y, sheet.get(x, row as i32 + y));
+            }
+        }
+        Some((
+            strip,
+            origin.x.round() as i32,
+            origin.y.round() as i32 - formiga_art::GROUND_STRIP_HEIGHT as i32,
+        ))
+    };
+    // A strip is laid down as square tiles, which is what the panel blits.
+    let tile = formiga_art::GROUND_STRIP_HEIGHT;
+    let lay_ground = |layer, corner_of: &mut dyn FnMut(&formiga_art::Canvas, u32, i32, i32)| {
+        let Some((strip, x, y)) = ground_layer(layer) else {
+            return;
+        };
+        for index in 0..formiga_art::GROUND_STRIP_WIDTH.div_ceil(tile) {
+            let mut square = formiga_art::Canvas::new(tile, tile);
+            for row in 0..tile as i32 {
+                for column in 0..tile as i32 {
+                    square.set(column, row, strip.get((index * tile) as i32 + column, row));
+                }
+            }
+            corner_of(&square, tile, x + (index * tile) as i32, y);
+        }
+    };
+    lay_ground(formiga_art::GroundLayer::Back, &mut corner_of);
     for slot in 0..=cottages.len() {
         let Some((_, p)) = home_dwelling_position(&home, slot, cottages, monitors, &policy, 1)
         else {
             continue;
+        };
+        let p = Point {
+            y: p.y - f32::from(DEFAULT_HOUSE_DEPTHS.get(slot).copied().unwrap_or(0)),
+            ..p
         };
         let (cell_x, cell_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::House {
             slot,
@@ -350,6 +409,9 @@ fn draw_yard_panel(
             );
         }
     }
+
+    // The grass along the front, over the houses' feet.
+    lay_ground(formiga_art::GroundLayer::Front, &mut corner_of);
 
     // The colony's belongings, four over each tree's roots. They are drawn after the trees, so
     // they stand in front of a trunk, and back to front so a yard reads as having depth.

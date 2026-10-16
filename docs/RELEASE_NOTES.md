@@ -4,6 +4,20 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.8
+
+Formiga can now open Formiga Battle, a new expansion where your companions play matches against
+the computer or a friend's colony, if you have it installed: the tray offers "Play Formiga
+Battle…", and everyone carries on living on the desktop while you play. What a match earns stays
+with the colony, from points and a match history to a trophy and a medal for each of Battle's four
+cups. The village now stands on a strip of grass seen a little from above, with paths to every
+door, and each house can be set nearer the front or further back from the notebook's Home page.
+Update Formiga Hill and Formiga Home to 0.67.8 alongside: Hill lets you write your own stories in
+the Clubhouse, make Woods adventures with a map editor and run competitions at the Fairground, and
+share them all as files, while Formiga Home keeps room arrangements as designs you can save, try,
+share and open, and shows Battle's trophies and medals. A colony this release has saved does not
+open in an earlier Formiga.
+
 ## New in 0.67.7
 
 Everything a companion finds or wears has been redrawn in what it is made of, so an acorn is

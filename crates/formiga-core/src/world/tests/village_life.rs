@@ -324,7 +324,8 @@ fn gardens_are_tended_for_what_is_growing_in_them() {
 }
 
 /// A resident climbs up onto its own house in a little hop, sits up on the roof — its feet on
-/// the top of the house, however tall that type of house is — and hops back down.
+/// the top of the house, however tall that type of house is and however far back it stands — and
+/// hops back down.
 #[test]
 fn a_resident_sits_up_on_its_own_roof_and_comes_back_down() {
     let created = datetime!(2026-01-01 0:00 UTC);
@@ -353,7 +354,10 @@ fn a_resident_sits_up_on_its_own_roof_and_comes_back_down() {
                     .beat
                     .is_some_and(|beat| beat.kind == BeatKind::RoofSit)
             {
-                let height = house_roof_height(&world.save.home.shelter, styles[slot], slot == 0);
+                // Measured from wherever the house stands front to back on the ground.
+                let depths = world.save.home.house_depth_list(&world.save.creatures);
+                let height = house_roof_height(&world.save.home.shelter, styles[slot], slot == 0)
+                    + f32::from(depths[slot]);
                 assert_eq!(creature.state.position, top);
                 assert!((top.y - (ground - height * scale)).abs() < 0.01);
                 assert_eq!(creature.state.action, ActionKind::Perch);

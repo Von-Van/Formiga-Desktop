@@ -2,6 +2,7 @@
 //! the tray, and the rule that a creature is away in one app at a time.
 
 use super::*;
+use crate::battle::BATTLE;
 use crate::expansion::{Expansion, Holding};
 use crate::hill::HILL;
 use crate::house::HOME;
@@ -9,8 +10,9 @@ use crate::house::HOME;
 /// Each companion app's place in the tray, in the order the tray lists them.
 pub(super) const HILL_ITEM: usize = 0;
 pub(super) const HOME_ITEM: usize = 1;
+pub(super) const BATTLE_ITEM: usize = 2;
 /// How many companion apps the tray has items for.
-pub(super) const VISIT_ITEMS: usize = 2;
+pub(super) const VISIT_ITEMS: usize = 3;
 
 impl FormigaApp {
     /// Who each companion app has just now.
@@ -25,7 +27,8 @@ impl FormigaApp {
             .visit
             .open()
             .map_or(Holding::Nobody, |open| Holding::These(open.away.clone()));
-        [(&HILL, hill), (&HOME, home)]
+        // Battle reads a copy of the roster and takes nobody away.
+        [(&HILL, hill), (&HOME, home), (&BATTLE, Holding::Nobody)]
     }
 
     /// Why a visit to `asking` cannot have `wants` (everyone, when `None`) just now, in the words of
@@ -51,6 +54,7 @@ impl FormigaApp {
         match item {
             HILL_ITEM => self.choose_hill_item(),
             HOME_ITEM => self.bring_household_back(),
+            BATTLE_ITEM => self.play_battle(),
             _ => {}
         }
     }

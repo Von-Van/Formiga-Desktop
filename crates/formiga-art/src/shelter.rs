@@ -101,6 +101,9 @@ pub struct VillageLook {
     pub styles: [ShelterStyle; VILLAGE_HOUSES],
     pub decorations: [Vec<ShelterDecorationKind>; VILLAGE_HOUSES],
     pub marks: [Option<ResidentMark>; VILLAGE_HOUSES],
+    /// How far back on the ground each house stands. A house further back is drawn a little
+    /// paler, as things further off are.
+    pub depths: [u8; VILLAGE_HOUSES],
 }
 
 impl VillageLook {
@@ -112,6 +115,7 @@ impl VillageLook {
             styles: home.house_style_list(creatures),
             decorations: home.house_decoration_list(creatures),
             marks: ResidentMark::for_village(creatures, &home.cottage_order),
+            depths: home.house_depth_list(creatures),
         }
     }
 }
@@ -152,13 +156,49 @@ impl ShelterRenderer {
     /// `after_dark` — the same houses lit from inside in the rows below, with the keepsake tree.
     /// Without it the texture is only the daylit half.
     pub fn render_look(look: &VillageLook, after_dark: bool) -> Canvas {
-        Self::render_village(
+        let mut canvas = Self::render_village(
             &look.genome,
             &look.decorations,
             &look.marks,
             &look.styles,
             after_dark,
-        )
+        );
+        // A house set back on the ground fades a little toward the air, by day toward a pale sky
+        // and after dark toward the night.
+        for (slot, depth) in look.depths.iter().enumerate() {
+            let t = crate::village_ground::depth_haze(*depth);
+            if t <= 0.0 {
+                continue;
+            }
+            for lit in [false, true] {
+                if lit && !after_dark {
+                    continue;
+                }
+                let air = if lit {
+                    Rgba::new(28, 34, 58, 255)
+                } else {
+                    Rgba::new(236, 240, 236, 255)
+                };
+                for occupied in [false, true] {
+                    let (x, y) = Self::village_cell(VillageCell::House {
+                        slot,
+                        lit,
+                        occupied,
+                    });
+                    for row in 0..SHELTER_SIZE as i32 {
+                        for column in 0..SHELTER_SIZE as i32 {
+                            let (px, py) = (x as i32 + column, y as i32 + row);
+                            let pixel = canvas.get(px, py);
+                            // The shadow on the ground stays a shadow.
+                            if pixel.a == 255 {
+                                canvas.set(px, py, crate::village_ground::mix(pixel, air, t));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        canvas
     }
 
     /// Every house by day with nobody at home, and the keepsake tree: the atlas's top row, which
@@ -257,6 +297,13 @@ fn blit_cell(canvas: &mut Canvas, tile: &Canvas, origin_x: i32, origin_y: i32) {
             }
         }
     }
+}
+
+/// Half the width a house in village slot `slot` is drawn, with the shadow at its foot, in shelter
+/// pixels.
+pub(crate) fn drawn_half_width(genome: &ShelterGenome, slot: usize) -> i32 {
+    let span = Dwelling::in_slot(slot).span;
+    dwelling_size(genome, span).0 / 2 + (2 * span / DRAWN_SPAN).max(1)
 }
 
 /// The drawn size of a dwelling at `span`, in shelter pixels. Cottages keep the colony house's

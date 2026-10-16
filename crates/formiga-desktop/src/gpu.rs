@@ -12,6 +12,10 @@ use formiga_art::{
     VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH,
     WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
+use formiga_art::{
+    GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
+    VillageGroundRenderer,
+};
 use formiga_core::{
     ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature,
     CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind,
@@ -97,6 +101,14 @@ struct ShelterGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     look: VillageLook,
+}
+
+/// The ground the village stands on, both layers by day and after dark, for the way the village
+/// is laid out now.
+struct GroundGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    look: VillageGroundLook,
 }
 
 struct BubbleGpu {
@@ -226,6 +238,7 @@ pub struct OverlayRenderer {
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
+    ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
     ui_atlas: Option<UiAtlasGpu>,
     ui_atlas_idle: u32,
@@ -500,6 +513,7 @@ impl OverlayRenderer {
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             shelter: None,
+            ground: None,
             bubble: None,
             ui_atlas: None,
             ui_atlas_idle: 0,
@@ -634,9 +648,25 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
-        if shelter_visible {
-            self.ensure_shelter(VillageLook::of(&save.home, &save.creatures));
-        }
+        // The ground the village stands on, laid out where the village stands on this display.
+        let ground_plan = if shelter_visible {
+            let look = VillageLook::of(&save.home, &save.creatures);
+            let plan = formiga_core::home_ground_plan(
+                &save.home,
+                &formiga_core::colony_cottages(&save.creatures),
+                std::slice::from_ref(&self.monitor),
+                &save.settings.habitat,
+                save.settings.display_scale,
+            )
+            .filter(|plan| plan.monitor_id == self.monitor.id);
+            if let Some(plan) = &plan {
+                self.ensure_ground(VillageGroundLook::of(plan, &look));
+            }
+            self.ensure_shelter(look);
+            plan
+        } else {
+            None
+        };
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
         let bubble_creature = milestone.and_then(|creature_id| {
@@ -673,6 +703,11 @@ impl OverlayRenderer {
         } else {
             Vec::new()
         };
+        let ground_layers = ground_plan.as_ref().map(|plan| {
+            [GroundLayer::Back, GroundLayer::Front].map(|layer| {
+                self.ground_vertices(plan, layer, ui.night, save.settings.display_scale)
+            })
+        });
         // What is loose about the village, and what is drifting up out of its houses.
         let mut prop_vertices = if shelter_visible {
             self.village_prop_vertices(save, ui.village)
@@ -692,10 +727,19 @@ impl OverlayRenderer {
                 + usize::from(bubble_creature.is_some()) * 6,
         );
         let mut creature_draws = Vec::with_capacity(visible.len());
-        // The village first, then what the colony keeps in the two yards over the top of it:
+        // The grass the village stands on, then the village, then the grass along the front over
+        // the houses' feet, then what the colony keeps in the two yards over the top of it:
         // belongings stand on the ground in front of a trunk rather than behind it.
+        if let Some([back, _]) = &ground_layers {
+            vertices.extend_from_slice(back);
+        }
+        let shelter_start = vertices.len();
         vertices.extend_from_slice(&village_vertices);
         let shelter_vertex_count = village_vertices.len();
+        let ground_front_start = vertices.len();
+        if let Some([_, front]) = &ground_layers {
+            vertices.extend_from_slice(front);
+        }
         let object_vertex_start = vertices.len();
         vertices.extend_from_slice(&object_vertices);
         let object_vertex_count = object_vertices.len();
@@ -875,10 +919,25 @@ impl OverlayRenderer {
                 pass.set_bind_group(1, bind_group, &[]);
                 pass.draw(start as u32..(start + count) as u32, 0..1);
             };
+            let ground = ground_layers
+                .is_some()
+                .then_some(self.ground.as_ref())
+                .flatten();
+            if let Some(ground) = ground {
+                draw(&mut pass, &ground.bind_group, 0, 6);
+            }
             if shelter_vertex_count > 0
                 && let Some(shelter) = &self.shelter
             {
-                draw(&mut pass, &shelter.bind_group, 0, shelter_vertex_count);
+                draw(
+                    &mut pass,
+                    &shelter.bind_group,
+                    shelter_start,
+                    shelter_vertex_count,
+                );
+            }
+            if let Some(ground) = ground {
+                draw(&mut pass, &ground.bind_group, ground_front_start, 6);
             }
             if object_vertex_count > 0
                 && let Some(objects) = &self.colony_objects

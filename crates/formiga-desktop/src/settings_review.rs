@@ -235,8 +235,9 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
                         .iter()
                         .map(|id| textures[id].0.pixels.len() * 4)
                         .sum();
-                    // The Home page is the heaviest, with its 672x96 row of the village.
-                    assert!(bytes <= 524 * 1024, "UI artwork exceeded budget: {bytes}");
+                    // The Home page is the heaviest, with its 672x96 row of the village and the
+                    // ground under it, at most 640x48.
+                    assert!(bytes <= 644 * 1024, "UI artwork exceeded budget: {bytes}");
                     if let Some(path) = &output_dir {
                         let jobs = context.tessellate(output.shapes, output.pixels_per_point);
                         rasterize(&jobs, &textures, width, height)
@@ -933,14 +934,16 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
 }
 
 /// Every texture the settings window may hold at once. The largest are the Home page's row of the
-/// village, 672x96 with a cell for each house so each can wear its resident's curtain (252 KiB);
+/// village, 672x96 with a cell for each house so each can wear its resident's curtain (252 KiB),
+/// and the ground it stands on, its two daylit layers only as long as the village (120 KiB at
+/// most);
 /// the Collection of 160 keepsakes, of which the pages hold only the resting half of the sheet
 /// (160 KiB); the object sheet, with every garden at every stage, fifteen hangout spots, fifteen
 /// ornaments and the village's props (112 KiB); a companion trying something on, in four poses
 /// (36 KiB), and everything there is to wear pictured on that companion, one strip of twenty boxes
 /// (40 KiB); and the village tree the creature studio stands its large preview beside, one 64x64
 /// texture shared by every candidate (16 KiB).
-const ARTWORK_BUDGET: usize = 940 * 1024;
+const ARTWORK_BUDGET: usize = 1060 * 1024;
 
 #[test]
 fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keeps_none_of_it() {
@@ -1013,9 +1016,10 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
         "UI artwork exceeded budget: {bytes}"
     );
     // Four portraits, four candidate strips and the tree the large preview stands beside, the
-    // village atlas, the object atlas, one sheet holding every trinket, and the last companion
-    // looked at trying something on in four poses, with everything to wear pictured on it.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 4 + 1);
+    // village atlas, the ground it stands on, the object atlas, one sheet holding every trinket,
+    // and the last companion looked at trying something on in four poses, with everything to
+    // wear pictured on it.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1);
 }
 
 #[test]

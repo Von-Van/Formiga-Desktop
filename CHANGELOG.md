@@ -4,6 +4,44 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.67.8] - 2026-10-15
+
+Released alongside Formiga Hill 0.67.8, Formiga Home 0.67.8 and the first downloadable Formiga
+Battle 0.67.8, which are built on it. Household version 11 adds only Formiga Battle's keepsakes to
+what a home is offered, so Formiga Home 0.67.7 still works with it and shows them on plain cards.
+Travel version 5 is unchanged, so Formiga Hill 0.67.7 works with it as it is. Save version 31 is
+new: a colony this release has saved does not open in an earlier Formiga.
+
+### Added
+
+- The village stands on a shallow strip of grass seen a little from above, with a trodden path
+  along it, a path back to every door, small pale bushes beyond it, and grass and flowers along
+  its front edge over the nearer houses' feet. The houses stand at different depths on it — the
+  colony house at the front and the cottages taking turns further back and nearer — and a house
+  further back is drawn a little higher and a little paler. The village is as wide as before, and
+  a house set furthest back stands eight shelter pixels higher than it did.
+- Save version 30: where each house stands front to back, chosen on the Home page for the picked
+  house from Front, Near, Middle, Far and Back (or with the up and down arrow keys in Arrange
+  mode), and given back its own place with "Its own place". It can be undone, follows the house
+  along the row and to a replacement, and is cleared by putting the village back. A colony this
+  release has saved does not open in an earlier Formiga.
+- `formiga-battle-contract`, the roster contract with Formiga Battle, adopted from Battle as
+  version 1 with golden fixtures: every companion as a trip to Formiga Hill carries it, with the
+  leanings it has learned, and Battle's answer. Battle's own rules stay Battle's.
+- With Formiga Battle installed, the tray offers "Play Formiga Battle…": Battle is handed a copy of
+  the colony's roster and everyone goes on living on the desktop, so a match never waits for a
+  trip or a visit, nor they for it. A refusal is said in Battle's own words. Nothing comes back
+  from a match yet, so the save is unchanged.
+- `formiga-battle-stub`, a stand-in for Battle, and end-to-end tests of a session against it.
+- What a match in Formiga Battle earns is the colony's (save version 31, contract version 2): the
+  colony's Battle record (Open Circuit points, match history, notebook, cup wins and unlocks) is
+  kept in the colony and handed to Battle with every roster, and when Battle closes each match it
+  played is kept once, by its id, with its line in the journal and any keepsake Desktop knows (a
+  trophy and a medal for each of the Backyard, Woodland, Millpond and Sandy Cove Cups). A colony
+  saved by this version does not open in an earlier Formiga.
+- Household version 11: Formiga Home is offered the colony's keepsakes from Formiga Battle to show.
+  An older Home shows them on their cards.
+
 ## [0.67.7] - 2026-10-15
 
 Released alongside Formiga Hill 0.67.7 and Formiga Home 0.67.7, which are built on it and draw the

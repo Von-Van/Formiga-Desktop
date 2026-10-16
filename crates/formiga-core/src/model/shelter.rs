@@ -55,6 +55,23 @@ pub struct HouseStyleChoice {
     pub style: ShelterStyle,
 }
 
+/// How far back on the village ground one house stands, chosen by hand for the companion who
+/// keeps it: shelter pixels back from the front of the grass, `0` at the front and
+/// [`MAX_HOUSE_DEPTH`] furthest back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HouseDepthChoice {
+    pub keeper: CreatureId,
+    pub depth: u8,
+}
+
+/// The furthest back a house can stand on the village ground, in shelter pixels.
+pub const MAX_HOUSE_DEPTH: u8 = 8;
+
+/// How far back each house slot stands when nobody has chosen: the colony house at the front and
+/// the cottages taking turns further back and nearer, so the row reads as houses standing about
+/// on the ground rather than in a line.
+pub const DEFAULT_HOUSE_DEPTHS: [u8; crate::MAX_COLONY_CREATURES] = [0, 7, 2, 8, 3, 6];
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShelterGenome {
     pub style: ShelterStyle,

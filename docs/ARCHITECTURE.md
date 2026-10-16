@@ -36,9 +36,9 @@ one feature at a time, and assumes you know where things are.
 ### The crates and where to start reading
 
 Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
-depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract` and
-`formiga-farm-contract` on those and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on
-the lot. Nothing depends on the desktop crate.
+depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract`,
+`formiga-farm-contract` and `formiga-battle-contract` on those and `formiga-travel`; and
+`formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
@@ -50,6 +50,7 @@ the lot. Nothing depends on the desktop crate.
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | `formiga-farm-contract` | `lib.rs`: the design contract with Formiga Farm | `snapshot.rs` and `replies.rs` for the documents; `projection.rs` for the one creature a session opens on; `accept.rs` for what Desktop keeps and how; [The Farm contract](#the-farm-contract) |
+| `formiga-battle-contract` | `lib.rs`: the roster contract with Formiga Battle | `project_roster` for the colony as Battle reads it; `open_session` for how Battle answers; [Matches in Formiga Battle](#matches-in-formiga-battle) |
 
 ### How the app starts
 
@@ -1052,9 +1053,50 @@ direction the village runs, is its new place — and the colony house, always fi
 carried. Something on the ground carried along it is let go as a fraction of the ground a companion
 may stand on, and the layout keeps its usual room between things. The arrow keys nudge whatever is
 picked out: a thing on the ground by four hundredths of the ground, a cottage one place along the
-row. A house picked out shows its keeper, anyone else who lives there, its kind and its six places
-to decorate. Nothing is written until something is let go, and every change goes through the same
+row, and — up and down — a house a step further back on the ground or nearer the front. A house
+picked out shows its keeper, anyone else who lives there, its kind, where it stands front to back,
+and its six places to decorate. Nothing is written until something is let go, and every change goes through the same
 outcomes as the rest of the page, so each can be undone.
+
+## The ground the village stands on (save v30)
+
+The village stands on a shallow strip of grass seen a little from above, `GROUND_BAND` = 11
+shelter pixels from its front edge on the ground line to its back. Each house stands somewhere on
+it front to back: `ColonyHome::house_depth_list` gives every slot its depth in shelter pixels, from
+`house_depths` — at most one `HouseDepthChoice` per keeper, up to `MAX_HOUSE_DEPTH` = 8, chosen on
+the Home page from five steps, Front, Near, Middle, Far and Back — or else
+`DEFAULT_HOUSE_DEPTHS` = `[0, 7, 2, 8, 3, 6]`, which keeps the colony house at the front and has
+the cottages take turns further back and nearer. Save version 30 adds `house_depths`; an older
+colony has none, so its houses stand where their slots put them. A choice follows its house: it
+moves with the cottage along the row, passes to a replacement, leaves with a keeper who leaves, is
+cleared by putting the village back, and is one undoable change (`ColonyEdit::HouseDepth`). The
+two trees and everything in their yards stay at the front.
+
+Depth changes where a house is drawn and nothing about where it stands in the walk: the lot, its
+width, the commons in front and every resting place are as they were. A house set back is drawn
+that many shelter pixels higher up the display, and the things measured from the drawing follow
+it — the house's click area, a resident's hop up onto its roof (`house_roof_height` plus its
+depth), the Zs out of a sleeping house and a leaf coming off a leaf house's eaves. `VillageLook`
+carries the depths, and a house further back is baked into the village atlas a little paler, up to
+a seventh of the way toward a pale sky by day and toward the night after dark, its ground shadow
+left as it is.
+
+`home_ground_plan` gives the strip as it is laid out on its display — its left end on the ground
+line, points per shelter pixel, and every lot shown with its middle and width — and
+`VillageGroundLook::of` turns it, with the drawn width of each house, into what
+`VillageGroundRenderer` draws: one 640×96 sheet of four 24-row layers, the back and the front by
+day and the same after dark. The back layer is drawn before the houses: the grass, rounded off at
+both ends and paler toward the back with blades standing up along its back edge; a trodden path
+along its middle from the first house to the last, in lengths; a path in from the front edge to
+every door, narrowing as it goes back; and small pale bushes or a sapling beyond the grass in the
+gaps between houses, half behind the houses either side. The front layer is drawn after the houses
+and trees and before the belongings and the companions: a tuft in each gap, and grass and flowers
+half over the corners of the houses that stand at the front, which is what puts them in front of
+the rest. The overlay keeps the sheet as a texture of its own, keyed on the whole
+`VillageGroundLook`, so it is drawn again only when the village is laid out again or a house moves,
+and it adds two quads and two draws to a frame. The Home page's preview draws the same day layers.
+Nothing on the ground moves, so reduced motion changes nothing. `formiga-tools home-yard-sheet`
+shows it under every panel.
 
 ## How high companions go
 
@@ -2093,7 +2135,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–29: version 29 is read directly, versions 1 through 28 are
+Persistence accepts save versions 1–31: version 31 is read directly, versions 1 through 30 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -2504,8 +2546,8 @@ window only hides it. Preferences offers "Take the tour" to start it again from 
 Formiga Hill and Formiga Home are visited the same way: Desktop writes a few documents into a
 fresh session directory, starts the app with that directory's path, and reads back what the app
 answers. What a visit carries and what may come back is each app's own contract
-(`formiga-travel`, `formiga-home-contract`, and `formiga-farm-contract` for Formiga Farm's
-sessions). How it is carried lives once, in `formiga-expansion-rulebook`:
+(`formiga-travel`, `formiga-home-contract`, `formiga-farm-contract` for Formiga Farm's
+sessions, and `formiga-battle-contract` for Formiga Battle's). How it is carried lives once, in `formiga-expansion-rulebook`:
 
 | Piece | What it guarantees |
 |---|---|
@@ -2927,3 +2969,85 @@ out changes nothing: every companion keeps the look it has.
 Without Farm installed the addition is one LaunchServices or registry lookup every ten minutes.
 With it open, one small file is read four times a second, and a sprite is baked again only when a
 look is kept.
+
+## Matches in Formiga Battle (save v31)
+
+Formiga Battle is a separate app for playing matches with the colony's companions. It reads a copy
+of the colony and changes nothing in it. Battle keeps nothing of its own: what its matches earn is
+the colony's, kept by Desktop and handed back to Battle at the start of every session.
+
+### The Battle contract
+
+`formiga-battle-contract` is the agreement with Formiga Battle, kept in Desktop's workspace as the
+other contracts are and taken from Battle byte for byte. How a contender becomes a match profile
+stays Battle's, so the contract depends only on Desktop's crates. Three documents pass through a
+session's directory: Desktop's `snapshot.json` (`BattleSnapshot`: every companion as the very
+`Traveler` a trip to Formiga Hill carries, with its learned tendencies beside it as `leanings`,
+whole numbers from -100 to 100; the bonds between them in the travel contract's bands; the colony's
+one-way digest; the owner's presentation; and, since version 2, the colony's `record`), Battle's
+`ack.json`, which accepts the roster or says why not, and Battle's `result.json` (`BattleResult`),
+written whole after every match: each match the session played, by a unique id, with what it
+earned. `project_roster` builds the snapshot from a save through `formiga_travel::project_colony`,
+so a companion reads the same in Battle as in Hill. `open_session` is how Battle reads a session and
+answers. `BattleRecord::apply` is the one rule both sides use to add a match to the record (Open
+Circuit points, the match history, the notebook, cup wins and unlocks), once per match id, and a
+result is refused if a friend match carries what only a match against the visitors earns or the
+other way round.
+
+The sample roster, record and result in `sample` are Desktop's own sample colony, and Battle
+rehearses with them. `tests/fixtures` keeps every version's documents, and
+`FORMIGA_BATTLE_BLESS=1 cargo test -p formiga-battle-contract --test golden` writes a new
+version's files beside the others.
+
+### What the colony keeps
+
+Save version 31 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
+played): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
+`keepsakes` its matches earned. The record crosses between the two only through that shape
+(`battle/record.rs`), and validation holds it to the contract's own bounds, keeping the newest of
+anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
+trophy and medal of each of Battle's four cups, Backyard, Woodland, Millpond and Sandy Cove, by
+Battle's own identifiers), once each, with Desktop's own name
+and words for it. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
+line, since the team and the match are Battle's to name; it is one line of plain text, checked by
+`is_battle_line` (the contract's own rule for text that crosses) when it comes and whenever the
+colony is read. Formiga Home is offered each keepsake in its inventory as a `battle_keepsake`
+source (household version 11): the trophy stands, the medal hangs, and an older Home shows either
+on its card.
+
+### A session
+
+Desktop never needs Battle: without it installed nothing below runs and nothing in the tray or the
+notebook mentions it. With it installed, the tray offers "Play Formiga Battle…" after the other
+companion apps' items.
+
+| State | Desktop |
+|---|---|
+| Idle | Lives as always. Looks for Battle when it starts and at most every ten minutes, from a tick it was taking anyway |
+| Open | Battle has the roster and the record, and everyone goes on living on the desktop: nobody is lent to Battle (`Holding::Nobody` in `app/visits.rs`), so no trip or visit waits for a match, and no match waits for a trip or visit. The tray says Battle is open |
+| Closing | Battle has gone: what its matches earned is kept, a refusal is said in Battle's own words, and the files are closed |
+
+What a session earned is kept by `battle::record::keep_result`, and only once Battle has closed. A
+result is read only if it names the session and the checksum of the snapshot Desktop wrote for it.
+Every match is applied to a copy of the record first, and the colony takes the new record, the
+journal lines and the keepsakes of the matches applied for the first time all together, or nothing;
+reading the same result again changes nothing. The colony is saved at once. Nothing is kept while
+the colony is being recovered, and replacing the colony ends the session without reading anything
+more of it.
+
+The states are `battle::SessionState`, runtime only, and only one session is ever open. A session's
+files are under `battle/` in the data directory (`battle/session.rs`, kept by `expansion::files`):
+a fresh `battle/<session>/` with the snapshot, where Battle answers, and `battle/session.json`, the
+marker that says a session is open, holding the session and its snapshot's checksum. If Desktop
+stops while Battle is open, the next start keeps what the result says so far and clears the files;
+a match Battle finishes after that is not kept.
+
+`formiga-battle-stub` stands in for Battle (see `docs/BUILD.md`), reading and answering through the
+contract's own `open_session` and winning the Backyard Cup, and `formiga-tools`'s `battle_session`
+tests run whole sessions against it.
+
+### Cost
+
+Without Battle installed the addition is one LaunchServices or registry lookup every ten minutes.
+Opening a match writes one file; nothing is read while it is open, and its result is read once,
+when it closes.

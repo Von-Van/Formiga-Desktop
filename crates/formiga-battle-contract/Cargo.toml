@@ -1,0 +1,16 @@
+[package]
+name = "formiga-battle-contract"
+description = "The roster contract between Formiga Desktop and Formiga Battle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+formiga-core = { path = "../formiga-core" }
+formiga-expansion-rulebook = { path = "../formiga-expansion-rulebook" }
+formiga-travel = { path = "../formiga-travel" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time.workspace = true

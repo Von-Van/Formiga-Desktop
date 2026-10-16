@@ -171,6 +171,32 @@ class Expansions(unittest.TestCase):
             self.assertEqual(self.found_from(tree), farm)
             self.assertIsNone(self.found_from(tree, "hill"))
 
+    def test_battle_is_found_with_its_pins_and_no_ci(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            desktop = root / "Formiga Desktop"
+            desktop.mkdir()
+            battle = root / "Formiga Battle"
+            battle.mkdir()
+            desktop_git = 'git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.6"'
+            (battle / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["crates/formiga-battle"]\n\n'
+                '[workspace.dependencies]\n'
+                f'formiga-core = {{ {desktop_git} }}\n'
+                f'formiga-expansion-rulebook = {{ {desktop_git} }}\n')
+            self.assertEqual(self.found_from(desktop, "battle"), battle)
+            expansion = Expansion("battle", "Formiga Battle", "formiga-battle", None, battle)
+            self.assertEqual(expansion.pins(), {"formiga-core": "v0.67.6",
+                                                "formiga-expansion-rulebook": "v0.67.6"})
+            self.assertFalse(expansion.has_ci())
+            (battle / ".github" / "workflows").mkdir(parents=True)
+            (battle / ".github" / "workflows" / "ci.yml").write_text("on: push\n")
+            self.assertTrue(expansion.has_ci())
+
+    def test_validate_with_expansions_runs_battle_too(self):
+        self.assertIn("battle", validate.EXPANSION_STEPS)
+        self.assertIn("battle", validate.STEPS)
+
     def test_the_lockfile_comes_back_as_it_was(self):
         with tempfile.TemporaryDirectory() as folder:
             lock = Path(folder) / "Cargo.lock"

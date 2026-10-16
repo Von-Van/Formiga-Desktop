@@ -6,8 +6,9 @@ One look at:
   checks      the last `formiga validate`, `formiga audit content` and `formiga art check`: when,
               on which commit, and what they found
   content     how many of each kind of thing Formiga has
-  expansions  Hill, Home and Farm beside this checkout: their commit, and the Desktop release each
-              builds on, next to this Desktop's version
+  expansions  Hill, Home, Farm and Battle beside this checkout: their commit, the Desktop release
+              each builds on next to this Desktop's version, and whether it has CI (Battle is
+              checked only on this machine, by `formiga validate --expansions`)
   scenarios   the known states, and which have been prepared
   captures    the newest pictures in .dev/captures/
 
@@ -167,12 +168,14 @@ def report() -> Result:
             "branch": git("rev-parse", "--abbrev-ref", "HEAD", cwd=expansion.path),
             "commit": git("rev-parse", "HEAD", cwd=expansion.path),
             "builds_on": tags,
+            "ci": expansion.has_ci(),
         }
         expansions[key] = entry
         on = ", ".join(tags) or "no tagged Desktop release"
         behind = "" if tags == [f"v{version}"] else f" (this Desktop is {version})"
+        local = "" if entry["ci"] else "; no CI, checked here by `validate --expansions`"
         notes.append(f"  {expansion.title:<14} {entry['branch']} at {entry['commit'][:7]}, "
-                     f"builds on Desktop {on}{behind}")
+                     f"builds on Desktop {on}{behind}{local}")
 
     prepared = [name for name in scenarios.SCENARIOS
                 if (DEV / "scenarios" / name).is_dir()]

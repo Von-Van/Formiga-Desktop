@@ -46,6 +46,10 @@ pub struct SaveFile {
     /// colony has been anywhere.
     #[serde(default, skip_serializing_if = "TripLog::is_empty")]
     pub trips: TripLog,
+    /// What the colony keeps of Formiga Battle: its record there, and the keepsakes its matches
+    /// earned. Absent from the file until the colony has played.
+    #[serde(default, skip_serializing_if = "crate::BattleLog::is_empty")]
+    pub battle: crate::BattleLog,
 }
 
 /// How often the colony has been away on the train and come home, and the last time. Only what

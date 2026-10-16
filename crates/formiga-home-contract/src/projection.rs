@@ -3,7 +3,9 @@
 //! rehearsals call it too, so they open a colony file exactly as Desktop would open the house.
 
 use crate::document::HomeError;
-use crate::inventory::{DisplayItem, DisplaySource, Ink, find_modes, souvenir_modes};
+use crate::inventory::{
+    DisplayItem, DisplaySource, Ink, battle_keepsake_modes, find_modes, souvenir_modes,
+};
 use crate::limits::*;
 use crate::snapshot::{HomeCapability, HomeSnapshot, Household, Neighbour, header};
 use crate::{DisplayId, HomeDocument};
@@ -195,7 +197,8 @@ pub fn project_household(
 }
 
 /// Everything the colony has that a house can show: each find in the scrapbook, in catalogue
-/// order, then each souvenir in the order it came home.
+/// order, then each souvenir in the order it came home, then each keepsake from Formiga Battle in
+/// the order it was earned.
 fn inventory(save: &core::SaveFile) -> Vec<DisplayItem> {
     let members: Vec<_> = save
         .creatures
@@ -232,7 +235,23 @@ fn inventory(save: &core::SaveFile) -> Vec<DisplayItem> {
             finder_name: None,
         })
     });
-    finds.chain(souvenirs).take(MAX_INVENTORY).collect()
+    let keepsakes = save.battle.keepsakes.iter().filter_map(|record| {
+        let id = record.keepsake.id();
+        Some(DisplayItem {
+            id: DisplayId::battle_keepsake(id)?,
+            source: DisplaySource::BattleKeepsake { id: id.to_owned() },
+            name: item_name(record.keepsake.name()),
+            ink: None,
+            modes: battle_keepsake_modes(record.keepsake),
+            found_at_utc: whole_seconds(record.earned_at_utc),
+            finder_name: None,
+        })
+    });
+    finds
+        .chain(souvenirs)
+        .chain(keepsakes)
+        .take(MAX_INVENTORY)
+        .collect()
 }
 
 fn item_name(name: &str) -> String {

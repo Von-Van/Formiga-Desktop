@@ -72,6 +72,7 @@ impl DisplayId {
     pub const FIND: &'static str = "find";
     pub const SOUVENIR: &'static str = "souvenir";
     pub const MEMENTO: &'static str = "memento";
+    pub const BATTLE: &'static str = "battle";
 
     /// A trinket from the scrapbook, by its catalogue variant.
     pub fn find(variant: u8) -> Self {
@@ -89,6 +90,12 @@ impl DisplayId {
         Self::parse(&format!("{}.{id}", Self::SOUVENIR))
     }
 
+    /// One of Formiga Battle's keepsakes, by Battle's own identifier, which already says it came
+    /// from Battle: `battle.trophy.backyard_cup`.
+    pub fn battle_keepsake(id: &str) -> Option<Self> {
+        Self::parse(id).filter(|parsed| parsed.source() == Self::BATTLE)
+    }
+
     pub fn parse(text: &str) -> Option<Self> {
         let (source, key) = text.split_once('.')?;
         (is_id(text) && !source.is_empty() && !key.is_empty()).then(|| Self(text.to_owned()))
@@ -98,7 +105,7 @@ impl DisplayId {
         &self.0
     }
 
-    /// Where it came from: `find`, `souvenir`, `memento`, or a source a newer Desktop has.
+    /// Where it came from: `find`, `souvenir`, `memento`, `battle`, or a source a newer Desktop has.
     pub fn source(&self) -> &str {
         self.0.split_once('.').map_or("", |(source, _)| source)
     }

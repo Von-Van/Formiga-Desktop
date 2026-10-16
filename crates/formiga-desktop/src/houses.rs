@@ -98,6 +98,7 @@ impl HouseShapes {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let owners = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
         let scale = save.settings.display_scale;
+        let depths = save.home.house_depth_list(&save.creatures);
         (0..=cottages.len())
             .filter_map(|slot| {
                 let keeper = *owners.as_slice().get(slot)?;
@@ -111,6 +112,11 @@ impl HouseShapes {
                 )?;
                 let monitor = monitors.iter().find(|monitor| monitor.id == monitor_id)?;
                 let (mask, roof) = self.cut.get(slot)?.clone();
+                // A house set back on the ground stands that much higher up the display.
+                let foot = Point {
+                    y: foot.y - f32::from(depths[slot]) * f32::from(scale) / monitor.scale_factor,
+                    ..foot
+                };
                 Some(PlacedHouse {
                     keeper,
                     slot,

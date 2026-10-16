@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1262,8 +1262,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-battle-contract"
+version = "0.67.8"
+dependencies = [
+ "formiga-core",
+ "formiga-expansion-rulebook",
+ "formiga-travel",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "time",
+]
+
+[[package]]
 name = "formiga-core"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1278,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-desktop"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1289,6 +1302,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "formiga-art",
+ "formiga-battle-contract",
  "formiga-core",
  "formiga-expansion-rulebook",
  "formiga-farm-contract",
@@ -1318,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-expansion-rulebook"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -1329,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-farm-contract"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "formiga-core",
  "formiga-expansion-rulebook",
@@ -1342,7 +1356,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-home-contract"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "formiga-art",
  "formiga-core",
@@ -1357,12 +1371,14 @@ dependencies = [
 
 [[package]]
 name = "formiga-tools"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "anyhow",
  "epaint",
  "formiga-art",
+ "formiga-battle-contract",
  "formiga-core",
+ "formiga-expansion-rulebook",
  "formiga-farm-contract",
  "formiga-home-contract",
  "formiga-travel",
@@ -1378,7 +1394,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.67.7"
+version = "0.67.8"
 dependencies = [
  "formiga-art",
  "formiga-core",

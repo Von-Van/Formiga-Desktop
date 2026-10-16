@@ -103,6 +103,13 @@ impl From<SaveFile> for ValidatedSave {
         if save.trips.last.is_some() {
             save.trips.count = save.trips.count.max(1);
         }
+        // Battle's record is kept inside its bounds, and a line Battle could never have written is
+        // not kept in the journal.
+        save.battle.normalize();
+        save.companion.journal.retain(|entry| match &entry.moment {
+            crate::JournalMoment::Battle(line) => crate::is_battle_line(line),
+            _ => true,
+        });
         // A souvenir kept twice is the one that came home first.
         let mut kept = Vec::new();
         save.trips.souvenirs.retain(|record| {
@@ -389,6 +396,19 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
     check(souvenirs_once(&save.trips.souvenirs), &|| {
         "a souvenir kept twice".to_owned()
     });
+    check(save.battle.holds(), &|| {
+        "a Battle record out of bounds, or a keepsake kept twice".to_owned()
+    });
+    check(
+        save.companion
+            .journal
+            .iter()
+            .all(|entry| match &entry.moment {
+                crate::JournalMoment::Battle(line) => crate::is_battle_line(line),
+                _ => true,
+            }),
+        &|| "a match in the journal that is not one line of plain text".to_owned(),
+    );
 
     // The village.
     check(save.objects.objects.len() <= MAX_COLONY_OBJECTS, &|| {
@@ -426,6 +446,21 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
         home.cottage_order.len() <= MAX_COLONY_CREATURES
             && home.cottage_order.iter().collect::<BTreeSet<_>>().len() == home.cottage_order.len(),
         &|| "a cottage stands twice".to_owned(),
+    );
+    check(
+        home.house_depths.len() <= MAX_COLONY_CREATURES
+            && home
+                .house_depths
+                .iter()
+                .all(|choice| choice.depth <= crate::MAX_HOUSE_DEPTH)
+            && home
+                .house_depths
+                .iter()
+                .map(|choice| choice.keeper)
+                .collect::<BTreeSet<_>>()
+                .len()
+                == home.house_depths.len(),
+        &|| "a house stands further back than the ground goes, or twice".to_owned(),
     );
     check(
         home.dressing.len() <= MAX_COLONY_CREATURES
@@ -501,7 +536,7 @@ mod tests {
     #[test]
     fn every_violation_is_noticed_and_repaired() {
         type Breakage = (&'static str, fn(&mut SaveFile));
-        let breakages: [Breakage; 10] = [
+        let breakages: [Breakage; 13] = [
             ("text", |save| save.companion.appearance.text_scale = 233),
             ("bond", |save| {
                 let first = save.relationships[0];
@@ -534,6 +569,13 @@ mod tests {
                     })
                     .collect()
             }),
+            ("depth", |save| {
+                let keeper = save.creatures[0].id;
+                save.home.house_depths = vec![
+                    crate::HouseDepthChoice { keeper, depth: 200 },
+                    crate::HouseDepthChoice { keeper, depth: 1 },
+                ];
+            }),
             ("version", |save| save.save_version = 3),
             ("trip", |save| {
                 save.trips.last = Some(crate::Trip {
@@ -548,6 +590,16 @@ mod tests {
                     brought_home_at_utc: save.created_at_utc,
                 };
                 save.trips.souvenirs = vec![twice, twice];
+            }),
+            ("battle", |save| {
+                save.battle.record.applied = vec!["../colony".to_owned()];
+            }),
+            ("match", |save| {
+                save.companion.remember(
+                    None,
+                    crate::JournalMoment::Battle("two\nlines".to_owned()),
+                    save.created_at_utc,
+                );
             }),
             ("orphan", |save| {
                 for creature in &mut save.creatures {

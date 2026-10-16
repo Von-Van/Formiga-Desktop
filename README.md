@@ -1,4 +1,4 @@
-# Formiga · v0.67.7
+# Formiga · v0.67.8
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.7-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.8-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,18 +107,19 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.7
+## New in 0.67.8
 
-Everything a companion finds or wears has been redrawn in what it is made of, so an acorn is
-brown, a buckle brass and a teacup china, and each can be told apart at a glance. The wardrobe
-now shows each thing to wear on the companion beside its name, the try-on is larger, and the
-Collection draws its finds crisply and shows one large when the pointer rests on it. The
-notebook is easier to read: its longest pages open on a short summary with a line for each
-section, its writing sits on the ruled lines and scrolls with them, and quieter text is darker
-by daylight and lighter after dark. Update Formiga Hill and Formiga Home to 0.67.7 alongside:
-Hill's dress-up box shows a costume on whoever the pointer is over before it is put on, and its
-journal opens on a list of chapters, while Formiga Home gives each household a project board of
-things to build and improve at home, such as a window garden, a puppet theatre and a hearth.
+Formiga can now open Formiga Battle, a new expansion where your companions play matches against
+the computer or a friend's colony, if you have it installed: the tray offers "Play Formiga
+Battle…", and everyone carries on living on the desktop while you play. What a match earns stays
+with the colony, from points and a match history to a trophy and a medal for each of Battle's four
+cups. The village now stands on a strip of grass seen a little from above, with paths to every
+door, and each house can be set nearer the front or further back from the notebook's Home page.
+Update Formiga Hill and Formiga Home to 0.67.8 alongside: Hill lets you write your own stories in
+the Clubhouse, make Woods adventures with a map editor and run competitions at the Fairground, and
+share them all as files, while Formiga Home keeps room arrangements as designs you can save, try,
+share and open, and shows Battle's trophies and medals. A colony this release has saved does not
+open in an earlier Formiga.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

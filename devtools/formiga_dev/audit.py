@@ -10,7 +10,7 @@ Reads Formiga's content from its own code (`formiga-tools dev catalog`) and chec
               of colony object turns up somewhere; every accessory can be worn once, and only
               once, its find is found; every find and wonder has a hint
   expansions  every souvenir Desktop knows is one Hill gives, and every story souvenir has a
-              story that gives it; every souvenir and find Hill, Home and Farm name by id or
+              story that gives it; every souvenir and find Hill, Home, Farm and Battle name by id or
               number is one Desktop has
 
 Errors fail the audit; warnings are listed for a look and do not.
@@ -253,7 +253,7 @@ def expansions(data: dict, source: catalog.Source) -> Step:
     step = _step("expansions", problems, checked)
     if len(missing) == len(EXPANSIONS):
         step.status = "skipped"
-        step.summary = "no Hill, Home or Farm checkout beside this one"
+        step.summary = "no Hill, Home, Farm or Battle checkout beside this one"
     elif missing:
         names = " or ".join(key.title() for key in missing)
         step.summary += f" (no {names} checkout beside this one)"

@@ -236,6 +236,12 @@ impl FormigaApp {
                 });
                 companion_changed = true;
             }
+            if let Some((keeper, depth)) = outcome.house_depth {
+                world.edit(ColonyEdit::HouseDepth, |world| {
+                    world.save.home.set_house_depth(keeper, depth);
+                });
+                companion_changed = true;
+            }
             if let Some(palette) = outcome.village_palette {
                 world.edit(ColonyEdit::PaintedVillage, |world| {
                     world.save.home.palette = palette;

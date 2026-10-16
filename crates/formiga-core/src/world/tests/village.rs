@@ -323,6 +323,82 @@ fn each_house_is_its_keepers_own_type_until_another_is_chosen() {
     assert!(world.save.home.house_styles.is_empty());
 }
 
+/// Every house stands somewhere on the ground front to back: where its slot puts it until it is
+/// moved, and where it was moved after that, no further back than the ground goes. The choice
+/// stays with the house when its keeper is replaced, goes with a keeper who leaves, follows the
+/// house when the cottages are rearranged, and is cleared when the village is put back.
+#[test]
+fn a_house_stands_as_far_back_as_it_was_put() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([76; 32], 4, created, &desktop);
+    for creature in &mut world.save.creatures {
+        creature.kept = false;
+    }
+    let creatures = world.save.creatures.clone();
+    let ids: Vec<CreatureId> = creatures.iter().map(|creature| creature.id).collect();
+    assert_eq!(
+        world.save.home.house_depth_list(&creatures),
+        DEFAULT_HOUSE_DEPTHS
+    );
+    assert_eq!(
+        DEFAULT_HOUSE_DEPTHS[0], 0,
+        "the colony house stands at the front"
+    );
+
+    world.save.home.set_house_depth(ids[2], Some(1));
+    world.save.home.set_house_depth(ids[2], Some(40));
+    assert_eq!(
+        world.save.home.house_depths.len(),
+        1,
+        "one choice per house"
+    );
+    assert_eq!(world.save.home.house_depth(ids[2]), Some(MAX_HOUSE_DEPTH));
+    assert_eq!(
+        world.save.home.house_depth_list(&creatures)[2],
+        MAX_HOUSE_DEPTH
+    );
+
+    // Moved along the row, it keeps its depth.
+    world
+        .save
+        .home
+        .arrange_cottages(vec![ids[2], ids[1], ids[3]], &creatures);
+    assert_eq!(
+        world.save.home.house_depth_list(&creatures)[1],
+        MAX_HOUSE_DEPTH
+    );
+    world.save.home.set_house_depth(ids[2], None);
+    assert!(world.save.home.house_depths.is_empty());
+
+    world.save.home.set_house_depth(ids[3], Some(4));
+    let newcomer = world
+        .replace_creature_with_adult(ids[3], [79; 32], created, &desktop)
+        .unwrap();
+    assert_eq!(world.save.home.house_depth(newcomer), Some(4));
+    world.save.home.set_house_depth(ids[1], Some(2));
+    world.remove_colony_creature(ids[1]).unwrap();
+    assert!(world.save.home.house_depth(ids[1]).is_none());
+    world.save.home.reset_arrangement();
+    assert!(world.save.home.house_depths.is_empty());
+}
+
+/// Moving a house back or forward is one change, and taking it back puts the house where it
+/// stood.
+#[test]
+fn moving_a_house_back_can_be_taken_back() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = settled_colony([77; 32], 3, created, &desktop);
+    let keeper = world.save.creatures[1].id;
+    world.edit(ColonyEdit::HouseDepth, |world| {
+        world.save.home.set_house_depth(keeper, Some(8));
+    });
+    assert_eq!(world.save.home.house_depth(keeper), Some(8));
+    assert_eq!(world.undo_last_edit(), Ok(ColonyEdit::HouseDepth));
+    assert_eq!(world.save.home.house_depth(keeper), None);
+}
+
 /// A companion's own house type comes from its seed: the same every time, and across many
 /// companions every type turns up about as often as any other.
 #[test]

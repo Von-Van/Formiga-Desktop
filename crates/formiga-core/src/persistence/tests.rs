@@ -15,7 +15,8 @@ fn migrate(value: serde_json::Value, version: u32) -> Result<SaveFile, Persisten
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 283] = [
+const SAVED_FIELDS: [&str; 310] = [
+    "Battle",
     "Decoration",
     "Friendship",
     "Garden",
@@ -57,6 +58,7 @@ const SAVED_FIELDS: [&str; 283] = [
     "avoidance",
     "axes",
     "b",
+    "battle",
     "behavior_seed",
     "belly",
     "belly_color",
@@ -70,6 +72,7 @@ const SAVED_FIELDS: [&str; 283] = [
     "calm_spells",
     "cell",
     "cheek_style",
+    "circuit_points",
     "classic",
     "climbing",
     "coat",
@@ -82,8 +85,11 @@ const SAVED_FIELDS: [&str; 283] = [
     "cottage_order",
     "created_at_utc",
     "creature",
+    "creature_id",
     "creatures",
     "crown",
+    "cup",
+    "cups",
     "curiosity",
     "curiosity_satisfaction",
     "cursor_cooldown",
@@ -95,6 +101,7 @@ const SAVED_FIELDS: [&str; 283] = [
     "days",
     "decision_temperature",
     "decorations",
+    "depth",
     "descriptor_flags",
     "design",
     "detail_seed",
@@ -108,9 +115,11 @@ const SAVED_FIELDS: [&str; 283] = [
     "dressing",
     "drives",
     "ear_size",
+    "earned_at_utc",
     "ears",
     "effect_motif",
     "enabled",
+    "ended_by",
     "energy",
     "exploration",
     "eye_shape",
@@ -127,6 +136,7 @@ const SAVED_FIELDS: [&str; 283] = [
     "feistiness",
     "finder",
     "finder_name",
+    "finished_at_utc",
     "first_at",
     "foot_size",
     "forelimbs",
@@ -148,18 +158,22 @@ const SAVED_FIELDS: [&str; 283] = [
     "head_ratio",
     "height",
     "highlight_style",
+    "history",
     "home",
     "home_affinity",
     "home_seconds",
     "home_visits",
     "hooks",
     "horns",
+    "house_depths",
     "house_styles",
     "id",
     "impulsiveness",
     "journal",
     "journal_seen_until",
     "keeper",
+    "keepsake",
+    "keepsakes",
     "kept",
     "kept_at_utc",
     "key",
@@ -178,14 +192,17 @@ const SAVED_FIELDS: [&str; 283] = [
     "longest_sleep_seconds",
     "marking",
     "marking_seed",
+    "matches",
     "maximum_seen_utc",
     "memory",
     "milestone_bubble_shown",
     "milestone_cooldown_active_seconds",
     "mini_arrivals",
     "minute",
+    "mode",
     "modes",
     "moment",
+    "moments",
     "monitor_id",
     "mouth_style",
     "muzzle",
@@ -193,9 +210,11 @@ const SAVED_FIELDS: [&str; 283] = [
     "next_at_utc",
     "normalized_bounds",
     "normalized_position",
+    "notebook",
     "objects",
     "on_stage",
     "onboarding_complete",
+    "opponent",
     "ordinal",
     "origin",
     "ornaments",
@@ -221,6 +240,8 @@ const SAVED_FIELDS: [&str; 283] = [
     "profile_revision",
     "pupil_style",
     "quiet_until",
+    "recent",
+    "record",
     "reduce_motion",
     "relationships",
     "relative_x",
@@ -259,6 +280,7 @@ const SAVED_FIELDS: [&str; 283] = [
     "squabbles",
     "state",
     "stays_until_utc",
+    "steps",
     "strength",
     "style",
     "surface",
@@ -268,6 +290,7 @@ const SAVED_FIELDS: [&str; 283] = [
     "tail_style",
     "tallies",
     "tally",
+    "team",
     "temperament",
     "tendencies",
     "tension",
@@ -281,6 +304,8 @@ const SAVED_FIELDS: [&str; 283] = [
     "tip_style",
     "transitions",
     "tree_keepsakes",
+    "turns",
+    "unlocked",
     "unlocks",
     "variant",
     "velocity",
@@ -296,6 +321,8 @@ const SAVED_FIELDS: [&str; 283] = [
     "window_ride_seconds",
     "window_tolerance",
     "wings",
+    "wins",
+    "won",
     "x",
     "y",
     "zones",
@@ -380,6 +407,7 @@ fn a_file_written_mid_scene_holds_no_window_cursor_or_play_in_progress() {
         "palette",
         "gardens",
         "house_styles",
+        "house_depths",
     ] {
         assert!(
             names.contains(arranged),
@@ -721,6 +749,41 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
     let mut desktop = observed_desktop(0);
     let mut world = crate::World::new([92; 32], created, &desktop);
     world.tick(now, 0.05, &desktop);
+    // A colony that has played Formiga Battle, against a friend and against the visitors.
+    let player = world.save.creatures[0].id;
+    world.save.battle.record = crate::BattleRecord {
+        circuit_points: 15,
+        unlocked: vec!["cup.woodland".to_owned()],
+        cups: vec![crate::BattleCupWins {
+            cup: "cup.backyard".to_owned(),
+            wins: 3,
+        }],
+        history: vec![crate::BattleMatchSummary {
+            finished_at_utc: now,
+            mode: crate::BattleMode::Friend,
+            won: Some(true),
+            ended_by: "capture".to_owned(),
+            turns: 8,
+            team: vec![player],
+            opponent: Some("Sam".to_owned()),
+        }],
+        notebook: vec![crate::BattleNotebookPage {
+            creature_id: player,
+            matches: 1,
+            wins: 1,
+            recent: vec![crate::BattleShowing {
+                steps: 12,
+                ..Default::default()
+            }],
+            moments: vec!["Held firm against two at once".to_owned()],
+        }],
+        applied: vec!["0123456789abcdef0123456789abcdef".to_owned()],
+    };
+    world.keep_battle_match(
+        &["They won the Backyard Cup.".to_owned()],
+        &["battle.trophy.backyard_cup".to_owned()],
+        now,
+    );
     // Out of the house, so the colony is living on the desktop rather than walking home.
     world.save.home.active_since_utc = None;
     world.save.home.last_disappeared_utc = Some(now);
@@ -887,6 +950,11 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
                 .save
                 .home
                 .set_house_style(founder, Some(crate::ShelterStyle::PillowFort));
+            // And set right at the back of the ground.
+            world
+                .save
+                .home
+                .set_house_depth(founder, Some(crate::MAX_HOUSE_DEPTH));
             world.save.home.set_decoration(
                 founder,
                 crate::DecorationSlot::Eaves,
@@ -1238,6 +1306,7 @@ fn example_save() -> SaveFile {
         finds_today: crate::FindsToday::default(),
         day_book: crate::DayBook::default(),
         trips: crate::TripLog::default(),
+        battle: crate::BattleLog::default(),
     }
 }
 
@@ -2429,4 +2498,56 @@ fn a_sculpt_out_of_bounds_is_brought_inside_them_and_given_a_recipe() {
         Some(crate::BodyPlan::Round)
     );
     assert!(violations(&kept).is_empty(), "{:?}", violations(&kept));
+}
+
+/// A version-30 colony opens having never played Formiga Battle and writes exactly what it read,
+/// and what a colony keeps of Battle comes back from the file exactly as it was kept.
+#[test]
+fn v31_keeps_a_battle_record_and_keepsakes_and_older_colonies_have_none() {
+    let desktop = crate::DesktopSnapshot::default();
+    let now = datetime!(2026-10-15 12:00 UTC);
+    let mut world = crate::World::new([30; 32], now, &desktop);
+    world.tick(now + time::Duration::days(3), 0.05, &desktop);
+    let save = world.save.clone();
+    let mut value = serde_json::to_value(&save).unwrap();
+    assert!(
+        value.get("battle").is_none(),
+        "a colony that never played writes nothing of it"
+    );
+    value["save_version"] = 30.into();
+    let migrated = migrate(value, 30).unwrap();
+    assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+    assert!(migrated.battle.is_empty());
+    assert_eq!(migrated.creatures, save.creatures);
+
+    let mut world = crate::World::from_save(migrated);
+    world.save.battle.record.circuit_points = 15;
+    world.save.battle.record.applied = vec!["fedcba9876543210fedcba9876543210".to_owned()];
+    let at = world.save.maximum_seen_utc;
+    let line = "Mochi, Biscuit and Fig won a Backyard Cup match.".to_owned();
+    let earned = world.keep_battle_match(
+        std::slice::from_ref(&line),
+        &[
+            "battle.trophy.backyard_cup".to_owned(),
+            "battle.trophy.backyard_cup".to_owned(),
+            "battle.ribbon.someday".to_owned(),
+        ],
+        at,
+    );
+    assert_eq!(earned, 1, "each keepsake Desktop knows, once");
+    let directory = std::env::temp_dir().join(format!("formiga-battle-{}", std::process::id()));
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&world.save).unwrap();
+    let loaded = store.load().unwrap().unwrap();
+    assert_eq!(loaded.battle, world.save.battle);
+    assert!(
+        loaded
+            .battle
+            .has_keepsake(crate::BattleKeepsake::BackyardCupTrophy)
+    );
+    assert_eq!(
+        loaded.companion.journal.last().map(|entry| &entry.moment),
+        Some(&crate::JournalMoment::Battle(line))
+    );
+    let _ = fs::remove_dir_all(directory);
 }

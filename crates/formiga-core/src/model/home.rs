@@ -2,9 +2,10 @@
 
 use super::{
     Creature, CreatureId, DecorationSlot, DisplayKey, GardenKind, GardenPatch, HangoutKind,
-    HangoutSpot, HouseDressing, HouseStyleChoice, MAX_COLONY_CREATURES, MAX_GARDENS, MAX_HANGOUTS,
-    MAX_HOUSE_DECORATIONS, MAX_ORNAMENTS, OrnamentKind, OrnamentSpot, ShelterDecorationKind,
-    ShelterGenome, ShelterStyle, TREE_HOOKS, TreeKeepsakes, VillageUnlocks,
+    HangoutSpot, HouseDepthChoice, HouseDressing, HouseStyleChoice, MAX_COLONY_CREATURES,
+    MAX_GARDENS, MAX_HANGOUTS, MAX_HOUSE_DECORATIONS, MAX_HOUSE_DEPTH, MAX_ORNAMENTS, OrnamentKind,
+    OrnamentSpot, ShelterDecorationKind, ShelterGenome, ShelterStyle, TREE_HOOKS, TreeKeepsakes,
+    VillageUnlocks,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -45,6 +46,11 @@ pub struct ColonyHome {
     /// cottage. Absent while none has been chosen.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub house_styles: Vec<HouseStyleChoice>,
+    /// How far back on the ground each house stands, chosen by hand, one at most for each
+    /// companion who keeps a house. A house with none stands where its slot's
+    /// [`crate::DEFAULT_HOUSE_DEPTHS`] puts it. Absent while none has been chosen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub house_depths: Vec<HouseDepthChoice>,
     /// What the village has to choose from, and when the next thing arrives.
     #[serde(default)]
     pub unlocks: VillageUnlocks,
@@ -141,6 +147,7 @@ impl ColonyHome {
             palette: None,
             gardens: Vec::new(),
             house_styles: Vec::new(),
+            house_depths: Vec::new(),
             unlocks: VillageUnlocks::starting(),
             dressing: Vec::new(),
             ornaments: Vec::new(),
@@ -180,6 +187,40 @@ impl ColonyHome {
         self.house_styles.retain(|choice| choice.keeper != keeper);
         if let Some(style) = style {
             self.house_styles.push(HouseStyleChoice { keeper, style });
+        }
+        self.normalize_village();
+    }
+
+    /// How far back every house in the village stands, in the order they stand: whatever was
+    /// chosen for it, or else its slot's place in [`crate::DEFAULT_HOUSE_DEPTHS`].
+    pub fn house_depth_list(&self, creatures: &[Creature]) -> [u8; MAX_COLONY_CREATURES] {
+        let mut depths = crate::DEFAULT_HOUSE_DEPTHS;
+        let owners = crate::house_owners(creatures, &self.cottage_order);
+        for (slot, keeper) in owners.as_slice().iter().enumerate() {
+            if let Some(chosen) = self.house_depth(*keeper) {
+                depths[slot] = chosen;
+            }
+        }
+        depths
+    }
+
+    /// How far back the house this companion keeps was put by hand, if it was.
+    pub fn house_depth(&self, keeper: CreatureId) -> Option<u8> {
+        self.house_depths
+            .iter()
+            .find(|choice| choice.keeper == keeper)
+            .map(|choice| choice.depth)
+    }
+
+    /// Put the house this companion keeps a number of shelter pixels back from the front of the
+    /// ground, at most [`MAX_HOUSE_DEPTH`], or with `None` give it back its own place.
+    pub fn set_house_depth(&mut self, keeper: CreatureId, depth: Option<u8>) {
+        self.house_depths.retain(|choice| choice.keeper != keeper);
+        if let Some(depth) = depth {
+            self.house_depths.push(HouseDepthChoice {
+                keeper,
+                depth: depth.min(MAX_HOUSE_DEPTH),
+            });
         }
         self.normalize_village();
     }
@@ -344,7 +385,7 @@ impl ColonyHome {
 
     /// Everything the person at the desk arranged about the village put back as it was
     /// generated: the cottages in the order their keepers arrived, the colony's own colours and
-    /// house types, and nothing planted or set out on the ground. Hangout spots, decorations and
+    /// house types, every house where its slot stands it, and nothing planted or set out on the ground. Hangout spots, decorations and
     /// the keepsakes in the trees are left as they were.
     pub fn reset_arrangement(&mut self) {
         self.cottage_order.clear();
@@ -352,6 +393,7 @@ impl ColonyHome {
         self.gardens.clear();
         self.ornaments.clear();
         self.house_styles.clear();
+        self.house_depths.clear();
     }
 
     /// One of each kind at most, each somewhere on the ground and each something the village
@@ -401,6 +443,16 @@ impl ColonyHome {
             fresh
         });
         self.house_styles.truncate(MAX_COLONY_CREATURES);
+        let mut seen = Vec::new();
+        self.house_depths.retain(|choice| {
+            let fresh = !seen.contains(&choice.keeper);
+            seen.push(choice.keeper);
+            fresh
+        });
+        for choice in &mut self.house_depths {
+            choice.depth = choice.depth.min(MAX_HOUSE_DEPTH);
+        }
+        self.house_depths.truncate(MAX_COLONY_CREATURES);
         let mut seen = Vec::new();
         let decorations = &self.unlocks.decorations;
         self.dressing.retain(|dressing| {

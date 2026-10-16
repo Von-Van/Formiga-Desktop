@@ -131,6 +131,10 @@ fn everything_the_colony_has_can_be_shown_and_nothing_else() {
                 assert!(item.ink.is_none(), "a souvenir has its own colours");
                 assert!(formiga_core::Souvenir::from_id(id).is_some());
             }
+            DisplaySource::BattleKeepsake { id } => {
+                assert!(item.ink.is_none(), "a keepsake has its own colours");
+                assert!(formiga_core::BattleKeepsake::from_id(id).is_some());
+            }
             DisplaySource::HomeMemento { .. } => panic!("Desktop never sends a keepsake"),
             DisplaySource::Unknown => panic!("Desktop wrote a source it does not know"),
         }
@@ -175,6 +179,42 @@ fn a_souvenir_desktop_has_kept_reaches_every_house_without_hill() {
         .item(&DisplayId::souvenir("well_penny").unwrap())
         .unwrap();
     assert_eq!(penny.name, "Well penny");
+}
+
+#[test]
+fn a_keepsake_from_formiga_battle_can_be_shown_in_every_house() {
+    let mut save = sample::colony();
+    let keeper = sample::keeper(&save);
+    let trophy = DisplayId::battle_keepsake("battle.trophy.backyard_cup").unwrap();
+    let project = |save: &formiga_core::SaveFile| {
+        project_household(
+            save,
+            keeper,
+            &[],
+            &HomeCapability::ALL,
+            session(),
+            sample::MADE,
+            "test",
+        )
+        .unwrap()
+    };
+    assert!(project(&save).item(&trophy).is_none());
+    save.battle
+        .keepsakes
+        .push(formiga_core::BattleKeepsakeRecord {
+            keepsake: formiga_core::BattleKeepsake::BackyardCupTrophy,
+            earned_at_utc: sample::MADE,
+        });
+    let after = project(&save);
+    let shown = after.item(&trophy).unwrap();
+    assert_eq!(shown.name, "Backyard Cup trophy");
+    assert!(shown.allows(DisplayMode::SurfaceSmall) && shown.allows(DisplayMode::FallbackCard));
+    // An older Home reads it as a source it does not know, and shows it on its card.
+    let mut older = serde_json::to_value(shown).unwrap();
+    older["source"]["kind"] = "a_source_from_later".into();
+    let read: DisplayItem = serde_json::from_value(older).unwrap();
+    assert_eq!(read.source, DisplaySource::Unknown);
+    assert_eq!(DisplayId::battle_keepsake("souvenir.well_penny"), None);
 }
 
 #[test]
