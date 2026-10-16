@@ -2993,7 +2993,11 @@ so a companion reads the same in Battle as in Hill. `open_session` is how Battle
 answers. `BattleRecord::apply` is the one rule both sides use to add a match to the record (Open
 Circuit points, the match history, the notebook, cup wins and unlocks), once per match id, and a
 result is refused if a friend match carries what only a match against the visitors earns or the
-other way round.
+other way round. A result's `registry` is the Handler card and trios as the session left them;
+since version 4 each match played as a trio also names the three who played (`TrioPlayed::members`),
+and `BattleRecord::register_session` keeps any of those lineups the trio no longer has as earlier
+lineups before keeping the registry, so a lineup that played and was changed within one session is
+not lost.
 
 The sample roster, record and result in `sample` are Desktop's own sample colony, and Battle
 rehearses with them. `tests/fixtures` keeps every version's documents, and

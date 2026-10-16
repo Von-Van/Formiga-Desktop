@@ -161,6 +161,7 @@ pub fn result() -> crate::BattleResult {
             trio: Some(crate::TrioPlayed {
                 id: TRIO.to_owned(),
                 won: Some(true),
+                members: crate::lineup_of(&ids),
             }),
             ..crate::Rewards::default()
         },
@@ -174,6 +175,7 @@ pub fn result() -> crate::BattleResult {
             trio: Some(crate::TrioPlayed {
                 id: TRIO.to_owned(),
                 won: Some(true),
+                members: crate::lineup_of(&ids),
             }),
             ..crate::Rewards::default()
         },

@@ -21,7 +21,8 @@ pub struct Kept {
 /// contract's own rule, once, by its id, and only a match applied for the first time adds its
 /// lines to the journal and its keepsakes to the colony's. The Handler card and trios the session
 /// ended with are kept first, by the contract's own rule, so a match played as a trio named in
-/// the same session counts for it. Everything is weighed before anything changes, so the colony
+/// the same session counts for it, and a lineup a trio played with and then changed is kept as
+/// one of its earlier lineups. Everything is weighed before anything changes, so the colony
 /// keeps all of it or none, and keeping the same result again changes nothing.
 pub fn keep_result(
     world: &mut World,
@@ -31,7 +32,7 @@ pub fn keep_result(
     let before = to_contract(&world.save.battle.record)?;
     let mut applied = before.clone();
     if let Some(registry) = &result.registry {
-        applied.register(registry, now);
+        applied.register_session(registry, &result.matches, now);
     }
     let registry = applied != before;
     let new: Vec<_> = result
@@ -225,6 +226,32 @@ mod tests {
         let thistle = &world.save.battle.record.trios[0];
         assert_eq!((thistle.friends.played, thistle.visitors.won), (1, 1));
         assert!(world.save.battle.holds());
+    }
+
+    #[test]
+    fn a_lineup_changed_after_it_played_stays_with_the_colony_as_an_earlier_one() {
+        let mut world = colony();
+        let mut result = sample::result();
+        let registry = result.registry.as_mut().unwrap();
+        let played = registry.trios[0].members.clone();
+        // The Thistle Three played both matches, then one of them gave their place to another.
+        let now_three = formiga_battle_contract::lineup_of(&[played[0], played[1], 999]);
+        registry.trios[0].members = now_three.clone();
+        let now = datetime!(2026-10-15 13:00 UTC);
+        let kept = keep_result(&mut world, &result, now).unwrap();
+        assert_eq!(kept.matches, 2);
+        let thistle = &world.save.battle.record.trios[0];
+        assert_eq!(thistle.members, now_three);
+        assert_eq!(thistle.lineups.len(), 1);
+        assert_eq!(thistle.lineups[0].members, played);
+        assert_eq!(thistle.lineups[0].until_utc, now);
+        assert!(world.save.battle.holds());
+        let battle = world.save.battle.clone();
+        keep_result(&mut world, &result, now + time::Duration::days(1)).unwrap();
+        assert_eq!(
+            world.save.battle, battle,
+            "keeping it again changes nothing"
+        );
     }
 
     #[test]
