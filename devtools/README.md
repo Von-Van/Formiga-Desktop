@@ -28,8 +28,8 @@ checked by `formiga-core` itself, through `formiga-tools dev` (`crates/formiga-t
 The content tools read Formiga's own tables through `formiga-tools dev catalog`
 (`dev_catalog.rs`), the art check draws through `formiga-art` (`dev_art.rs`), and save inspect
 reads a file with `formiga-core`'s own loader, checker and repair (`dev_save.rs`).
-Pictures are drawn by `formiga-art`, or by Hill's and Home's own `--render-*` and `--snap`
-options. Validation runs the checks the repository already relies on.
+Pictures are drawn by `formiga-art`, or by Hill's, Home's and Battle's own `--render-*` and
+`--snap` options. Validation runs the checks the repository already relies on.
 
 ## Commands
 
@@ -67,21 +67,25 @@ touches your real colony. `formiga scenario list` shows them all.
 | `hill` | Formiga Hill on its sample colony |
 | `home`, `home-lived-in` | Formiga Home's sample household, new or a few weeks on |
 | `hill-green`, `hill-clubhouse`, `hill-fairground`, `hill-woods`, `hill-hilltop` | capture only, since Hill's window always opens at the station |
+| `battle` | Formiga Battle: the sample colony's companions against the visitors in the Backyard, on a fixed match seed |
+| `battle-woodland`, `battle-millpond`, `battle-cove` | the same match in Battle's other arenas |
+| `battle-picking`, `battle-orders`, `battle-notebook` | capture only, with `--window`: the team choice, a turn's orders half given, and the notebook. Battle shows these screens only for a picture |
 
 Desktop colonies are grown from fixed seeds to the moment you open them, so a scenario is always
 the age its name says. `--fixed-date` grows them to a fixed date instead, for a byte-identical
 file. The desktop app runs only on macOS and Windows. Elsewhere, or with `--no-launch`, the
 scenario is prepared and the command that opens it is printed.
 
-Hill and Home are found in the checkout beside this one (`Formiga-Hill` or `Formiga Hill`, or set
-`FORMIGA_HILL_REPO` / `FORMIGA_HOME_REPO`). From a git worktree of Desktop (one
-nested inside this checkout, say), they are also looked for beside the main checkout. Formiga Farm and
-Formiga Battle are found the same way (`FORMIGA_FARM_REPO`, `FORMIGA_BATTLE_REPO`) for
-`validate`, `audit`, `inspect`, `uses` and `report`. They are built on this checkout's Desktop
-crates, so a change to Desktop's drawing shows up in them; `--pinned` builds them on their own Desktop release
-instead. Their `Cargo.lock` is put back afterwards, and the build goes in `.dev/target/`.
+Hill, Home and Battle are found in the checkout beside this one (`Formiga-Hill` or `Formiga Hill`,
+or set `FORMIGA_HILL_REPO` / `FORMIGA_HOME_REPO` / `FORMIGA_BATTLE_REPO`). From a git worktree of
+Desktop (one nested inside this checkout, say), they are also looked for beside the main checkout.
+Formiga Farm is found the same way (`FORMIGA_FARM_REPO`) for `validate`, `audit`, `inspect`, `uses`
+and `report`. They are built on this checkout's Desktop crates, so a change to Desktop's drawing
+shows up in them; `--pinned` builds them on their own Desktop release instead. Their `Cargo.lock`
+is put back afterwards, and the build goes in `.dev/target/`. Battle keeps no data folder, so its
+scenarios have nothing of yours to touch.
 
-### `formiga capture NAME|all [--window] [--pinned] [--out PNG] [--json]`
+### `formiga capture NAME|all [--window] [--pinned] [--binary APP] [--out PNG] [--json]`
 
 Writes `.dev/captures/NAME.png`, with `NAME.json` beside it recording what was drawn, from which
 commit and by which command.
@@ -91,11 +95,25 @@ commit and by which command.
   it never reads the screen, and the GPU has no picture to hand back.
 - **Hill and Home** are drawn off-screen by their own `--render-*` options at midday: the same
   pixels every time, on any machine, Linux included.
-- **`--window`** opens Hill's or Home's real window at its fixed size and pictures it a few seconds
-  in with their own `--snap`, under `xvfb-run` on Linux without a display. That picture includes the
-  on-screen controls, but it is timed by the clock, so it is close, not exact.
+- **Battle** is drawn off-screen by its own `--render-board`: the board at the start of the fixed
+  match, in the scenario's arena, the same pixels every time.
+- **`--window`** opens Hill's, Home's or Battle's real window at its fixed size and pictures it a
+  few seconds in with their own `--snap`, under `xvfb-run` on Linux without a display. That picture
+  includes the on-screen controls, but it is timed by the clock, so it is close, not exact.
+  Battle's team choice, orders and notebook screens exist only this way.
+- **`--binary APP`** pictures a Hill, Home or Battle that is already built instead of building one
+  from the checkout beside this: a program, or a macOS `.app` such as the one installed in
+  `/Applications`. Use it for pictures of exactly what people download, such as the website's.
 
-`formiga capture all` pictures every scenario that can be drawn.
+```sh
+devtools/formiga capture battle-cove                     # .dev/captures/battle-cove.png
+devtools/formiga capture battle-picking --window         # the team choice, in the real window
+devtools/formiga capture battle --window --binary "/Applications/Formiga Battle.app"
+devtools/formiga capture home --binary "/Applications/Formiga Home.app"
+```
+
+`formiga capture all` pictures every scenario that can be drawn (with `--window`, every one that
+has a window).
 
 ### `formiga inspect [KIND] [ITEM] [--json]`
 
