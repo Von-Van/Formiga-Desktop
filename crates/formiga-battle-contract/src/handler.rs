@@ -12,10 +12,12 @@
 //!
 //! A trio's members may change. Its record carries on under its id, and the companions it had
 //! before are kept as earlier lineups, with when each lineup ended, so a past match is never
-//! credited to someone who was not there.
+//! credited to someone who was not there. Since version 4 each match says which three played as
+//! the trio ([`TrioPlayed::members`]), so a lineup that played and was changed within one session
+//! is kept as an earlier lineup too ([`BattleRecord::register_session`]).
 
 use crate::BattleRecord;
-use crate::result::{CupWins, Mode};
+use crate::result::{CupWins, MatchResult, Mode};
 use formiga_expansion_rulebook::is_sanitized;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -153,6 +155,10 @@ pub struct TrioPlayed {
     pub id: String,
     #[serde(default)]
     pub won: Option<bool>,
+    /// The three who played as it, smallest id first. Since version 4; empty before, when the
+    /// three it had at the end of the session are all that is known.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<u64>,
 }
 
 fn is_style(text: &str) -> bool {
@@ -263,7 +269,7 @@ impl Registry {
 
 impl TrioPlayed {
     pub fn holds(&self) -> bool {
-        is_trio_id(&self.id)
+        is_trio_id(&self.id) && (self.members.is_empty() || is_lineup(&self.members))
     }
 }
 
@@ -352,6 +358,43 @@ impl BattleRecord {
             .find(|t| !t.retired && t.members == lineup)
     }
 
+    /// Keeps the Handler card and trios a session ends with, as [`Self::register`] does, after
+    /// first keeping each lineup a trio played with in `matches` (oldest first) that it no longer
+    /// has: a trio that played as three and was then given another before the session ended keeps
+    /// those three as an earlier lineup, ending `now` as every change kept from the session does.
+    /// A match already applied, or one that does not say who played, changes nothing here, so
+    /// keeping the same session twice changes nothing more.
+    pub fn register_session(
+        &mut self,
+        registry: &Registry,
+        matches: &[MatchResult],
+        now: OffsetDateTime,
+    ) {
+        for m in matches {
+            let Some(played) = &m.rewards.trio else {
+                continue;
+            };
+            if self.applied.contains(&m.id) || !is_lineup(&played.members) {
+                continue;
+            }
+            let Some(card) = registry.trios.iter().find(|c| c.id == played.id) else {
+                continue;
+            };
+            let then = TrioCard {
+                members: played.members.clone(),
+                ..card.clone()
+            };
+            self.register(
+                &Registry {
+                    handler: None,
+                    trios: vec![then],
+                },
+                now,
+            );
+        }
+        self.register(registry, now);
+    }
+
     pub(crate) fn identity_holds(&self) -> bool {
         let ids: BTreeSet<&str> = self.trios.iter().map(|t| t.id.as_str()).collect();
         self.handler.as_ref().is_none_or(HandlerCard::holds)
@@ -380,6 +423,7 @@ mod tests {
                 trio: Some(TrioPlayed {
                     id: sample::TRIO.to_owned(),
                     won,
+                    members: Vec::new(),
                 }),
                 ..Rewards::default()
             },
@@ -519,6 +563,123 @@ mod tests {
             "no room, so not kept"
         );
         assert!(record.validate().is_ok());
+    }
+
+    /// A match against the visitors played by `members` as the sample's trio.
+    fn played_by(id: &str, members: &[u64]) -> MatchResult {
+        let mut m = played(id, Mode::Ai, Some(true), None);
+        m.rewards.trio.as_mut().unwrap().members = lineup_of(members);
+        m
+    }
+
+    #[test]
+    fn a_lineup_that_played_and_changed_within_a_session_is_kept_as_an_earlier_one() {
+        let mut record = sample::record();
+        let before = record.trios[0].clone();
+        let [a, b, c] = [before.members[0], before.members[1], before.members[2]];
+        // Played as the three it came with, then as A, B and D, then as A, B and E, which is what
+        // the session ended with.
+        let matches = vec![
+            played_by(&"1".repeat(32), &[a, b, c]),
+            played_by(&"2".repeat(32), &[a, b, 900]),
+            played_by(&"3".repeat(32), &[a, b, 901]),
+        ];
+        let card = TrioCard {
+            members: lineup_of(&[a, b, 901]),
+            ..before.card()
+        };
+        let registry = Registry {
+            handler: None,
+            trios: vec![card.clone()],
+        };
+        record.register_session(&registry, &matches, LATER);
+        for m in &matches {
+            assert!(record.apply(m));
+        }
+        let trio = &record.trios[0];
+        assert_eq!(trio.members, card.members);
+        assert_eq!(
+            trio.lineups,
+            vec![
+                Lineup {
+                    members: before.members.clone(),
+                    until_utc: LATER
+                },
+                Lineup {
+                    members: lineup_of(&[a, b, 900]),
+                    until_utc: LATER
+                },
+            ],
+            "the three it started with, then A, B and D, and nobody twice"
+        );
+        assert_eq!(trio.visitors.played, 3);
+        assert!(record.validate().is_ok());
+        let once = record.clone();
+        record.register_session(&registry, &matches, LATER + time::Duration::days(1));
+        assert_eq!(
+            record, once,
+            "keeping the same session again changes nothing"
+        );
+    }
+
+    #[test]
+    fn a_trio_named_played_and_changed_in_one_session_keeps_the_three_it_had() {
+        let mut record = crate::BattleRecord::default();
+        let id = "00aa00aa00aa00aa";
+        let card = |members: &[u64]| TrioCard {
+            id: id.to_owned(),
+            name: "Odd Socks".to_owned(),
+            members: lineup_of(members),
+            pennant: None,
+            retired: false,
+        };
+        let mut abc = played_by(&"4".repeat(32), &[1, 2, 3]);
+        abc.rewards.trio.as_mut().unwrap().id = id.to_owned();
+        // A lineup that changed back is kept each time it ended.
+        let mut abd = played_by(&"5".repeat(32), &[1, 2, 4]);
+        abd.rewards.trio.as_mut().unwrap().id = id.to_owned();
+        let mut again = played_by(&"6".repeat(32), &[1, 2, 3]);
+        again.rewards.trio.as_mut().unwrap().id = id.to_owned();
+        let registry = Registry {
+            handler: None,
+            trios: vec![card(&[1, 2, 5])],
+        };
+        let matches = [abc, abd, again];
+        record.register_session(&registry, &matches, LATER);
+        let trio = &record.trios[0];
+        assert_eq!(trio.members, vec![1, 2, 5]);
+        let earlier: Vec<&[u64]> = trio.lineups.iter().map(|l| l.members.as_slice()).collect();
+        assert_eq!(earlier, [&[1, 2, 3][..], &[1, 2, 4], &[1, 2, 3]]);
+    }
+
+    #[test]
+    fn a_match_that_does_not_say_who_played_registers_as_before() {
+        let mut with = sample::record();
+        let mut without = sample::record();
+        let before = with.trios[0].clone();
+        let registry = Registry {
+            handler: None,
+            trios: vec![TrioCard {
+                members: lineup_of(&[before.members[0], before.members[1], 999]),
+                ..before.card()
+            }],
+        };
+        let older = played(&"7".repeat(32), Mode::Ai, Some(true), None);
+        with.register_session(&registry, std::slice::from_ref(&older), LATER);
+        without.register(&registry, LATER);
+        assert_eq!(with, without);
+    }
+
+    #[test]
+    fn who_played_as_a_trio_is_three_different_companions_smallest_first() {
+        let mut result = sample::result();
+        assert!(result.validate().is_ok());
+        for members in [vec![3, 2, 1], vec![1, 1, 2], vec![1, 2]] {
+            result.matches[0].rewards.trio.as_mut().unwrap().members = members;
+            assert!(result.validate().is_err());
+        }
+        result.matches[0].rewards.trio.as_mut().unwrap().members = Vec::new();
+        assert!(result.validate().is_ok(), "a version 3 Battle says nothing");
     }
 
     #[test]
