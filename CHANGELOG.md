@@ -2,7 +2,13 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.67.9] - 2026-10-16
+
+Released alongside Formiga Hill 0.67.9, Formiga Home 0.67.9 and Formiga Battle 0.67.9, which are
+built on it. Travel version 5 and household version 11 are unchanged, so Formiga Hill and Formiga
+Home 0.67.8 work with it as they are. Battle contract version 3 is new, and Formiga Battle 0.67.9
+needs it. Save version 32 is new: a colony this release has saved does not open in an earlier
+Formiga.
 
 ### Added
 
@@ -17,6 +23,29 @@ All notable changes are documented here.
   named that session counts for it, and editing a trio never changes what it has done. A friend
   match's history line also keeps the trio it was played as and the other Handler's trio and
   pennant. A colony this release has saved does not open in an earlier Formiga.
+- Battle contract version 3 also lets a match against the visitors write the Handler's Notebook,
+  as a friend match does: what each of the three was seen to do, and its moments. Before, only
+  matches with friends filled it in, so most players never saw it.
+
+### Changed
+
+- The updater makes every request, and follows every redirect, over HTTPS only.
+- rustls is updated to 0.23.46, which closes four advisories.
+- A Formiga Battle record that grows past its limits keeps the newest cups and unlocks, as the
+  colony does, instead of losing every match in it. A Battle acknowledgement whose version is not
+  plain text is refused when it is read, so it can't put hidden or very long text in a dialog.
+- A visit to a Formiga Home older than household version 8 no longer erases which residents the
+  owner keeps out of the house.
+- When the colony can't be saved, Desktop takes back a look from Formiga Farm and leaves it
+  unanswered, so Farm keeps it as a draft and offers it again, instead of saying it was kept.
+- The README's status table lists Hill, Home and Battle as previews and Farm as not yet released,
+  and the workspace is described as the nine crates it is.
+
+### Toolkit
+
+- `devtools/formiga capture` can picture Formiga Battle, and `--binary` pictures an installed app.
+- `formiga uses` no longer lists another item's line as a place to change when two items share a
+  label.
 
 ## [0.67.8] - 2026-10-15
 

@@ -10,7 +10,7 @@
 //! | Against | Earns |
 //! |---|---|
 //! | A friend | Open Circuit points, a line in the match history, notebook entries for the three who played, and a match played for each of them |
-//! | The AI | Championship progress (cup wins, unlocks), journal entries, and keepsakes for Home to show |
+//! | The AI | Championship progress (cup wins, unlocks), journal entries, keepsakes for Home to show, and, since version 3, notebook entries for the three who played |
 
 use crate::BattleError;
 use crate::handler::{HandlerCard, Pennant, Registry, Trio, TrioPlayed};
@@ -132,8 +132,8 @@ pub struct BattleRecord {
     pub trios: Vec<Trio>,
 }
 
-/// What a match earned. A friend match earns only the first four; an AI match only the next
-/// four. Either may be credited to the trio it was played as.
+/// What a match earned. A friend match earns only the first four; an AI match the notebook
+/// (since version 3) and the next four. Either may be credited to the trio it was played as.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rewards {
     #[serde(default)]
@@ -399,10 +399,10 @@ impl BattleResult {
         }
         for m in &self.matches {
             let r = &m.rewards;
-            let friendly = r.circuit_points > 0
-                || !r.participation.is_empty()
-                || !r.notebook.is_empty()
-                || r.history.is_some();
+            // The notebook is written by both kinds of match since version 3: what a companion
+            // was seen to do against the visitors is as much its own as against a friend.
+            let friendly =
+                r.circuit_points > 0 || !r.participation.is_empty() || r.history.is_some();
             let solo = r.cup_win.is_some()
                 || !r.unlocks.is_empty()
                 || !r.journal.is_empty()
