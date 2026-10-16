@@ -4,6 +4,15 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.10
+
+Playing Formiga Battle now takes the colony there on the same train as a trip to Formiga Hill:
+it pulls in, everyone gets on, and Battle opens as it pulls away. While Battle is open nobody is on
+the desktop and the world waits, and when Battle closes the train brings everyone home. Update
+Formiga Battle to 0.67.10 alongside, which fixes a freeze after a turn with Interact orders and a
+crash when going back to the station from the Handler's page or after a match. Formiga Hill and
+Formiga Home 0.67.9 work with it as they are.
+
 ## New in 0.67.9
 
 Formiga now keeps your Handler from Formiga Battle with the colony: the name you sign, an
