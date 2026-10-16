@@ -485,9 +485,11 @@ fn validate_digest(digest: &str) -> Result<&str> {
     Ok(digest)
 }
 
+/// Every request the updater makes, and every redirect it follows, stays on HTTPS.
 fn http_agent(timeout: Duration) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .timeout_global(Some(timeout))
+        .https_only(true)
         .build();
     config.into()
 }
@@ -515,6 +517,11 @@ mod tests {
                 .and_then(|name| name.to_str()),
             Some("../Formiga.msi")
         );
+    }
+
+    #[test]
+    fn the_updater_only_speaks_https() {
+        assert!(http_agent(Duration::from_secs(1)).config().https_only());
     }
 
     #[test]
