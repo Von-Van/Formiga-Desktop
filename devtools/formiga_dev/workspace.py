@@ -6,8 +6,10 @@ Desktop), or wherever FORMIGA_HILL_REPO / FORMIGA_HOME_REPO / FORMIGA_FARM_REPO 
 FORMIGA_BATTLE_REPO point. When this folder is a git worktree (one nested inside the main checkout,
 say), they are also looked for beside the main checkout it belongs to.
 
-The expansions take Desktop's crates from a release tag. To try them against the Desktop in this
-checkout, cargo is told to patch those crates to local paths for one run (`patched`); that rewrites
+The expansions take Desktop's crates from git, usually from a release tag, though between releases
+one may take them from a commit (`rev`) or a branch instead. To try them against the Desktop in this
+checkout, cargo is told to patch those crates to local paths for one run (`patched`), whichever way
+they are pinned, since cargo patches a git source by its URL alone; that rewrites
 the expansion's Cargo.lock, so `lockfile_kept` puts the file back afterwards, and the patched build
 gets a target folder of its own under .dev/ so the expansion's usual build is not thrown away.
 """
@@ -28,8 +30,15 @@ from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 DESKTOP = Path(__file__).resolve().parents[2]
 DEV = DESKTOP / ".dev"
 DESKTOP_GIT = "https://github.com/Von-Van/Formiga-Desktop"
+# A dependency written as an inline table, `formiga-core = { git = "…", rev = "…" }`.
+DEPENDENCY = re.compile(r'^(formiga-[a-z0-9-]+)\s*=\s*\{([^}]*)\}', re.MULTILINE)
 # The Desktop crate that only builds on macOS and Windows.
 APP_CRATE = "formiga-desktop"
+
+
+def is_desktop_git(url: str) -> bool:
+    """Whether `url` is Desktop's repository, however a manifest spells it."""
+    return url.rstrip("/").lower().removesuffix(".git") == DESKTOP_GIT.lower()
 
 
 def app_builds_here() -> bool:
@@ -53,19 +62,33 @@ class Expansion:
     data_env: Optional[str]  # the variable that moves its data folder; Battle keeps none yet
     path: Optional[Path] = None
 
-    def pins(self) -> Dict[str, str]:
-        """Each Desktop crate it uses, and the tag it takes it from."""
+    def desktop_crates(self) -> Dict[str, Tuple[str, str]]:
+        """Each Desktop crate it takes from git: the URL it names and the ref it pins, written the
+        way a person would say it ("v0.67.8", "rev 112cf08", "branch main", "main")."""
         if not self.path:
             return {}
-        pins = {}
-        pattern = re.compile(
-            r'^(formiga-[a-z-]+)\s*=\s*\{[^}]*git\s*=\s*"' + re.escape(DESKTOP_GIT)
-            + r'"[^}]*tag\s*=\s*"([^"]+)"',
-            re.MULTILINE,
-        )
-        for match in pattern.finditer((self.path / "Cargo.toml").read_text(encoding="utf-8")):
-            pins[match.group(1)] = match.group(2)
-        return pins
+        crates = {}
+        for match in DEPENDENCY.finditer((self.path / "Cargo.toml").read_text(encoding="utf-8")):
+            crate, table = match.group(1), match.group(2)
+            url = re.search(r'\bgit\s*=\s*"([^"]+)"', table)
+            if not url or not is_desktop_git(url.group(1)):
+                continue
+            ref = {key: re.search(r'\b' + key + r'\s*=\s*"([^"]+)"', table)
+                   for key in ("tag", "rev", "branch")}
+            if ref["tag"]:
+                said = ref["tag"].group(1)
+            elif ref["rev"]:
+                said = f"rev {ref['rev'].group(1)[:7]}"
+            elif ref["branch"]:
+                said = f"branch {ref['branch'].group(1)}"
+            else:
+                said = "main"
+            crates[crate] = (url.group(1), said)
+        return crates
+
+    def pins(self) -> Dict[str, str]:
+        """Each Desktop crate it uses, and the tag (or commit, or branch) it takes it from."""
+        return {crate: said for crate, (_, said) in self.desktop_crates().items()}
 
     def has_ci(self) -> bool:
         """Whether its repository runs its checks on GitHub Actions. Battle's does not, by choice:
@@ -129,16 +152,32 @@ def find_expansion(key: str) -> Expansion:
 
 
 def patched(expansion: Expansion) -> List[str]:
-    """cargo arguments that build `expansion` on this checkout's Desktop crates."""
+    """cargo arguments that build `expansion` on this checkout's Desktop crates. The patch is keyed
+    by the URL the manifest names, so it takes whether the crates are pinned by tag, rev or branch."""
     args = []
-    for crate in expansion.pins():
+    for crate, (url, _) in expansion.desktop_crates().items():
         local = DESKTOP / "crates" / crate
         if local.is_dir():
             args += [
                 "--config",
-                f"patch.'{DESKTOP_GIT}'.{crate}.path='{local.as_posix()}'",
+                f"patch.'{url}'.{crate}.path='{local.as_posix()}'",
             ]
     return args
+
+
+def from_desktop_git(repo: Path) -> List[str]:
+    """The Desktop crates `repo`'s Cargo.lock takes from GitHub. Read straight after a patched run,
+    before `lockfile_kept` puts the file back, it names any crate the patch did not reach."""
+    lock = repo / "Cargo.lock"
+    if not lock.exists():
+        return []
+    crates = []
+    for package in lock.read_text(encoding="utf-8").split("[[package]]"):
+        name = re.search(r'^name\s*=\s*"([^"]+)"', package, re.MULTILINE)
+        source = re.search(r'^source\s*=\s*"git\+([^?#"]+)', package, re.MULTILINE)
+        if name and source and is_desktop_git(source.group(1)):
+            crates.append(name.group(1))
+    return sorted(set(crates))
 
 
 @contextlib.contextmanager
