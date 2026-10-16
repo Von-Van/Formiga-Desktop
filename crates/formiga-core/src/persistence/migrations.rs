@@ -202,6 +202,9 @@ const STEPS: &[Step] = &[
     // 31: the colony's record in Formiga Battle, the keepsakes its matches earned, and the journal
     // moment for a match. An older colony has never played.
     Step::adds_only(30),
+    // 32: the Handler card and named trios from Formiga Battle, with each trio's record. An older
+    // colony has named neither.
+    Step::adds_only(31),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

@@ -55,6 +55,9 @@ pub fn record() -> crate::BattleRecord {
         turns: 8,
         team: ids.clone(),
         opponent: Some("Sam".to_owned()),
+        trio: Some(TRIO.to_owned()),
+        opponent_trio: Some("The Puddle Jumpers".to_owned()),
+        opponent_pennant: Some(pennant("swallowtail", "sky", "wave")),
     };
     let mut showing = crate::Showing {
         steps: 14,
@@ -78,6 +81,41 @@ pub fn record() -> crate::BattleRecord {
             moments: vec!["Held firm against two at once".to_owned()],
         }],
         applied: vec!["00000000000000000000000000000001".to_owned()],
+        handler: Some(crate::HandlerCard {
+            name: "Jo".to_owned(),
+            club: Some("Hedge End Club".to_owned()),
+            pennant: pennant("pennon", "forest", "acorn"),
+        }),
+        trios: vec![crate::Trio {
+            id: TRIO.to_owned(),
+            name: "The Thistle Three".to_owned(),
+            members: crate::lineup_of(&ids),
+            pennant: None,
+            retired: false,
+            formed_at_utc: formiga_travel::sample::MADE,
+            members_since_utc: formiga_travel::sample::MADE,
+            friends: crate::Tally {
+                played: 1,
+                won: 1,
+                drawn: 0,
+            },
+            visitors: crate::Tally::default(),
+            cups: Vec::new(),
+            lineups: Vec::new(),
+        }],
+    }
+}
+
+/// The sample's trio, by id.
+pub const TRIO: &str = "7a1e5c3b9d2f4068";
+
+/// A pennant with a plain trim.
+pub fn pennant(shape: &str, field: &str, symbol: &str) -> crate::Pennant {
+    crate::Pennant {
+        shape: shape.to_owned(),
+        field: field.to_owned(),
+        symbol: symbol.to_owned(),
+        trim: "plain".to_owned(),
     }
 }
 
@@ -120,6 +158,10 @@ pub fn result() -> crate::BattleResult {
                 moments: vec!["Was holding the beacon when it lit".to_owned()],
             }],
             history: Some(friend),
+            trio: Some(crate::TrioPlayed {
+                id: TRIO.to_owned(),
+                won: Some(true),
+            }),
             ..crate::Rewards::default()
         },
     });
@@ -128,9 +170,30 @@ pub fn result() -> crate::BattleResult {
         mode: crate::Mode::Ai,
         rewards: crate::Rewards {
             cup_win: Some("cup.backyard".to_owned()),
-            journal: vec!["Mochi, Biscuit and Fig won a Backyard Cup match.".to_owned()],
+            journal: vec!["The Thistle Three won a Backyard Cup match.".to_owned()],
+            trio: Some(crate::TrioPlayed {
+                id: TRIO.to_owned(),
+                won: Some(true),
+            }),
             ..crate::Rewards::default()
         },
+    });
+    let thistle = &record().trios[0];
+    result.registry = Some(crate::Registry {
+        handler: record().handler,
+        trios: vec![
+            crate::TrioCard {
+                name: "The Thistle Three".to_owned(),
+                ..thistle.card()
+            },
+            crate::TrioCard {
+                id: "0f0e0d0c0b0a0908".to_owned(),
+                name: "Odd Socks".to_owned(),
+                members: crate::lineup_of(&[ids[0], ids[2], ids[1] + 1_000]),
+                pennant: Some(pennant("banner", "rose", "moon")),
+                retired: false,
+            },
+        ],
     });
     result
 }

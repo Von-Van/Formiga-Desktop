@@ -30,6 +30,7 @@
 //! |---|---|
 //! | 1 | The roster snapshot and the acknowledgement |
 //! | 2 | The Battle record in the snapshot, and the result Battle answers with ([`result`]) |
+//! | 3 | The Handler card and named trios, their records, and the trio each match was played as ([`handler`]) |
 
 use formiga_expansion_rulebook::{self as rulebook, Kind, sanitize_text};
 pub use formiga_expansion_rulebook::{AckRefusal, SessionId};
@@ -39,16 +40,21 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use time::OffsetDateTime;
 
+pub mod handler;
 pub mod result;
 pub mod sample;
 
+pub use handler::{
+    HandlerCard, Lineup, Pennant, Registry, Tally, Trio, TrioCard, TrioPlayed, is_lineup,
+    is_trio_id, lineup_of,
+};
 pub use result::{
     BattleRecord, BattleResult, CupWins, MatchResult, MatchSummary, Mode, NotebookAddition,
     NotebookPage, RESULT_FILE, RESULT_FORMAT, Rewards, Showing,
 };
 
 /// The version of every Battle document this build writes, and the newest it reads.
-pub const BATTLE_FORMAT_VERSION: u32 = 2;
+pub const BATTLE_FORMAT_VERSION: u32 = 3;
 pub const SNAPSHOT_FORMAT: &str = "formiga.battle.snapshot";
 pub const SNAPSHOT_FILE: &str = "snapshot.json";
 pub const ACK_FORMAT: &str = "formiga.battle.ack";

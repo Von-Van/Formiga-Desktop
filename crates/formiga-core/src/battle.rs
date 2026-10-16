@@ -25,6 +25,14 @@ pub mod limits {
     /// Cups and unlocks.
     pub const MAX_PROGRESS: usize = 64;
     pub const MAX_TEAM: usize = 3;
+    pub const MAX_HANDLER_CHARS: usize = 24;
+    pub const MAX_CLUB_CHARS: usize = 32;
+    pub const MAX_TRIO_CHARS: usize = 32;
+    /// Trios kept, retired ones included.
+    pub const MAX_TRIOS: usize = 12;
+    pub const MAX_LINEUPS: usize = 8;
+    pub const MAX_TRIO_CUPS: usize = 8;
+    pub const MAX_STYLE_CHARS: usize = 24;
 }
 use limits::*;
 
@@ -70,6 +78,12 @@ pub struct BattleMatchSummary {
     pub team: Vec<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opponent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trio: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opponent_trio: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opponent_pennant: Option<BattlePennant>,
 }
 
 /// Wins toward one of Battle's cups.
@@ -77,6 +91,74 @@ pub struct BattleMatchSummary {
 pub struct BattleCupWins {
     pub cup: String,
     pub wins: u8,
+}
+
+/// A Handler's pennant, as four of Battle's own names for its parts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattlePennant {
+    pub shape: String,
+    pub field: String,
+    pub symbol: String,
+    pub trim: String,
+}
+
+/// Who the player is in Battle: a name, an optional club and a pennant.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattleHandlerCard {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub club: Option<String>,
+    pub pennant: BattlePennant,
+}
+
+/// Matches played, won and drawn.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattleTally {
+    pub played: u32,
+    pub won: u32,
+    pub drawn: u32,
+}
+
+impl BattleTally {
+    pub fn is_empty(&self) -> bool {
+        self.played == 0
+    }
+
+    fn holds(&self) -> bool {
+        u64::from(self.won) + u64::from(self.drawn) <= u64::from(self.played)
+    }
+}
+
+/// The three a trio had before its members last changed, and when that ended.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattleLineup {
+    pub members: Vec<u64>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub until_utc: OffsetDateTime,
+}
+
+/// Three companions the Handler named as a team, and what they have done as one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattleTrio {
+    pub id: String,
+    pub name: String,
+    pub members: Vec<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pennant: Option<BattlePennant>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub retired: bool,
+    #[serde(with = "time::serde::rfc3339")]
+    pub formed_at_utc: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub members_since_utc: OffsetDateTime,
+    #[serde(default, skip_serializing_if = "BattleTally::is_empty")]
+    pub friends: BattleTally,
+    #[serde(default, skip_serializing_if = "BattleTally::is_empty")]
+    pub visitors: BattleTally,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cups: Vec<BattleCupWins>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lineups: Vec<BattleLineup>,
 }
 
 /// The colony's Battle record, as the Battle contract writes it.
@@ -94,6 +176,12 @@ pub struct BattleRecord {
     /// The matches already applied, the newest last, so none is applied twice.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub applied: Vec<String>,
+    /// Who the player is in Battle, once they have said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler: Option<BattleHandlerCard>,
+    /// The trios the Handler has named, retired ones included.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trios: Vec<BattleTrio>,
 }
 
 impl BattleRecord {
@@ -113,6 +201,14 @@ impl BattleRecord {
             && self.history.iter().all(BattleMatchSummary::holds)
             && self.notebook.len() <= MAX_PAGES
             && self.notebook.iter().all(BattleNotebookPage::holds)
+            && self.handler.as_ref().is_none_or(BattleHandlerCard::holds)
+            && self.trios.len() <= MAX_TRIOS
+            && self.trios.iter().all(BattleTrio::holds)
+            && self
+                .trios
+                .iter()
+                .enumerate()
+                .all(|(i, trio)| self.trios[..i].iter().all(|t| t.id != trio.id))
     }
 
     /// Bring the record inside its bounds, keeping the newest of whatever there is too much of,
@@ -134,6 +230,26 @@ impl BattleRecord {
             page.moments.retain(|moment| is_battle_line(moment));
             keep_newest(&mut page.moments, MAX_MOMENTS);
         }
+        if self.handler.as_ref().is_some_and(|card| !card.holds()) {
+            self.handler = None;
+        }
+        let mut seen = Vec::new();
+        self.trios.retain(|trio| {
+            let first = !seen.contains(&trio.id);
+            seen.push(trio.id.clone());
+            first
+        });
+        for trio in &mut self.trios {
+            keep_newest(&mut trio.cups, MAX_TRIO_CUPS);
+            keep_newest(&mut trio.lineups, MAX_LINEUPS);
+            trio.lineups.retain(|lineup| is_lineup(&lineup.members));
+            for tally in [&mut trio.friends, &mut trio.visitors] {
+                tally.won = tally.won.min(tally.played);
+                tally.drawn = tally.drawn.min(tally.played - tally.won);
+            }
+        }
+        self.trios.retain(BattleTrio::holds);
+        keep_newest(&mut self.trios, MAX_TRIOS);
     }
 }
 
@@ -160,7 +276,74 @@ impl BattleMatchSummary {
         is_battle_id(&self.ended_by)
             && self.team.len() <= MAX_TEAM
             && self.opponent.as_deref().is_none_or(is_battle_line)
+            && self.trio.as_deref().is_none_or(is_trio_id)
+            && self
+                .opponent_trio
+                .as_deref()
+                .is_none_or(|name| is_battle_name(name, MAX_TRIO_CHARS))
+            && self
+                .opponent_pennant
+                .as_ref()
+                .is_none_or(BattlePennant::holds)
     }
+}
+
+impl BattlePennant {
+    fn holds(&self) -> bool {
+        [&self.shape, &self.field, &self.symbol, &self.trim]
+            .iter()
+            .all(|part| {
+                !part.is_empty()
+                    && part.len() <= MAX_STYLE_CHARS
+                    && part
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_-".contains(&b))
+            })
+    }
+}
+
+impl BattleHandlerCard {
+    fn holds(&self) -> bool {
+        is_battle_name(&self.name, MAX_HANDLER_CHARS)
+            && self
+                .club
+                .as_deref()
+                .is_none_or(|club| is_battle_name(club, MAX_CLUB_CHARS))
+            && self.pennant.holds()
+    }
+}
+
+impl BattleTrio {
+    fn holds(&self) -> bool {
+        is_trio_id(&self.id)
+            && is_battle_name(&self.name, MAX_TRIO_CHARS)
+            && is_lineup(&self.members)
+            && self.pennant.as_ref().is_none_or(BattlePennant::holds)
+            && self.friends.holds()
+            && self.visitors.holds()
+            && self.cups.len() <= MAX_TRIO_CUPS
+            && self.cups.iter().all(|cup| is_battle_id(&cup.cup))
+            && self.lineups.len() <= MAX_LINEUPS
+            && self.lineups.iter().all(|lineup| is_lineup(&lineup.members))
+    }
+}
+
+/// A trio's id: 16 lowercase hex digits.
+fn is_trio_id(id: &str) -> bool {
+    id.len() == 16
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Three different companions, smallest id first.
+fn is_lineup(members: &[u64]) -> bool {
+    members.len() == 3 && members.windows(2).all(|w| w[0] < w[1])
+}
+
+/// A name Battle lets cross: a plain line of at most `max` characters.
+fn is_battle_name(text: &str, max: usize) -> bool {
+    is_battle_line(text) && text.chars().count() <= max
 }
 
 fn keep_newest<T>(items: &mut Vec<T>, max: usize) {
@@ -406,6 +589,9 @@ mod tests {
             turns: 8,
             team: vec![1, 2, 3],
             opponent: Some("Sam".to_owned()),
+            trio: None,
+            opponent_trio: None,
+            opponent_pennant: None,
         };
         let mut log = BattleLog {
             record: BattleRecord {
@@ -436,5 +622,54 @@ mod tests {
         assert_eq!(log.record.notebook[0].wins, 1);
         assert_eq!(log.record.notebook[0].moments, vec!["fine".to_owned()]);
         assert_eq!(log.keepsakes.len(), 1);
+    }
+
+    #[test]
+    fn a_handler_or_trio_out_of_bounds_is_left_out_and_the_rest_kept() {
+        let at = datetime!(2026-10-16 12:00 UTC);
+        let pennant = BattlePennant {
+            shape: "pennon".to_owned(),
+            field: "forest".to_owned(),
+            symbol: "acorn".to_owned(),
+            trim: "plain".to_owned(),
+        };
+        let trio = |id: &str, name: &str, members: Vec<u64>| BattleTrio {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            members,
+            pennant: None,
+            retired: false,
+            formed_at_utc: at,
+            members_since_utc: at,
+            friends: BattleTally {
+                played: 2,
+                won: 5,
+                drawn: 0,
+            },
+            visitors: BattleTally::default(),
+            cups: Vec::new(),
+            lineups: Vec::new(),
+        };
+        let mut record = BattleRecord {
+            handler: Some(BattleHandlerCard {
+                name: "x".repeat(MAX_HANDLER_CHARS + 1),
+                club: None,
+                pennant,
+            }),
+            trios: vec![
+                trio("7a1e5c3b9d2f4068", "Thistle", vec![1, 2, 3]),
+                trio("7a1e5c3b9d2f4068", "Thistle again", vec![4, 5, 6]),
+                trio("0000000000000001", "Twice", vec![1, 1, 2]),
+                trio("not-a-trio-id!!!", "Odd", vec![1, 2, 3]),
+            ],
+            ..BattleRecord::default()
+        };
+        assert!(!record.holds());
+        record.normalize();
+        assert!(record.holds());
+        assert!(record.handler.is_none());
+        assert_eq!(record.trios.len(), 1);
+        assert_eq!(record.trios[0].name, "Thistle");
+        assert_eq!(record.trios[0].friends.won, 2);
     }
 }
