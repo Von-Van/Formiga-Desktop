@@ -4,6 +4,14 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.67.8] - 2026-10-15
+
+Released alongside Formiga Hill 0.67.8, Formiga Home 0.67.8 and the first downloadable Formiga
+Battle 0.67.8, which are built on it. Household version 11 adds only Formiga Battle's keepsakes to
+what a home is offered, so Formiga Home 0.67.7 still works with it and shows them on plain cards.
+Travel version 5 is unchanged, so Formiga Hill 0.67.7 works with it as it is. Save version 31 is
+new: a colony this release has saved does not open in an earlier Formiga.
+
 ### Added
 
 - The village stands on a shallow strip of grass seen a little from above, with a trodden path
@@ -29,8 +37,8 @@ All notable changes are documented here.
   colony's Battle record (Open Circuit points, match history, notebook, cup wins and unlocks) is
   kept in the colony and handed to Battle with every roster, and when Battle closes each match it
   played is kept once, by its id, with its line in the journal and any keepsake Desktop knows (a
-  trophy and a medal for each of the Backyard, Woodland, Millpond and Sandy Cove Cups). A colony saved by this version does not open in an earlier
-  Formiga.
+  trophy and a medal for each of the Backyard, Woodland, Millpond and Sandy Cove Cups). A colony
+  saved by this version does not open in an earlier Formiga.
 - Household version 11: Formiga Home is offered the colony's keepsakes from Formiga Battle to show.
   An older Home shows them on their cards.
 
