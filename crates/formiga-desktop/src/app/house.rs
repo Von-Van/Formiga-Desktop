@@ -88,7 +88,7 @@ impl FormigaApp {
     pub(super) fn can_open_house(&self) -> bool {
         self.house.slot.install.is_some()
             && self.house.visit.open().is_none()
-            && !self.hill.trip.holds_world()
+            && !self.colony_away()
             && !self.recovery_pending
             && self.world.is_some()
     }
@@ -480,7 +480,7 @@ impl FormigaApp {
             && world.save.settings.visible
             && world.save.settings.direct_manipulation
             && self.habitat_editor.is_none()
-            && !self.hill.trip.holds_world()
+            && !self.colony_away()
             && !self.recovery_pending
     }
 

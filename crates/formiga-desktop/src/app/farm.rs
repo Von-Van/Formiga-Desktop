@@ -87,7 +87,7 @@ impl FormigaApp {
     pub(super) fn can_open_farm(&self) -> bool {
         self.farm.slot.install.is_some()
             && self.farm.session.open().is_none()
-            && !self.hill.trip.holds_world()
+            && !self.colony_away()
             && !self.recovery_pending
             && self.world.is_some()
     }
@@ -235,9 +235,11 @@ impl FormigaApp {
                     app.name
                 ))
             }
-            FarmRequest::Draw => self.hill.trip.holds_world().then(|| {
-                "The colony is away in Formiga Hill just now. Draw a new companion once it is home."
-                    .to_owned()
+            FarmRequest::Draw => self.colony_away_in().map(|app| {
+                format!(
+                    "The colony is away in {} just now. Draw a new companion once it is home.",
+                    app.name
+                )
             }),
         }
     }

@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Playing Formiga Battle takes the colony there by train, as a trip to Formiga Hill does: the same
+  train pulls in, everyone gets on, and Battle opens as it pulls away, so its first menu opens with
+  them already riding. While Battle is open nobody is on the desktop, the world waits, and no trip
+  or visit starts; when Battle closes the train brings everyone home to where they stood, and a
+  roster Battle turned away is explained once they are. If Desktop stops while Battle is open, the
+  next start keeps what the matches earned and brings the colony home by train.
+
 ## [0.67.9] - 2026-10-16
 
 Released alongside Formiga Hill 0.67.9, Formiga Home 0.67.9 and Formiga Battle 0.67.9, which are

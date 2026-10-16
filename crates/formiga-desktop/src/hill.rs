@@ -27,9 +27,8 @@ pub mod session;
 
 use crate::expansion::files::Folder;
 use crate::expansion::{Expansion, Words};
-use crate::platform::companion_app::{AppInstall, AppNames};
+use crate::platform::companion_app::AppNames;
 use formiga_travel::{SessionId, discovery};
-use scene::TrainScene;
 use session::OpenTrip;
 
 /// Formiga Hill, as Desktop finds it, starts it, keeps its trips' files and speaks of it.
@@ -69,69 +68,14 @@ pub enum HillEvent {
     Exited { session: SessionId },
 }
 
-/// Something to tell the owner once the colony is home.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HomecomingNote {
-    pub text: String,
-    /// It answers something they just did, so it is said in a dialog rather than only noted.
-    pub asked_for: bool,
-}
-
-/// Where a trip is. Runtime only: across a restart only the marker in [`session`] survives.
-#[derive(Default)]
-pub enum TripState {
-    #[default]
-    Idle,
-    /// The train is in, and the colony is getting on. `hill` is the Hill to start as the train
-    /// pulls away, until it has been.
-    Departing {
-        open: OpenTrip,
-        scene: TrainScene,
-        hill: Option<AppInstall>,
-    },
-    /// The colony is at Hill.
-    Away { open: OpenTrip },
-    /// The colony is home again and getting off the train. The trip is already closed.
-    Returning {
-        scene: TrainScene,
-        note: Option<HomecomingNote>,
-    },
-}
-
-impl TripState {
-    /// Whether the colony is not simply living on the desktop: the world is held still and the
-    /// overlay shows only the trip.
-    pub fn holds_world(&self) -> bool {
-        !matches!(self, Self::Idle)
-    }
-
-    /// The trip still open, while there is one.
-    pub fn open(&self) -> Option<&OpenTrip> {
-        match self {
-            Self::Departing { open, .. } | Self::Away { open } => Some(open),
-            _ => None,
-        }
-    }
-
-    pub fn scene(&self) -> Option<&TrainScene> {
-        match self {
-            Self::Departing { scene, .. } | Self::Returning { scene, .. } => Some(scene),
-            _ => None,
-        }
-    }
-
-    pub fn scene_mut(&mut self) -> Option<&mut TrainScene> {
-        match self {
-            Self::Departing { scene, .. } | Self::Returning { scene, .. } => Some(scene),
-            _ => None,
-        }
-    }
-}
+/// Where a trip to Hill is. Runtime only: across a restart only the marker in [`session`] survives.
+pub type TripState = crate::trip::TripState<OpenTrip>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::expansion::Refusal;
+    use crate::platform::companion_app::AppInstall;
     use formiga_travel::AckRefusal;
     use std::path::PathBuf;
 

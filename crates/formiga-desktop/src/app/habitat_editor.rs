@@ -108,7 +108,7 @@ impl FormigaApp {
             return;
         }
         // The areas are drawn over the colony's own overlays, which show nothing while it is away.
-        if self.hill.trip.holds_world() {
+        if self.colony_away() {
             self.settings_notice("The colony is away; arrange where it may go once it is home");
             return;
         }

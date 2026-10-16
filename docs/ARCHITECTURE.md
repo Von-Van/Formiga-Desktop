@@ -44,7 +44,7 @@ depends on neither; `formiga-travel` depends on all three, and `formiga-home-con
 |---|---|---|
 | `formiga-core` | `world.rs`: `World`, `new`, `from_save`, `tick` | `model.rs` for the saved types, `DesktopSnapshot`, `WorldCommand`, and `WorldEvent`; `persistence.rs` for reading and writing the colony file, with one migration step per version in `persistence/migrations.rs` and the validation every colony is opened through in `persistence/validation.rs`; `forms.rs` for a creature's form, the design Formiga Farm reshapes; `tuning.rs` for the colony's design values, by feature; `daybook.rs` for the Today page's comparisons; `behavior.rs` for how an action is chosen; `world/<theme>.rs` for each feature, and `world/attention.rs` with `world/attention/` for scenes, games, and watching |
 | `formiga-art` | `renderer.rs`: `CreatureRenderer`, `AnimationSpec`, `BodyPresentation` | `renderer/pose.rs` for how a body moves on each frame; `renderer/modular.rs` and `renderer/classic.rs` for the body plans; `renderer/face.rs`, `props.rs`, and `effects.rs`; `shelter.rs` and `shelter/houses.rs` for the village; `card.rs`, `sticker.rs`, and `postcard.rs` for exports; `ui_atlas.rs` for bubbles and menus; `forms.rs` with `forms/` for the seven sculpted body plans; `train.rs` and `souvenirs.rs` for the train and the souvenirs drawn as Formiga Hill draws them; `paint.rs`, the painting helpers the companion apps draw their places with |
-| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through, and `app/visits.rs` for each app's tray item and who is away where; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `farm.rs` with `farm/` and `app/farm.rs` for sessions in Formiga Farm; `battle.rs` with `battle/` and `app/battle.rs` for matches in Formiga Battle; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting any companion app |
+| `formiga-desktop` | `main.rs`, then `app.rs`: `FormigaApp` | `app/cadence.rs` for how often the colony is ticked and drawn, and `app/menus.rs`, `settings_window.rs`, `habitat_editor.rs`, and `updates.rs` for what the app does in response; `gpu.rs` and `gpu/` for the overlays; `interaction.rs` for hit-test proxies; `creature_menu.rs`; `settings.rs` for the notebook window and `clubhouse.rs` for its shell, with each page's own state in `clubhouse/`; `notices.rs` for what a change will do; `tray.rs`; `updater.rs`; `expansion.rs` with `expansion/files.rs` for the slot a companion app is found, started, waited on and filed through, and `app/visits.rs` for each app's tray item and who is away where; `hill.rs` with `hill/` and `app/hill.rs` for trips to Formiga Hill; `trip.rs` and `app/trips.rs` for the train that takes the whole colony to Hill or to Battle; `house.rs` with `house/`, `app/house.rs` and `houses.rs` for visits to Formiga Home; `farm.rs` with `farm/` and `app/farm.rs` for sessions in Formiga Farm; `battle.rs` with `battle/` and `app/battle.rs` for matches in Formiga Battle; `platform/` for the macOS and Windows adapters, with `platform/companion_app.rs` finding and starting any companion app |
 | `formiga-tools` | `main.rs`: the subcommands, and the module each one runs | `pixels.rs` and `fixtures.rs` for what the review sheets share; `tick_bench.rs` for the simulation benchmark; `soak.rs` for the long simulated runs; `bin/formiga-hill-stub.rs`, `bin/formiga-home-stub.rs`, `bin/formiga-farm-stub.rs` and `bin/formiga-battle-stub.rs`, stand-ins for Formiga Hill, Formiga Home, Formiga Farm and Formiga Battle |
 | `formiga-expansion-rulebook` | `lib.rs`: what every visit to a companion app is made of | `document.rs` for bounded, version-checked documents written whole; `ids.rs` for the session's identifier; `text.rs` for text made safe; `refusal.rs` for an app's reasons to turn a visit away |
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
@@ -2721,7 +2721,8 @@ souvenir and given back with the rest of the notebook's artwork.
 
 ### The train
 
-`hill/scene.rs` is presentation only: it never touches the world. Each frame it makes a copy of
+`hill/scene.rs` is presentation only: it never touches the world. The same train takes the colony
+to a match in Formiga Battle and back. Each frame it makes a copy of
 the colony for the overlay with whoever is on the platform walking, standing or gone, and an
 `OverlayUi::train` the overlay draws in front of them, so a companion reaching its door walks
 behind the carriage. It always comes in from the left and leaves to the right, engine first, as
@@ -3024,8 +3025,9 @@ companion apps' items.
 | State | Desktop |
 |---|---|
 | Idle | Lives as always. Looks for Battle when it starts and at most every ten minutes, from a tick it was taking anyway |
-| Open | Battle has the roster and the record, and everyone goes on living on the desktop: nobody is lent to Battle (`Holding::Nobody` in `app/visits.rs`), so no trip or visit waits for a match, and no match waits for a trip or visit. The tray says Battle is open |
-| Closing | Battle has gone: what its matches earned is kept, a refusal is said in Battle's own words, and the files are closed |
+| Departing | `World::prepare_for_trip` stands everyone still out of doors, as for a trip to Hill, and the colony is saved. The roster and the record are written, and the train that goes to Formiga Hill pulls in and everyone gets on; the world does not tick. As the train pulls away Battle is started, so its first menu opens with everyone already riding; if it cannot be, the train stops and everyone gets off again. With nothing on the desktop to watch, Battle is started at once |
+| Away | Nothing of the colony is drawn and the world does not tick. The whole colony is Battle's (`Holding::Everyone` in `app/visits.rs`), so no trip or visit starts until it is home, and a match waits for every trip and visit. The tray says Battle is open and disables Gather, Settle, Pause and Start a new colony |
+| Returning | Battle has gone: what its matches earned is kept, the files are closed, and the train brings everyone back to exactly where they stood. A refusal is said in Battle's own words once they are home |
 
 What a session earned is kept by `battle::record::keep_result`, and only once Battle has closed. A
 result is read only if it names the session and the checksum of the snapshot Desktop wrote for it.
@@ -3035,12 +3037,14 @@ reading the same result again changes nothing. The colony is saved at once. Noth
 the colony is being recovered, and replacing the colony ends the session without reading anything
 more of it.
 
-The states are `battle::SessionState`, runtime only, and only one session is ever open. A session's
+The states are `battle::SessionState`, runtime only, and only one session is ever open. It is the
+same `trip::TripState` a trip to Hill is, holding Battle's open session instead of Hill's, so the
+train, and when the app is started, are the same for both; see [The train](#the-train). A session's
 files are under `battle/` in the data directory (`battle/session.rs`, kept by `expansion::files`):
 a fresh `battle/<session>/` with the snapshot, where Battle answers, and `battle/session.json`, the
 marker that says a session is open, holding the session and its snapshot's checksum. If Desktop
-stops while Battle is open, the next start keeps what the result says so far and clears the files;
-a match Battle finishes after that is not kept.
+stops while Battle is open, the next start keeps what the result says so far, clears the files and
+brings the colony home by train; a match Battle finishes after that is not kept.
 
 `formiga-battle-stub` stands in for Battle (see `docs/BUILD.md`), reading and answering through the
 contract's own `open_session` and winning the Backyard Cup, and `formiga-tools`'s `battle_session`
@@ -3050,4 +3054,5 @@ tests run whole sessions against it.
 
 Without Battle installed the addition is one LaunchServices or registry lookup every ten minutes.
 Opening a match writes one file; nothing is read while it is open, and its result is read once,
-when it closes.
+when it closes. The train costs what it does for a trip to Hill: while the colony is away no frame
+is drawn and the world does not tick.
