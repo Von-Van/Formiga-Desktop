@@ -544,6 +544,28 @@ mod tests {
     }
 
     #[test]
+    fn a_session_of_many_unlocks_keeps_the_record_within_its_bounds() {
+        let mut record = sample::record();
+        for n in 0..result::result_limits::MAX_MATCHES {
+            let m = MatchResult {
+                id: format!("{:032x}", 0x100 + n),
+                mode: Mode::Ai,
+                rewards: Rewards {
+                    cup_win: Some(format!("cup.c{n}")),
+                    unlocks: (0..result::result_limits::MAX_LINES)
+                        .map(|u| format!("unlock.u{n}_{u}"))
+                        .collect(),
+                    ..Rewards::default()
+                },
+            };
+            assert!(record.apply(&m));
+        }
+        assert!(record.validate().is_ok());
+        assert_eq!(record.unlocked.last().unwrap(), "unlock.u63_7");
+        assert_eq!(record.cups.last().unwrap().cup, "cup.c63");
+    }
+
+    #[test]
     fn a_friend_match_cannot_earn_keepsakes_nor_an_ai_match_points() {
         let mut result = sample::result();
         result.matches[0].rewards.keepsakes = vec!["battle.trophy".to_owned()];
