@@ -272,11 +272,14 @@ impl BattleRecord {
     /// new name, pennant and retirement; if its three changed, the three it had are kept as an
     /// earlier lineup ending `now`. A new trio is kept with an empty record, unless the record
     /// already has as many trios as it keeps, when the oldest retired one makes room for it, or,
-    /// if none is retired, it is not kept. Keeping the same registry twice changes nothing more.
+    /// if none is retired, it is not kept. Trios already kept are updated before any new one is
+    /// weighed, so a trio the registry retires makes room wherever it is listed. Keeping the same
+    /// registry twice changes nothing more.
     pub fn register(&mut self, registry: &Registry, now: OffsetDateTime) {
         if let Some(card) = &registry.handler {
             self.handler = Some(card.clone());
         }
+        let mut new = Vec::new();
         for card in &registry.trios {
             if let Some(trio) = self.trios.iter_mut().find(|t| t.id == card.id) {
                 trio.name = card.name.clone();
@@ -292,8 +295,11 @@ impl BattleRecord {
                     trio.lineups.drain(..over);
                     trio.members_since_utc = now;
                 }
-                continue;
+            } else {
+                new.push(card);
             }
+        }
+        for card in new {
             if self.trios.len() >= MAX_TRIOS {
                 match self.trios.iter().position(|t| t.retired) {
                     Some(oldest) => {
@@ -519,6 +525,44 @@ mod tests {
             "no room, so not kept"
         );
         assert!(record.validate().is_ok());
+    }
+
+    #[test]
+    fn a_trio_retired_in_the_same_registry_makes_room_wherever_it_is_listed() {
+        let new = |n: u64, retired: bool| TrioCard {
+            id: format!("{n:016x}"),
+            name: format!("Trio {n}"),
+            members: vec![n * 10, n * 10 + 1, n * 10 + 2],
+            pennant: None,
+            retired,
+        };
+        let mut full = sample::record();
+        full.register(
+            &Registry {
+                handler: None,
+                trios: (1..MAX_TRIOS as u64).map(|n| new(n, false)).collect(),
+            },
+            LATER,
+        );
+        assert_eq!(full.trios.len(), MAX_TRIOS);
+        assert!(full.trios.iter().all(|t| !t.retired));
+        for trios in [
+            vec![new(40, false), new(3, true)],
+            vec![new(3, true), new(40, false)],
+        ] {
+            let mut record = full.clone();
+            record.register(
+                &Registry {
+                    handler: None,
+                    trios,
+                },
+                LATER,
+            );
+            assert_eq!(record.trios.len(), MAX_TRIOS);
+            assert!(record.trios.iter().any(|t| t.id == format!("{:016x}", 40)));
+            assert!(record.trios.iter().all(|t| t.id != format!("{:016x}", 3)));
+            assert!(record.validate().is_ok());
+        }
     }
 
     #[test]
