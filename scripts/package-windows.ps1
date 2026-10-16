@@ -24,8 +24,10 @@ Push-Location $RepoDir
 try {
     rustup target add x86_64-pc-windows-msvc
     cargo build --release -p formiga-desktop --target x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     if ($env:FORMIGA_SIGNTOOL_CERT_SHA1) {
         signtool sign /sha1 $env:FORMIGA_SIGNTOOL_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Exe
+        if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for the program" }
     }
     New-Item -ItemType Directory -Force $DistDir | Out-Null
     if (Test-Path $PortableDir) { Remove-Item -Recurse -Force $PortableDir }
@@ -46,8 +48,10 @@ try {
             -arch x64 `
             -o $Installer `
             (Join-Path $RepoDir "packaging\windows\Formiga.wxs")
+        if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
         if ($env:FORMIGA_SIGNTOOL_CERT_SHA1) {
             signtool sign /sha1 $env:FORMIGA_SIGNTOOL_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for the installer" }
         }
         Write-Checksum $Installer
     }

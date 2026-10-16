@@ -3,8 +3,8 @@
 Desktop is the repository this folder is in. Hill, Home, Farm and Battle are found beside it,
 under either spelling a checkout gets ("Formiga-Hill" from git, "Formiga Hill" from GitHub
 Desktop), or wherever FORMIGA_HILL_REPO / FORMIGA_HOME_REPO / FORMIGA_FARM_REPO /
-FORMIGA_BATTLE_REPO point. When this folder is a git worktree (under .claude/worktrees/, say), they
-are also looked for beside the main checkout it belongs to.
+FORMIGA_BATTLE_REPO point. When this folder is a git worktree (one nested inside the main checkout,
+say), they are also looked for beside the main checkout it belongs to.
 
 The expansions take Desktop's crates from a release tag. To try them against the Desktop in this
 checkout, cargo is told to patch those crates to local paths for one run (`patched`); that rewrites

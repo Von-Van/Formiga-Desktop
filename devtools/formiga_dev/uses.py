@@ -63,13 +63,20 @@ def named_elsewhere(source: catalog.Source, kind: dict, item: dict, seen: List[H
     """Places outside its own definition that spell out the name players see."""
     if item.get("unnamed"):
         return []
-    place = catalog.defined_at(source, kind, item)
-    pattern = re.compile(rf'"{re.escape(catalog.shown_name(item))}"')
+    label = catalog.shown_name(item)
+    # Every item of the kind shown under the same name declares and names it on its own lines,
+    # which are its own, not places this one's name is spelled out.
+    own = set()
+    for other in kind["items"]:
+        if other is item or (not other.get("unnamed") and catalog.shown_name(other) == label):
+            place = catalog.defined_at(source, kind, other)
+            own.update((place["named"], place["declared"]))
+    pattern = re.compile(rf'"{re.escape(label)}"')
     known = {(hit.repo, hit.path, hit.line) for hit in seen}
     return [hit for hit in source.grep(pattern)
             if (hit.repo, hit.path, hit.line) not in known
             and not (hit.repo == "desktop" and hit.path == kind["defined_in"]
-                     and hit.line in (place["named"], place["declared"]))]
+                     and hit.line in own)]
 
 
 def uses(words: List[str]) -> Result:

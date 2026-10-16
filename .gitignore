@@ -8,7 +8,7 @@
 /packaging/windows/winget/out/
 /docs/HANDOFF-*.md
 
-# Notes for Claude Code and other coding agents, and design documents, are kept locally, never in git.
+# Local notes, tool settings and design documents, kept out of git.
 /CLAUDE.md
 /AGENTS.md
 /.claude/

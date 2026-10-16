@@ -268,6 +268,11 @@ impl BattleRecord {
                 self.unlocked.push(unlock.clone());
             }
         }
+        // Kept within the record's bounds as the colony keeps them: the newest of each.
+        let over = self.cups.len().saturating_sub(MAX_MATCHES);
+        self.cups.drain(..over);
+        let over = self.unlocked.len().saturating_sub(MAX_MATCHES);
+        self.unlocked.drain(..over);
         true
     }
 

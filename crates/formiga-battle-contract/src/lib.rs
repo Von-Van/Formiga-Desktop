@@ -359,6 +359,11 @@ impl BattleAck {
                 "an acknowledgement either accepts or says why not".to_owned(),
             ));
         }
+        if sanitize_text(&self.battle_version, limits::MAX_VERSION_CHARS) != self.battle_version {
+            return Err(BattleError::Invalid(
+                "the Battle version is not plain text".to_owned(),
+            ));
+        }
         Ok(())
     }
 
@@ -541,6 +546,43 @@ mod tests {
         }
         assert_eq!(record, again);
         assert!(record.validate().is_ok());
+    }
+
+    #[test]
+    fn a_session_of_many_unlocks_keeps_the_record_within_its_bounds() {
+        let mut record = sample::record();
+        for n in 0..result::result_limits::MAX_MATCHES {
+            let m = MatchResult {
+                id: format!("{:032x}", 0x100 + n),
+                mode: Mode::Ai,
+                rewards: Rewards {
+                    cup_win: Some(format!("cup.c{n}")),
+                    unlocks: (0..result::result_limits::MAX_LINES)
+                        .map(|u| format!("unlock.u{n}_{u}"))
+                        .collect(),
+                    ..Rewards::default()
+                },
+            };
+            assert!(record.apply(&m));
+        }
+        assert!(record.validate().is_ok());
+        assert_eq!(record.unlocked.last().unwrap(), "unlock.u63_7");
+        assert_eq!(record.cups.last().unwrap().cup, "cup.c63");
+    }
+
+    #[test]
+    fn an_acknowledgement_names_its_battle_version_in_plain_text() {
+        let session = sample::snapshot().session_id;
+        let refusal = Some(AckRefusal::Busy);
+        let ack = BattleAck::new(session, "0.3.0\u{202E}\n", refusal);
+        assert_eq!(ack.battle_version, "0.3.0");
+        assert!(BattleAck::decode(&ack.encode().unwrap()).is_ok());
+        for version in ["0.3.0\u{202E}evil".to_owned(), "9".repeat(1000)] {
+            let mut forged = ack.clone();
+            forged.battle_version = version;
+            let bytes = rulebook::encode(&forged, ack_kind()).unwrap();
+            assert!(BattleAck::decode(&bytes).is_err());
+        }
     }
 
     #[test]
