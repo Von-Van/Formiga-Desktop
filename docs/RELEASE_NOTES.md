@@ -4,6 +4,19 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.9
+
+Formiga now keeps your Handler from Formiga Battle with the colony: the name you sign, an
+optional club, the pennant you choose, and up to twelve named trios of your companions, each with
+its own record of matches against friends and against the visitors. Matches against the visitors
+now fill in the Handler's Notebook too, so you can see what each of the three was seen to do. The
+updater now only ever downloads over HTTPS. Update Formiga Hill, Formiga Home and Formiga Battle to
+0.67.9 alongside: Battle gives the whole team three orders a turn, with a new match screen, music
+and sound, an event on every arena, things to find in the grass, and your Handler's pennant and
+trios painted in the notebook's style; Home hangs frames and postcards along its walls, so frames
+side by side meet rather than overlap; and Hill mends the dress-up box and adventures that skipped
+the place they start. A colony this release has saved does not open in an earlier Formiga.
+
 ## New in 0.67.8
 
 Formiga can now open Formiga Battle, a new expansion where your companions play matches against
