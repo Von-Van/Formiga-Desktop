@@ -17,6 +17,9 @@ All notable changes are documented here.
   named that session counts for it, and editing a trio never changes what it has done. A friend
   match's history line also keeps the trio it was played as and the other Handler's trio and
   pennant. A colony this release has saved does not open in an earlier Formiga.
+- Battle contract version 3 also lets a match against the visitors write the Handler's Notebook,
+  as a friend match does: what each of the three was seen to do, and its moments. Before, only
+  matches with friends filled it in, so most players never saw it.
 
 ## [0.67.8] - 2026-10-15
 

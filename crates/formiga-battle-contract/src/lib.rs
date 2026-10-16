@@ -592,6 +592,30 @@ mod tests {
     }
 
     #[test]
+    fn an_ai_match_writes_the_notebook_too() {
+        let mut result = sample::result();
+        let friend = result
+            .matches
+            .iter()
+            .find(|m| m.mode == Mode::Friend)
+            .expect("the sample has a friend match");
+        let notebook = friend.rewards.notebook.clone();
+        assert!(!notebook.is_empty());
+        let ai = result
+            .matches
+            .iter_mut()
+            .find(|m| m.mode == Mode::Ai)
+            .expect("and an AI match");
+        ai.rewards.notebook = notebook;
+        assert!(result.validate().is_ok());
+        let mut record = BattleRecord::default();
+        for m in &result.matches {
+            assert!(record.apply(m));
+        }
+        assert!(record.notebook.iter().any(|p| p.matches == 2));
+    }
+
+    #[test]
     fn a_friend_match_cannot_earn_keepsakes_nor_an_ai_match_points() {
         let mut result = sample::result();
         result.matches[0].rewards.keepsakes = vec!["battle.trophy".to_owned()];
