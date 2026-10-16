@@ -310,7 +310,8 @@ impl FormigaApp {
 
     /// What Desktop makes of one proposal: the contract's own rule first, every time, and then
     /// the change it allows, made the way Desktop makes any other. `None` when a new companion's
-    /// design cannot be shown in the studio just now, and so is not answered.
+    /// design cannot be shown in the studio just now, or a new look cannot be saved, and so is not
+    /// answered.
     fn weigh_farm_proposal(
         &mut self,
         event_loop: Option<&ActiveEventLoop>,
@@ -344,7 +345,7 @@ impl FormigaApp {
         match (accepted, open.purpose) {
             (Ok(Accepted::Edit { target, design }), _) => {
                 let note = snapshot.offers(FarmCapability::JournalNote);
-                Some(self.keep_new_look(target, &design, note, now))
+                self.keep_new_look(target, &design, note, now)
             }
             (Ok(Accepted::Create { design, .. }), Purpose::Draw { stand_in_seed }) => {
                 self.offer_drawn_companion(event_loop?, stand_in_seed, design, now)
@@ -366,36 +367,46 @@ impl FormigaApp {
     }
 
     /// Give the companion its new look, note it in the journal if Farm was told it would be, and
-    /// save at once: Farm is told the look is kept only once it is.
+    /// save at once: Farm is told the look is kept only once it is. One that cannot be saved is
+    /// taken back, journal and all, and left unanswered for Farm to keep as a draft.
     fn keep_new_look(
         &mut self,
         target: CreatureId,
         design: &Design,
         note: bool,
         now: OffsetDateTime,
-    ) -> Verdict {
+    ) -> Option<Verdict> {
         let Some(world) = &mut self.world else {
-            return Verdict::Gone;
+            return Some(Verdict::Gone);
         };
-        let Some(creature) = world
+        let Some(index) = world
             .save
             .creatures
-            .iter_mut()
-            .find(|creature| creature.id == target)
+            .iter()
+            .position(|creature| creature.id == target)
         else {
-            return Verdict::Gone;
+            return Some(Verdict::Gone);
         };
+        let before = (
+            world.save.creatures[index].clone(),
+            world.save.companion.journal.clone(),
+        );
+        let creature = &mut world.save.creatures[index];
         apply_design(creature, design);
         let revision = Design::of(&creature.appearance).revision();
         if note {
             world.note_new_look(target, now);
         }
         if let Err(error) = self.save() {
-            tracing::error!(%error, "could not save a companion's new look");
+            tracing::error!(%error, "could not save a companion's new look, so it is not kept");
+            if let Some(world) = &mut self.world {
+                (world.save.creatures[index], world.save.companion.journal) = before;
+            }
+            return None;
         }
         self.request_overlay_redraw();
         tracing::info!("a companion has a new look from Formiga Farm");
-        Verdict::Kept { revision }
+        Some(Verdict::Kept { revision })
     }
 
     /// Show a new companion's design in the studio, on the stand-in it was drawn over, for the
