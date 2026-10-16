@@ -256,6 +256,71 @@ class Expansions(unittest.TestCase):
             (battle / ".github" / "workflows" / "ci.yml").write_text("on: push\n")
             self.assertTrue(expansion.has_ci())
 
+    def test_desktop_crates_are_patched_whether_pinned_by_tag_rev_or_branch(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            desktop = root / "Formiga Desktop"
+            for crate in ("formiga-art", "formiga-core", "formiga-travel", "formiga-forms"):
+                (desktop / "crates" / crate).mkdir(parents=True)
+            battle = root / "Formiga Battle"
+            battle.mkdir()
+            url = "https://github.com/Von-Van/Formiga-Desktop"
+            (battle / "Cargo.toml").write_text(
+                '[workspace.dependencies]\n'
+                f'formiga-art = {{ git = "{url}", tag = "v0.67.8" }}\n'
+                f'formiga-core = {{ git = "{url}", rev = "112cf08c58bf0b8418c801188cdc5305cbcea577" }}\n'
+                f'formiga-travel = {{ branch = "desktop-battle-ai-notebook", git = "{url}.git" }}\n'
+                f'formiga-forms = {{ git = "{url}" }}\n'
+                'formiga-battle-core = { path = "crates/formiga-battle-core" }\n'
+                'serde = { version = "1", features = ["derive"] }\n')
+            expansion = Expansion("battle", "Formiga Battle", "formiga-battle", None, battle)
+            self.assertEqual(expansion.pins(), {
+                "formiga-art": "v0.67.8", "formiga-core": "rev 112cf08",
+                "formiga-travel": "branch desktop-battle-ai-notebook", "formiga-forms": "main"})
+            with mock.patch.object(workspace, "DESKTOP", desktop):
+                args = workspace.patched(expansion)
+            patches = [arg for arg in args if arg != "--config"]
+            self.assertEqual(len(patches), 4)
+            for crate, source in (("formiga-art", url), ("formiga-core", url),
+                                  ("formiga-travel", f"{url}.git"), ("formiga-forms", url)):
+                path = (desktop / "crates" / crate).as_posix()
+                self.assertIn(f"patch.'{source}'.{crate}.path='{path}'", patches)
+
+    def test_a_crate_still_taken_from_github_fails_the_expansion_step(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            desktop = root / "Formiga Desktop"
+            (desktop / "crates" / "formiga-core").mkdir(parents=True)
+            battle = root / "Formiga Battle"
+            battle.mkdir()
+            (battle / "Cargo.toml").write_text(
+                '[workspace.dependencies]\nformiga-core = { git = '
+                '"https://github.com/Von-Van/Formiga-Desktop", rev = "112cf08" }\n')
+            lock = battle / "Cargo.lock"
+            lock.write_text("before")
+            resolved = (
+                '[[package]]\nname = "formiga-core"\nversion = "0.67.8"\n\n'
+                '[[package]]\nname = "formiga-travel"\nversion = "0.67.8"\nsource = '
+                '"git+https://github.com/Von-Van/Formiga-Desktop?rev=112cf08#112cf08c58bf"\n\n'
+                '[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = '
+                '"registry+https://github.com/rust-lang/crates.io-index"\n')
+            self.assertEqual(workspace.from_desktop_git(battle), [])
+
+            def cargo_resolves(*args, **kwargs):
+                lock.write_text(resolved)
+                return workspace.Run(0, "", 1.0)
+
+            expansion = Expansion("battle", "Formiga Battle", "formiga-battle", None, battle)
+            with mock.patch.object(validate, "find_expansion", return_value=expansion), \
+                    mock.patch.object(workspace, "DESKTOP", desktop), \
+                    mock.patch.object(validate, "desktop_version", return_value="0.67.9"), \
+                    mock.patch.object(validate, "run", side_effect=cargo_resolves):
+                step = validate.step_expansion("battle")
+            self.assertEqual(step.status, "failed")
+            self.assertIn("built formiga-travel from Desktop rev 112cf08 on GitHub",
+                          step.problems[-1].message)
+            self.assertEqual(lock.read_text(), "before")
+
     def test_validate_with_expansions_runs_battle_too(self):
         self.assertIn("battle", validate.EXPANSION_STEPS)
         self.assertIn("battle", validate.STEPS)

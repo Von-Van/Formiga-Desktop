@@ -48,7 +48,7 @@ colony. Failures also carry a rerun or replay command.
 | `content` | `formiga audit content` below. Its errors fail the step; its warnings are counted, and listed by the audit itself |
 | `tests` | `cargo test` on every crate |
 | `soak` | the nightly soak, short: 120 randomized colonies living a simulated day, their files damaged and repaired |
-| `hill`, `home`, `farm`, `battle` | with `--expansions`: Formiga Hill's, Home's, Farm's and Battle's own tests, built on *this* checkout's Desktop crates rather than the release they're tied to. This is how a Desktop change that breaks an expansion shows up before release. Battle has no CI by choice, so this step, run on your machine, is the only place its tests meet a Desktop change. |
+| `hill`, `home`, `farm`, `battle` | with `--expansions`: Formiga Hill's, Home's, Farm's and Battle's own tests, built on *this* checkout's Desktop crates rather than the release (or commit, or branch) they're tied to; a run that leaves any of those crates on GitHub fails rather than passing on the old Desktop. This is how a Desktop change that breaks an expansion shows up before release. Battle has no CI by choice, so this step, run on your machine, is the only place its tests meet a Desktop change. |
 
 `--quick` runs `format`, `lint` and `fixtures`. `--step` runs only the steps named. The exit code
 is 0 only when nothing failed.
