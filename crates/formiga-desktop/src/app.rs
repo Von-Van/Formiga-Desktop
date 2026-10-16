@@ -47,6 +47,7 @@ mod hill;
 mod house;
 mod menus;
 mod settings_window;
+mod trips;
 mod updates;
 mod visits;
 use battle::BattleLink;
@@ -354,8 +355,8 @@ impl FormigaApp {
             return Duration::from_millis(250);
         };
         // A train on the desktop moves at the overlay's quickest pace; a colony away needs nothing.
-        if self.hill.trip.holds_world() {
-            return if self.hill.trip.scene().is_some() {
+        if self.colony_away() {
+            return if self.train_scene().is_some() {
                 Duration::from_millis(50)
             } else {
                 Duration::from_secs(2)
@@ -448,8 +449,8 @@ impl FormigaApp {
             self.night_checked = Some(now);
         }
         // While a trip has the colony, the trip ticks instead of the world.
-        if self.hill.trip.holds_world() {
-            self.tick_trip(dt);
+        if self.colony_away() {
+            self.tick_trips(dt);
             return true;
         }
         self.check_for_hill(false);
@@ -674,7 +675,7 @@ impl FormigaApp {
             }
             return;
         }
-        if self.hill.trip.holds_world() {
+        if self.colony_away() {
             for proxy in self.interaction_proxies.values_mut() {
                 proxy.hide();
             }

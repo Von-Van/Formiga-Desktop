@@ -5,9 +5,10 @@
 use super::*;
 use crate::expansion::Slot;
 use crate::hill::session::{self, Answer, TravelFiles};
-use crate::hill::{HILL, HillEvent, HomecomingNote, TripState, scene::TrainScene};
+use crate::hill::{HILL, HillEvent, TripState, scene::TrainScene};
 use crate::platform::companion_app::AppInstall;
 use crate::tray::VisitOffer;
+use crate::trip::{HomecomingNote, Step};
 use formiga_travel::{RecallReason, SessionId, project_colony};
 use visits::HILL_ITEM;
 
@@ -70,7 +71,7 @@ impl FormigaApp {
             text: text.to_owned(),
             enabled,
         });
-        let away = self.hill.trip.holds_world().then_some(HILL.name);
+        let away = self.colony_away_in().map(|app| app.name);
         if let Some(tray) = &mut self.tray {
             tray.sync_visit(HILL_ITEM, offer);
             tray.sync_colony_away(away);
@@ -171,23 +172,16 @@ impl FormigaApp {
         );
         // With the train to watch, Hill opens as it pulls away; with nothing on the desktop to
         // see, at once.
-        match TrainScene::departure(&world.save, &self.monitors) {
-            Some(scene) => {
-                self.hill.trip = TripState::Departing {
-                    open,
-                    scene,
-                    hill: Some(install),
-                };
-            }
-            None => {
-                if let Err(error) = self.launch_hill(&install, &open) {
-                    self.hill.files.close(&open);
-                    self.failure_dialog(STAYING_HOME, &error);
-                    return;
-                }
-                self.hill.trip = TripState::Away { open };
-            }
+        let scene = TrainScene::departure(&world.save, &self.monitors);
+        let (trip, start_now) = TripState::leave(open.clone(), scene, install);
+        if let Some(install) = start_now
+            && let Err(error) = self.launch_hill(&install, &open)
+        {
+            self.hill.files.close(&open);
+            self.failure_dialog(STAYING_HOME, &error);
+            return;
         }
+        self.hill.trip = trip;
         self.enter_trip();
     }
 
@@ -207,8 +201,7 @@ impl FormigaApp {
         let Some(open) = self.hill.trip.open().cloned() else {
             return;
         };
-        let started = !matches!(self.hill.trip, TripState::Departing { hill: Some(_), .. });
-        if started {
+        if !self.hill.trip.boarding() {
             self.hill
                 .files
                 .call_home(&open, RecallReason::OwnerAsked, OffsetDateTime::now_utc());
@@ -296,24 +289,15 @@ impl FormigaApp {
         if let Err(error) = self.save() {
             tracing::error!(%error, "could not save the colony coming home");
         }
-        match scene {
-            Some(scene) => {
-                self.hill.trip = TripState::Returning { scene, note };
-                self.enter_trip();
-            }
-            None => self.finish_trip(note),
+        match self.hill.trip.come_home(scene, note) {
+            None => self.enter_trip(),
+            Some(note) => self.finish_trip(note),
         }
     }
 
     /// The colony is back to living on the desktop.
     fn finish_trip(&mut self, note: Option<HomecomingNote>) {
-        self.hill.trip = TripState::Idle;
-        // The world picks up where it left off, as it does on opening, rather than with one long
-        // tick for the time it was away.
-        self.last_tick = Instant::now();
-        self.sync_overlay_visibility();
-        self.request_overlay_redraw();
-        self.sync_hill_menu();
+        self.back_on_desktop();
         if let Some(note) = note {
             if note.asked_for {
                 self.failure_dialog(STAYING_HOME, &note.text);
@@ -323,64 +307,33 @@ impl FormigaApp {
         }
     }
 
-    /// Whatever is shown of the colony is now the trip's: the hit-test windows go, the overlays
-    /// show only the station, and the tray says where everyone is.
-    fn enter_trip(&mut self) {
-        for proxy in self.interaction_proxies.values_mut() {
-            proxy.hide();
-        }
-        for proxy in self.house_proxies.values_mut() {
-            proxy.hide();
-        }
-        self.sync_overlay_visibility();
-        self.request_overlay_redraw();
-        self.sync_hill_menu();
-    }
-
     /// One tick of a trip under way, in place of the world's own: the train moves on, and a
     /// scene that has played out moves the trip on.
     pub(super) fn tick_trip(&mut self, dt: f32) {
-        let Some(scene) = self.hill.trip.scene_mut() else {
-            return;
-        };
-        scene.advance(dt);
-        let finished = scene.finished();
-        for overlay in self.overlays.values() {
-            if overlay.is_visible() {
-                overlay.window.request_redraw();
-            }
-        }
-        // Everyone is aboard and the train is pulling away: now Hill opens. If it cannot, the train
-        // stops where it is and everyone gets off again.
-        if let TripState::Departing {
-            open,
-            scene,
-            hill: hill @ Some(_),
-        } = &mut self.hill.trip
-            && scene.pulling_away()
-        {
-            let (install, open) = (hill.take().expect("matched Some"), open.clone());
-            if let Err(error) = self.launch_hill(&install, &open) {
-                tracing::warn!(%error, "Formiga Hill could not be started");
-                self.hill.files.close(&open);
-                self.come_home(Some(HomecomingNote {
-                    text: error,
-                    asked_for: true,
-                }));
-                return;
-            }
-        }
-        if !finished {
+        if self.hill.trip.scene().is_none() {
             return;
         }
-        match std::mem::take(&mut self.hill.trip) {
-            TripState::Departing { open, .. } => {
-                self.hill.trip = TripState::Away { open };
+        let step = self.hill.trip.advance(dt);
+        self.redraw_train();
+        match step {
+            Step::Nothing => {}
+            // Everyone is aboard and the train is pulling away: now Hill opens. If it cannot, the
+            // train stops where it is and everyone gets off again.
+            Step::Start { app, open } => {
+                if let Err(error) = self.launch_hill(&app, &open) {
+                    tracing::warn!(%error, "Formiga Hill could not be started");
+                    self.hill.files.close(&open);
+                    self.come_home(Some(HomecomingNote {
+                        text: error,
+                        asked_for: true,
+                    }));
+                }
+            }
+            Step::Gone => {
                 self.sync_overlay_visibility();
                 self.sync_hill_menu();
             }
-            TripState::Returning { note, .. } => self.finish_trip(note),
-            other => self.hill.trip = other,
+            Step::Home(note) => self.finish_trip(note),
         }
     }
 
@@ -411,36 +364,5 @@ impl FormigaApp {
             self.hill.files.close(&open);
         }
         self.come_home(None);
-    }
-
-    /// The colony as the overlay draws it this frame, while a trip has it: the platform's copy
-    /// during a scene, or nobody while it is away.
-    pub(super) fn trip_stage(&self, save: &SaveFile) -> Option<(SaveFile, Option<TrainView>)> {
-        if !self.hill.trip.holds_world() {
-            return None;
-        }
-        Some(match self.hill.trip.scene() {
-            Some(scene) => (
-                scene.stage(save),
-                scene.train().map(|pose| TrainView {
-                    pose,
-                    look: formiga_art::TrainLook { lit: self.night },
-                }),
-            ),
-            None => {
-                let mut empty = save.clone();
-                empty.creatures.clear();
-                (empty, None)
-            }
-        })
-    }
-
-    /// Which displays show anything while a trip has the colony: only the one the train stops at,
-    /// during a scene, and none while the colony is away.
-    pub(super) fn trip_display(&self) -> Option<Option<formiga_core::MonitorId>> {
-        self.hill
-            .trip
-            .holds_world()
-            .then(|| self.hill.trip.scene().map(TrainScene::monitor_id))
     }
 }

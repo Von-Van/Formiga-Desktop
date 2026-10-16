@@ -26,6 +26,7 @@ mod review_sheet;
 mod settings;
 mod sticker_export;
 mod tray;
+mod trip;
 mod updater;
 
 use anyhow::Result;

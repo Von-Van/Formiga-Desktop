@@ -17,18 +17,22 @@ pub(super) const VISIT_ITEMS: usize = 3;
 impl FormigaApp {
     /// Who each companion app has just now.
     fn holdings(&self) -> [(&'static Expansion, Holding); VISIT_ITEMS] {
-        let hill = if self.hill.trip.holds_world() {
-            Holding::Everyone
-        } else {
-            Holding::Nobody
+        let everyone = |away: bool| {
+            if away {
+                Holding::Everyone
+            } else {
+                Holding::Nobody
+            }
         };
+        let hill = everyone(self.hill.trip.holds_world());
         let home = self
             .house
             .visit
             .open()
             .map_or(Holding::Nobody, |open| Holding::These(open.away.clone()));
-        // Battle reads a copy of the roster and takes nobody away.
-        [(&HILL, hill), (&HOME, home), (&BATTLE, Holding::Nobody)]
+        // The whole colony rides to Battle, as to Hill.
+        let battle = everyone(self.battle.session.holds_world());
+        [(&HILL, hill), (&HOME, home), (&BATTLE, battle)]
     }
 
     /// Why a visit to `asking` cannot have `wants` (everyone, when `None`) just now, in the words of

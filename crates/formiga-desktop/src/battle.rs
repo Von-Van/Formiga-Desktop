@@ -7,15 +7,17 @@
 //! | State | What Desktop does |
 //! |---|---|
 //! | Idle | Lives as always. |
-//! | Open | Battle has a copy of the colony's roster: every companion as a trip to Formiga Hill would carry it, with the leanings it has learned. Everyone goes on living on the desktop the whole time, and the tray says Battle is open. |
-//! | Closing | Battle has gone: if it turned the roster away, the owner is told why in its own words; otherwise each match its result names is kept once, by its id ([`record`]). Then the session's files are cleared. |
+//! | Departing | Battle has been written a copy of the colony's roster: every companion as a trip to Formiga Hill would carry it, with the leanings it has learned. The train that takes the colony to Hill pulls in and everyone gets on; the world does not tick. As it pulls away Battle is started, so its first menu opens with everyone already riding; if it cannot be, the train stops and everyone gets off again. |
+//! | Away | Nothing of the colony is on the desktop and the world does not tick. The tray says Battle is open. |
+//! | Returning | Battle has gone: if it turned the roster away, the owner is told why in its own words once everyone is home; otherwise each match its result names is kept once, by its id ([`record`]). The session's files are cleared and the train brings everyone home. |
 //!
-//! Nobody is lent to Battle, so nothing here keeps a companion off the desktop or out of another
-//! app, and no trip or visit keeps Battle from being played. The roster carries the colony's
-//! Battle record, and what comes back is only that record, the journal's lines for each match and
-//! the keepsakes Desktop knows; a result counts only if it names the session and the checksum of
-//! the roster Desktop wrote. If Desktop itself stops while Battle is open, Battle keeps the roster
-//! it already read, and the next start clears the session's files without reading them.
+//! The whole colony rides to Battle, as to Hill, so no trip or visit starts while a match is open
+//! and no match while one is under way ([`crate::trip`] is the train both share). The roster
+//! carries the colony's Battle record, and what comes back is only that record, the journal's
+//! lines for each match and the keepsakes Desktop knows; a result counts only if it names the
+//! session and the checksum of the roster Desktop wrote. If Desktop itself stops while Battle is
+//! open, Battle keeps the roster it already read, and the next start keeps what the result says so
+//! far, clears the session's files and brings the colony home by train.
 //!
 //! Battle is found, started and waited on through its slot ([`BATTLE`], in [`crate::expansion`]),
 //! and Desktop checks whether it is installed only when it starts and then at most every ten
@@ -56,8 +58,7 @@ pub static BATTLE: Expansion = Expansion {
         busy: "already has a match open",
         unreadable: "could not read the companions it was given",
         declined: "could not open a match this time",
-        // Battle is never lent anyone, so no visit is ever turned away in these words.
-        occupied: "Formiga Battle is open just now.",
+        occupied: "The colony is away at Formiga Battle just now.",
     },
 };
 
@@ -69,22 +70,7 @@ pub enum BattleEvent {
 }
 
 /// Where a session is. Runtime only: across a restart only the marker in [`session`] survives.
-#[derive(Default)]
-pub enum SessionState {
-    #[default]
-    Idle,
-    Open(OpenSession),
-}
-
-impl SessionState {
-    /// The session still open, while there is one.
-    pub fn open(&self) -> Option<&OpenSession> {
-        match self {
-            Self::Open(open) => Some(open),
-            Self::Idle => None,
-        }
-    }
-}
+pub type SessionState = crate::trip::TripState<OpenSession>;
 
 #[cfg(test)]
 mod tests {
@@ -129,10 +115,19 @@ mod tests {
         );
     }
 
+    /// The whole colony rides to a match, so a trip or a visit waits for it to come home, and a
+    /// match waits for every trip and visit.
     #[test]
-    fn a_match_keeps_nobody_from_a_trip_or_a_visit() {
-        let open = [(&BATTLE, Holding::Nobody)];
-        assert_eq!(busy_elsewhere(&crate::hill::HILL, None, &open), None);
-        assert_eq!(busy_elsewhere(&crate::house::HOME, Some(&[1]), &open), None);
+    fn a_match_takes_the_whole_colony_so_trips_and_visits_wait_for_it() {
+        let open = [(&BATTLE, Holding::Everyone)];
+        assert_eq!(
+            busy_elsewhere(&crate::hill::HILL, None, &open),
+            Some("The colony is away at Formiga Battle just now.")
+        );
+        assert!(busy_elsewhere(&crate::house::HOME, Some(&[1]), &open).is_some());
+        let indoors = [(&crate::house::HOME, Holding::These(vec![1]))];
+        assert!(busy_elsewhere(&BATTLE, None, &indoors).is_some());
+        let at_hill = [(&crate::hill::HILL, Holding::Everyone)];
+        assert!(busy_elsewhere(&BATTLE, None, &at_hill).is_some());
     }
 }
