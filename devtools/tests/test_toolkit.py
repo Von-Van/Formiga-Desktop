@@ -440,6 +440,18 @@ class Uses(unittest.TestCase):
         said = self.answers("wonder", item("LeafSled", "Leaf sled", saved_as="Bike"))
         self.assertIn("already holds steady", said["rename"])
 
+    def test_a_name_two_items_share_is_not_spelled_out_by_the_other(self):
+        source = FakeSource({
+            ("desktop", "crates/x.rs"): (
+                "pub enum PartKind {\n    EarsLong,\n    TailLong,\n}\n"
+                "fn label(self) {\n    K::EarsLong => \"Long\",\n"
+                "    K::TailLong => \"Long\",\n}\n"),
+            ("desktop", "docs/review.rs"): 'let shown = "Long";\n'})
+        parts = kind("part", [item("EarsLong", "Long (ears)", label="Long"),
+                              item("TailLong", "Long (tail)", label="Long")], type="PartKind")
+        spelled = uses.named_elsewhere(source, parts, parts["items"][1], [])
+        self.assertEqual([hit.where() for hit in spelled], ["docs/review.rs:1"])
+
     def test_finds_are_kept_by_number(self):
         said = self.answers("trinket", item("4", "Acorn", saved_as=4, number=4))
         self.assertIn("kept by number", said["rename"])
