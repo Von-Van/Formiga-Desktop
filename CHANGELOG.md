@@ -2,7 +2,19 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.67.11] - 2026-10-16
+
+Released alongside Formiga Hill 0.67.11, Formiga Home 0.67.11 and Formiga Battle 0.67.12, which are
+built on it. Battle contract version 4 is new, and a Battle on version 3 is kept as before.
+Travel version 5, household version 11 and save version 32 are unchanged, so Formiga Hill and
+Formiga Home 0.67.9 still work with it, and a colony saved by 0.67.9 or 0.67.10 opens as before.
+
+### Changed
+
+- Battle contract version 4: each match played as a trio says which three played, so a trio whose
+  members changed during one Battle session keeps every lineup that played as one of its earlier
+  lineups, not just the three it had when Battle opened. A result from a version 3 Battle is kept
+  as before, and a version 3 Desktop reads a version 4 result, leaving out only who played.
 
 ### Fixed
 

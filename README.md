@@ -1,4 +1,4 @@
-# Formiga · v0.67.10
+# Formiga · v0.67.11
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.10-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.11-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,14 +107,14 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.10
+## New in 0.67.11
 
-Playing Formiga Battle now takes the colony there on the same train as a trip to Formiga Hill:
-it pulls in, everyone gets on, and Battle opens as it pulls away. While Battle is open nobody is on
-the desktop and the world waits, and when Battle closes the train brings everyone home. Update
-Formiga Battle to 0.67.10 alongside, which fixes a freeze after a turn with Interact orders and a
-crash when going back to the station from the Handler's page or after a match. Formiga Hill and
-Formiga Home 0.67.9 work with it as they are.
+A round of fixes. A trio in Formiga Battle whose members change during a session now keeps every
+lineup it played with. A new look from Formiga Farm counts as kept only once your colony is saved,
+and the colony stays home if it can't be saved on the way to Battle. Every download now carries
+Formiga's licence. Update Formiga Hill, Formiga Home and Formiga Battle alongside: Battle 0.67.12
+keeps those trio lineups, Home keeps what sits on a newer Home's furniture when you use a design,
+and Hill ships its licence too.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

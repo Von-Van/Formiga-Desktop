@@ -38,6 +38,7 @@ from .workspace import (
     app_builds_here,
     desktop_version,
     find_expansion,
+    from_desktop_git,
     lockfile_kept,
     patched,
     patched_target,
@@ -170,10 +171,17 @@ def step_expansion(key: str) -> Step:
         return Step(key, "skipped",
                     f"no {expansion.title} checkout beside this one (or set FORMIGA_{key.upper()}_REPO)")
     pins = sorted(set(expansion.pins().values()))
+    if not pins and "Formiga-Desktop" in (expansion.path / "Cargo.toml").read_text(encoding="utf-8"):
+        return Step(key, "failed", "cannot tell which Desktop crates it uses", 0.0, [Problem(
+            key, f"{expansion.path.name}/Cargo.toml names Formiga-Desktop, but not as "
+                 "`formiga-… = { git = \"…\", … }` lines the toolkit reads, so it cannot be "
+                 "built on this Desktop", system=expansion.package)])
     with lockfile_kept(expansion.path):
         done = run(["cargo", "test", "--workspace", "--no-fail-fast", "--message-format=json",
                     *patched(expansion)],
                    cwd=expansion.path, env={"CARGO_TARGET_DIR": str(patched_target(expansion))})
+        # A crate the patch missed is still built from GitHub, so the run did not test this Desktop.
+        stray = from_desktop_git(expansion.path)
     problems = (cargo.compiler_problems(done.output, key, expansion.path)
                 + cargo.test_problems(done.output, key, expansion.path))
     for problem in problems:
@@ -182,13 +190,18 @@ def step_expansion(key: str) -> Step:
             problem.file = f"{expansion.path.name}/{problem.file}"
     if done.code != 0 and not problems:
         problems = [Problem(key, _last_error(done.output), system=expansion.package)]
+    if stray:
+        problems.append(Problem(
+            key, f"built {', '.join(stray)} from Desktop {', '.join(pins)} on GitHub, not from "
+                 "this checkout", system=expansion.package))
+    failed = done.code != 0 or bool(stray)
     passed = sum(_count(line, "passed") for line in done.output.splitlines())
-    tied = f"tied to Desktop {', '.join(pins)}" if pins else "tied to no Desktop tag"
+    tied = f"tied to Desktop {', '.join(pins)}" if pins else "tied to no Desktop release"
     if not expansion.has_ci():
         tied += "; no CI, checked only here"
     summary = (f"{passed} tests pass on this Desktop ({desktop_version()}); {tied}"
-               if done.code == 0 else f"fails on this Desktop ({desktop_version()}); {tied}")
-    return Step(key, "failed" if done.code else "passed", summary, done.seconds, problems)
+               if not failed else f"fails on this Desktop ({desktop_version()}); {tied}")
+    return Step(key, "failed" if failed else "passed", summary, done.seconds, problems)
 
 
 def step_content() -> Step:

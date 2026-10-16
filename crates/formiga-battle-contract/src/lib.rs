@@ -31,6 +31,7 @@
 //! | 1 | The roster snapshot and the acknowledgement |
 //! | 2 | The Battle record in the snapshot, and the result Battle answers with ([`result`]) |
 //! | 3 | The Handler card and named trios, their records, and the trio each match was played as ([`handler`]) |
+//! | 4 | The three each match's trio played with, so a lineup changed during a session is kept as an earlier one ([`TrioPlayed::members`]) |
 
 use formiga_expansion_rulebook::{self as rulebook, Kind, sanitize_text};
 pub use formiga_expansion_rulebook::{AckRefusal, SessionId};
@@ -54,7 +55,7 @@ pub use result::{
 };
 
 /// The version of every Battle document this build writes, and the newest it reads.
-pub const BATTLE_FORMAT_VERSION: u32 = 3;
+pub const BATTLE_FORMAT_VERSION: u32 = 4;
 pub const SNAPSHOT_FORMAT: &str = "formiga.battle.snapshot";
 pub const SNAPSHOT_FILE: &str = "snapshot.json";
 pub const ACK_FORMAT: &str = "formiga.battle.ack";

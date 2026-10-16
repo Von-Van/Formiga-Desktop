@@ -171,7 +171,7 @@ def report() -> Result:
             "ci": expansion.has_ci(),
         }
         expansions[key] = entry
-        on = ", ".join(tags) or "no tagged Desktop release"
+        on = ", ".join(tags) or "no Desktop release"
         behind = "" if tags == [f"v{version}"] else f" (this Desktop is {version})"
         local = "" if entry["ci"] else "; no CI, checked here by `validate --expansions`"
         notes.append(f"  {expansion.title:<14} {entry['branch']} at {entry['commit'][:7]}, "

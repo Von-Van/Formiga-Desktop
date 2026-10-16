@@ -4,6 +4,15 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.11
+
+A round of fixes. A trio in Formiga Battle whose members change during a session now keeps every
+lineup it played with. A new look from Formiga Farm counts as kept only once your colony is saved,
+and the colony stays home if it can't be saved on the way to Battle. Every download now carries
+Formiga's licence. Update Formiga Hill, Formiga Home and Formiga Battle alongside: Battle 0.67.12
+keeps those trio lineups, Home keeps what sits on a newer Home's furniture when you use a design,
+and Hill ships its licence too.
+
 ## New in 0.67.10
 
 Playing Formiga Battle now takes the colony there on the same train as a trip to Formiga Hill:
