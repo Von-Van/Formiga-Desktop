@@ -150,7 +150,9 @@ impl FormigaApp {
         };
         let now = OffsetDateTime::now_utc();
         // A Home that says who is in the house is followed: whoever its owner keeps out, and every
-        // friend until it comes over, waits out on the desktop. An older Home has everyone in.
+        // friend until it comes over, waits out on the desktop. An older Home has everyone in. An
+        // installed Home says which version it reads; one that does not is a development build
+        // named by `FORMIGA_HOME_PATH`, and is taken to be as new as this one.
         let follows = install
             .reads
             .is_none_or(|reads| reads >= SAYS_WHO_IS_INDOORS);
