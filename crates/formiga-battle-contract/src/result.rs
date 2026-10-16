@@ -367,6 +367,17 @@ impl BattleResult {
         }
     }
 
+    /// The oldest reader of the contract that takes this result whole: version 3 once a match
+    /// against the visitors adds to the notebook, which a version 2 reader takes for a friend's
+    /// reward and refuses; version 2 otherwise.
+    pub fn reader_needed(&self) -> u32 {
+        let ai_notebook = self
+            .matches
+            .iter()
+            .any(|m| m.mode == Mode::Ai && !m.rewards.notebook.is_empty());
+        if ai_notebook { 3 } else { 2 }
+    }
+
     /// Every bound, the rule that a friend match earns only friend rewards and an AI match only
     /// AI rewards, and that a match credits the trio its history line names.
     pub fn validate(&self) -> Result<(), BattleError> {
@@ -445,9 +456,20 @@ impl BattleResult {
         Ok(())
     }
 
+    /// The result's bytes, its header naming at least the reader it needs
+    /// ([`Self::reader_needed`]), so an older Desktop turns it away by its version rather than
+    /// misreading it.
     pub fn encode(&self) -> Result<Vec<u8>, BattleError> {
         self.validate()?;
-        Ok(rulebook::encode(self, result_kind())?)
+        let needed = self.reader_needed();
+        if self.min_reader_version >= needed {
+            return Ok(rulebook::encode(self, result_kind())?);
+        }
+        let written = Self {
+            min_reader_version: needed,
+            ..self.clone()
+        };
+        Ok(rulebook::encode(&written, result_kind())?)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, BattleError> {
@@ -467,6 +489,48 @@ impl BattleResult {
 mod tests {
     use super::*;
     use crate::sample;
+
+    fn visitors_notebook(result: &mut BattleResult) {
+        let ai = result
+            .matches
+            .iter_mut()
+            .find(|m| m.mode == Mode::Ai)
+            .unwrap();
+        ai.rewards.notebook = vec![NotebookAddition {
+            creature_id: 1,
+            won: true,
+            showing: Showing::default(),
+            moments: Vec::new(),
+        }];
+    }
+
+    #[test]
+    fn a_result_with_a_visitors_notebook_entry_is_written_for_a_version_3_reader() {
+        let plain = sample::result();
+        assert_eq!(plain.reader_needed(), 2);
+        let read = BattleResult::decode(&plain.encode().unwrap()).unwrap();
+        assert_eq!(
+            read.min_reader_version, 2,
+            "nothing a version 2 reader refuses"
+        );
+
+        let mut result = sample::result();
+        visitors_notebook(&mut result);
+        assert_eq!(result.min_reader_version, 2);
+        assert_eq!(result.reader_needed(), 3);
+        let bytes = result.encode().unwrap();
+        let read = BattleResult::decode(&bytes).unwrap();
+        assert_eq!(read.min_reader_version, 3);
+        assert_eq!(read.matches, result.matches);
+        let older = Kind {
+            reads: 2,
+            ..result_kind()
+        };
+        assert!(matches!(
+            rulebook::decode::<BattleResult>(&bytes, older),
+            Err(rulebook::RulebookError::UnsupportedVersion { needs: 3, reads: 2 })
+        ));
+    }
 
     #[test]
     fn a_friend_match_credits_the_trio_its_history_line_names() {
