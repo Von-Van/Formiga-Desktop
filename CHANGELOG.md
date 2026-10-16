@@ -8,7 +8,8 @@ All notable changes are documented here.
 
 - A new look from Formiga Farm is answered as kept only once the colony is written. One that
   arrived while the habitat editor was open or a companion was held was told it was kept though
-  it was never saved; it now waits for Farm's next proposal or for Farm to close.
+  it was never saved; it now waits for Farm's next proposal, and stays Farm's draft if Farm
+  closes first.
 - The colony stays home when it cannot be saved leaving for Formiga Battle, as it does for a trip
   to Formiga Hill, rather than leaving and then coming back to an older save after a restart.
 - Battle contract: a registry that retires a trio and names a new one keeps the new one whichever

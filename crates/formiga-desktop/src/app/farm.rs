@@ -372,7 +372,8 @@ impl FormigaApp {
     /// save at once: Farm is told the look is kept only once it is. One that cannot be saved is
     /// taken back, journal and all, and left unanswered for Farm to keep as a draft. So is one
     /// that arrives while the colony is not being written, as while the habitat editor is open
-    /// or a companion is held: it is weighed again at Farm's next proposal or when Farm closes.
+    /// or a companion is held: it is weighed again at Farm's next proposal, and one still
+    /// unanswered when Farm closes stays Farm's draft.
     fn keep_new_look(
         &mut self,
         target: CreatureId,
