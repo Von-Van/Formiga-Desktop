@@ -4,6 +4,20 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Save version 32 and Battle contract version 3: the colony keeps Formiga Battle's Handler card
+  (the name the player signs, an optional club, and a pennant chosen from Battle's own shapes,
+  colours, symbols and trims) and up to twelve named trios of its companions, retired ones
+  included. Each trio keeps its own record, matches against friends and against the visitors
+  apart, with its wins toward each cup. A trio's members can change: its record carries on, and
+  the three it had before are kept with when they stopped playing together, so a past match is
+  never credited to someone who was not there. Desktop keeps what Battle says of the Handler and
+  trios before the session's matches, by the contract's own rule, so a match played as a trio
+  named that session counts for it, and editing a trio never changes what it has done. A friend
+  match's history line also keeps the trio it was played as and the other Handler's trio and
+  pennant. A colony this release has saved does not open in an earlier Formiga.
+
 ## [0.67.8] - 2026-10-15
 
 Released alongside Formiga Hill 0.67.8, Formiga Home 0.67.8 and the first downloadable Formiga

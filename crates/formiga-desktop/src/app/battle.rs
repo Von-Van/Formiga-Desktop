@@ -228,10 +228,11 @@ impl FormigaApp {
         }
         let Some(world) = &mut self.world else { return };
         match record::keep_result(world, &result, OffsetDateTime::now_utc()) {
-            Ok(kept) if kept.matches == 0 => return,
+            Ok(kept) if kept.matches == 0 && !kept.registry => return,
             Ok(kept) => tracing::info!(
                 matches = kept.matches,
                 keepsakes = kept.keepsakes,
+                registry = kept.registry,
                 "kept what Formiga Battle's matches earned"
             ),
             Err(problem) => {

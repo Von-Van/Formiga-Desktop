@@ -15,7 +15,7 @@ fn migrate(value: serde_json::Value, version: u32) -> Result<SaveFile, Persisten
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 310] = [
+const SAVED_FIELDS: [&str; 330] = [
     "Battle",
     "Decoration",
     "Friendship",
@@ -75,6 +75,7 @@ const SAVED_FIELDS: [&str; 310] = [
     "circuit_points",
     "classic",
     "climbing",
+    "club",
     "coat",
     "colony_order",
     "colony_seed",
@@ -112,6 +113,7 @@ const SAVED_FIELDS: [&str; 310] = [
     "display_name",
     "display_scale",
     "display_scale_percent",
+    "drawn",
     "dressing",
     "drives",
     "ear_size",
@@ -134,12 +136,15 @@ const SAVED_FIELDS: [&str; 310] = [
     "favorite_display",
     "favorites",
     "feistiness",
+    "field",
     "finder",
     "finder_name",
     "finished_at_utc",
     "first_at",
     "foot_size",
     "forelimbs",
+    "formed_at_utc",
+    "friends",
     "fullscreen_app_occlusion",
     "gait_bob",
     "gardens",
@@ -151,6 +156,7 @@ const SAVED_FIELDS: [&str; 310] = [
     "guest_book",
     "habitat",
     "habits",
+    "handler",
     "hangouts",
     "hatch_day_acknowledged_year",
     "head",
@@ -188,12 +194,15 @@ const SAVED_FIELDS: [&str; 310] = [
     "len",
     "length",
     "limbs",
+    "lineups",
     "logical_size",
     "longest_sleep_seconds",
     "marking",
     "marking_seed",
     "matches",
     "maximum_seen_utc",
+    "members",
+    "members_since_utc",
     "memory",
     "milestone_bubble_shown",
     "milestone_cooldown_active_seconds",
@@ -215,6 +224,8 @@ const SAVED_FIELDS: [&str; 310] = [
     "on_stage",
     "onboarding_complete",
     "opponent",
+    "opponent_pennant",
+    "opponent_trio",
     "ordinal",
     "origin",
     "ornaments",
@@ -226,12 +237,14 @@ const SAVED_FIELDS: [&str; 310] = [
     "pattern",
     "pattern_density",
     "paused",
+    "pennant",
     "personality",
     "pins",
     "placements",
     "planted_at_utc",
     "play",
     "play_sessions",
+    "played",
     "playfulness",
     "plays",
     "position",
@@ -247,6 +260,7 @@ const SAVED_FIELDS: [&str; 310] = [
     "relative_x",
     "rest_pose",
     "rests",
+    "retired",
     "ritual",
     "role",
     "roof",
@@ -259,6 +273,7 @@ const SAVED_FIELDS: [&str; 310] = [
     "scrapbook",
     "sculpt",
     "settings",
+    "shape",
     "shared_rests",
     "shelter",
     "signed",
@@ -285,6 +300,7 @@ const SAVED_FIELDS: [&str; 310] = [
     "style",
     "surface",
     "suspicion",
+    "symbol",
     "tail",
     "tail_length",
     "tail_style",
@@ -304,9 +320,13 @@ const SAVED_FIELDS: [&str; 310] = [
     "tip_style",
     "transitions",
     "tree_keepsakes",
+    "trim",
+    "trio",
+    "trios",
     "turns",
     "unlocked",
     "unlocks",
+    "until_utc",
     "variant",
     "velocity",
     "vertical_offset",
@@ -766,6 +786,14 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
             turns: 8,
             team: vec![player],
             opponent: Some("Sam".to_owned()),
+            trio: Some("7a1e5c3b9d2f4068".to_owned()),
+            opponent_trio: Some("The Puddle Jumpers".to_owned()),
+            opponent_pennant: Some(crate::BattlePennant {
+                shape: "swallowtail".to_owned(),
+                field: "sky".to_owned(),
+                symbol: "wave".to_owned(),
+                trim: "plain".to_owned(),
+            }),
         }],
         notebook: vec![crate::BattleNotebookPage {
             creature_id: player,
@@ -778,6 +806,36 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
             moments: vec!["Held firm against two at once".to_owned()],
         }],
         applied: vec!["0123456789abcdef0123456789abcdef".to_owned()],
+        handler: Some(crate::BattleHandlerCard {
+            name: "Jo".to_owned(),
+            club: Some("Hedge End Club".to_owned()),
+            pennant: crate::BattlePennant {
+                shape: "pennon".to_owned(),
+                field: "forest".to_owned(),
+                symbol: "acorn".to_owned(),
+                trim: "stitched".to_owned(),
+            },
+        }),
+        trios: vec![crate::BattleTrio {
+            id: "7a1e5c3b9d2f4068".to_owned(),
+            name: "The Thistle Three".to_owned(),
+            members: vec![player, player + 1, player + 2],
+            pennant: None,
+            retired: false,
+            formed_at_utc: now,
+            members_since_utc: now,
+            friends: crate::BattleTally {
+                played: 1,
+                won: 1,
+                drawn: 0,
+            },
+            visitors: crate::BattleTally::default(),
+            cups: Vec::new(),
+            lineups: vec![crate::BattleLineup {
+                members: vec![player, player + 1, player + 3],
+                until_utc: now,
+            }],
+        }],
     };
     world.keep_battle_match(
         &["They won the Backyard Cup.".to_owned()],
@@ -2549,5 +2607,75 @@ fn v31_keeps_a_battle_record_and_keepsakes_and_older_colonies_have_none() {
         loaded.companion.journal.last().map(|entry| &entry.moment),
         Some(&crate::JournalMoment::Battle(line))
     );
+    let _ = fs::remove_dir_all(directory);
+}
+
+/// A version-31 colony that has played Battle opens with its record as it was and no Handler or
+/// trios, and a Handler card and trio come back from the file exactly as they were kept.
+#[test]
+fn v32_keeps_a_handler_and_trios_and_older_colonies_have_named_none() {
+    let desktop = crate::DesktopSnapshot::default();
+    let now = datetime!(2026-10-16 12:00 UTC);
+    let mut world = crate::World::new([32; 32], now, &desktop);
+    world.save.battle.record.circuit_points = 15;
+    let save = world.save.clone();
+    let mut value = serde_json::to_value(&save).unwrap();
+    assert!(value["battle"]["record"].get("handler").is_none());
+    assert!(value["battle"]["record"].get("trios").is_none());
+    value["save_version"] = 31.into();
+    let migrated = migrate(value, 31).unwrap();
+    assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+    assert_eq!(migrated.battle, save.battle);
+    assert!(migrated.battle.record.handler.is_none() && migrated.battle.record.trios.is_empty());
+
+    let mut world = crate::World::from_save(migrated);
+    let pennant = crate::BattlePennant {
+        shape: "swallowtail".to_owned(),
+        field: "forest".to_owned(),
+        symbol: "acorn".to_owned(),
+        trim: "stitched".to_owned(),
+    };
+    let ids: Vec<u64> = {
+        let mut ids: Vec<u64> = world.save.creatures.iter().map(|c| c.id).take(3).collect();
+        ids.extend([900_001, 900_002, 900_003]);
+        ids.truncate(3);
+        ids.sort_unstable();
+        ids
+    };
+    world.save.battle.record.handler = Some(crate::BattleHandlerCard {
+        name: "Jo".to_owned(),
+        club: Some("Hedge End Club".to_owned()),
+        pennant: pennant.clone(),
+    });
+    world.save.battle.record.trios = vec![crate::BattleTrio {
+        id: "7a1e5c3b9d2f4068".to_owned(),
+        name: "The Thistle Three".to_owned(),
+        members: ids.clone(),
+        pennant: Some(pennant),
+        retired: false,
+        formed_at_utc: now,
+        members_since_utc: now,
+        friends: crate::BattleTally {
+            played: 3,
+            won: 2,
+            drawn: 1,
+        },
+        visitors: crate::BattleTally::default(),
+        cups: vec![crate::BattleCupWins {
+            cup: "cup.backyard".to_owned(),
+            wins: 1,
+        }],
+        lineups: vec![crate::BattleLineup {
+            members: vec![1, 2, 3],
+            until_utc: now,
+        }],
+    }];
+    assert!(world.save.battle.holds());
+    let directory =
+        std::env::temp_dir().join(format!("formiga-battle-handler-{}", std::process::id()));
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&world.save).unwrap();
+    let loaded = store.load().unwrap().unwrap();
+    assert_eq!(loaded.battle, world.save.battle);
     let _ = fs::remove_dir_all(directory);
 }

@@ -13,6 +13,7 @@
 //! | The AI | Championship progress (cup wins, unlocks), journal entries, and keepsakes for Home to show |
 
 use crate::BattleError;
+use crate::handler::{HandlerCard, Pennant, Registry, Trio, TrioPlayed};
 use formiga_expansion_rulebook::{self as rulebook, Kind, SessionId, is_sanitized};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -88,6 +89,15 @@ pub struct MatchSummary {
     /// The other Handler's name, as they typed it, for a friend match.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opponent: Option<String>,
+    /// The trio the three played as, by id. Since version 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trio: Option<String>,
+    /// The name of the trio the other Handler played as, for a friend match. Since version 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opponent_trio: Option<String>,
+    /// The pennant the other Handler flew, for a friend match. Since version 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opponent_pennant: Option<Pennant>,
 }
 
 /// Wins toward a cup of the Championship Circuit.
@@ -114,10 +124,16 @@ pub struct BattleRecord {
     /// The ids of the matches already applied, the newest last, so none is applied twice.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub applied: Vec<String>,
+    /// Who the player is in Battle. Since version 3; absent until they say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler: Option<HandlerCard>,
+    /// The trios the Handler has named, retired ones included. Since version 3.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trios: Vec<Trio>,
 }
 
-/// What a match earned. A friend match earns only the first four; an AI match only the last
-/// three.
+/// What a match earned. A friend match earns only the first four; an AI match only the next
+/// four. Either may be credited to the trio it was played as.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rewards {
     #[serde(default)]
@@ -141,6 +157,9 @@ pub struct Rewards {
     /// Keepsakes for Desktop to keep and Home to show, by id.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keepsakes: Vec<String>,
+    /// The trio the match was played as, for its record. Since version 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trio: Option<TrioPlayed>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,6 +191,10 @@ pub struct BattleResult {
     pub snapshot_sha256: String,
     pub battle_version: String,
     pub matches: Vec<MatchResult>,
+    /// The Handler card and trios as the session left them, kept before its matches. Since
+    /// version 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<Registry>,
 }
 
 fn result_kind() -> Kind {
@@ -182,7 +205,7 @@ fn result_kind() -> Kind {
     }
 }
 
-fn is_id(text: &str) -> bool {
+pub(crate) fn is_id(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= MAX_ID_CHARS
         && text
@@ -268,6 +291,9 @@ impl BattleRecord {
                 self.unlocked.push(unlock.clone());
             }
         }
+        if let Some(played) = &r.trio {
+            self.credit_trio(m.mode, played, r.cup_win.as_deref());
+        }
         // Kept within the record's bounds as the colony keeps them: the newest of each.
         let over = self.cups.len().saturating_sub(MAX_MATCHES);
         self.cups.drain(..over);
@@ -299,7 +325,8 @@ impl BattleRecord {
                     && p.moments.len() <= MAX_MOMENTS
                     && p.moments.iter().all(|m| plain(m))
                     && p.wins <= p.matches
-            });
+            })
+            && self.identity_holds();
         if ok {
             Ok(())
         } else {
@@ -315,6 +342,14 @@ impl MatchSummary {
         is_id(&self.ended_by)
             && self.team.len() <= 3
             && self.opponent.as_ref().is_none_or(|o| plain(o))
+            && self.trio.as_deref().is_none_or(crate::handler::is_trio_id)
+            && self.opponent_trio.as_deref().is_none_or(|t| {
+                formiga_expansion_rulebook::is_sanitized(
+                    t,
+                    crate::handler::handler_limits::MAX_TRIO_CHARS,
+                )
+            })
+            && self.opponent_pennant.as_ref().is_none_or(Pennant::holds)
     }
 }
 
@@ -328,6 +363,7 @@ impl BattleResult {
             snapshot_sha256,
             battle_version: rulebook::sanitize_text(battle_version, 32),
             matches: Vec::new(),
+            registry: None,
         }
     }
 
@@ -346,6 +382,9 @@ impl BattleResult {
         }
         if self.matches.len() > MAX_MATCHES {
             return invalid("too many matches in one session");
+        }
+        if !self.registry.as_ref().is_none_or(Registry::holds) {
+            return invalid("the Handler card or a trio is out of bounds");
         }
         let ids: BTreeSet<&str> = self.matches.iter().map(|m| m.id.as_str()).collect();
         if ids.len() != self.matches.len()
@@ -387,7 +426,8 @@ impl BattleResult {
                 && r.journal.len() <= MAX_LINES
                 && r.journal.iter().all(|t| plain(t))
                 && r.keepsakes.len() <= MAX_LINES
-                && r.keepsakes.iter().all(|k| is_id(k));
+                && r.keepsakes.iter().all(|k| is_id(k))
+                && r.trio.as_ref().is_none_or(TrioPlayed::holds);
             if !fits {
                 return invalid("a match earned rewards its kind of match never earns");
             }

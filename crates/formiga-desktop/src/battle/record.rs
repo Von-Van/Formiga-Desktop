@@ -8,37 +8,45 @@ use formiga_battle_contract::{BattleRecord, BattleResult};
 use formiga_core::World;
 use time::OffsetDateTime;
 
-/// What keeping a result kept: the matches applied for the first time, and the keepsakes new to
-/// the colony.
+/// What keeping a result kept: the matches applied for the first time, the keepsakes new to the
+/// colony, and whether the Handler card or trios changed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Kept {
     pub matches: usize,
     pub keepsakes: usize,
+    pub registry: bool,
 }
 
 /// Keep what a session's matches earned: each match is applied to the colony's record by the
 /// contract's own rule, once, by its id, and only a match applied for the first time adds its
-/// lines to the journal and its keepsakes to the colony's. Everything is weighed before anything
-/// changes, so the colony keeps all of it or none, and keeping the same result again changes
-/// nothing.
+/// lines to the journal and its keepsakes to the colony's. The Handler card and trios the session
+/// ended with are kept first, by the contract's own rule, so a match played as a trio named in
+/// the same session counts for it. Everything is weighed before anything changes, so the colony
+/// keeps all of it or none, and keeping the same result again changes nothing.
 pub fn keep_result(
     world: &mut World,
     result: &BattleResult,
     now: OffsetDateTime,
 ) -> Result<Kept, String> {
-    let mut applied = to_contract(&world.save.battle.record)?;
+    let before = to_contract(&world.save.battle.record)?;
+    let mut applied = before.clone();
+    if let Some(registry) = &result.registry {
+        applied.register(registry, now);
+    }
+    let registry = applied != before;
     let new: Vec<_> = result
         .matches
         .iter()
         .filter(|played| applied.apply(played))
         .collect();
-    if new.is_empty() {
+    if new.is_empty() && !registry {
         return Ok(Kept::default());
     }
     world.save.battle.record = from_contract(&applied)?;
     let mut kept = Kept {
         matches: new.len(),
         keepsakes: 0,
+        registry,
     };
     for played in new {
         kept.keepsakes +=
@@ -133,7 +141,8 @@ mod tests {
             kept,
             Kept {
                 matches: 3,
-                keepsakes: 2
+                keepsakes: 2,
+                registry: true,
             }
         );
         let battle = world.save.battle.clone();
@@ -179,10 +188,43 @@ mod tests {
             kept,
             Kept {
                 matches: 1,
-                keepsakes: 0
+                keepsakes: 0,
+                registry: true,
             }
         );
         assert!(world.save.battle.keepsakes.is_empty());
+    }
+
+    #[test]
+    fn a_session_that_only_named_a_trio_keeps_it_and_its_matches_count_for_it() {
+        let mut world = colony();
+        let mut result = sample::result();
+        let matches = std::mem::take(&mut result.matches);
+        let now = datetime!(2026-10-16 13:00 UTC);
+        let kept = keep_result(&mut world, &result, now).unwrap();
+        assert_eq!(
+            kept,
+            Kept {
+                registry: true,
+                ..Kept::default()
+            }
+        );
+        let record = &world.save.battle.record;
+        assert_eq!(record.handler.as_ref().map(|h| h.name.as_str()), Some("Jo"));
+        assert_eq!(record.trios.len(), 2);
+        assert!(record.trios.iter().all(|t| t.formed_at_utc == now));
+        assert_eq!(
+            keep_result(&mut world, &result, now).unwrap(),
+            Kept::default(),
+            "the same names again change nothing"
+        );
+
+        result.matches = matches;
+        let kept = keep_result(&mut world, &result, now).unwrap();
+        assert_eq!(kept.matches, 2);
+        let thistle = &world.save.battle.record.trios[0];
+        assert_eq!((thistle.friends.played, thistle.visitors.won), (1, 1));
+        assert!(world.save.battle.holds());
     }
 
     #[test]
