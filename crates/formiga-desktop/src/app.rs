@@ -891,16 +891,22 @@ impl FormigaApp {
         }
     }
 
+    /// Whether [`Self::save`] would leave the file as it is just now: while a colony is being
+    /// recovered, while the habitat editor is open, or while a companion is held, the colony is
+    /// written once that is over instead.
+    fn save_held_back(&self) -> bool {
+        self.recovery_pending
+            || self.habitat_editor.is_some()
+            || self.world.as_ref().is_some_and(World::is_interacting)
+    }
+
     fn save(&mut self) -> Result<()> {
-        if self.recovery_pending || self.habitat_editor.is_some() {
+        if self.save_held_back() {
             return Ok(());
         }
         let Some(world) = &self.world else {
             return Ok(());
         };
-        if world.is_interacting() {
-            return Ok(());
-        }
         match self.save_store.save(&world.save) {
             Ok(()) => {
                 self.last_save = Instant::now();

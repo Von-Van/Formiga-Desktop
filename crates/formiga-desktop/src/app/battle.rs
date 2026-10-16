@@ -94,6 +94,13 @@ impl FormigaApp {
             );
             return;
         }
+        if let Some(trouble) = self.save_trouble.clone() {
+            self.failure_dialog(
+                STAYING_SHUT,
+                &format!("The colony cannot be saved just now, so it is not leaving. {trouble}"),
+            );
+            return;
+        }
         if let Some(reason) = self.busy_elsewhere(&BATTLE, None) {
             self.failure_dialog(STAYING_SHUT, reason);
             return;
@@ -157,8 +164,16 @@ impl FormigaApp {
             world.prepare_for_trip(OffsetDateTime::now_utc());
             TrainScene::departure(&world.save, &self.monitors)
         };
+        // A colony that cannot be written stays home: Battle's results are kept against the
+        // colony as it left, and a restart would otherwise find an older one on disk.
         if let Err(error) = self.save() {
             tracing::error!(%error, "could not save the colony leaving for Formiga Battle");
+            self.battle.files.close(&open);
+            self.failure_dialog(
+                STAYING_SHUT,
+                &format!("The colony could not be saved, so it is not leaving: {error}"),
+            );
+            return;
         }
         // With the train to watch, Battle opens as it pulls away; with nothing on the desktop to
         // see, at once.

@@ -370,7 +370,10 @@ impl FormigaApp {
 
     /// Give the companion its new look, note it in the journal if Farm was told it would be, and
     /// save at once: Farm is told the look is kept only once it is. One that cannot be saved is
-    /// taken back, journal and all, and left unanswered for Farm to keep as a draft.
+    /// taken back, journal and all, and left unanswered for Farm to keep as a draft. So is one
+    /// that arrives while the colony is not being written, as while the habitat editor is open
+    /// or a companion is held: it is weighed again at Farm's next proposal, and one still
+    /// unanswered when Farm closes stays Farm's draft.
     fn keep_new_look(
         &mut self,
         target: CreatureId,
@@ -378,6 +381,7 @@ impl FormigaApp {
         note: bool,
         now: OffsetDateTime,
     ) -> Option<Verdict> {
+        let held_back = self.save_held_back();
         let Some(world) = &mut self.world else {
             return Some(Verdict::Gone);
         };
@@ -389,6 +393,10 @@ impl FormigaApp {
         else {
             return Some(Verdict::Gone);
         };
+        if held_back {
+            tracing::info!("a new look from Formiga Farm waits until the colony can be saved");
+            return None;
+        }
         let before = (
             world.save.creatures[index].clone(),
             world.save.companion.journal.clone(),

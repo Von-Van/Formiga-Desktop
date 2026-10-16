@@ -2,6 +2,25 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- A new look from Formiga Farm is answered as kept only once the colony is written. One that
+  arrived while the habitat editor was open or a companion was held was told it was kept though
+  it was never saved; it now waits for Farm's next proposal, and stays Farm's draft if Farm
+  closes first.
+- The colony stays home when it cannot be saved leaving for Formiga Battle, as it does for a trip
+  to Formiga Hill, rather than leaving and then coming back to an older save after a restart.
+- Battle contract: a registry that retires a trio and names a new one keeps the new one whichever
+  is listed first; a result whose friend match names one trio in its history line and credits
+  another is refused; and a result with a notebook entry from a match against the visitors is
+  written for a version 3 reader, so an older Desktop turns it away by its version.
+- `formiga capture --binary` with a file that cannot be run, or one that never finishes, fails
+  its capture step with the reason instead of ending in a traceback.
+- Every download carries Formiga's MIT licence: inside the macOS app, and as License.txt on the
+  disk image, in the portable Windows ZIP and beside the installed program.
+
 ## [0.67.10] - 2026-10-16
 
 A patch to 0.67.9, released alongside Formiga Battle 0.67.10, which is built on it. Nothing a

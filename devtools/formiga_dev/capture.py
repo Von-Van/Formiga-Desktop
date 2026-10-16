@@ -168,8 +168,17 @@ def capture(name: str, window: bool = False, pinned: bool = False,
                 command = [str(program), *scenario.args, render, str(target), *extra]
                 what = "drawn off-screen"
             started = time.monotonic()
-            done = subprocess.run(command, cwd=expansion.path or data, env=env,
-                                  capture_output=True, text=True, timeout=300)
+            try:
+                done = subprocess.run(command, cwd=expansion.path or data, env=env,
+                                      capture_output=True, text=True, timeout=300)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                why = (f"{program} did not finish within {error.timeout:g} seconds"
+                       if isinstance(error, subprocess.TimeoutExpired)
+                       else f"could not run {program}: {error.strerror or error}")
+                result.steps.append(Step("capture", "failed", "no picture",
+                                         time.monotonic() - started,
+                                         [Problem("capture", why, system=expansion.package)]))
+                return result
             output = (done.stdout or "") + (done.stderr or "")
             result.steps.append(_finish(done.returncode, output, time.monotonic() - started,
                                         target, what))

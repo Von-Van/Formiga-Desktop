@@ -23,6 +23,9 @@
               Type="string"
               Value="[INSTALLFOLDER]" />
         </Component>
+        <Component Id="FormigaLicense" Guid="4EAD96A8-F16F-4FE7-93C9-1BB4498EACE3">
+          <File Id="FormigaLicenseFile" Source="$(FormigaLicense)" Name="License.txt" KeyPath="yes" />
+        </Component>
       </Directory>
     </StandardDirectory>
 
@@ -67,6 +70,7 @@
 
     <Feature Id="MainFeature" Title="Formiga" Level="1">
       <ComponentRef Id="FormigaApplication" />
+      <ComponentRef Id="FormigaLicense" />
       <ComponentRef Id="FormigaShortcut" />
       <ComponentRef Id="FormigaDesktopShortcut" />
     </Feature>
