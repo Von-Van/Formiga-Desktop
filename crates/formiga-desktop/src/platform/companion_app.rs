@@ -1,4 +1,4 @@
-//! Finding one of Formiga's companion apps, Formiga Hill or Formiga Home, and starting it.
+//! Finding one of Formiga's companion apps (Formiga Hill, Home, Farm or Battle) and starting it.
 //!
 //! Nothing here runs on its own. Desktop asks whether an app is installed when it starts and then
 //! at most every ten minutes, from inside a tick it was taking anyway, and starts it only when its
