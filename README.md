@@ -141,8 +141,9 @@ manual checks on real hardware are not done yet.
 | Performance budgets | Measured on one Mac only. **Not yet measured on Windows** |
 | [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Five recorded**: three on macOS (real colonies' migrations, on copies) and two on Windows 11 (everyday use, with several displays); the rest **not yet**, each tracked as a [`native-qa` issue](https://github.com/Von-Van/Formiga-Desktop/issues?q=label%3Anative-qa) |
 | Long simulated runs | **Nightly** in CI: 4,500 randomized colonies, three simulated days each, across three time zones |
-| Trips to Formiga Hill | **Not yet available to use**: Desktop's side is shipped and tested against a stand-in and development builds of Formiga Hill, and shows nothing until Formiga Hill, a separate app, is installed |
-| Visits to Formiga Home | **Not yet available to use**: Desktop's side is shipped and tested against a stand-in and a development build of Formiga Home, and shows nothing until Formiga Home, a separate app, is installed |
+| Trips to Formiga Hill | **Preview**: Desktop's side is shipped and tested against a stand-in and development builds of Formiga Hill, and shows nothing until Formiga Hill, a separate app, is installed |
+| Visits to Formiga Home | **Preview**: Desktop's side is shipped and tested against a stand-in and a development build of Formiga Home, and shows nothing until Formiga Home, a separate app, is installed |
+| Formiga Farm and Formiga Battle | **Preview**: Desktop's side of each is shipped and tested against a stand-in, and shows nothing until that app, a separate one, is installed |
 | Code signing | **Not signed.** Gatekeeper and SmartScreen warn on first launch |
 
 ## Build from source
@@ -188,7 +189,7 @@ around the code.
                     over each creature; tray menu; settings window (egui); updater
 ```
 
-The workspace is seven crates with dependencies that run one way:
+The workspace is nine crates with dependencies that run one way:
 
 | Crate | What it holds |
 |---|---|
@@ -199,6 +200,8 @@ The workspace is seven crates with dependencies that run one way:
 | [`formiga-expansion-rulebook`](crates/formiga-expansion-rulebook) | What every visit to a companion app is made of: session identifiers, bounded and version-checked documents written whole, safe text |
 | [`formiga-travel`](crates/formiga-travel) | The travel contract with Formiga Hill: the documents a trip carries and the colony as it travels |
 | [`formiga-home-contract`](crates/formiga-home-contract) | The household contract with Formiga Home: the documents a visit carries and a household as its house opens |
+| [`formiga-farm-contract`](crates/formiga-farm-contract) | The design contract with Formiga Farm: the one creature a session opens on, and the designs Farm proposes for it |
+| [`formiga-battle-contract`](crates/formiga-battle-contract) | The roster contract with Formiga Battle: a read-only copy of the colony's companions, and what a match earns |
 
 The simulation never reads the desktop directly. Each tick the desktop crate hands it a snapshot of
 what is on screen, and it hands back events. That boundary keeps the core deterministic and
