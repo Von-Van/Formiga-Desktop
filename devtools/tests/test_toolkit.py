@@ -162,7 +162,7 @@ class Expansions(unittest.TestCase):
             git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(desktop)]
             subprocess.run([*git, "init", "-q"], check=True)
             subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "start"], check=True)
-            tree = desktop / ".claude" / "worktrees" / "tidy"
+            tree = desktop / "worktrees" / "tidy"
             subprocess.run([*git, "worktree", "add", "-q", "-b", "tidy", str(tree)], check=True)
             farm = root / "Formiga Farm"
             farm.mkdir()

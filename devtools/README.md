@@ -74,8 +74,8 @@ file. The desktop app runs only on macOS and Windows. Elsewhere, or with `--no-l
 scenario is prepared and the command that opens it is printed.
 
 Hill and Home are found in the checkout beside this one (`Formiga-Hill` or `Formiga Hill`, or set
-`FORMIGA_HILL_REPO` / `FORMIGA_HOME_REPO`). From a git worktree of Desktop (under
-`.claude/worktrees/`, say), they are also looked for beside the main checkout. Formiga Farm and
+`FORMIGA_HILL_REPO` / `FORMIGA_HOME_REPO`). From a git worktree of Desktop (one
+nested inside this checkout, say), they are also looked for beside the main checkout. Formiga Farm and
 Formiga Battle are found the same way (`FORMIGA_FARM_REPO`, `FORMIGA_BATTLE_REPO`) for
 `validate`, `audit`, `inspect`, `uses` and `report`. They are built on this checkout's Desktop
 crates, so a change to Desktop's drawing shows up in them; `--pinned` builds them on their own Desktop release
