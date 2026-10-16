@@ -367,8 +367,8 @@ impl BattleResult {
         }
     }
 
-    /// Every bound, and the rule that a friend match earns only friend rewards and an AI match
-    /// only AI rewards.
+    /// Every bound, the rule that a friend match earns only friend rewards and an AI match only
+    /// AI rewards, and that a match credits the trio its history line names.
     pub fn validate(&self) -> Result<(), BattleError> {
         let invalid = |why: &str| Err(BattleError::Invalid(why.to_owned()));
         if !rulebook::header_ok(
@@ -428,11 +428,18 @@ impl BattleResult {
                 && r.keepsakes.len() <= MAX_LINES
                 && r.keepsakes.iter().all(|k| is_id(k))
                 && r.trio.as_ref().is_none_or(TrioPlayed::holds);
+            let one_trio = match (r.history.as_ref().and_then(|h| h.trio.as_ref()), &r.trio) {
+                (Some(named), Some(played)) => *named == played.id,
+                _ => true,
+            };
             if !fits {
                 return invalid("a match earned rewards its kind of match never earns");
             }
             if !bounded {
                 return invalid("a match's rewards are out of bounds");
+            }
+            if !one_trio {
+                return invalid("a match's history line and record name different trios");
             }
         }
         Ok(())
@@ -453,5 +460,37 @@ impl BattleResult {
     pub fn write(&self, directory: &std::path::Path) -> Result<(), BattleError> {
         rulebook::write_atomically(&directory.join(RESULT_FILE), &self.encode()?)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sample;
+
+    #[test]
+    fn a_friend_match_credits_the_trio_its_history_line_names() {
+        let ok = sample::result();
+        let friend = ok
+            .matches
+            .iter()
+            .position(|m| m.mode == Mode::Friend)
+            .unwrap();
+        let changed = |change: &dyn Fn(&mut Rewards)| {
+            let mut result = ok.clone();
+            change(&mut result.matches[friend].rewards);
+            result.validate()
+        };
+        let rewards = &ok.matches[friend].rewards;
+        let named = rewards.history.as_ref().and_then(|h| h.trio.as_deref());
+        assert_eq!(named, rewards.trio.as_ref().map(|t| t.id.as_str()));
+        assert!(ok.validate().is_ok());
+        let other = "0f0e0d0c0b0a0908";
+        assert!(changed(&|r| r.trio.as_mut().unwrap().id = other.to_owned()).is_err());
+        assert!(
+            changed(&|r| r.history.as_mut().unwrap().trio = None).is_ok(),
+            "either may be left out"
+        );
+        assert!(changed(&|r| r.trio = None).is_ok());
     }
 }
