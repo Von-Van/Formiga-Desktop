@@ -4,7 +4,7 @@
   formiga validate [--quick] [--expansions] [--step NAME]... [--json]
   formiga scenario list [--json]
   formiga scenario NAME [--no-launch] [--wait] [--pinned] [--fixed-date] [--json]
-  formiga capture NAME|all [--window] [--pinned] [--out PNG] [--json]
+  formiga capture NAME|all [--window] [--pinned] [--binary APP] [--out PNG] [--json]
   formiga inspect [KIND] [ITEM] [--json]
   formiga audit content [--json]
   formiga art check [--kind KIND] [--json]
@@ -56,7 +56,8 @@ def main(argv=None) -> int:
                        help="prepare it and print the command, without opening anything")
     scene.add_argument("--wait", action="store_true", help="wait for the app to close")
     scene.add_argument("--pinned", action="store_true",
-                       help="build Hill or Home on their own Desktop release, not this checkout")
+                       help="build Hill, Home or Battle on their own Desktop release, not this "
+                            "checkout")
     scene.add_argument("--fixed-date", action="store_true",
                        help="grow the colony to the fixtures' fixed date, not to now")
     scene.add_argument("--json", action="store_true")
@@ -66,9 +67,13 @@ def main(argv=None) -> int:
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     picture.add_argument("name", help="a scenario name, or `all` for every one that can be drawn")
     picture.add_argument("--window", action="store_true",
-                         help="picture Hill's or Home's real window (close, not exact)")
+                         help="picture Hill's, Home's or Battle's real window (close, not exact)")
     picture.add_argument("--pinned", action="store_true",
-                         help="build Hill or Home on their own Desktop release, not this checkout")
+                         help="build Hill, Home or Battle on their own Desktop release, not this "
+                              "checkout")
+    picture.add_argument("--binary", metavar="APP",
+                         help="picture this already-built Hill, Home or Battle (a program, or a "
+                              "macOS .app such as an installed one) instead of building it")
     picture.add_argument("--out", help="where to write the PNG (default .dev/captures/NAME.png)")
     picture.add_argument("--json", action="store_true")
 
@@ -144,10 +149,13 @@ def main(argv=None) -> int:
         result = status.report()
     elif args.command == "content":
         result = content.add(args.kind, args.name, args.about, args.like, args.id, args.write)
+    elif args.name == "all" and args.binary:
+        result = Result("capture all", error="--binary pictures one app: name a scenario, not all")
     elif args.name == "all":
         result = capture_all(args.window, args.pinned)
     else:
-        result = capture.capture(args.name, window=args.window, pinned=args.pinned, out=args.out)
+        result = capture.capture(args.name, window=args.window, pinned=args.pinned, out=args.out,
+                                 binary=args.binary)
     status.record(result.command, result)
     return emit(result, args.json)
 
@@ -156,7 +164,8 @@ def capture_all(window: bool, pinned: bool) -> Result:
     """Every scenario that can be pictured, one step each."""
     result = Result("capture all", data={"captures": []})
     for name, scenario in scenarios.SCENARIOS.items():
-        if not scenario.capture or (window and scenario.capture.window is None):
+        if not scenario.capture or (scenario.capture.window if window
+                                    else scenario.capture.render) is None:
             continue
         one = capture.capture(name, window=window, pinned=pinned)
         failed = [step for step in one.steps if step.status == "failed"]

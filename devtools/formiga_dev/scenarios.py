@@ -8,6 +8,8 @@ Every scenario starts from something fixed, so the same name always gives the sa
   trips       a fixed colony, with Desktop told to send it to Hill or Home a few seconds after
               opening, using the Hill or Home built from the checkout beside this one
   Hill, Home  their own fixed sample colony, in a fresh data folder of their own
+  Battle      the sample colony's companions against the same visitors on a fixed match seed;
+              Battle keeps no data folder, so there is nothing of yours for it to touch
 
 The colony is grown to the moment you open it, so it is the age its name says and nothing is
 caught up on launch; `--fixed-date` grows it to the fixtures' fixed date instead, for a file that is
@@ -16,8 +18,8 @@ byte-for-byte the same every time.
 The Desktop app runs only on macOS and Windows. Elsewhere, and always with `--no-launch`, the
 scenario is prepared and the command to open it is printed instead.
 
-Hill and Home are built against this checkout's Desktop crates unless `--pinned` is given, so a
-change to Desktop's drawing shows up in them too.
+Hill, Home and Battle are built against this checkout's Desktop crates unless `--pinned` is given,
+so a change to Desktop's drawing shows up in them too.
 """
 
 from __future__ import annotations
@@ -51,16 +53,17 @@ from .workspace import (
 @dataclass
 class Capture:
     """How a scenario is pictured. `render` draws it off-screen, exactly the same every time;
-    `window` opens the real window and pictures it (the expansions' --snap)."""
+    `window` opens the real window and pictures it (the expansions' --snap). A screen that only
+    the real window shows has no `render`."""
 
-    render: List[str]
+    render: Optional[List[str]] = None
     window: Optional[List[str]] = None
 
 
 @dataclass
 class Scenario:
     name: str
-    app: str  # "desktop" | "hill" | "home"
+    app: str  # "desktop" | "hill" | "home" | "battle"
     about: str
     fixture: Optional[str] = None  # a `formiga-tools dev` fixture, for Desktop and trips
     args: List[str] = field(default_factory=list)  # the expansion's own arguments
@@ -78,6 +81,31 @@ HILL_PLACES = {
     "fairground": "the Fairground",
     "woods": "a rummage in the Woods",
     "hilltop": "the Hilltop with a sample of finds placed",
+}
+
+# Battle's arenas beyond the Backyard, which `battle` itself covers. Its window opens in any of
+# them, and its pictures show each one whichever cups the sample colony has won.
+BATTLE_ARENAS = {
+    "woodland": "the Woodland",
+    "millpond": "the Millpond",
+    "cove": "the Cove",
+}
+
+# Screens Battle shows for a picture of its window (its --review stages), beyond the match playing
+# out that `battle --window` shows. Only the real window draws them, so they are for capture only.
+BATTLE_SCREENS = {
+    "picking": "choosing the team of three",
+    "orders": "a turn's orders half given, MOVE chosen",
+    "notebook": "the sample colony's notebook open, as Desktop would send it",
+}
+
+# The match seed every Battle scenario plays, so its teams and turns come out the same each time.
+BATTLE_ARGS = ["--sample", "--seed", "4"]
+
+# Why a capture-only scenario can't be opened for play, by app.
+CAPTURE_ONLY = {
+    "hill": "Hill's window always opens at the station",
+    "battle": "Battle shows that screen only for a picture",
 }
 
 SCENARIOS: Dict[str, Scenario] = {}
@@ -116,6 +144,17 @@ _add(Scenario("home-lived-in", "home", "Formiga Home's sample household a few we
               "rooms, finds and keepsakes out.",
               args=["--sample", "--hour", "12", "--month", "6", "--lived-in", "--rooms", "3"],
               capture=Capture(render=["--render-room", "--at", "45"], window=[])))
+_add(Scenario("battle", "battle", "Formiga Battle: the sample colony's companions against the "
+              "visitors in the Backyard, at the start of a match.", args=BATTLE_ARGS,
+              capture=Capture(render=["--render-board"], window=["--review", "playing"])))
+for _arena, _about in BATTLE_ARENAS.items():
+    _add(Scenario(f"battle-{_arena}", "battle", f"Formiga Battle's sample match in {_about}.",
+                  args=[*BATTLE_ARGS, "--arena", _arena],
+                  capture=Capture(render=["--render-board"], window=["--review", "playing"])))
+for _screen, _about in BATTLE_SCREENS.items():
+    _add(Scenario(f"battle-{_screen}", "battle", f"Formiga Battle's window on the sample colony: "
+                  f"{_about}.", args=BATTLE_ARGS, launchable=False,
+                  capture=Capture(window=["--review", _screen])))
 
 
 def scenario_dir(name: str) -> Path:
@@ -232,7 +271,7 @@ def prepare(scenario: Scenario, pinned: bool, fixed_date: bool) -> tuple:
     expansion = find_expansion(scenario.app)
     binary, built = build_expansion(scenario.app, pinned)
     steps.append(built)
-    env = {expansion.data_env: str(fresh(folder / "data"))}
+    env = {expansion.data_env: str(fresh(folder / "data"))} if expansion.data_env else {}
     return ([str(binary), *scenario.args] if binary else None, env, steps)
 
 
@@ -245,9 +284,10 @@ def launch(name: str, no_launch: bool = False, wait: bool = False, pinned: bool 
         return result
     result.data.update({"app": scenario.app, "about": scenario.about})
     if not scenario.launchable:
-        result.error = (f"{name} can be captured but not opened for play: Hill's window always "
-                        f"opens at the station. Try `formiga capture {name}` (add --window for "
-                        "the real window), or `formiga scenario hill`.")
+        window = "" if scenario.capture.render is None else " (add --window for the real window)"
+        result.error = (f"{name} can be captured but not opened for play: "
+                        f"{CAPTURE_ONLY[scenario.app]}. Try `formiga capture {name}`{window}, or "
+                        f"`formiga scenario {scenario.app}`.")
         return result
     command, env, steps = prepare(scenario, pinned, fixed_date)
     result.steps += steps
@@ -278,6 +318,12 @@ def launch(name: str, no_launch: bool = False, wait: bool = False, pinned: bool 
     return result
 
 
+def capture_kinds(capture: Capture) -> str:
+    kinds = [kind for kind, given in [("render", capture.render), ("window", capture.window)]
+             if given is not None]
+    return " and ".join(kinds)
+
+
 def listing() -> Result:
     rows = []
     for scenario in SCENARIOS.values():
@@ -287,8 +333,7 @@ def listing() -> Result:
             "about": scenario.about,
             "opens": scenario.launchable and (scenario.app != "desktop" or app_builds_here()),
             "launchable": scenario.launchable,
-            "capture": None if not scenario.capture else (
-                "render and window" if scenario.capture.window is not None else "render"),
+            "capture": None if not scenario.capture else capture_kinds(scenario.capture),
         })
     result = Result("scenario list", data={"scenarios": rows})
     width = max(len(row["name"]) for row in rows)

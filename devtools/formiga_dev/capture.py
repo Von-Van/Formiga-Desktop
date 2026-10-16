@@ -9,10 +9,18 @@ the same code gives the same pixels on any machine, Linux included:
   Hill        `formiga-hill --sample --render-PLACE` at midday: the scene at its native 384×216,
               three times over.
   Home        `formiga-home --sample --render-room` at midday in June.
+  Battle      `formiga-battle --render-board` on a fixed match seed: the board at the start of the
+              match, three times over, with no window.
 
-With `--window`, Hill and Home are opened for real at their own fixed size and pictured by their
-own `--snap` a few seconds in (on Linux without a display, inside xvfb-run). Those pictures include
-the on-screen controls and cards, but are timed by the clock, so they are close, not exact.
+With `--window`, Hill, Home and Battle are opened for real at their own fixed size and pictured by
+their own `--snap` a few seconds in (on Linux without a display, inside xvfb-run). Those pictures
+include the on-screen controls and cards, but are timed by the clock, so they are close, not exact.
+Battle's team choice, orders and notebook screens (battle-picking, battle-orders, battle-notebook)
+exist only in the window, so those take --window.
+
+Hill, Home and Battle are built from the checkout beside this one. `--binary` pictures an app
+that is already built instead, such as the one installed in /Applications (a .app is looked
+inside), for pictures of exactly what people download.
 
 Each capture is written to .dev/captures/NAME.png (NAME-window.png with --window), with a
 NAME.json beside it saying what was drawn, from which commit, by which command.
@@ -22,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import shutil
 import struct
 import subprocess
@@ -68,8 +77,23 @@ def _display_wrapper() -> tuple:
     return None, "no display, and xvfb-run is not installed to make one"
 
 
+def app_binary(path: str) -> Optional[Path]:
+    """The program to run for an app given by path: the file itself, or the one a macOS .app
+    bundle names as its executable."""
+    given = Path(path).expanduser().resolve()
+    if given.is_dir():
+        contents = given / "Contents"
+        try:
+            with (contents / "Info.plist").open("rb") as file:
+                executable = plistlib.load(file).get("CFBundleExecutable")
+        except (OSError, plistlib.InvalidFileException, ValueError):
+            return None
+        given = contents / "MacOS" / executable if executable else contents
+    return given if given.is_file() else None
+
+
 def capture(name: str, window: bool = False, pinned: bool = False,
-            out: Optional[str] = None) -> Result:
+            out: Optional[str] = None, binary: Optional[str] = None) -> Result:
     result = Result("capture", data={"scenario": name})
     scenario = SCENARIOS.get(name)
     if not scenario:
@@ -85,6 +109,20 @@ def capture(name: str, window: bool = False, pinned: bool = False,
         result.error = ("Desktop's overlay can't be pictured in a window: it never reads the "
                         "screen. Leave out --window for its cards.")
         return result
+    if not window and scenario.capture.render is None:
+        result.error = (f"{name} is a screen only the real window shows: add --window to "
+                        "picture it.")
+        return result
+    given = None
+    if binary:
+        if scenario.app == "desktop":
+            result.error = ("--binary is for Hill, Home and Battle: Desktop's cards are drawn by "
+                            "this checkout's formiga-tools.")
+            return result
+        given = app_binary(binary)
+        if not given:
+            result.error = f"no program to run at {binary}"
+            return result
     CAPTURES.mkdir(parents=True, exist_ok=True)
     target = Path(out).resolve() if out else CAPTURES / f"{name}{'-window' if window else ''}.png"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -105,29 +143,33 @@ def capture(name: str, window: bool = False, pinned: bool = False,
         result.steps.append(step)
         how = {"drawn": drew, "command": command}
     else:
-        binary, built = build_expansion(scenario.app, pinned)
-        result.steps.append(built)
-        if not binary:
-            return result
+        if given:
+            program = given
+            result.steps.append(Step("build", "skipped", f"using {given}"))
+        else:
+            program, built = build_expansion(scenario.app, pinned)
+            result.steps.append(built)
+            if not program:
+                return result
         expansion = find_expansion(scenario.app)
         with tempfile.TemporaryDirectory(prefix="formiga-capture-") as data:
-            env = {**os.environ, expansion.data_env: data}
+            env = {**os.environ, **({expansion.data_env: data} if expansion.data_env else {})}
             if window:
                 wrapper, why = _display_wrapper()
                 if wrapper is None:
                     result.steps.append(Step("capture", "failed", why, problems=[
                         Problem("capture", why, system=expansion.package)]))
                     return result
-                command = [*wrapper, str(binary), *scenario.args, "--snap", str(target),
+                command = [*wrapper, str(program), *scenario.args, "--snap", str(target),
                            *scenario.capture.window, "--at", WINDOW_SECONDS]
                 what = "the real window, a few seconds in"
             else:
                 render, *extra = scenario.capture.render
-                command = [str(binary), *scenario.args, render, str(target), *extra]
+                command = [str(program), *scenario.args, render, str(target), *extra]
                 what = "drawn off-screen"
             started = time.monotonic()
-            done = subprocess.run(command, cwd=expansion.path, env=env, capture_output=True,
-                                  text=True, timeout=300)
+            done = subprocess.run(command, cwd=expansion.path or data, env=env,
+                                  capture_output=True, text=True, timeout=300)
             output = (done.stdout or "") + (done.stderr or "")
             result.steps.append(_finish(done.returncode, output, time.monotonic() - started,
                                         target, what))
@@ -144,8 +186,7 @@ def capture(name: str, window: bool = False, pinned: bool = False,
             "width": width,
             "height": height,
             "desktop_commit": commit(),
-            "desktop_crates": "the expansion's pinned Desktop release" if pinned
-            and scenario.app != "desktop" else "this checkout",
+            "desktop_crates": desktop_crates(scenario.app, pinned, given),
             "made_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             **how,
         }
@@ -158,6 +199,15 @@ def capture(name: str, window: bool = False, pinned: bool = False,
             shown = target
         result.data["notes"] = [f"Captured: {shown} ({width}×{height})"]
     return result
+
+
+def desktop_crates(app: str, pinned: bool, given: Optional[Path]) -> str:
+    """Whose Desktop crates drew the picture, for its record."""
+    if app == "desktop":
+        return "this checkout"
+    if given:
+        return f"the Desktop release {given.name} was built on"
+    return "the expansion's pinned Desktop release" if pinned else "this checkout"
 
 
 def _finish(code: int, output: str, seconds: float, target: Path, what: str) -> Step:

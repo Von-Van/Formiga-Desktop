@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from formiga_dev import (  # noqa: E402
-    audit, cargo, catalog, content, save, scenarios, status, uses, validate,
+    audit, capture, cargo, catalog, content, save, scenarios, status, uses, validate,
 )
 from formiga_dev.report import Problem, Result, Step, emit  # noqa: E402
 from formiga_dev import workspace  # noqa: E402
@@ -116,6 +117,68 @@ class Scenarios(unittest.TestCase):
         for scenario in scenarios.SCENARIOS.values():
             if not scenario.launchable:
                 self.assertIsNotNone(scenario.capture, scenario.name)
+
+    def test_every_battle_arena_and_screen_is_one_battle_knows(self):
+        battle = workspace.find_expansion("battle").path
+        if not battle:
+            self.skipTest("no Formiga Battle checkout beside this one")
+        usage = (battle / "crates/formiga-battle/src/main.rs").read_text()
+        self.assertIn("--render-board <PNG>", usage)
+        arenas = usage.split("--arena <ID>", 1)[1].split("\n    --", 1)[0]
+        for arena in scenarios.BATTLE_ARENAS:
+            self.assertIn(arena, arenas)
+        screens = usage.split("--review <STAGE>", 1)[1].split("\n    --", 1)[0]
+        for screen in ["playing", *scenarios.BATTLE_SCREENS]:
+            self.assertIn(screen, screens)
+
+    def test_capture_only_scenarios_say_why_they_cannot_be_opened(self):
+        for name, why in [("hill-green", "station"), ("battle-picking", "only for a picture")]:
+            result = scenarios.launch(name)
+            self.assertIn(why, result.error, name)
+            self.assertEqual(result.steps, [], name)
+
+    def test_battle_screens_are_pictured_only_in_the_window(self):
+        rows = {row["name"]: row for row in scenarios.listing().data["scenarios"]}
+        self.assertEqual(rows["battle"]["capture"], "render and window")
+        self.assertEqual(rows["battle-notebook"]["capture"], "window")
+        self.assertIn("--window", capture.capture("battle-notebook").error)
+
+
+class CaptureBinary(unittest.TestCase):
+    def test_a_mac_app_is_run_by_the_executable_its_bundle_names(self):
+        with tempfile.TemporaryDirectory() as folder:
+            app = Path(folder) / "Formiga Home.app"
+            (app / "Contents" / "MacOS").mkdir(parents=True)
+            program = app / "Contents" / "MacOS" / "Formiga Home"
+            program.write_text("")
+            with (app / "Contents" / "Info.plist").open("wb") as file:
+                plistlib.dump({"CFBundleExecutable": "Formiga Home"}, file)
+            self.assertEqual(capture.app_binary(str(app)), program.resolve())
+            self.assertEqual(capture.app_binary(str(program)), program.resolve())
+            self.assertIsNone(capture.app_binary(str(Path(folder) / "missing")))
+            self.assertIsNone(capture.app_binary(folder))
+
+    def test_desktop_cards_are_not_drawn_by_a_given_app(self):
+        result = capture.capture("mature-colony", binary="/Applications/Formiga.app")
+        self.assertIn("Hill, Home and Battle", result.error)
+
+    def test_a_given_app_is_run_as_it_is_without_building(self):
+        with tempfile.TemporaryDirectory() as folder:
+            program = Path(folder) / "formiga-battle"
+            program.write_text("")
+            out = Path(folder) / "board.png"
+            ran = subprocess.CompletedProcess([], 1, "", "error: no board")
+            with mock.patch.object(capture, "build_expansion") as build, \
+                    mock.patch.object(capture.subprocess, "run", return_value=ran) as runs:
+                result = capture.capture("battle-cove", binary=str(program), out=str(out))
+            build.assert_not_called()
+            command = runs.call_args.args[0]
+            self.assertEqual(command[0], str(program.resolve()))
+            self.assertIn("--arena", command)
+            self.assertIn("--render-board", command)
+            self.assertNotIn(None, runs.call_args.kwargs["env"])
+            self.assertEqual(result.steps[0].status, "skipped")
+            self.assertEqual(result.steps[-1].problems[0].message, "error: no board")
 
 
 class AppStep(unittest.TestCase):
