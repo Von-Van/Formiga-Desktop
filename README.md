@@ -141,9 +141,10 @@ manual checks on real hardware are not done yet.
 | Performance budgets | Measured on one Mac only. **Not yet measured on Windows** |
 | [Manual release checks](docs/TEST_MATRIX.md#manual-release-gates) | **Five recorded**: three on macOS (real colonies' migrations, on copies) and two on Windows 11 (everyday use, with several displays); the rest **not yet**, each tracked as a [`native-qa` issue](https://github.com/Von-Van/Formiga-Desktop/issues?q=label%3Anative-qa) |
 | Long simulated runs | **Nightly** in CI: 4,500 randomized colonies, three simulated days each, across three time zones |
-| Trips to Formiga Hill | **Preview**: Desktop's side is shipped and tested against a stand-in and development builds of Formiga Hill, and shows nothing until Formiga Hill, a separate app, is installed |
-| Visits to Formiga Home | **Preview**: Desktop's side is shipped and tested against a stand-in and a development build of Formiga Home, and shows nothing until Formiga Home, a separate app, is installed |
-| Formiga Farm and Formiga Battle | **Preview**: Desktop's side of each is shipped and tested against a stand-in, and shows nothing until that app, a separate one, is installed |
+| Trips to Formiga Hill | **Preview**: works once Formiga Hill, a separate app, is installed from [its releases](https://github.com/Von-Van/Formiga-Hill/releases); Desktop's side is also tested against a stand-in |
+| Visits to Formiga Home | **Preview**: works once Formiga Home, a separate app, is installed from [its releases](https://github.com/Von-Van/Formiga-Home/releases); Desktop's side is also tested against a stand-in |
+| Matches in Formiga Battle | **Preview**: works once Formiga Battle, a separate app, is installed from [its releases](https://github.com/Von-Van/Formiga-World-Releases/releases); Desktop's side is also tested against a stand-in |
+| Sessions in Formiga Farm | **Not yet released**: Desktop's side is shipped and tested against a stand-in, and shows nothing until Formiga Farm, a separate app, is installed |
 | Code signing | **Not signed.** Gatekeeper and SmartScreen warn on first launch |
 
 ## Build from source
