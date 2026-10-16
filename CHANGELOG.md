@@ -2,7 +2,12 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.67.10] - 2026-10-16
+
+A patch to 0.67.9, released alongside Formiga Battle 0.67.10, which is built on it. Nothing a
+companion app reads has changed: Battle contract version 3, travel version 5, household version 11
+and save version 32 are as in 0.67.9, so Formiga Hill and Formiga Home 0.67.9 work with it as they
+are, and a colony saved by 0.67.9 opens as before.
 
 ### Changed
 
