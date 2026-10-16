@@ -11,6 +11,9 @@ use crate::state::{HomeState, HouseholdHome, Liked, Spot};
 use crate::{HomeDocument, TravelerId};
 use std::collections::BTreeSet;
 
+/// The first Home version that keeps the residents a household's owner keeps out.
+const STAYS_OUT_SINCE: u32 = 8;
+
 /// The first Home version that keeps a household's projects.
 const PROJECTS_SINCE: u32 = 10;
 
@@ -105,13 +108,16 @@ pub fn accept_result(
 
     let mut state = previous.settled_for(snapshot);
     let mut home = proposed_home(snapshot, keeper, proposed, &mut set_aside);
-    // A Home older than version 10 knows nothing of projects: what the household has made of
-    // its home stays as it was.
-    if result.version < PROJECTS_SINCE
-        && let Some(before) = previous.household(keeper)
-    {
-        home.projects = before.projects.clone();
-        home.tallies = before.tallies.clone();
+    // A Home older than version 8 knows nothing of who is kept out, and one older than version 10
+    // nothing of projects: what it cannot have written stays as it was.
+    if let Some(before) = previous.household(keeper) {
+        if result.version < STAYS_OUT_SINCE {
+            home.stays_out = before.stays_out.clone();
+        }
+        if result.version < PROJECTS_SINCE {
+            home.projects = before.projects.clone();
+            home.tallies = before.tallies.clone();
+        }
     }
     for item in home.shown() {
         for other in &mut state.households {

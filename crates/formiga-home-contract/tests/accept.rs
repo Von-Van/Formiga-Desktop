@@ -397,3 +397,36 @@ fn a_home_older_than_projects_leaves_the_household_s_projects_as_they_were() {
     );
     assert_eq!(accepted.state.household(keeper), Some(&rearranged));
 }
+
+#[test]
+fn a_home_older_than_staying_out_leaves_who_stays_out_as_it_was() {
+    let mut visit = visit();
+    let keeper = visit.snapshot.household.keeper;
+    let little = visit.snapshot.residents[1].id;
+    let mut kept = arranged(&visit.snapshot);
+    kept.stays_out = vec![little];
+    visit.previous.set_household(kept.clone());
+    let snapshot_bytes = encode(&visit.snapshot).unwrap();
+    let state_bytes = encode(&visit.previous).unwrap();
+    visit.seal = SessionSeal::of(&visit.snapshot, &snapshot_bytes, &state_bytes);
+
+    // An older Home rearranges the room and, knowing nothing of who stays out, writes no one.
+    let mut rearranged = kept.clone();
+    rearranged.rooms[0].pieces[0].x += 1;
+    rearranged.stays_out.clear();
+    let mut older = proposing(&visit, rearranged.clone());
+    older.version = 7;
+    let accepted = accept_result(&visit.seal, &visit.snapshot, &visit.previous, &older);
+    let home = accepted.state.household(keeper).unwrap();
+    assert_eq!(home.rooms, rearranged.rooms, "the room is as it was left");
+    assert_eq!(home.stays_out, vec![little]);
+
+    // This Home's word on them stands.
+    let accepted = accept_result(
+        &visit.seal,
+        &visit.snapshot,
+        &visit.previous,
+        &proposing(&visit, rearranged.clone()),
+    );
+    assert_eq!(accepted.state.household(keeper), Some(&rearranged));
+}
