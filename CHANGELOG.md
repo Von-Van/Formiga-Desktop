@@ -17,6 +17,8 @@ All notable changes are documented here.
   written for a version 3 reader, so an older Desktop turns it away by its version.
 - `formiga capture --binary` with a file that cannot be run, or one that never finishes, fails
   its capture step with the reason instead of ending in a traceback.
+- Every download carries Formiga's MIT licence: inside the macOS app, and as License.txt on the
+  disk image, in the portable Windows ZIP and beside the installed program.
 
 ## [0.67.10] - 2026-10-16
 
