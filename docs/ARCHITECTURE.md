@@ -2135,7 +2135,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–30: version 30 is read directly, versions 1 through 29 are
+Persistence accepts save versions 1–31: version 31 is read directly, versions 1 through 30 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -2970,7 +2970,7 @@ Without Farm installed the addition is one LaunchServices or registry lookup eve
 With it open, one small file is read four times a second, and a sprite is baked again only when a
 look is kept.
 
-## Matches in Formiga Battle (save v30)
+## Matches in Formiga Battle (save v31)
 
 Formiga Battle is a separate app for playing matches with the colony's companions. It reads a copy
 of the colony and changes nothing in it. Battle keeps nothing of its own: what its matches earn is
@@ -3001,12 +3001,13 @@ version's files beside the others.
 
 ### What the colony keeps
 
-Save version 30 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
+Save version 31 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
 played): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
 `keepsakes` its matches earned. The record crosses between the two only through that shape
 (`battle/record.rs`), and validation holds it to the contract's own bounds, keeping the newest of
 anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
-Backyard Cup's trophy and medal, by Battle's own identifiers), once each, with Desktop's own name
+trophy and medal of each of Battle's four cups, Backyard, Woodland, Millpond and Sandy Cove, by
+Battle's own identifiers), once each, with Desktop's own name
 and words for it. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
 line, since the team and the match are Battle's to name; it is one line of plain text, checked by
 `is_battle_line` (the contract's own rule for text that crosses) when it comes and whenever the

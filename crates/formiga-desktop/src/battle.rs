@@ -8,13 +8,14 @@
 //! |---|---|
 //! | Idle | Lives as always. |
 //! | Open | Battle has a copy of the colony's roster: every companion as a trip to Formiga Hill would carry it, with the leanings it has learned. Everyone goes on living on the desktop the whole time, and the tray says Battle is open. |
-//! | Closing | Battle has gone: if it turned the roster away, the owner is told why in its own words, and the session's files are cleared. |
+//! | Closing | Battle has gone: if it turned the roster away, the owner is told why in its own words; otherwise each match its result names is kept once, by its id ([`record`]). Then the session's files are cleared. |
 //!
 //! Nobody is lent to Battle, so nothing here keeps a companion off the desktop or out of another
-//! app, and no trip or visit keeps Battle from being played. Nothing comes back from a match yet:
-//! Battle only says whether it could read the roster, and the colony is never changed by it, so
-//! nothing about Battle is saved. If Desktop itself stops while Battle is open, Battle keeps the
-//! roster it already read, and the next start clears the session's files.
+//! app, and no trip or visit keeps Battle from being played. The roster carries the colony's
+//! Battle record, and what comes back is only that record, the journal's lines for each match and
+//! the keepsakes Desktop knows; a result counts only if it names the session and the checksum of
+//! the roster Desktop wrote. If Desktop itself stops while Battle is open, Battle keeps the roster
+//! it already read, and the next start clears the session's files without reading them.
 //!
 //! Battle is found, started and waited on through its slot ([`BATTLE`], in [`crate::expansion`]),
 //! and Desktop checks whether it is installed only when it starts and then at most every ten

@@ -221,23 +221,52 @@ pub fn is_battle_line(text: &str) -> bool {
     !text.is_empty() && !previous_space && text.chars().count() <= MAX_TEXT_CHARS
 }
 
-/// One of Battle's keepsakes that Desktop keeps.
+/// One of Battle's keepsakes that Desktop keeps: a trophy and a medal for each of Battle's four
+/// cups (`rewards::CUPS` in Formiga Battle), by Battle's own identifiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum BattleKeepsake {
     #[serde(rename = "battle.trophy.backyard_cup")]
     BackyardCupTrophy,
     #[serde(rename = "battle.medal.backyard_cup")]
     BackyardCupMedal,
+    #[serde(rename = "battle.trophy.woodland_cup")]
+    WoodlandCupTrophy,
+    #[serde(rename = "battle.medal.woodland_cup")]
+    WoodlandCupMedal,
+    #[serde(rename = "battle.trophy.millpond_cup")]
+    MillpondCupTrophy,
+    #[serde(rename = "battle.medal.millpond_cup")]
+    MillpondCupMedal,
+    #[serde(rename = "battle.trophy.cove_cup")]
+    CoveCupTrophy,
+    #[serde(rename = "battle.medal.cove_cup")]
+    CoveCupMedal,
 }
 
 impl BattleKeepsake {
-    pub const ALL: [Self; 2] = [Self::BackyardCupTrophy, Self::BackyardCupMedal];
+    /// Each cup's trophy and medal, in the order Battle's cups open.
+    pub const ALL: [Self; 8] = [
+        Self::BackyardCupTrophy,
+        Self::BackyardCupMedal,
+        Self::WoodlandCupTrophy,
+        Self::WoodlandCupMedal,
+        Self::MillpondCupTrophy,
+        Self::MillpondCupMedal,
+        Self::CoveCupTrophy,
+        Self::CoveCupMedal,
+    ];
 
     /// Battle's identifier for it: what a match's rewards name, and how a save writes it.
     pub const fn id(self) -> &'static str {
         match self {
             Self::BackyardCupTrophy => "battle.trophy.backyard_cup",
             Self::BackyardCupMedal => "battle.medal.backyard_cup",
+            Self::WoodlandCupTrophy => "battle.trophy.woodland_cup",
+            Self::WoodlandCupMedal => "battle.medal.woodland_cup",
+            Self::MillpondCupTrophy => "battle.trophy.millpond_cup",
+            Self::MillpondCupMedal => "battle.medal.millpond_cup",
+            Self::CoveCupTrophy => "battle.trophy.cove_cup",
+            Self::CoveCupMedal => "battle.medal.cove_cup",
         }
     }
 
@@ -250,6 +279,12 @@ impl BattleKeepsake {
         match self {
             Self::BackyardCupTrophy => "Backyard Cup trophy",
             Self::BackyardCupMedal => "Backyard Cup medal",
+            Self::WoodlandCupTrophy => "Woodland Cup trophy",
+            Self::WoodlandCupMedal => "Woodland Cup medal",
+            Self::MillpondCupTrophy => "Millpond Cup trophy",
+            Self::MillpondCupMedal => "Millpond Cup medal",
+            Self::CoveCupTrophy => "Sandy Cove Cup trophy",
+            Self::CoveCupMedal => "Sandy Cove Cup medal",
         }
     }
 
@@ -259,6 +294,16 @@ impl BattleKeepsake {
                 "A little cup on a wooden plinth, for winning the Backyard Cup."
             }
             Self::BackyardCupMedal => "A medal on a green ribbon, from the Backyard Cup.",
+            Self::WoodlandCupTrophy => {
+                "A little cup on a mossy stump, for winning the Woodland Cup."
+            }
+            Self::WoodlandCupMedal => "A medal on a russet ribbon, from the Woodland Cup.",
+            Self::MillpondCupTrophy => "A little cup on a millstone, for winning the Millpond Cup.",
+            Self::MillpondCupMedal => "A medal on a blue ribbon, from the Millpond Cup.",
+            Self::CoveCupTrophy => {
+                "A little cup on a piece of driftwood, for winning the Sandy Cove Cup."
+            }
+            Self::CoveCupMedal => "A medal on a sandy yellow ribbon, from the Sandy Cove Cup.",
         }
     }
 }
@@ -329,7 +374,8 @@ mod tests {
                 assert!(is_battle_line(text) && text.len() <= 80, "{text}");
             }
         }
-        assert_eq!(BattleKeepsake::from_id("battle.trophy.woodland_cup"), None);
+        assert_eq!(BattleKeepsake::from_id("battle.trophy.grand_cup"), None);
+        assert_eq!(BattleKeepsake::from_id("battle.ribbon.someday"), None);
     }
 
     #[test]

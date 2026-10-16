@@ -203,16 +203,22 @@ pub fn find_modes(variant: u8) -> Vec<DisplayMode> {
     modes
 }
 
-/// How one of Formiga Hill's souvenirs may be shown, best first.
-/// How a keepsake from Formiga Battle may be shown: the trophy stands, the medal hangs.
+/// How a keepsake from Formiga Battle may be shown: a trophy stands, a medal hangs.
 pub fn battle_keepsake_modes(keepsake: BattleKeepsake) -> Vec<DisplayMode> {
     use DisplayMode::*;
     match keepsake {
-        BattleKeepsake::BackyardCupTrophy => vec![SurfaceSmall, Case, FallbackCard],
-        BattleKeepsake::BackyardCupMedal => vec![Wall, Case, SurfaceSmall, FallbackCard],
+        BattleKeepsake::BackyardCupTrophy
+        | BattleKeepsake::WoodlandCupTrophy
+        | BattleKeepsake::MillpondCupTrophy
+        | BattleKeepsake::CoveCupTrophy => vec![SurfaceSmall, Case, FallbackCard],
+        BattleKeepsake::BackyardCupMedal
+        | BattleKeepsake::WoodlandCupMedal
+        | BattleKeepsake::MillpondCupMedal
+        | BattleKeepsake::CoveCupMedal => vec![Wall, Case, SurfaceSmall, FallbackCard],
     }
 }
 
+/// How one of Formiga Hill's souvenirs may be shown, best first.
 pub fn souvenir_modes(souvenir: Souvenir) -> Vec<DisplayMode> {
     use DisplayMode::*;
     match souvenir {

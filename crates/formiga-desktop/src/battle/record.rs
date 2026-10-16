@@ -96,6 +96,33 @@ mod tests {
     }
 
     #[test]
+    fn every_cups_trophy_and_medal_is_kept() {
+        let mut world = colony();
+        let mut result = sample::result();
+        result.matches.clear();
+        for (index, cup) in ["backyard", "woodland", "millpond", "cove"]
+            .iter()
+            .enumerate()
+        {
+            let mut won = cup_won();
+            won.id = format!("abcdefabcdefabcdefabcdefabcdef1{index}");
+            won.rewards.cup_win = Some(format!("cup.{cup}"));
+            won.rewards.unlocks.clear();
+            won.rewards.keepsakes = vec![
+                format!("battle.trophy.{cup}_cup"),
+                format!("battle.medal.{cup}_cup"),
+            ];
+            result.matches.push(won);
+        }
+        let now = datetime!(2026-10-15 13:00 UTC);
+        let kept = keep_result(&mut world, &result, now).unwrap();
+        assert_eq!(kept.keepsakes, BattleKeepsake::ALL.len());
+        let battle = &world.save.battle;
+        assert!(BattleKeepsake::ALL.iter().all(|k| battle.has_keepsake(*k)));
+        assert!(battle.holds());
+    }
+
+    #[test]
     fn a_result_is_kept_once_however_often_it_is_read() {
         let mut world = colony();
         let mut result = sample::result();
@@ -114,7 +141,8 @@ mod tests {
         assert_eq!(battle.record.applied.len(), 3);
         assert_eq!(battle.record.history.len(), 1);
         assert!(battle.record.unlocked.contains(&"cup.woodland".to_owned()));
-        assert!(BattleKeepsake::ALL.iter().all(|k| battle.has_keepsake(*k)));
+        assert!(battle.has_keepsake(BattleKeepsake::BackyardCupTrophy));
+        assert!(battle.has_keepsake(BattleKeepsake::BackyardCupMedal));
         let lines = |world: &World| {
             world
                 .save
