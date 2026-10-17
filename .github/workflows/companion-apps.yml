@@ -22,6 +22,10 @@ jobs:
         app: [Hill, Home, Farm]
     name: Formiga ${{ matrix.app }} on this Desktop
     runs-on: macos-14
+    # Formiga Farm still builds its own draft of the Farm contract on Desktop 0.67.5, so this
+    # checkout's crates cannot stand in for the ones it uses yet. Its result is shown but does not
+    # fail the run until Farm takes Desktop's own formiga-farm-contract.
+    continue-on-error: ${{ matrix.app == 'Farm' }}
     steps:
       # Side by side, as the toolkit looks for them: Formiga-Hill beside Formiga-Desktop.
       - uses: actions/checkout@v4

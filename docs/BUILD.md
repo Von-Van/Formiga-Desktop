@@ -42,8 +42,8 @@ Alongside those tests, on the same pushes and pull requests:
 - `public-api` lists the public API of the crates the companion apps take from Desktop by tag
   (`formiga-expansion-rulebook`, `formiga-travel` and the Home, Farm and Battle contracts) and fails
   when one differs from the `public-api.txt` kept beside it. After a change that is meant, run
-  `scripts/public-api.sh --update` (it needs `cargo-public-api` and a nightly toolchain, which the
-  script names) and commit what it writes; the job also uploads what it found when it fails.
+  `scripts/public-api.sh --update` (it needs `cargo-public-api` 0.52.0 and a pinned nightly
+  toolchain, both named in the script) and commit what it writes; the job also uploads what it found when it fails.
 - The installers (`package-macos`, `package-windows`) are built on every push to `main`, and on a
   pull request only when it changes packaging, scripts, a `Cargo.toml` or `Cargo.lock`, the
   toolchain, the licence or the workflows.

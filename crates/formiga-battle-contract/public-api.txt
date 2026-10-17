@@ -1,0 +1,1242 @@
+pub mod formiga_battle_contract
+pub use formiga_battle_contract::AckRefusal
+pub use formiga_battle_contract::SessionId
+pub mod formiga_battle_contract::discovery
+pub const formiga_battle_contract::discovery::MACOS_BATTLE_VERSION_KEY: &str
+pub const formiga_battle_contract::discovery::MACOS_BUNDLE_ID: &str
+pub const formiga_battle_contract::discovery::PATH_OVERRIDE_ENV: &str
+pub const formiga_battle_contract::discovery::WINDOWS_BATTLE_VERSION_VALUE: &str
+pub const formiga_battle_contract::discovery::WINDOWS_PATH_VALUE: &str
+pub const formiga_battle_contract::discovery::WINDOWS_REGISTRY_KEY: &str
+pub const formiga_battle_contract::discovery::WINDOWS_VERSION_VALUE: &str
+pub mod formiga_battle_contract::handler
+pub mod formiga_battle_contract::handler::handler_limits
+pub const formiga_battle_contract::handler::handler_limits::MAX_CLUB_CHARS: usize
+pub const formiga_battle_contract::handler::handler_limits::MAX_HANDLER_CHARS: usize
+pub const formiga_battle_contract::handler::handler_limits::MAX_LINEUPS: usize
+pub const formiga_battle_contract::handler::handler_limits::MAX_STYLE_CHARS: usize
+pub const formiga_battle_contract::handler::handler_limits::MAX_TRIOS: usize
+pub const formiga_battle_contract::handler::handler_limits::MAX_TRIO_CHARS: usize
+pub const formiga_battle_contract::handler::handler_limits::MAX_TRIO_CUPS: usize
+pub const formiga_battle_contract::handler::handler_limits::TRIO_ID_CHARS: usize
+pub struct formiga_battle_contract::handler::HandlerCard
+pub formiga_battle_contract::handler::HandlerCard::club: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::handler::HandlerCard::name: alloc::string::String
+pub formiga_battle_contract::handler::HandlerCard::pennant: formiga_battle_contract::handler::Pennant
+impl formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::HandlerCard
+impl core::cmp::PartialEq for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::HandlerCard
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::HandlerCard
+impl core::marker::Send for formiga_battle_contract::handler::HandlerCard
+impl core::marker::Sync for formiga_battle_contract::handler::HandlerCard
+impl core::marker::Unpin for formiga_battle_contract::handler::HandlerCard
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::HandlerCard
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::HandlerCard
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::HandlerCard
+pub struct formiga_battle_contract::handler::Lineup
+pub formiga_battle_contract::handler::Lineup::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::handler::Lineup::until_utc: time::offset_date_time::OffsetDateTime
+impl core::clone::Clone for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Lineup
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Lineup
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Lineup
+impl core::marker::Send for formiga_battle_contract::handler::Lineup
+impl core::marker::Sync for formiga_battle_contract::handler::Lineup
+impl core::marker::Unpin for formiga_battle_contract::handler::Lineup
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Lineup
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Lineup
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Lineup
+pub struct formiga_battle_contract::handler::Pennant
+pub formiga_battle_contract::handler::Pennant::field: alloc::string::String
+pub formiga_battle_contract::handler::Pennant::shape: alloc::string::String
+pub formiga_battle_contract::handler::Pennant::symbol: alloc::string::String
+pub formiga_battle_contract::handler::Pennant::trim: alloc::string::String
+impl formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Pennant
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Pennant
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Pennant
+impl core::marker::Send for formiga_battle_contract::handler::Pennant
+impl core::marker::Sync for formiga_battle_contract::handler::Pennant
+impl core::marker::Unpin for formiga_battle_contract::handler::Pennant
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Pennant
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Pennant
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Pennant
+pub struct formiga_battle_contract::handler::Registry
+pub formiga_battle_contract::handler::Registry::handler: core::option::Option<formiga_battle_contract::handler::HandlerCard>
+pub formiga_battle_contract::handler::Registry::trios: alloc::vec::Vec<formiga_battle_contract::handler::TrioCard>
+impl formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::holds(&self) -> bool
+pub fn formiga_battle_contract::handler::Registry::is_empty(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Registry
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Registry
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Registry
+impl core::marker::Send for formiga_battle_contract::handler::Registry
+impl core::marker::Sync for formiga_battle_contract::handler::Registry
+impl core::marker::Unpin for formiga_battle_contract::handler::Registry
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Registry
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Registry
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Registry
+pub struct formiga_battle_contract::handler::Tally
+pub formiga_battle_contract::handler::Tally::drawn: u32
+pub formiga_battle_contract::handler::Tally::played: u32
+pub formiga_battle_contract::handler::Tally::won: u32
+impl formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::is_empty(&self) -> bool
+pub fn formiga_battle_contract::handler::Tally::lost(&self) -> u32
+impl core::clone::Clone for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Tally
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_battle_contract::handler::Tally
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Tally
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Tally
+impl core::marker::Send for formiga_battle_contract::handler::Tally
+impl core::marker::Sync for formiga_battle_contract::handler::Tally
+impl core::marker::Unpin for formiga_battle_contract::handler::Tally
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Tally
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Tally
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Tally
+pub struct formiga_battle_contract::handler::Trio
+pub formiga_battle_contract::handler::Trio::cups: alloc::vec::Vec<formiga_battle_contract::result::CupWins>
+pub formiga_battle_contract::handler::Trio::formed_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::handler::Trio::friends: formiga_battle_contract::handler::Tally
+pub formiga_battle_contract::handler::Trio::id: alloc::string::String
+pub formiga_battle_contract::handler::Trio::lineups: alloc::vec::Vec<formiga_battle_contract::handler::Lineup>
+pub formiga_battle_contract::handler::Trio::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::handler::Trio::members_since_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::handler::Trio::name: alloc::string::String
+pub formiga_battle_contract::handler::Trio::pennant: core::option::Option<formiga_battle_contract::handler::Pennant>
+pub formiga_battle_contract::handler::Trio::retired: bool
+pub formiga_battle_contract::handler::Trio::visitors: formiga_battle_contract::handler::Tally
+impl formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::card(&self) -> formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::Trio::holds(&self) -> bool
+pub fn formiga_battle_contract::handler::Trio::total(&self) -> formiga_battle_contract::handler::Tally
+impl core::clone::Clone for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Trio
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Trio
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Trio
+impl core::marker::Send for formiga_battle_contract::handler::Trio
+impl core::marker::Sync for formiga_battle_contract::handler::Trio
+impl core::marker::Unpin for formiga_battle_contract::handler::Trio
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Trio
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Trio
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Trio
+pub struct formiga_battle_contract::handler::TrioCard
+pub formiga_battle_contract::handler::TrioCard::id: alloc::string::String
+pub formiga_battle_contract::handler::TrioCard::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::handler::TrioCard::name: alloc::string::String
+pub formiga_battle_contract::handler::TrioCard::pennant: core::option::Option<formiga_battle_contract::handler::Pennant>
+pub formiga_battle_contract::handler::TrioCard::retired: bool
+impl formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::TrioCard
+impl core::cmp::PartialEq for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::TrioCard
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::TrioCard
+impl core::marker::Send for formiga_battle_contract::handler::TrioCard
+impl core::marker::Sync for formiga_battle_contract::handler::TrioCard
+impl core::marker::Unpin for formiga_battle_contract::handler::TrioCard
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::TrioCard
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::TrioCard
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::TrioCard
+pub struct formiga_battle_contract::handler::TrioPlayed
+pub formiga_battle_contract::handler::TrioPlayed::id: alloc::string::String
+pub formiga_battle_contract::handler::TrioPlayed::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::handler::TrioPlayed::won: core::option::Option<bool>
+impl formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::TrioPlayed
+impl core::cmp::PartialEq for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::TrioPlayed
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::Send for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::Sync for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::Unpin for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::TrioPlayed
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::TrioPlayed
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::is_lineup(&[u64]) -> bool
+pub fn formiga_battle_contract::handler::is_trio_id(&str) -> bool
+pub fn formiga_battle_contract::handler::lineup_of(&[u64]) -> alloc::vec::Vec<u64>
+pub mod formiga_battle_contract::limits
+pub const formiga_battle_contract::limits::MAX_ACK_BYTES: u64
+pub const formiga_battle_contract::limits::MAX_CONTENDERS: usize
+pub const formiga_battle_contract::limits::MAX_RELATIONSHIPS: usize
+pub const formiga_battle_contract::limits::MAX_SNAPSHOT_BYTES: u64
+pub const formiga_battle_contract::limits::MAX_VERSION_CHARS: usize
+pub mod formiga_battle_contract::result
+pub mod formiga_battle_contract::result::result_limits
+pub const formiga_battle_contract::result::result_limits::MAX_APPLIED: usize
+pub const formiga_battle_contract::result::result_limits::MAX_HISTORY: usize
+pub const formiga_battle_contract::result::result_limits::MAX_ID_CHARS: usize
+pub const formiga_battle_contract::result::result_limits::MAX_LINES: usize
+pub const formiga_battle_contract::result::result_limits::MAX_MATCHES: usize
+pub const formiga_battle_contract::result::result_limits::MAX_MOMENTS: usize
+pub const formiga_battle_contract::result::result_limits::MAX_PAGES: usize
+pub const formiga_battle_contract::result::result_limits::MAX_RESULT_BYTES: u64
+pub const formiga_battle_contract::result::result_limits::MAX_SHOWINGS: usize
+pub const formiga_battle_contract::result::result_limits::MAX_SIGNS: usize
+pub const formiga_battle_contract::result::result_limits::MAX_TEXT_CHARS: usize
+pub enum formiga_battle_contract::result::Mode
+pub formiga_battle_contract::result::Mode::Ai
+pub formiga_battle_contract::result::Mode::Friend
+impl core::clone::Clone for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::Mode
+impl core::cmp::PartialEq for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_battle_contract::result::Mode
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::Mode
+impl serde_core::ser::Serialize for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::Mode
+impl core::marker::Send for formiga_battle_contract::result::Mode
+impl core::marker::Sync for formiga_battle_contract::result::Mode
+impl core::marker::Unpin for formiga_battle_contract::result::Mode
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::Mode
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::Mode
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::Mode
+pub struct formiga_battle_contract::result::BattleRecord
+pub formiga_battle_contract::result::BattleRecord::applied: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::result::BattleRecord::circuit_points: u32
+pub formiga_battle_contract::result::BattleRecord::cups: alloc::vec::Vec<formiga_battle_contract::result::CupWins>
+pub formiga_battle_contract::result::BattleRecord::handler: core::option::Option<formiga_battle_contract::handler::HandlerCard>
+pub formiga_battle_contract::result::BattleRecord::history: alloc::vec::Vec<formiga_battle_contract::result::MatchSummary>
+pub formiga_battle_contract::result::BattleRecord::notebook: alloc::vec::Vec<formiga_battle_contract::result::NotebookPage>
+pub formiga_battle_contract::result::BattleRecord::trios: alloc::vec::Vec<formiga_battle_contract::handler::Trio>
+pub formiga_battle_contract::result::BattleRecord::unlocked: alloc::vec::Vec<alloc::string::String>
+impl formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::apply(&mut self, &formiga_battle_contract::result::MatchResult) -> bool
+pub fn formiga_battle_contract::result::BattleRecord::cup_wins(&self, &str) -> u8
+pub fn formiga_battle_contract::result::BattleRecord::validate(&self) -> core::result::Result<(), formiga_battle_contract::BattleError>
+impl formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::register(&mut self, &formiga_battle_contract::handler::Registry, time::offset_date_time::OffsetDateTime)
+pub fn formiga_battle_contract::result::BattleRecord::register_session(&mut self, &formiga_battle_contract::handler::Registry, &[formiga_battle_contract::result::MatchResult], time::offset_date_time::OffsetDateTime)
+pub fn formiga_battle_contract::result::BattleRecord::trio_of(&self, &[u64]) -> core::option::Option<&formiga_battle_contract::handler::Trio>
+impl core::clone::Clone for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::BattleRecord
+impl core::cmp::PartialEq for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::BattleRecord
+impl serde_core::ser::Serialize for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::BattleRecord
+impl core::marker::Send for formiga_battle_contract::result::BattleRecord
+impl core::marker::Sync for formiga_battle_contract::result::BattleRecord
+impl core::marker::Unpin for formiga_battle_contract::result::BattleRecord
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::BattleRecord
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::BattleRecord
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::BattleRecord
+pub struct formiga_battle_contract::result::BattleResult
+pub formiga_battle_contract::result::BattleResult::battle_version: alloc::string::String
+pub formiga_battle_contract::result::BattleResult::format: alloc::string::String
+pub formiga_battle_contract::result::BattleResult::matches: alloc::vec::Vec<formiga_battle_contract::result::MatchResult>
+pub formiga_battle_contract::result::BattleResult::min_reader_version: u32
+pub formiga_battle_contract::result::BattleResult::registry: core::option::Option<formiga_battle_contract::handler::Registry>
+pub formiga_battle_contract::result::BattleResult::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_battle_contract::result::BattleResult::snapshot_sha256: alloc::string::String
+pub formiga_battle_contract::result::BattleResult::version: u32
+impl formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::decode(&[u8]) -> core::result::Result<Self, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::result::BattleResult::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::result::BattleResult::new(formiga_expansion_rulebook::ids::SessionId, alloc::string::String, &str) -> Self
+pub fn formiga_battle_contract::result::BattleResult::reader_needed(&self) -> u32
+pub fn formiga_battle_contract::result::BattleResult::validate(&self) -> core::result::Result<(), formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::result::BattleResult::write(&self, &std::path::Path) -> core::result::Result<(), formiga_battle_contract::BattleError>
+impl core::clone::Clone for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::BattleResult
+impl core::cmp::PartialEq for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::BattleResult
+impl serde_core::ser::Serialize for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::BattleResult
+impl core::marker::Send for formiga_battle_contract::result::BattleResult
+impl core::marker::Sync for formiga_battle_contract::result::BattleResult
+impl core::marker::Unpin for formiga_battle_contract::result::BattleResult
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::BattleResult
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::BattleResult
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::BattleResult
+pub struct formiga_battle_contract::result::CupWins
+pub formiga_battle_contract::result::CupWins::cup: alloc::string::String
+pub formiga_battle_contract::result::CupWins::wins: u8
+impl core::clone::Clone for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::CupWins
+impl core::cmp::PartialEq for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::CupWins
+impl serde_core::ser::Serialize for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::CupWins
+impl core::marker::Send for formiga_battle_contract::result::CupWins
+impl core::marker::Sync for formiga_battle_contract::result::CupWins
+impl core::marker::Unpin for formiga_battle_contract::result::CupWins
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::CupWins
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::CupWins
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::CupWins
+pub struct formiga_battle_contract::result::MatchResult
+pub formiga_battle_contract::result::MatchResult::id: alloc::string::String
+pub formiga_battle_contract::result::MatchResult::mode: formiga_battle_contract::result::Mode
+pub formiga_battle_contract::result::MatchResult::rewards: formiga_battle_contract::result::Rewards
+impl core::clone::Clone for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::MatchResult
+impl core::cmp::PartialEq for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::MatchResult
+impl serde_core::ser::Serialize for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::MatchResult
+impl core::marker::Send for formiga_battle_contract::result::MatchResult
+impl core::marker::Sync for formiga_battle_contract::result::MatchResult
+impl core::marker::Unpin for formiga_battle_contract::result::MatchResult
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::MatchResult
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::MatchResult
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::MatchResult
+pub struct formiga_battle_contract::result::MatchSummary
+pub formiga_battle_contract::result::MatchSummary::ended_by: alloc::string::String
+pub formiga_battle_contract::result::MatchSummary::finished_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::result::MatchSummary::mode: formiga_battle_contract::result::Mode
+pub formiga_battle_contract::result::MatchSummary::opponent: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::result::MatchSummary::opponent_pennant: core::option::Option<formiga_battle_contract::handler::Pennant>
+pub formiga_battle_contract::result::MatchSummary::opponent_trio: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::result::MatchSummary::team: alloc::vec::Vec<u64>
+pub formiga_battle_contract::result::MatchSummary::trio: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::result::MatchSummary::turns: u8
+pub formiga_battle_contract::result::MatchSummary::won: core::option::Option<bool>
+impl core::clone::Clone for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::MatchSummary
+impl core::cmp::PartialEq for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::MatchSummary
+impl serde_core::ser::Serialize for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::MatchSummary
+impl core::marker::Send for formiga_battle_contract::result::MatchSummary
+impl core::marker::Sync for formiga_battle_contract::result::MatchSummary
+impl core::marker::Unpin for formiga_battle_contract::result::MatchSummary
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::MatchSummary
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::MatchSummary
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::MatchSummary
+pub struct formiga_battle_contract::result::NotebookAddition
+pub formiga_battle_contract::result::NotebookAddition::creature_id: u64
+pub formiga_battle_contract::result::NotebookAddition::moments: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::result::NotebookAddition::showing: formiga_battle_contract::result::Showing
+pub formiga_battle_contract::result::NotebookAddition::won: bool
+impl core::clone::Clone for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::NotebookAddition
+impl core::cmp::PartialEq for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::NotebookAddition
+impl serde_core::ser::Serialize for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::NotebookAddition
+impl core::marker::Send for formiga_battle_contract::result::NotebookAddition
+impl core::marker::Sync for formiga_battle_contract::result::NotebookAddition
+impl core::marker::Unpin for formiga_battle_contract::result::NotebookAddition
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::NotebookAddition
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::NotebookAddition
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::NotebookAddition
+pub struct formiga_battle_contract::result::NotebookPage
+pub formiga_battle_contract::result::NotebookPage::creature_id: u64
+pub formiga_battle_contract::result::NotebookPage::matches: u32
+pub formiga_battle_contract::result::NotebookPage::moments: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::result::NotebookPage::recent: alloc::vec::Vec<formiga_battle_contract::result::Showing>
+pub formiga_battle_contract::result::NotebookPage::wins: u32
+impl core::clone::Clone for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::NotebookPage
+impl core::cmp::PartialEq for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::NotebookPage
+impl serde_core::ser::Serialize for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::NotebookPage
+impl core::marker::Send for formiga_battle_contract::result::NotebookPage
+impl core::marker::Sync for formiga_battle_contract::result::NotebookPage
+impl core::marker::Unpin for formiga_battle_contract::result::NotebookPage
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::NotebookPage
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::NotebookPage
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::NotebookPage
+pub struct formiga_battle_contract::result::Rewards
+pub formiga_battle_contract::result::Rewards::circuit_points: u32
+pub formiga_battle_contract::result::Rewards::cup_win: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::result::Rewards::history: core::option::Option<formiga_battle_contract::result::MatchSummary>
+pub formiga_battle_contract::result::Rewards::journal: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::result::Rewards::keepsakes: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::result::Rewards::notebook: alloc::vec::Vec<formiga_battle_contract::result::NotebookAddition>
+pub formiga_battle_contract::result::Rewards::participation: alloc::vec::Vec<u64>
+pub formiga_battle_contract::result::Rewards::trio: core::option::Option<formiga_battle_contract::handler::TrioPlayed>
+pub formiga_battle_contract::result::Rewards::unlocks: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::Rewards
+impl core::cmp::PartialEq for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::Rewards
+impl serde_core::ser::Serialize for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::Rewards
+impl core::marker::Send for formiga_battle_contract::result::Rewards
+impl core::marker::Sync for formiga_battle_contract::result::Rewards
+impl core::marker::Unpin for formiga_battle_contract::result::Rewards
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::Rewards
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::Rewards
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::Rewards
+pub struct formiga_battle_contract::result::Showing
+pub formiga_battle_contract::result::Showing::friends: alloc::collections::btree::map::BTreeMap<u64, u16>
+pub formiga_battle_contract::result::Showing::signs: alloc::collections::btree::map::BTreeMap<alloc::string::String, u16>
+pub formiga_battle_contract::result::Showing::steps: u16
+impl core::clone::Clone for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::Showing
+impl core::cmp::PartialEq for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::Showing
+impl serde_core::ser::Serialize for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::Showing
+impl core::marker::Send for formiga_battle_contract::result::Showing
+impl core::marker::Sync for formiga_battle_contract::result::Showing
+impl core::marker::Unpin for formiga_battle_contract::result::Showing
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::Showing
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::Showing
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::Showing
+pub const formiga_battle_contract::result::RESULT_FILE: &str
+pub const formiga_battle_contract::result::RESULT_FORMAT: &str
+pub mod formiga_battle_contract::sample
+pub const formiga_battle_contract::sample::TRIO: &str
+pub fn formiga_battle_contract::sample::colony() -> formiga_core::model::save::SaveFile
+pub fn formiga_battle_contract::sample::pennant(&str, &str, &str) -> formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::sample::record() -> formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::sample::result() -> formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::sample::snapshot() -> formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::sample::snapshot_with_record() -> formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::sample::visitors(u8) -> formiga_battle_contract::BattleSnapshot
+pub enum formiga_battle_contract::BattleError
+pub formiga_battle_contract::BattleError::Invalid(alloc::string::String)
+pub formiga_battle_contract::BattleError::Io(core::io::error::Error)
+pub formiga_battle_contract::BattleError::Json(serde_json::error::Error)
+pub formiga_battle_contract::BattleError::TooLarge
+pub formiga_battle_contract::BattleError::TooLarge::limit: u64
+pub formiga_battle_contract::BattleError::UnsupportedVersion
+pub formiga_battle_contract::BattleError::UnsupportedVersion::needs: u32
+pub formiga_battle_contract::BattleError::UnsupportedVersion::reads: u32
+pub formiga_battle_contract::BattleError::WrongFormat
+pub formiga_battle_contract::BattleError::WrongFormat::expected: &'static str
+pub formiga_battle_contract::BattleError::WrongFormat::found: alloc::string::String
+impl core::convert::From<core::io::error::Error> for formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::from(core::io::error::Error) -> Self
+impl core::convert::From<formiga_battle_contract::BattleError> for formiga_battle_contract::ProjectionError
+pub fn formiga_battle_contract::ProjectionError::from(formiga_battle_contract::BattleError) -> Self
+impl core::convert::From<formiga_expansion_rulebook::document::RulebookError> for formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::from(formiga_expansion_rulebook::document::RulebookError) -> Self
+impl core::convert::From<serde_json::error::Error> for formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::from(serde_json::error::Error) -> Self
+impl core::error::Error for formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_battle_contract::BattleError
+impl core::marker::Send for formiga_battle_contract::BattleError
+impl core::marker::Sync for formiga_battle_contract::BattleError
+impl core::marker::Unpin for formiga_battle_contract::BattleError
+impl core::marker::UnsafeUnpin for formiga_battle_contract::BattleError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::BattleError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::BattleError
+pub enum formiga_battle_contract::Mode
+pub formiga_battle_contract::Mode::Ai
+pub formiga_battle_contract::Mode::Friend
+impl core::clone::Clone for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::Mode
+impl core::cmp::PartialEq for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_battle_contract::result::Mode
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::Mode
+impl serde_core::ser::Serialize for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::Mode
+pub fn formiga_battle_contract::result::Mode::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::Mode
+impl core::marker::Send for formiga_battle_contract::result::Mode
+impl core::marker::Sync for formiga_battle_contract::result::Mode
+impl core::marker::Unpin for formiga_battle_contract::result::Mode
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::Mode
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::Mode
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::Mode
+pub enum formiga_battle_contract::Opened
+pub formiga_battle_contract::Opened::Refused(formiga_expansion_rulebook::refusal::AckRefusal, formiga_battle_contract::BattleError)
+pub formiga_battle_contract::Opened::Roster(alloc::boxed::Box<formiga_battle_contract::BattleSnapshot>)
+impl core::fmt::Debug for formiga_battle_contract::Opened
+pub fn formiga_battle_contract::Opened::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_battle_contract::Opened
+impl core::marker::Send for formiga_battle_contract::Opened
+impl core::marker::Sync for formiga_battle_contract::Opened
+impl core::marker::Unpin for formiga_battle_contract::Opened
+impl core::marker::UnsafeUnpin for formiga_battle_contract::Opened
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::Opened
+impl !core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::Opened
+pub enum formiga_battle_contract::ProjectionError
+pub formiga_battle_contract::ProjectionError::Battle(formiga_battle_contract::BattleError)
+pub formiga_battle_contract::ProjectionError::Travel(formiga_travel::projection::ProjectionError)
+impl core::convert::From<formiga_battle_contract::BattleError> for formiga_battle_contract::ProjectionError
+pub fn formiga_battle_contract::ProjectionError::from(formiga_battle_contract::BattleError) -> Self
+impl core::convert::From<formiga_travel::projection::ProjectionError> for formiga_battle_contract::ProjectionError
+pub fn formiga_battle_contract::ProjectionError::from(formiga_travel::projection::ProjectionError) -> Self
+impl core::error::Error for formiga_battle_contract::ProjectionError
+pub fn formiga_battle_contract::ProjectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_battle_contract::ProjectionError
+pub fn formiga_battle_contract::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_battle_contract::ProjectionError
+pub fn formiga_battle_contract::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_battle_contract::ProjectionError
+impl core::marker::Send for formiga_battle_contract::ProjectionError
+impl core::marker::Sync for formiga_battle_contract::ProjectionError
+impl core::marker::Unpin for formiga_battle_contract::ProjectionError
+impl core::marker::UnsafeUnpin for formiga_battle_contract::ProjectionError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::ProjectionError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::ProjectionError
+pub struct formiga_battle_contract::BattleAck
+pub formiga_battle_contract::BattleAck::accepted: bool
+pub formiga_battle_contract::BattleAck::battle_version: alloc::string::String
+pub formiga_battle_contract::BattleAck::format: alloc::string::String
+pub formiga_battle_contract::BattleAck::min_reader_version: u32
+pub formiga_battle_contract::BattleAck::refusal: core::option::Option<formiga_expansion_rulebook::refusal::AckRefusal>
+pub formiga_battle_contract::BattleAck::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_battle_contract::BattleAck::version: u32
+impl formiga_battle_contract::BattleAck
+pub fn formiga_battle_contract::BattleAck::decode(&[u8]) -> core::result::Result<Self, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::BattleAck::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::BattleAck::new(formiga_expansion_rulebook::ids::SessionId, &str, core::option::Option<formiga_expansion_rulebook::refusal::AckRefusal>) -> Self
+pub fn formiga_battle_contract::BattleAck::validate(&self) -> core::result::Result<(), formiga_battle_contract::BattleError>
+impl core::clone::Clone for formiga_battle_contract::BattleAck
+pub fn formiga_battle_contract::BattleAck::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::BattleAck
+impl core::cmp::PartialEq for formiga_battle_contract::BattleAck
+pub fn formiga_battle_contract::BattleAck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::BattleAck
+pub fn formiga_battle_contract::BattleAck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::BattleAck
+impl serde_core::ser::Serialize for formiga_battle_contract::BattleAck
+pub fn formiga_battle_contract::BattleAck::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::BattleAck
+pub fn formiga_battle_contract::BattleAck::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::BattleAck
+impl core::marker::Send for formiga_battle_contract::BattleAck
+impl core::marker::Sync for formiga_battle_contract::BattleAck
+impl core::marker::Unpin for formiga_battle_contract::BattleAck
+impl core::marker::UnsafeUnpin for formiga_battle_contract::BattleAck
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::BattleAck
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::BattleAck
+pub struct formiga_battle_contract::BattleRecord
+pub formiga_battle_contract::BattleRecord::applied: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::BattleRecord::circuit_points: u32
+pub formiga_battle_contract::BattleRecord::cups: alloc::vec::Vec<formiga_battle_contract::result::CupWins>
+pub formiga_battle_contract::BattleRecord::handler: core::option::Option<formiga_battle_contract::handler::HandlerCard>
+pub formiga_battle_contract::BattleRecord::history: alloc::vec::Vec<formiga_battle_contract::result::MatchSummary>
+pub formiga_battle_contract::BattleRecord::notebook: alloc::vec::Vec<formiga_battle_contract::result::NotebookPage>
+pub formiga_battle_contract::BattleRecord::trios: alloc::vec::Vec<formiga_battle_contract::handler::Trio>
+pub formiga_battle_contract::BattleRecord::unlocked: alloc::vec::Vec<alloc::string::String>
+impl formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::apply(&mut self, &formiga_battle_contract::result::MatchResult) -> bool
+pub fn formiga_battle_contract::result::BattleRecord::cup_wins(&self, &str) -> u8
+pub fn formiga_battle_contract::result::BattleRecord::validate(&self) -> core::result::Result<(), formiga_battle_contract::BattleError>
+impl formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::register(&mut self, &formiga_battle_contract::handler::Registry, time::offset_date_time::OffsetDateTime)
+pub fn formiga_battle_contract::result::BattleRecord::register_session(&mut self, &formiga_battle_contract::handler::Registry, &[formiga_battle_contract::result::MatchResult], time::offset_date_time::OffsetDateTime)
+pub fn formiga_battle_contract::result::BattleRecord::trio_of(&self, &[u64]) -> core::option::Option<&formiga_battle_contract::handler::Trio>
+impl core::clone::Clone for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::BattleRecord
+impl core::cmp::PartialEq for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::BattleRecord
+impl serde_core::ser::Serialize for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::BattleRecord
+pub fn formiga_battle_contract::result::BattleRecord::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::BattleRecord
+impl core::marker::Send for formiga_battle_contract::result::BattleRecord
+impl core::marker::Sync for formiga_battle_contract::result::BattleRecord
+impl core::marker::Unpin for formiga_battle_contract::result::BattleRecord
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::BattleRecord
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::BattleRecord
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::BattleRecord
+pub struct formiga_battle_contract::BattleResult
+pub formiga_battle_contract::BattleResult::battle_version: alloc::string::String
+pub formiga_battle_contract::BattleResult::format: alloc::string::String
+pub formiga_battle_contract::BattleResult::matches: alloc::vec::Vec<formiga_battle_contract::result::MatchResult>
+pub formiga_battle_contract::BattleResult::min_reader_version: u32
+pub formiga_battle_contract::BattleResult::registry: core::option::Option<formiga_battle_contract::handler::Registry>
+pub formiga_battle_contract::BattleResult::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_battle_contract::BattleResult::snapshot_sha256: alloc::string::String
+pub formiga_battle_contract::BattleResult::version: u32
+impl formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::decode(&[u8]) -> core::result::Result<Self, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::result::BattleResult::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::result::BattleResult::new(formiga_expansion_rulebook::ids::SessionId, alloc::string::String, &str) -> Self
+pub fn formiga_battle_contract::result::BattleResult::reader_needed(&self) -> u32
+pub fn formiga_battle_contract::result::BattleResult::validate(&self) -> core::result::Result<(), formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::result::BattleResult::write(&self, &std::path::Path) -> core::result::Result<(), formiga_battle_contract::BattleError>
+impl core::clone::Clone for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::BattleResult
+impl core::cmp::PartialEq for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::BattleResult
+impl serde_core::ser::Serialize for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::BattleResult
+pub fn formiga_battle_contract::result::BattleResult::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::BattleResult
+impl core::marker::Send for formiga_battle_contract::result::BattleResult
+impl core::marker::Sync for formiga_battle_contract::result::BattleResult
+impl core::marker::Unpin for formiga_battle_contract::result::BattleResult
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::BattleResult
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::BattleResult
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::BattleResult
+pub struct formiga_battle_contract::BattleSnapshot
+pub formiga_battle_contract::BattleSnapshot::colony_id: alloc::string::String
+pub formiga_battle_contract::BattleSnapshot::contenders: alloc::vec::Vec<formiga_battle_contract::Contender>
+pub formiga_battle_contract::BattleSnapshot::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::BattleSnapshot::desktop_version: alloc::string::String
+pub formiga_battle_contract::BattleSnapshot::format: alloc::string::String
+pub formiga_battle_contract::BattleSnapshot::min_reader_version: u32
+pub formiga_battle_contract::BattleSnapshot::presentation: formiga_travel::snapshot::Presentation
+pub formiga_battle_contract::BattleSnapshot::record: core::option::Option<formiga_battle_contract::result::BattleRecord>
+pub formiga_battle_contract::BattleSnapshot::relationships: alloc::vec::Vec<formiga_travel::snapshot::TravelRelationship>
+pub formiga_battle_contract::BattleSnapshot::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_battle_contract::BattleSnapshot::version: u32
+impl formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::BattleSnapshot::decode(&[u8]) -> core::result::Result<Self, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::BattleSnapshot::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::BattleSnapshot::read(&std::path::Path) -> core::result::Result<Self, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::BattleSnapshot::validate(&self) -> core::result::Result<(), formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::BattleSnapshot::with_record(self, formiga_battle_contract::result::BattleRecord) -> Self
+impl core::clone::Clone for formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::BattleSnapshot::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::BattleSnapshot::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::BattleSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::BattleSnapshot
+impl serde_core::ser::Serialize for formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::BattleSnapshot::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::BattleSnapshot
+pub fn formiga_battle_contract::BattleSnapshot::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::BattleSnapshot
+impl core::marker::Send for formiga_battle_contract::BattleSnapshot
+impl core::marker::Sync for formiga_battle_contract::BattleSnapshot
+impl core::marker::Unpin for formiga_battle_contract::BattleSnapshot
+impl core::marker::UnsafeUnpin for formiga_battle_contract::BattleSnapshot
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::BattleSnapshot
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::BattleSnapshot
+pub struct formiga_battle_contract::Contender
+pub formiga_battle_contract::Contender::leanings: formiga_battle_contract::ContenderLeanings
+pub formiga_battle_contract::Contender::traveler: formiga_travel::snapshot::Traveler
+impl core::clone::Clone for formiga_battle_contract::Contender
+pub fn formiga_battle_contract::Contender::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_battle_contract::Contender
+pub fn formiga_battle_contract::Contender::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::Contender
+pub fn formiga_battle_contract::Contender::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::Contender
+impl serde_core::ser::Serialize for formiga_battle_contract::Contender
+pub fn formiga_battle_contract::Contender::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::Contender
+pub fn formiga_battle_contract::Contender::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::Contender
+impl core::marker::Send for formiga_battle_contract::Contender
+impl core::marker::Sync for formiga_battle_contract::Contender
+impl core::marker::Unpin for formiga_battle_contract::Contender
+impl core::marker::UnsafeUnpin for formiga_battle_contract::Contender
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::Contender
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::Contender
+pub struct formiga_battle_contract::ContenderLeanings
+pub formiga_battle_contract::ContenderLeanings::climbing: i8
+pub formiga_battle_contract::ContenderLeanings::cursor_trust: i8
+pub formiga_battle_contract::ContenderLeanings::exploration: i8
+pub formiga_battle_contract::ContenderLeanings::home_affinity: i8
+pub formiga_battle_contract::ContenderLeanings::play: i8
+pub formiga_battle_contract::ContenderLeanings::routine: i8
+pub formiga_battle_contract::ContenderLeanings::sleep_security: i8
+pub formiga_battle_contract::ContenderLeanings::sociability: i8
+impl core::clone::Clone for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::ContenderLeanings
+impl core::cmp::PartialEq for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::eq(&self, &Self) -> bool
+impl core::convert::From<&formiga_core::model::memory::LearnedTendencies> for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::from(&formiga_core::model::memory::LearnedTendencies) -> Self
+impl core::default::Default for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_battle_contract::ContenderLeanings
+impl core::marker::StructuralPartialEq for formiga_battle_contract::ContenderLeanings
+impl serde_core::ser::Serialize for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::ContenderLeanings
+pub fn formiga_battle_contract::ContenderLeanings::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::ContenderLeanings
+impl core::marker::Send for formiga_battle_contract::ContenderLeanings
+impl core::marker::Sync for formiga_battle_contract::ContenderLeanings
+impl core::marker::Unpin for formiga_battle_contract::ContenderLeanings
+impl core::marker::UnsafeUnpin for formiga_battle_contract::ContenderLeanings
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::ContenderLeanings
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::ContenderLeanings
+pub struct formiga_battle_contract::CupWins
+pub formiga_battle_contract::CupWins::cup: alloc::string::String
+pub formiga_battle_contract::CupWins::wins: u8
+impl core::clone::Clone for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::CupWins
+impl core::cmp::PartialEq for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::CupWins
+impl serde_core::ser::Serialize for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::CupWins
+pub fn formiga_battle_contract::result::CupWins::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::CupWins
+impl core::marker::Send for formiga_battle_contract::result::CupWins
+impl core::marker::Sync for formiga_battle_contract::result::CupWins
+impl core::marker::Unpin for formiga_battle_contract::result::CupWins
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::CupWins
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::CupWins
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::CupWins
+pub struct formiga_battle_contract::HandlerCard
+pub formiga_battle_contract::HandlerCard::club: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::HandlerCard::name: alloc::string::String
+pub formiga_battle_contract::HandlerCard::pennant: formiga_battle_contract::handler::Pennant
+impl formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::HandlerCard
+impl core::cmp::PartialEq for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::HandlerCard
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::HandlerCard
+pub fn formiga_battle_contract::handler::HandlerCard::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::HandlerCard
+impl core::marker::Send for formiga_battle_contract::handler::HandlerCard
+impl core::marker::Sync for formiga_battle_contract::handler::HandlerCard
+impl core::marker::Unpin for formiga_battle_contract::handler::HandlerCard
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::HandlerCard
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::HandlerCard
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::HandlerCard
+pub struct formiga_battle_contract::Lineup
+pub formiga_battle_contract::Lineup::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::Lineup::until_utc: time::offset_date_time::OffsetDateTime
+impl core::clone::Clone for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Lineup
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Lineup
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Lineup
+pub fn formiga_battle_contract::handler::Lineup::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Lineup
+impl core::marker::Send for formiga_battle_contract::handler::Lineup
+impl core::marker::Sync for formiga_battle_contract::handler::Lineup
+impl core::marker::Unpin for formiga_battle_contract::handler::Lineup
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Lineup
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Lineup
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Lineup
+pub struct formiga_battle_contract::MatchResult
+pub formiga_battle_contract::MatchResult::id: alloc::string::String
+pub formiga_battle_contract::MatchResult::mode: formiga_battle_contract::result::Mode
+pub formiga_battle_contract::MatchResult::rewards: formiga_battle_contract::result::Rewards
+impl core::clone::Clone for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::MatchResult
+impl core::cmp::PartialEq for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::MatchResult
+impl serde_core::ser::Serialize for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::MatchResult
+pub fn formiga_battle_contract::result::MatchResult::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::MatchResult
+impl core::marker::Send for formiga_battle_contract::result::MatchResult
+impl core::marker::Sync for formiga_battle_contract::result::MatchResult
+impl core::marker::Unpin for formiga_battle_contract::result::MatchResult
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::MatchResult
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::MatchResult
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::MatchResult
+pub struct formiga_battle_contract::MatchSummary
+pub formiga_battle_contract::MatchSummary::ended_by: alloc::string::String
+pub formiga_battle_contract::MatchSummary::finished_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::MatchSummary::mode: formiga_battle_contract::result::Mode
+pub formiga_battle_contract::MatchSummary::opponent: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::MatchSummary::opponent_pennant: core::option::Option<formiga_battle_contract::handler::Pennant>
+pub formiga_battle_contract::MatchSummary::opponent_trio: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::MatchSummary::team: alloc::vec::Vec<u64>
+pub formiga_battle_contract::MatchSummary::trio: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::MatchSummary::turns: u8
+pub formiga_battle_contract::MatchSummary::won: core::option::Option<bool>
+impl core::clone::Clone for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::MatchSummary
+impl core::cmp::PartialEq for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::MatchSummary
+impl serde_core::ser::Serialize for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::MatchSummary
+pub fn formiga_battle_contract::result::MatchSummary::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::MatchSummary
+impl core::marker::Send for formiga_battle_contract::result::MatchSummary
+impl core::marker::Sync for formiga_battle_contract::result::MatchSummary
+impl core::marker::Unpin for formiga_battle_contract::result::MatchSummary
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::MatchSummary
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::MatchSummary
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::MatchSummary
+pub struct formiga_battle_contract::NotebookAddition
+pub formiga_battle_contract::NotebookAddition::creature_id: u64
+pub formiga_battle_contract::NotebookAddition::moments: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::NotebookAddition::showing: formiga_battle_contract::result::Showing
+pub formiga_battle_contract::NotebookAddition::won: bool
+impl core::clone::Clone for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::NotebookAddition
+impl core::cmp::PartialEq for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::NotebookAddition
+impl serde_core::ser::Serialize for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::NotebookAddition
+pub fn formiga_battle_contract::result::NotebookAddition::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::NotebookAddition
+impl core::marker::Send for formiga_battle_contract::result::NotebookAddition
+impl core::marker::Sync for formiga_battle_contract::result::NotebookAddition
+impl core::marker::Unpin for formiga_battle_contract::result::NotebookAddition
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::NotebookAddition
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::NotebookAddition
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::NotebookAddition
+pub struct formiga_battle_contract::NotebookPage
+pub formiga_battle_contract::NotebookPage::creature_id: u64
+pub formiga_battle_contract::NotebookPage::matches: u32
+pub formiga_battle_contract::NotebookPage::moments: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::NotebookPage::recent: alloc::vec::Vec<formiga_battle_contract::result::Showing>
+pub formiga_battle_contract::NotebookPage::wins: u32
+impl core::clone::Clone for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::NotebookPage
+impl core::cmp::PartialEq for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::NotebookPage
+impl serde_core::ser::Serialize for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::NotebookPage
+pub fn formiga_battle_contract::result::NotebookPage::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::NotebookPage
+impl core::marker::Send for formiga_battle_contract::result::NotebookPage
+impl core::marker::Sync for formiga_battle_contract::result::NotebookPage
+impl core::marker::Unpin for formiga_battle_contract::result::NotebookPage
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::NotebookPage
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::NotebookPage
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::NotebookPage
+pub struct formiga_battle_contract::Pennant
+pub formiga_battle_contract::Pennant::field: alloc::string::String
+pub formiga_battle_contract::Pennant::shape: alloc::string::String
+pub formiga_battle_contract::Pennant::symbol: alloc::string::String
+pub formiga_battle_contract::Pennant::trim: alloc::string::String
+impl formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Pennant
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Pennant
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Pennant
+pub fn formiga_battle_contract::handler::Pennant::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Pennant
+impl core::marker::Send for formiga_battle_contract::handler::Pennant
+impl core::marker::Sync for formiga_battle_contract::handler::Pennant
+impl core::marker::Unpin for formiga_battle_contract::handler::Pennant
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Pennant
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Pennant
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Pennant
+pub struct formiga_battle_contract::Registry
+pub formiga_battle_contract::Registry::handler: core::option::Option<formiga_battle_contract::handler::HandlerCard>
+pub formiga_battle_contract::Registry::trios: alloc::vec::Vec<formiga_battle_contract::handler::TrioCard>
+impl formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::holds(&self) -> bool
+pub fn formiga_battle_contract::handler::Registry::is_empty(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Registry
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Registry
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Registry
+pub fn formiga_battle_contract::handler::Registry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Registry
+impl core::marker::Send for formiga_battle_contract::handler::Registry
+impl core::marker::Sync for formiga_battle_contract::handler::Registry
+impl core::marker::Unpin for formiga_battle_contract::handler::Registry
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Registry
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Registry
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Registry
+pub struct formiga_battle_contract::Rewards
+pub formiga_battle_contract::Rewards::circuit_points: u32
+pub formiga_battle_contract::Rewards::cup_win: core::option::Option<alloc::string::String>
+pub formiga_battle_contract::Rewards::history: core::option::Option<formiga_battle_contract::result::MatchSummary>
+pub formiga_battle_contract::Rewards::journal: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::Rewards::keepsakes: alloc::vec::Vec<alloc::string::String>
+pub formiga_battle_contract::Rewards::notebook: alloc::vec::Vec<formiga_battle_contract::result::NotebookAddition>
+pub formiga_battle_contract::Rewards::participation: alloc::vec::Vec<u64>
+pub formiga_battle_contract::Rewards::trio: core::option::Option<formiga_battle_contract::handler::TrioPlayed>
+pub formiga_battle_contract::Rewards::unlocks: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::Rewards
+impl core::cmp::PartialEq for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::Rewards
+impl serde_core::ser::Serialize for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::Rewards
+pub fn formiga_battle_contract::result::Rewards::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::Rewards
+impl core::marker::Send for formiga_battle_contract::result::Rewards
+impl core::marker::Sync for formiga_battle_contract::result::Rewards
+impl core::marker::Unpin for formiga_battle_contract::result::Rewards
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::Rewards
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::Rewards
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::Rewards
+pub struct formiga_battle_contract::Showing
+pub formiga_battle_contract::Showing::friends: alloc::collections::btree::map::BTreeMap<u64, u16>
+pub formiga_battle_contract::Showing::signs: alloc::collections::btree::map::BTreeMap<alloc::string::String, u16>
+pub formiga_battle_contract::Showing::steps: u16
+impl core::clone::Clone for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::result::Showing
+impl core::cmp::PartialEq for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::result::Showing
+impl serde_core::ser::Serialize for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::result::Showing
+pub fn formiga_battle_contract::result::Showing::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::result::Showing
+impl core::marker::Send for formiga_battle_contract::result::Showing
+impl core::marker::Sync for formiga_battle_contract::result::Showing
+impl core::marker::Unpin for formiga_battle_contract::result::Showing
+impl core::marker::UnsafeUnpin for formiga_battle_contract::result::Showing
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::result::Showing
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::Showing
+pub struct formiga_battle_contract::Tally
+pub formiga_battle_contract::Tally::drawn: u32
+pub formiga_battle_contract::Tally::played: u32
+pub formiga_battle_contract::Tally::won: u32
+impl formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::is_empty(&self) -> bool
+pub fn formiga_battle_contract::handler::Tally::lost(&self) -> u32
+impl core::clone::Clone for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Tally
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::default() -> Self
+impl core::fmt::Debug for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_battle_contract::handler::Tally
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Tally
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Tally
+pub fn formiga_battle_contract::handler::Tally::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Tally
+impl core::marker::Send for formiga_battle_contract::handler::Tally
+impl core::marker::Sync for formiga_battle_contract::handler::Tally
+impl core::marker::Unpin for formiga_battle_contract::handler::Tally
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Tally
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Tally
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Tally
+pub struct formiga_battle_contract::Trio
+pub formiga_battle_contract::Trio::cups: alloc::vec::Vec<formiga_battle_contract::result::CupWins>
+pub formiga_battle_contract::Trio::formed_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::Trio::friends: formiga_battle_contract::handler::Tally
+pub formiga_battle_contract::Trio::id: alloc::string::String
+pub formiga_battle_contract::Trio::lineups: alloc::vec::Vec<formiga_battle_contract::handler::Lineup>
+pub formiga_battle_contract::Trio::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::Trio::members_since_utc: time::offset_date_time::OffsetDateTime
+pub formiga_battle_contract::Trio::name: alloc::string::String
+pub formiga_battle_contract::Trio::pennant: core::option::Option<formiga_battle_contract::handler::Pennant>
+pub formiga_battle_contract::Trio::retired: bool
+pub formiga_battle_contract::Trio::visitors: formiga_battle_contract::handler::Tally
+impl formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::card(&self) -> formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::Trio::holds(&self) -> bool
+pub fn formiga_battle_contract::handler::Trio::total(&self) -> formiga_battle_contract::handler::Tally
+impl core::clone::Clone for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::Trio
+impl core::cmp::PartialEq for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::Trio
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::Trio
+pub fn formiga_battle_contract::handler::Trio::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::Trio
+impl core::marker::Send for formiga_battle_contract::handler::Trio
+impl core::marker::Sync for formiga_battle_contract::handler::Trio
+impl core::marker::Unpin for formiga_battle_contract::handler::Trio
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::Trio
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::Trio
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::Trio
+pub struct formiga_battle_contract::TrioCard
+pub formiga_battle_contract::TrioCard::id: alloc::string::String
+pub formiga_battle_contract::TrioCard::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::TrioCard::name: alloc::string::String
+pub formiga_battle_contract::TrioCard::pennant: core::option::Option<formiga_battle_contract::handler::Pennant>
+pub formiga_battle_contract::TrioCard::retired: bool
+impl formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::TrioCard
+impl core::cmp::PartialEq for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::TrioCard
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::TrioCard
+pub fn formiga_battle_contract::handler::TrioCard::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::TrioCard
+impl core::marker::Send for formiga_battle_contract::handler::TrioCard
+impl core::marker::Sync for formiga_battle_contract::handler::TrioCard
+impl core::marker::Unpin for formiga_battle_contract::handler::TrioCard
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::TrioCard
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::TrioCard
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::TrioCard
+pub struct formiga_battle_contract::TrioPlayed
+pub formiga_battle_contract::TrioPlayed::id: alloc::string::String
+pub formiga_battle_contract::TrioPlayed::members: alloc::vec::Vec<u64>
+pub formiga_battle_contract::TrioPlayed::won: core::option::Option<bool>
+impl formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::holds(&self) -> bool
+impl core::clone::Clone for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::clone(&self) -> Self
+impl core::cmp::Eq for formiga_battle_contract::handler::TrioPlayed
+impl core::cmp::PartialEq for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_battle_contract::handler::TrioPlayed
+impl serde_core::ser::Serialize for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::TrioPlayed::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::Send for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::Sync for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::Unpin for formiga_battle_contract::handler::TrioPlayed
+impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::TrioPlayed
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::TrioPlayed
+impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::TrioPlayed
+pub const formiga_battle_contract::ACK_FILE: &str
+pub const formiga_battle_contract::ACK_FORMAT: &str
+pub const formiga_battle_contract::BATTLE_FORMAT_VERSION: u32
+pub const formiga_battle_contract::LAUNCH_ARGUMENT: &str
+pub const formiga_battle_contract::RESULT_FILE: &str
+pub const formiga_battle_contract::RESULT_FORMAT: &str
+pub const formiga_battle_contract::SNAPSHOT_FILE: &str
+pub const formiga_battle_contract::SNAPSHOT_FORMAT: &str
+pub fn formiga_battle_contract::is_lineup(&[u64]) -> bool
+pub fn formiga_battle_contract::is_trio_id(&str) -> bool
+pub fn formiga_battle_contract::lineup_of(&[u64]) -> alloc::vec::Vec<u64>
+pub fn formiga_battle_contract::open_session(&std::path::Path, &str) -> core::result::Result<formiga_battle_contract::Opened, formiga_battle_contract::BattleError>
+pub fn formiga_battle_contract::project_roster(&formiga_core::model::save::SaveFile, formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, &str) -> core::result::Result<formiga_battle_contract::BattleSnapshot, formiga_battle_contract::ProjectionError>

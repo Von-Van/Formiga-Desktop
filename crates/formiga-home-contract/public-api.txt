@@ -1,0 +1,1403 @@
+pub mod formiga_home_contract
+pub use formiga_home_contract::AckRefusal
+pub use formiga_home_contract::SessionId
+pub use formiga_home_contract::TravelerId
+pub use formiga_home_contract::sha256_hex
+pub mod formiga_home_contract::discovery
+pub const formiga_home_contract::discovery::MACOS_BUNDLE_ID: &str
+pub const formiga_home_contract::discovery::MACOS_HOME_VERSION_KEY: &str
+pub const formiga_home_contract::discovery::PATH_OVERRIDE_ENV: &str
+pub const formiga_home_contract::discovery::WINDOWS_HOME_VERSION_VALUE: &str
+pub const formiga_home_contract::discovery::WINDOWS_PATH_VALUE: &str
+pub const formiga_home_contract::discovery::WINDOWS_REGISTRY_KEY: &str
+pub const formiga_home_contract::discovery::WINDOWS_VERSION_VALUE: &str
+pub mod formiga_home_contract::limits
+pub const formiga_home_contract::limits::MAX_ACK_BYTES: u64
+pub const formiga_home_contract::limits::MAX_CAPABILITIES: usize
+pub const formiga_home_contract::limits::MAX_DISPLAY_MODES: usize
+pub const formiga_home_contract::limits::MAX_DOORS: usize
+pub const formiga_home_contract::limits::MAX_EFFECTS: usize
+pub const formiga_home_contract::limits::MAX_HOUSEHOLDS: usize
+pub const formiga_home_contract::limits::MAX_ID_CHARS: usize
+pub const formiga_home_contract::limits::MAX_INDOORS_BYTES: u64
+pub const formiga_home_contract::limits::MAX_INVENTORY: usize
+pub const formiga_home_contract::limits::MAX_IN_A_MEMENTO: usize
+pub const formiga_home_contract::limits::MAX_ITEM_NAME_CHARS: usize
+pub const formiga_home_contract::limits::MAX_JOURNAL: usize
+pub const formiga_home_contract::limits::MAX_LIKINGS: usize
+pub const formiga_home_contract::limits::MAX_MEMENTOS: usize
+pub const formiga_home_contract::limits::MAX_MOMENTS: usize
+pub const formiga_home_contract::limits::MAX_NAME_CHARS: usize
+pub const formiga_home_contract::limits::MAX_PLACED_PER_HOUSEHOLD: usize
+pub const formiga_home_contract::limits::MAX_PLAN_REACH: i8
+pub const formiga_home_contract::limits::MAX_PROJECTS: usize
+pub const formiga_home_contract::limits::MAX_RECALL_BYTES: u64
+pub const formiga_home_contract::limits::MAX_RECEIPT_BYTES: u64
+pub const formiga_home_contract::limits::MAX_RELATIONSHIPS: usize
+pub const formiga_home_contract::limits::MAX_RESIDENTS: usize
+pub const formiga_home_contract::limits::MAX_RESULT_BYTES: u64
+pub const formiga_home_contract::limits::MAX_ROOMS: usize
+pub const formiga_home_contract::limits::MAX_ROOM_TILES: u8
+pub const formiga_home_contract::limits::MAX_SNAPSHOT_BYTES: u64
+pub const formiga_home_contract::limits::MAX_STAGES: usize
+pub const formiga_home_contract::limits::MAX_STATE_BYTES: u64
+pub const formiga_home_contract::limits::MAX_TALLIES: usize
+pub const formiga_home_contract::limits::MAX_TOGETHER: u8
+pub const formiga_home_contract::limits::MAX_VERSION_CHARS: usize
+pub const formiga_home_contract::limits::MAX_VISITORS: usize
+pub const formiga_home_contract::limits::MIN_ROOM_TILES: u8
+pub const formiga_home_contract::limits::TURNS: u8
+pub mod formiga_home_contract::sample
+pub const formiga_home_contract::sample::DAYS_LIVED: i64
+pub const formiga_home_contract::sample::FINDS: [(u8, i64); 18]
+pub const formiga_home_contract::sample::MADE: time::offset_date_time::OffsetDateTime
+pub const formiga_home_contract::sample::SESSION: &str
+pub const formiga_home_contract::sample::SOUVENIRS: [formiga_core::souvenirs::Souvenir; 4]
+pub fn formiga_home_contract::sample::colony() -> formiga_core::model::save::SaveFile
+pub fn formiga_home_contract::sample::keeper(&formiga_core::model::save::SaveFile) -> formiga_core::model::creature::CreatureId
+pub fn formiga_home_contract::sample::snapshot() -> formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::sample::state() -> formiga_home_contract::HomeState
+pub enum formiga_home_contract::DisplayMode
+pub formiga_home_contract::DisplayMode::Case
+pub formiga_home_contract::DisplayMode::FallbackCard
+pub formiga_home_contract::DisplayMode::Floor
+pub formiga_home_contract::DisplayMode::SurfaceSmall
+pub formiga_home_contract::DisplayMode::Textile
+pub formiga_home_contract::DisplayMode::Unknown
+pub formiga_home_contract::DisplayMode::Wall
+impl core::clone::Clone for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::DisplayMode
+impl core::cmp::Ord for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::DisplayMode
+impl core::marker::StructuralPartialEq for formiga_home_contract::DisplayMode
+impl serde_core::ser::Serialize for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::DisplayMode
+pub fn formiga_home_contract::DisplayMode::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::DisplayMode
+impl core::marker::Send for formiga_home_contract::DisplayMode
+impl core::marker::Sync for formiga_home_contract::DisplayMode
+impl core::marker::Unpin for formiga_home_contract::DisplayMode
+impl core::marker::UnsafeUnpin for formiga_home_contract::DisplayMode
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::DisplayMode
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::DisplayMode
+pub enum formiga_home_contract::DisplaySource
+pub formiga_home_contract::DisplaySource::BattleKeepsake
+pub formiga_home_contract::DisplaySource::BattleKeepsake::id: alloc::string::String
+pub formiga_home_contract::DisplaySource::DesktopFind
+pub formiga_home_contract::DisplaySource::DesktopFind::variant: u8
+pub formiga_home_contract::DisplaySource::HillSouvenir
+pub formiga_home_contract::DisplaySource::HillSouvenir::id: alloc::string::String
+pub formiga_home_contract::DisplaySource::HomeMemento
+pub formiga_home_contract::DisplaySource::HomeMemento::memento: formiga_home_contract::MementoKind
+pub formiga_home_contract::DisplaySource::Unknown
+impl core::clone::Clone for formiga_home_contract::DisplaySource
+pub fn formiga_home_contract::DisplaySource::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::DisplaySource
+impl core::cmp::PartialEq for formiga_home_contract::DisplaySource
+pub fn formiga_home_contract::DisplaySource::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::DisplaySource
+pub fn formiga_home_contract::DisplaySource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::DisplaySource
+impl serde_core::ser::Serialize for formiga_home_contract::DisplaySource
+pub fn formiga_home_contract::DisplaySource::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::DisplaySource
+pub fn formiga_home_contract::DisplaySource::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::DisplaySource
+impl core::marker::Send for formiga_home_contract::DisplaySource
+impl core::marker::Sync for formiga_home_contract::DisplaySource
+impl core::marker::Unpin for formiga_home_contract::DisplaySource
+impl core::marker::UnsafeUnpin for formiga_home_contract::DisplaySource
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::DisplaySource
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::DisplaySource
+pub enum formiga_home_contract::FavouriteKind
+pub formiga_home_contract::FavouriteKind::Bed
+pub formiga_home_contract::FavouriteKind::Find
+pub formiga_home_contract::FavouriteKind::Seat
+pub formiga_home_contract::FavouriteKind::Toy
+pub formiga_home_contract::FavouriteKind::Unknown
+impl core::clone::Clone for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::FavouriteKind
+impl core::cmp::Ord for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::FavouriteKind
+impl core::marker::StructuralPartialEq for formiga_home_contract::FavouriteKind
+impl serde_core::ser::Serialize for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::FavouriteKind
+pub fn formiga_home_contract::FavouriteKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::FavouriteKind
+impl core::marker::Send for formiga_home_contract::FavouriteKind
+impl core::marker::Sync for formiga_home_contract::FavouriteKind
+impl core::marker::Unpin for formiga_home_contract::FavouriteKind
+impl core::marker::UnsafeUnpin for formiga_home_contract::FavouriteKind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::FavouriteKind
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::FavouriteKind
+pub enum formiga_home_contract::HomeCapability
+pub formiga_home_contract::HomeCapability::BondNudges
+pub formiga_home_contract::HomeCapability::Indoors
+pub formiga_home_contract::HomeCapability::JournalMoments
+pub formiga_home_contract::HomeCapability::NextDoor
+pub formiga_home_contract::HomeCapability::Roommates
+pub formiga_home_contract::HomeCapability::Unknown
+pub formiga_home_contract::HomeCapability::VisitRecord
+impl formiga_home_contract::HomeCapability
+pub const formiga_home_contract::HomeCapability::ALL: [Self; 6]
+impl core::clone::Clone for formiga_home_contract::HomeCapability
+pub fn formiga_home_contract::HomeCapability::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeCapability
+impl core::cmp::PartialEq for formiga_home_contract::HomeCapability
+pub fn formiga_home_contract::HomeCapability::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeCapability
+pub fn formiga_home_contract::HomeCapability::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::HomeCapability
+pub fn formiga_home_contract::HomeCapability::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::HomeCapability
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeCapability
+impl serde_core::ser::Serialize for formiga_home_contract::HomeCapability
+pub fn formiga_home_contract::HomeCapability::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeCapability
+pub fn formiga_home_contract::HomeCapability::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeCapability
+impl core::marker::Send for formiga_home_contract::HomeCapability
+impl core::marker::Sync for formiga_home_contract::HomeCapability
+impl core::marker::Unpin for formiga_home_contract::HomeCapability
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeCapability
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeCapability
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeCapability
+pub enum formiga_home_contract::HomeEffect
+pub formiga_home_contract::HomeEffect::HomeVisit
+pub formiga_home_contract::HomeEffect::HomeVisit::arrived_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::HomeEffect::HomeVisit::household: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeEffect::HomeVisit::left_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::HomeEffect::Moment
+pub formiga_home_contract::HomeEffect::Moment::moment: formiga_home_contract::HomeMoment
+pub formiga_home_contract::HomeEffect::MoveIn
+pub formiga_home_contract::HomeEffect::MoveIn::household: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeEffect::MoveIn::resident: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeEffect::NextDoor
+pub formiga_home_contract::HomeEffect::NextDoor::household: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeEffect::Together
+pub formiga_home_contract::HomeEffect::Together::a: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeEffect::Together::b: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeEffect::Together::times: u8
+pub formiga_home_contract::HomeEffect::Together::together: formiga_home_contract::Together
+pub formiga_home_contract::HomeEffect::Unsupported
+impl formiga_home_contract::HomeEffect
+pub const fn formiga_home_contract::HomeEffect::kind(&self) -> &'static str
+impl core::clone::Clone for formiga_home_contract::HomeEffect
+pub fn formiga_home_contract::HomeEffect::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeEffect
+impl core::cmp::PartialEq for formiga_home_contract::HomeEffect
+pub fn formiga_home_contract::HomeEffect::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeEffect
+pub fn formiga_home_contract::HomeEffect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeEffect
+impl serde_core::ser::Serialize for formiga_home_contract::HomeEffect
+pub fn formiga_home_contract::HomeEffect::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeEffect
+pub fn formiga_home_contract::HomeEffect::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeEffect
+impl core::marker::Send for formiga_home_contract::HomeEffect
+impl core::marker::Sync for formiga_home_contract::HomeEffect
+impl core::marker::Unpin for formiga_home_contract::HomeEffect
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeEffect
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeEffect
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeEffect
+pub enum formiga_home_contract::HomeError
+pub formiga_home_contract::HomeError::Invalid(alloc::string::String)
+pub formiga_home_contract::HomeError::Io(core::io::error::Error)
+pub formiga_home_contract::HomeError::Json(serde_json::error::Error)
+pub formiga_home_contract::HomeError::TooLarge
+pub formiga_home_contract::HomeError::TooLarge::limit: u64
+pub formiga_home_contract::HomeError::UnsupportedVersion
+pub formiga_home_contract::HomeError::UnsupportedVersion::needs: u32
+pub formiga_home_contract::HomeError::UnsupportedVersion::reads: u32
+pub formiga_home_contract::HomeError::WrongFormat
+pub formiga_home_contract::HomeError::WrongFormat::expected: &'static str
+pub formiga_home_contract::HomeError::WrongFormat::found: alloc::string::String
+impl formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::is_missing(&self) -> bool
+impl core::convert::From<core::io::error::Error> for formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::from(core::io::error::Error) -> Self
+impl core::convert::From<formiga_expansion_rulebook::document::RulebookError> for formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::from(formiga_expansion_rulebook::document::RulebookError) -> Self
+impl core::convert::From<formiga_home_contract::HomeError> for formiga_home_contract::ProjectionError
+pub fn formiga_home_contract::ProjectionError::from(formiga_home_contract::HomeError) -> Self
+impl core::convert::From<serde_json::error::Error> for formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::from(serde_json::error::Error) -> Self
+impl core::error::Error for formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_home_contract::HomeError
+pub fn formiga_home_contract::HomeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_home_contract::HomeError
+impl core::marker::Send for formiga_home_contract::HomeError
+impl core::marker::Sync for formiga_home_contract::HomeError
+impl core::marker::Unpin for formiga_home_contract::HomeError
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeError
+pub enum formiga_home_contract::HomeMoment
+pub formiga_home_contract::HomeMoment::AskedToMoveIn
+pub formiga_home_contract::HomeMoment::AskedToMoveIn::visitor: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeMoment::Favourite
+pub formiga_home_contract::HomeMoment::Favourite::resident: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeMoment::Favourite::thing: formiga_home_contract::FavouriteKind
+pub formiga_home_contract::HomeMoment::Memento
+pub formiga_home_contract::HomeMoment::Memento::by: core::option::Option<formiga_travel::ids::TravelerId>
+pub formiga_home_contract::HomeMoment::Memento::memento: formiga_home_contract::MementoKind
+pub formiga_home_contract::HomeMoment::Memento::of: alloc::vec::Vec<formiga_travel::ids::TravelerId>
+pub formiga_home_contract::HomeMoment::Project
+pub formiga_home_contract::HomeMoment::Project::project: formiga_home_contract::CatalogId
+pub formiga_home_contract::HomeMoment::Project::stage: u8
+pub formiga_home_contract::HomeMoment::Room
+pub formiga_home_contract::HomeMoment::Room::room: formiga_home_contract::CatalogId
+pub formiga_home_contract::HomeMoment::StayedOver
+pub formiga_home_contract::HomeMoment::StayedOver::visitor: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HomeMoment::Unknown
+pub formiga_home_contract::HomeMoment::Visit
+pub formiga_home_contract::HomeMoment::Visit::visitor: formiga_travel::ids::TravelerId
+impl core::clone::Clone for formiga_home_contract::HomeMoment
+pub fn formiga_home_contract::HomeMoment::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeMoment
+impl core::cmp::PartialEq for formiga_home_contract::HomeMoment
+pub fn formiga_home_contract::HomeMoment::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeMoment
+pub fn formiga_home_contract::HomeMoment::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeMoment
+impl serde_core::ser::Serialize for formiga_home_contract::HomeMoment
+pub fn formiga_home_contract::HomeMoment::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeMoment
+pub fn formiga_home_contract::HomeMoment::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeMoment
+impl core::marker::Send for formiga_home_contract::HomeMoment
+impl core::marker::Sync for formiga_home_contract::HomeMoment
+impl core::marker::Unpin for formiga_home_contract::HomeMoment
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeMoment
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeMoment
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeMoment
+pub enum formiga_home_contract::HouseStyle
+pub formiga_home_contract::HouseStyle::LeafHouse
+pub formiga_home_contract::HouseStyle::Mushroom
+pub formiga_home_contract::HouseStyle::PillowFort
+pub formiga_home_contract::HouseStyle::Tent
+pub formiga_home_contract::HouseStyle::Unknown
+impl core::clone::Clone for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HouseStyle
+impl core::cmp::PartialEq for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::shelter::ShelterStyle> for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::from(formiga_core::model::shelter::ShelterStyle) -> Self
+impl core::fmt::Debug for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::HouseStyle
+impl core::marker::StructuralPartialEq for formiga_home_contract::HouseStyle
+impl serde_core::ser::Serialize for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HouseStyle
+pub fn formiga_home_contract::HouseStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HouseStyle
+impl core::marker::Send for formiga_home_contract::HouseStyle
+impl core::marker::Sync for formiga_home_contract::HouseStyle
+impl core::marker::Unpin for formiga_home_contract::HouseStyle
+impl core::marker::UnsafeUnpin for formiga_home_contract::HouseStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HouseStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HouseStyle
+pub enum formiga_home_contract::Liked
+pub formiga_home_contract::Liked::Piece
+pub formiga_home_contract::Liked::Piece::room: u8
+pub formiga_home_contract::Liked::Piece::uid: u16
+pub formiga_home_contract::Liked::Shown
+pub formiga_home_contract::Liked::Shown::item: formiga_home_contract::DisplayId
+impl core::clone::Clone for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Liked
+impl core::cmp::Ord for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for formiga_home_contract::Liked
+impl serde_core::ser::Serialize for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Liked
+pub fn formiga_home_contract::Liked::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Liked
+impl core::marker::Send for formiga_home_contract::Liked
+impl core::marker::Sync for formiga_home_contract::Liked
+impl core::marker::Unpin for formiga_home_contract::Liked
+impl core::marker::UnsafeUnpin for formiga_home_contract::Liked
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Liked
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Liked
+pub enum formiga_home_contract::MementoKind
+pub formiga_home_contract::MementoKind::Drawing
+pub formiga_home_contract::MementoKind::JamJar
+pub formiga_home_contract::MementoKind::Pebble
+pub formiga_home_contract::MementoKind::Photo
+pub formiga_home_contract::MementoKind::Postcard
+pub formiga_home_contract::MementoKind::PressedFlower
+pub formiga_home_contract::MementoKind::Rosette
+pub formiga_home_contract::MementoKind::Unknown
+impl core::clone::Clone for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::MementoKind
+impl core::cmp::Ord for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::MementoKind
+impl core::marker::StructuralPartialEq for formiga_home_contract::MementoKind
+impl serde_core::ser::Serialize for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::MementoKind
+pub fn formiga_home_contract::MementoKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::MementoKind
+impl core::marker::Send for formiga_home_contract::MementoKind
+impl core::marker::Sync for formiga_home_contract::MementoKind
+impl core::marker::Unpin for formiga_home_contract::MementoKind
+impl core::marker::UnsafeUnpin for formiga_home_contract::MementoKind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::MementoKind
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::MementoKind
+pub enum formiga_home_contract::ProjectionError
+pub formiga_home_contract::ProjectionError::Invalid(formiga_home_contract::HomeError)
+pub formiga_home_contract::ProjectionError::NoSuchHouse
+pub formiga_home_contract::ProjectionError::Travel(formiga_travel::projection::ProjectionError)
+impl core::convert::From<formiga_home_contract::HomeError> for formiga_home_contract::ProjectionError
+pub fn formiga_home_contract::ProjectionError::from(formiga_home_contract::HomeError) -> Self
+impl core::convert::From<formiga_travel::projection::ProjectionError> for formiga_home_contract::ProjectionError
+pub fn formiga_home_contract::ProjectionError::from(formiga_travel::projection::ProjectionError) -> Self
+impl core::error::Error for formiga_home_contract::ProjectionError
+pub fn formiga_home_contract::ProjectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_home_contract::ProjectionError
+pub fn formiga_home_contract::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_home_contract::ProjectionError
+pub fn formiga_home_contract::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_home_contract::ProjectionError
+impl core::marker::Send for formiga_home_contract::ProjectionError
+impl core::marker::Sync for formiga_home_contract::ProjectionError
+impl core::marker::Unpin for formiga_home_contract::ProjectionError
+impl core::marker::UnsafeUnpin for formiga_home_contract::ProjectionError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::ProjectionError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_home_contract::ProjectionError
+pub enum formiga_home_contract::RecallReason
+pub formiga_home_contract::RecallReason::DesktopRestarted
+pub formiga_home_contract::RecallReason::Other
+pub formiga_home_contract::RecallReason::OwnerAsked
+impl core::clone::Clone for formiga_home_contract::RecallReason
+pub fn formiga_home_contract::RecallReason::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::RecallReason
+impl core::cmp::PartialEq for formiga_home_contract::RecallReason
+pub fn formiga_home_contract::RecallReason::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::RecallReason
+pub fn formiga_home_contract::RecallReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_home_contract::RecallReason
+impl core::marker::StructuralPartialEq for formiga_home_contract::RecallReason
+impl serde_core::ser::Serialize for formiga_home_contract::RecallReason
+pub fn formiga_home_contract::RecallReason::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::RecallReason
+pub fn formiga_home_contract::RecallReason::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::RecallReason
+impl core::marker::Send for formiga_home_contract::RecallReason
+impl core::marker::Sync for formiga_home_contract::RecallReason
+impl core::marker::Unpin for formiga_home_contract::RecallReason
+impl core::marker::UnsafeUnpin for formiga_home_contract::RecallReason
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::RecallReason
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::RecallReason
+pub enum formiga_home_contract::Spot
+pub formiga_home_contract::Spot::Floor
+pub formiga_home_contract::Spot::Floor::x: u8
+pub formiga_home_contract::Spot::Floor::y: u8
+pub formiga_home_contract::Spot::On
+pub formiga_home_contract::Spot::On::piece: u16
+pub formiga_home_contract::Spot::On::slot: u8
+pub formiga_home_contract::Spot::Wall
+pub formiga_home_contract::Spot::Wall::at: u8
+pub formiga_home_contract::Spot::Wall::side: formiga_home_contract::WallSide
+impl core::clone::Clone for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Spot
+impl core::cmp::Ord for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::Spot
+impl core::marker::StructuralPartialEq for formiga_home_contract::Spot
+impl serde_core::ser::Serialize for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Spot
+pub fn formiga_home_contract::Spot::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Spot
+impl core::marker::Send for formiga_home_contract::Spot
+impl core::marker::Sync for formiga_home_contract::Spot
+impl core::marker::Unpin for formiga_home_contract::Spot
+impl core::marker::UnsafeUnpin for formiga_home_contract::Spot
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Spot
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Spot
+pub enum formiga_home_contract::Together
+pub formiga_home_contract::Together::Care
+pub formiga_home_contract::Together::Cozy
+pub formiga_home_contract::Together::Play
+pub formiga_home_contract::Together::Squabble
+pub formiga_home_contract::Together::Unknown
+impl core::clone::Clone for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Together
+impl core::cmp::Ord for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::Together
+impl core::marker::StructuralPartialEq for formiga_home_contract::Together
+impl serde_core::ser::Serialize for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Together
+pub fn formiga_home_contract::Together::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Together
+impl core::marker::Send for formiga_home_contract::Together
+impl core::marker::Sync for formiga_home_contract::Together
+impl core::marker::Unpin for formiga_home_contract::Together
+impl core::marker::UnsafeUnpin for formiga_home_contract::Together
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Together
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Together
+pub enum formiga_home_contract::WallSide
+pub formiga_home_contract::WallSide::North
+pub formiga_home_contract::WallSide::West
+impl core::clone::Clone for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::WallSide
+impl core::cmp::Ord for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::WallSide
+impl core::marker::StructuralPartialEq for formiga_home_contract::WallSide
+impl serde_core::ser::Serialize for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::WallSide
+pub fn formiga_home_contract::WallSide::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::WallSide
+impl core::marker::Send for formiga_home_contract::WallSide
+impl core::marker::Sync for formiga_home_contract::WallSide
+impl core::marker::Unpin for formiga_home_contract::WallSide
+impl core::marker::UnsafeUnpin for formiga_home_contract::WallSide
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::WallSide
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::WallSide
+pub struct formiga_home_contract::Accepted
+pub formiga_home_contract::Accepted::set_aside: alloc::vec::Vec<&'static str>
+pub formiga_home_contract::Accepted::state: formiga_home_contract::HomeState
+impl core::clone::Clone for formiga_home_contract::Accepted
+pub fn formiga_home_contract::Accepted::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Accepted
+impl core::cmp::PartialEq for formiga_home_contract::Accepted
+pub fn formiga_home_contract::Accepted::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Accepted
+pub fn formiga_home_contract::Accepted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::Accepted
+impl core::marker::Freeze for formiga_home_contract::Accepted
+impl core::marker::Send for formiga_home_contract::Accepted
+impl core::marker::Sync for formiga_home_contract::Accepted
+impl core::marker::Unpin for formiga_home_contract::Accepted
+impl core::marker::UnsafeUnpin for formiga_home_contract::Accepted
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Accepted
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Accepted
+pub struct formiga_home_contract::CatalogId(_)
+impl formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::as_str(&self) -> &str
+pub fn formiga_home_contract::CatalogId::known(&'static str) -> Self
+pub fn formiga_home_contract::CatalogId::parse(&str) -> core::option::Option<Self>
+impl core::clone::Clone for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::CatalogId
+impl core::cmp::Ord for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<formiga_home_contract::CatalogId> for alloc::string::String
+pub fn alloc::string::String::from(formiga_home_contract::CatalogId) -> Self
+impl core::convert::TryFrom<alloc::string::String> for formiga_home_contract::CatalogId
+pub type formiga_home_contract::CatalogId::Error = alloc::string::String
+pub fn formiga_home_contract::CatalogId::try_from(alloc::string::String) -> core::result::Result<Self, Self::Error>
+impl core::fmt::Debug for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for formiga_home_contract::CatalogId
+impl serde_core::ser::Serialize for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::CatalogId
+pub fn formiga_home_contract::CatalogId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::CatalogId
+impl core::marker::Send for formiga_home_contract::CatalogId
+impl core::marker::Sync for formiga_home_contract::CatalogId
+impl core::marker::Unpin for formiga_home_contract::CatalogId
+impl core::marker::UnsafeUnpin for formiga_home_contract::CatalogId
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::CatalogId
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::CatalogId
+pub struct formiga_home_contract::DisplayId(_)
+impl formiga_home_contract::DisplayId
+pub const formiga_home_contract::DisplayId::BATTLE: &'static str
+pub const formiga_home_contract::DisplayId::FIND: &'static str
+pub const formiga_home_contract::DisplayId::MEMENTO: &'static str
+pub const formiga_home_contract::DisplayId::SOUVENIR: &'static str
+pub fn formiga_home_contract::DisplayId::as_str(&self) -> &str
+pub fn formiga_home_contract::DisplayId::battle_keepsake(&str) -> core::option::Option<Self>
+pub fn formiga_home_contract::DisplayId::find(u8) -> Self
+pub fn formiga_home_contract::DisplayId::key(&self) -> &str
+pub fn formiga_home_contract::DisplayId::memento(formiga_travel::ids::TravelerId, u16) -> Self
+pub fn formiga_home_contract::DisplayId::parse(&str) -> core::option::Option<Self>
+pub fn formiga_home_contract::DisplayId::source(&self) -> &str
+pub fn formiga_home_contract::DisplayId::souvenir(&str) -> core::option::Option<Self>
+impl core::clone::Clone for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::DisplayId
+impl core::cmp::Ord for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<formiga_home_contract::DisplayId> for alloc::string::String
+pub fn alloc::string::String::from(formiga_home_contract::DisplayId) -> Self
+impl core::convert::TryFrom<alloc::string::String> for formiga_home_contract::DisplayId
+pub type formiga_home_contract::DisplayId::Error = alloc::string::String
+pub fn formiga_home_contract::DisplayId::try_from(alloc::string::String) -> core::result::Result<Self, Self::Error>
+impl core::fmt::Debug for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for formiga_home_contract::DisplayId
+impl serde_core::ser::Serialize for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::DisplayId
+pub fn formiga_home_contract::DisplayId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::DisplayId
+impl core::marker::Send for formiga_home_contract::DisplayId
+impl core::marker::Sync for formiga_home_contract::DisplayId
+impl core::marker::Unpin for formiga_home_contract::DisplayId
+impl core::marker::UnsafeUnpin for formiga_home_contract::DisplayId
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::DisplayId
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::DisplayId
+pub struct formiga_home_contract::DisplayItem
+pub formiga_home_contract::DisplayItem::finder_name: core::option::Option<alloc::string::String>
+pub formiga_home_contract::DisplayItem::found_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::DisplayItem::id: formiga_home_contract::DisplayId
+pub formiga_home_contract::DisplayItem::ink: core::option::Option<formiga_home_contract::Ink>
+pub formiga_home_contract::DisplayItem::modes: alloc::vec::Vec<formiga_home_contract::DisplayMode>
+pub formiga_home_contract::DisplayItem::name: alloc::string::String
+pub formiga_home_contract::DisplayItem::source: formiga_home_contract::DisplaySource
+impl formiga_home_contract::DisplayItem
+pub fn formiga_home_contract::DisplayItem::allows(&self, formiga_home_contract::DisplayMode) -> bool
+impl core::clone::Clone for formiga_home_contract::DisplayItem
+pub fn formiga_home_contract::DisplayItem::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_home_contract::DisplayItem
+pub fn formiga_home_contract::DisplayItem::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::DisplayItem
+pub fn formiga_home_contract::DisplayItem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::DisplayItem
+impl serde_core::ser::Serialize for formiga_home_contract::DisplayItem
+pub fn formiga_home_contract::DisplayItem::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::DisplayItem
+pub fn formiga_home_contract::DisplayItem::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::DisplayItem
+impl core::marker::Send for formiga_home_contract::DisplayItem
+impl core::marker::Sync for formiga_home_contract::DisplayItem
+impl core::marker::Unpin for formiga_home_contract::DisplayItem
+impl core::marker::UnsafeUnpin for formiga_home_contract::DisplayItem
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::DisplayItem
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::DisplayItem
+pub struct formiga_home_contract::Door
+pub formiga_home_contract::Door::at: u8
+pub formiga_home_contract::Door::side: formiga_home_contract::WallSide
+impl core::clone::Clone for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Door
+impl core::cmp::Ord for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::Door
+impl core::marker::StructuralPartialEq for formiga_home_contract::Door
+impl serde_core::ser::Serialize for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Door
+pub fn formiga_home_contract::Door::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Door
+impl core::marker::Send for formiga_home_contract::Door
+impl core::marker::Sync for formiga_home_contract::Door
+impl core::marker::Unpin for formiga_home_contract::Door
+impl core::marker::UnsafeUnpin for formiga_home_contract::Door
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Door
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Door
+pub struct formiga_home_contract::HomeAck
+pub formiga_home_contract::HomeAck::accepted: bool
+pub formiga_home_contract::HomeAck::format: alloc::string::String
+pub formiga_home_contract::HomeAck::home_version: alloc::string::String
+pub formiga_home_contract::HomeAck::min_reader_version: u32
+pub formiga_home_contract::HomeAck::refusal: core::option::Option<formiga_expansion_rulebook::refusal::AckRefusal>
+pub formiga_home_contract::HomeAck::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::HomeAck::snapshot_sha256: alloc::string::String
+pub formiga_home_contract::HomeAck::state_sha256: alloc::string::String
+pub formiga_home_contract::HomeAck::version: u32
+impl formiga_home_contract::HomeAck
+pub fn formiga_home_contract::HomeAck::accepted(&formiga_home_contract::SessionSeal, &str) -> Self
+pub fn formiga_home_contract::HomeAck::answers(&self, &formiga_home_contract::SessionSeal) -> bool
+pub fn formiga_home_contract::HomeAck::refused(&formiga_home_contract::SessionSeal, &str, formiga_expansion_rulebook::refusal::AckRefusal) -> Self
+impl core::clone::Clone for formiga_home_contract::HomeAck
+pub fn formiga_home_contract::HomeAck::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeAck
+impl core::cmp::PartialEq for formiga_home_contract::HomeAck
+pub fn formiga_home_contract::HomeAck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeAck
+pub fn formiga_home_contract::HomeAck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeAck
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeAck
+pub const formiga_home_contract::HomeAck::FORMAT: &'static str
+pub const formiga_home_contract::HomeAck::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeAck::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeAck
+pub fn formiga_home_contract::HomeAck::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeAck
+pub fn formiga_home_contract::HomeAck::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeAck
+impl core::marker::Send for formiga_home_contract::HomeAck
+impl core::marker::Sync for formiga_home_contract::HomeAck
+impl core::marker::Unpin for formiga_home_contract::HomeAck
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeAck
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeAck
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeAck
+pub struct formiga_home_contract::HomeIndoors
+pub formiga_home_contract::HomeIndoors::format: alloc::string::String
+pub formiga_home_contract::HomeIndoors::indoors: alloc::vec::Vec<formiga_travel::ids::TravelerId>
+pub formiga_home_contract::HomeIndoors::min_reader_version: u32
+pub formiga_home_contract::HomeIndoors::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::HomeIndoors::snapshot_sha256: alloc::string::String
+pub formiga_home_contract::HomeIndoors::state_sha256: alloc::string::String
+pub formiga_home_contract::HomeIndoors::version: u32
+pub formiga_home_contract::HomeIndoors::written_at_utc: time::offset_date_time::OffsetDateTime
+impl formiga_home_contract::HomeIndoors
+pub fn formiga_home_contract::HomeIndoors::answers(&self, &formiga_home_contract::SessionSeal) -> bool
+pub fn formiga_home_contract::HomeIndoors::for_visit(&self, &formiga_home_contract::HomeSnapshot) -> core::option::Option<alloc::vec::Vec<formiga_travel::ids::TravelerId>>
+pub fn formiga_home_contract::HomeIndoors::new(&formiga_home_contract::SessionSeal, time::offset_date_time::OffsetDateTime, alloc::vec::Vec<formiga_travel::ids::TravelerId>) -> Self
+impl core::clone::Clone for formiga_home_contract::HomeIndoors
+pub fn formiga_home_contract::HomeIndoors::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeIndoors
+impl core::cmp::PartialEq for formiga_home_contract::HomeIndoors
+pub fn formiga_home_contract::HomeIndoors::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeIndoors
+pub fn formiga_home_contract::HomeIndoors::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeIndoors
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeIndoors
+pub const formiga_home_contract::HomeIndoors::FORMAT: &'static str
+pub const formiga_home_contract::HomeIndoors::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeIndoors::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeIndoors
+pub fn formiga_home_contract::HomeIndoors::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeIndoors
+pub fn formiga_home_contract::HomeIndoors::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeIndoors
+impl core::marker::Send for formiga_home_contract::HomeIndoors
+impl core::marker::Sync for formiga_home_contract::HomeIndoors
+impl core::marker::Unpin for formiga_home_contract::HomeIndoors
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeIndoors
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeIndoors
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeIndoors
+pub struct formiga_home_contract::HomeRecall
+pub formiga_home_contract::HomeRecall::at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::HomeRecall::format: alloc::string::String
+pub formiga_home_contract::HomeRecall::min_reader_version: u32
+pub formiga_home_contract::HomeRecall::reason: formiga_home_contract::RecallReason
+pub formiga_home_contract::HomeRecall::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::HomeRecall::version: u32
+impl formiga_home_contract::HomeRecall
+pub fn formiga_home_contract::HomeRecall::new(formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, formiga_home_contract::RecallReason) -> Self
+impl core::clone::Clone for formiga_home_contract::HomeRecall
+pub fn formiga_home_contract::HomeRecall::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeRecall
+impl core::cmp::PartialEq for formiga_home_contract::HomeRecall
+pub fn formiga_home_contract::HomeRecall::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeRecall
+pub fn formiga_home_contract::HomeRecall::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeRecall
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeRecall
+pub const formiga_home_contract::HomeRecall::FORMAT: &'static str
+pub const formiga_home_contract::HomeRecall::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeRecall::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeRecall
+pub fn formiga_home_contract::HomeRecall::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeRecall
+pub fn formiga_home_contract::HomeRecall::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeRecall
+impl core::marker::Send for formiga_home_contract::HomeRecall
+impl core::marker::Sync for formiga_home_contract::HomeRecall
+impl core::marker::Unpin for formiga_home_contract::HomeRecall
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeRecall
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeRecall
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeRecall
+pub struct formiga_home_contract::HomeReceipt
+pub formiga_home_contract::HomeReceipt::closed_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::HomeReceipt::effects: alloc::vec::Vec<formiga_home_contract::HomeEffect>
+pub formiga_home_contract::HomeReceipt::format: alloc::string::String
+pub formiga_home_contract::HomeReceipt::home_version: alloc::string::String
+pub formiga_home_contract::HomeReceipt::min_reader_version: u32
+pub formiga_home_contract::HomeReceipt::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::HomeReceipt::snapshot_sha256: alloc::string::String
+pub formiga_home_contract::HomeReceipt::state_sha256: alloc::string::String
+pub formiga_home_contract::HomeReceipt::version: u32
+impl formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::answers(&self, &formiga_home_contract::SessionSeal) -> bool
+pub fn formiga_home_contract::HomeReceipt::new(&formiga_home_contract::SessionSeal, time::offset_date_time::OffsetDateTime, &str, alloc::vec::Vec<formiga_home_contract::HomeEffect>) -> Self
+pub fn formiga_home_contract::HomeReceipt::next_door(&self, &formiga_home_contract::HomeSnapshot) -> core::option::Option<formiga_travel::ids::TravelerId>
+impl formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::move_in(&self, &formiga_home_contract::HomeSnapshot) -> core::option::Option<(formiga_travel::ids::TravelerId, formiga_travel::ids::TravelerId)>
+impl core::clone::Clone for formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeReceipt
+impl core::cmp::PartialEq for formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeReceipt
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeReceipt
+pub const formiga_home_contract::HomeReceipt::FORMAT: &'static str
+pub const formiga_home_contract::HomeReceipt::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeReceipt::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeReceipt
+pub fn formiga_home_contract::HomeReceipt::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeReceipt
+impl core::marker::Send for formiga_home_contract::HomeReceipt
+impl core::marker::Sync for formiga_home_contract::HomeReceipt
+impl core::marker::Unpin for formiga_home_contract::HomeReceipt
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeReceipt
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeReceipt
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeReceipt
+pub struct formiga_home_contract::HomeResult
+pub formiga_home_contract::HomeResult::format: alloc::string::String
+pub formiga_home_contract::HomeResult::home_version: alloc::string::String
+pub formiga_home_contract::HomeResult::min_reader_version: u32
+pub formiga_home_contract::HomeResult::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::HomeResult::snapshot_sha256: alloc::string::String
+pub formiga_home_contract::HomeResult::state: formiga_home_contract::HomeState
+pub formiga_home_contract::HomeResult::state_sha256: alloc::string::String
+pub formiga_home_contract::HomeResult::version: u32
+pub formiga_home_contract::HomeResult::written_at_utc: time::offset_date_time::OffsetDateTime
+impl formiga_home_contract::HomeResult
+pub fn formiga_home_contract::HomeResult::answers(&self, &formiga_home_contract::SessionSeal) -> bool
+pub fn formiga_home_contract::HomeResult::new(&formiga_home_contract::SessionSeal, time::offset_date_time::OffsetDateTime, &str, formiga_home_contract::HomeState) -> Self
+impl core::clone::Clone for formiga_home_contract::HomeResult
+pub fn formiga_home_contract::HomeResult::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeResult
+impl core::cmp::PartialEq for formiga_home_contract::HomeResult
+pub fn formiga_home_contract::HomeResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeResult
+pub fn formiga_home_contract::HomeResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeResult
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeResult
+pub const formiga_home_contract::HomeResult::FORMAT: &'static str
+pub const formiga_home_contract::HomeResult::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeResult::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeResult
+pub fn formiga_home_contract::HomeResult::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeResult
+pub fn formiga_home_contract::HomeResult::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeResult
+impl core::marker::Send for formiga_home_contract::HomeResult
+impl core::marker::Sync for formiga_home_contract::HomeResult
+impl core::marker::Unpin for formiga_home_contract::HomeResult
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeResult
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeResult
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeResult
+pub struct formiga_home_contract::HomeSnapshot
+pub formiga_home_contract::HomeSnapshot::capabilities: alloc::vec::Vec<formiga_home_contract::HomeCapability>
+pub formiga_home_contract::HomeSnapshot::colony_key: alloc::string::String
+pub formiga_home_contract::HomeSnapshot::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::HomeSnapshot::days_lived: u32
+pub formiga_home_contract::HomeSnapshot::desktop_version: alloc::string::String
+pub formiga_home_contract::HomeSnapshot::format: alloc::string::String
+pub formiga_home_contract::HomeSnapshot::household: formiga_home_contract::Household
+pub formiga_home_contract::HomeSnapshot::inventory: alloc::vec::Vec<formiga_home_contract::DisplayItem>
+pub formiga_home_contract::HomeSnapshot::min_reader_version: u32
+pub formiga_home_contract::HomeSnapshot::presentation: formiga_travel::snapshot::Presentation
+pub formiga_home_contract::HomeSnapshot::relationships: alloc::vec::Vec<formiga_travel::snapshot::TravelRelationship>
+pub formiga_home_contract::HomeSnapshot::residents: alloc::vec::Vec<formiga_travel::snapshot::Traveler>
+pub formiga_home_contract::HomeSnapshot::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::HomeSnapshot::travel_min_reader_version: u32
+pub formiga_home_contract::HomeSnapshot::travel_version: u32
+pub formiga_home_contract::HomeSnapshot::version: u32
+pub formiga_home_contract::HomeSnapshot::village: alloc::vec::Vec<formiga_home_contract::Neighbour>
+pub formiga_home_contract::HomeSnapshot::visitors: alloc::vec::Vec<formiga_travel::snapshot::Traveler>
+impl formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::HomeSnapshot::as_travel(&self) -> formiga_travel::snapshot::TravelSnapshot
+pub fn formiga_home_contract::HomeSnapshot::item(&self, &formiga_home_contract::DisplayId) -> core::option::Option<&formiga_home_contract::DisplayItem>
+pub fn formiga_home_contract::HomeSnapshot::neighbour(&self, formiga_travel::ids::TravelerId) -> core::option::Option<&formiga_home_contract::Neighbour>
+pub fn formiga_home_contract::HomeSnapshot::offers(&self, formiga_home_contract::HomeCapability) -> bool
+pub fn formiga_home_contract::HomeSnapshot::resident(&self, formiga_travel::ids::TravelerId) -> core::option::Option<&formiga_travel::snapshot::Traveler>
+pub fn formiga_home_contract::HomeSnapshot::residents_readable(&self) -> bool
+pub fn formiga_home_contract::HomeSnapshot::visitor(&self, formiga_travel::ids::TravelerId) -> core::option::Option<&formiga_travel::snapshot::Traveler>
+impl core::clone::Clone for formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::HomeSnapshot::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::HomeSnapshot::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::HomeSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeSnapshot
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeSnapshot
+pub const formiga_home_contract::HomeSnapshot::FORMAT: &'static str
+pub const formiga_home_contract::HomeSnapshot::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeSnapshot::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::HomeSnapshot::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeSnapshot
+pub fn formiga_home_contract::HomeSnapshot::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeSnapshot
+impl core::marker::Send for formiga_home_contract::HomeSnapshot
+impl core::marker::Sync for formiga_home_contract::HomeSnapshot
+impl core::marker::Unpin for formiga_home_contract::HomeSnapshot
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeSnapshot
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeSnapshot
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeSnapshot
+pub struct formiga_home_contract::HomeState
+pub formiga_home_contract::HomeState::colony_key: alloc::string::String
+pub formiga_home_contract::HomeState::format: alloc::string::String
+pub formiga_home_contract::HomeState::households: alloc::vec::Vec<formiga_home_contract::HouseholdHome>
+pub formiga_home_contract::HomeState::min_reader_version: u32
+pub formiga_home_contract::HomeState::version: u32
+impl formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::household(&self, formiga_travel::ids::TravelerId) -> core::option::Option<&formiga_home_contract::HouseholdHome>
+pub fn formiga_home_contract::HomeState::household_mut(&mut self, formiga_travel::ids::TravelerId) -> core::option::Option<&mut formiga_home_contract::HouseholdHome>
+pub fn formiga_home_contract::HomeState::new(&str) -> Self
+pub fn formiga_home_contract::HomeState::set_household(&mut self, formiga_home_contract::HouseholdHome)
+pub fn formiga_home_contract::HomeState::shown_by(&self, &formiga_home_contract::DisplayId) -> core::option::Option<formiga_travel::ids::TravelerId>
+impl formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::settled_for(&self, &formiga_home_contract::HomeSnapshot) -> Self
+impl core::clone::Clone for formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HomeState
+impl core::cmp::PartialEq for formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HomeState
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeState
+pub const formiga_home_contract::HomeState::FORMAT: &'static str
+pub const formiga_home_contract::HomeState::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeState::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl serde_core::ser::Serialize for formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HomeState
+pub fn formiga_home_contract::HomeState::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HomeState
+impl core::marker::Send for formiga_home_contract::HomeState
+impl core::marker::Sync for formiga_home_contract::HomeState
+impl core::marker::Unpin for formiga_home_contract::HomeState
+impl core::marker::UnsafeUnpin for formiga_home_contract::HomeState
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HomeState
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HomeState
+pub struct formiga_home_contract::Household
+pub formiga_home_contract::Household::keeper: formiga_travel::ids::TravelerId
+pub formiga_home_contract::Household::slot: u8
+pub formiga_home_contract::Household::style: formiga_home_contract::HouseStyle
+impl core::clone::Clone for formiga_home_contract::Household
+pub fn formiga_home_contract::Household::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Household
+impl core::cmp::PartialEq for formiga_home_contract::Household
+pub fn formiga_home_contract::Household::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Household
+pub fn formiga_home_contract::Household::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_home_contract::Household
+impl core::marker::StructuralPartialEq for formiga_home_contract::Household
+impl serde_core::ser::Serialize for formiga_home_contract::Household
+pub fn formiga_home_contract::Household::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Household
+pub fn formiga_home_contract::Household::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Household
+impl core::marker::Send for formiga_home_contract::Household
+impl core::marker::Sync for formiga_home_contract::Household
+impl core::marker::Unpin for formiga_home_contract::Household
+impl core::marker::UnsafeUnpin for formiga_home_contract::Household
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Household
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Household
+pub struct formiga_home_contract::HouseholdHome
+pub formiga_home_contract::HouseholdHome::journal: alloc::vec::Vec<formiga_home_contract::JournalEntry>
+pub formiga_home_contract::HouseholdHome::keeper: formiga_travel::ids::TravelerId
+pub formiga_home_contract::HouseholdHome::likings: alloc::vec::Vec<formiga_home_contract::Liking>
+pub formiga_home_contract::HouseholdHome::mementos: alloc::vec::Vec<formiga_home_contract::Memento>
+pub formiga_home_contract::HouseholdHome::projects: alloc::vec::Vec<formiga_home_contract::Project>
+pub formiga_home_contract::HouseholdHome::rooms: alloc::vec::Vec<formiga_home_contract::RoomLayout>
+pub formiga_home_contract::HouseholdHome::stays_out: alloc::vec::Vec<formiga_travel::ids::TravelerId>
+pub formiga_home_contract::HouseholdHome::tallies: alloc::vec::Vec<formiga_home_contract::Tally>
+impl formiga_home_contract::HouseholdHome
+pub fn formiga_home_contract::HouseholdHome::forget_what_is_gone(&mut self)
+pub fn formiga_home_contract::HouseholdHome::memento(&self, &formiga_home_contract::DisplayId) -> core::option::Option<&formiga_home_contract::Memento>
+pub fn formiga_home_contract::HouseholdHome::next_memento(&self) -> u16
+pub fn formiga_home_contract::HouseholdHome::note(&mut self, time::offset_date_time::OffsetDateTime, formiga_home_contract::HomeMoment)
+pub fn formiga_home_contract::HouseholdHome::note_use(&mut self, formiga_travel::ids::TravelerId, formiga_home_contract::Liked)
+pub fn formiga_home_contract::HouseholdHome::placed(&self) -> usize
+pub fn formiga_home_contract::HouseholdHome::shown(&self) -> impl core::iter::traits::iterator::Iterator<Item = &formiga_home_contract::DisplayId>
+pub fn formiga_home_contract::HouseholdHome::take_down(&mut self, &formiga_home_contract::DisplayId) -> bool
+impl core::clone::Clone for formiga_home_contract::HouseholdHome
+pub fn formiga_home_contract::HouseholdHome::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::HouseholdHome
+impl core::cmp::PartialEq for formiga_home_contract::HouseholdHome
+pub fn formiga_home_contract::HouseholdHome::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::HouseholdHome
+pub fn formiga_home_contract::HouseholdHome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::HouseholdHome
+impl serde_core::ser::Serialize for formiga_home_contract::HouseholdHome
+pub fn formiga_home_contract::HouseholdHome::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::HouseholdHome
+pub fn formiga_home_contract::HouseholdHome::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::HouseholdHome
+impl core::marker::Send for formiga_home_contract::HouseholdHome
+impl core::marker::Sync for formiga_home_contract::HouseholdHome
+impl core::marker::Unpin for formiga_home_contract::HouseholdHome
+impl core::marker::UnsafeUnpin for formiga_home_contract::HouseholdHome
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::HouseholdHome
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::HouseholdHome
+pub struct formiga_home_contract::Ink
+pub formiga_home_contract::Ink::accent: [u8; 3]
+pub formiga_home_contract::Ink::body: [u8; 3]
+pub formiga_home_contract::Ink::deep: [u8; 3]
+pub formiga_home_contract::Ink::light: [u8; 3]
+pub formiga_home_contract::Ink::outline: [u8; 3]
+impl formiga_home_contract::Ink
+pub fn formiga_home_contract::Ink::of(formiga_art::trinkets::TrinketInk) -> Self
+pub fn formiga_home_contract::Ink::to_art(self) -> formiga_art::trinkets::TrinketInk
+impl core::clone::Clone for formiga_home_contract::Ink
+pub fn formiga_home_contract::Ink::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Ink
+impl core::cmp::PartialEq for formiga_home_contract::Ink
+pub fn formiga_home_contract::Ink::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Ink
+pub fn formiga_home_contract::Ink::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_home_contract::Ink
+impl core::marker::StructuralPartialEq for formiga_home_contract::Ink
+impl serde_core::ser::Serialize for formiga_home_contract::Ink
+pub fn formiga_home_contract::Ink::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Ink
+pub fn formiga_home_contract::Ink::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Ink
+impl core::marker::Send for formiga_home_contract::Ink
+impl core::marker::Sync for formiga_home_contract::Ink
+impl core::marker::Unpin for formiga_home_contract::Ink
+impl core::marker::UnsafeUnpin for formiga_home_contract::Ink
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Ink
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Ink
+pub struct formiga_home_contract::JournalEntry
+pub formiga_home_contract::JournalEntry::at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::JournalEntry::moment: formiga_home_contract::HomeMoment
+impl core::clone::Clone for formiga_home_contract::JournalEntry
+pub fn formiga_home_contract::JournalEntry::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::JournalEntry
+impl core::cmp::PartialEq for formiga_home_contract::JournalEntry
+pub fn formiga_home_contract::JournalEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::JournalEntry
+pub fn formiga_home_contract::JournalEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::JournalEntry
+impl serde_core::ser::Serialize for formiga_home_contract::JournalEntry
+pub fn formiga_home_contract::JournalEntry::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::JournalEntry
+pub fn formiga_home_contract::JournalEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::JournalEntry
+impl core::marker::Send for formiga_home_contract::JournalEntry
+impl core::marker::Sync for formiga_home_contract::JournalEntry
+impl core::marker::Unpin for formiga_home_contract::JournalEntry
+impl core::marker::UnsafeUnpin for formiga_home_contract::JournalEntry
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::JournalEntry
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::JournalEntry
+pub struct formiga_home_contract::Liking
+pub formiga_home_contract::Liking::resident: formiga_travel::ids::TravelerId
+pub formiga_home_contract::Liking::thing: formiga_home_contract::Liked
+pub formiga_home_contract::Liking::uses: u16
+impl core::clone::Clone for formiga_home_contract::Liking
+pub fn formiga_home_contract::Liking::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Liking
+impl core::cmp::PartialEq for formiga_home_contract::Liking
+pub fn formiga_home_contract::Liking::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Liking
+pub fn formiga_home_contract::Liking::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::Liking
+impl serde_core::ser::Serialize for formiga_home_contract::Liking
+pub fn formiga_home_contract::Liking::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Liking
+pub fn formiga_home_contract::Liking::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Liking
+impl core::marker::Send for formiga_home_contract::Liking
+impl core::marker::Sync for formiga_home_contract::Liking
+impl core::marker::Unpin for formiga_home_contract::Liking
+impl core::marker::UnsafeUnpin for formiga_home_contract::Liking
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Liking
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Liking
+pub struct formiga_home_contract::Memento
+pub formiga_home_contract::Memento::by: core::option::Option<formiga_travel::ids::TravelerId>
+pub formiga_home_contract::Memento::inks: alloc::vec::Vec<formiga_home_contract::Ink>
+pub formiga_home_contract::Memento::kind: formiga_home_contract::MementoKind
+pub formiga_home_contract::Memento::made_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::Memento::of: alloc::vec::Vec<formiga_travel::ids::TravelerId>
+pub formiga_home_contract::Memento::serial: u16
+impl formiga_home_contract::Memento
+pub fn formiga_home_contract::Memento::id(&self, formiga_travel::ids::TravelerId) -> formiga_home_contract::DisplayId
+impl core::clone::Clone for formiga_home_contract::Memento
+pub fn formiga_home_contract::Memento::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Memento
+impl core::cmp::PartialEq for formiga_home_contract::Memento
+pub fn formiga_home_contract::Memento::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Memento
+pub fn formiga_home_contract::Memento::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::Memento
+impl serde_core::ser::Serialize for formiga_home_contract::Memento
+pub fn formiga_home_contract::Memento::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Memento
+pub fn formiga_home_contract::Memento::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Memento
+impl core::marker::Send for formiga_home_contract::Memento
+impl core::marker::Sync for formiga_home_contract::Memento
+impl core::marker::Unpin for formiga_home_contract::Memento
+impl core::marker::UnsafeUnpin for formiga_home_contract::Memento
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Memento
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Memento
+pub struct formiga_home_contract::Neighbour
+pub formiga_home_contract::Neighbour::keeper: formiga_travel::ids::TravelerId
+pub formiga_home_contract::Neighbour::name: alloc::string::String
+pub formiga_home_contract::Neighbour::slot: u8
+impl core::clone::Clone for formiga_home_contract::Neighbour
+pub fn formiga_home_contract::Neighbour::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Neighbour
+impl core::cmp::PartialEq for formiga_home_contract::Neighbour
+pub fn formiga_home_contract::Neighbour::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Neighbour
+pub fn formiga_home_contract::Neighbour::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::Neighbour
+impl serde_core::ser::Serialize for formiga_home_contract::Neighbour
+pub fn formiga_home_contract::Neighbour::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Neighbour
+pub fn formiga_home_contract::Neighbour::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Neighbour
+impl core::marker::Send for formiga_home_contract::Neighbour
+impl core::marker::Sync for formiga_home_contract::Neighbour
+impl core::marker::Unpin for formiga_home_contract::Neighbour
+impl core::marker::UnsafeUnpin for formiga_home_contract::Neighbour
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Neighbour
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Neighbour
+pub struct formiga_home_contract::PlacedDisplay
+pub formiga_home_contract::PlacedDisplay::item: formiga_home_contract::DisplayId
+pub formiga_home_contract::PlacedDisplay::spot: formiga_home_contract::Spot
+impl core::clone::Clone for formiga_home_contract::PlacedDisplay
+pub fn formiga_home_contract::PlacedDisplay::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::PlacedDisplay
+impl core::cmp::PartialEq for formiga_home_contract::PlacedDisplay
+pub fn formiga_home_contract::PlacedDisplay::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::PlacedDisplay
+pub fn formiga_home_contract::PlacedDisplay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::PlacedDisplay
+impl serde_core::ser::Serialize for formiga_home_contract::PlacedDisplay
+pub fn formiga_home_contract::PlacedDisplay::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::PlacedDisplay
+pub fn formiga_home_contract::PlacedDisplay::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::PlacedDisplay
+impl core::marker::Send for formiga_home_contract::PlacedDisplay
+impl core::marker::Sync for formiga_home_contract::PlacedDisplay
+impl core::marker::Unpin for formiga_home_contract::PlacedDisplay
+impl core::marker::UnsafeUnpin for formiga_home_contract::PlacedDisplay
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::PlacedDisplay
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::PlacedDisplay
+pub struct formiga_home_contract::PlacedPiece
+pub formiga_home_contract::PlacedPiece::piece: formiga_home_contract::CatalogId
+pub formiga_home_contract::PlacedPiece::turn: u8
+pub formiga_home_contract::PlacedPiece::uid: u16
+pub formiga_home_contract::PlacedPiece::x: u8
+pub formiga_home_contract::PlacedPiece::y: u8
+impl core::clone::Clone for formiga_home_contract::PlacedPiece
+pub fn formiga_home_contract::PlacedPiece::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::PlacedPiece
+impl core::cmp::PartialEq for formiga_home_contract::PlacedPiece
+pub fn formiga_home_contract::PlacedPiece::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::PlacedPiece
+pub fn formiga_home_contract::PlacedPiece::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::PlacedPiece
+impl serde_core::ser::Serialize for formiga_home_contract::PlacedPiece
+pub fn formiga_home_contract::PlacedPiece::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::PlacedPiece
+pub fn formiga_home_contract::PlacedPiece::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::PlacedPiece
+impl core::marker::Send for formiga_home_contract::PlacedPiece
+impl core::marker::Sync for formiga_home_contract::PlacedPiece
+impl core::marker::Unpin for formiga_home_contract::PlacedPiece
+impl core::marker::UnsafeUnpin for formiga_home_contract::PlacedPiece
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::PlacedPiece
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::PlacedPiece
+pub struct formiga_home_contract::PlanPoint
+pub formiga_home_contract::PlanPoint::x: i8
+pub formiga_home_contract::PlanPoint::y: i8
+impl core::clone::Clone for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::PlanPoint
+impl core::cmp::Ord for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_home_contract::PlanPoint
+impl core::marker::StructuralPartialEq for formiga_home_contract::PlanPoint
+impl serde_core::ser::Serialize for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::PlanPoint
+pub fn formiga_home_contract::PlanPoint::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::PlanPoint
+impl core::marker::Send for formiga_home_contract::PlanPoint
+impl core::marker::Sync for formiga_home_contract::PlanPoint
+impl core::marker::Unpin for formiga_home_contract::PlanPoint
+impl core::marker::UnsafeUnpin for formiga_home_contract::PlanPoint
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::PlanPoint
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::PlanPoint
+pub struct formiga_home_contract::Project
+pub formiga_home_contract::Project::project: formiga_home_contract::CatalogId
+pub formiga_home_contract::Project::stages: alloc::vec::Vec<formiga_home_contract::StageDone>
+impl core::clone::Clone for formiga_home_contract::Project
+pub fn formiga_home_contract::Project::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Project
+impl core::cmp::PartialEq for formiga_home_contract::Project
+pub fn formiga_home_contract::Project::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Project
+pub fn formiga_home_contract::Project::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::Project
+impl serde_core::ser::Serialize for formiga_home_contract::Project
+pub fn formiga_home_contract::Project::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Project
+pub fn formiga_home_contract::Project::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Project
+impl core::marker::Send for formiga_home_contract::Project
+impl core::marker::Sync for formiga_home_contract::Project
+impl core::marker::Unpin for formiga_home_contract::Project
+impl core::marker::UnsafeUnpin for formiga_home_contract::Project
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Project
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Project
+pub struct formiga_home_contract::RoomLayout
+pub formiga_home_contract::RoomLayout::depth: u8
+pub formiga_home_contract::RoomLayout::displays: alloc::vec::Vec<formiga_home_contract::PlacedDisplay>
+pub formiga_home_contract::RoomLayout::doors: alloc::vec::Vec<formiga_home_contract::Door>
+pub formiga_home_contract::RoomLayout::floor: formiga_home_contract::CatalogId
+pub formiga_home_contract::RoomLayout::kind: core::option::Option<formiga_home_contract::CatalogId>
+pub formiga_home_contract::RoomLayout::pieces: alloc::vec::Vec<formiga_home_contract::PlacedPiece>
+pub formiga_home_contract::RoomLayout::plan: core::option::Option<formiga_home_contract::PlanPoint>
+pub formiga_home_contract::RoomLayout::wall: formiga_home_contract::CatalogId
+pub formiga_home_contract::RoomLayout::width: u8
+impl formiga_home_contract::RoomLayout
+pub fn formiga_home_contract::RoomLayout::has_door(&self, formiga_home_contract::WallSide, u8) -> bool
+pub fn formiga_home_contract::RoomLayout::piece(&self, u16) -> core::option::Option<&formiga_home_contract::PlacedPiece>
+pub fn formiga_home_contract::RoomLayout::plan_extent(&self) -> core::option::Option<(i32, i32, i32, i32)>
+pub fn formiga_home_contract::RoomLayout::wall_length(&self, formiga_home_contract::WallSide) -> u8
+impl core::clone::Clone for formiga_home_contract::RoomLayout
+pub fn formiga_home_contract::RoomLayout::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::RoomLayout
+impl core::cmp::PartialEq for formiga_home_contract::RoomLayout
+pub fn formiga_home_contract::RoomLayout::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::RoomLayout
+pub fn formiga_home_contract::RoomLayout::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::RoomLayout
+impl serde_core::ser::Serialize for formiga_home_contract::RoomLayout
+pub fn formiga_home_contract::RoomLayout::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::RoomLayout
+pub fn formiga_home_contract::RoomLayout::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::RoomLayout
+impl core::marker::Send for formiga_home_contract::RoomLayout
+impl core::marker::Sync for formiga_home_contract::RoomLayout
+impl core::marker::Unpin for formiga_home_contract::RoomLayout
+impl core::marker::UnsafeUnpin for formiga_home_contract::RoomLayout
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::RoomLayout
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::RoomLayout
+pub struct formiga_home_contract::SessionSeal
+pub formiga_home_contract::SessionSeal::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_home_contract::SessionSeal::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_home_contract::SessionSeal::snapshot_sha256: alloc::string::String
+pub formiga_home_contract::SessionSeal::state_sha256: alloc::string::String
+impl formiga_home_contract::SessionSeal
+pub fn formiga_home_contract::SessionSeal::of(&formiga_home_contract::HomeSnapshot, &[u8], &[u8]) -> Self
+impl core::clone::Clone for formiga_home_contract::SessionSeal
+pub fn formiga_home_contract::SessionSeal::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::SessionSeal
+impl core::cmp::PartialEq for formiga_home_contract::SessionSeal
+pub fn formiga_home_contract::SessionSeal::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::SessionSeal
+pub fn formiga_home_contract::SessionSeal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::SessionSeal
+impl core::marker::Freeze for formiga_home_contract::SessionSeal
+impl core::marker::Send for formiga_home_contract::SessionSeal
+impl core::marker::Sync for formiga_home_contract::SessionSeal
+impl core::marker::Unpin for formiga_home_contract::SessionSeal
+impl core::marker::UnsafeUnpin for formiga_home_contract::SessionSeal
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::SessionSeal
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::SessionSeal
+pub struct formiga_home_contract::StageDone
+pub formiga_home_contract::StageDone::at_utc: time::offset_date_time::OffsetDateTime
+impl core::clone::Clone for formiga_home_contract::StageDone
+pub fn formiga_home_contract::StageDone::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::StageDone
+impl core::cmp::PartialEq for formiga_home_contract::StageDone
+pub fn formiga_home_contract::StageDone::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::StageDone
+pub fn formiga_home_contract::StageDone::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::StageDone
+impl serde_core::ser::Serialize for formiga_home_contract::StageDone
+pub fn formiga_home_contract::StageDone::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::StageDone
+pub fn formiga_home_contract::StageDone::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::StageDone
+impl core::marker::Send for formiga_home_contract::StageDone
+impl core::marker::Sync for formiga_home_contract::StageDone
+impl core::marker::Unpin for formiga_home_contract::StageDone
+impl core::marker::UnsafeUnpin for formiga_home_contract::StageDone
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::StageDone
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::StageDone
+pub struct formiga_home_contract::Tally
+pub formiga_home_contract::Tally::count: u32
+pub formiga_home_contract::Tally::what: formiga_home_contract::CatalogId
+impl core::clone::Clone for formiga_home_contract::Tally
+pub fn formiga_home_contract::Tally::clone(&self) -> Self
+impl core::cmp::Eq for formiga_home_contract::Tally
+impl core::cmp::PartialEq for formiga_home_contract::Tally
+pub fn formiga_home_contract::Tally::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_home_contract::Tally
+pub fn formiga_home_contract::Tally::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_home_contract::Tally
+impl serde_core::ser::Serialize for formiga_home_contract::Tally
+pub fn formiga_home_contract::Tally::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_home_contract::Tally
+pub fn formiga_home_contract::Tally::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_home_contract::Tally
+impl core::marker::Send for formiga_home_contract::Tally
+impl core::marker::Sync for formiga_home_contract::Tally
+impl core::marker::Unpin for formiga_home_contract::Tally
+impl core::marker::UnsafeUnpin for formiga_home_contract::Tally
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_home_contract::Tally
+impl core::panic::unwind_safe::UnwindSafe for formiga_home_contract::Tally
+pub const formiga_home_contract::ACK_FILE: &str
+pub const formiga_home_contract::ACK_FORMAT: &str
+pub const formiga_home_contract::HOME_FORMAT_VERSION: u32
+pub const formiga_home_contract::INDOORS_FILE: &str
+pub const formiga_home_contract::INDOORS_FORMAT: &str
+pub const formiga_home_contract::LAUNCH_ARGUMENT: &str
+pub const formiga_home_contract::RECALL_FILE: &str
+pub const formiga_home_contract::RECALL_FORMAT: &str
+pub const formiga_home_contract::RECEIPT_FILE: &str
+pub const formiga_home_contract::RECEIPT_FORMAT: &str
+pub const formiga_home_contract::RESULT_FILE: &str
+pub const formiga_home_contract::RESULT_FORMAT: &str
+pub const formiga_home_contract::SNAPSHOT_FILE: &str
+pub const formiga_home_contract::SNAPSHOT_FORMAT: &str
+pub const formiga_home_contract::STATE_FILE: &str
+pub const formiga_home_contract::STATE_FORMAT: &str
+pub trait formiga_home_contract::HomeDocument: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
+pub const formiga_home_contract::HomeDocument::FORMAT: &'static str
+pub const formiga_home_contract::HomeDocument::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeDocument::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeAck
+pub const formiga_home_contract::HomeAck::FORMAT: &'static str
+pub const formiga_home_contract::HomeAck::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeAck::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeIndoors
+pub const formiga_home_contract::HomeIndoors::FORMAT: &'static str
+pub const formiga_home_contract::HomeIndoors::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeIndoors::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeRecall
+pub const formiga_home_contract::HomeRecall::FORMAT: &'static str
+pub const formiga_home_contract::HomeRecall::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeRecall::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeReceipt
+pub const formiga_home_contract::HomeReceipt::FORMAT: &'static str
+pub const formiga_home_contract::HomeReceipt::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeReceipt::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeResult
+pub const formiga_home_contract::HomeResult::FORMAT: &'static str
+pub const formiga_home_contract::HomeResult::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeResult::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeSnapshot
+pub const formiga_home_contract::HomeSnapshot::FORMAT: &'static str
+pub const formiga_home_contract::HomeSnapshot::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeSnapshot::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+impl formiga_home_contract::HomeDocument for formiga_home_contract::HomeState
+pub const formiga_home_contract::HomeState::FORMAT: &'static str
+pub const formiga_home_contract::HomeState::MAX_BYTES: u64
+pub fn formiga_home_contract::HomeState::validate(&self) -> core::result::Result<(), formiga_home_contract::HomeError>
+pub fn formiga_home_contract::accept_result(&formiga_home_contract::SessionSeal, &formiga_home_contract::HomeSnapshot, &formiga_home_contract::HomeState, &formiga_home_contract::HomeResult) -> formiga_home_contract::Accepted
+pub fn formiga_home_contract::colony_key(&[u8; 32]) -> alloc::string::String
+pub fn formiga_home_contract::decode<T: formiga_home_contract::HomeDocument>(&[u8]) -> core::result::Result<T, formiga_home_contract::HomeError>
+pub fn formiga_home_contract::encode<T: formiga_home_contract::HomeDocument>(&T) -> core::result::Result<alloc::vec::Vec<u8>, formiga_home_contract::HomeError>
+pub fn formiga_home_contract::find_modes(u8) -> alloc::vec::Vec<formiga_home_contract::DisplayMode>
+pub fn formiga_home_contract::likely_visitors(&formiga_core::model::save::SaveFile, formiga_core::model::creature::CreatureId) -> alloc::vec::Vec<formiga_core::model::creature::CreatureId>
+pub fn formiga_home_contract::project_household(&formiga_core::model::save::SaveFile, formiga_core::model::creature::CreatureId, &[formiga_core::model::creature::CreatureId], &[formiga_home_contract::HomeCapability], formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, &str) -> core::result::Result<formiga_home_contract::HomeSnapshot, formiga_home_contract::ProjectionError>
+pub fn formiga_home_contract::read_bounded(&std::path::Path, u64) -> core::result::Result<alloc::vec::Vec<u8>, formiga_home_contract::HomeError>
+pub fn formiga_home_contract::read_document<T: formiga_home_contract::HomeDocument>(&std::path::Path) -> core::result::Result<(T, alloc::vec::Vec<u8>), formiga_home_contract::HomeError>
+pub fn formiga_home_contract::souvenir_modes(formiga_core::souvenirs::Souvenir) -> alloc::vec::Vec<formiga_home_contract::DisplayMode>
+pub fn formiga_home_contract::write_document<T: formiga_home_contract::HomeDocument>(&std::path::Path, &T) -> core::result::Result<alloc::vec::Vec<u8>, formiga_home_contract::HomeError>

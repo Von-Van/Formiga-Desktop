@@ -8,12 +8,15 @@
 #
 #   scripts/public-api.sh --update
 #
-# Needs cargo-public-api (`cargo install cargo-public-api --locked`) and a nightly toolchain
-# (`rustup toolchain install nightly --profile minimal`), which it uses for rustdoc's JSON output.
+# Needs cargo-public-api 0.52.0 (`cargo install cargo-public-api --locked --version 0.52.0`) and
+# the nightly toolchain it reads rustdoc's JSON from
+# (`rustup toolchain install nightly-2026-10-16 --profile minimal`). Both are pinned, since a newer
+# nightly can change how rustdoc describes the same API; move them together, with --update.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+TOOLCHAIN="nightly-2026-10-16"
 CRATES="formiga-expansion-rulebook formiga-travel formiga-home-contract formiga-farm-contract formiga-battle-contract"
 UPDATE=0
 if [ "${1:-}" = "--update" ]; then
@@ -25,7 +28,8 @@ mkdir -p target/public-api
 changed=0
 for crate in $CRATES; do
     snapshot="crates/$crate/public-api.txt"
-    listed=$(cargo public-api --manifest-path "crates/$crate/Cargo.toml" --simplified --color never)
+    listed=$(cargo public-api --toolchain "$TOOLCHAIN" --manifest-path "crates/$crate/Cargo.toml" \
+        --simplified --color never)
     printf '%s\n' "$listed" > "target/public-api/$crate.txt"
     if [ "$UPDATE" = 1 ]; then
         printf '%s\n' "$listed" > "$snapshot"
