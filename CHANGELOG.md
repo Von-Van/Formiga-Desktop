@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- A colony backup can no longer be restored while the colony is away in Formiga Hill or Formiga
+  Battle. The restored colony used to keep that trip's souvenirs or that match's result, journal
+  lines and keepsakes, naming companions it never had; the About page now says to restore once
+  the colony is home.
+
 ## [0.67.11] - 2026-10-16
 
 Released alongside Formiga Hill 0.67.11, Formiga Home 0.67.11 and Formiga Battle 0.67.12, which are

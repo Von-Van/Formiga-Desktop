@@ -2144,7 +2144,8 @@ refuses a sculpted form ([Sculpted forms](#sculpted-forms-save-v29)). A missing 
 its backup; a corrupt primary is preserved before repair, without rotating over a valid backup. If
 both files fail, the host disables writes and presents recovery choices. Explicit restores and
 resets preserve uniquely named copies; snapshot imports validate bounded input before confirmation
-and replacement.
+and replacement. A restore waits while the colony is away in Hill or Battle, since the app it is in
+answers with a result for the colony that left.
 
 
 ### Geometry attention and local approaches
