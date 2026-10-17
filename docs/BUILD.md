@@ -165,8 +165,9 @@ cargo run --release -p formiga-tools -- tick-bench
 scripts/measure-macos.sh --state "four moving, busy desktop" --build "v0.58.0" --colony 4
 ```
 
-`tick-bench` times `World::tick` over deterministic synthetic desktops with one and four creatures,
-so running it before and after a change is a like-for-like comparison of the simulation's own cost.
+`tick-bench` times `World::tick` over deterministic synthetic desktops with one, four and six
+creatures — quiet, busy with a moving cursor, gathered at home, with a visitor, and paused — so
+running it before and after a change is a like-for-like comparison of the simulation's own cost.
 It must be built in release to mean anything. `measure-macos.sh` samples a running copy of the app
 for the procedure in `PERFORMANCE.md` and prints a row for that document's table; it needs no
 sudo and no dependencies. The Windows equivalents are `Get-Counter '\Process(formiga)\% Processor

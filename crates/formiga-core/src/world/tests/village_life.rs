@@ -813,6 +813,11 @@ fn a_find_at_home_goes_in_the_scrapbook() {
                 )
             })
             .count();
+        // One find presented and kept is what this asks for; the rest of the run would only
+        // look for another.
+        if presented > 0 && world.save.companion.scrapbook.len() > before {
+            break;
+        }
     }
     assert!(presented > 0, "nothing turned up about the village");
     assert!(world.save.companion.scrapbook.len() > before);
