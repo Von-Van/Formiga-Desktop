@@ -10,6 +10,12 @@ All notable changes are documented here.
   Battle. The restored colony used to keep that trip's souvenirs or that match's result, journal
   lines and keepsakes, naming companions it never had; the About page now says to restore once
   the colony is home.
+- The daily update check also runs while Formiga keeps running, not only as it starts, so a
+  colony left on for days still hears of a new release; one found that way shows in the tray and
+  on the About page without opening the notebook. A check made offline is tried again an hour
+  later instead of the next day. A download that fails part way no longer leaves up to 250 MB
+  behind until the next day's start, and the choice to turn checks off can no longer be lost to a
+  crash while it is written.
 
 ## [0.67.11] - 2026-10-16
 

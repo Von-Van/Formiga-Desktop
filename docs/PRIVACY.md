@@ -11,7 +11,8 @@ Established hangouts may reinforce the existing coarse preferred desktop region,
 the window identity or exact remembered spot in the save.
 
 The sole network feature is an assisted update checker. Automatic checks are enabled by default,
-can be disabled in **Settings → About**, and run no more than once per 24 hours when Formiga starts.
+can be disabled in **Settings → About**, and run no more than once per 24 hours, as Formiga starts or
+while it runs. A check that gets no answer, such as one made offline, is tried again an hour later.
 A manual check is also available from the tray and About screen. A check requests only public release
 metadata from `api.github.com` for the Formiga repository. If the user chooses to download an update,
 Formiga requests that release asset and its checksum from GitHub's release hosting. GitHub receives

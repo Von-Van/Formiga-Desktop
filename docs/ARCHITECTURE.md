@@ -65,7 +65,11 @@ depends on neither; `formiga-travel` depends on all three, and `formiga-home-con
    launch. If the save cannot be read, the unreadable files are kept, a fresh colony stands in, and
    Settings offers recovery choices. Last, it creates the tray icon and writes the save. On a first
    launch it opens Settings, and if a check is due it starts the daily update check on a worker
-   thread.
+   thread. A release that check finds opens the About page; the daily check made while Formiga
+   keeps running (`check_for_updates_when_due`, from `about_to_wait`) shows one in the tray and on
+   the About page only. Only an answer counts as checked: a check that got none is tried again an
+   hour later, and one that found a release waits for the owner. A download that fails part way
+   removes its `.part` file at once.
 
 ### The loop
 

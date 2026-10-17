@@ -12,6 +12,8 @@ const RELEASES_URL: &str =
     "https://api.github.com/repos/Von-Van/Formiga-Desktop/releases?per_page=10";
 const MAX_INSTALLER_BYTES: u64 = 250 * 1024 * 1024;
 const CHECK_INTERVAL_SECONDS: i64 = 24 * 60 * 60;
+/// How long after a check that did not get an answer the next automatic one may start.
+const RETRY_INTERVAL_SECONDS: i64 = 60 * 60;
 /// What an installer Formiga downloaded is called, after the version in the middle of the name.
 const INSTALLER_SUFFIXES: [&str; 2] = ["-macOS-universal.dmg", "-windows-x64.msi"];
 /// How long a part-finished download sits untouched before it counts as abandoned.
@@ -81,6 +83,12 @@ pub struct UpdateController {
     download_dir: PathBuf,
     preferences: UpdatePreferences,
     status: UpdateStatus,
+    /// When the last check started, answered or not; only an answer counts as checked, so this
+    /// spaces out the retries while the network is away.
+    last_attempt_unix: Option<i64>,
+    /// Whether the check under way opens the About page when it finds a release: yes for one the
+    /// owner asked for or one made as Formiga starts, no for the daily one while it runs.
+    reveal_found: bool,
 }
 
 impl UpdateController {
@@ -95,6 +103,8 @@ impl UpdateController {
             download_dir: data_dir.join("updates"),
             preferences,
             status: UpdateStatus::Idle,
+            last_attempt_unix: None,
+            reveal_found: true,
         };
         controller.clear_used_downloads();
         controller
@@ -124,22 +134,34 @@ impl UpdateController {
         self.save_preferences()
     }
 
+    /// Whether an automatic check is due: a day after the last one that got an answer, and an
+    /// hour after the last one that did not. A release already found waits for the owner instead.
     pub fn should_check_automatically(&self, now: OffsetDateTime) -> bool {
+        let now = now.unix_timestamp();
         self.preferences.automatic_checks
             && !matches!(
                 self.status,
-                UpdateStatus::Checking | UpdateStatus::Downloading(_)
+                UpdateStatus::Checking
+                    | UpdateStatus::Available(_)
+                    | UpdateStatus::Downloading(_)
+                    | UpdateStatus::Ready(_)
             )
-            && self.preferences.last_checked_unix.is_none_or(|last| {
-                now.unix_timestamp().saturating_sub(last) >= CHECK_INTERVAL_SECONDS
-            })
+            && self
+                .preferences
+                .last_checked_unix
+                .is_none_or(|last| now.saturating_sub(last) >= CHECK_INTERVAL_SECONDS)
+            && self
+                .last_attempt_unix
+                .is_none_or(|last| now.saturating_sub(last) >= RETRY_INTERVAL_SECONDS)
     }
 
     pub fn status(&self) -> &UpdateStatus {
         &self.status
     }
 
-    pub fn begin_check(&mut self) -> bool {
+    /// Starts a check unless one or a download is under way. `reveal` says whether a release it
+    /// finds should open the About page.
+    pub fn begin_check(&mut self, reveal: bool, now: OffsetDateTime) -> bool {
         if matches!(
             self.status,
             UpdateStatus::Checking | UpdateStatus::Downloading(_)
@@ -147,19 +169,29 @@ impl UpdateController {
             return false;
         }
         self.status = UpdateStatus::Checking;
+        self.last_attempt_unix = Some(now.unix_timestamp());
+        self.reveal_found = reveal;
         true
     }
 
-    pub fn finish_check(&mut self, result: Result<Option<UpdateRelease>, String>) -> bool {
-        let now = OffsetDateTime::now_utc().unix_timestamp();
-        self.preferences.last_checked_unix = Some(now);
-        if let Err(error) = self.save_preferences() {
-            tracing::warn!(%error, "could not persist update-check time");
+    /// Takes in a check's answer, returning whether it should open the About page. Only an answer
+    /// counts as checked: one that failed is tried again within the hour rather than tomorrow.
+    pub fn finish_check(
+        &mut self,
+        result: Result<Option<UpdateRelease>, String>,
+        now: OffsetDateTime,
+    ) -> bool {
+        let now = now.unix_timestamp();
+        if result.is_ok() {
+            self.preferences.last_checked_unix = Some(now);
+            if let Err(error) = self.save_preferences() {
+                tracing::warn!(%error, "could not persist update-check time");
+            }
         }
         match result {
             Ok(Some(release)) => {
                 self.status = UpdateStatus::Available(release);
-                true
+                self.reveal_found
             }
             Ok(None) => {
                 self.status = UpdateStatus::UpToDate {
@@ -210,9 +242,8 @@ impl UpdateController {
         let mut file = File::create(&temporary)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
-        if self.preferences_path.exists() {
-            fs::remove_file(&self.preferences_path)?;
-        }
+        // A rename replaces the old file in one step on macOS and Windows alike, so a crash
+        // never leaves the choice to stop checking missing, and so turned back on.
         fs::rename(temporary, &self.preferences_path)?;
         Ok(())
     }
@@ -352,7 +383,37 @@ pub fn download_update(release: UpdateRelease, directory: PathBuf) -> Result<Dow
         .call()
         .context("download update installer")?;
     let mut reader = response.body_mut().as_reader();
-    let mut file = File::create(&temporary)?;
+    receive_installer(&mut reader, &temporary, release.asset.size, &expected)?;
+    fs::rename(&temporary, &final_path)?;
+    Ok(DownloadedUpdate {
+        release,
+        path: final_path,
+    })
+}
+
+/// Writes an installer to `temporary` as it arrives, checking its size and digest. One that fails
+/// part way is removed rather than left for the day it takes to count as abandoned: an installer
+/// can be a few hundred megabytes.
+fn receive_installer(
+    reader: &mut impl Read,
+    temporary: &Path,
+    size: u64,
+    expected: &str,
+) -> Result<()> {
+    let result = write_installer(reader, temporary, size, expected);
+    if result.is_err() {
+        let _ = fs::remove_file(temporary);
+    }
+    result
+}
+
+fn write_installer(
+    reader: &mut impl Read,
+    temporary: &Path,
+    size: u64,
+    expected: &str,
+) -> Result<()> {
+    let mut file = File::create(temporary)?;
     let mut hasher = Sha256::new();
     let mut total = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
@@ -362,31 +423,23 @@ pub fn download_update(release: UpdateRelease, directory: PathBuf) -> Result<Dow
             break;
         }
         total = total.saturating_add(read as u64);
-        if total > MAX_INSTALLER_BYTES || total > release.asset.size.saturating_add(1024) {
+        if total > MAX_INSTALLER_BYTES || total > size.saturating_add(1024) {
             bail!("download exceeded the advertised installer size");
         }
         hasher.update(&buffer[..read]);
         file.write_all(&buffer[..read])?;
     }
     file.sync_all()?;
-    if total != release.asset.size {
+    if total != size {
         bail!(
-            "downloaded installer size did not match GitHub metadata (expected {}, received {total})",
-            release.asset.size
+            "downloaded installer size did not match GitHub metadata (expected {size}, received {total})"
         );
     }
     let actual = format!("{:x}", hasher.finalize());
-    if !actual.eq_ignore_ascii_case(&expected) {
+    if !actual.eq_ignore_ascii_case(expected) {
         bail!("downloaded installer failed SHA-256 verification");
     }
-    if final_path.exists() {
-        fs::remove_file(&final_path)?;
-    }
-    fs::rename(&temporary, &final_path)?;
-    Ok(DownloadedUpdate {
-        release,
-        path: final_path,
-    })
+    Ok(())
 }
 
 /// The version an installer would install, for the names Formiga's own downloads carry and no
@@ -656,13 +709,98 @@ mod tests {
 
     #[test]
     fn automatic_check_is_throttled_for_twenty_four_hours() {
-        let temporary =
-            std::env::temp_dir().join(format!("formiga-updater-test-{}", std::process::id()));
-        let mut controller = UpdateController::load(&temporary);
+        let directory = scratch("daily");
+        let mut controller = UpdateController::load(&directory);
         let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
         assert!(controller.should_check_automatically(now));
-        controller.preferences.last_checked_unix = Some(now.unix_timestamp());
+        assert!(controller.begin_check(false, now));
+        assert!(!controller.finish_check(Ok(None), now));
         assert!(!controller.should_check_automatically(now + time::Duration::hours(23)));
         assert!(controller.should_check_automatically(now + time::Duration::hours(24)));
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_check_that_gets_no_answer_is_tried_again_within_the_hour() {
+        let directory = scratch("retry");
+        let mut controller = UpdateController::load(&directory);
+        let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
+        assert!(controller.begin_check(true, now));
+        controller.finish_check(Err("offline".into()), now);
+
+        assert_eq!(controller.preferences.last_checked_unix, None);
+        assert!(!directory.join("updates.json").exists());
+        assert!(!controller.should_check_automatically(now + time::Duration::minutes(59)));
+        assert!(controller.should_check_automatically(now + time::Duration::hours(1)));
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_release_found_in_the_background_waits_in_the_tray() {
+        let directory = scratch("reveal");
+        let mut controller = UpdateController::load(&directory);
+        let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
+        let release = || {
+            Some(UpdateRelease {
+                version: "99.0.0".into(),
+                notes: String::new(),
+                page_url: "https://example.invalid/release".into(),
+                prerelease: false,
+                asset: UpdateAsset {
+                    name: "Formiga-99.0.0-macOS-universal.dmg".into(),
+                    download_url: "https://example.invalid/installer".into(),
+                    size: 1024,
+                    sha256: Some("b".repeat(64)),
+                    checksum_url: None,
+                },
+            })
+        };
+
+        assert!(controller.begin_check(false, now));
+        assert!(!controller.finish_check(Ok(release()), now));
+        assert!(matches!(controller.status(), UpdateStatus::Available(_)));
+        // Found, it waits for the owner rather than being looked for again.
+        assert!(!controller.should_check_automatically(now + time::Duration::days(2)));
+
+        assert!(controller.begin_check(true, now));
+        assert!(controller.finish_check(Ok(release()), now));
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn the_choice_to_stop_checking_is_kept_when_written_again() {
+        let directory = scratch("preferences");
+        let mut controller = UpdateController::load(&directory);
+        controller.set_automatic_checks(false).unwrap();
+        controller.set_automatic_checks(false).unwrap();
+
+        assert!(!UpdateController::load(&directory).automatic_checks());
+        assert!(!directory.join("updates.json.tmp").exists());
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn an_installer_that_fails_part_way_leaves_nothing_behind() {
+        let directory = scratch("receive");
+        let temporary = directory.join("Formiga-9.9.9-macOS-universal.dmg.part");
+        let body = b"most of an installer";
+        let digest = format!("{:x}", Sha256::digest(body));
+
+        let short = receive_installer(&mut &body[..], &temporary, 1_000, &digest);
+        assert!(short.is_err());
+        assert!(!temporary.exists());
+
+        let wrong = receive_installer(
+            &mut &body[..],
+            &temporary,
+            body.len() as u64,
+            &"0".repeat(64),
+        );
+        assert!(wrong.is_err());
+        assert!(!temporary.exists());
+
+        receive_installer(&mut &body[..], &temporary, body.len() as u64, &digest).unwrap();
+        assert_eq!(fs::read(&temporary).unwrap(), body);
+        fs::remove_dir_all(&directory).unwrap();
     }
 }

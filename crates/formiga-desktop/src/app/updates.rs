@@ -3,8 +3,25 @@
 use super::*;
 
 impl FormigaApp {
+    /// A check the owner asked for, or the one as Formiga starts: a release it finds opens the
+    /// About page.
     pub(super) fn start_update_check(&mut self) {
-        if !self.updates.begin_check() {
+        self.begin_update_check(true);
+    }
+
+    /// The daily check while Formiga runs, when one is due. A release it finds is shown in the tray
+    /// and on the About page, without opening the notebook over whatever the owner is doing.
+    pub(super) fn check_for_updates_when_due(&mut self) {
+        if self
+            .updates
+            .should_check_automatically(OffsetDateTime::now_utc())
+        {
+            self.begin_update_check(false);
+        }
+    }
+
+    fn begin_update_check(&mut self, reveal: bool) {
+        if !self.updates.begin_check(reveal, OffsetDateTime::now_utc()) {
             return;
         }
         self.sync_update_ui();
@@ -35,7 +52,9 @@ impl FormigaApp {
 
     pub(super) fn handle_update_event(&mut self, event_loop: &ActiveEventLoop, event: UpdateEvent) {
         let reveal = match event {
-            UpdateEvent::CheckFinished(result) => self.updates.finish_check(result),
+            UpdateEvent::CheckFinished(result) => {
+                self.updates.finish_check(result, OffsetDateTime::now_utc())
+            }
             UpdateEvent::DownloadFinished(result) => {
                 self.updates.finish_download(result);
                 true

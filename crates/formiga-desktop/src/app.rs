@@ -1207,6 +1207,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             tracing::error!(%error, "could not refresh displays");
         }
         let ticked = self.tick();
+        self.check_for_updates_when_due();
         if let (Some(tray), Some(world)) = (&mut self.tray, &self.world) {
             tray.sync_quiet(world.save.companion.quiet_until.is_some());
             tray.sync_news(world.save.companion.unread().next().is_some());
