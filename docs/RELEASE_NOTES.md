@@ -4,6 +4,16 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.67.14
+
+A round of fixes to keep your colony safe. Formiga now checks for updates every day it runs,
+not only when it starts, and an update that couldn't be fetched offline is tried again within the
+hour. A colony backup can't be restored while the colony is away in Hill or Battle, a damaged save
+is repaired as it loads, companions grow sleepy by your own clock instead of UTC, and only one
+copy of Formiga runs on a colony at a time. Update Formiga Hill, Formiga Home and Formiga Battle
+to 0.67.14 alongside: Battle paints its board, results and places in Formiga's own style, Home
+hands a visit back cleanly even after the clock was set back, and Hill keeps its files safer.
+
 ## New in 0.67.11
 
 A round of fixes. A trio in Formiga Battle whose members change during a session now keeps every
