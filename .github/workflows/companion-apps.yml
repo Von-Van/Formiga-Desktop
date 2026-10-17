@@ -1,0 +1,45 @@
+name: companion-apps
+
+# Formiga Hill, Home and Farm take Desktop's crates by release tag. Each job builds one of them on
+# this checkout's crates instead and runs its tests, the way `devtools/formiga validate --step
+# hill` does on a desk, so a change here that would break one shows up on the pull request rather
+# than at that app's next repin. Formiga Battle has no CI by choice; `formiga validate
+# --expansions` is where its tests meet a Desktop change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [Hill, Home, Farm]
+    name: Formiga ${{ matrix.app }} on this Desktop
+    runs-on: macos-14
+    steps:
+      # Side by side, as the toolkit looks for them: Formiga-Hill beside Formiga-Desktop.
+      - uses: actions/checkout@v4
+        with:
+          path: Formiga-Desktop
+      - uses: actions/checkout@v4
+        with:
+          repository: Von-Van/Formiga-${{ matrix.app }}
+          path: Formiga-${{ matrix.app }}
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.97.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.app }}
+          workspaces: Formiga-${{ matrix.app }} -> ../Formiga-Desktop/.dev/target
+      - name: Formiga ${{ matrix.app }}'s tests, built on this Desktop
+        shell: bash
+        env:
+          APP: ${{ matrix.app }}
+        run: python3 Formiga-Desktop/devtools/formiga.py validate --step "$(echo "$APP" | tr '[:upper:]' '[:lower:]')"

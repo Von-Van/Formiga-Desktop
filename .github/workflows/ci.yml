@@ -31,7 +31,51 @@ jobs:
           python-version: "3.9"
       - run: python -m unittest discover devtools/tests
 
+  # The public API of the crates Formiga Hill, Home, Farm and Battle build on by tag, against the
+  # copy kept beside each crate: see scripts/public-api.sh.
+  public-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.97.1
+      - run: rustup toolchain install nightly --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo install cargo-public-api --locked
+      - run: bash scripts/public-api.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-api
+          path: target/public-api/
+
+  # The installers are built on every push to main, and on a pull request only when it changes
+  # what goes into them: packaging, scripts, manifests, the toolchain, or the workflows. A change
+  # to the code alone is built and tested by `test` above on both systems.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.diff.outputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --name-only "$BASE" HEAD \
+              | grep -qE '^(packaging/|scripts/|LICENSE$|rust-toolchain\.toml$|\.github/workflows/)|(^|/)Cargo\.(toml|lock)$'; then
+            echo "package=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "package=false" >> "$GITHUB_OUTPUT"
+          fi
+
   package-macos:
+    needs: changes
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.package == 'true') }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +95,8 @@ jobs:
             dist/Formiga-*-macOS-universal.zip.sha256
 
   package-windows:
+    needs: changes
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.package == 'true') }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4

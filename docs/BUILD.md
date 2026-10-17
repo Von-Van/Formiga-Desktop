@@ -37,6 +37,23 @@ runs formatting, Clippy, and the tests on Windows for every push to `main` and e
 so get the change onto one of those and let it pass before tagging a release; a published tag is
 awkward to take back. A branch pushed on its own is not built.
 
+Alongside those tests, on the same pushes and pull requests:
+
+- `public-api` lists the public API of the crates the companion apps take from Desktop by tag
+  (`formiga-expansion-rulebook`, `formiga-travel` and the Home, Farm and Battle contracts) and fails
+  when one differs from the `public-api.txt` kept beside it. After a change that is meant, run
+  `scripts/public-api.sh --update` (it needs `cargo-public-api` and a nightly toolchain, which the
+  script names) and commit what it writes; the job also uploads what it found when it fails.
+- The installers (`package-macos`, `package-windows`) are built on every push to `main`, and on a
+  pull request only when it changes packaging, scripts, a `Cargo.toml` or `Cargo.lock`, the
+  toolchain, the licence or the workflows.
+- The `companion-apps` workflow checks out Formiga Hill, Home and Farm beside this checkout and runs
+  each one's tests on this checkout's crates, as `devtools/formiga validate --step hill` does on a
+  desk, so a change that would break one shows before that app repins. Formiga Battle has no CI by
+  choice and is checked with `formiga validate --expansions`.
+- The `advisories` workflow runs `cargo audit` against the RustSec database every Monday and on any
+  pull request that changes `Cargo.lock`.
+
 ## Trying a trip to Formiga Hill
 
 Formiga Hill is a separate application, but Desktop's side of a trip can be tried without it.
