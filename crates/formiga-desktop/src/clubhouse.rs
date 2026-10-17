@@ -192,6 +192,8 @@ pub struct Clubhouse {
     /// Formiga Farm as the notebook may offer it: nothing at all while it is not installed. Set
     /// by the app before every frame.
     pub formiga_farm: FormigaFarmView,
+    /// Formiga's other apps, as the About page lists them. Set by the app before every frame.
+    pub apps: Vec<AppListing>,
     /// The page being turned, while it turns, and the page shown last frame, to notice a new one.
     pub(crate) page_turn: Option<journal::PageTurn>,
     pub(crate) shown_page: Option<crate::settings::SettingsTab>,
@@ -218,6 +220,40 @@ pub struct FormigaFarmView {
     /// Whether it could be opened just now: nothing is open in it, and the colony is here.
     pub can_open: bool,
 }
+
+/// One of Formiga's other apps, as the About page lists it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AppListing {
+    pub name: &'static str,
+    /// What it is, in a sentence.
+    pub blurb: &'static str,
+    /// How it is opened from Formiga, in a sentence.
+    pub how: String,
+    /// Its version while it is installed, `Some(None)` when it does not say which.
+    pub installed: Option<Option<String>>,
+    /// A newer release than the one installed, as its version and the page it is on.
+    pub newer: Option<(String, String)>,
+    /// Whether it is listed while it is not installed, with where to get it. Formiga Farm is not
+    /// offered yet.
+    pub offered: bool,
+    /// What the list's button opens, and whether it can just now. Apps opened from somewhere
+    /// else, such as a house or a companion's page, have none.
+    pub open: Option<(AppOpen, bool)>,
+}
+
+/// What the About page's list of apps can open directly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppOpen {
+    /// Take the colony to Formiga Hill.
+    Hill,
+    /// Take the colony to Formiga Battle.
+    Battle,
+}
+
+/// Where Formiga's apps are downloaded.
+pub const DOWNLOADS_URL: &str = "https://www.formigaworld.com/#download";
+/// Where the website takes feedback.
+pub const FEEDBACK_URL: &str = "https://www.formigaworld.com/#feedback";
 
 /// What a companion's body is called: its sculpted form's plan, its recipe's body, or the family
 /// a look from before recipes belongs to.

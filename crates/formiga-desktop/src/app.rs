@@ -21,7 +21,8 @@ use crate::sticker_export::{
 };
 use crate::tray::{TrayAction, TrayState};
 use crate::updater::{
-    DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus, check_github, download_update,
+    CompanionRelease, DownloadedUpdate, UpdateController, UpdateRelease, UpdateStatus,
+    check_companion, check_github, download_update,
 };
 use anyhow::{Context, Result};
 use formiga_art::{AnimationSpec, BodyPresentation, MenuIcon};
@@ -61,6 +62,9 @@ use house::HouseLink;
 #[derive(Debug)]
 pub enum UserEvent {
     Menu(MenuEvent),
+    /// The pointer has come over the menu-bar or notification-area icon, as it does on its way
+    /// to opening the menu.
+    TrayHover,
     Update(UpdateEvent),
     /// A screen reader asking the notebook window for its contents, or to act on a control.
     AccessKit(egui_winit::accesskit_winit::Event),
@@ -84,6 +88,11 @@ impl From<egui_winit::accesskit_winit::Event> for UserEvent {
 pub enum UpdateEvent {
     CheckFinished(std::result::Result<Option<UpdateRelease>, String>),
     DownloadFinished(std::result::Result<DownloadedUpdate, String>),
+    /// The newest release of the companion app of this name, as the daily check found it.
+    CompanionChecked(
+        &'static str,
+        std::result::Result<Option<CompanionRelease>, String>,
+    ),
 }
 
 #[derive(Clone, Debug)]
@@ -154,6 +163,11 @@ pub struct FormigaApp {
     farm: FarmLink,
     /// Formiga Battle, if it is installed, and the match open in it, if there is one.
     battle: BattleLink,
+    /// The newest release of each installed companion app, by its name, as the last update check
+    /// found them. Runtime only.
+    companion_releases: BTreeMap<&'static str, CompanionRelease>,
+    /// When the companion apps were last looked for because the pointer came over the tray icon.
+    tray_looked: Option<Instant>,
 }
 
 impl FormigaApp {
@@ -201,6 +215,8 @@ impl FormigaApp {
             battle: BattleLink::new(&data_dir),
             data_dir,
             save_trouble: None,
+            companion_releases: BTreeMap::new(),
+            tray_looked: None,
         })
     }
 
@@ -967,6 +983,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::Menu(event) => self.handle_menu(event_loop, &event),
+            UserEvent::TrayHover => self.look_for_apps_from_the_tray(),
             UserEvent::Update(event) => self.handle_update_event(event_loop, event),
             UserEvent::Hill(event) => self.handle_hill_event(event),
             UserEvent::House(event) => self.handle_house_event(event),
@@ -1027,6 +1044,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             let mut outcome = None;
             let formiga_home = self.formiga_home_view();
             let formiga_farm = self.formiga_farm_view();
+            let apps = self.app_listings();
             if let Some(window) = &mut self.settings_window {
                 match &event {
                     WindowEvent::RedrawRequested => {
@@ -1038,6 +1056,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         window.clubhouse.recovery.save_trouble = self.save_trouble.clone();
                         window.clubhouse.formiga_home = formiga_home;
                         window.clubhouse.formiga_farm = formiga_farm;
+                        window.clubhouse.apps = apps;
                         window.clubhouse.shell.tour.menus_opened = self.menus_opened;
                         match window.render(
                             event_loop,

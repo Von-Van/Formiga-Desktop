@@ -34,7 +34,19 @@ impl Companion {
     }
 }
 
+/// How often the pointer coming over the tray icon may have the companion apps looked for again.
+const TRAY_LOOK_EVERY: Duration = Duration::from_secs(5);
+
 impl FormigaApp {
+    pub(super) fn slot(&self, app: Companion) -> &Slot {
+        match app {
+            Companion::Hill => &self.hill.slot,
+            Companion::Home => &self.house.slot,
+            Companion::Farm => &self.farm.slot,
+            Companion::Battle => &self.battle.slot,
+        }
+    }
+
     fn slot_mut(&mut self, app: Companion) -> &mut Slot {
         match app {
             Companion::Hill => &mut self.hill.slot,
@@ -82,6 +94,73 @@ impl FormigaApp {
         for app in Companion::ALL {
             self.check_for(app, false);
         }
+    }
+
+    /// Look for every companion app now, rather than at the next ten-minute look: as the notebook
+    /// opens, or the pointer comes over the tray icon. A visit under way keeps the app it
+    /// started with.
+    pub(super) fn look_for_apps_now(&mut self) {
+        for app in Companion::ALL {
+            self.check_for(app, true);
+        }
+    }
+
+    /// Look for every companion app again as the pointer comes over the tray icon, so one
+    /// installed a moment ago is in the menu by the time it opens. At most every few seconds,
+    /// however long the pointer lingers.
+    pub(super) fn look_for_apps_from_the_tray(&mut self) {
+        if self
+            .tray_looked
+            .is_some_and(|looked| looked.elapsed() < TRAY_LOOK_EVERY)
+        {
+            return;
+        }
+        self.tray_looked = Some(Instant::now());
+        self.look_for_apps_now();
+    }
+
+    /// The About page's list of Formiga's other apps: each with whether it is installed, whether
+    /// a newer one is out, and what its button can do just now.
+    pub(super) fn app_listings(&self) -> Vec<crate::clubhouse::AppListing> {
+        use crate::clubhouse::{AppListing, AppOpen};
+        let free = !self.colony_away()
+            && self.house.visit.open().is_none()
+            && !self.recovery_pending
+            && self.world.is_some();
+        Companion::ALL
+            .into_iter()
+            .map(|app| {
+                let expansion = app.expansion();
+                let installed = self
+                    .slot(app)
+                    .install
+                    .as_ref()
+                    .map(|install| install.version.clone());
+                let newer = self
+                    .companion_releases
+                    .get(expansion.name)
+                    .and_then(|release| {
+                        let version = installed.clone().flatten();
+                        crate::updater::companion_is_newer(release, version.as_deref())
+                            .then(|| (release.version.to_string(), release.page_url.clone()))
+                    });
+                let open = match app {
+                    Companion::Hill => Some((AppOpen::Hill, free)),
+                    Companion::Battle => Some((AppOpen::Battle, free)),
+                    // Home opens on a house, and Farm on a companion, both from the notebook.
+                    Companion::Home | Companion::Farm => None,
+                };
+                AppListing {
+                    name: expansion.name,
+                    blurb: expansion.listing.blurb,
+                    how: expansion.listing.how(),
+                    installed,
+                    newer,
+                    offered: expansion.releases.is_some(),
+                    open,
+                }
+            })
+            .collect()
     }
 
     /// As Desktop starts: look for each app now, and finish whatever visit to it a stop in the

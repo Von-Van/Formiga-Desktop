@@ -268,9 +268,80 @@ struct ApiAsset {
 }
 
 pub fn check_github() -> Result<Option<UpdateRelease>> {
+    select_update(fetch_releases(RELEASES_URL)?)
+}
+
+/// The newest release of one of Formiga's companion apps, as its releases page lists it: the
+/// highest version, not the first listed, since GitHub lists releases by their tags' commits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompanionRelease {
+    pub version: Version,
+    pub page_url: String,
+}
+
+/// Look up the newest full release of the app called `name` (`Formiga Hill`) whose installer for
+/// this platform is on `releases`' page. Nothing is downloaded: the owner is told it is out, and
+/// where to find it.
+pub fn check_companion(
+    name: &str,
+    releases: crate::expansion::Releases,
+) -> Result<Option<CompanionRelease>> {
+    let url = format!(
+        "https://api.github.com/repos/{}/releases?per_page=30",
+        releases.repo
+    );
+    Ok(newest_companion(
+        fetch_releases(&url)?,
+        name,
+        releases.tag_prefix,
+    ))
+}
+
+fn newest_companion(
+    releases: Vec<ApiRelease>,
+    name: &str,
+    tag_prefix: &str,
+) -> Option<CompanionRelease> {
+    let stem = name.replace(' ', "-");
+    releases
+        .into_iter()
+        .filter(|release| !release.draft && !release.prerelease)
+        .filter_map(|release| {
+            let version = Version::parse(release.tag_name.strip_prefix(tag_prefix)?).ok()?;
+            let installer = INSTALLER_SUFFIXES
+                .iter()
+                .find(|suffix| suffix.ends_with(PLATFORM_INSTALLER_EXTENSION))
+                .map(|suffix| format!("{stem}-{version}{suffix}"))?;
+            release
+                .assets
+                .iter()
+                .any(|asset| asset.name == installer)
+                .then(|| CompanionRelease {
+                    version,
+                    page_url: release.html_url,
+                })
+        })
+        .max_by(|a, b| a.version.cmp(&b.version))
+}
+
+/// What this platform's installers end in.
+#[cfg(target_os = "macos")]
+const PLATFORM_INSTALLER_EXTENSION: &str = ".dmg";
+#[cfg(not(target_os = "macos"))]
+const PLATFORM_INSTALLER_EXTENSION: &str = ".msi";
+
+/// Whether `release` is newer than the copy installed, which says it is `installed`. A copy that
+/// gives no version it can be compared by is never told it is behind.
+pub fn companion_is_newer(release: &CompanionRelease, installed: Option<&str>) -> bool {
+    installed
+        .and_then(|installed| parse_version(installed).ok())
+        .is_some_and(|installed| release.version > installed)
+}
+
+fn fetch_releases(url: &str) -> Result<Vec<ApiRelease>> {
     let agent = http_agent(Duration::from_secs(15));
     let body = agent
-        .get(RELEASES_URL)
+        .get(url)
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .header("User-Agent", concat!("Formiga/", env!("CARGO_PKG_VERSION")))
@@ -279,9 +350,7 @@ pub fn check_github() -> Result<Option<UpdateRelease>> {
         .body_mut()
         .read_to_string()
         .context("read GitHub release metadata")?;
-    let releases: Vec<ApiRelease> =
-        serde_json::from_str(&body).context("decode GitHub release metadata")?;
-    select_update(releases)
+    serde_json::from_str(&body).context("decode GitHub release metadata")
 }
 
 fn select_update(releases: Vec<ApiRelease>) -> Result<Option<UpdateRelease>> {
@@ -608,6 +677,43 @@ mod tests {
         let selected = select_update(releases).unwrap().unwrap();
         assert_eq!(selected.version, later.to_string());
         assert_eq!(selected.sha256_for_test(), "b".repeat(64));
+    }
+
+    #[test]
+    fn a_companion_apps_newest_release_is_its_highest_full_one_for_this_platform() {
+        let release = |tag: &str, prerelease: bool, files: &[&str]| ApiRelease {
+            tag_name: tag.into(),
+            html_url: format!("https://example.invalid/{tag}"),
+            body: None,
+            draft: false,
+            prerelease,
+            assets: files.iter().map(|name| asset(name, None)).collect(),
+        };
+        #[cfg(target_os = "macos")]
+        let installer = |version: &str| format!("Formiga-Battle-{version}-macOS-universal.dmg");
+        #[cfg(target_os = "windows")]
+        let installer = |version: &str| format!("Formiga-Battle-{version}-windows-x64.msi");
+        let releases = vec![
+            // Listed first, as GitHub listed battle-v0.67.9 above 0.67.13.
+            release("battle-v0.67.9", false, &[&installer("0.67.9")]),
+            release("battle-v0.67.13", false, &[&installer("0.67.13")]),
+            release("battle-v0.69.0", true, &[&installer("0.69.0")]),
+            release("battle-v0.68.1", false, &["Formiga-Battle-0.68.1.zip"]),
+            release("v0.70.0", false, &[&installer("0.70.0")]),
+        ];
+        let newest = newest_companion(releases, "Formiga Battle", "battle-v").unwrap();
+        assert_eq!(newest.version, Version::new(0, 67, 13));
+        assert_eq!(newest.page_url, "https://example.invalid/battle-v0.67.13");
+        assert!(newest_companion(Vec::new(), "Formiga Battle", "battle-v").is_none());
+
+        assert!(companion_is_newer(&newest, Some("0.67.11")));
+        assert!(!companion_is_newer(&newest, Some("0.67.13")));
+        assert!(!companion_is_newer(&newest, Some("0.68.0")));
+        assert!(
+            !companion_is_newer(&newest, None),
+            "a copy that gives no version is never told it is behind"
+        );
+        assert!(!companion_is_newer(&newest, Some("a development build")));
     }
 
     impl UpdateRelease {

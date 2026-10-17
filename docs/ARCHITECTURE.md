@@ -2595,10 +2595,11 @@ visit by itself, its folder in the data directory, and the words it is spoken of
 
 | Piece | What it does for every app |
 |---|---|
-| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and notes it coming and going in the log |
+| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and again at once when the notebook opens or the pointer comes over the tray icon (at most every five seconds), and notes it coming and going in the log |
 | `Slot::start_due` | With the app's path override naming a stand-in and its development variable set, starts one visit that many seconds after Desktop starts, and never otherwise |
 | `Expansion::start` | Starts the app with its flag and the session directory, and waits for it on a thread that sleeps until it exits and then says so through the event loop |
-| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words |
+| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words; a copy too old is told so by version and pointed to `Words::get_newest`, and the contract's numbers go to the log only |
+| `Expansion::releases`, `Expansion::listing` | Where the app's downloads are published (`None` for Farm, which has none yet), and what the About page's **Formiga's apps** section says of it. The daily update check looks up the newest full release for this platform of each installed app with releases (`updater::check_companion`, highest version rather than the first GitHub lists) and the section says when one is newer than the installed copy |
 | `files::VisitFiles` | The app's directory: a fresh session directory for each visit, the marker that lets Desktop finish a visit after a restart, closing, forgetting while the app may still be running (leaving it its recall), and sweeping whatever is neither the open visit nor a file Desktop keeps there |
 | `Holding`, `busy_elsewhere` | Who the app has just now: nobody, the whole colony, or a few companions. A visit that wants any of them is turned away in the words of the app that has them (`Words::occupied`), so a companion is away in one app at a time |
 

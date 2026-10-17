@@ -39,8 +39,44 @@ pub struct Expansion {
     pub start_after_env: &'static str,
     /// Where its visits' files are kept.
     pub folder: files::Folder,
+    /// Where its downloads are published, so the owner can be told when a newer one is out;
+    /// `None` while it has none.
+    pub releases: Option<Releases>,
+    /// How the notebook's list of Formiga's apps describes it.
+    pub listing: Listing,
     /// How it is spoken of.
     pub words: Words,
+}
+
+/// Where an app's downloads are published on GitHub.
+#[derive(Clone, Copy, Debug)]
+pub struct Releases {
+    /// `owner/name` of the repository whose releases carry its installers.
+    pub repo: &'static str,
+    /// What its release tags begin with, ahead of the version: `v`, or `battle-v`.
+    pub tag_prefix: &'static str,
+}
+
+/// What the notebook says of an app in its list of Formiga's apps.
+#[derive(Clone, Copy, Debug)]
+pub struct Listing {
+    /// What it is, in a sentence.
+    pub blurb: &'static str,
+    /// How it is opened from Formiga, in a sentence. `{tray}` stands for what the menu-bar or
+    /// notification-area icon is called on this platform.
+    pub how: &'static str,
+}
+
+impl Listing {
+    /// [`Listing::how`], with the icon named as this platform names it.
+    pub fn how(&self) -> String {
+        let tray = if cfg!(target_os = "macos") {
+            "menu-bar icon"
+        } else {
+            "icon in the notification area"
+        };
+        self.how.replace("{tray}", tray)
+    }
 }
 
 /// The words an app is spoken of in, each said after its name unless it says otherwise.
@@ -52,9 +88,10 @@ pub struct Words {
     /// For an app that takes companions away from the desktop, the sentence said, ahead of the
     /// reason, while the colony cannot be saved; `None` for one that takes nobody.
     pub cannot_save: Option<&'static str>,
-    /// What its contract's version is called: `travel` in "reads travel version 2".
-    pub contract: &'static str,
-    /// What updating it would let the colony do: "take the colony there".
+    /// Where a newer copy is found, as a sentence said after a version it is too old for: "Get the
+    /// newest Formiga Hill at formigaworld.com, then try again."
+    pub get_newest: &'static str,
+    /// What an older copy is too old to do: "take the colony there".
     pub update_to: &'static str,
     /// What it said when it was busy: "is already hosting a colony".
     pub busy: &'static str,
@@ -186,20 +223,18 @@ impl Expansion {
     }
 
     /// Why `install` cannot take a visit written as version `needs` of the app's contract, said so
-    /// that it can be acted on. `None` when it can, or when it does not say which versions it
-    /// reads; the app then answers for itself once it has read the snapshot.
+    /// that it can be acted on, without the contract's own numbers. `None` when it can, or when it
+    /// does not say which versions it reads; the app then answers for itself once it has read the
+    /// snapshot.
     pub fn incompatibility(&self, install: &AppInstall, needs: u32) -> Option<String> {
         let reads = install.reads?;
         (reads < needs).then(|| {
+            tracing::info!(reads, needs, "{} reads too old a contract", self.name);
             let which = install.version.as_deref().map_or_else(
                 || format!("This copy of {}", self.name),
                 |version| format!("{} {version}", self.name),
             );
-            format!(
-                "{which} reads {} version {reads}, and this colony needs version {needs}. Update \
-                 {} to {}.",
-                self.words.contract, self.name, self.words.update_to
-            )
+            self.too_old(&which)
         })
     }
 
@@ -222,6 +257,16 @@ impl Expansion {
         format!("{} is no longer installed.", self.name)
     }
 
+    /// That `which` copy of the app is too old for this Formiga, and where to find a newer one.
+    fn too_old(&self, which: &str) -> String {
+        format!(
+            "{which} is too old to {} with Formiga {}. {}",
+            self.words.update_to,
+            crate::updater::APP_VERSION,
+            self.words.get_newest
+        )
+    }
+
     /// The app's refusal, said so the owner can do something about it.
     pub fn refusal_text(&self, refusal: &Refusal) -> String {
         let name = self.name;
@@ -232,11 +277,10 @@ impl Expansion {
         };
         let words = &self.words;
         match refusal.reason {
-            AckRefusal::UnsupportedVersion { reads } => format!(
-                "{who} reads {} version {reads}, which is too old for this colony. Update {name} \
-                 to {}.",
-                words.contract, words.update_to
-            ),
+            AckRefusal::UnsupportedVersion { reads } => {
+                tracing::info!(reads, "{name} turned the visit away as too new for it");
+                self.too_old(&who)
+            }
             AckRefusal::Busy => format!("{who} {}.", words.busy),
             AckRefusal::Invalid => format!("{who} {}.", words.unreadable),
             AckRefusal::Other => format!("{who} {}.", words.declined),
@@ -305,6 +349,7 @@ impl Slot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::updater::APP_VERSION;
     use std::path::PathBuf;
 
     const SAMPLE_FOLDER: files::Folder = files::Folder {
@@ -328,11 +373,16 @@ mod tests {
         launch_argument: "--formiga-sample",
         start_after_env: "FORMIGA_SAMPLE_VISIT_AFTER",
         folder: SAMPLE_FOLDER,
+        releases: None,
+        listing: Listing {
+            blurb: "A sample.",
+            how: "Open it from Formiga's {tray}.",
+        },
         words: Words {
             staying: "The sample is staying shut",
             recover_first: "Finish recovering the colony in the notebook before opening the sample.",
             cannot_save: Some("The colony cannot be saved just now, so it is not going."),
-            contract: "sample",
+            get_newest: "Get the newest Formiga Sample, then try again.",
             update_to: "open the sample",
             busy: "is already open",
             unreadable: "could not read the sample",
@@ -373,20 +423,18 @@ mod tests {
         let older = install(Some("0.1.0"), Some(1));
         assert_eq!(SAMPLE.incompatibility(&older, 1), None);
         assert_eq!(
-            SAMPLE.incompatibility(&older, 2).as_deref(),
-            Some(
-                "Formiga Sample 0.1.0 reads sample version 1, and this colony needs version 2. \
-                 Update Formiga Sample to open the sample."
-            )
+            SAMPLE.incompatibility(&older, 2),
+            Some(format!(
+                "Formiga Sample 0.1.0 is too old to open the sample with Formiga {APP_VERSION}. \
+                 Get the newest Formiga Sample, then try again."
+            ))
         );
         assert_eq!(
-            SAMPLE
-                .incompatibility(&install(None, Some(1)), 2)
-                .as_deref(),
-            Some(
-                "This copy of Formiga Sample reads sample version 1, and this colony needs \
-                 version 2. Update Formiga Sample to open the sample."
-            )
+            SAMPLE.incompatibility(&install(None, Some(1)), 2),
+            Some(format!(
+                "This copy of Formiga Sample is too old to open the sample with Formiga \
+                 {APP_VERSION}. Get the newest Formiga Sample, then try again."
+            ))
         );
         assert_eq!(
             SAMPLE.incompatibility(&install(Some("0.1.0"), None), 9),
@@ -405,8 +453,10 @@ mod tests {
         };
         assert_eq!(
             said(AckRefusal::UnsupportedVersion { reads: 0 }, "0.1.0"),
-            "Formiga Sample 0.1.0 reads sample version 0, which is too old for this colony. \
-             Update Formiga Sample to open the sample."
+            format!(
+                "Formiga Sample 0.1.0 is too old to open the sample with Formiga {APP_VERSION}. \
+                 Get the newest Formiga Sample, then try again."
+            )
         );
         assert_eq!(
             said(AckRefusal::Busy, ""),
