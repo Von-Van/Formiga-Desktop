@@ -32,13 +32,18 @@ mod updater;
 use anyhow::Result;
 use app::{FormigaApp, UserEvent};
 use directories::ProjectDirs;
-use std::fs::{self, OpenOptions};
-use std::path::PathBuf;
+use std::fs::{self, File, OpenOptions};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tray_icon::menu::MenuEvent;
 use winit::event_loop::EventLoop;
 
 fn main() -> Result<()> {
+    // Held, unread, for as long as this copy runs.
+    let Some(_colony_held) = hold_colony(&data_dir()?)? else {
+        already_running();
+        return Ok(());
+    };
     let log_dir = initialize_diagnostics()?;
 
     let mut builder = EventLoop::<UserEvent>::with_user_event();
@@ -72,6 +77,46 @@ pub(crate) fn data_dir() -> Result<PathBuf> {
     Ok(project.data_dir().to_path_buf())
 }
 
+/// Takes the colony's data folder for this copy of Formiga, or `None` when another copy already has
+/// it. Two copies on one colony would each save over the other's, and each take the other's open
+/// trip, visit or match for one a crash left and close it under the app it is in. The lock goes
+/// with the process, however it ends. A folder that cannot be locked at all is run as before.
+fn hold_colony(data_dir: &Path) -> Result<Option<File>> {
+    fs::create_dir_all(data_dir)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data_dir.join("formiga.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(error)) => {
+            eprintln!("Formiga could not lock its data folder, so runs without the lock: {error}");
+            Ok(Some(file))
+        }
+    }
+}
+
+/// Said when Formiga is started while it is already running. On Windows, where a click on the
+/// Start menu can start a second copy beside the one started at sign-in, a dialog says where it
+/// is; on macOS, where opening the app again only brings the running copy forward, a second copy
+/// can only come from starting the program directly, and it leaves quietly.
+fn already_running() {
+    #[cfg(target_os = "windows")]
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Info)
+        .set_title("Formiga is already running")
+        .set_description(
+            "Your colony is already out on the desktop. Formiga's icon is in the notification \
+             area at the end of the taskbar; it may be under the arrow that shows hidden icons.",
+        )
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
+    #[cfg(not(target_os = "windows"))]
+    eprintln!("Formiga is already running for this colony.");
+}
+
 fn initialize_diagnostics() -> Result<PathBuf> {
     let log_dir = data_dir()?.join("logs");
     fs::create_dir_all(&log_dir)?;
@@ -92,4 +137,23 @@ fn initialize_diagnostics() -> Result<PathBuf> {
         .with_writer(Mutex::new(file))
         .init();
     Ok(log_dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_second_copy_finds_the_colony_held_until_the_first_lets_go() {
+        let directory =
+            std::env::temp_dir().join(format!("formiga-one-copy-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+
+        let first = hold_colony(&directory).unwrap();
+        assert!(first.is_some());
+        assert!(hold_colony(&directory).unwrap().is_none());
+        drop(first);
+        assert!(hold_colony(&directory).unwrap().is_some());
+        fs::remove_dir_all(&directory).unwrap();
+    }
 }

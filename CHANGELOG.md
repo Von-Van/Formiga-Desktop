@@ -24,6 +24,10 @@ All notable changes are documented here.
 - Companions that keep to the clock grow sleepy at night by the clock on the desk, from ten in the
   evening to six in the morning, instead of by UTC: on the American west coast they had been
   dozing off from mid-afternoon and perking up again at eleven at night.
+- Only one copy of Formiga runs on a colony at a time. On Windows, opening Formiga from the Start
+  menu while the copy started at sign-in was running started a second one: the two saved over
+  each other, and each could close the other's open trip, visit or match as if a crash had left
+  it. A second copy now leaves at once, saying where the running one is.
 
 ## [0.67.11] - 2026-10-16
 

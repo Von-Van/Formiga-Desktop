@@ -54,7 +54,10 @@ depends on neither; `formiga-travel` depends on all three, and `formiga-home-con
 
 ### How the app starts
 
-1. `main.rs` opens the log (`logs/formiga.log` in the data directory, rotated at 1 MB), builds a
+1. `main.rs` first takes a lock on `formiga.lock` in the data directory (`hold_colony`), so only
+   one copy of Formiga runs on a colony: a second copy finds it held and leaves, on Windows with a
+   dialog saying where the running one is. It then opens the log (`logs/formiga.log` in the data
+   directory, rotated at 1 MB), builds a
    winit event loop that carries `UserEvent`s — tray-menu clicks and updater results — and hands it
    a `FormigaApp`.
 2. `FormigaApp::new` resolves the data directory, loads the update preferences, and clears
@@ -106,6 +109,7 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 | Where the notebook window was | `notebook-window.json` | Written when the window closes or Formiga quits, if it moved |
 | Downloaded installers | `updates/` | Until the version they install is running |
 | Logs | `logs/formiga.log` and `formiga.previous.log` | Rotated at 1 MB |
+| Which copy of Formiga has the colony | A lock on `formiga.lock` (the file stays empty) | The life of the process |
 | A trip to Formiga Hill | `travel/trip.json` and `travel/<session>/` | While the trip is open; see [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | A house open in Formiga Home | `home/visit.json` and `home/<session>/` | While the visit is open; see [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | The homes arranged in Formiga Home | `home/state.json` | Written whole when a visit closes |
