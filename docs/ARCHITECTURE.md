@@ -3030,7 +3030,10 @@ included, each with its record (`BattleRecord::handler` and `trios`): Battle's `
 anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
 trophy and medal of each of Battle's four cups, Backyard, Woodland, Millpond and Sandy Cove, by
 Battle's own identifiers), once each, with Desktop's own name
-and words for it. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
+and words for it. The Journal page shows them, newest first, in a Cups section beside the
+Souvenirs, under one line of the Handler's name, the cups won and the Open Circuit points; like the
+Souvenirs it exists only once one has come home. `formiga_art::cup_strip` draws them all on one
+texture, ported pixel for pixel from Formiga Home's own pictures so a cup looks the same in both. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
 line, since the team and the match are Battle's to name; it is one line of plain text, checked by
 `is_battle_line` (the contract's own rule for text that crosses) when it comes and whenever the
 colony is read. Formiga Home is offered each keepsake in its inventory as a `battle_keepsake`

@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- The Journal page shows what the colony has won in Formiga Battle, in a **Cups** section beside
+  the Souvenirs: each trophy and medal with its picture and the day it was won, newest first, under
+  a line of the Handler's name, the cups won and the circuit points. The pictures match Formiga
+  Home's, so a cup looks the same on its shelf there. Like the Souvenirs, the section appears only
+  once the first keepsake has come home.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are
