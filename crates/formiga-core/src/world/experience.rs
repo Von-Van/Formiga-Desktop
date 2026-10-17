@@ -28,7 +28,6 @@ impl World {
             return;
         }
         self.observation_elapsed %= OBSERVATION_INTERVAL_SECS;
-        let views = self.save.creatures.clone();
         for creature in &self.save.creatures {
             if creature.state.arrival_delay_secs > 0.0 {
                 continue;
@@ -40,7 +39,9 @@ impl World {
             ) else {
                 continue;
             };
-            let nearby_creature = views
+            let nearby_creature = self
+                .save
+                .creatures
                 .iter()
                 .filter(|other| other.id != creature.id && other.state.arrival_delay_secs <= 0.0)
                 .map(|other| {
@@ -75,8 +76,8 @@ impl World {
         }
 
         let mut calm_pairs = BTreeSet::new();
-        for (index, first) in views.iter().enumerate() {
-            for second in views.iter().skip(index + 1) {
+        for (index, first) in self.save.creatures.iter().enumerate() {
+            for second in self.save.creatures.iter().skip(index + 1) {
                 if first.state.arrival_delay_secs > 0.0
                     || second.state.arrival_delay_secs > 0.0
                     || first.state.surface.monitor_id != second.state.surface.monitor_id
