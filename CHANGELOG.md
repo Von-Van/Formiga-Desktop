@@ -4,7 +4,26 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- The About page lists Formiga's other apps under **Formiga's apps**: what each is, whether it is
+  installed and which version, where to get it at formigaworld.com if not, and how to open it,
+  with buttons to take the colony to Formiga Hill or Formiga Battle. Formiga Farm is listed only
+  once it is installed. The colophon also links to the website and its feedback form.
+- The daily update check also looks up the newest release of each installed companion app, so the
+  About page says when a newer Formiga Hill, Home or Battle is out and where to get it. Nothing is
+  downloaded for them, and turning automatic checks off turns this off too.
+
 ### Changed
+
+- A companion app installed while Formiga runs is offered as soon as the pointer comes over the
+  menu-bar or notification-area icon, or the notebook opens, instead of after up to ten minutes.
+- A companion app too old for this Formiga now says so in plain words, with where to get a newer
+  one, instead of naming its contract's version numbers: "Formiga Hill 0.67.9 is too old to take
+  the colony there with Formiga 0.68.0. Get the newest Formiga Hill at formigaworld.com, then try
+  again." The numbers still go to the log.
+- The update setting's tooltip says checks run once a day while Formiga runs, as they have since
+  0.67.14, not only as it starts.
 
 - Every companion app checks the same things, in the same order, before a visit starts: a colony
   waiting to be recovered, then one that cannot be saved, then someone it needs being away in

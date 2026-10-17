@@ -27,7 +27,7 @@
 pub mod session;
 
 use crate::expansion::files::Folder;
-use crate::expansion::{Expansion, Words};
+use crate::expansion::{Expansion, Listing, Releases, Words};
 use crate::platform::companion_app::AppNames;
 use formiga_home_contract::{SessionId, discovery};
 use session::OpenVisit;
@@ -52,11 +52,21 @@ pub static HOME: Expansion = Expansion {
         marker_format: session::MARKER_FORMAT,
         kept: &[session::KEPT_FILE],
     },
+    releases: Some(Releases {
+        repo: "Von-Van/Formiga-Home",
+        tag_prefix: "v",
+    }),
+    listing: Listing {
+        blurb: "Step inside any house in the village as a dollhouse, arrange its rooms and show \
+                off your finds.",
+        how: "Click a house in the village and choose Look inside, or use Open in Formiga Home on \
+              a house's page under Home.",
+    },
     words: Words {
         staying: "The house is staying shut",
         recover_first: "Finish recovering the colony in the notebook before opening its houses.",
         cannot_save: Some("The colony cannot be saved just now, so no house is opened."),
-        contract: "household",
+        get_newest: "Get the newest Formiga Home at formigaworld.com, then try again.",
         update_to: "open its houses",
         busy: "already has a house open",
         unreadable: "could not read the house it was given",
@@ -109,11 +119,12 @@ mod tests {
         };
         assert_eq!(HOME.incompatibility(&install, 1), None);
         assert_eq!(
-            HOME.incompatibility(&install, 2).as_deref(),
-            Some(
-                "Formiga Home 0.1.0 reads household version 1, and this colony needs version 2. \
-                 Update Formiga Home to open its houses."
-            )
+            HOME.incompatibility(&install, 2),
+            Some(format!(
+                "Formiga Home 0.1.0 is too old to open its houses with Formiga {}. Get the newest \
+                 Formiga Home at formigaworld.com, then try again.",
+                crate::updater::APP_VERSION
+            ))
         );
         let silent = AppInstall {
             reads: None,

@@ -1725,7 +1725,7 @@ fn sections_of(page: SettingsTab) -> &'static [&'static str] {
         ],
         SettingsTab::Home => &["ground", "where", "pictures", "belongings"],
         SettingsTab::General => &["desktop", "routines", "notebook"],
-        SettingsTab::About => &["backups", "updates", "privacy", "kept"],
+        SettingsTab::About => &["backups", "apps", "updates", "privacy", "kept"],
         _ => &[],
     }
 }
@@ -2712,6 +2712,78 @@ fn the_notebook_follows_the_system_into_the_dark_and_back() {
         assert_eq!(crate::clubhouse::dark_interface(), want_dark, "{theme:?}");
     }
     configure_style(&context, AppearancePreferences::default());
+}
+
+/// The About page lists Formiga's other apps: what each is, whether it is here or where to get
+/// it, a newer one when one is out, and a button for the two the colony travels to. Farm is
+/// listed only once it is installed, since it is not offered anywhere yet.
+#[test]
+fn the_about_page_lists_formigas_apps() {
+    use crate::clubhouse::{AppListing, AppOpen};
+    let listing = |name, installed: Option<&str>, offered, open| AppListing {
+        name,
+        blurb: "What it is.",
+        how: "How it is opened.".to_owned(),
+        installed: installed.map(|version| Some(version.to_owned())),
+        newer: None,
+        offered,
+        open,
+    };
+    let mut h = Harness::new(SettingsTab::About);
+    h.clubhouse.apps = vec![
+        listing(
+            "Formiga Hill",
+            Some("0.67.14"),
+            true,
+            Some((AppOpen::Hill, true)),
+        ),
+        listing("Formiga Home", None, true, None),
+        listing("Formiga Farm", None, false, None),
+        listing(
+            "Formiga Battle",
+            Some("0.67.11"),
+            true,
+            Some((AppOpen::Battle, false)),
+        ),
+    ];
+    h.clubhouse.apps[3].newer = Some(("0.68.0".to_owned(), "https://example.invalid".to_owned()));
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        shown(&h, "A newer Formiga Battle is out"),
+        "said on the list"
+    );
+    h.click("Formiga's apps");
+    h.frame(Vec::new());
+    assert!(shown(&h, "Installed · 0.67.14"));
+    assert!(shown(&h, "Get Formiga Home at formigaworld.com"));
+    assert!(
+        !shown(&h, "Formiga Farm"),
+        "Farm is not listed until it is installed"
+    );
+    assert!(shown(
+        &h,
+        "Formiga Battle 0.68.0 is out. This computer has 0.67.11."
+    ));
+    assert_eq!(h.click("Go to Formiga Hill").open_app, Some(AppOpen::Hill));
+    assert_eq!(
+        h.click("Play Formiga Battle").open_app,
+        None,
+        "not while the colony cannot go"
+    );
+
+    h.clubhouse.apps[2].installed = Some(None);
+    h.frame(Vec::new());
+    assert!(shown(&h, "Formiga Farm"), "listed once it is installed");
+    // A picture of the section, for review.
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        h.screen = egui::vec2(940.0, 1100.0);
+        h.frame(Vec::new());
+        h.picture()
+            .save(path.join("About-940-cream-100-apps.png"))
+            .unwrap();
+    }
 }
 
 /// The colophon's title is Echo Fox Mode's switch: a click asks for the mode, and while the

@@ -61,6 +61,12 @@ fn main() -> Result<()> {
     MenuEvent::set_event_handler(Some(move |event| {
         let _ = menu_proxy.send_event(UserEvent::Menu(event));
     }));
+    let hover_proxy = proxy.clone();
+    tray_icon::TrayIconEvent::set_event_handler(Some(move |event| {
+        if matches!(event, tray_icon::TrayIconEvent::Enter { .. }) {
+            let _ = hover_proxy.send_event(UserEvent::TrayHover);
+        }
+    }));
     let mut app = FormigaApp::new(log_dir, proxy)?;
     event_loop.run_app(&mut app)?;
     Ok(())

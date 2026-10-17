@@ -25,12 +25,26 @@ impl FormigaApp {
             return;
         }
         self.sync_update_ui();
+        // Each installed companion app with downloads of its own is looked up in the same check,
+        // after Formiga itself, so the owner hears when one has fallen behind.
+        let companions: Vec<_> = companions::Companion::ALL
+            .into_iter()
+            .map(|app| self.slot(app))
+            .filter(|slot| slot.install.is_some())
+            .filter_map(|slot| Some((slot.expansion.name, slot.expansion.releases?)))
+            .collect();
         let proxy = self.event_proxy.clone();
         std::thread::Builder::new()
             .name("formiga-update-check".into())
             .spawn(move || {
                 let result = check_github().map_err(|error| error.to_string());
                 let _ = proxy.send_event(UserEvent::Update(UpdateEvent::CheckFinished(result)));
+                for (name, releases) in companions {
+                    let result = check_companion(name, releases).map_err(|error| error.to_string());
+                    let _ = proxy.send_event(UserEvent::Update(UpdateEvent::CompanionChecked(
+                        name, result,
+                    )));
+                }
             })
             .expect("spawn update-check worker");
     }
@@ -52,6 +66,19 @@ impl FormigaApp {
 
     pub(super) fn handle_update_event(&mut self, event_loop: &ActiveEventLoop, event: UpdateEvent) {
         let reveal = match event {
+            UpdateEvent::CompanionChecked(name, result) => {
+                match result {
+                    Ok(Some(release)) => {
+                        self.companion_releases.insert(name, release);
+                    }
+                    Ok(None) => {
+                        self.companion_releases.remove(name);
+                    }
+                    Err(error) => tracing::warn!(%error, "could not look up {name}'s releases"),
+                }
+                self.sync_update_ui();
+                return;
+            }
             UpdateEvent::CheckFinished(result) => {
                 self.updates.finish_check(result, OffsetDateTime::now_utc())
             }
