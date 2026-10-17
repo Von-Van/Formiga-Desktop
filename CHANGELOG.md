@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Developer tools
+
+- `formiga-tools soak --digest` sums up each colony's life (every event it raised and the file it
+  ended with) as a SHA-256, so a refactor can be shown to change nothing: run it before and after
+  with the same seed and compare. See docs/BUILD.md.
+- `devtools/formiga validate` runs its soak on two threads at background priority on a Mac, so the
+  computer stays usable while it runs; `--full-speed` gives it every core as before.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are

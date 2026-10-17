@@ -18,8 +18,13 @@
 //! a list repeated, a field removed — and each damaged file must be refused or come back valid and
 //! open and run.
 //!
+//! With `--digest`, each colony's life is also summed up as a SHA-256 of every event it raised
+//! and the file it ended with, and the run as one of those in colony order. The same seed gives
+//! the same digests on the same machine in the same time zone, so a change meant to alter nothing
+//! the colony does (a refactor) can be shown to: run before and after, and compare.
+//!
 //!   cargo run --release -p formiga-tools -- soak [--colonies N] [--days N] [--seed N]
-//!       [--threads N] [--damage N] [--only N] [--out DIR]
+//!       [--threads N] [--damage N] [--only N] [--out DIR] [--digest]
 
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
@@ -35,6 +40,7 @@ use formiga_core::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, macros::datetime};
 
 /// One tick of simulated time, the cadence the desktop runs at whenever anything moves.
@@ -56,6 +62,7 @@ struct Options {
     damage: u32,
     only: Option<usize>,
     out: PathBuf,
+    digest: bool,
 }
 
 fn options(args: &[String]) -> anyhow::Result<Options> {
@@ -69,6 +76,7 @@ fn options(args: &[String]) -> anyhow::Result<Options> {
         damage: 0,
         only: None,
         out: std::env::temp_dir().join("formiga-soak"),
+        digest: false,
     };
     let mut args = args.iter();
     while let Some(arg) = args.next() {
@@ -85,9 +93,10 @@ fn options(args: &[String]) -> anyhow::Result<Options> {
             "--damage" => options.damage = value()?.parse()?,
             "--only" => options.only = Some(value()?.parse()?),
             "--out" => options.out = PathBuf::from(value()?),
+            "--digest" => options.digest = true,
             "-h" | "--help" => bail!(
                 "usage: formiga-tools soak [--colonies N] [--days N] [--seed N] [--threads N] \
-                 [--damage N] [--only N] [--out DIR]"
+                 [--damage N] [--only N] [--out DIR] [--digest]"
             ),
             other => bail!("unknown soak option {other}"),
         }
@@ -107,6 +116,8 @@ struct Lived {
     transitions: u32,
     /// The most ticks a colony took to bring everybody back within reach after a change.
     slowest_settle: u32,
+    /// With `--digest`: every event the colony raised and the file it ended with, summed up.
+    digest: Option<[u8; 32]>,
 }
 
 /// Why a colony's life was stopped, and the last save it got to.
@@ -134,6 +145,7 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
     let next = AtomicUsize::new(0);
     let failures = Mutex::new(Vec::new());
     let totals = Mutex::new((0u64, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32));
+    let digests = Mutex::new(Vec::new());
     // A panic is reported as a failure of the colony it happened in, not printed as it happens.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
@@ -162,6 +174,9 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
                             totals.5 += lived.refused;
                             totals.6 = totals.6.max(lived.slowest_settle);
                             totals.7 += lived.transitions;
+                            if let Some(digest) = lived.digest {
+                                digests.lock().unwrap().push((index, digest));
+                            }
                             None
                         }
                         Ok(Err(error)) => Some(format!("{error:#}")),
@@ -198,6 +213,20 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
         f64::from(slowest) * f64::from(DT),
         started.elapsed().as_secs_f64()
     );
+    if options.digest {
+        let mut digests = digests.into_inner().unwrap();
+        digests.sort_by_key(|(index, _)| *index);
+        let mut all = Sha256::new();
+        for (index, digest) in &digests {
+            println!("# digest colony {index} {}", hex(digest));
+            all.update(digest);
+        }
+        println!(
+            "# digest all {} ({} colonies)",
+            hex(&all.finalize().into()),
+            digests.len()
+        );
+    }
     for failure in &failures {
         let path = options.out.join(format!(
             "soak-failure-{}-{}.json",
@@ -220,6 +249,19 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
         Ok(())
     } else {
         bail!("{} of {} colonies failed", failures.len(), indices.len())
+    }
+}
+
+fn hex(digest: &[u8; 32]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Hand the colony's events back to it, summed into `digest` when the run keeps one.
+fn drain(world: &mut World, digest: &mut Option<Sha256>) {
+    for event in world.drain_events() {
+        if let Some(digest) = digest {
+            digest.update(format!("{event:?}\n").as_bytes());
+        }
     }
 }
 
@@ -496,7 +538,9 @@ fn live(
         refused: 0,
         transitions: 0,
         slowest_settle: 0,
+        digest: None,
     };
+    let mut digest = options.digest.then(Sha256::new);
     std::fs::create_dir_all(scratch)?;
     let store = SaveStore::new(scratch.join("colony.json"));
     let mut next_key = 0;
@@ -603,7 +647,7 @@ fn live(
                     }
                 }
                 world.tick(now, DT, &desktop);
-                world.drain_events().for_each(drop);
+                drain(&mut world, &mut digest);
                 lived.ticks += 1;
                 if tick == 0 {
                     // Back from being away: the routine is the one the week says it is now,
@@ -680,7 +724,7 @@ fn live(
                 }
                 now += Duration::milliseconds(50);
                 world.tick(now, DT, &desktop);
-                world.drain_events().for_each(drop);
+                drain(&mut world, &mut digest);
             }
             if settled_in.is_none() {
                 check(
@@ -702,6 +746,10 @@ fn live(
     }
     let final_save = world.save.clone();
     *last_save.lock().unwrap() = Some(final_save.clone());
+    if let Some(mut digest) = digest {
+        digest.update(serde_json::to_vec(&final_save)?);
+        lived.digest = Some(digest.finalize().into());
+    }
     for round in 0..options.damage {
         let refused = damage_round(&final_save, &mut rng, &desktop)
             .with_context(|| format!("damage round {round}"))?;
