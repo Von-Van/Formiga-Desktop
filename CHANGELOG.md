@@ -2,7 +2,12 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.67.14] - 2026-10-17
+
+Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are
+built on it, so every app has the same version again. Save version 32, travel version 5,
+household version 11 and Battle contract version 4 are unchanged, so the 0.67.11 apps still work
+with it and a colony saved by 0.67.11 opens as before.
 
 ### Fixed
 

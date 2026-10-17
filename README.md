@@ -1,4 +1,4 @@
-# Formiga · v0.67.11
+# Formiga · v0.67.14
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.11-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.67.14-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,14 +107,15 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.11
+## New in 0.67.14
 
-A round of fixes. A trio in Formiga Battle whose members change during a session now keeps every
-lineup it played with. A new look from Formiga Farm counts as kept only once your colony is saved,
-and the colony stays home if it can't be saved on the way to Battle. Every download now carries
-Formiga's licence. Update Formiga Hill, Formiga Home and Formiga Battle alongside: Battle 0.67.12
-keeps those trio lineups, Home keeps what sits on a newer Home's furniture when you use a design,
-and Hill ships its licence too.
+A round of fixes to keep your colony safe. Formiga now checks for updates every day it runs,
+not only when it starts, and an update that couldn't be fetched offline is tried again within the
+hour. A colony backup can't be restored while the colony is away in Hill or Battle, a damaged save
+is repaired as it loads, companions grow sleepy by your own clock instead of UTC, and only one
+copy of Formiga runs on a colony at a time. Update Formiga Hill, Formiga Home and Formiga Battle
+to 0.67.14 alongside: Battle paints its board, results and places in Formiga's own style, Home
+hands a visit back cleanly even after the clock was set back, and Hill keeps its files safer.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
