@@ -130,6 +130,11 @@ pub struct BattleRecord {
     /// The trios the Handler has named, retired ones included. Since version 3.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trios: Vec<Trio>,
+    /// The colony's anonymous Handler key, for a friend's Battle to know this Handler again: 32
+    /// lowercase hex digits Desktop made at random. Since version 5; absent before Desktop has
+    /// made one. Only Desktop sets it: nothing Battle answers with changes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler_key: Option<String>,
 }
 
 /// What a match earned. A friend match earns only the first four; an AI match the notebook

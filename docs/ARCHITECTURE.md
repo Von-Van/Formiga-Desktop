@@ -2150,7 +2150,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–31: version 31 is read directly, versions 1 through 30 are
+Persistence accepts save versions 1–33: version 33 is read directly, versions 1 through 32 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -3014,6 +3014,9 @@ since version 4 each match played as a trio also names the three who played (`Tr
 and `BattleRecord::register_session` keeps any of those lineups the trio no longer has as earlier
 lineups before keeping the registry, so a lineup that played and was changed within one session is
 not lost.
+Since version 5 the record carries the colony's anonymous Handler key (`BattleRecord::handler_key`,
+32 lowercase hex digits), which Battle passes on to a friend's Battle so it can know the same
+Handler again. Desktop makes it and nothing in a result can change it.
 
 The sample roster, record and result in `sample` are Desktop's own sample colony, and Battle
 rehearses with them. `tests/fixtures` keeps every version's documents, and
@@ -3024,7 +3027,10 @@ version's files beside the others.
 
 Save version 31 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
 played), and save version 32 adds the Handler card and the trios the Handler has named, retired ones
-included, each with its record (`BattleRecord::handler` and `trios`): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
+included, each with its record (`BattleRecord::handler` and `trios`); save version 33 adds the
+anonymous Handler key (`BattleRecord::handler_key`), which `BattleRecord::give_handler_key` makes
+from the system's randomness as the colony first leaves for Battle, and which is never changed
+after. Battle's `record` is written in exactly the shape the contract's `BattleRecord` has, beside the
 `keepsakes` its matches earned. The record crosses between the two only through that shape
 (`battle/record.rs`), and validation holds it to the contract's own bounds, keeping the newest of
 anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
