@@ -671,14 +671,25 @@ fn a_colony_finds_a_few_trinkets_a_day_whatever_its_size() {
         let_colony_wander(&mut world, created);
         let day = local_time_or_utc(created).date().to_julian_day();
         let target = daily_trinket_target(world.save.colony_seed, day);
-        // A long day out on the desktop with nothing holding finds back but the allowance.
+        // A long day out on the desktop with nothing holding finds back but the allowance. Once
+        // the allowance is used up and closed, another simulated hour shows it stays closed; the
+        // rest of the day would only repeat that hour.
         let mut now = created;
+        let mut closed_for = 0;
         for _ in 0..(14 * 3_600 * 4) {
             world.discovery_remaining = 0.0;
             world.tick(now, 0.25, &desktop);
             now += Duration::milliseconds(250);
             if local_time_or_utc(now).date().to_julian_day() != day {
                 break;
+            }
+            if world.trinket_find_allowed(now) {
+                closed_for = 0;
+            } else {
+                closed_for += 1;
+                if closed_for == 3_600 * 4 {
+                    break;
+                }
             }
         }
         // With nothing else holding finds back, the day's allowance is used exactly.

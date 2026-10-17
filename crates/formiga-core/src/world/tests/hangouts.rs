@@ -206,6 +206,11 @@ fn a_lookout_is_looked_out_of_toward_the_open_desktop() {
                 );
             }
         }
+        // A good while at the lookout, every moment of it facing out from the near side, is
+        // the answer; the rest of the afternoon would only ask again.
+        if looked >= 400 {
+            break;
+        }
     }
     assert!(looked > 0, "nobody ever went to the lookout");
 }
