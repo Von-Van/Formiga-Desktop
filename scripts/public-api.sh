@@ -28,7 +28,8 @@ mkdir -p target/public-api
 changed=0
 for crate in $CRATES; do
     snapshot="crates/$crate/public-api.txt"
-    listed=$(cargo public-api --toolchain "$TOOLCHAIN" --manifest-path "crates/$crate/Cargo.toml" \
+    # The toolchain is named the only way cargo-public-api takes one: as cargo's own.
+    listed=$(cargo +"$TOOLCHAIN" public-api --manifest-path "crates/$crate/Cargo.toml" \
         --simplified --color never)
     printf '%s\n' "$listed" > "target/public-api/$crate.txt"
     if [ "$UPDATE" = 1 ]; then
