@@ -1589,7 +1589,10 @@ variant, first find, finder, and the finder's name at the time — and never why
 
 - **Night** is the user's local hour outside `6..20`, through `after_dark(local_time_or_utc(now))`.
   It is deliberately wider than the late-night ritual's 22–05, which is about the person being up
-  late rather than about the world being dark.
+  late rather than about the world being dark. The pull towards sleep a creature that keeps to the
+  clock feels (`sleep_timing`) is narrower again: the local hour outside `6..22`, as
+  `BehaviorContext::night`. Routines are still keyed by the UTC hour (`hour_utc`), so a colony's
+  learned routines keep their slots.
 - **High up** is standing on a window ledge with at least 140 logical points of clear drop beneath
   it, measured by the same relative `surfaces::drop_below` the ledge and gap decisions use, so no
   absolute screen coordinate is involved.

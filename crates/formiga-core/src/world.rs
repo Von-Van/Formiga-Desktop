@@ -218,9 +218,22 @@ fn display_region(
     Some((monitor.display_key, row * 3 + column))
 }
 
+/// `now` by the desk's own clock, or by UTC where the system will not say its offset.
+///
+/// The crate's own tests read UTC as the local clock wherever they run, so a scenario that ticks
+/// through a given hour plays out the same on a laptop in New York as on CI.
 fn local_time_or_utc(now: OffsetDateTime) -> OffsetDateTime {
+    #[cfg(not(test))]
     let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
+    #[cfg(test)]
+    let offset = UtcOffset::UTC;
     now.to_offset(offset)
+}
+
+/// Whether an hour of the local clock is at night, when a creature that keeps to the clock is
+/// drawn to sleep.
+fn is_night(local_hour: u8) -> bool {
+    !(6..22).contains(&local_hour)
 }
 
 /// The local day `now` falls on, as a Julian day number: the day the day book counts it under.
@@ -657,6 +670,7 @@ impl World {
         });
         let cottages = colony_cottages(&self.save.creatures);
         let finds_allowed = self.trinket_find_allowed(timeline_now);
+        let night = is_night(local_time_or_utc(now).hour());
         for creature in &mut self.save.creatures {
             if self
                 .interaction
@@ -941,6 +955,7 @@ impl World {
                     self.save.settings.display_scale,
                 ),
                 hour_utc: now.hour(),
+                night,
                 // Filled in where the action is chosen, like the ledge search: only a homebody
                 // setting out reads it.
                 home_point: None,
