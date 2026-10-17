@@ -63,6 +63,10 @@ pub static FARM: Expansion = Expansion {
         kept: &[],
     },
     words: Words {
+        staying: "Formiga Farm is staying shut",
+        recover_first: "Finish recovering the colony in the notebook before opening Formiga Farm.",
+        // Farm has only a copy of a companion's look, so nothing it does waits on a save.
+        cannot_save: None,
         contract: "design",
         update_to: "reshape the colony's companions",
         busy: "already has a companion open",
