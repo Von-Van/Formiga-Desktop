@@ -22,10 +22,6 @@ jobs:
         app: [Hill, Home, Farm]
     name: Formiga ${{ matrix.app }} on this Desktop
     runs-on: macos-14
-    # Formiga Farm still builds its own draft of the Farm contract on Desktop 0.67.5, so this
-    # checkout's crates cannot stand in for the ones it uses yet. Its result is shown but does not
-    # fail the run until Farm takes Desktop's own formiga-farm-contract.
-    continue-on-error: ${{ matrix.app == 'Farm' }}
     steps:
       # Side by side, as the toolkit looks for them: Formiga-Hill beside Formiga-Desktop.
       - uses: actions/checkout@v4
@@ -35,14 +31,32 @@ jobs:
         with:
           repository: Von-Van/Formiga-${{ matrix.app }}
           path: Formiga-${{ matrix.app }}
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      # An app that still builds its own draft of its contract takes nothing of this checkout's
+      # that could break it, so there is nothing to test it on yet; it is checked from the push
+      # that moves it onto Desktop's crates.
+      - name: Whether Formiga ${{ matrix.app }} builds on Desktop's contract
+        id: ready
+        shell: bash
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          if grep -qE '^formiga-[a-z-]+-contract[[:space:]]*=[[:space:]]*\{[^}]*path[[:space:]]*=' "Formiga-$APP/Cargo.toml"; then
+            echo "::notice::Formiga $APP still builds its own draft of its contract; nothing of this Desktop's to test it on yet."
+            echo "test=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "test=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.ready.outputs.test == 'true'
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - if: steps.ready.outputs.test == 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.app }}
           workspaces: Formiga-${{ matrix.app }} -> ../Formiga-Desktop/.dev/target
       - name: Formiga ${{ matrix.app }}'s tests, built on this Desktop
+        if: steps.ready.outputs.test == 'true'
         shell: bash
         env:
           APP: ${{ matrix.app }}

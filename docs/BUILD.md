@@ -49,8 +49,10 @@ Alongside those tests, on the same pushes and pull requests:
   toolchain, the licence or the workflows.
 - The `companion-apps` workflow checks out Formiga Hill, Home and Farm beside this checkout and runs
   each one's tests on this checkout's crates, as `devtools/formiga validate --step hill` does on a
-  desk, so a change that would break one shows before that app repins. Formiga Battle has no CI by
-  choice and is checked with `formiga validate --expansions`.
+  desk, so a change that would break one shows before that app repins. An app whose `main` still
+  builds its own draft of its contract (a `path` dependency) has nothing of this checkout's to break
+  and is passed over with a notice until it takes Desktop's. Formiga Battle has no CI by choice and
+  is checked with `formiga validate --expansions`.
 - The `advisories` workflow runs `cargo audit` against the RustSec database every Monday and on any
   pull request that changes `Cargo.lock`.
 
