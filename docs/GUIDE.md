@@ -275,6 +275,29 @@ Whatever happens in Formiga Home, the household always comes back out, and nothi
 colony itself changes there beyond that one line in the journal. [PRIVACY.md](PRIVACY.md) lists
 exactly what Formiga Home is told and what is kept.
 
+## A match in Formiga Battle
+
+Formiga Battle is a separate app too, and Formiga does not need it. Once it is installed, the tray
+menu offers **Play Formiga Battle…**: the same little green engine that goes to Formiga Hill pulls
+in, everyone gets on, and Formiga Battle opens as the train pulls away. In Battle you pick three
+companions and play the visitors, or a friend who has Battle too, across four arenas from the
+Backyard to Sandy Cove. While the colony is away nothing of it is on your desktop, and the tray
+offers **Bring the colony home** whenever you want them back. When Battle closes the train
+brings everyone home to exactly where they were.
+
+What the matches earned comes home with the colony: a line in the journal for each match, the
+trophy and medal for each cup won, your Handler's name, pennant and standing, and the trios you
+named with what each has played. Battle reads these the next time it opens, so your record carries
+on, and Formiga Home can set the trophies down or hang the medals in a house. A match played twice
+over, or a result that names a session other than the one that went, counts once or not at all.
+
+As with a trip, the colony always comes home, whatever happens: if Battle closes early, cannot
+open the match, or stops unexpectedly, everyone comes straight back as they left, and if Formiga
+itself is closed while they are away, it brings them home the next time it starts. A friend match
+is the one thing in Formiga that goes over the internet, through a small relay on the Formiga
+website, and Battle says exactly what it shares before the first one. [PRIVACY.md](PRIVACY.md)
+lists what Battle is told, and what is kept.
+
 ## Settings you may want
 
 - Limit where creatures go with presets, or up to 32 allowed and excluded rectangles across displays.
