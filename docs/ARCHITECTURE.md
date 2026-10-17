@@ -36,9 +36,9 @@ one feature at a time, and assumes you know where things are.
 ### The crates and where to start reading
 
 Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
-depends on neither; `formiga-travel` depends on all three, and `formiga-home-contract`,
-`formiga-farm-contract` and `formiga-battle-contract` on those and `formiga-travel`; and
-`formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the desktop crate.
+depends on neither; `formiga-travel` depends on all three; `formiga-home-contract` on those and
+`formiga-travel`; `formiga-farm-contract` and `formiga-battle-contract` on `formiga-core`, the
+rulebook and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
@@ -50,7 +50,7 @@ depends on neither; `formiga-travel` depends on all three, and `formiga-home-con
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | `formiga-farm-contract` | `lib.rs`: the design contract with Formiga Farm | `snapshot.rs` and `replies.rs` for the documents; `projection.rs` for the one creature a session opens on; `accept.rs` for what Desktop keeps and how; [The Farm contract](#the-farm-contract) |
-| `formiga-battle-contract` | `lib.rs`: the roster contract with Formiga Battle | `project_roster` for the colony as Battle reads it; `open_session` for how Battle answers; [Matches in Formiga Battle](#matches-in-formiga-battle-save-v31) |
+| `formiga-battle-contract` | `lib.rs`: the roster contract with Formiga Battle | `project_roster` for the colony as Battle reads it; `open_session` for how Battle answers; [Matches in Formiga Battle](#matches-in-formiga-battle-saves-v31-and-v32) |
 
 ### How the app starts
 
@@ -105,6 +105,8 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 | A trip to Formiga Hill | `travel/trip.json` and `travel/<session>/` | While the trip is open; see [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | A house open in Formiga Home | `home/visit.json` and `home/<session>/` | While the visit is open; see [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | The homes arranged in Formiga Home | `home/state.json` | Written whole when a visit closes |
+| A companion open in Formiga Farm | `farm/session.json` and `farm/<session>/` | While the session is open; see [The Farm contract](#the-farm-contract) |
+| The colony away in Formiga Battle | `battle/session.json` and `battle/<session>/` | While the session is open; see [Matches in Formiga Battle](#matches-in-formiga-battle-saves-v31-and-v32) |
 
 All of it lives in one data directory. That is `FORMIGA_DATA_DIR` when it is set, and otherwise
 `~/Library/Application Support/com.Formiga.Formiga` on macOS and `%APPDATA%\Formiga\Formiga\data`
@@ -214,13 +216,13 @@ they are not part of validation.
 
 `world.rs` holds `World` itself: its fields, `new`, `from_save`, `tick`, and the small helpers that
 belong to none of the themes. Everything else lives in a child module named after what it is about —
-`world/arrivals.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`, `discovery.rs`,
-`experience.rs`, `generation.rs`, `habits.rs`, `home.rs`, `interaction.rs`, `journeys.rs`,
-`moments.rs`, `movement.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`,
-`spacing.rs`, `surfaces.rs`, `tows.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`,
-and the `attention/` family. Each module adds
-methods to the one `World` type rather than owning state of its own, so there is still a single
-simulation object and a single tick.
+`world/antics.rs`, `arrivals.rs`, `battle.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`,
+`discovery.rs`, `echo_fox.rs`, `experience.rs`, `generation.rs`, `habits.rs`, `home.rs`,
+`house_visits.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`, `movement.rs`, `new_looks.rs`,
+`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `surfaces.rs`,
+`tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and the
+`attention/` family. Each module adds methods to the one `World` type rather than owning state of
+its own, so there is still a single simulation object and a single tick.
 
 The values that decide how a feature feels — how often something happens, how long it lasts, how
 far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
@@ -230,12 +232,12 @@ on stay beside the data they bound, and the shape of an animation stays with the
 Gathering them there was behaviour-preserving: six colonies of three simulated hours each produced
 the same saves, byte for byte, before and after.
 
-Tests live in `world/tests/`, one file per theme — `ambient`, `arrivals`, `bonds`, `bubbles`,
-`colony_management`, `companion`, `discovery`, `experience`, `habits`, `hangouts`, `home`,
-`interaction`, `journeys`, `misc`, `moments`, `objects_and_decorations`, `offers`, `perches`,
-`rituals`, `spacing`, `topology_and_attention`, `tows`, `undo`, `village`, `village_life`,
-`visitors`, `wonders` — with the
-shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
+Tests live in `world/tests/`, one file per theme — `ambient`, `antics`, `arrivals`, `bonds`,
+`bubbles`, `colony_management`, `companion`, `discovery`, `echo_fox`, `edges`, `experience`,
+`habits`, `hangouts`, `home`, `house_visits`, `interaction`, `journeys`, `misc`, `moments`,
+`new_looks`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
+`topology_and_attention`, `tows`, `trips`, `undo`, `village`, `village_life`, `visitors`, `wonders`
+— with the shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
 behaviour-preserving: a differential harness ran five seeds for 18,000 ticks each against 0.57.1
 and compared the event streams and serialized saves byte for byte.
 
@@ -1178,8 +1180,8 @@ decoration it can wear, which a second art test holds to. The fit is a property 
 and the colony, worked out each time the ground is resolved, never saved. Every placement —
 houses, trees, yards, the commons, resting places, a guest's spot and its tour — reads the same
 `VillageGround`, so they always agree; `resolved_home_anchor` takes the colony's cottages so that
-it answers with the anchor actually in use, and `home_lot_width` gives a house's lot at the fit in
-force. Without it, a full colony at the default size on a 1280-, 1366- or 1440-point display at
+it answers with the anchor actually in use, and `home_lot_widths` gives the houses' lots at the
+fit in force. Without it, a full colony at the default size on a 1280-, 1366- or 1440-point display at
 100% would have lost a cottage once the houses grew; with it, every display and size shows at
 least as many houses as 0.64.0 did, which `a_full_colony_shows_every_house_it_did_before_the_houses_grew`
 checks against 0.64.0's own numbers. A snug village gives up a keepsake tree, never a house.
@@ -1961,7 +1963,7 @@ incremental state stays below 2 KiB.
 
 Additional minis are earned after one hour and one week; a full-size adult is earned after one
 calendar month when an adult slot exists. End-of-month dates clamp in UTC, overdue reveals remain 15
-seconds apart, and the colony remains capped at four. Interrupted ambient, interaction, and toss
+seconds apart, and the colony remains capped at six. Interrupted ambient, interaction, and toss
 actions reload as idle. Home and birth timestamps survive relaunches, and clock rollback uses the
 maximum-seen UTC guard. There is
 deliberately no history database or telemetry layer. Update preferences live in a separate
@@ -2971,7 +2973,7 @@ Without Farm installed the addition is one LaunchServices or registry lookup eve
 With it open, one small file is read four times a second, and a sprite is baked again only when a
 look is kept.
 
-## Matches in Formiga Battle (save v31)
+## Matches in Formiga Battle (saves v31 and v32)
 
 Formiga Battle is a separate app for playing matches with the colony's companions. It reads a copy
 of the colony and changes nothing in it. Battle keeps nothing of its own: what its matches earn is
@@ -3007,7 +3009,8 @@ version's files beside the others.
 ### What the colony keeps
 
 Save version 31 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
-played): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
+played), and save version 32 adds the Handler card and the trios the Handler has named, retired ones
+included, each with its record (`BattleRecord::handler` and `trios`): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
 `keepsakes` its matches earned. The record crosses between the two only through that shape
 (`battle/record.rs`), and validation holds it to the contract's own bounds, keeping the newest of
 anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
