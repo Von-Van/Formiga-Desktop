@@ -2,6 +2,33 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- A colony backup can no longer be restored while the colony is away in Formiga Hill or Formiga
+  Battle. The restored colony used to keep that trip's souvenirs or that match's result, journal
+  lines and keepsakes, naming companions it never had; the About page now says to restore once
+  the colony is home.
+- The daily update check also runs while Formiga keeps running, not only as it starts, so a
+  colony left on for days still hears of a new release; one found that way shows in the tray and
+  on the About page without opening the notebook. A check made offline is tried again an hour
+  later instead of the next day. A download that fails part way no longer leaves up to 250 MB
+  behind until the next day's start, and the choice to turn checks off can no longer be lost to a
+  crash while it is written.
+- A colony file with more habitat areas than a colony keeps is cut back to the first 32 as it
+  loads, as a restored backup's already was; repair used to leave them, and every step of every
+  companion walked them all.
+- A damaged colony file whose times stand near the end of the calendar loads with its clock
+  brought back to 2200, instead of stopping Formiga each time it started.
+- Companions that keep to the clock grow sleepy at night by the clock on the desk, from ten in the
+  evening to six in the morning, instead of by UTC: on the American west coast they had been
+  dozing off from mid-afternoon and perking up again at eleven at night.
+- Only one copy of Formiga runs on a colony at a time. On Windows, opening Formiga from the Start
+  menu while the copy started at sign-in was running started a second one: the two saved over
+  each other, and each could close the other's open trip, visit or match as if a crash had left
+  it. A second copy now leaves at once, saying where the running one is.
+
 ## [0.67.11] - 2026-10-16
 
 Released alongside Formiga Hill 0.67.11, Formiga Home 0.67.11 and Formiga Battle 0.67.12, which are

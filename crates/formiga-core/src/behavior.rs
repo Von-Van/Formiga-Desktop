@@ -16,7 +16,11 @@ pub struct BehaviorContext {
     pub reachable_window_ledge: bool,
     pub window_changed_nearby: bool,
     pub objects: ObjectUtility,
+    /// The hour by UTC, which keys the routines a creature learns.
     pub hour_utc: u8,
+    /// Whether it is night where the desk is: from ten in the evening to six in the morning by the
+    /// local clock, when a creature that keeps to the clock is drawn to sleep.
+    pub night: bool,
     /// Where the colony house stands on this creature's display, when it is on the display the
     /// home belongs to: where a homebody wanders back towards.
     pub home_point: Option<Point>,
@@ -83,7 +87,7 @@ pub fn choose_action<R: Rng + ?Sized>(
     };
     let cursor_speed =
         (desktop.cursor.velocity.x.powi(2) + desktop.cursor.velocity.y.powi(2)).sqrt();
-    let night = context.hour_utc >= 22 || context.hour_utc < 6;
+    let night = context.night;
 
     let mut scored = Vec::with_capacity(ActionKind::AUTONOMOUS.len());
     for action in ActionKind::AUTONOMOUS {
@@ -470,6 +474,7 @@ mod tests {
             window_changed_nearby: false,
             objects: ObjectUtility::default(),
             hour_utc: 12,
+            night: false,
             home_point: None,
         };
         (creature, desktop, context)

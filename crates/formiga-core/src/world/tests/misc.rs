@@ -111,6 +111,7 @@ fn passive_activity_actions_have_distinct_state_outcomes() {
         window_changed_nearby: false,
         objects: ObjectUtility::default(),
         hour_utc: 12,
+        night: false,
         home_point: None,
     };
 
@@ -162,6 +163,7 @@ fn doing_something_where_it_stands_brings_a_walk_to_a_stop() {
         window_changed_nearby: false,
         objects: ObjectUtility::default(),
         hour_utc: 12,
+        night: false,
         home_point: None,
     };
     let walking = 24.0 + creature.personality.activity * 34.0;
@@ -411,4 +413,14 @@ fn measure_time_on_ledges() {
             mean(&downs),
         );
     }
+}
+
+/// Night is the desk's own: ten in the evening to six in the morning by the local clock, not by
+/// UTC, which is mid-afternoon to evening for a desk on the American west coast.
+#[test]
+fn night_runs_from_ten_in_the_evening_to_six_in_the_morning() {
+    let night: Vec<u8> = (0..24)
+        .filter(|hour| super::super::is_night(*hour))
+        .collect();
+    assert_eq!(night, [0, 1, 2, 3, 4, 5, 22, 23]);
 }

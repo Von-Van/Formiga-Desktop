@@ -54,7 +54,10 @@ depends on neither; `formiga-travel` depends on all three, and `formiga-home-con
 
 ### How the app starts
 
-1. `main.rs` opens the log (`logs/formiga.log` in the data directory, rotated at 1 MB), builds a
+1. `main.rs` first takes a lock on `formiga.lock` in the data directory (`hold_colony`), so only
+   one copy of Formiga runs on a colony: a second copy finds it held and leaves, on Windows with a
+   dialog saying where the running one is. It then opens the log (`logs/formiga.log` in the data
+   directory, rotated at 1 MB), builds a
    winit event loop that carries `UserEvent`s — tray-menu clicks and updater results — and hands it
    a `FormigaApp`.
 2. `FormigaApp::new` resolves the data directory, loads the update preferences, and clears
@@ -65,7 +68,11 @@ depends on neither; `formiga-travel` depends on all three, and `formiga-home-con
    launch. If the save cannot be read, the unreadable files are kept, a fresh colony stands in, and
    Settings offers recovery choices. Last, it creates the tray icon and writes the save. On a first
    launch it opens Settings, and if a check is due it starts the daily update check on a worker
-   thread.
+   thread. A release that check finds opens the About page; the daily check made while Formiga
+   keeps running (`check_for_updates_when_due`, from `about_to_wait`) shows one in the tray and on
+   the About page only. Only an answer counts as checked: a check that got none is tried again an
+   hour later, and one that found a release waits for the owner. A download that fails part way
+   removes its `.part` file at once.
 
 ### The loop
 
@@ -102,6 +109,7 @@ has to say goes out as `WorldEvent`s or as state the renderer reads.
 | Where the notebook window was | `notebook-window.json` | Written when the window closes or Formiga quits, if it moved |
 | Downloaded installers | `updates/` | Until the version they install is running |
 | Logs | `logs/formiga.log` and `formiga.previous.log` | Rotated at 1 MB |
+| Which copy of Formiga has the colony | A lock on `formiga.lock` (the file stays empty) | The life of the process |
 | A trip to Formiga Hill | `travel/trip.json` and `travel/<session>/` | While the trip is open; see [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | A house open in Formiga Home | `home/visit.json` and `home/<session>/` | While the visit is open; see [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | The homes arranged in Formiga Home | `home/state.json` | Written whole when a visit closes |
@@ -194,7 +202,9 @@ keep them in place.
 4. **Validation.** `persistence/validation.rs` brings the colony inside every limit and makes it
    agree with itself — each companion once and at most six, names that can be names, a mini's
    grown-up present, bonds and tallies only between companions who are here, caps on every list,
-   the day book's days in order, positions somewhere, unscheduled timers scheduled from the seed —
+   the day book's days in order, positions somewhere, the colony's clock (founding, latest moment
+   seen, births, next ritual, object and unlock) no later than 2200, unscheduled timers scheduled
+   from the seed —
    and wraps it as a `ValidatedSave`. `World::from_save` takes nothing else: a `SaveFile` handed to
    it is validated on the way in. The colony's own file is repaired wherever it can be, so it is
    never lost to the recovery screen over something that can be put right; a snapshot chosen to
@@ -1583,7 +1593,10 @@ variant, first find, finder, and the finder's name at the time — and never why
 
 - **Night** is the user's local hour outside `6..20`, through `after_dark(local_time_or_utc(now))`.
   It is deliberately wider than the late-night ritual's 22–05, which is about the person being up
-  late rather than about the world being dark.
+  late rather than about the world being dark. The pull towards sleep a creature that keeps to the
+  clock feels (`sleep_timing`) is narrower again: the local hour outside `6..22`, as
+  `BehaviorContext::night`. Routines are still keyed by the UTC hour (`hour_utc`), so a colony's
+  learned routines keep their slots.
 - **High up** is standing on a window ledge with at least 140 logical points of clear drop beneath
   it, measured by the same relative `surfaces::drop_below` the ledge and gap decisions use, so no
   absolute screen coordinate is involved.
@@ -2144,7 +2157,8 @@ refuses a sculpted form ([Sculpted forms](#sculpted-forms-save-v29)). A missing 
 its backup; a corrupt primary is preserved before repair, without rotating over a valid backup. If
 both files fail, the host disables writes and presents recovery choices. Explicit restores and
 resets preserve uniquely named copies; snapshot imports validate bounded input before confirmation
-and replacement.
+and replacement. A restore waits while the colony is away in Hill or Battle, since the app it is in
+answers with a result for the colony that left.
 
 
 ### Geometry attention and local approaches

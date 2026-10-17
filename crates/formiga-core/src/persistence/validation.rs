@@ -25,6 +25,11 @@ use time::OffsetDateTime;
 /// Farther from the origin, in points, than any arrangement of displays reaches.
 const FARTHEST_PLACE: f32 = 1_000_000.0;
 
+/// Later than any colony's clock has stood. Arrivals, rituals and finds are scheduled by adding
+/// days and months to the colony's own times, and a time near the end of the calendar leaves
+/// nothing to add to, so one past this is a damaged file, brought back to it.
+const LATEST_MOMENT: OffsetDateTime = time::macros::datetime!(2200-01-01 0:00 UTC);
+
 /// A colony brought inside every limit and made to agree with itself. Made only by validation;
 /// read through `Deref`, and taken apart with [`ValidatedSave::into_inner`].
 #[derive(Clone, Debug, PartialEq)]
@@ -52,6 +57,11 @@ impl From<SaveFile> for ValidatedSave {
     /// true of a colony is put right.
     fn from(mut save: SaveFile) -> Self {
         save.save_version = crate::SAVE_VERSION;
+        // The colony's clock, and everything scheduled from it, stands no later than any colony's
+        // has. Before anything below schedules from it.
+        for moment in clock_mut(&mut save) {
+            *moment = (*moment).min(LATEST_MOMENT);
+        }
         // Each companion once, and no more than a colony can hold. Only a damaged file has
         // either, and the first of each is the one the file meant.
         let mut seen = BTreeSet::new();
@@ -86,6 +96,9 @@ impl From<SaveFile> for ValidatedSave {
             names.push(creature.name.clone());
         }
         save.companion.normalize();
+        // The habitat keeps as many areas as it can hold, the first of them; the saved modes'
+        // habitats are kept the same way by `normalize`.
+        save.settings.habitat.zones.truncate(MAX_HABITAT_ZONES);
         save.visitors.normalize();
         crate::world::normalize_colony_roles(&mut save);
         crate::world::normalize_relationships(&mut save);
@@ -239,6 +252,25 @@ impl PartialEq<SaveFile> for ValidatedSave {
     }
 }
 
+/// The times the colony's clock is kept by and everything is scheduled from: when it was founded,
+/// the latest moment it has seen, when each companion was born, and when its next ritual, object
+/// and village unlock are due.
+fn clock_mut(save: &mut SaveFile) -> impl Iterator<Item = &mut OffsetDateTime> {
+    [
+        &mut save.created_at_utc,
+        &mut save.maximum_seen_utc,
+        &mut save.ritual.next_at_utc,
+        &mut save.objects.next_at_utc,
+        &mut save.home.unlocks.next_at_utc,
+    ]
+    .into_iter()
+    .chain(
+        save.creatures
+            .iter_mut()
+            .map(|creature| &mut creature.born_at_utc),
+    )
+}
+
 /// When a companion from before birth times were kept was born: the first at the colony's
 /// founding, and each later generation as long after it as the old arrival schedule said.
 fn legacy_birth_at(created_at_utc: OffsetDateTime, generation: u8) -> OffsetDateTime {
@@ -264,6 +296,14 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
     check(save.save_version == crate::SAVE_VERSION, &|| {
         format!("save version {} is not the current one", save.save_version)
     });
+    // What is scheduled from the clock may stand a little past it; the clock itself never does.
+    check(
+        [save.created_at_utc, save.maximum_seen_utc]
+            .into_iter()
+            .chain(save.creatures.iter().map(|creature| creature.born_at_utc))
+            .all(|moment| moment <= LATEST_MOMENT),
+        &|| "a clock past any colony's".to_owned(),
+    );
 
     // Who lives here.
     let ids: BTreeSet<_> = save.creatures.iter().map(|creature| creature.id).collect();
@@ -519,6 +559,48 @@ mod tests {
         assert_eq!(ValidatedSave::from(save.clone()), save);
     }
 
+    fn zone(id: u64) -> crate::HabitatZone {
+        crate::HabitatZone {
+            id,
+            display: crate::DisplayKey([1; 16]),
+            normalized_bounds: crate::DesktopRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.5,
+                height: 0.5,
+            },
+            kind: crate::HabitatZoneKind::Excluded,
+            enabled: true,
+        }
+    }
+
+    /// A colony whose times stand at the end of the calendar — a damaged file — loads and lives
+    /// rather than stopping the first time something is scheduled from them.
+    #[test]
+    fn a_colony_from_the_end_of_the_calendar_still_runs() {
+        let mut save = colony();
+        save.created_at_utc = datetime!(9999-12-26 0:00 UTC);
+        save.maximum_seen_utc = datetime!(9999-12-30 0:00 UTC);
+        save.ritual.next_at_utc = OffsetDateTime::UNIX_EPOCH;
+        for creature in &mut save.creatures {
+            creature.born_at_utc = OffsetDateTime::UNIX_EPOCH;
+        }
+        let repaired = ValidatedSave::from(save).into_inner();
+        assert_eq!(repaired.maximum_seen_utc, LATEST_MOMENT);
+
+        let desktop = crate::DesktopSnapshot::default();
+        let mut world = crate::World::from_save(repaired);
+        let now = datetime!(2026-10-20 9:00 UTC);
+        for step in 0..40 {
+            world.tick(
+                now + time::Duration::milliseconds(step * 50),
+                0.05,
+                &desktop,
+            );
+        }
+        assert_eq!(violations(&world.save), Vec::<String>::new());
+    }
+
     /// Validating twice is validating once.
     #[test]
     fn validation_settles_in_one_pass() {
@@ -536,7 +618,7 @@ mod tests {
     #[test]
     fn every_violation_is_noticed_and_repaired() {
         type Breakage = (&'static str, fn(&mut SaveFile));
-        let breakages: [Breakage; 13] = [
+        let breakages: [Breakage; 16] = [
             ("text", |save| save.companion.appearance.text_scale = 233),
             ("bond", |save| {
                 let first = save.relationships[0];
@@ -605,6 +687,16 @@ mod tests {
                 for creature in &mut save.creatures {
                     creature.role = CreatureRole::Mini { parent_id: 404 };
                 }
+            }),
+            ("habitat", |save| {
+                save.settings.habitat.zones = (0..40).map(zone).collect();
+            }),
+            ("founded", |save| {
+                save.created_at_utc = datetime!(9999-12-26 0:00 UTC);
+            }),
+            ("seen", |save| {
+                save.maximum_seen_utc = datetime!(9999-12-30 0:00 UTC);
+                save.creatures[0].born_at_utc = datetime!(9999-12-31 0:00 UTC);
             }),
         ];
         for (what, breaks) in breakages {

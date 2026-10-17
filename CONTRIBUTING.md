@@ -132,8 +132,10 @@ the simulation make a scenario quietly test the wrong thing:
 - Window `z_order` is a `u32`, and only a lower value is in front of a creature's support.
 - Watchers look up after a staggered delay and a short notice, so assert across a span of ticks
   rather than on one.
-- No expected value may depend on the local timezone: the schedule reads the local offset, which is
-  not UTC on most developer machines. Use a routine in force at every hour, or pass explicit offsets.
+- No expected value may depend on the local timezone. Inside `formiga-core`'s own tests the world
+  reads its local clock as UTC (`local_time_or_utc`), so a scenario plays out alike on every
+  machine; a test in another crate that runs the world still sees the machine's offset, so use a
+  routine in force at every hour there, or pass explicit offsets.
 - Two creatures left standing on one another will be separated by `world/spacing.rs` at the end of
   an ordinary tick, so a fixture that places them on top of each other may not stay that way. Place
   them a frame apart, or assert across the grace period rather than on one tick.

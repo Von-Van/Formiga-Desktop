@@ -944,6 +944,15 @@ impl FormigaApp {
     }
 
     pub(super) fn restore_colony(&mut self) {
+        // A colony away in Hill or Battle comes home with that app's results, which would
+        // otherwise be kept by whichever colony had been restored in its place.
+        if let Some(app) = self.colony_away_in() {
+            self.settings_notice(format!(
+                "The colony is away in {}; restore a backup once it is home",
+                app.name
+            ));
+            return;
+        }
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Formiga colony", &["json"])
             .pick_file()
