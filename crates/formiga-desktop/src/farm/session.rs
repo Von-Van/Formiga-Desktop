@@ -152,17 +152,28 @@ impl FarmFiles {
         write_document(&open.dir.join(VERDICT_FILE), &verdict).map(|_| ())
     }
 
-    /// Farm's refusal of the session, if it said no.
-    pub fn refusal(&self, open: &OpenSession) -> Option<Refusal> {
+    /// Farm's answer to the session, yes or no, if it gave one.
+    fn ack(&self, open: &OpenSession) -> Option<FarmAck> {
         read_document::<FarmAck>(&open.dir.join(ACK_FILE))
             .ok()
-            .filter(|(ack, _)| ack.answers(&open.seal))
-            .and_then(|(ack, _)| {
-                Some(Refusal {
-                    reason: ack.refusal?,
-                    version: ack.farm_version,
-                })
+            .map(|(ack, _)| ack)
+            .filter(|ack| ack.answers(&open.seal))
+    }
+
+    /// Farm's refusal of the session, if it said no.
+    pub fn refusal(&self, open: &OpenSession) -> Option<Refusal> {
+        self.ack(open).and_then(|ack| {
+            Some(Refusal {
+                reason: ack.refusal?,
+                version: ack.farm_version,
             })
+        })
+    }
+
+    /// Whether Farm answered the session at all. One that quits without a word, as when the
+    /// computer will not let it open, never got as far as the companion.
+    pub fn acknowledged(&self, open: &OpenSession) -> bool {
+        self.ack(open).is_some()
     }
 
     /// End a session while Farm may still be running: tell Farm it is over, and forget the
@@ -187,6 +198,16 @@ impl FarmFiles {
         self.sessions.sweep();
     }
 }
+
+/// What the owner is told when Farm quits without answering a session, as when the computer
+/// will not open a download it does not know yet.
+pub const CLOSED_BEFORE_OPENING: &str = if cfg!(target_os = "macos") {
+    "Formiga Farm closed before opening, so nothing changed. If your Mac stopped it, \
+     Control-click Formiga Farm in Applications, choose Open, then try again."
+} else {
+    "Formiga Farm closed before opening, so nothing changed. If Windows stopped it, open \
+     Formiga Farm once by itself and choose More info, then Run anyway, then try again."
+};
 
 /// Farm's refusal, said so the owner can do something about it.
 pub fn refusal_text(refusal: &Refusal) -> String {

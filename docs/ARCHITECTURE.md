@@ -2652,8 +2652,9 @@ a reader needs. The header is checked on the raw JSON before anything is shaped,
 is refused for its version rather than for its shape, and unknown fields and unknown enum values
 in lists (`Capability`, `ReturnEffect`, `Trait`) read as "unknown" rather than failing. Version 1
 shipped with 0.66.4; version 2 adds each trait's identifier, version 3, in 0.66.6, the souvenirs
-Desktop keeps, and version 4, in 0.67.0, four more of them; all are still marked readable by
-version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
+Desktop keeps, and version 4, in 0.67.0, four more of them; version 5, in 0.67.6, the Echo Fox,
+and version 6, in 0.68.0, a form sculpted in Formiga Farm
+([Sculpted forms](#sculpted-forms-save-v29)); all are still marked readable by version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
 older reader cannot draw: `reader_for_colony` maps every edition to the first travel version that
 carries it, and a new edition in the core does not build until it is given one. Desktop checks
 that requirement against the version an installed Hill says it reads before starting it. The
@@ -2875,10 +2876,19 @@ design out of range, and `Design::revision` names one exactly.
 Save version 29 gives `AppearanceGenome` a `sculpt`, absent from the file for every creature drawn
 from its recipe or its genes. A sculpted creature keeps a recipe beside it,
 `Design::fallback_recipe`: the companion plan nearest its form, in its coat's colours. That recipe
-is what anything that cannot draw sculpts draws. A trip to Formiga Hill or a visit to Formiga Home
-carries the recipe and never the sculpt, a share code holds the recipe, and a mini's recipe grows
-from its parent's. Validation keeps a sculpt inside its bounds and never without a recipe beside
-it.
+is what anything that cannot draw sculpts draws. A share code holds the recipe, and a mini's recipe
+grows from its parent's. Validation keeps a sculpt inside its bounds and never without a recipe
+beside it.
+
+A trip to Formiga Hill, a visit to Formiga Home and a match in Formiga Battle carry the sculpt as
+well as the recipe, from travel version 6 (household version 12): `TravelAppearance::sculpt` is
+the core's own `Sculpt`, written as Formiga Farm's contract writes it, checked with
+`Sculpt::validate` and never without the recipe beside it, and `to_genome` puts it back, so an app
+built on this release's crates draws the form itself. An earlier app ignores the field and draws
+the recipe, so a sculpt asks nothing more of a reader than any other look. A sculpt this build
+cannot read (a plan or part from a newer design model) is left behind the same way rather than
+refusing the colony. A newer `DESIGN_VERSION` does not build in `formiga-travel` until the travel
+format says how its sculpts travel.
 
 `CreatureRenderer` draws a genome with a sculpt through `formiga_art::forms`, so a sculpted form is
 drawn wherever a companion is. Its body is painted there at the same 48 pixels, fitted to the frame
