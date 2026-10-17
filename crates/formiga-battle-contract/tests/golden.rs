@@ -77,6 +77,15 @@ fn every_version_ever_written_still_reads() {
             assert_eq!(result.session_id, snapshot.session_id);
             assert!(snapshot.record.is_some());
         }
+        let key = snapshot
+            .record
+            .as_ref()
+            .and_then(|r| r.handler_key.as_deref());
+        assert_eq!(
+            key.is_some(),
+            version >= 5,
+            "the Handler key came in version 5"
+        );
     }
 }
 

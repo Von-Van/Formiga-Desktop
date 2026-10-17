@@ -1,0 +1,125 @@
+{
+  "format": "formiga.battle.result",
+  "version": 5,
+  "min_reader_version": 2,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "snapshot_sha256": "a273d485d57f9c4971cc1a3d7d19f3563f673420d8abcd8837346397a2345627",
+  "battle_version": "0.1.0",
+  "matches": [
+    {
+      "id": "0123456789abcdef0123456789abcdef",
+      "mode": "friend",
+      "rewards": {
+        "circuit_points": 15,
+        "participation": [
+          9757705922971574767,
+          11947463641044884705,
+          15696194872227323902
+        ],
+        "notebook": [
+          {
+            "creature_id": 9757705922971574767,
+            "won": true,
+            "showing": {
+              "steps": 12,
+              "signs": {
+                "hung_back": 2
+              }
+            },
+            "moments": [
+              "Was holding the beacon when it lit"
+            ]
+          }
+        ],
+        "history": {
+          "finished_at_utc": "2026-10-02T09:30:00Z",
+          "mode": "friend",
+          "won": true,
+          "ended_by": "capture",
+          "turns": 8,
+          "team": [
+            9757705922971574767,
+            11947463641044884705,
+            15696194872227323902
+          ],
+          "opponent": "Sam",
+          "trio": "7a1e5c3b9d2f4068",
+          "opponent_trio": "The Puddle Jumpers",
+          "opponent_pennant": {
+            "shape": "swallowtail",
+            "field": "sky",
+            "symbol": "wave",
+            "trim": "plain"
+          }
+        },
+        "trio": {
+          "id": "7a1e5c3b9d2f4068",
+          "won": true,
+          "members": [
+            9757705922971574767,
+            11947463641044884705,
+            15696194872227323902
+          ]
+        }
+      }
+    },
+    {
+      "id": "fedcba9876543210fedcba9876543210",
+      "mode": "ai",
+      "rewards": {
+        "circuit_points": 0,
+        "cup_win": "cup.backyard",
+        "journal": [
+          "The Thistle Three won a Backyard Cup match."
+        ],
+        "trio": {
+          "id": "7a1e5c3b9d2f4068",
+          "won": true,
+          "members": [
+            9757705922971574767,
+            11947463641044884705,
+            15696194872227323902
+          ]
+        }
+      }
+    }
+  ],
+  "registry": {
+    "handler": {
+      "name": "Jo",
+      "club": "Hedge End Club",
+      "pennant": {
+        "shape": "pennon",
+        "field": "forest",
+        "symbol": "acorn",
+        "trim": "plain"
+      }
+    },
+    "trios": [
+      {
+        "id": "7a1e5c3b9d2f4068",
+        "name": "The Thistle Three",
+        "members": [
+          9757705922971574767,
+          11947463641044884705,
+          15696194872227323902
+        ]
+      },
+      {
+        "id": "0f0e0d0c0b0a0908",
+        "name": "Odd Socks",
+        "members": [
+          9757705922971574767,
+          11947463641044885705,
+          15696194872227323902
+        ],
+        "pennant": {
+          "shape": "banner",
+          "field": "rose",
+          "symbol": "moon",
+          "trim": "plain"
+        }
+      }
+    ]
+  }
+}

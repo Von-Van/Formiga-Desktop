@@ -356,6 +356,17 @@ two files' SHA-256 digests, its time, whose house it is, who went in, and what F
 take back, so a visit interrupted by Formiga itself stopping can be finished on its next start.
 Nothing about a visit leaves the computer.
 
+Formiga Battle is a separate application as well, and Formiga passes it nothing unless the owner
+opens it. A session writes a **Battle snapshot**: each companion as a trip's snapshot holds it, with
+the leanings it has learned, the bands between them, the colony's one-way digest, the reduced-motion,
+theme and text-size preferences, and the colony's Battle record (points, cups, match history,
+notebook pages, the Handler card and named trios). Save version 33 adds one thing to that record:
+the **Handler key**, 128 bits from the system's own source of randomness, made once the first time
+the colony goes to Battle and never changed after. It is not derived from the colony, its seed, the
+owner or the computer, so it says nothing about any of them. Battle sends it with a friend match so
+the friend's Battle can know the same Handler again; Battle's `docs/FRIENDS.md` lists everything a
+friend match shares. Formiga itself sends nothing anywhere for Battle.
+
 Full-colony backup is deliberately different from a share code: it contains the complete private
 save, including names, learned history, journal, habitat, and settings. Export writes only to a
 user-selected local path. Restore reads at most 2 MiB, validates the snapshot, confirms replacement,

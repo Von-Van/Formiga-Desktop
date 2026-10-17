@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Save version 33 and Battle contract version 5: the colony keeps an anonymous Handler key for
+  Formiga Battle, 128 random bits made once, the first time the colony goes to Battle, and kept
+  with the rest of its Battle record. It is made from nothing Desktop knows about the colony, the
+  owner or the computer, and only Desktop makes or changes it; Battle reads it from the snapshot
+  so a friend's Battle can know the same Handler again. A colony saved before has none until its
+  next visit to Battle, and older Battles read the new snapshot as before, without the key.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are

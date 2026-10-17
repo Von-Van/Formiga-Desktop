@@ -32,6 +32,7 @@
 //! | 2 | The Battle record in the snapshot, and the result Battle answers with ([`result`]) |
 //! | 3 | The Handler card and named trios, their records, and the trio each match was played as ([`handler`]) |
 //! | 4 | The three each match's trio played with, so a lineup changed during a session is kept as an earlier one ([`TrioPlayed::members`]) |
+//! | 5 | The colony's anonymous Handler key, made and kept by Desktop, for a friend's Battle to know the Handler again ([`BattleRecord::handler_key`]) |
 
 use formiga_expansion_rulebook::{self as rulebook, Kind, sanitize_text};
 pub use formiga_expansion_rulebook::{AckRefusal, SessionId};
@@ -46,8 +47,8 @@ pub mod result;
 pub mod sample;
 
 pub use handler::{
-    HandlerCard, Lineup, Pennant, Registry, Tally, Trio, TrioCard, TrioPlayed, is_lineup,
-    is_trio_id, lineup_of,
+    HandlerCard, Lineup, Pennant, Registry, Tally, Trio, TrioCard, TrioPlayed, is_handler_key,
+    is_lineup, is_trio_id, lineup_of,
 };
 pub use result::{
     BattleRecord, BattleResult, CupWins, MatchResult, MatchSummary, Mode, NotebookAddition,
@@ -55,7 +56,7 @@ pub use result::{
 };
 
 /// The version of every Battle document this build writes, and the newest it reads.
-pub const BATTLE_FORMAT_VERSION: u32 = 4;
+pub const BATTLE_FORMAT_VERSION: u32 = 5;
 pub const SNAPSHOT_FORMAT: &str = "formiga.battle.snapshot";
 pub const SNAPSHOT_FILE: &str = "snapshot.json";
 pub const ACK_FORMAT: &str = "formiga.battle.ack";
