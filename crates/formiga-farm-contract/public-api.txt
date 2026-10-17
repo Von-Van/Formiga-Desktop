@@ -1,0 +1,652 @@
+pub mod formiga_farm_contract
+pub use formiga_farm_contract::AckRefusal
+pub use formiga_farm_contract::Presentation
+pub use formiga_farm_contract::SessionId
+pub use formiga_farm_contract::TravelerId
+pub use formiga_farm_contract::sha256_hex
+pub mod formiga_farm_contract::discovery
+pub const formiga_farm_contract::discovery::MACOS_BUNDLE_ID: &str
+pub const formiga_farm_contract::discovery::MACOS_FARM_VERSION_KEY: &str
+pub const formiga_farm_contract::discovery::PATH_OVERRIDE_ENV: &str
+pub const formiga_farm_contract::discovery::WINDOWS_FARM_VERSION_VALUE: &str
+pub const formiga_farm_contract::discovery::WINDOWS_PATH_VALUE: &str
+pub const formiga_farm_contract::discovery::WINDOWS_REGISTRY_KEY: &str
+pub const formiga_farm_contract::discovery::WINDOWS_VERSION_VALUE: &str
+pub mod formiga_farm_contract::limits
+pub const formiga_farm_contract::limits::MAX_ACK_BYTES: u64
+pub const formiga_farm_contract::limits::MAX_CAPABILITIES: usize
+pub const formiga_farm_contract::limits::MAX_DRAFT_NAME_CHARS: usize
+pub const formiga_farm_contract::limits::MAX_NAME_CHARS: usize
+pub const formiga_farm_contract::limits::MAX_PRESET_ID_CHARS: usize
+pub const formiga_farm_contract::limits::MAX_PROPOSAL_BYTES: u64
+pub const formiga_farm_contract::limits::MAX_REASON_CHARS: usize
+pub const formiga_farm_contract::limits::MAX_RECALL_BYTES: u64
+pub const formiga_farm_contract::limits::MAX_SERIAL: u32
+pub const formiga_farm_contract::limits::MAX_SNAPSHOT_BYTES: u64
+pub const formiga_farm_contract::limits::MAX_VERDICT_BYTES: u64
+pub const formiga_farm_contract::limits::MAX_VERSION_CHARS: usize
+pub mod formiga_farm_contract::sample
+pub const formiga_farm_contract::sample::CREATE_SESSION: &str
+pub const formiga_farm_contract::sample::DESKTOP_VERSION: &str
+pub const formiga_farm_contract::sample::EDIT_SESSION: &str
+pub const formiga_farm_contract::sample::MADE: time::offset_date_time::OffsetDateTime
+pub const formiga_farm_contract::sample::OPENED: time::offset_date_time::OffsetDateTime
+pub fn formiga_farm_contract::sample::capabilities() -> alloc::vec::Vec<formiga_farm_contract::FarmCapability>
+pub fn formiga_farm_contract::sample::colony() -> formiga_core::model::save::SaveFile
+pub fn formiga_farm_contract::sample::create_snapshot() -> formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::sample::edit_snapshot(usize) -> formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::sample::stand_in() -> formiga_core::model::appearance::AppearanceGenome
+pub enum formiga_farm_contract::Accepted
+pub formiga_farm_contract::Accepted::Create
+pub formiga_farm_contract::Accepted::Create::design: formiga_core::forms::design::Design
+pub formiga_farm_contract::Accepted::Create::lineage: formiga_farm_contract::Lineage
+pub formiga_farm_contract::Accepted::Edit
+pub formiga_farm_contract::Accepted::Edit::design: formiga_core::forms::design::Design
+pub formiga_farm_contract::Accepted::Edit::target: formiga_core::model::creature::CreatureId
+impl core::clone::Clone for formiga_farm_contract::Accepted
+pub fn formiga_farm_contract::Accepted::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::Accepted
+impl core::cmp::PartialEq for formiga_farm_contract::Accepted
+pub fn formiga_farm_contract::Accepted::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::Accepted
+pub fn formiga_farm_contract::Accepted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::Accepted
+impl core::marker::Freeze for formiga_farm_contract::Accepted
+impl core::marker::Send for formiga_farm_contract::Accepted
+impl core::marker::Sync for formiga_farm_contract::Accepted
+impl core::marker::Unpin for formiga_farm_contract::Accepted
+impl core::marker::UnsafeUnpin for formiga_farm_contract::Accepted
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Accepted
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Accepted
+pub enum formiga_farm_contract::Availability
+pub formiga_farm_contract::Availability::Available
+pub formiga_farm_contract::Availability::Away
+pub formiga_farm_contract::Availability::Unknown
+impl core::clone::Clone for formiga_farm_contract::Availability
+pub fn formiga_farm_contract::Availability::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::Availability
+impl core::cmp::PartialEq for formiga_farm_contract::Availability
+pub fn formiga_farm_contract::Availability::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::Availability
+pub fn formiga_farm_contract::Availability::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_farm_contract::Availability
+impl core::marker::StructuralPartialEq for formiga_farm_contract::Availability
+impl serde_core::ser::Serialize for formiga_farm_contract::Availability
+pub fn formiga_farm_contract::Availability::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::Availability
+pub fn formiga_farm_contract::Availability::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::Availability
+impl core::marker::Send for formiga_farm_contract::Availability
+impl core::marker::Sync for formiga_farm_contract::Availability
+impl core::marker::Unpin for formiga_farm_contract::Availability
+impl core::marker::UnsafeUnpin for formiga_farm_contract::Availability
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Availability
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Availability
+pub enum formiga_farm_contract::Current<'a>
+pub formiga_farm_contract::Current::Creature
+pub formiga_farm_contract::Current::Creature::available: bool
+pub formiga_farm_contract::Current::Creature::creature: &'a formiga_core::model::creature::Creature
+pub formiga_farm_contract::Current::Gone
+pub formiga_farm_contract::Current::Nobody
+impl<'a> core::clone::Clone for formiga_farm_contract::Current<'a>
+pub fn formiga_farm_contract::Current<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for formiga_farm_contract::Current<'a>
+pub fn formiga_farm_contract::Current<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for formiga_farm_contract::Current<'a>
+impl<'a> core::marker::Freeze for formiga_farm_contract::Current<'a>
+impl<'a> core::marker::Send for formiga_farm_contract::Current<'a>
+impl<'a> core::marker::Sync for formiga_farm_contract::Current<'a>
+impl<'a> core::marker::Unpin for formiga_farm_contract::Current<'a>
+impl<'a> core::marker::UnsafeUnpin for formiga_farm_contract::Current<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Current<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Current<'a>
+pub enum formiga_farm_contract::FarmCapability
+pub formiga_farm_contract::FarmCapability::CreateNew
+pub formiga_farm_contract::FarmCapability::EditExisting
+pub formiga_farm_contract::FarmCapability::JournalNote
+pub formiga_farm_contract::FarmCapability::SculptedForms
+pub formiga_farm_contract::FarmCapability::Unknown
+impl core::clone::Clone for formiga_farm_contract::FarmCapability
+pub fn formiga_farm_contract::FarmCapability::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::FarmCapability
+impl core::cmp::PartialEq for formiga_farm_contract::FarmCapability
+pub fn formiga_farm_contract::FarmCapability::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmCapability
+pub fn formiga_farm_contract::FarmCapability::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_farm_contract::FarmCapability
+pub fn formiga_farm_contract::FarmCapability::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_farm_contract::FarmCapability
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmCapability
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmCapability
+pub fn formiga_farm_contract::FarmCapability::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmCapability
+pub fn formiga_farm_contract::FarmCapability::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmCapability
+impl core::marker::Send for formiga_farm_contract::FarmCapability
+impl core::marker::Sync for formiga_farm_contract::FarmCapability
+impl core::marker::Unpin for formiga_farm_contract::FarmCapability
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmCapability
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmCapability
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmCapability
+pub enum formiga_farm_contract::FarmError
+pub formiga_farm_contract::FarmError::Invalid(alloc::string::String)
+pub formiga_farm_contract::FarmError::Io(core::io::error::Error)
+pub formiga_farm_contract::FarmError::Json(serde_json::error::Error)
+pub formiga_farm_contract::FarmError::TooLarge
+pub formiga_farm_contract::FarmError::TooLarge::limit: u64
+pub formiga_farm_contract::FarmError::UnsupportedVersion
+pub formiga_farm_contract::FarmError::UnsupportedVersion::needs: u32
+pub formiga_farm_contract::FarmError::UnsupportedVersion::reads: u32
+pub formiga_farm_contract::FarmError::WrongFormat
+pub formiga_farm_contract::FarmError::WrongFormat::expected: &'static str
+pub formiga_farm_contract::FarmError::WrongFormat::found: alloc::string::String
+impl formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::is_missing(&self) -> bool
+impl core::convert::From<core::io::error::Error> for formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::from(core::io::error::Error) -> Self
+impl core::convert::From<formiga_expansion_rulebook::document::RulebookError> for formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::from(formiga_expansion_rulebook::document::RulebookError) -> Self
+impl core::convert::From<formiga_farm_contract::FarmError> for formiga_farm_contract::ProjectionError
+pub fn formiga_farm_contract::ProjectionError::from(formiga_farm_contract::FarmError) -> Self
+impl core::convert::From<serde_json::error::Error> for formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::from(serde_json::error::Error) -> Self
+impl core::error::Error for formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_farm_contract::FarmError
+pub fn formiga_farm_contract::FarmError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_farm_contract::FarmError
+impl core::marker::Send for formiga_farm_contract::FarmError
+impl core::marker::Sync for formiga_farm_contract::FarmError
+impl core::marker::Unpin for formiga_farm_contract::FarmError
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmError
+pub enum formiga_farm_contract::FarmMode
+pub formiga_farm_contract::FarmMode::Create
+pub formiga_farm_contract::FarmMode::Create::stand_in: formiga_travel::appearance::TravelAppearance
+pub formiga_farm_contract::FarmMode::EditExisting
+pub formiga_farm_contract::FarmMode::EditExisting::creature: formiga_farm_contract::FarmCreature
+impl core::clone::Clone for formiga_farm_contract::FarmMode
+pub fn formiga_farm_contract::FarmMode::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_farm_contract::FarmMode
+pub fn formiga_farm_contract::FarmMode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmMode
+pub fn formiga_farm_contract::FarmMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmMode
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmMode
+pub fn formiga_farm_contract::FarmMode::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmMode
+pub fn formiga_farm_contract::FarmMode::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmMode
+impl core::marker::Send for formiga_farm_contract::FarmMode
+impl core::marker::Sync for formiga_farm_contract::FarmMode
+impl core::marker::Unpin for formiga_farm_contract::FarmMode
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmMode
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmMode
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmMode
+pub enum formiga_farm_contract::ProjectionError
+pub formiga_farm_contract::ProjectionError::Invalid(formiga_farm_contract::FarmError)
+pub formiga_farm_contract::ProjectionError::NoSuchCreature(formiga_core::model::creature::CreatureId)
+pub formiga_farm_contract::ProjectionError::Travel(formiga_travel::projection::ProjectionError)
+impl core::convert::From<formiga_farm_contract::FarmError> for formiga_farm_contract::ProjectionError
+pub fn formiga_farm_contract::ProjectionError::from(formiga_farm_contract::FarmError) -> Self
+impl core::convert::From<formiga_travel::projection::ProjectionError> for formiga_farm_contract::ProjectionError
+pub fn formiga_farm_contract::ProjectionError::from(formiga_travel::projection::ProjectionError) -> Self
+impl core::error::Error for formiga_farm_contract::ProjectionError
+pub fn formiga_farm_contract::ProjectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_farm_contract::ProjectionError
+pub fn formiga_farm_contract::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_farm_contract::ProjectionError
+pub fn formiga_farm_contract::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_farm_contract::ProjectionError
+impl core::marker::Send for formiga_farm_contract::ProjectionError
+impl core::marker::Sync for formiga_farm_contract::ProjectionError
+impl core::marker::Unpin for formiga_farm_contract::ProjectionError
+impl core::marker::UnsafeUnpin for formiga_farm_contract::ProjectionError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::ProjectionError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::ProjectionError
+pub enum formiga_farm_contract::ProposalKind
+pub formiga_farm_contract::ProposalKind::CreateNew
+pub formiga_farm_contract::ProposalKind::EditExisting
+pub formiga_farm_contract::ProposalKind::EditExisting::expected_revision: alloc::string::String
+pub formiga_farm_contract::ProposalKind::EditExisting::target: formiga_travel::ids::TravelerId
+impl core::clone::Clone for formiga_farm_contract::ProposalKind
+pub fn formiga_farm_contract::ProposalKind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::ProposalKind
+impl core::cmp::PartialEq for formiga_farm_contract::ProposalKind
+pub fn formiga_farm_contract::ProposalKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::ProposalKind
+pub fn formiga_farm_contract::ProposalKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::ProposalKind
+impl serde_core::ser::Serialize for formiga_farm_contract::ProposalKind
+pub fn formiga_farm_contract::ProposalKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::ProposalKind
+pub fn formiga_farm_contract::ProposalKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::ProposalKind
+impl core::marker::Send for formiga_farm_contract::ProposalKind
+impl core::marker::Sync for formiga_farm_contract::ProposalKind
+impl core::marker::Unpin for formiga_farm_contract::ProposalKind
+impl core::marker::UnsafeUnpin for formiga_farm_contract::ProposalKind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::ProposalKind
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::ProposalKind
+pub enum formiga_farm_contract::RecallReason
+pub formiga_farm_contract::RecallReason::Closing
+pub formiga_farm_contract::RecallReason::CreatureGone
+pub formiga_farm_contract::RecallReason::Unknown
+impl core::clone::Clone for formiga_farm_contract::RecallReason
+pub fn formiga_farm_contract::RecallReason::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::RecallReason
+impl core::cmp::PartialEq for formiga_farm_contract::RecallReason
+pub fn formiga_farm_contract::RecallReason::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::RecallReason
+pub fn formiga_farm_contract::RecallReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_farm_contract::RecallReason
+impl core::marker::StructuralPartialEq for formiga_farm_contract::RecallReason
+impl serde_core::ser::Serialize for formiga_farm_contract::RecallReason
+pub fn formiga_farm_contract::RecallReason::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::RecallReason
+pub fn formiga_farm_contract::RecallReason::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::RecallReason
+impl core::marker::Send for formiga_farm_contract::RecallReason
+impl core::marker::Sync for formiga_farm_contract::RecallReason
+impl core::marker::Unpin for formiga_farm_contract::RecallReason
+impl core::marker::UnsafeUnpin for formiga_farm_contract::RecallReason
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::RecallReason
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::RecallReason
+pub enum formiga_farm_contract::Rejection
+pub formiga_farm_contract::Rejection::Gone
+pub formiga_farm_contract::Rejection::Invalid(alloc::string::String)
+pub formiga_farm_contract::Rejection::Stale
+pub formiga_farm_contract::Rejection::Stale::current: formiga_core::forms::design::Design
+pub formiga_farm_contract::Rejection::Stale::revision: alloc::string::String
+pub formiga_farm_contract::Rejection::Unavailable
+pub formiga_farm_contract::Rejection::Unsupported
+pub formiga_farm_contract::Rejection::WrongSession
+impl formiga_farm_contract::Rejection
+pub fn formiga_farm_contract::Rejection::verdict(&self) -> formiga_farm_contract::Verdict
+impl core::clone::Clone for formiga_farm_contract::Rejection
+pub fn formiga_farm_contract::Rejection::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::Rejection
+impl core::cmp::PartialEq for formiga_farm_contract::Rejection
+pub fn formiga_farm_contract::Rejection::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::Rejection
+pub fn formiga_farm_contract::Rejection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::Rejection
+impl core::marker::Freeze for formiga_farm_contract::Rejection
+impl core::marker::Send for formiga_farm_contract::Rejection
+impl core::marker::Sync for formiga_farm_contract::Rejection
+impl core::marker::Unpin for formiga_farm_contract::Rejection
+impl core::marker::UnsafeUnpin for formiga_farm_contract::Rejection
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Rejection
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Rejection
+pub enum formiga_farm_contract::Verdict
+pub formiga_farm_contract::Verdict::Gone
+pub formiga_farm_contract::Verdict::Invalid
+pub formiga_farm_contract::Verdict::Kept
+pub formiga_farm_contract::Verdict::Kept::revision: alloc::string::String
+pub formiga_farm_contract::Verdict::Stale
+pub formiga_farm_contract::Verdict::Stale::current: formiga_core::forms::design::Design
+pub formiga_farm_contract::Verdict::Stale::revision: alloc::string::String
+pub formiga_farm_contract::Verdict::Unavailable
+pub formiga_farm_contract::Verdict::Unknown
+pub formiga_farm_contract::Verdict::Unsupported
+pub formiga_farm_contract::Verdict::Welcomed
+impl core::clone::Clone for formiga_farm_contract::Verdict
+pub fn formiga_farm_contract::Verdict::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::Verdict
+impl core::cmp::PartialEq for formiga_farm_contract::Verdict
+pub fn formiga_farm_contract::Verdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::Verdict
+pub fn formiga_farm_contract::Verdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::Verdict
+impl serde_core::ser::Serialize for formiga_farm_contract::Verdict
+pub fn formiga_farm_contract::Verdict::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::Verdict
+pub fn formiga_farm_contract::Verdict::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::Verdict
+impl core::marker::Send for formiga_farm_contract::Verdict
+impl core::marker::Sync for formiga_farm_contract::Verdict
+impl core::marker::Unpin for formiga_farm_contract::Verdict
+impl core::marker::UnsafeUnpin for formiga_farm_contract::Verdict
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Verdict
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Verdict
+pub struct formiga_farm_contract::FarmAck
+pub formiga_farm_contract::FarmAck::accepted: bool
+pub formiga_farm_contract::FarmAck::farm_version: alloc::string::String
+pub formiga_farm_contract::FarmAck::format: alloc::string::String
+pub formiga_farm_contract::FarmAck::min_reader_version: u32
+pub formiga_farm_contract::FarmAck::refusal: core::option::Option<formiga_expansion_rulebook::refusal::AckRefusal>
+pub formiga_farm_contract::FarmAck::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_farm_contract::FarmAck::snapshot_sha256: alloc::string::String
+pub formiga_farm_contract::FarmAck::version: u32
+impl formiga_farm_contract::FarmAck
+pub fn formiga_farm_contract::FarmAck::accepted(&formiga_farm_contract::SessionSeal, &str) -> Self
+pub fn formiga_farm_contract::FarmAck::answers(&self, &formiga_farm_contract::SessionSeal) -> bool
+pub fn formiga_farm_contract::FarmAck::refused(&formiga_farm_contract::SessionSeal, &str, formiga_expansion_rulebook::refusal::AckRefusal) -> Self
+impl core::clone::Clone for formiga_farm_contract::FarmAck
+pub fn formiga_farm_contract::FarmAck::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::FarmAck
+impl core::cmp::PartialEq for formiga_farm_contract::FarmAck
+pub fn formiga_farm_contract::FarmAck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmAck
+pub fn formiga_farm_contract::FarmAck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmAck
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmAck
+pub const formiga_farm_contract::FarmAck::FORMAT: &'static str
+pub const formiga_farm_contract::FarmAck::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmAck::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmAck
+pub fn formiga_farm_contract::FarmAck::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmAck
+pub fn formiga_farm_contract::FarmAck::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmAck
+impl core::marker::Send for formiga_farm_contract::FarmAck
+impl core::marker::Sync for formiga_farm_contract::FarmAck
+impl core::marker::Unpin for formiga_farm_contract::FarmAck
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmAck
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmAck
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmAck
+pub struct formiga_farm_contract::FarmCreature
+pub formiga_farm_contract::FarmCreature::accessory: core::option::Option<formiga_travel::snapshot::TravelAccessory>
+pub formiga_farm_contract::FarmCreature::appearance: formiga_travel::appearance::TravelAppearance
+pub formiga_farm_contract::FarmCreature::availability: formiga_farm_contract::Availability
+pub formiga_farm_contract::FarmCreature::id: formiga_travel::ids::TravelerId
+pub formiga_farm_contract::FarmCreature::name: alloc::string::String
+pub formiga_farm_contract::FarmCreature::revision: alloc::string::String
+pub formiga_farm_contract::FarmCreature::role: formiga_travel::snapshot::TravelRole
+pub formiga_farm_contract::FarmCreature::scale_percent: u8
+pub formiga_farm_contract::FarmCreature::sculpt: core::option::Option<formiga_core::forms::sculpt::Sculpt>
+pub formiga_farm_contract::FarmCreature::stature_percent: u8
+impl formiga_farm_contract::FarmCreature
+pub fn formiga_farm_contract::FarmCreature::design(&self) -> core::result::Result<formiga_core::forms::design::Design, formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::FarmCreature::genome(&self) -> core::result::Result<formiga_core::model::appearance::AppearanceGenome, formiga_farm_contract::FarmError>
+impl core::clone::Clone for formiga_farm_contract::FarmCreature
+pub fn formiga_farm_contract::FarmCreature::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_farm_contract::FarmCreature
+pub fn formiga_farm_contract::FarmCreature::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmCreature
+pub fn formiga_farm_contract::FarmCreature::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmCreature
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmCreature
+pub fn formiga_farm_contract::FarmCreature::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmCreature
+pub fn formiga_farm_contract::FarmCreature::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmCreature
+impl core::marker::Send for formiga_farm_contract::FarmCreature
+impl core::marker::Sync for formiga_farm_contract::FarmCreature
+impl core::marker::Unpin for formiga_farm_contract::FarmCreature
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmCreature
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmCreature
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmCreature
+pub struct formiga_farm_contract::FarmProposal
+pub formiga_farm_contract::FarmProposal::design: formiga_core::forms::design::Design
+pub formiga_farm_contract::FarmProposal::farm_version: alloc::string::String
+pub formiga_farm_contract::FarmProposal::format: alloc::string::String
+pub formiga_farm_contract::FarmProposal::kind: formiga_farm_contract::ProposalKind
+pub formiga_farm_contract::FarmProposal::lineage: formiga_farm_contract::Lineage
+pub formiga_farm_contract::FarmProposal::min_reader_version: u32
+pub formiga_farm_contract::FarmProposal::serial: u32
+pub formiga_farm_contract::FarmProposal::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_farm_contract::FarmProposal::snapshot_sha256: alloc::string::String
+pub formiga_farm_contract::FarmProposal::version: u32
+pub formiga_farm_contract::FarmProposal::written_at_utc: time::offset_date_time::OffsetDateTime
+impl formiga_farm_contract::FarmProposal
+pub fn formiga_farm_contract::FarmProposal::answers(&self, &formiga_farm_contract::SessionSeal) -> bool
+pub fn formiga_farm_contract::FarmProposal::new(&formiga_farm_contract::SessionSeal, u32, time::offset_date_time::OffsetDateTime, &str, formiga_farm_contract::ProposalKind, formiga_core::forms::design::Design, formiga_farm_contract::Lineage) -> Self
+impl core::clone::Clone for formiga_farm_contract::FarmProposal
+pub fn formiga_farm_contract::FarmProposal::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::FarmProposal
+impl core::cmp::PartialEq for formiga_farm_contract::FarmProposal
+pub fn formiga_farm_contract::FarmProposal::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmProposal
+pub fn formiga_farm_contract::FarmProposal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmProposal
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmProposal
+pub const formiga_farm_contract::FarmProposal::FORMAT: &'static str
+pub const formiga_farm_contract::FarmProposal::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmProposal::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmProposal
+pub fn formiga_farm_contract::FarmProposal::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmProposal
+pub fn formiga_farm_contract::FarmProposal::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmProposal
+impl core::marker::Send for formiga_farm_contract::FarmProposal
+impl core::marker::Sync for formiga_farm_contract::FarmProposal
+impl core::marker::Unpin for formiga_farm_contract::FarmProposal
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmProposal
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmProposal
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmProposal
+pub struct formiga_farm_contract::FarmRecall
+pub formiga_farm_contract::FarmRecall::format: alloc::string::String
+pub formiga_farm_contract::FarmRecall::min_reader_version: u32
+pub formiga_farm_contract::FarmRecall::reason: formiga_farm_contract::RecallReason
+pub formiga_farm_contract::FarmRecall::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_farm_contract::FarmRecall::version: u32
+impl formiga_farm_contract::FarmRecall
+pub fn formiga_farm_contract::FarmRecall::new(formiga_expansion_rulebook::ids::SessionId, formiga_farm_contract::RecallReason) -> Self
+impl core::clone::Clone for formiga_farm_contract::FarmRecall
+pub fn formiga_farm_contract::FarmRecall::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::FarmRecall
+impl core::cmp::PartialEq for formiga_farm_contract::FarmRecall
+pub fn formiga_farm_contract::FarmRecall::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmRecall
+pub fn formiga_farm_contract::FarmRecall::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmRecall
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmRecall
+pub const formiga_farm_contract::FarmRecall::FORMAT: &'static str
+pub const formiga_farm_contract::FarmRecall::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmRecall::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmRecall
+pub fn formiga_farm_contract::FarmRecall::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmRecall
+pub fn formiga_farm_contract::FarmRecall::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmRecall
+impl core::marker::Send for formiga_farm_contract::FarmRecall
+impl core::marker::Sync for formiga_farm_contract::FarmRecall
+impl core::marker::Unpin for formiga_farm_contract::FarmRecall
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmRecall
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmRecall
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmRecall
+pub struct formiga_farm_contract::FarmSnapshot
+pub formiga_farm_contract::FarmSnapshot::capabilities: alloc::vec::Vec<formiga_farm_contract::FarmCapability>
+pub formiga_farm_contract::FarmSnapshot::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_farm_contract::FarmSnapshot::desktop_version: alloc::string::String
+pub formiga_farm_contract::FarmSnapshot::format: alloc::string::String
+pub formiga_farm_contract::FarmSnapshot::min_reader_version: u32
+pub formiga_farm_contract::FarmSnapshot::mode: formiga_farm_contract::FarmMode
+pub formiga_farm_contract::FarmSnapshot::presentation: formiga_travel::snapshot::Presentation
+pub formiga_farm_contract::FarmSnapshot::renderer: formiga_farm_contract::Renderer
+pub formiga_farm_contract::FarmSnapshot::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_farm_contract::FarmSnapshot::version: u32
+impl formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::FarmSnapshot::base_genome(&self) -> core::result::Result<formiga_core::model::appearance::AppearanceGenome, formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::FarmSnapshot::can_keep(&self, &formiga_core::forms::design::Design) -> bool
+pub fn formiga_farm_contract::FarmSnapshot::creature(&self) -> core::option::Option<&formiga_farm_contract::FarmCreature>
+pub fn formiga_farm_contract::FarmSnapshot::offers(&self, formiga_farm_contract::FarmCapability) -> bool
+impl core::clone::Clone for formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::FarmSnapshot::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::FarmSnapshot::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::FarmSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmSnapshot
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmSnapshot
+pub const formiga_farm_contract::FarmSnapshot::FORMAT: &'static str
+pub const formiga_farm_contract::FarmSnapshot::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmSnapshot::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::FarmSnapshot::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmSnapshot
+pub fn formiga_farm_contract::FarmSnapshot::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmSnapshot
+impl core::marker::Send for formiga_farm_contract::FarmSnapshot
+impl core::marker::Sync for formiga_farm_contract::FarmSnapshot
+impl core::marker::Unpin for formiga_farm_contract::FarmSnapshot
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmSnapshot
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmSnapshot
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmSnapshot
+pub struct formiga_farm_contract::FarmVerdict
+pub formiga_farm_contract::FarmVerdict::format: alloc::string::String
+pub formiga_farm_contract::FarmVerdict::min_reader_version: u32
+pub formiga_farm_contract::FarmVerdict::serial: u32
+pub formiga_farm_contract::FarmVerdict::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_farm_contract::FarmVerdict::snapshot_sha256: alloc::string::String
+pub formiga_farm_contract::FarmVerdict::verdict: formiga_farm_contract::Verdict
+pub formiga_farm_contract::FarmVerdict::version: u32
+pub formiga_farm_contract::FarmVerdict::written_at_utc: time::offset_date_time::OffsetDateTime
+impl formiga_farm_contract::FarmVerdict
+pub fn formiga_farm_contract::FarmVerdict::answers(&self, &formiga_farm_contract::SessionSeal, u32) -> bool
+pub fn formiga_farm_contract::FarmVerdict::new(&formiga_farm_contract::SessionSeal, u32, time::offset_date_time::OffsetDateTime, formiga_farm_contract::Verdict) -> Self
+impl core::clone::Clone for formiga_farm_contract::FarmVerdict
+pub fn formiga_farm_contract::FarmVerdict::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::FarmVerdict
+impl core::cmp::PartialEq for formiga_farm_contract::FarmVerdict
+pub fn formiga_farm_contract::FarmVerdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::FarmVerdict
+pub fn formiga_farm_contract::FarmVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::FarmVerdict
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmVerdict
+pub const formiga_farm_contract::FarmVerdict::FORMAT: &'static str
+pub const formiga_farm_contract::FarmVerdict::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmVerdict::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl serde_core::ser::Serialize for formiga_farm_contract::FarmVerdict
+pub fn formiga_farm_contract::FarmVerdict::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::FarmVerdict
+pub fn formiga_farm_contract::FarmVerdict::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::FarmVerdict
+impl core::marker::Send for formiga_farm_contract::FarmVerdict
+impl core::marker::Sync for formiga_farm_contract::FarmVerdict
+impl core::marker::Unpin for formiga_farm_contract::FarmVerdict
+impl core::marker::UnsafeUnpin for formiga_farm_contract::FarmVerdict
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::FarmVerdict
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::FarmVerdict
+pub struct formiga_farm_contract::Lineage
+pub formiga_farm_contract::Lineage::draft_name: core::option::Option<alloc::string::String>
+pub formiga_farm_contract::Lineage::preset: core::option::Option<alloc::string::String>
+impl formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::new(core::option::Option<&str>, core::option::Option<&str>) -> Self
+impl core::clone::Clone for formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::Lineage
+impl core::cmp::PartialEq for formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::default() -> Self
+impl core::fmt::Debug for formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::Lineage
+impl serde_core::ser::Serialize for formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::Lineage
+pub fn formiga_farm_contract::Lineage::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::Lineage
+impl core::marker::Send for formiga_farm_contract::Lineage
+impl core::marker::Sync for formiga_farm_contract::Lineage
+impl core::marker::Unpin for formiga_farm_contract::Lineage
+impl core::marker::UnsafeUnpin for formiga_farm_contract::Lineage
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Lineage
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Lineage
+pub struct formiga_farm_contract::Opening<'a>
+pub formiga_farm_contract::Opening::capabilities: alloc::vec::Vec<formiga_farm_contract::FarmCapability>
+pub formiga_farm_contract::Opening::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_farm_contract::Opening::desktop_version: &'a str
+pub formiga_farm_contract::Opening::renderer: formiga_farm_contract::Renderer
+pub formiga_farm_contract::Opening::session_id: formiga_expansion_rulebook::ids::SessionId
+impl<'a> core::marker::Freeze for formiga_farm_contract::Opening<'a>
+impl<'a> core::marker::Send for formiga_farm_contract::Opening<'a>
+impl<'a> core::marker::Sync for formiga_farm_contract::Opening<'a>
+impl<'a> core::marker::Unpin for formiga_farm_contract::Opening<'a>
+impl<'a> core::marker::UnsafeUnpin for formiga_farm_contract::Opening<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Opening<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Opening<'a>
+pub struct formiga_farm_contract::Renderer
+pub formiga_farm_contract::Renderer::design_version: u32
+pub formiga_farm_contract::Renderer::plans: alloc::vec::Vec<formiga_core::forms::sculpt::Plan>
+impl formiga_farm_contract::Renderer
+pub fn formiga_farm_contract::Renderer::this_build() -> Self
+impl core::clone::Clone for formiga_farm_contract::Renderer
+pub fn formiga_farm_contract::Renderer::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::Renderer
+impl core::cmp::PartialEq for formiga_farm_contract::Renderer
+pub fn formiga_farm_contract::Renderer::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::Renderer
+pub fn formiga_farm_contract::Renderer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::Renderer
+impl serde_core::ser::Serialize for formiga_farm_contract::Renderer
+pub fn formiga_farm_contract::Renderer::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_farm_contract::Renderer
+pub fn formiga_farm_contract::Renderer::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_farm_contract::Renderer
+impl core::marker::Send for formiga_farm_contract::Renderer
+impl core::marker::Sync for formiga_farm_contract::Renderer
+impl core::marker::Unpin for formiga_farm_contract::Renderer
+impl core::marker::UnsafeUnpin for formiga_farm_contract::Renderer
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::Renderer
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::Renderer
+pub struct formiga_farm_contract::SessionSeal
+pub formiga_farm_contract::SessionSeal::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_farm_contract::SessionSeal::snapshot_sha256: alloc::string::String
+impl formiga_farm_contract::SessionSeal
+pub fn formiga_farm_contract::SessionSeal::of(&formiga_farm_contract::FarmSnapshot, &[u8]) -> Self
+impl core::clone::Clone for formiga_farm_contract::SessionSeal
+pub fn formiga_farm_contract::SessionSeal::clone(&self) -> Self
+impl core::cmp::Eq for formiga_farm_contract::SessionSeal
+impl core::cmp::PartialEq for formiga_farm_contract::SessionSeal
+pub fn formiga_farm_contract::SessionSeal::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_farm_contract::SessionSeal
+pub fn formiga_farm_contract::SessionSeal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_farm_contract::SessionSeal
+impl core::marker::Freeze for formiga_farm_contract::SessionSeal
+impl core::marker::Send for formiga_farm_contract::SessionSeal
+impl core::marker::Sync for formiga_farm_contract::SessionSeal
+impl core::marker::Unpin for formiga_farm_contract::SessionSeal
+impl core::marker::UnsafeUnpin for formiga_farm_contract::SessionSeal
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_farm_contract::SessionSeal
+impl core::panic::unwind_safe::UnwindSafe for formiga_farm_contract::SessionSeal
+pub const formiga_farm_contract::ACK_FILE: &str
+pub const formiga_farm_contract::ACK_FORMAT: &str
+pub const formiga_farm_contract::FARM_FORMAT_VERSION: u32
+pub const formiga_farm_contract::LAUNCH_ARGUMENT: &str
+pub const formiga_farm_contract::PROPOSAL_FILE: &str
+pub const formiga_farm_contract::PROPOSAL_FORMAT: &str
+pub const formiga_farm_contract::RECALL_FILE: &str
+pub const formiga_farm_contract::RECALL_FORMAT: &str
+pub const formiga_farm_contract::SNAPSHOT_FILE: &str
+pub const formiga_farm_contract::SNAPSHOT_FORMAT: &str
+pub const formiga_farm_contract::VERDICT_FILE: &str
+pub const formiga_farm_contract::VERDICT_FORMAT: &str
+pub trait formiga_farm_contract::FarmDocument: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
+pub const formiga_farm_contract::FarmDocument::FORMAT: &'static str
+pub const formiga_farm_contract::FarmDocument::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmDocument::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmAck
+pub const formiga_farm_contract::FarmAck::FORMAT: &'static str
+pub const formiga_farm_contract::FarmAck::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmAck::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmProposal
+pub const formiga_farm_contract::FarmProposal::FORMAT: &'static str
+pub const formiga_farm_contract::FarmProposal::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmProposal::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmRecall
+pub const formiga_farm_contract::FarmRecall::FORMAT: &'static str
+pub const formiga_farm_contract::FarmRecall::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmRecall::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmSnapshot
+pub const formiga_farm_contract::FarmSnapshot::FORMAT: &'static str
+pub const formiga_farm_contract::FarmSnapshot::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmSnapshot::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+impl formiga_farm_contract::FarmDocument for formiga_farm_contract::FarmVerdict
+pub const formiga_farm_contract::FarmVerdict::FORMAT: &'static str
+pub const formiga_farm_contract::FarmVerdict::MAX_BYTES: u64
+pub fn formiga_farm_contract::FarmVerdict::validate(&self) -> core::result::Result<(), formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::accept_proposal(&formiga_farm_contract::SessionSeal, &formiga_farm_contract::FarmSnapshot, &formiga_farm_contract::FarmProposal, formiga_farm_contract::Current<'_>) -> core::result::Result<formiga_farm_contract::Accepted, formiga_farm_contract::Rejection>
+pub fn formiga_farm_contract::apply_design(&mut formiga_core::model::creature::Creature, &formiga_core::forms::design::Design)
+pub fn formiga_farm_contract::decode<T: formiga_farm_contract::FarmDocument>(&[u8]) -> core::result::Result<T, formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::encode<T: formiga_farm_contract::FarmDocument>(&T) -> core::result::Result<alloc::vec::Vec<u8>, formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::project_create(&formiga_core::model::save::SaveFile, &formiga_core::model::appearance::AppearanceGenome, formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, &str, alloc::vec::Vec<formiga_farm_contract::FarmCapability>, formiga_farm_contract::Renderer) -> core::result::Result<formiga_farm_contract::FarmSnapshot, formiga_farm_contract::ProjectionError>
+pub fn formiga_farm_contract::project_edit(&formiga_core::model::save::SaveFile, formiga_core::model::creature::CreatureId, bool, formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, &str, alloc::vec::Vec<formiga_farm_contract::FarmCapability>, formiga_farm_contract::Renderer) -> core::result::Result<formiga_farm_contract::FarmSnapshot, formiga_farm_contract::ProjectionError>
+pub fn formiga_farm_contract::read_bounded(&std::path::Path, u64) -> core::result::Result<alloc::vec::Vec<u8>, formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::read_document<T: formiga_farm_contract::FarmDocument>(&std::path::Path) -> core::result::Result<(T, alloc::vec::Vec<u8>), formiga_farm_contract::FarmError>
+pub fn formiga_farm_contract::write_document<T: formiga_farm_contract::FarmDocument>(&std::path::Path, &T) -> core::result::Result<alloc::vec::Vec<u8>, formiga_farm_contract::FarmError>

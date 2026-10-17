@@ -2,6 +2,18 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Continuous integration
+
+- Formiga Hill, Home and Farm are built and tested on each pull request's Desktop crates (the
+  `companion-apps` workflow), so a change that would break one shows before that app repins.
+- The public API of the crates the companion apps build on is kept beside each crate and checked
+  on every pull request (`scripts/public-api.sh`).
+- `cargo audit` runs every week and whenever `Cargo.lock` changes.
+- The installers are built for a pull request only when it changes what goes into them; every push
+  to `main` still builds them.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are

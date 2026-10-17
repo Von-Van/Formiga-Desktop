@@ -1,0 +1,127 @@
+pub mod formiga_expansion_rulebook
+pub macro formiga_expansion_rulebook::contract_error!
+pub enum formiga_expansion_rulebook::AckRefusal
+pub formiga_expansion_rulebook::AckRefusal::Busy
+pub formiga_expansion_rulebook::AckRefusal::Invalid
+pub formiga_expansion_rulebook::AckRefusal::Other
+pub formiga_expansion_rulebook::AckRefusal::UnsupportedVersion
+pub formiga_expansion_rulebook::AckRefusal::UnsupportedVersion::reads: u32
+impl core::clone::Clone for formiga_expansion_rulebook::AckRefusal
+pub fn formiga_expansion_rulebook::AckRefusal::clone(&self) -> Self
+impl core::cmp::Eq for formiga_expansion_rulebook::AckRefusal
+impl core::cmp::PartialEq for formiga_expansion_rulebook::AckRefusal
+pub fn formiga_expansion_rulebook::AckRefusal::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_expansion_rulebook::AckRefusal
+pub fn formiga_expansion_rulebook::AckRefusal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_expansion_rulebook::AckRefusal
+impl core::marker::StructuralPartialEq for formiga_expansion_rulebook::AckRefusal
+impl serde_core::ser::Serialize for formiga_expansion_rulebook::AckRefusal
+pub fn formiga_expansion_rulebook::AckRefusal::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_expansion_rulebook::AckRefusal
+pub fn formiga_expansion_rulebook::AckRefusal::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_expansion_rulebook::AckRefusal
+impl core::marker::Send for formiga_expansion_rulebook::AckRefusal
+impl core::marker::Sync for formiga_expansion_rulebook::AckRefusal
+impl core::marker::Unpin for formiga_expansion_rulebook::AckRefusal
+impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::AckRefusal
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::AckRefusal
+impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::AckRefusal
+pub enum formiga_expansion_rulebook::RulebookError
+pub formiga_expansion_rulebook::RulebookError::Invalid(alloc::string::String)
+pub formiga_expansion_rulebook::RulebookError::Io(core::io::error::Error)
+pub formiga_expansion_rulebook::RulebookError::Json(serde_json::error::Error)
+pub formiga_expansion_rulebook::RulebookError::TooLarge
+pub formiga_expansion_rulebook::RulebookError::TooLarge::limit: u64
+pub formiga_expansion_rulebook::RulebookError::UnsupportedVersion
+pub formiga_expansion_rulebook::RulebookError::UnsupportedVersion::needs: u32
+pub formiga_expansion_rulebook::RulebookError::UnsupportedVersion::reads: u32
+pub formiga_expansion_rulebook::RulebookError::WrongFormat
+pub formiga_expansion_rulebook::RulebookError::WrongFormat::expected: &'static str
+pub formiga_expansion_rulebook::RulebookError::WrongFormat::found: alloc::string::String
+impl core::convert::From<core::io::error::Error> for formiga_expansion_rulebook::RulebookError
+pub fn formiga_expansion_rulebook::RulebookError::from(core::io::error::Error) -> Self
+impl core::convert::From<serde_json::error::Error> for formiga_expansion_rulebook::RulebookError
+pub fn formiga_expansion_rulebook::RulebookError::from(serde_json::error::Error) -> Self
+impl core::error::Error for formiga_expansion_rulebook::RulebookError
+pub fn formiga_expansion_rulebook::RulebookError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_expansion_rulebook::RulebookError
+pub fn formiga_expansion_rulebook::RulebookError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_expansion_rulebook::RulebookError
+pub fn formiga_expansion_rulebook::RulebookError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_expansion_rulebook::RulebookError
+impl core::marker::Send for formiga_expansion_rulebook::RulebookError
+impl core::marker::Sync for formiga_expansion_rulebook::RulebookError
+impl core::marker::Unpin for formiga_expansion_rulebook::RulebookError
+impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::RulebookError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::RulebookError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::RulebookError
+pub struct formiga_expansion_rulebook::Kind
+pub formiga_expansion_rulebook::Kind::format: &'static str
+pub formiga_expansion_rulebook::Kind::max_bytes: u64
+pub formiga_expansion_rulebook::Kind::reads: u32
+impl core::clone::Clone for formiga_expansion_rulebook::Kind
+pub fn formiga_expansion_rulebook::Kind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_expansion_rulebook::Kind
+impl core::cmp::PartialEq for formiga_expansion_rulebook::Kind
+pub fn formiga_expansion_rulebook::Kind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_expansion_rulebook::Kind
+pub fn formiga_expansion_rulebook::Kind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_expansion_rulebook::Kind
+impl core::marker::StructuralPartialEq for formiga_expansion_rulebook::Kind
+impl core::marker::Freeze for formiga_expansion_rulebook::Kind
+impl core::marker::Send for formiga_expansion_rulebook::Kind
+impl core::marker::Sync for formiga_expansion_rulebook::Kind
+impl core::marker::Unpin for formiga_expansion_rulebook::Kind
+impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::Kind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::Kind
+impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::Kind
+pub struct formiga_expansion_rulebook::SessionId(_)
+impl formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::as_str(&self) -> &str
+pub fn formiga_expansion_rulebook::SessionId::generate() -> core::result::Result<Self, getrandom::error::Error>
+pub fn formiga_expansion_rulebook::SessionId::parse(&str) -> core::option::Option<Self>
+impl core::clone::Clone for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::clone(&self) -> Self
+impl core::cmp::Eq for formiga_expansion_rulebook::SessionId
+impl core::cmp::Ord for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<formiga_expansion_rulebook::SessionId> for alloc::string::String
+pub fn alloc::string::String::from(formiga_expansion_rulebook::SessionId) -> Self
+impl core::convert::TryFrom<alloc::string::String> for formiga_expansion_rulebook::SessionId
+pub type formiga_expansion_rulebook::SessionId::Error = alloc::string::String
+pub fn formiga_expansion_rulebook::SessionId::try_from(alloc::string::String) -> core::result::Result<Self, Self::Error>
+impl core::fmt::Debug for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for formiga_expansion_rulebook::SessionId
+impl serde_core::ser::Serialize for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::SessionId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_expansion_rulebook::SessionId
+impl core::marker::Send for formiga_expansion_rulebook::SessionId
+impl core::marker::Sync for formiga_expansion_rulebook::SessionId
+impl core::marker::Unpin for formiga_expansion_rulebook::SessionId
+impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::SessionId
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::SessionId
+impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::SessionId
+pub fn formiga_expansion_rulebook::check_header(&serde_json::value::Value, &'static str, u32) -> core::result::Result<(), formiga_expansion_rulebook::RulebookError>
+pub fn formiga_expansion_rulebook::decode<T: serde_core::de::DeserializeOwned>(&[u8], formiga_expansion_rulebook::Kind) -> core::result::Result<T, formiga_expansion_rulebook::RulebookError>
+pub fn formiga_expansion_rulebook::encode<T: serde_core::ser::Serialize>(&T, formiga_expansion_rulebook::Kind) -> core::result::Result<alloc::vec::Vec<u8>, formiga_expansion_rulebook::RulebookError>
+pub fn formiga_expansion_rulebook::header_ok(&str, u32, u32, &str) -> bool
+pub fn formiga_expansion_rulebook::hex(&[u8]) -> alloc::string::String
+pub fn formiga_expansion_rulebook::is_lower_hex(&str, usize) -> bool
+pub fn formiga_expansion_rulebook::is_sanitized(&str, usize) -> bool
+pub fn formiga_expansion_rulebook::is_sha256_hex(&str) -> bool
+pub fn formiga_expansion_rulebook::read_bounded(&std::path::Path, u64) -> core::result::Result<alloc::vec::Vec<u8>, formiga_expansion_rulebook::RulebookError>
+pub fn formiga_expansion_rulebook::sanitize_text(&str, usize) -> alloc::string::String
+pub fn formiga_expansion_rulebook::sha256_hex(&[u8]) -> alloc::string::String
+pub fn formiga_expansion_rulebook::unhex<const N: usize>(&str) -> core::option::Option<[u8; N]>
+pub fn formiga_expansion_rulebook::write_atomically(&std::path::Path, &[u8]) -> core::io::error::Result<()>
