@@ -993,8 +993,7 @@ impl FormigaApp {
             .is_some_and(|w| w.save.settings.launch_at_login);
         // A house open in Home, and a companion open in Farm, belong to the colony being
         // replaced.
-        self.abandon_house_visit();
-        self.abandon_farm_session();
+        self.abandon_visits();
         self.world = Some(imported);
         self.recovery_pending = false;
         self.milestone_notice = None;

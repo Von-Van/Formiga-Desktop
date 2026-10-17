@@ -43,8 +43,15 @@ pub struct Expansion {
     pub words: Words,
 }
 
-/// The words an app is spoken of in, each said after its name.
+/// The words an app is spoken of in, each said after its name unless it says otherwise.
 pub struct Words {
+    /// The title every reason a visit cannot start is shown under: "The colony is staying home".
+    pub staying: &'static str,
+    /// The whole sentence said while the colony waits to be recovered in the notebook.
+    pub recover_first: &'static str,
+    /// For an app that takes companions away from the desktop, the sentence said, ahead of the
+    /// reason, while the colony cannot be saved; `None` for one that takes nobody.
+    pub cannot_save: Option<&'static str>,
     /// What its contract's version is called: `travel` in "reads travel version 2".
     pub contract: &'static str,
     /// What updating it would let the colony do: "take the colony there".
@@ -94,6 +101,40 @@ pub fn busy_elsewhere(
         .iter()
         .find(|(app, holding)| !std::ptr::eq(*app, asking) && holding.holds_any(wants))
         .map(|(app, _)| app.words.occupied)
+}
+
+/// Whom a visit takes away from the desktop while it is open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Takes<'a> {
+    /// Nobody, as Formiga Farm, which has only a copy of a companion's look.
+    Nobody,
+    /// The whole colony, as a trip to Formiga Hill or a match in Formiga Battle.
+    Everyone,
+    /// These creatures, as a household going indoors in Formiga Home.
+    These(&'a [CreatureId]),
+}
+
+impl Takes<'_> {
+    /// Whom another app would have to be holding to stand in the way: `None` for everyone.
+    pub fn wants(&self) -> Option<Option<&[CreatureId]>> {
+        match self {
+            Self::Nobody => None,
+            Self::Everyone => Some(None),
+            Self::These(ids) => Some(Some(ids)),
+        }
+    }
+}
+
+/// What the app knows, as a visit is asked for, that can stand in the way of it before anything
+/// of it is written.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Readiness<'a> {
+    /// The colony could not be opened and waits to be recovered in the notebook.
+    pub recovering: bool,
+    /// Why the colony could not be saved last time, while that is still so.
+    pub save_trouble: Option<&'a str>,
+    /// Why another app, holding someone the visit needs, stands in the way.
+    pub busy: Option<&'static str>,
 }
 
 /// An app's own reason for turning a visit away, as its acknowledgement gave it.
@@ -160,6 +201,25 @@ impl Expansion {
                 self.words.contract, self.name, self.words.update_to
             )
         })
+    }
+
+    /// What stands in the way of a visit just now, before anything of it is written, as the owner
+    /// is told it, under [`Words::staying`]; `None` when nothing does. A colony being recovered
+    /// comes first, then a colony that cannot be saved (for an app that takes anyone away), then
+    /// someone the visit needs being away in another app.
+    pub fn blocked(&self, now: &Readiness) -> Option<String> {
+        if now.recovering {
+            return Some(self.words.recover_first.to_owned());
+        }
+        if let (Some(trouble), Some(cannot_save)) = (now.save_trouble, self.words.cannot_save) {
+            return Some(format!("{cannot_save} {trouble}"));
+        }
+        now.busy.map(str::to_owned)
+    }
+
+    /// What the owner is told when the app has gone since Desktop last looked.
+    pub fn gone(&self) -> String {
+        format!("{} is no longer installed.", self.name)
     }
 
     /// The app's refusal, said so the owner can do something about it.
@@ -269,6 +329,9 @@ mod tests {
         start_after_env: "FORMIGA_SAMPLE_VISIT_AFTER",
         folder: SAMPLE_FOLDER,
         words: Words {
+            staying: "The sample is staying shut",
+            recover_first: "Finish recovering the colony in the notebook before opening the sample.",
+            cannot_save: Some("The colony cannot be saved just now, so it is not going."),
             contract: "sample",
             update_to: "open the sample",
             busy: "is already open",
@@ -283,6 +346,15 @@ mod tests {
         folder: SAMPLE_FOLDER,
         words: Words {
             occupied: "Someone is at the other app just now.",
+            ..SAMPLE.words
+        },
+        ..SAMPLE
+    };
+
+    static TAKES_NOBODY: Expansion = Expansion {
+        folder: SAMPLE_FOLDER,
+        words: Words {
+            cannot_save: None,
             ..SAMPLE.words
         },
         ..SAMPLE
@@ -348,6 +420,47 @@ mod tests {
             said(AckRefusal::Other, ""),
             "Formiga Sample could not open the sample this time."
         );
+    }
+
+    #[test]
+    fn what_stands_in_the_way_is_said_one_reason_at_a_time_recovery_first() {
+        let clear = Readiness::default();
+        assert_eq!(SAMPLE.blocked(&clear), None);
+        let everything = Readiness {
+            recovering: true,
+            save_trouble: Some("The disk is full."),
+            busy: Some("Someone is at the other app just now."),
+        };
+        assert_eq!(
+            SAMPLE.blocked(&everything).as_deref(),
+            Some("Finish recovering the colony in the notebook before opening the sample.")
+        );
+        let unsaved = Readiness {
+            recovering: false,
+            ..everything
+        };
+        assert_eq!(
+            SAMPLE.blocked(&unsaved).as_deref(),
+            Some("The colony cannot be saved just now, so it is not going. The disk is full.")
+        );
+        let busy = Readiness {
+            save_trouble: None,
+            ..unsaved
+        };
+        assert_eq!(
+            SAMPLE.blocked(&busy).as_deref(),
+            Some("Someone is at the other app just now.")
+        );
+        // An app that takes nobody away does not wait for the colony to be saveable.
+        assert_eq!(TAKES_NOBODY.blocked(&unsaved).as_deref(), busy.busy);
+        assert_eq!(SAMPLE.gone(), "Formiga Sample is no longer installed.");
+    }
+
+    #[test]
+    fn whom_a_visit_takes_says_whom_another_app_may_not_hold() {
+        assert_eq!(Takes::Nobody.wants(), None);
+        assert_eq!(Takes::Everyone.wants(), Some(None));
+        assert_eq!(Takes::These(&[4]).wants(), Some(Some(&[4][..])));
     }
 
     #[test]

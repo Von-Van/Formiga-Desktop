@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Every companion app checks the same things, in the same order, before a visit starts: a colony
+  waiting to be recovered, then one that cannot be saved, then someone it needs being away in
+  another app. Formiga Home used to name the companion away elsewhere first, and Formiga Farm said
+  a companion was away before saying Farm had been removed.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are

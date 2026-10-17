@@ -4,8 +4,9 @@
 //! out whatever happens. The states and the guarantees are
 //! described in [`crate::house`].
 
+use super::companions::Companion;
 use super::*;
-use crate::expansion::Slot;
+use crate::expansion::{Slot, Takes};
 use crate::house::session::{self, HouseFiles, OpenVisit};
 use crate::house::{HOME, HouseEvent, VisitState};
 use crate::houses::{HouseProxy, PlacedHouse};
@@ -17,7 +18,7 @@ use std::time::{Instant, SystemTime};
 use visits::HOME_ITEM;
 
 /// The title every reason for not opening a house is shown under.
-const STAYING_SHUT: &str = "The house is staying shut";
+const STAYING_SHUT: &str = HOME.words.staying;
 
 /// What Desktop takes back from a visit: a line in the journal for it, and who is in the house
 /// as it changes, for a Home that says so. A capability is offered only once Desktop applies what
@@ -124,28 +125,7 @@ impl FormigaApp {
         if self.house.visit.open().is_some() || self.world.is_none() {
             return;
         }
-        if let Some(reason) = self.busy_elsewhere(&HOME, Some(&[keeper])) {
-            self.failure_dialog(STAYING_SHUT, reason);
-            return;
-        }
-        if self.recovery_pending {
-            self.failure_dialog(
-                STAYING_SHUT,
-                "Finish recovering the colony in the notebook before opening its houses.",
-            );
-            return;
-        }
-        if let Some(trouble) = self.save_trouble.clone() {
-            self.failure_dialog(
-                STAYING_SHUT,
-                &format!("The colony cannot be saved just now, so no house is opened. {trouble}"),
-            );
-            return;
-        }
-        // Asked again now: it may have been removed since the last look.
-        self.check_for_home(true);
-        let Some(install) = self.house.slot.install.clone() else {
-            self.failure_dialog(STAYING_SHUT, "Formiga Home is no longer installed.");
+        let Some(install) = self.ready_for(Companion::Home, Takes::These(&[keeper])) else {
             return;
         };
         let now = OffsetDateTime::now_utc();
