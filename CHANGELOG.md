@@ -16,6 +16,11 @@ All notable changes are documented here.
   later instead of the next day. A download that fails part way no longer leaves up to 250 MB
   behind until the next day's start, and the choice to turn checks off can no longer be lost to a
   crash while it is written.
+- A colony file with more habitat areas than a colony keeps is cut back to the first 32 as it
+  loads, as a restored backup's already was; repair used to leave them, and every step of every
+  companion walked them all.
+- A damaged colony file whose times stand near the end of the calendar loads with its clock
+  brought back to 2200, instead of stopping Formiga each time it started.
 
 ## [0.67.11] - 2026-10-16
 

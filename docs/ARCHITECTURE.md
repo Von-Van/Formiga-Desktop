@@ -198,7 +198,9 @@ keep them in place.
 4. **Validation.** `persistence/validation.rs` brings the colony inside every limit and makes it
    agree with itself — each companion once and at most six, names that can be names, a mini's
    grown-up present, bonds and tallies only between companions who are here, caps on every list,
-   the day book's days in order, positions somewhere, unscheduled timers scheduled from the seed —
+   the day book's days in order, positions somewhere, the colony's clock (founding, latest moment
+   seen, births, next ritual, object and unlock) no later than 2200, unscheduled timers scheduled
+   from the seed —
    and wraps it as a `ValidatedSave`. `World::from_save` takes nothing else: a `SaveFile` handed to
    it is validated on the way in. The colony's own file is repaired wherever it can be, so it is
    never lost to the recovery screen over something that can be put right; a snapshot chosen to
