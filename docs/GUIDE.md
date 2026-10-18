@@ -287,7 +287,8 @@ brings everyone home to exactly where they were.
 
 What the matches earned comes home with the colony: a line in the journal for each match, the
 trophy and medal for each cup won, your Handler's name, pennant and standing, and the trios you
-named with what each has played. Battle reads these the next time it opens, so your record carries
+named with what each has played. The trophies and medals are under **Cups** on the Journal page,
+with the day each was won. Battle reads all of it the next time it opens, so your record carries
 on, and Formiga Home can set the trophies down or hang the medals in a house. A match played twice
 over, or a result that names a session other than the one that went, counts once or not at all.
 
