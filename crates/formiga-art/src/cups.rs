@@ -228,7 +228,8 @@ mod tests {
         }
     }
 
-    /// The pictures as Formiga Home draws them, by a digest of their pixels. Changing one means
+    /// The pictures as Formiga Home 0.67.14 draws them (`art::battle`, the same code over the same
+    /// ramps and paint), by a digest of their pixels. Changing one means
     /// the two apps no longer show the same keepsake: change both, together.
     #[test]
     fn every_keepsake_is_drawn_as_formiga_home_draws_it() {
@@ -292,13 +293,13 @@ mod tests {
     }
 
     const AS_FORMIGA_HOME_DRAWS_THEM: [(BattleKeepsake, u64); 8] = [
-        (BattleKeepsake::BackyardCupTrophy, 0),
-        (BattleKeepsake::BackyardCupMedal, 0),
-        (BattleKeepsake::WoodlandCupTrophy, 0),
-        (BattleKeepsake::WoodlandCupMedal, 0),
-        (BattleKeepsake::MillpondCupTrophy, 0),
-        (BattleKeepsake::MillpondCupMedal, 0),
-        (BattleKeepsake::CoveCupTrophy, 0),
-        (BattleKeepsake::CoveCupMedal, 0),
+        (BattleKeepsake::BackyardCupTrophy, 1_261_485_052_478_463_201),
+        (BattleKeepsake::BackyardCupMedal, 6_908_729_493_675_662_633),
+        (BattleKeepsake::WoodlandCupTrophy, 2_458_070_615_304_024_362),
+        (BattleKeepsake::WoodlandCupMedal, 15_794_219_028_949_516_138),
+        (BattleKeepsake::MillpondCupTrophy, 395_804_718_017_853_621),
+        (BattleKeepsake::MillpondCupMedal, 6_177_061_029_006_315_589),
+        (BattleKeepsake::CoveCupTrophy, 6_167_753_583_130_946_011),
+        (BattleKeepsake::CoveCupMedal, 16_268_790_334_508_205_035),
     ];
 }
