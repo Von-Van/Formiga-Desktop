@@ -86,7 +86,9 @@ impl From<egui_winit::accesskit_winit::Event> for UserEvent {
 
 #[derive(Debug)]
 pub enum UpdateEvent {
-    CheckFinished(std::result::Result<Option<UpdateRelease>, String>),
+    /// Formiga's own release check, sent once every companion app's lookup is done too, with
+    /// whether each of those got an answer.
+    CheckFinished(std::result::Result<Option<UpdateRelease>, String>, bool),
     DownloadFinished(std::result::Result<DownloadedUpdate, String>),
     /// The newest release of the companion app of this name, as the daily check found it.
     CompanionChecked(

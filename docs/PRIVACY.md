@@ -17,8 +17,9 @@ A manual check is also available from the tray and About screen. A check request
 metadata from `api.github.com` for the Formiga repository, and, for each companion app installed
 (Formiga Hill, Formiga Home and Formiga Battle), for the public repository its downloads are
 published in, so the About page can say when a newer one is out. Nothing is downloaded for a
-companion app, and which apps are installed is never sent anywhere; a lookup asks only for that
-repository's public list of releases. If the user chooses to download an update,
+companion app, and a lookup asks only for that repository's public list of releases. Formiga sends
+no list of installed apps, but since only installed apps are looked up, GitHub can tell from which
+repositories are asked for which of these apps are installed. If the user chooses to download an update,
 Formiga requests that release asset and its checksum from GitHub's release hosting. GitHub receives
 ordinary connection information such as the user's IP address and a Formiga user-agent; Formiga does
 not send its colony seed, save data, settings, desktop activity, window list, or a device identifier.

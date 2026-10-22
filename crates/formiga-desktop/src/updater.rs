@@ -175,14 +175,16 @@ impl UpdateController {
     }
 
     /// Takes in a check's answer, returning whether it should open the About page. Only an answer
-    /// counts as checked: one that failed is tried again within the hour rather than tomorrow.
+    /// counts as checked: one that failed is tried again within the hour rather than tomorrow, and
+    /// so is one where a companion app's lookup went unanswered, so the About page catches up.
     pub fn finish_check(
         &mut self,
         result: Result<Option<UpdateRelease>, String>,
+        every_companion_answered: bool,
         now: OffsetDateTime,
     ) -> bool {
         let now = now.unix_timestamp();
-        if result.is_ok() {
+        if result.is_ok() && every_companion_answered {
             self.preferences.last_checked_unix = Some(now);
             if let Err(error) = self.save_preferences() {
                 tracing::warn!(%error, "could not persist update-check time");
@@ -820,7 +822,7 @@ mod tests {
         let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
         assert!(controller.should_check_automatically(now));
         assert!(controller.begin_check(false, now));
-        assert!(!controller.finish_check(Ok(None), now));
+        assert!(!controller.finish_check(Ok(None), true, now));
         assert!(!controller.should_check_automatically(now + time::Duration::hours(23)));
         assert!(controller.should_check_automatically(now + time::Duration::hours(24)));
         fs::remove_dir_all(&directory).unwrap();
@@ -832,10 +834,25 @@ mod tests {
         let mut controller = UpdateController::load(&directory);
         let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
         assert!(controller.begin_check(true, now));
-        controller.finish_check(Err("offline".into()), now);
+        controller.finish_check(Err("offline".into()), true, now);
 
         assert_eq!(controller.preferences.last_checked_unix, None);
         assert!(!directory.join("updates.json").exists());
+        assert!(!controller.should_check_automatically(now + time::Duration::minutes(59)));
+        assert!(controller.should_check_automatically(now + time::Duration::hours(1)));
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_companion_lookup_that_gets_no_answer_is_tried_again_within_the_hour() {
+        let directory = scratch("companion-retry");
+        let mut controller = UpdateController::load(&directory);
+        let now = OffsetDateTime::UNIX_EPOCH + time::Duration::days(10);
+        assert!(controller.begin_check(false, now));
+        controller.finish_check(Ok(None), false, now);
+
+        assert!(matches!(controller.status(), UpdateStatus::UpToDate { .. }));
+        assert_eq!(controller.preferences.last_checked_unix, None);
         assert!(!controller.should_check_automatically(now + time::Duration::minutes(59)));
         assert!(controller.should_check_automatically(now + time::Duration::hours(1)));
         fs::remove_dir_all(&directory).unwrap();
@@ -863,13 +880,13 @@ mod tests {
         };
 
         assert!(controller.begin_check(false, now));
-        assert!(!controller.finish_check(Ok(release()), now));
+        assert!(!controller.finish_check(Ok(release()), true, now));
         assert!(matches!(controller.status(), UpdateStatus::Available(_)));
         // Found, it waits for the owner rather than being looked for again.
         assert!(!controller.should_check_automatically(now + time::Duration::days(2)));
 
         assert!(controller.begin_check(true, now));
-        assert!(controller.finish_check(Ok(release()), now));
+        assert!(controller.finish_check(Ok(release()), true, now));
         fs::remove_dir_all(&directory).unwrap();
     }
 

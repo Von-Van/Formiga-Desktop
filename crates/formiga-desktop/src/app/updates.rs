@@ -38,13 +38,20 @@ impl FormigaApp {
             .name("formiga-update-check".into())
             .spawn(move || {
                 let result = check_github().map_err(|error| error.to_string());
-                let _ = proxy.send_event(UserEvent::Update(UpdateEvent::CheckFinished(result)));
+                // The check ends once every companion has been looked up, so one that got no
+                // answer is tried again with the rest within the hour.
+                let mut every_companion_answered = true;
                 for (name, releases) in companions {
-                    let result = check_companion(name, releases).map_err(|error| error.to_string());
+                    let found = check_companion(name, releases).map_err(|error| error.to_string());
+                    every_companion_answered &= found.is_ok();
                     let _ = proxy.send_event(UserEvent::Update(UpdateEvent::CompanionChecked(
-                        name, result,
+                        name, found,
                     )));
                 }
+                let _ = proxy.send_event(UserEvent::Update(UpdateEvent::CheckFinished(
+                    result,
+                    every_companion_answered,
+                )));
             })
             .expect("spawn update-check worker");
     }
@@ -79,9 +86,9 @@ impl FormigaApp {
                 self.sync_update_ui();
                 return;
             }
-            UpdateEvent::CheckFinished(result) => {
-                self.updates.finish_check(result, OffsetDateTime::now_utc())
-            }
+            UpdateEvent::CheckFinished(result, every_companion_answered) => self
+                .updates
+                .finish_check(result, every_companion_answered, OffsetDateTime::now_utc()),
             UpdateEvent::DownloadFinished(result) => {
                 self.updates.finish_download(result);
                 true
