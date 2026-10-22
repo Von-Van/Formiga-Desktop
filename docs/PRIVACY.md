@@ -10,7 +10,8 @@ in memory. A creature's movement cadence is derived from data it already has and
 Established hangouts may reinforce the existing coarse preferred desktop region, without retaining
 the window identity or exact remembered spot in the save.
 
-The sole network feature is an assisted update checker. Automatic checks are enabled by default,
+Formiga's own sole network feature is an assisted update checker. (Formiga Battle, a separate app,
+can play a friend over the internet, as described below.) Automatic checks are enabled by default,
 can be disabled in **Settings → About**, and run no more than once per 24 hours, as Formiga starts or
 while it runs. A check that gets no answer, such as one made offline, is tried again an hour later.
 A manual check is also available from the tray and About screen. A check requests only public release
@@ -378,7 +379,8 @@ setting or diagnostic log.
 What comes back is read only once Battle has gone, only if it names this session and this exact
 snapshot, and only inside fixed bounds. Formiga applies each match's result to the Battle record by
 the contract's own rule, once per match; keeps the trophies and medals the cups earned, each once,
-with the time; and writes the one line of plain text Battle gives for each match into the journal.
+with the time; and writes into the journal the lines of plain text Battle gives for each match, at
+most eight.
 Everything else Battle offers is set aside unread. The session's files are deleted once Battle has
 gone, and while one is open `battle/session.json` holds its identifier and the snapshot's SHA-256,
 so a session interrupted by Formiga itself stopping can still be kept on its next start.

@@ -285,7 +285,7 @@ Backyard to Sandy Cove. While the colony is away nothing of it is on your deskto
 offers **Bring the colony home** whenever you want them back. When Battle closes the train
 brings everyone home to exactly where they were.
 
-What the matches earned comes home with the colony: a line in the journal for each match, the
+What the matches earned comes home with the colony: a few lines in the journal for each match, the
 trophy and medal for each cup won, your Handler's name, pennant and standing, and the trios you
 named with what each has played. The trophies and medals are under **Cups** on the Journal page,
 with the day each was won. Battle reads all of it the next time it opens, so your record carries
@@ -294,10 +294,10 @@ over, or a result that names a session other than the one that went, counts once
 
 As with a trip, the colony always comes home, whatever happens: if Battle closes early, cannot
 open the match, or stops unexpectedly, everyone comes straight back as they left, and if Formiga
-itself is closed while they are away, it brings them home the next time it starts. A friend match
-is the one thing in Formiga that goes over the internet, through a small relay on the Formiga
-website, and Battle says exactly what it shares before the first one. [PRIVACY.md](PRIVACY.md)
-lists what Battle is told, and what is kept.
+itself is closed while they are away, it brings them home the next time it starts. Apart from
+the check for new versions, a friend match is the one thing that goes over the internet, through a
+small relay on the Formiga website, and Battle says exactly what it shares before the first one.
+[PRIVACY.md](PRIVACY.md) lists what Battle is told, and what is kept.
 
 ## Settings you may want
 
