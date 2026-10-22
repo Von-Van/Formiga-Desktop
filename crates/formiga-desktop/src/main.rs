@@ -23,6 +23,8 @@ mod platform;
 mod reference_match;
 #[cfg(test)]
 mod review_sheet;
+#[cfg(test)]
+mod scratch;
 mod settings;
 mod sticker_export;
 mod tray;
