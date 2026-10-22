@@ -41,6 +41,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId, WindowLevel};
 mod battle;
 mod cadence;
+mod companions;
 mod farm;
 mod habitat_editor;
 mod hill;
@@ -226,14 +227,7 @@ impl FormigaApp {
         self.world = Some(world);
         self.sync_overlay_visibility();
         self.save()?;
-        self.check_for_hill(true);
-        self.resume_open_trip();
-        self.check_for_home(true);
-        self.resume_open_visit();
-        self.check_for_farm(true);
-        self.resume_farm_session();
-        self.check_for_battle(true);
-        self.resume_battle_session();
+        self.start_companions();
         if first_launch {
             self.show_settings(event_loop);
             if let Some(window) = &mut self.settings_window {
@@ -453,10 +447,7 @@ impl FormigaApp {
             self.tick_trips(dt);
             return true;
         }
-        self.check_for_hill(false);
-        self.check_for_home(false);
-        self.check_for_farm(false);
-        self.check_for_battle(false);
+        self.check_for_companions();
         let desktop = self.snapshot();
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
@@ -605,9 +596,7 @@ impl FormigaApp {
                 }
                 // A house open in Home, a companion open in Farm, and a match open in Battle
                 // belong to the colony being replaced.
-                self.abandon_house_visit();
-                self.abandon_farm_session();
-                self.abandon_battle_session();
+                self.abandon_visits();
                 let desktop = self.snapshot();
                 match new_colony_seed() {
                     Ok(seed) => {

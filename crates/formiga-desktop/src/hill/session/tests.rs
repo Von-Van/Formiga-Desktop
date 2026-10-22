@@ -1,31 +1,11 @@
 use super::*;
+use crate::scratch::Scratch;
 use formiga_core::{DesktopRect, DesktopSnapshot, DisplayKey, MonitorInfo, World};
 use formiga_travel::{AckRefusal, SessionId, TRAVEL_FORMAT_VERSION, encode, project_colony};
 use std::fs;
 use time::macros::datetime;
 
 const LEFT: OffsetDateTime = datetime!(2026-10-02 9:30 UTC);
-
-/// A directory of its own under the system's temporary directory, removed when dropped.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "formiga-hill-session-{name}-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 fn snapshot() -> TravelSnapshot {
     let desktop = DesktopSnapshot {
@@ -70,7 +50,7 @@ fn write_receipt(trip: &OpenTrip, receipt: &ReturnReceipt) {
 
 #[test]
 fn a_trip_is_written_whole_and_found_again_after_a_restart() {
-    let scratch = Scratch::new("open");
+    let scratch = Scratch::new("hill-session", "open");
     let files = TravelFiles::new(&scratch.0);
     assert_eq!(files.open_trip(), None);
     let snapshot = snapshot();
@@ -90,7 +70,7 @@ fn a_trip_is_written_whole_and_found_again_after_a_restart() {
 
 #[test]
 fn a_trip_with_no_answer_is_silent() {
-    let scratch = Scratch::new("silent");
+    let scratch = Scratch::new("hill-session", "silent");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
     assert_eq!(
@@ -104,7 +84,7 @@ fn a_trip_with_no_answer_is_silent() {
 
 #[test]
 fn only_a_receipt_for_exactly_this_trip_is_a_receipt() {
-    let scratch = Scratch::new("receipts");
+    let scratch = Scratch::new("hill-session", "receipts");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
     let good = receipt(&trip, vec![visit(LEFT, LEFT + Duration::minutes(50))]);
@@ -146,7 +126,7 @@ fn only_a_receipt_for_exactly_this_trip_is_a_receipt() {
 
 #[test]
 fn hill_saying_no_is_heard() {
-    let scratch = Scratch::new("refused");
+    let scratch = Scratch::new("hill-session", "refused");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
     let ack = Acknowledgement::refused(
@@ -182,7 +162,7 @@ fn hill_saying_no_is_heard() {
 
 #[test]
 fn a_receipt_adds_one_visit_and_nothing_else() {
-    let scratch = Scratch::new("welcome");
+    let scratch = Scratch::new("hill-session", "welcome");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
     let now = LEFT + Duration::hours(1);
@@ -219,7 +199,7 @@ fn a_receipt_adds_one_visit_and_nothing_else() {
 
 #[test]
 fn a_receipt_brings_home_each_souvenir_desktop_keeps_once() {
-    let scratch = Scratch::new("souvenirs");
+    let scratch = Scratch::new("hill-session", "souvenirs");
     let files = TravelFiles::new(&scratch.0);
     let mut trip = files.open(&snapshot()).unwrap();
     let now = LEFT + Duration::hours(1);
@@ -256,7 +236,7 @@ fn a_receipt_brings_home_each_souvenir_desktop_keeps_once() {
 
 #[test]
 fn a_visit_outside_the_trip_or_never_offered_is_set_aside() {
-    let scratch = Scratch::new("outside");
+    let scratch = Scratch::new("hill-session", "outside");
     let files = TravelFiles::new(&scratch.0);
     let mut trip = files.open(&snapshot()).unwrap();
     let now = LEFT + Duration::hours(1);
@@ -282,7 +262,7 @@ fn a_visit_outside_the_trip_or_never_offered_is_set_aside() {
 
 #[test]
 fn closing_a_trip_leaves_nothing_and_sweeping_leaves_only_the_open_one() {
-    let scratch = Scratch::new("sweep");
+    let scratch = Scratch::new("hill-session", "sweep");
     let files = TravelFiles::new(&scratch.0);
     let old = files.open(&snapshot()).unwrap();
     files.close(&old);
@@ -316,7 +296,7 @@ fn closing_a_trip_leaves_nothing_and_sweeping_leaves_only_the_open_one() {
 
 #[test]
 fn calling_the_colony_home_closes_the_trip_and_leaves_hill_its_recall() {
-    let scratch = Scratch::new("recall");
+    let scratch = Scratch::new("hill-session", "recall");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
     files.call_home(&trip, RecallReason::OwnerAsked, LEFT + Duration::minutes(3));
@@ -342,7 +322,7 @@ fn a_trip_is_marked_exactly_as_earlier_desktops_marked_it() {
         created_at_utc: OffsetDateTime,
         capabilities: Vec<Capability>,
     }
-    let scratch = Scratch::new("earlier");
+    let scratch = Scratch::new("hill-session", "earlier");
     let files = TravelFiles::new(&scratch.0);
     let trip = files.open(&snapshot()).unwrap();
     let mut earlier = serde_json::to_vec_pretty(&Earlier {
