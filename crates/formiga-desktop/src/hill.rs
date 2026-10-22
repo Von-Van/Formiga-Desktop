@@ -52,6 +52,9 @@ pub static HILL: Expansion = Expansion {
         kept: &[],
     },
     words: Words {
+        staying: "The colony is staying home",
+        recover_first: "Finish recovering the colony in the notebook before it travels.",
+        cannot_save: Some("The colony cannot be saved just now, so it is not leaving."),
         contract: "travel",
         update_to: "take the colony there",
         busy: "is already hosting a colony",

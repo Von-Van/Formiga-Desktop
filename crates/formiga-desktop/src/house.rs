@@ -53,6 +53,9 @@ pub static HOME: Expansion = Expansion {
         kept: &[session::KEPT_FILE],
     },
     words: Words {
+        staying: "The house is staying shut",
+        recover_first: "Finish recovering the colony in the notebook before opening its houses.",
+        cannot_save: Some("The colony cannot be saved just now, so no house is opened."),
         contract: "household",
         update_to: "open its houses",
         busy: "already has a house open",

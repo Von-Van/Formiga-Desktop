@@ -39,6 +39,16 @@ impl FormigaApp {
         self.tick_battle_trip(dt);
     }
 
+    /// The train that brings the colony home: the one on the desktop now, turned back, or a new
+    /// one pulling in. `None` when there is nobody to see it, and the colony is simply home.
+    pub(super) fn train_home(&self, current: Option<&TrainScene>) -> Option<TrainScene> {
+        let world = self.world.as_ref()?;
+        match current {
+            Some(scene) => scene.turn_back(&world.save, &self.monitors),
+            None => TrainScene::arrival(&world.save, &self.monitors),
+        }
+    }
+
     /// The train has moved: every overlay showing it draws again.
     pub(super) fn redraw_train(&self) {
         for overlay in self.overlays.values() {
@@ -59,8 +69,7 @@ impl FormigaApp {
         }
         self.sync_overlay_visibility();
         self.request_overlay_redraw();
-        self.sync_hill_menu();
-        self.sync_battle_menu();
+        self.sync_visit_menus();
     }
 
     /// The colony is back to living on the desktop.
@@ -70,8 +79,7 @@ impl FormigaApp {
         self.last_tick = Instant::now();
         self.sync_overlay_visibility();
         self.request_overlay_redraw();
-        self.sync_hill_menu();
-        self.sync_battle_menu();
+        self.sync_visit_menus();
     }
 
     /// The colony as the overlay draws it this frame, while a trip has it: the platform's copy

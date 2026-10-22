@@ -169,6 +169,7 @@ impl<M: Serialize + DeserializeOwned> VisitFiles<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     static FOLDER: Folder = Folder {
         directory: "sample",
@@ -180,27 +181,6 @@ mod tests {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     struct Remembered {
         note: String,
-    }
-
-    /// A directory of its own under the system's temporary directory, removed when dropped.
-    struct Scratch(PathBuf);
-
-    impl Scratch {
-        fn new(name: &str) -> Self {
-            let path = std::env::temp_dir().join(format!(
-                "formiga-expansion-files-{name}-{}",
-                std::process::id()
-            ));
-            let _ = fs::remove_dir_all(&path);
-            fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
     }
 
     fn open(files: &VisitFiles<Remembered>, note: &str) -> (SessionId, PathBuf) {
@@ -221,7 +201,7 @@ mod tests {
 
     #[test]
     fn a_visit_is_written_whole_and_found_again_after_a_restart() {
-        let scratch = Scratch::new("open");
+        let scratch = Scratch::new("expansion-files", "open");
         let files = VisitFiles::<Remembered>::new(&scratch.0, &FOLDER);
         assert_eq!(files.open_visit(), None);
         let (session, dir) = open(&files, "first");
@@ -261,7 +241,7 @@ mod tests {
 
     #[test]
     fn a_visit_that_cannot_be_written_leaves_nothing_behind() {
-        let scratch = Scratch::new("failed");
+        let scratch = Scratch::new("expansion-files", "failed");
         let files = VisitFiles::<Remembered>::new(&scratch.0, &FOLDER);
         let session = SessionId::generate().unwrap();
         let failed = files.open(&session, |dir| {
@@ -275,7 +255,7 @@ mod tests {
 
     #[test]
     fn a_marker_that_does_not_check_out_is_no_visit() {
-        let scratch = Scratch::new("markers");
+        let scratch = Scratch::new("expansion-files", "markers");
         let files = VisitFiles::<Remembered>::new(&scratch.0, &FOLDER);
         let (session, _) = open(&files, "first");
         let path = scratch.0.join("sample").join("visit.json");
@@ -299,7 +279,7 @@ mod tests {
 
     #[test]
     fn closing_a_visit_leaves_nothing_and_sweeping_leaves_only_the_open_one_and_what_is_kept() {
-        let scratch = Scratch::new("sweep");
+        let scratch = Scratch::new("expansion-files", "sweep");
         let root = scratch.0.join("sample");
         let files = VisitFiles::<Remembered>::new(&scratch.0, &FOLDER);
         let (_, old) = open(&files, "old");
@@ -336,7 +316,7 @@ mod tests {
 
     #[test]
     fn forgetting_a_visit_leaves_its_directory_until_the_next_sweep() {
-        let scratch = Scratch::new("forget");
+        let scratch = Scratch::new("expansion-files", "forget");
         let files = VisitFiles::<Remembered>::new(&scratch.0, &FOLDER);
         let (_, called_home) = open(&files, "called home");
         files.forget();

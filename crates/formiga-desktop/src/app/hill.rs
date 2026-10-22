@@ -2,8 +2,9 @@
 //! sending the colony, holding the world still while it is away, and bringing it home whatever
 //! happens. The states and the guarantees are described in [`crate::hill`].
 
+use super::companions::Companion;
 use super::*;
-use crate::expansion::Slot;
+use crate::expansion::{Slot, Takes};
 use crate::hill::session::{self, Answer, TravelFiles};
 use crate::hill::{HILL, HillEvent, TripState, scene::TrainScene};
 use crate::platform::companion_app::AppInstall;
@@ -13,7 +14,7 @@ use formiga_travel::{RecallReason, SessionId, project_colony};
 use visits::HILL_ITEM;
 
 /// The title every reason for not leaving is shown under.
-const STAYING_HOME: &str = "The colony is staying home";
+const STAYING_HOME: &str = HILL.words.staying;
 
 /// The trip's own state and files, and Hill's slot, as the app keeps them.
 pub(super) struct HillLink {
@@ -94,28 +95,7 @@ impl FormigaApp {
         if self.hill.trip.holds_world() || self.world.is_none() {
             return;
         }
-        if self.recovery_pending {
-            self.failure_dialog(
-                STAYING_HOME,
-                "Finish recovering the colony in the notebook before it travels.",
-            );
-            return;
-        }
-        if let Some(trouble) = self.save_trouble.clone() {
-            self.failure_dialog(
-                STAYING_HOME,
-                &format!("The colony cannot be saved just now, so it is not leaving. {trouble}"),
-            );
-            return;
-        }
-        if let Some(reason) = self.busy_elsewhere(&HILL, None) {
-            self.failure_dialog(STAYING_HOME, reason);
-            return;
-        }
-        // Asked again now: it may have been removed since the last look.
-        self.check_for_hill(true);
-        let Some(install) = self.hill.slot.install.clone() else {
-            self.failure_dialog(STAYING_HOME, "Formiga Hill is no longer installed.");
+        let Some(install) = self.ready_for(Companion::Hill, Takes::Everyone) else {
             return;
         };
         // The travel version this colony needs: newer only if someone in it is drawn in a way an
@@ -279,13 +259,7 @@ impl FormigaApp {
 
     /// The colony is home: by train if anyone can see it, at once if not.
     fn come_home(&mut self, note: Option<HomecomingNote>) {
-        let scene = self
-            .world
-            .as_ref()
-            .and_then(|world| match self.hill.trip.scene() {
-                Some(scene) => scene.turn_back(&world.save, &self.monitors),
-                None => TrainScene::arrival(&world.save, &self.monitors),
-            });
+        let scene = self.train_home(self.hill.trip.scene());
         if let Err(error) = self.save() {
             tracing::error!(%error, "could not save the colony coming home");
         }
