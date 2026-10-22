@@ -568,6 +568,8 @@ fn live(
         weekly_routine(&mut world, &mut rng);
     }
     check(&world, &desktop, "founded")?;
+    // Founding's own events count too, so a run of no days still sums what the colony said.
+    drain(&mut world, &mut digest);
 
     for day in 0..options.days {
         let sessions = rng.random_range(2..=5);
@@ -677,6 +679,8 @@ fn live(
             )?;
 
             // Between sessions: written to disk, and half the time read back as a relaunch would.
+            // Anything still queued is summed first, as a reload starts a fresh `World`.
+            drain(&mut world, &mut digest);
             if rng.random_bool(0.5) {
                 world = reload(&world, &store)?;
                 lived.reloads += 1;
@@ -744,6 +748,8 @@ fn live(
         let nights = if rng.random_bool(0.15) { 3 } else { 1 };
         now += Duration::hours(rng.random_range(8..=14)) + Duration::days(nights - 1);
     }
+    // Whatever the last session's changes queued is summed before the colony is.
+    drain(&mut world, &mut digest);
     let final_save = world.save.clone();
     *last_save.lock().unwrap() = Some(final_save.clone());
     if let Some(mut digest) = digest {
