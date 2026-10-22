@@ -53,6 +53,9 @@ pub static BATTLE: Expansion = Expansion {
         kept: &[],
     },
     words: Words {
+        staying: "Formiga Battle is staying shut",
+        recover_first: "Finish recovering the colony in the notebook before opening Formiga Battle.",
+        cannot_save: Some("The colony cannot be saved just now, so it is not leaving."),
         contract: "battle",
         update_to: "play with the colony's companions",
         busy: "already has a match open",

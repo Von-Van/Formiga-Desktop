@@ -14,7 +14,9 @@ failed or skipped with its reason:
               fail it)
   tests       cargo test on every crate
   soak        a short run of the nightly soak: randomized colonies living a simulated day,
-              written and read back, their files damaged and repaired
+              written and read back, their files damaged and repaired. On a Mac it runs on two
+              threads at background priority (`taskpolicy -b`), so the computer stays usable;
+              elsewhere on half the cores. --full-speed gives it every core at normal priority.
   hill, home, farm, battle
               (with --expansions) the expansion's own tests, built on this checkout's Desktop
               crates instead of the release they are tied to. Battle has no CI, so this is the
@@ -26,6 +28,8 @@ failed or skipped with its reason:
 from __future__ import annotations
 
 import os
+import shutil
+import sys
 from typing import Callable, Dict, List, Optional
 
 from . import cargo
@@ -139,12 +143,30 @@ def step_tests() -> Step:
     return Step("tests", "failed" if done.code else "passed", summary, done.seconds, problems)
 
 
-def step_soak() -> Step:
+# Threads for the soak on a Mac, where it also runs at background priority: the soak is the one
+# step that would otherwise keep every core busy, and the Mac is someone's working computer.
+GENTLE_SOAK_THREADS = 2
+
+
+def soak_command(full_speed: bool = False, platform: str = sys.platform) -> List[str]:
+    """How the soak step runs: gently on a Mac, on half the cores elsewhere (the soak's own
+    default), or on every core with `full_speed`."""
     out = DEV / "soak"
-    threads = str(max(1, (os.cpu_count() or 2)))
-    done = run(["cargo", "run", "-q", "--release", "-p", "formiga-tools", "--", "soak",
-                "--colonies", str(SOAK_COLONIES), "--days", "1", "--seed", str(SOAK_SEED),
-                "--damage", "2", "--threads", threads, "--out", str(out)])
+    command = ["cargo", "run", "-q", "--release", "-p", "formiga-tools", "--", "soak",
+               "--colonies", str(SOAK_COLONIES), "--days", "1", "--seed", str(SOAK_SEED),
+               "--damage", "2", "--out", str(out)]
+    if full_speed:
+        return command + ["--threads", str(max(1, os.cpu_count() or 2))]
+    if platform == "darwin":
+        command += ["--threads", str(GENTLE_SOAK_THREADS)]
+        if shutil.which("taskpolicy"):
+            command = ["taskpolicy", "-b", *command]
+    return command
+
+
+def step_soak(full_speed: bool = False) -> Step:
+    out = DEV / "soak"
+    done = run(soak_command(full_speed))
     problems = []
     for line in done.output.splitlines():
         if line.startswith("colony ") and ":" in line:
@@ -236,7 +258,7 @@ STEPS: Dict[str, Callable[[], Step]] = {
 
 
 def validate(quick: bool = False, expansions: bool = False,
-             only: Optional[List[str]] = None) -> Result:
+             only: Optional[List[str]] = None, full_speed: bool = False) -> Result:
     names = only or (QUICK if quick else DEFAULT)
     if expansions and not only:
         names = names + EXPANSION_STEPS
@@ -244,7 +266,12 @@ def validate(quick: bool = False, expansions: bool = False,
                                       "checkout": str(DESKTOP)})
     for name in names:
         # The app is linted with every other crate where it builds, so lint covers it then.
-        step = step_app("lint" in names) if name == "app" else STEPS[name]()
+        if name == "app":
+            step = step_app("lint" in names)
+        elif name == "soak":
+            step = step_soak(full_speed)
+        else:
+            step = STEPS[name]()
         result.steps.append(step)
     return result
 

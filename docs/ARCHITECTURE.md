@@ -229,10 +229,20 @@ belong to none of the themes. Everything else lives in a child module named afte
 `world/antics.rs`, `arrivals.rs`, `battle.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`,
 `discovery.rs`, `echo_fox.rs`, `experience.rs`, `generation.rs`, `habits.rs`, `home.rs`,
 `house_visits.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`, `movement.rs`, `new_looks.rs`,
-`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `surfaces.rs`,
-`tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and the
-`attention/` family. Each module adds methods to the one `World` type rather than owning state of
-its own, so there is still a single simulation object and a single tick.
+`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `step.rs`,
+`surfaces.rs`, `tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and
+the `attention/` family. Each module adds methods to the one `World` type rather than owning state
+of its own, so there is still a single simulation object and a single tick.
+
+`tick` runs the colony-wide passes, then each creature's own part of the tick through
+`world/step.rs`'s `step_creature`, in colony order. That is a sequence of named steps, each a
+method: `held_this_tick` (being handled, a wonder or a house elsewhere, arriving, a toss in the
+air), `advance_drives`, `advance_window_journey`, `behavior_context`, `react_to_tossed_friend`,
+then, once its action is over, `pick_next_action` (the priority list a finished action is weighed
+against) and `set_out`, and last `carry_out_action`. Each step returns whether the creature is done
+for this tick, as the `continue`s of the one loop they came from did; what every step shares within
+the tick is a `TickShared`. Splitting them out of `tick` changed nothing a colony does: 80 colonies
+over two simulated days each gave the same `soak --digest` before and after.
 
 The values that decide how a feature feels — how often something happens, how long it lasts, how
 far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
@@ -2611,6 +2621,18 @@ through its slot, `hill::HILL`, and Formiga Home through `house::HOME`, whose fo
 The tray has an item for each app, in the order `app/visits.rs` lists them, straight after the
 everyday colony actions. Each app says what its item offers just now, as a `tray::VisitOffer`, or
 withdraws it, and a click comes back as `TrayAction::Visit` with the app's place in the list.
+
+On the app's side the four apps are one list, `app/companions.rs`'s `Companion`, and everything the
+app does for each of them at the same moment goes through it: looking for them as Desktop starts and
+finishing a visit a stop left open (`start_companions`), looking again on a tick
+(`check_for_companions`), letting go of a visit when the colony is reset or a backup restored
+(`abandon_visits`), the tray items (`sync_visit_menus`) and who each app has (`holding`). Each is a
+`match` over the list, so a new app is added there and the compiler names every place that needs a
+word for it. Before any visit writes anything, `ready_for` asks the same questions in the same order
+for every app, through `Expansion::blocked`: is the colony waiting to be recovered, can it not be
+saved (for an app that takes anyone away, `Takes`), and is anyone the visit needs away in another
+app; then it looks for the app again. Each reason is said in the app's own `Words`, under its own
+title (`Words::staying`).
 
 
 ## Trips to Formiga Hill (save v26)
