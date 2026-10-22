@@ -2554,6 +2554,80 @@ fn souvenirs_appear_in_the_journal_only_once_one_has_come_home() {
     assert!(h.clubhouse.texture_ids().is_empty());
 }
 
+/// The journal has no place for Formiga Battle's cups until a keepsake comes home from a match.
+/// Then each trophy and medal is shown, newest first, under the Handler's name, the cups won and
+/// the points, and their picture is given back with the rest of the artwork.
+#[test]
+fn battle_cups_appear_in_the_journal_only_once_one_has_come_home() {
+    use formiga_core::{BattleHandlerCard, BattleKeepsake, BattleKeepsakeRecord, BattlePennant};
+    let mut h = Harness::new(SettingsTab::Journal);
+    h.save.companion.journal.clear();
+    h.save.companion.pins.clear();
+    h.save.companion.scrapbook.clear();
+    h.save.visitors = VisitorState::default();
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(!shown_starting(&h, "CUPS"));
+    let textures = h.clubhouse.texture_ids().len();
+    let at = h.save.created_at_utc + time::Duration::days(2);
+    h.save.battle.keepsakes = vec![
+        BattleKeepsakeRecord {
+            keepsake: BattleKeepsake::BackyardCupTrophy,
+            earned_at_utc: at,
+        },
+        BattleKeepsakeRecord {
+            keepsake: BattleKeepsake::BackyardCupMedal,
+            earned_at_utc: at + time::Duration::days(1),
+        },
+    ];
+    h.save.battle.record.circuit_points = 15;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "CUPS · 2 from Formiga Battle"));
+    assert!(shown(&h, "1 cup won · 15 circuit points"));
+    let top = |h: &Harness, name: &str| {
+        h.labels
+            .iter()
+            .find(|(text, _)| text == name)
+            .map(|(_, rect)| rect.top())
+            .unwrap_or_else(|| panic!("{name} is not shown"))
+    };
+    assert!(
+        top(&h, BattleKeepsake::BackyardCupMedal.name())
+            < top(&h, BattleKeepsake::BackyardCupTrophy.name()),
+        "the newest comes first"
+    );
+    assert!(shown(&h, BattleKeepsake::BackyardCupTrophy.description()));
+    assert!(shown_starting(&h, "Won in Formiga Battle · "));
+    assert_eq!(
+        h.clubhouse.texture_ids().len(),
+        textures + 1,
+        "one picture holds every cup"
+    );
+    h.save.battle.record.handler = Some(BattleHandlerCard {
+        name: "Jo".to_owned(),
+        club: None,
+        pennant: BattlePennant {
+            shape: "swallowtail".to_owned(),
+            field: "forest".to_owned(),
+            symbol: "acorn".to_owned(),
+            trim: "brass".to_owned(),
+        },
+    });
+    h.frame(Vec::new());
+    assert!(shown(&h, "Handler Jo · 1 cup won · 15 circuit points"));
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        h.screen = egui::vec2(940.0, 900.0);
+        h.frame(Vec::new());
+        h.picture()
+            .save(path.join("Journal-940-cream-100-cups.png"))
+            .unwrap();
+    }
+    h.clubhouse.release_images();
+    assert!(h.clubhouse.texture_ids().is_empty());
+}
+
 /// A save that fails is shown calmly on every page, with something to do about it; it is the
 /// app that clears it once a save works again.
 #[test]

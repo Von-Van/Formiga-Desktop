@@ -36,6 +36,28 @@ All notable changes are documented here.
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
   within its run-to-run noise.
 
+### Developer tools
+
+- `formiga-tools soak --digest` sums up each colony's life (every event it raised and the file it
+  ended with) as a SHA-256, so a refactor can be shown to change nothing: run it before and after
+  with the same seed and compare. See docs/BUILD.md.
+- `devtools/formiga validate` runs its soak on two threads at background priority on a Mac, so the
+  computer stays usable while it runs; `--full-speed` gives it every core as before.
+
+### Documentation
+
+- The guide gains "A match in Formiga Battle": how to open it, the train, what comes home, and that
+  the colony always comes home. The privacy notes say what Battle is told and what Formiga keeps of
+  a match, and point to Battle's own account of what a friend match shares.
+
+### Added
+
+- The Journal page shows what the colony has won in Formiga Battle, in a **Cups** section beside
+  the Souvenirs: each trophy and medal with its picture and the day it was won, newest first, under
+  a line of the Handler's name, the cups won and the circuit points. The pictures match Formiga
+  Home's, so a cup looks the same on its shelf there. Like the Souvenirs, the section appears only
+  once the first keepsake has come home.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are
