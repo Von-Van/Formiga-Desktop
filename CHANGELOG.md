@@ -26,6 +26,12 @@ All notable changes are documented here.
 - `devtools/formiga validate` runs its soak on two threads at background priority on a Mac, so the
   computer stays usable while it runs; `--full-speed` gives it every core as before.
 
+### Documentation
+
+- The guide gains "A match in Formiga Battle": how to open it, the train, what comes home, and that
+  the colony always comes home. The privacy notes say what Battle is told and what Formiga keeps of
+  a match, and point to Battle's own account of what a friend match shares.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are
