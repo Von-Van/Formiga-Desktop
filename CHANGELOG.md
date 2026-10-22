@@ -11,6 +11,13 @@ All notable changes are documented here.
   another app. Formiga Home used to name the companion away elsewhere first, and Formiga Farm said
   a companion was away before saying Farm had been removed.
 
+### Internal
+
+- Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
+  of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
+  two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
+  within its run-to-run noise.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are
