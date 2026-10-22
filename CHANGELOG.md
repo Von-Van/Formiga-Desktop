@@ -24,11 +24,17 @@ All notable changes are documented here.
   again." The numbers still go to the log.
 - The update setting's tooltip says checks run once a day while Formiga runs, as they have since
   0.67.14, not only as it starts.
-
 - Every companion app checks the same things, in the same order, before a visit starts: a colony
   waiting to be recovered, then one that cannot be saved, then someone it needs being away in
   another app. Formiga Home used to name the companion away elsewhere first, and Formiga Farm said
   a companion was away before saying Farm had been removed.
+
+### Internal
+
+- Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
+  of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
+  two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
+  within its run-to-run noise.
 
 ## [0.67.14] - 2026-10-17
 

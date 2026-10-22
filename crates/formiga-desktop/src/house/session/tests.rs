@@ -1,4 +1,5 @@
 use super::*;
+use crate::scratch::Scratch;
 use formiga_core::SaveFile;
 use formiga_home_contract::{
     AckRefusal, CatalogId, DisplayId, HouseholdHome, PlacedDisplay, PlacedPiece, RoomLayout,
@@ -7,27 +8,6 @@ use formiga_home_contract::{
 use time::macros::datetime;
 
 const OPENED: OffsetDateTime = datetime!(2026-11-12 10:00 UTC);
-
-/// A directory of its own under the system's temporary directory, removed when dropped.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "formiga-house-session-{name}-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 fn colony() -> SaveFile {
     sample::colony()
@@ -97,7 +77,7 @@ fn visit_effect(keeper: TravelerId, arrived: OffsetDateTime, left: OffsetDateTim
 
 #[test]
 fn a_visit_is_written_whole_and_found_again_after_a_restart() {
-    let scratch = Scratch::new("written");
+    let scratch = Scratch::new("house-session", "written");
     let files = HouseFiles::new(&scratch.0);
     let save = colony();
     let snapshot = snapshot(&save);
@@ -116,7 +96,7 @@ fn a_visit_is_written_whole_and_found_again_after_a_restart() {
 
 #[test]
 fn only_answers_for_exactly_this_visit_count() {
-    let scratch = Scratch::new("answers");
+    let scratch = Scratch::new("house-session", "answers");
     let files = HouseFiles::new(&scratch.0);
     let save = colony();
     let snapshot = snapshot(&save);
@@ -149,7 +129,7 @@ fn only_answers_for_exactly_this_visit_count() {
 
 #[test]
 fn home_saying_no_is_heard() {
-    let scratch = Scratch::new("refused");
+    let scratch = Scratch::new("house-session", "refused");
     let files = HouseFiles::new(&scratch.0);
     let snapshot = snapshot(&colony());
     let visit = files.open(&snapshot, &[]).unwrap();
@@ -185,7 +165,7 @@ fn home_saying_no_is_heard() {
 
 #[test]
 fn a_result_is_kept_only_as_the_contract_allows_and_only_for_this_colony() {
-    let scratch = Scratch::new("kept");
+    let scratch = Scratch::new("house-session", "kept");
     let files = HouseFiles::new(&scratch.0);
     let save = colony();
     let snapshot = snapshot(&save);
@@ -210,7 +190,7 @@ fn a_result_is_kept_only_as_the_contract_allows_and_only_for_this_colony() {
 
 #[test]
 fn a_result_is_weighed_only_against_the_files_desktop_wrote() {
-    let scratch = Scratch::new("tampered");
+    let scratch = Scratch::new("house-session", "tampered");
     let files = HouseFiles::new(&scratch.0);
     let snapshot = snapshot(&colony());
     let visit = files.open(&snapshot, &[]).unwrap();
@@ -229,7 +209,7 @@ fn a_result_is_weighed_only_against_the_files_desktop_wrote() {
 
 #[test]
 fn a_receipt_adds_one_visit_line_and_nothing_else() {
-    let scratch = Scratch::new("welcome");
+    let scratch = Scratch::new("house-session", "welcome");
     let files = HouseFiles::new(&scratch.0);
     let snapshot = snapshot(&colony());
     let mut visit = files.open(&snapshot, &[]).unwrap();
@@ -279,7 +259,7 @@ fn a_receipt_adds_one_visit_line_and_nothing_else() {
 
 #[test]
 fn closing_leaves_only_the_kept_homes_and_calling_home_leaves_home_its_recall() {
-    let scratch = Scratch::new("closing");
+    let scratch = Scratch::new("house-session", "closing");
     let files = HouseFiles::new(&scratch.0);
     let snapshot = snapshot(&colony());
     files.keep(&HomeState::new(&snapshot.colony_key)).unwrap();
@@ -314,7 +294,7 @@ fn a_visit_is_marked_exactly_as_earlier_desktops_marked_it() {
         away: Vec<CreatureId>,
         capabilities: Vec<HomeCapability>,
     }
-    let scratch = Scratch::new("earlier");
+    let scratch = Scratch::new("house-session", "earlier");
     let files = HouseFiles::new(&scratch.0);
     let snapshot = snapshot(&colony());
     let away = [snapshot.household.keeper.0];
@@ -339,7 +319,7 @@ fn a_visit_is_marked_exactly_as_earlier_desktops_marked_it() {
 
 #[test]
 fn who_is_indoors_is_read_once_each_time_home_says_and_only_for_those_lent() {
-    let scratch = Scratch::new("indoors");
+    let scratch = Scratch::new("house-session", "indoors");
     let files = HouseFiles::new(&scratch.0);
     let save = colony();
     let mut snapshot = snapshot(&save);
