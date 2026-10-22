@@ -2622,6 +2622,18 @@ The tray has an item for each app, in the order `app/visits.rs` lists them, stra
 everyday colony actions. Each app says what its item offers just now, as a `tray::VisitOffer`, or
 withdraws it, and a click comes back as `TrayAction::Visit` with the app's place in the list.
 
+On the app's side the four apps are one list, `app/companions.rs`'s `Companion`, and everything the
+app does for each of them at the same moment goes through it: looking for them as Desktop starts and
+finishing a visit a stop left open (`start_companions`), looking again on a tick
+(`check_for_companions`), letting go of a visit when the colony is reset or a backup restored
+(`abandon_visits`), the tray items (`sync_visit_menus`) and who each app has (`holding`). Each is a
+`match` over the list, so a new app is added there and the compiler names every place that needs a
+word for it. Before any visit writes anything, `ready_for` asks the same questions in the same order
+for every app, through `Expansion::blocked`: is the colony waiting to be recovered, can it not be
+saved (for an app that takes anyone away, `Takes`), and is anyone the visit needs away in another
+app; then it looks for the app again. Each reason is said in the app's own `Words`, under its own
+title (`Words::staying`).
+
 
 ## Trips to Formiga Hill (save v26)
 

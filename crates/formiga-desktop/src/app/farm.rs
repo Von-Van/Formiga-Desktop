@@ -3,8 +3,9 @@
 //! contract's own rule, and answering Farm whatever happens. The states and the guarantees are
 //! described in [`crate::farm`].
 
+use super::companions::Companion;
 use super::*;
-use crate::expansion::Slot;
+use crate::expansion::{Slot, Takes};
 use crate::farm::session::{FarmFiles, OpenSession, Purpose, refusal_text};
 use crate::farm::{FARM, FarmEvent, FarmRequest, SessionState, Watcher};
 use crate::settings::GenerationPreview;
@@ -15,7 +16,7 @@ use formiga_farm_contract::{
 };
 
 /// The title every reason for not opening Farm is shown under.
-const STAYING_SHUT: &str = "Formiga Farm is staying shut";
+const STAYING_SHUT: &str = FARM.words.staying;
 
 /// What Desktop does with Farm's designs: keeps one for the companion a session opened on, takes
 /// one into the studio for the owner to welcome, draws sculpted forms, and notes a kept look in
@@ -111,23 +112,13 @@ impl FormigaApp {
         if self.farm.session.open().is_some() || self.world.is_none() {
             return;
         }
-        if self.recovery_pending {
-            self.failure_dialog(
-                STAYING_SHUT,
-                "Finish recovering the colony in the notebook before opening Formiga Farm.",
-            );
+        let Some(install) = self.ready_for(Companion::Farm, Takes::Nobody) else {
             return;
-        }
+        };
         if let Some(reason) = self.farm_cannot_have(request) {
             self.failure_dialog(STAYING_SHUT, &reason);
             return;
         }
-        // Asked again now: it may have been removed since the last look.
-        self.farm.slot.look(true);
-        let Some(install) = self.farm.slot.install.clone() else {
-            self.failure_dialog(STAYING_SHUT, "Formiga Farm is no longer installed.");
-            return;
-        };
         let now = OffsetDateTime::now_utc();
         let desktop = self.snapshot();
         let prepared = {
