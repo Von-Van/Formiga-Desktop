@@ -1,10 +1,15 @@
 #!/bin/bash
-# public-api.sh - check, or update, the public API of the crates the companion apps build on.
+# public-api.sh - check, or update, the public API of the contracts the companion apps build on.
 #
 # Formiga Hill, Home, Farm and Battle take these crates from Desktop by release tag, so a change to
 # what they make public is a change those apps meet at their next repin. Each crate's API, as
 # cargo-public-api lists it, is kept beside it in public-api.txt; CI fails when the two differ, so
-# such a change is made on purpose and seen in review. After an intended change:
+# such a change is made on purpose and seen in review.
+#
+# formiga-core and formiga-art are taken by tag too, but they are the game itself and change
+# with most work, so their API is not kept here: the companion-apps workflow builds and tests
+# Hill, Home and Farm against them instead, which catches a change to anything those apps use.
+# After an intended change to one of the crates below:
 #
 #   scripts/public-api.sh --update
 #

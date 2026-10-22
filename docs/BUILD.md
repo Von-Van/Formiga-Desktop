@@ -44,6 +44,9 @@ Alongside those tests, on the same pushes and pull requests:
   when one differs from the `public-api.txt` kept beside it. After a change that is meant, run
   `scripts/public-api.sh --update` (it needs `cargo-public-api` 0.52.0 and a pinned nightly
   toolchain, both named in the script) and commit what it writes; the job also uploads what it found when it fails.
+  `formiga-core` and `formiga-art` change with most work, so their API is not kept; building and
+  testing Hill, Home and Farm against them (the companion-apps workflow) catches a change to
+  anything those apps use.
 - The installers (`package-macos`, `package-windows`) are built on every push to `main`, and on a
   pull request only when it changes packaging, scripts, a `Cargo.toml` or `Cargo.lock`, the
   toolchain, the licence or the workflows.

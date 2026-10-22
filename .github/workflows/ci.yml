@@ -31,8 +31,8 @@ jobs:
           python-version: "3.9"
       - run: python -m unittest discover devtools/tests
 
-  # The public API of the crates Formiga Hill, Home, Farm and Battle build on by tag, against the
-  # copy kept beside each crate: see scripts/public-api.sh.
+  # The public API of the contract crates Formiga Hill, Home, Farm and Battle build on by tag,
+  # against the copy kept beside each crate: see scripts/public-api.sh.
   public-api:
     runs-on: ubuntu-latest
     steps:
