@@ -33,7 +33,7 @@ Pictures are drawn by `formiga-art`, or by Hill's, Home's and Battle's own `--re
 
 ## Commands
 
-### `formiga validate [--quick] [--expansions] [--step NAME]… [--json]`
+### `formiga validate [--quick] [--expansions] [--step NAME]… [--full-speed] [--json]`
 
 Runs each check and says passed, failed or skipped, and why. Every failure names the step, the
 crate, the file and line, and the Formiga object when there is one: a test, a fixture, a soak
@@ -47,7 +47,7 @@ colony. Failures also carry a rerun or replay command.
 | `fixtures` | the fixed colonies below: nothing `violations` names, a save that reads back unchanged, ten seconds of running |
 | `content` | `formiga audit content` below. Its errors fail the step; its warnings are counted, and listed by the audit itself |
 | `tests` | `cargo test` on every crate |
-| `soak` | the nightly soak, short: 120 randomized colonies living a simulated day, their files damaged and repaired |
+| `soak` | the nightly soak, short: 120 randomized colonies living a simulated day, their files damaged and repaired. On a Mac it runs on two threads at background priority (`taskpolicy -b`) so the computer stays usable, and elsewhere on half the cores; `--full-speed` gives it every core |
 | `hill`, `home`, `farm`, `battle` | with `--expansions`: Formiga Hill's, Home's, Farm's and Battle's own tests, built on *this* checkout's Desktop crates rather than the release (or commit, or branch) they're tied to; a run that leaves any of those crates on GitHub fails rather than passing on the old Desktop. This is how a Desktop change that breaks an expansion shows up before release. Battle has no CI by choice, so this step, run on your machine, is the only place its tests meet a Desktop change. |
 
 `--quick` runs `format`, `lint` and `fixtures`. `--step` runs only the steps named. The exit code

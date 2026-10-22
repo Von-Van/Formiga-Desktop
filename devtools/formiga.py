@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """formiga: the Formiga developer toolkit.
 
-  formiga validate [--quick] [--expansions] [--step NAME]... [--json]
+  formiga validate [--quick] [--expansions] [--step NAME]... [--full-speed] [--json]
   formiga scenario list [--json]
   formiga scenario NAME [--no-launch] [--wait] [--pinned] [--fixed-date] [--json]
   formiga capture NAME|all [--window] [--pinned] [--binary APP] [--out PNG] [--json]
@@ -46,6 +46,9 @@ def main(argv=None) -> int:
                        help="also run Hill's, Home's, Farm's and Battle's tests on this Desktop")
     check.add_argument("--step", action="append", choices=validate.ALL_STEPS,
                        help="run only this step (repeatable)")
+    check.add_argument("--full-speed", action="store_true",
+                       help="let the soak use every core at normal priority (on a Mac it "
+                            "otherwise runs on two threads in the background)")
     check.add_argument("--json", action="store_true")
 
     scene = commands.add_parser("scenario", help="open Formiga in a known state",
@@ -130,7 +133,8 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "validate":
-        result = validate.validate(quick=args.quick, expansions=args.expansions, only=args.step)
+        result = validate.validate(quick=args.quick, expansions=args.expansions, only=args.step,
+                                   full_speed=args.full_speed)
     elif args.command == "scenario":
         result = (scenarios.listing() if args.name == "list" else scenarios.launch(
             args.name, no_launch=args.no_launch, wait=args.wait, pinned=args.pinned,
