@@ -1,4 +1,5 @@
 use super::*;
+use crate::scratch::Scratch;
 use formiga_farm_contract::{
     AckRefusal, FarmAck, FarmMode, Lineage, ProposalKind, SessionId, sample,
 };
@@ -6,27 +7,6 @@ use std::fs;
 use time::macros::datetime;
 
 const WRITTEN: OffsetDateTime = datetime!(2026-11-12 10:05 UTC);
-
-/// A directory of its own under the system's temporary directory, removed when dropped.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "formiga-farm-session-{name}-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 /// The sample session reshaping the sample colony's first companion, written under `scratch`.
 fn opened(scratch: &Scratch) -> (FarmFiles, OpenSession, FarmSnapshot) {
@@ -62,7 +42,7 @@ fn proposal(snapshot: &FarmSnapshot, seal: &SessionSeal, serial: u32) -> FarmPro
 
 #[test]
 fn a_session_is_written_whole_and_found_again_after_a_restart() {
-    let scratch = Scratch::new("open");
+    let scratch = Scratch::new("farm-session", "open");
     let (files, open, snapshot) = opened(&scratch);
     assert_eq!(
         open.dir,
@@ -81,7 +61,7 @@ fn a_session_is_written_whole_and_found_again_after_a_restart() {
 
 #[test]
 fn a_new_companion_remembers_the_seed_it_will_be_made_from() {
-    let scratch = Scratch::new("draw");
+    let scratch = Scratch::new("farm-session", "draw");
     let files = FarmFiles::new(&scratch.0);
     let purpose = Purpose::Draw {
         stand_in_seed: [7; 32],
@@ -95,7 +75,7 @@ fn a_new_companion_remembers_the_seed_it_will_be_made_from() {
 
 #[test]
 fn each_proposal_is_answered_once() {
-    let scratch = Scratch::new("serials");
+    let scratch = Scratch::new("farm-session", "serials");
     let (files, open, snapshot) = opened(&scratch);
     assert_eq!(files.unanswered(&open), Ok(None), "nothing proposed yet");
     let first = proposal(&snapshot, &open.seal, 1);
@@ -113,7 +93,7 @@ fn each_proposal_is_answered_once() {
 
 #[test]
 fn a_proposal_that_does_not_check_out_is_no_proposal() {
-    let scratch = Scratch::new("strangers");
+    let scratch = Scratch::new("farm-session", "strangers");
     let (files, open, snapshot) = opened(&scratch);
     let stranger = SessionSeal {
         session_id: SessionId::generate().unwrap(),
@@ -131,7 +111,7 @@ fn a_proposal_that_does_not_check_out_is_no_proposal() {
 
 #[test]
 fn a_snapshot_changed_after_it_was_written_is_not_weighed_against() {
-    let scratch = Scratch::new("tampered");
+    let scratch = Scratch::new("farm-session", "tampered");
     let (files, open, _) = opened(&scratch);
     let path = open.dir.join(SNAPSHOT_FILE);
     let text = fs::read_to_string(&path).unwrap();
@@ -142,7 +122,7 @@ fn a_snapshot_changed_after_it_was_written_is_not_weighed_against() {
 
 #[test]
 fn a_refusal_is_read_only_for_this_session() {
-    let scratch = Scratch::new("refusal");
+    let scratch = Scratch::new("farm-session", "refusal");
     let (files, open, _) = opened(&scratch);
     assert_eq!(files.refusal(&open), None);
     let refused = FarmAck::refused(&open.seal, "0.1.0", AckRefusal::Busy);
@@ -162,14 +142,14 @@ fn a_refusal_is_read_only_for_this_session() {
 
 #[test]
 fn a_recall_is_left_where_farm_can_see_it_and_closing_clears_everything() {
-    let scratch = Scratch::new("recall");
+    let scratch = Scratch::new("farm-session", "recall");
     let (files, open, _) = opened(&scratch);
     files.call_home(&open, RecallReason::Closing);
     assert!(open.dir.join(RECALL_FILE).is_file());
     assert_eq!(files.open_session(), None, "the marker is gone");
     files.sweep();
     assert!(!open.dir.exists(), "swept before the next session");
-    let scratch = Scratch::new("close");
+    let scratch = Scratch::new("farm-session", "close");
     let (files, open, _) = opened(&scratch);
     files.close(&open);
     assert!(!open.dir.exists());
