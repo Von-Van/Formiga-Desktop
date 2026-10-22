@@ -1,9 +1,10 @@
 //! The Journal page: every moment written down, searched and filtered, the guest book, the
-//! scrapbook of finds, the souvenirs brought home from Formiga Hill, and the page of wonders.
+//! scrapbook of finds, the souvenirs brought home from Formiga Hill, the cups won in Formiga
+//! Battle, and the page of wonders.
 
 use super::shell::Shell;
 use super::*;
-use formiga_core::{Souvenir, WonderKind};
+use formiga_core::{BattleKeepsake, Souvenir, WonderKind};
 
 /// The Journal page's own state: how the journal is filtered and searched, and the picture of
 /// the wonders. A view preference, never saved.
@@ -19,6 +20,9 @@ pub(crate) struct JournalState {
     wonder_sheet: Option<([u8; 32], TextureHandle)>,
     /// Every souvenir's picture side by side, each on its velvet, made once one has come home.
     souvenir_strip: Option<TextureHandle>,
+    /// Every one of Battle's keepsakes side by side, each on its shelf, made once one has come
+    /// home.
+    cup_strip: Option<TextureHandle>,
 }
 
 impl JournalState {
@@ -27,11 +31,13 @@ impl JournalState {
             .iter()
             .map(|(_, t)| t.id())
             .chain(self.souvenir_strip.iter().map(TextureHandle::id))
+            .chain(self.cup_strip.iter().map(TextureHandle::id))
     }
 
     pub(super) fn release_images(&mut self) {
         self.wonder_sheet = None;
         self.souvenir_strip = None;
+        self.cup_strip = None;
     }
 }
 
@@ -403,6 +409,7 @@ fn page(
         guest_book(ui, save, shell, outcome, offset);
         state.scrapbook(ui, shell, save);
         state.souvenirs(ui, save);
+        state.cups(ui, save);
         state.wonders(ui, save);
         return;
     }
@@ -659,6 +666,7 @@ fn page(
     guest_book(ui, save, shell, outcome, offset);
     state.scrapbook(ui, shell, save);
     state.souvenirs(ui, save);
+    state.cups(ui, save);
     state.wonders(ui, save);
 }
 
@@ -770,6 +778,63 @@ impl JournalState {
         ui.small("Each souvenir comes home once, and is kept only on this computer.");
     }
 
+    /// What the colony has won in Formiga Battle: its trophies and medals, newest first, each with
+    /// the day it was won, under a line of the Handler's name, the cups won and the points. Like
+    /// the souvenirs, there is no place for them at all until the first has come home.
+    pub fn cups(&mut self, ui: &mut Ui, save: &SaveFile) {
+        let battle = &save.battle;
+        let kept = &battle.keepsakes;
+        if kept.is_empty() {
+            return;
+        }
+        let offset = local_offset();
+        let strip = self
+            .cup_strip
+            .get_or_insert_with(|| upload(ui.ctx(), "colony-cups", &formiga_art::cup_strip()))
+            .clone();
+        ui.add_space(14.0);
+        ui.label(
+            RichText::new(format!("CUPS · {} from Formiga Battle", kept.len()))
+                .color(forest())
+                .size(11.0),
+        );
+        ui.add_space(4.0);
+        ui.label(RichText::new(battle_standing(&battle.record, kept)).color(muted()));
+        ui.add_space(6.0);
+        let kinds = BattleKeepsake::ALL.len() as f32;
+        for record in kept.iter().rev() {
+            let index = BattleKeepsake::ALL
+                .iter()
+                .position(|keepsake| *keepsake == record.keepsake)
+                .unwrap_or_default() as f32;
+            card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let uv = egui::Rect::from_min_max(
+                        egui::pos2(index / kinds, 0.0),
+                        egui::pos2((index + 1.0) / kinds, 1.0),
+                    );
+                    // Five screen points to each pixel of the picture and its shelf.
+                    let side = formiga_art::CUP_TILE as f32 * 5.0;
+                    ui.add(
+                        egui::Image::new(&strip)
+                            .uv(uv)
+                            .maintain_aspect_ratio(false)
+                            .corner_radius(3.0)
+                            .fit_to_exact_size(egui::vec2(side, side)),
+                    );
+                    ui.vertical(|ui| {
+                        ui.strong(record.keepsake.name());
+                        ui.label(record.keepsake.description());
+                        let at = record.earned_at_utc.to_offset(offset);
+                        ui.small(format!("Won in Formiga Battle · {}", at.date()));
+                    });
+                });
+            });
+            ui.add_space(8.0);
+        }
+        ui.small("Each keepsake comes home once, and is kept only on this computer.");
+    }
+
     /// One still picture of every kind of wonder in a row, cut from the frames the desktop draws.
     fn wonder_sheet(&mut self, ui: &Ui, save: &SaveFile) -> TextureHandle {
         if self
@@ -868,5 +933,29 @@ impl JournalState {
             });
             ui.add_space(6.0);
         }
+    }
+}
+
+/// The line over the cups: the Handler, if they have signed their name, how many cups the colony
+/// has won (a trophy each), and its points on the Open Circuit.
+fn battle_standing(
+    record: &formiga_core::BattleRecord,
+    kept: &[formiga_core::BattleKeepsakeRecord],
+) -> String {
+    let won = kept
+        .iter()
+        .filter(|record| record.keepsake.id().starts_with("battle.trophy."))
+        .count();
+    let cups = match won {
+        1 => "1 cup won".to_owned(),
+        won => format!("{won} cups won"),
+    };
+    let points = match record.circuit_points {
+        1 => "1 circuit point".to_owned(),
+        points => format!("{points} circuit points"),
+    };
+    match &record.handler {
+        Some(handler) => format!("Handler {} · {cups} · {points}", handler.name),
+        None => format!("{cups} · {points}"),
     }
 }
