@@ -6,6 +6,12 @@ All notable changes are documented here.
 
 ### Added
 
+- Save version 33 and Battle contract version 5: the colony keeps an anonymous Handler key for
+  Formiga Battle, 128 random bits made once, the first time the colony goes to Battle, and kept
+  with the rest of its Battle record. It is made from nothing Desktop knows about the colony, the
+  owner or the computer, and only Desktop makes or changes it; Battle reads it from the snapshot
+  so a friend's Battle can know the same Handler again. A colony saved before has none until its
+  next visit to Battle, and older Battles read the new snapshot as before, without the key.
 - The About page lists Formiga's other apps under **Formiga's apps**: what each is, whether it is
   installed and which version, where to get it at formigaworld.com if not, and how to open it,
   with buttons to take the colony to Formiga Hill or Formiga Battle. Formiga Farm is listed only
@@ -13,6 +19,11 @@ All notable changes are documented here.
 - The daily update check also looks up the newest release of each installed companion app, so the
   About page says when a newer Formiga Hill, Home or Battle is out and where to get it. Nothing is
   downloaded for them, and turning automatic checks off turns this off too.
+- The Journal page shows what the colony has won in Formiga Battle, in a **Cups** section beside
+  the Souvenirs: each trophy and medal with its picture and the day it was won, newest first, under
+  a line of the Handler's name, the cups won and the circuit points. The pictures match Formiga
+  Home's, so a cup looks the same on its shelf there. Like the Souvenirs, the section appears only
+  once the first keepsake has come home.
 
 ### Changed
 
@@ -49,14 +60,6 @@ All notable changes are documented here.
 - The guide gains "A match in Formiga Battle": how to open it, the train, what comes home, and that
   the colony always comes home. The privacy notes say what Battle is told and what Formiga keeps of
   a match, and point to Battle's own account of what a friend match shares.
-
-### Added
-
-- The Journal page shows what the colony has won in Formiga Battle, in a **Cups** section beside
-  the Souvenirs: each trophy and medal with its picture and the day it was won, newest first, under
-  a line of the Handler's name, the cups won and the circuit points. The pictures match Formiga
-  Home's, so a cup looks the same on its shelf there. Like the Souvenirs, the section appears only
-  once the first keepsake has come home.
 
 ## [0.67.14] - 2026-10-17
 

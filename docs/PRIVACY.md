@@ -377,9 +377,14 @@ four coarse bands between each pair, the reduced-motion, theme and text-size pre
 session's identifier, the time, Formiga's version, the same 64-bit one-way colony digest a trip
 carries, and the colony's **Battle record** as Battle last left it: its points and cups, a short
 history of matches, its notebook of how matches went, which matches have already been counted, and
-the Handler's card and named trios. It holds **no** seed, share code, position, display, window,
+the Handler's card, named trios and **Handler key**. It holds **no** seed, share code, position, display, window,
 cursor sample, habitat, routine, drive, memory, journal, guest book, scrapbook, schedule, other
 setting or diagnostic log.
+
+The Handler key (save version 33) is 128 bits from the system's own source of randomness, made once
+the first time the colony goes to Battle and never changed after. It is not derived from the
+colony, its seed, the owner or the computer, so it says nothing about any of them. Battle sends it
+with a friend match so the friend's Battle can know the same Handler again.
 
 What comes back is read only once Battle has gone, only if it names this session and this exact
 snapshot, and only inside fixed bounds. Formiga applies each match's result to the Battle record by
@@ -392,7 +397,7 @@ so a session interrupted by Formiga itself stopping can still be kept on its nex
 
 Formiga itself sends nothing about a match anywhere. Battle can play a friend over the internet,
 through a relay on the Formiga website, and only when the owner opens or joins a friend match in
-Battle. Before the first one Battle says exactly what that shares: the Handler's name and card, the
+Battle. Before the first one Battle says exactly what that shares: the Handler's name, card and key, the
 three companions playing as the roster has them, each turn's orders and a check of the board, and
 the versions of Battle and Formiga. The relay keeps a room only while the match lasts. Battle's own
 documentation, `docs/FRIENDS.md` in the Formiga Battle repository, lists it in full.

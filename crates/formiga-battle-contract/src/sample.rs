@@ -103,8 +103,12 @@ pub fn record() -> crate::BattleRecord {
             cups: Vec::new(),
             lineups: Vec::new(),
         }],
+        handler_key: Some(HANDLER_KEY.to_owned()),
     }
 }
+
+/// The sample colony's Handler key.
+pub const HANDLER_KEY: &str = "5f0c2a7e9b1d4c3a8e6f0b2d4a9c7e15";
 
 /// The sample's trio, by id.
 pub const TRIO: &str = "7a1e5c3b9d2f4068";
