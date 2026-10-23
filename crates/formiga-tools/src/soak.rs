@@ -414,7 +414,8 @@ fn check(world: &World, desktop: &DesktopSnapshot, when: &str) -> anyhow::Result
         for creature in &world.save.creatures {
             if !reached(creature.state.position, &desktop.monitors) {
                 bail!(
-                    "{when}: {} is at ({:.0}, {:.0}), which no display reaches ({:?} on {:?}; \
+                    "{when}: {} is at ({:.0}, {:.0}), which no display reaches ({:?} on {:?} of \
+                     display {}; indoors {}; \
                      houses {}; paused {}, visible {}, reduced motion {}, quiet {}, interacting \
                      {}; wonder {:?}; village moment {:?}; displays {:?})",
                     creature.name,
@@ -422,6 +423,8 @@ fn check(world: &World, desktop: &DesktopSnapshot, when: &str) -> anyhow::Result
                     creature.state.position.y,
                     creature.state.action,
                     creature.state.surface.kind,
+                    creature.state.surface.monitor_id,
+                    creature.state.indoors,
                     if world.save.home.is_active() {
                         "out"
                     } else {
@@ -437,7 +440,14 @@ fn check(world: &World, desktop: &DesktopSnapshot, when: &str) -> anyhow::Result
                     desktop
                         .monitors
                         .iter()
-                        .map(|m| (m.bounds.x, m.bounds.y, m.bounds.width, m.bounds.height))
+                        .map(|m| (
+                            m.id,
+                            m.display_key,
+                            m.bounds.x,
+                            m.bounds.y,
+                            m.bounds.width,
+                            m.bounds.height
+                        ))
                         .collect::<Vec<_>>()
                 );
             }
@@ -688,32 +698,54 @@ fn live(
                 store.save(&world.save)?;
             }
             *last_save.lock().unwrap() = Some(world.save.clone());
+            // What changed while it was away, said if the colony then fails to settle.
+            let mut changes: Vec<String> = Vec::new();
             // Changes made in the notebook while it was away, and some of them taken back.
             for _ in 0..rng.random_range(0..4) {
                 if edit(&mut world, &mut rng, now, &desktop) {
                     lived.edits += 1;
+                    changes.push("an edit".into());
                 }
             }
             for _ in 0..rng.random_range(0..3) {
                 if world.undo_last_edit().is_ok() {
                     lived.undos += 1;
+                    changes.push("an undo".into());
                 }
             }
             if rng.random_bool(0.3) {
+                changes.push("preferences".into());
                 randomize_preferences(&mut world, &mut rng);
                 // Preferences changed by hand hold until the routine's next change.
                 world.override_routine();
             }
             if rng.random_bool(0.1) {
+                changes.push("the routine resumed".into());
                 world.resume_routine(now);
                 routine_holds(&world, now, world.save.companion.schedule.applied)
                     .context("just after the routine was resumed")?;
             }
             if rng.random_bool(0.2) {
+                changes.push("quiet mode".into());
                 world.set_quiet_mode(rng.random_range(0..=60), now);
             }
             // A display plugged in or out, or the whole arrangement changed.
             if rng.random_bool(0.25) {
+                changes.push(format!(
+                    "displays changed from {:?}",
+                    desktop
+                        .monitors
+                        .iter()
+                        .map(|m| (
+                            m.id,
+                            m.display_key,
+                            m.bounds.x,
+                            m.bounds.y,
+                            m.bounds.width,
+                            m.bounds.height
+                        ))
+                        .collect::<Vec<_>>()
+                ));
                 monitors = displays(&mut rng);
                 desktop.monitors = monitors.clone();
                 desktop.windows = windows(&mut rng, &monitors, &mut next_key);
@@ -731,12 +763,19 @@ fn live(
                 drain(&mut world, &mut digest);
             }
             if settled_in.is_none() {
+                // The colony as it failed, rather than as it was before the changes.
+                *last_save.lock().unwrap() = Some(world.save.clone());
                 check(
                     &world,
                     &desktop,
                     &format!(
-                        "day {day}, {} s after session {session}'s changes",
-                        SETTLE_TICKS / 20
+                        "day {day}, {} s after session {session}'s changes ({})",
+                        SETTLE_TICKS / 20,
+                        if changes.is_empty() {
+                            "none".to_owned()
+                        } else {
+                            changes.join(", ")
+                        }
                     ),
                 )?;
             }
