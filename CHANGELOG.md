@@ -40,6 +40,12 @@ All notable changes are documented here.
   another app. Formiga Home used to name the companion away elsewhere first, and Formiga Farm said
   a companion was away before saying Farm had been removed.
 
+### Security
+
+- The update checker's TLS certificate checks take rustls-webpki 0.103.16 and webpki-roots
+  1.0.10, which no longer trust the distrusted intermediates named in RUSTSEC-2026-0382 and
+  RUSTSEC-2026-0381.
+
 ### Internal
 
 - Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
@@ -60,6 +66,16 @@ All notable changes are documented here.
 - The guide gains "A match in Formiga Battle": how to open it, the train, what comes home, and that
   the colony always comes home. The privacy notes say what Battle is told and what Formiga keeps of
   a match, and point to Battle's own account of what a friend match shares.
+
+### Continuous integration
+
+- Formiga Hill, Home and Farm are built and tested on each pull request's Desktop crates (the
+  `companion-apps` workflow), so a change that would break one shows before that app repins.
+- The public API of the contract crates the companion apps build on is kept beside each crate and
+  checked on every pull request (`scripts/public-api.sh`).
+- `cargo audit` runs every week and whenever `Cargo.lock` changes.
+- The installers are built for a pull request only when it changes what goes into them; every push
+  to `main` still builds them.
 
 ## [0.67.14] - 2026-10-17
 

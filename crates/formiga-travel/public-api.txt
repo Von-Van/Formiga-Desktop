@@ -1,0 +1,1624 @@
+pub mod formiga_travel
+pub use formiga_travel::AckRefusal
+pub use formiga_travel::SessionId
+pub use formiga_travel::is_sanitized
+pub use formiga_travel::sanitize_text
+pub use formiga_travel::sha256_hex
+pub use formiga_travel::write_atomically
+pub mod formiga_travel::discovery
+pub const formiga_travel::discovery::MACOS_BUNDLE_ID: &str
+pub const formiga_travel::discovery::MACOS_TRAVEL_VERSION_KEY: &str
+pub const formiga_travel::discovery::PATH_OVERRIDE_ENV: &str
+pub const formiga_travel::discovery::WINDOWS_PATH_VALUE: &str
+pub const formiga_travel::discovery::WINDOWS_REGISTRY_KEY: &str
+pub const formiga_travel::discovery::WINDOWS_TRAVEL_VERSION_VALUE: &str
+pub const formiga_travel::discovery::WINDOWS_VERSION_VALUE: &str
+pub mod formiga_travel::limits
+pub const formiga_travel::limits::MAX_ACK_BYTES: u64
+pub const formiga_travel::limits::MAX_CAPABILITIES: usize
+pub const formiga_travel::limits::MAX_EFFECTS: usize
+pub const formiga_travel::limits::MAX_HABITS: usize
+pub const formiga_travel::limits::MAX_NAME_CHARS: usize
+pub const formiga_travel::limits::MAX_PHRASE_CHARS: usize
+pub const formiga_travel::limits::MAX_RECALL_BYTES: u64
+pub const formiga_travel::limits::MAX_RECEIPT_BYTES: u64
+pub const formiga_travel::limits::MAX_RELATIONSHIPS: usize
+pub const formiga_travel::limits::MAX_REWARD_ID_CHARS: usize
+pub const formiga_travel::limits::MAX_SNAPSHOT_BYTES: u64
+pub const formiga_travel::limits::MAX_SOUVENIRS: usize
+pub const formiga_travel::limits::MAX_TRAITS: usize
+pub const formiga_travel::limits::MAX_TRAIT_CHARS: usize
+pub const formiga_travel::limits::MAX_TRAVELERS: usize
+pub const formiga_travel::limits::MAX_VERSION_CHARS: usize
+pub mod formiga_travel::sample
+pub const formiga_travel::sample::MADE: time::offset_date_time::OffsetDateTime
+pub const formiga_travel::sample::SESSION: &str
+pub fn formiga_travel::sample::colony(u8) -> formiga_core::model::save::SaveFile
+pub fn formiga_travel::sample::desktop() -> formiga_core::model::desktop::DesktopSnapshot
+pub fn formiga_travel::sample::farm_colony(u8) -> formiga_core::model::save::SaveFile
+pub fn formiga_travel::sample::snapshot() -> formiga_travel::TravelSnapshot
+pub enum formiga_travel::AccessoryItem
+pub formiga_travel::AccessoryItem::Pin
+pub formiga_travel::AccessoryItem::Pin::trinket: u8
+pub formiga_travel::AccessoryItem::Worn
+pub formiga_travel::AccessoryItem::Worn::item: formiga_travel::AccessoryKind
+impl core::clone::Clone for formiga_travel::AccessoryItem
+pub fn formiga_travel::AccessoryItem::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::AccessoryItem
+impl core::cmp::PartialEq for formiga_travel::AccessoryItem
+pub fn formiga_travel::AccessoryItem::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::AccessoryItem
+pub fn formiga_travel::AccessoryItem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::AccessoryItem
+impl core::marker::StructuralPartialEq for formiga_travel::AccessoryItem
+impl serde_core::ser::Serialize for formiga_travel::AccessoryItem
+pub fn formiga_travel::AccessoryItem::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::AccessoryItem
+pub fn formiga_travel::AccessoryItem::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::AccessoryItem
+impl core::marker::Send for formiga_travel::AccessoryItem
+impl core::marker::Sync for formiga_travel::AccessoryItem
+impl core::marker::Unpin for formiga_travel::AccessoryItem
+impl core::marker::UnsafeUnpin for formiga_travel::AccessoryItem
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::AccessoryItem
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::AccessoryItem
+pub enum formiga_travel::AccessoryKind
+pub formiga_travel::AccessoryKind::AcornCap
+pub formiga_travel::AccessoryKind::Bandana
+pub formiga_travel::AccessoryKind::BellCollar
+pub formiga_travel::AccessoryKind::CloudEarmuffs
+pub formiga_travel::AccessoryKind::FeatherCap
+pub formiga_travel::AccessoryKind::FlowerCrown
+pub formiga_travel::AccessoryKind::FriendshipCord
+pub formiga_travel::AccessoryKind::KnittedScarf
+pub formiga_travel::AccessoryKind::LeafHat
+pub formiga_travel::AccessoryKind::MoonClip
+pub formiga_travel::AccessoryKind::MushroomCap
+pub formiga_travel::AccessoryKind::Nightcap
+pub formiga_travel::AccessoryKind::PartyHat
+pub formiga_travel::AccessoryKind::PetalRuff
+pub formiga_travel::AccessoryKind::RibbonBow
+pub formiga_travel::AccessoryKind::ShellNecklace
+pub formiga_travel::AccessoryKind::SnailPack
+pub formiga_travel::AccessoryKind::Sprout
+pub formiga_travel::AccessoryKind::StarClip
+pub formiga_travel::AccessoryKind::TinySatchel
+impl core::clone::Clone for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::AccessoryKind
+impl core::cmp::PartialEq for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::accessories::AccessoryKind> for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::from(formiga_core::accessories::AccessoryKind) -> Self
+impl core::convert::From<formiga_travel::AccessoryKind> for formiga_core::accessories::AccessoryKind
+pub fn formiga_core::accessories::AccessoryKind::from(formiga_travel::AccessoryKind) -> Self
+impl core::fmt::Debug for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::AccessoryKind
+impl core::marker::StructuralPartialEq for formiga_travel::AccessoryKind
+impl serde_core::ser::Serialize for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::AccessoryKind
+pub fn formiga_travel::AccessoryKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::AccessoryKind
+impl core::marker::Send for formiga_travel::AccessoryKind
+impl core::marker::Sync for formiga_travel::AccessoryKind
+impl core::marker::Unpin for formiga_travel::AccessoryKind
+impl core::marker::UnsafeUnpin for formiga_travel::AccessoryKind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::AccessoryKind
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::AccessoryKind
+pub enum formiga_travel::Band
+pub formiga_travel::Band::High
+pub formiga_travel::Band::Low
+pub formiga_travel::Band::Medium
+pub formiga_travel::Band::None
+impl formiga_travel::Band
+pub const fn formiga_travel::Band::of(u8) -> Self
+impl core::clone::Clone for formiga_travel::Band
+pub fn formiga_travel::Band::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Band
+impl core::cmp::Ord for formiga_travel::Band
+pub fn formiga_travel::Band::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_travel::Band
+pub fn formiga_travel::Band::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_travel::Band
+pub fn formiga_travel::Band::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for formiga_travel::Band
+pub fn formiga_travel::Band::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Band
+pub fn formiga_travel::Band::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Band
+impl core::marker::StructuralPartialEq for formiga_travel::Band
+impl serde_core::ser::Serialize for formiga_travel::Band
+pub fn formiga_travel::Band::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Band
+pub fn formiga_travel::Band::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Band
+impl core::marker::Send for formiga_travel::Band
+impl core::marker::Sync for formiga_travel::Band
+impl core::marker::Unpin for formiga_travel::Band
+impl core::marker::UnsafeUnpin for formiga_travel::Band
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Band
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Band
+pub enum formiga_travel::BodyFamily
+pub formiga_travel::BodyFamily::Blob
+pub formiga_travel::BodyFamily::Hopper
+pub formiga_travel::BodyFamily::SoftQuadruped
+impl core::clone::Clone for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::BodyFamily
+impl core::cmp::PartialEq for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::BodyFamily> for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::from(formiga_core::model::appearance::BodyFamily) -> Self
+impl core::convert::From<formiga_travel::BodyFamily> for formiga_core::model::appearance::BodyFamily
+pub fn formiga_core::model::appearance::BodyFamily::from(formiga_travel::BodyFamily) -> Self
+impl core::fmt::Debug for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::BodyFamily
+impl core::marker::StructuralPartialEq for formiga_travel::BodyFamily
+impl serde_core::ser::Serialize for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::BodyFamily
+pub fn formiga_travel::BodyFamily::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::BodyFamily
+impl core::marker::Send for formiga_travel::BodyFamily
+impl core::marker::Sync for formiga_travel::BodyFamily
+impl core::marker::Unpin for formiga_travel::BodyFamily
+impl core::marker::UnsafeUnpin for formiga_travel::BodyFamily
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::BodyFamily
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::BodyFamily
+pub enum formiga_travel::BrowStyle
+pub formiga_travel::BrowStyle::Bold
+pub formiga_travel::BrowStyle::None
+pub formiga_travel::BrowStyle::Soft
+impl core::clone::Clone for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::BrowStyle
+impl core::cmp::PartialEq for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::BrowStyle> for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::from(formiga_core::model::appearance::BrowStyle) -> Self
+impl core::convert::From<formiga_travel::BrowStyle> for formiga_core::model::appearance::BrowStyle
+pub fn formiga_core::model::appearance::BrowStyle::from(formiga_travel::BrowStyle) -> Self
+impl core::fmt::Debug for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::BrowStyle
+impl core::marker::StructuralPartialEq for formiga_travel::BrowStyle
+impl serde_core::ser::Serialize for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::BrowStyle
+pub fn formiga_travel::BrowStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::BrowStyle
+impl core::marker::Send for formiga_travel::BrowStyle
+impl core::marker::Sync for formiga_travel::BrowStyle
+impl core::marker::Unpin for formiga_travel::BrowStyle
+impl core::marker::UnsafeUnpin for formiga_travel::BrowStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::BrowStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::BrowStyle
+pub enum formiga_travel::Capability
+pub formiga_travel::Capability::Souvenirs
+pub formiga_travel::Capability::Unknown
+pub formiga_travel::Capability::VisitRecord
+impl core::clone::Clone for formiga_travel::Capability
+pub fn formiga_travel::Capability::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Capability
+impl core::cmp::PartialEq for formiga_travel::Capability
+pub fn formiga_travel::Capability::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::Capability
+pub fn formiga_travel::Capability::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Capability
+pub fn formiga_travel::Capability::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Capability
+impl core::marker::StructuralPartialEq for formiga_travel::Capability
+impl serde_core::ser::Serialize for formiga_travel::Capability
+pub fn formiga_travel::Capability::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Capability
+pub fn formiga_travel::Capability::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Capability
+impl core::marker::Send for formiga_travel::Capability
+impl core::marker::Sync for formiga_travel::Capability
+impl core::marker::Unpin for formiga_travel::Capability
+impl core::marker::UnsafeUnpin for formiga_travel::Capability
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Capability
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Capability
+pub enum formiga_travel::Celebration
+pub formiga_travel::Celebration::Dance
+pub formiga_travel::Celebration::Hop
+pub formiga_travel::Celebration::Twirl
+impl core::clone::Clone for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Celebration
+impl core::cmp::PartialEq for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::habits::Celebration> for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::from(formiga_core::habits::Celebration) -> Self
+impl core::convert::From<formiga_travel::Celebration> for formiga_core::habits::Celebration
+pub fn formiga_core::habits::Celebration::from(formiga_travel::Celebration) -> Self
+impl core::fmt::Debug for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Celebration
+impl core::marker::StructuralPartialEq for formiga_travel::Celebration
+impl serde_core::ser::Serialize for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Celebration
+pub fn formiga_travel::Celebration::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Celebration
+impl core::marker::Send for formiga_travel::Celebration
+impl core::marker::Sync for formiga_travel::Celebration
+impl core::marker::Unpin for formiga_travel::Celebration
+impl core::marker::UnsafeUnpin for formiga_travel::Celebration
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Celebration
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Celebration
+pub enum formiga_travel::CheekStyle
+pub formiga_travel::CheekStyle::Blush
+pub formiga_travel::CheekStyle::Dots
+pub formiga_travel::CheekStyle::None
+impl core::clone::Clone for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::CheekStyle
+impl core::cmp::PartialEq for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::CheekStyle> for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::from(formiga_core::model::appearance::CheekStyle) -> Self
+impl core::convert::From<formiga_travel::CheekStyle> for formiga_core::model::appearance::CheekStyle
+pub fn formiga_core::model::appearance::CheekStyle::from(formiga_travel::CheekStyle) -> Self
+impl core::fmt::Debug for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::CheekStyle
+impl core::marker::StructuralPartialEq for formiga_travel::CheekStyle
+impl serde_core::ser::Serialize for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::CheekStyle
+pub fn formiga_travel::CheekStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::CheekStyle
+impl core::marker::Send for formiga_travel::CheekStyle
+impl core::marker::Sync for formiga_travel::CheekStyle
+impl core::marker::Unpin for formiga_travel::CheekStyle
+impl core::marker::UnsafeUnpin for formiga_travel::CheekStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::CheekStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::CheekStyle
+pub enum formiga_travel::EffectMotif
+pub formiga_travel::EffectMotif::Dot
+pub formiga_travel::EffectMotif::Heart
+pub formiga_travel::EffectMotif::Leaf
+pub formiga_travel::EffectMotif::None
+pub formiga_travel::EffectMotif::Spark
+pub formiga_travel::EffectMotif::Star
+impl core::clone::Clone for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::EffectMotif
+impl core::cmp::PartialEq for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::EffectMotif> for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::from(formiga_core::model::appearance::EffectMotif) -> Self
+impl core::convert::From<formiga_travel::EffectMotif> for formiga_core::model::appearance::EffectMotif
+pub fn formiga_core::model::appearance::EffectMotif::from(formiga_travel::EffectMotif) -> Self
+impl core::fmt::Debug for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::EffectMotif
+impl core::marker::StructuralPartialEq for formiga_travel::EffectMotif
+impl serde_core::ser::Serialize for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::EffectMotif
+pub fn formiga_travel::EffectMotif::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::EffectMotif
+impl core::marker::Send for formiga_travel::EffectMotif
+impl core::marker::Sync for formiga_travel::EffectMotif
+impl core::marker::Unpin for formiga_travel::EffectMotif
+impl core::marker::UnsafeUnpin for formiga_travel::EffectMotif
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::EffectMotif
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::EffectMotif
+pub enum formiga_travel::EyeShape
+pub formiga_travel::EyeShape::Round
+pub formiga_travel::EyeShape::SoftSquare
+pub formiga_travel::EyeShape::Tall
+impl core::clone::Clone for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::EyeShape
+impl core::cmp::PartialEq for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::EyeShape> for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::from(formiga_core::model::appearance::EyeShape) -> Self
+impl core::convert::From<formiga_travel::EyeShape> for formiga_core::model::appearance::EyeShape
+pub fn formiga_core::model::appearance::EyeShape::from(formiga_travel::EyeShape) -> Self
+impl core::fmt::Debug for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::EyeShape
+impl core::marker::StructuralPartialEq for formiga_travel::EyeShape
+impl serde_core::ser::Serialize for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::EyeShape
+pub fn formiga_travel::EyeShape::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::EyeShape
+impl core::marker::Send for formiga_travel::EyeShape
+impl core::marker::Sync for formiga_travel::EyeShape
+impl core::marker::Unpin for formiga_travel::EyeShape
+impl core::marker::UnsafeUnpin for formiga_travel::EyeShape
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::EyeShape
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::EyeShape
+pub enum formiga_travel::ForelimbStyle
+pub formiga_travel::ForelimbStyle::FrontPaw
+pub formiga_travel::ForelimbStyle::MittenArm
+pub formiga_travel::ForelimbStyle::Pseudopod
+pub formiga_travel::ForelimbStyle::SoftNub
+impl core::clone::Clone for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::ForelimbStyle
+impl core::cmp::PartialEq for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::ForelimbStyle> for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::from(formiga_core::model::appearance::ForelimbStyle) -> Self
+impl core::convert::From<formiga_travel::ForelimbStyle> for formiga_core::model::appearance::ForelimbStyle
+pub fn formiga_core::model::appearance::ForelimbStyle::from(formiga_travel::ForelimbStyle) -> Self
+impl core::fmt::Debug for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::ForelimbStyle
+impl core::marker::StructuralPartialEq for formiga_travel::ForelimbStyle
+impl serde_core::ser::Serialize for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::ForelimbStyle
+pub fn formiga_travel::ForelimbStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::ForelimbStyle
+impl core::marker::Send for formiga_travel::ForelimbStyle
+impl core::marker::Sync for formiga_travel::ForelimbStyle
+impl core::marker::Unpin for formiga_travel::ForelimbStyle
+impl core::marker::UnsafeUnpin for formiga_travel::ForelimbStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::ForelimbStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::ForelimbStyle
+pub enum formiga_travel::Habit
+pub formiga_travel::Habit::CirclesBeforeNaps
+pub formiga_travel::Habit::LooksFoodOver
+pub formiga_travel::Habit::PlayBows
+pub formiga_travel::Habit::StretchesBeforeNaps
+pub formiga_travel::Habit::WavesHello
+impl core::clone::Clone for formiga_travel::Habit
+pub fn formiga_travel::Habit::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Habit
+impl core::cmp::PartialEq for formiga_travel::Habit
+pub fn formiga_travel::Habit::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::habits::Habit> for formiga_travel::Habit
+pub fn formiga_travel::Habit::from(formiga_core::habits::Habit) -> Self
+impl core::convert::From<formiga_travel::Habit> for formiga_core::habits::Habit
+pub fn formiga_core::habits::Habit::from(formiga_travel::Habit) -> Self
+impl core::fmt::Debug for formiga_travel::Habit
+pub fn formiga_travel::Habit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Habit
+pub fn formiga_travel::Habit::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Habit
+impl core::marker::StructuralPartialEq for formiga_travel::Habit
+impl serde_core::ser::Serialize for formiga_travel::Habit
+pub fn formiga_travel::Habit::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Habit
+pub fn formiga_travel::Habit::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Habit
+impl core::marker::Send for formiga_travel::Habit
+impl core::marker::Sync for formiga_travel::Habit
+impl core::marker::Unpin for formiga_travel::Habit
+impl core::marker::UnsafeUnpin for formiga_travel::Habit
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Habit
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Habit
+pub enum formiga_travel::HeadAppendageStyle
+pub formiga_travel::HeadAppendageStyle::Antenna
+pub formiga_travel::HeadAppendageStyle::Droop
+pub formiga_travel::HeadAppendageStyle::Leaf
+pub formiga_travel::HeadAppendageStyle::None
+pub formiga_travel::HeadAppendageStyle::Pointed
+pub formiga_travel::HeadAppendageStyle::Round
+impl core::clone::Clone for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::HeadAppendageStyle
+impl core::cmp::PartialEq for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::HeadAppendageStyle> for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::from(formiga_core::model::appearance::HeadAppendageStyle) -> Self
+impl core::convert::From<formiga_travel::HeadAppendageStyle> for formiga_core::model::appearance::HeadAppendageStyle
+pub fn formiga_core::model::appearance::HeadAppendageStyle::from(formiga_travel::HeadAppendageStyle) -> Self
+impl core::fmt::Debug for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::HeadAppendageStyle
+impl core::marker::StructuralPartialEq for formiga_travel::HeadAppendageStyle
+impl serde_core::ser::Serialize for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::HeadAppendageStyle
+pub fn formiga_travel::HeadAppendageStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::HeadAppendageStyle
+impl core::marker::Send for formiga_travel::HeadAppendageStyle
+impl core::marker::Sync for formiga_travel::HeadAppendageStyle
+impl core::marker::Unpin for formiga_travel::HeadAppendageStyle
+impl core::marker::UnsafeUnpin for formiga_travel::HeadAppendageStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::HeadAppendageStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::HeadAppendageStyle
+pub enum formiga_travel::HighlightStyle
+pub formiga_travel::HighlightStyle::Diagonal
+pub formiga_travel::HighlightStyle::Double
+pub formiga_travel::HighlightStyle::Single
+impl core::clone::Clone for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::HighlightStyle
+impl core::cmp::PartialEq for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::HighlightStyle> for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::from(formiga_core::model::appearance::HighlightStyle) -> Self
+impl core::convert::From<formiga_travel::HighlightStyle> for formiga_core::model::appearance::HighlightStyle
+pub fn formiga_core::model::appearance::HighlightStyle::from(formiga_travel::HighlightStyle) -> Self
+impl core::fmt::Debug for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::HighlightStyle
+impl core::marker::StructuralPartialEq for formiga_travel::HighlightStyle
+impl serde_core::ser::Serialize for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::HighlightStyle
+pub fn formiga_travel::HighlightStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::HighlightStyle
+impl core::marker::Send for formiga_travel::HighlightStyle
+impl core::marker::Sync for formiga_travel::HighlightStyle
+impl core::marker::Unpin for formiga_travel::HighlightStyle
+impl core::marker::UnsafeUnpin for formiga_travel::HighlightStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::HighlightStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::HighlightStyle
+pub enum formiga_travel::LimbTipStyle
+pub formiga_travel::LimbTipStyle::Mitten
+pub formiga_travel::LimbTipStyle::Paw
+pub formiga_travel::LimbTipStyle::Round
+impl core::clone::Clone for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::LimbTipStyle
+impl core::cmp::PartialEq for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::LimbTipStyle> for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::from(formiga_core::model::appearance::LimbTipStyle) -> Self
+impl core::convert::From<formiga_travel::LimbTipStyle> for formiga_core::model::appearance::LimbTipStyle
+pub fn formiga_core::model::appearance::LimbTipStyle::from(formiga_travel::LimbTipStyle) -> Self
+impl core::fmt::Debug for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::LimbTipStyle
+impl core::marker::StructuralPartialEq for formiga_travel::LimbTipStyle
+impl serde_core::ser::Serialize for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::LimbTipStyle
+pub fn formiga_travel::LimbTipStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::LimbTipStyle
+impl core::marker::Send for formiga_travel::LimbTipStyle
+impl core::marker::Sync for formiga_travel::LimbTipStyle
+impl core::marker::Unpin for formiga_travel::LimbTipStyle
+impl core::marker::UnsafeUnpin for formiga_travel::LimbTipStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::LimbTipStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::LimbTipStyle
+pub enum formiga_travel::MouthStyle
+pub formiga_travel::MouthStyle::Beak
+pub formiga_travel::MouthStyle::Cat
+pub formiga_travel::MouthStyle::Smile
+pub formiga_travel::MouthStyle::Tiny
+impl core::clone::Clone for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::MouthStyle
+impl core::cmp::PartialEq for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::MouthStyle> for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::from(formiga_core::model::appearance::MouthStyle) -> Self
+impl core::convert::From<formiga_travel::MouthStyle> for formiga_core::model::appearance::MouthStyle
+pub fn formiga_core::model::appearance::MouthStyle::from(formiga_travel::MouthStyle) -> Self
+impl core::fmt::Debug for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::MouthStyle
+impl core::marker::StructuralPartialEq for formiga_travel::MouthStyle
+impl serde_core::ser::Serialize for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::MouthStyle
+pub fn formiga_travel::MouthStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::MouthStyle
+impl core::marker::Send for formiga_travel::MouthStyle
+impl core::marker::Sync for formiga_travel::MouthStyle
+impl core::marker::Unpin for formiga_travel::MouthStyle
+impl core::marker::UnsafeUnpin for formiga_travel::MouthStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::MouthStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::MouthStyle
+pub enum formiga_travel::PatternKind
+pub formiga_travel::PatternKind::Mask
+pub formiga_travel::PatternKind::Patches
+pub formiga_travel::PatternKind::Socks
+pub formiga_travel::PatternKind::Solid
+pub formiga_travel::PatternKind::Spots
+pub formiga_travel::PatternKind::Stripes
+pub formiga_travel::PatternKind::Tips
+impl core::clone::Clone for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::PatternKind
+impl core::cmp::PartialEq for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::PatternKind> for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::from(formiga_core::model::appearance::PatternKind) -> Self
+impl core::convert::From<formiga_travel::PatternKind> for formiga_core::model::appearance::PatternKind
+pub fn formiga_core::model::appearance::PatternKind::from(formiga_travel::PatternKind) -> Self
+impl core::fmt::Debug for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::PatternKind
+impl core::marker::StructuralPartialEq for formiga_travel::PatternKind
+impl serde_core::ser::Serialize for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::PatternKind
+pub fn formiga_travel::PatternKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::PatternKind
+impl core::marker::Send for formiga_travel::PatternKind
+impl core::marker::Sync for formiga_travel::PatternKind
+impl core::marker::Unpin for formiga_travel::PatternKind
+impl core::marker::UnsafeUnpin for formiga_travel::PatternKind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::PatternKind
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::PatternKind
+pub enum formiga_travel::ProjectionError
+pub formiga_travel::ProjectionError::Empty
+pub formiga_travel::ProjectionError::Invalid(formiga_travel::TravelError)
+impl core::convert::From<formiga_travel::TravelError> for formiga_travel::ProjectionError
+pub fn formiga_travel::ProjectionError::from(formiga_travel::TravelError) -> Self
+impl core::error::Error for formiga_travel::ProjectionError
+pub fn formiga_travel::ProjectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_travel::ProjectionError
+pub fn formiga_travel::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_travel::ProjectionError
+pub fn formiga_travel::ProjectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_travel::ProjectionError
+impl core::marker::Send for formiga_travel::ProjectionError
+impl core::marker::Sync for formiga_travel::ProjectionError
+impl core::marker::Unpin for formiga_travel::ProjectionError
+impl core::marker::UnsafeUnpin for formiga_travel::ProjectionError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_travel::ProjectionError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_travel::ProjectionError
+pub enum formiga_travel::PupilStyle
+pub formiga_travel::PupilStyle::Dot
+pub formiga_travel::PupilStyle::Spark
+pub formiga_travel::PupilStyle::Wide
+impl core::clone::Clone for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::PupilStyle
+impl core::cmp::PartialEq for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::PupilStyle> for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::from(formiga_core::model::appearance::PupilStyle) -> Self
+impl core::convert::From<formiga_travel::PupilStyle> for formiga_core::model::appearance::PupilStyle
+pub fn formiga_core::model::appearance::PupilStyle::from(formiga_travel::PupilStyle) -> Self
+impl core::fmt::Debug for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::PupilStyle
+impl core::marker::StructuralPartialEq for formiga_travel::PupilStyle
+impl serde_core::ser::Serialize for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::PupilStyle
+pub fn formiga_travel::PupilStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::PupilStyle
+impl core::marker::Send for formiga_travel::PupilStyle
+impl core::marker::Sync for formiga_travel::PupilStyle
+impl core::marker::Unpin for formiga_travel::PupilStyle
+impl core::marker::UnsafeUnpin for formiga_travel::PupilStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::PupilStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::PupilStyle
+pub enum formiga_travel::RecallReason
+pub formiga_travel::RecallReason::DesktopRestarted
+pub formiga_travel::RecallReason::Other
+pub formiga_travel::RecallReason::OwnerAsked
+impl core::clone::Clone for formiga_travel::RecallReason
+pub fn formiga_travel::RecallReason::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::RecallReason
+impl core::cmp::PartialEq for formiga_travel::RecallReason
+pub fn formiga_travel::RecallReason::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::RecallReason
+pub fn formiga_travel::RecallReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::RecallReason
+impl core::marker::StructuralPartialEq for formiga_travel::RecallReason
+impl serde_core::ser::Serialize for formiga_travel::RecallReason
+pub fn formiga_travel::RecallReason::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::RecallReason
+pub fn formiga_travel::RecallReason::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::RecallReason
+impl core::marker::Send for formiga_travel::RecallReason
+impl core::marker::Sync for formiga_travel::RecallReason
+impl core::marker::Unpin for formiga_travel::RecallReason
+impl core::marker::UnsafeUnpin for formiga_travel::RecallReason
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::RecallReason
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::RecallReason
+pub enum formiga_travel::RestPose
+pub formiga_travel::RestPose::AtSides
+pub formiga_travel::RestPose::Folded
+pub formiga_travel::RestPose::Together
+impl core::clone::Clone for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::RestPose
+impl core::cmp::PartialEq for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::RestPose> for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::from(formiga_core::model::appearance::RestPose) -> Self
+impl core::convert::From<formiga_travel::RestPose> for formiga_core::model::appearance::RestPose
+pub fn formiga_core::model::appearance::RestPose::from(formiga_travel::RestPose) -> Self
+impl core::fmt::Debug for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::RestPose
+impl core::marker::StructuralPartialEq for formiga_travel::RestPose
+impl serde_core::ser::Serialize for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::RestPose
+pub fn formiga_travel::RestPose::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::RestPose
+impl core::marker::Send for formiga_travel::RestPose
+impl core::marker::Sync for formiga_travel::RestPose
+impl core::marker::Unpin for formiga_travel::RestPose
+impl core::marker::UnsafeUnpin for formiga_travel::RestPose
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::RestPose
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::RestPose
+pub enum formiga_travel::ReturnEffect
+pub formiga_travel::ReturnEffect::Keepsake
+pub formiga_travel::ReturnEffect::Keepsake::id: alloc::string::String
+pub formiga_travel::ReturnEffect::Souvenir
+pub formiga_travel::ReturnEffect::Souvenir::id: alloc::string::String
+pub formiga_travel::ReturnEffect::Unsupported
+pub formiga_travel::ReturnEffect::Visit
+pub formiga_travel::ReturnEffect::Visit::arrived_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_travel::ReturnEffect::Visit::left_at_utc: time::offset_date_time::OffsetDateTime
+impl formiga_travel::ReturnEffect
+pub const fn formiga_travel::ReturnEffect::kind(&self) -> &'static str
+impl core::clone::Clone for formiga_travel::ReturnEffect
+pub fn formiga_travel::ReturnEffect::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::ReturnEffect
+impl core::cmp::PartialEq for formiga_travel::ReturnEffect
+pub fn formiga_travel::ReturnEffect::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::ReturnEffect
+pub fn formiga_travel::ReturnEffect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::ReturnEffect
+impl serde_core::ser::Serialize for formiga_travel::ReturnEffect
+pub fn formiga_travel::ReturnEffect::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::ReturnEffect
+pub fn formiga_travel::ReturnEffect::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::ReturnEffect
+impl core::marker::Send for formiga_travel::ReturnEffect
+impl core::marker::Sync for formiga_travel::ReturnEffect
+impl core::marker::Unpin for formiga_travel::ReturnEffect
+impl core::marker::UnsafeUnpin for formiga_travel::ReturnEffect
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::ReturnEffect
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::ReturnEffect
+pub enum formiga_travel::TailStyle
+pub formiga_travel::TailStyle::Curl
+pub formiga_travel::TailStyle::None
+pub formiga_travel::TailStyle::Stub
+pub formiga_travel::TailStyle::Taper
+pub formiga_travel::TailStyle::Tuft
+impl core::clone::Clone for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TailStyle
+impl core::cmp::PartialEq for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::model::appearance::TailStyle> for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::from(formiga_core::model::appearance::TailStyle) -> Self
+impl core::convert::From<formiga_travel::TailStyle> for formiga_core::model::appearance::TailStyle
+pub fn formiga_core::model::appearance::TailStyle::from(formiga_travel::TailStyle) -> Self
+impl core::fmt::Debug for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::TailStyle
+impl core::marker::StructuralPartialEq for formiga_travel::TailStyle
+impl serde_core::ser::Serialize for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TailStyle
+pub fn formiga_travel::TailStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TailStyle
+impl core::marker::Send for formiga_travel::TailStyle
+impl core::marker::Sync for formiga_travel::TailStyle
+impl core::marker::Unpin for formiga_travel::TailStyle
+impl core::marker::UnsafeUnpin for formiga_travel::TailStyle
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TailStyle
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TailStyle
+pub enum formiga_travel::TemperamentKind
+pub formiga_travel::TemperamentKind::Explorer
+pub formiga_travel::TemperamentKind::Grump
+pub formiga_travel::TemperamentKind::Guardian
+pub formiga_travel::TemperamentKind::Lazybones
+pub formiga_travel::TemperamentKind::Oddball
+pub formiga_travel::TemperamentKind::Scholar
+pub formiga_travel::TemperamentKind::Showoff
+pub formiga_travel::TemperamentKind::Sweetheart
+pub formiga_travel::TemperamentKind::Troublemaker
+pub formiga_travel::TemperamentKind::Wallflower
+impl core::clone::Clone for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TemperamentKind
+impl core::cmp::PartialEq for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::temperament::TemperamentKind> for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::from(formiga_core::temperament::TemperamentKind) -> Self
+impl core::convert::From<formiga_travel::TemperamentKind> for formiga_core::temperament::TemperamentKind
+pub fn formiga_core::temperament::TemperamentKind::from(formiga_travel::TemperamentKind) -> Self
+impl core::fmt::Debug for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::TemperamentKind
+impl core::marker::StructuralPartialEq for formiga_travel::TemperamentKind
+impl serde_core::ser::Serialize for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TemperamentKind
+pub fn formiga_travel::TemperamentKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TemperamentKind
+impl core::marker::Send for formiga_travel::TemperamentKind
+impl core::marker::Sync for formiga_travel::TemperamentKind
+impl core::marker::Unpin for formiga_travel::TemperamentKind
+impl core::marker::UnsafeUnpin for formiga_travel::TemperamentKind
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TemperamentKind
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TemperamentKind
+pub enum formiga_travel::Tension
+pub formiga_travel::Tension::AffectionateButIndependent
+pub formiga_travel::Tension::BraveButNervous
+pub formiga_travel::Tension::ConfidentButEasilyEmbarrassed
+pub formiga_travel::Tension::DramaticButCowardly
+pub formiga_travel::Tension::GentleButStubborn
+pub formiga_travel::Tension::GrumpyButAffectionate
+pub formiga_travel::Tension::LazyButCompetitive
+pub formiga_travel::Tension::PlayfulButShy
+pub formiga_travel::Tension::SeriousButCurious
+pub formiga_travel::Tension::SuspiciousButLoyal
+impl core::clone::Clone for formiga_travel::Tension
+pub fn formiga_travel::Tension::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Tension
+impl core::cmp::PartialEq for formiga_travel::Tension
+pub fn formiga_travel::Tension::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::temperament::Tension> for formiga_travel::Tension
+pub fn formiga_travel::Tension::from(formiga_core::temperament::Tension) -> Self
+impl core::convert::From<formiga_travel::Tension> for formiga_core::temperament::Tension
+pub fn formiga_core::temperament::Tension::from(formiga_travel::Tension) -> Self
+impl core::fmt::Debug for formiga_travel::Tension
+pub fn formiga_travel::Tension::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Tension
+pub fn formiga_travel::Tension::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Tension
+impl core::marker::StructuralPartialEq for formiga_travel::Tension
+impl serde_core::ser::Serialize for formiga_travel::Tension
+pub fn formiga_travel::Tension::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Tension
+pub fn formiga_travel::Tension::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Tension
+impl core::marker::Send for formiga_travel::Tension
+impl core::marker::Sync for formiga_travel::Tension
+impl core::marker::Unpin for formiga_travel::Tension
+impl core::marker::UnsafeUnpin for formiga_travel::Tension
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Tension
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Tension
+pub enum formiga_travel::Theme
+pub formiga_travel::Theme::Dark
+pub formiga_travel::Theme::Light
+pub formiga_travel::Theme::System
+impl core::clone::Clone for formiga_travel::Theme
+pub fn formiga_travel::Theme::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Theme
+impl core::cmp::PartialEq for formiga_travel::Theme
+pub fn formiga_travel::Theme::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::companion::ThemeChoice> for formiga_travel::Theme
+pub fn formiga_travel::Theme::from(formiga_core::companion::ThemeChoice) -> Self
+impl core::convert::From<formiga_travel::Theme> for formiga_core::companion::ThemeChoice
+pub fn formiga_core::companion::ThemeChoice::from(formiga_travel::Theme) -> Self
+impl core::fmt::Debug for formiga_travel::Theme
+pub fn formiga_travel::Theme::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Theme
+pub fn formiga_travel::Theme::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Theme
+impl core::marker::StructuralPartialEq for formiga_travel::Theme
+impl serde_core::ser::Serialize for formiga_travel::Theme
+pub fn formiga_travel::Theme::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Theme
+pub fn formiga_travel::Theme::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Theme
+impl core::marker::Send for formiga_travel::Theme
+impl core::marker::Sync for formiga_travel::Theme
+impl core::marker::Unpin for formiga_travel::Theme
+impl core::marker::UnsafeUnpin for formiga_travel::Theme
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Theme
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Theme
+pub enum formiga_travel::Trait
+pub formiga_travel::Trait::Affectionate
+pub formiga_travel::Trait::Aloof
+pub formiga_travel::Trait::AttentionSeeking
+pub formiga_travel::Trait::Bossy
+pub formiga_travel::Trait::Brave
+pub formiga_travel::Trait::Cautious
+pub formiga_travel::Trait::Chatty
+pub formiga_travel::Trait::Clingy
+pub formiga_travel::Trait::Competitive
+pub formiga_travel::Trait::Confident
+pub formiga_travel::Trait::Cowardly
+pub formiga_travel::Trait::Curious
+pub formiga_travel::Trait::DeeplyLoyal
+pub formiga_travel::Trait::Distractible
+pub formiga_travel::Trait::Dramatic
+pub formiga_travel::Trait::EarlyRiser
+pub formiga_travel::Trait::EasilyEmbarrassed
+pub formiga_travel::Trait::Easygoing
+pub formiga_travel::Trait::Eccentric
+pub formiga_travel::Trait::Energetic
+pub formiga_travel::Trait::Excitable
+pub formiga_travel::Trait::Feisty
+pub formiga_travel::Trait::FoodMotivated
+pub formiga_travel::Trait::Friendly
+pub formiga_travel::Trait::Gentle
+pub formiga_travel::Trait::Grumpy
+pub formiga_travel::Trait::Impatient
+pub formiga_travel::Trait::Impulsive
+pub formiga_travel::Trait::Independent
+pub formiga_travel::Trait::Irritable
+pub formiga_travel::Trait::Jealous
+pub formiga_travel::Trait::Lazy
+pub formiga_travel::Trait::Loner
+pub formiga_travel::Trait::Loyal
+pub formiga_travel::Trait::Mellow
+pub formiga_travel::Trait::Messy
+pub formiga_travel::Trait::Mischievous
+pub formiga_travel::Trait::Nervous
+pub formiga_travel::Trait::NightOwl
+pub formiga_travel::Trait::Nosy
+pub formiga_travel::Trait::Nurturing
+pub formiga_travel::Trait::Observant
+pub formiga_travel::Trait::Obsessive
+pub formiga_travel::Trait::Outgoing
+pub formiga_travel::Trait::Particular
+pub formiga_travel::Trait::Patient
+pub formiga_travel::Trait::Picky
+pub formiga_travel::Trait::Playful
+pub formiga_travel::Trait::Protective
+pub formiga_travel::Trait::Reckless
+pub formiga_travel::Trait::Restless
+pub formiga_travel::Trait::SecretlyAffectionate
+pub formiga_travel::Trait::Serious
+pub formiga_travel::Trait::Shy
+pub formiga_travel::Trait::Silly
+pub formiga_travel::Trait::Sleepy
+pub formiga_travel::Trait::Spontaneous
+pub formiga_travel::Trait::Steady
+pub formiga_travel::Trait::Stoic
+pub formiga_travel::Trait::Stubborn
+pub formiga_travel::Trait::Suspicious
+pub formiga_travel::Trait::Sweet
+pub formiga_travel::Trait::Trusting
+pub formiga_travel::Trait::Unbothered
+pub formiga_travel::Trait::Unknown
+pub formiga_travel::Trait::Unpredictable
+pub formiga_travel::Trait::Vain
+pub formiga_travel::Trait::Wary
+pub formiga_travel::Trait::Watchful
+impl formiga_travel::Trait
+pub const formiga_travel::Trait::ALL: [Self; 68]
+impl core::clone::Clone for formiga_travel::Trait
+pub fn formiga_travel::Trait::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Trait
+impl core::cmp::PartialEq for formiga_travel::Trait
+pub fn formiga_travel::Trait::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::temperament::Trait> for formiga_travel::Trait
+pub fn formiga_travel::Trait::from(formiga_core::temperament::Trait) -> Self
+impl core::fmt::Debug for formiga_travel::Trait
+pub fn formiga_travel::Trait::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::Trait
+pub fn formiga_travel::Trait::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::Trait
+impl core::marker::StructuralPartialEq for formiga_travel::Trait
+impl serde_core::ser::Serialize for formiga_travel::Trait
+pub fn formiga_travel::Trait::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Trait
+pub fn formiga_travel::Trait::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Trait
+impl core::marker::Send for formiga_travel::Trait
+impl core::marker::Sync for formiga_travel::Trait
+impl core::marker::Unpin for formiga_travel::Trait
+impl core::marker::UnsafeUnpin for formiga_travel::Trait
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Trait
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Trait
+pub enum formiga_travel::TravelError
+pub formiga_travel::TravelError::Invalid(alloc::string::String)
+pub formiga_travel::TravelError::Io(core::io::error::Error)
+pub formiga_travel::TravelError::Json(serde_json::error::Error)
+pub formiga_travel::TravelError::TooLarge
+pub formiga_travel::TravelError::TooLarge::limit: u64
+pub formiga_travel::TravelError::UnsupportedVersion
+pub formiga_travel::TravelError::UnsupportedVersion::needs: u32
+pub formiga_travel::TravelError::UnsupportedVersion::reads: u32
+pub formiga_travel::TravelError::WrongFormat
+pub formiga_travel::TravelError::WrongFormat::expected: &'static str
+pub formiga_travel::TravelError::WrongFormat::found: alloc::string::String
+impl core::convert::From<core::io::error::Error> for formiga_travel::TravelError
+pub fn formiga_travel::TravelError::from(core::io::error::Error) -> Self
+impl core::convert::From<formiga_expansion_rulebook::document::RulebookError> for formiga_travel::TravelError
+pub fn formiga_travel::TravelError::from(formiga_expansion_rulebook::document::RulebookError) -> Self
+impl core::convert::From<formiga_travel::TravelError> for formiga_travel::ProjectionError
+pub fn formiga_travel::ProjectionError::from(formiga_travel::TravelError) -> Self
+impl core::convert::From<serde_json::error::Error> for formiga_travel::TravelError
+pub fn formiga_travel::TravelError::from(serde_json::error::Error) -> Self
+impl core::error::Error for formiga_travel::TravelError
+pub fn formiga_travel::TravelError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for formiga_travel::TravelError
+pub fn formiga_travel::TravelError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_travel::TravelError
+pub fn formiga_travel::TravelError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for formiga_travel::TravelError
+impl core::marker::Send for formiga_travel::TravelError
+impl core::marker::Sync for formiga_travel::TravelError
+impl core::marker::Unpin for formiga_travel::TravelError
+impl core::marker::UnsafeUnpin for formiga_travel::TravelError
+impl !core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelError
+impl !core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelError
+pub enum formiga_travel::TravelRole
+pub formiga_travel::TravelRole::Adult
+pub formiga_travel::TravelRole::Mini
+pub formiga_travel::TravelRole::Mini::parent_id: formiga_travel::TravelerId
+impl core::clone::Clone for formiga_travel::TravelRole
+pub fn formiga_travel::TravelRole::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelRole
+impl core::cmp::PartialEq for formiga_travel::TravelRole
+pub fn formiga_travel::TravelRole::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelRole
+pub fn formiga_travel::TravelRole::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelRole
+impl core::marker::StructuralPartialEq for formiga_travel::TravelRole
+impl serde_core::ser::Serialize for formiga_travel::TravelRole
+pub fn formiga_travel::TravelRole::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelRole
+pub fn formiga_travel::TravelRole::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelRole
+impl core::marker::Send for formiga_travel::TravelRole
+impl core::marker::Sync for formiga_travel::TravelRole
+impl core::marker::Unpin for formiga_travel::TravelRole
+impl core::marker::UnsafeUnpin for formiga_travel::TravelRole
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelRole
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelRole
+pub struct formiga_travel::AccessoryColors
+pub formiga_travel::AccessoryColors::accent: [u8; 3]
+pub formiga_travel::AccessoryColors::body: [u8; 3]
+pub formiga_travel::AccessoryColors::deep: [u8; 3]
+pub formiga_travel::AccessoryColors::light: [u8; 3]
+pub formiga_travel::AccessoryColors::outline: [u8; 3]
+impl core::clone::Clone for formiga_travel::AccessoryColors
+pub fn formiga_travel::AccessoryColors::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::AccessoryColors
+impl core::cmp::PartialEq for formiga_travel::AccessoryColors
+pub fn formiga_travel::AccessoryColors::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::AccessoryColors
+pub fn formiga_travel::AccessoryColors::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::AccessoryColors
+impl core::marker::StructuralPartialEq for formiga_travel::AccessoryColors
+impl serde_core::ser::Serialize for formiga_travel::AccessoryColors
+pub fn formiga_travel::AccessoryColors::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::AccessoryColors
+pub fn formiga_travel::AccessoryColors::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::AccessoryColors
+impl core::marker::Send for formiga_travel::AccessoryColors
+impl core::marker::Sync for formiga_travel::AccessoryColors
+impl core::marker::Unpin for formiga_travel::AccessoryColors
+impl core::marker::UnsafeUnpin for formiga_travel::AccessoryColors
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::AccessoryColors
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::AccessoryColors
+pub struct formiga_travel::Acknowledgement
+pub formiga_travel::Acknowledgement::accepted: bool
+pub formiga_travel::Acknowledgement::format: alloc::string::String
+pub formiga_travel::Acknowledgement::hill_version: alloc::string::String
+pub formiga_travel::Acknowledgement::min_reader_version: u32
+pub formiga_travel::Acknowledgement::refusal: core::option::Option<formiga_expansion_rulebook::refusal::AckRefusal>
+pub formiga_travel::Acknowledgement::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_travel::Acknowledgement::snapshot_sha256: alloc::string::String
+pub formiga_travel::Acknowledgement::version: u32
+impl formiga_travel::Acknowledgement
+pub fn formiga_travel::Acknowledgement::accepted(&formiga_travel::SnapshotSeal, &str) -> Self
+pub fn formiga_travel::Acknowledgement::answers(&self, &formiga_travel::SnapshotSeal) -> bool
+pub fn formiga_travel::Acknowledgement::refused(&formiga_travel::SnapshotSeal, &str, formiga_expansion_rulebook::refusal::AckRefusal) -> Self
+impl core::clone::Clone for formiga_travel::Acknowledgement
+pub fn formiga_travel::Acknowledgement::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Acknowledgement
+impl core::cmp::PartialEq for formiga_travel::Acknowledgement
+pub fn formiga_travel::Acknowledgement::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::Acknowledgement
+pub fn formiga_travel::Acknowledgement::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::Acknowledgement
+impl formiga_travel::Document for formiga_travel::Acknowledgement
+pub const formiga_travel::Acknowledgement::FORMAT: &'static str
+pub const formiga_travel::Acknowledgement::MAX_BYTES: u64
+pub fn formiga_travel::Acknowledgement::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl serde_core::ser::Serialize for formiga_travel::Acknowledgement
+pub fn formiga_travel::Acknowledgement::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Acknowledgement
+pub fn formiga_travel::Acknowledgement::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Acknowledgement
+impl core::marker::Send for formiga_travel::Acknowledgement
+impl core::marker::Sync for formiga_travel::Acknowledgement
+impl core::marker::Unpin for formiga_travel::Acknowledgement
+impl core::marker::UnsafeUnpin for formiga_travel::Acknowledgement
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Acknowledgement
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Acknowledgement
+pub struct formiga_travel::DesignRecipe
+pub formiga_travel::DesignRecipe::details: core::option::Option<alloc::string::String>
+pub formiga_travel::DesignRecipe::parts: alloc::string::String
+impl core::clone::Clone for formiga_travel::DesignRecipe
+pub fn formiga_travel::DesignRecipe::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::DesignRecipe
+impl core::cmp::PartialEq for formiga_travel::DesignRecipe
+pub fn formiga_travel::DesignRecipe::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::design::CreatureDesign> for formiga_travel::DesignRecipe
+pub fn formiga_travel::DesignRecipe::from(formiga_core::design::CreatureDesign) -> Self
+impl core::convert::TryFrom<&formiga_travel::DesignRecipe> for formiga_core::design::CreatureDesign
+pub type formiga_core::design::CreatureDesign::Error = formiga_travel::TravelError
+pub fn formiga_core::design::CreatureDesign::try_from(&formiga_travel::DesignRecipe) -> core::result::Result<Self, formiga_travel::TravelError>
+impl core::fmt::Debug for formiga_travel::DesignRecipe
+pub fn formiga_travel::DesignRecipe::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::DesignRecipe
+impl serde_core::ser::Serialize for formiga_travel::DesignRecipe
+pub fn formiga_travel::DesignRecipe::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::DesignRecipe
+pub fn formiga_travel::DesignRecipe::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::DesignRecipe
+impl core::marker::Send for formiga_travel::DesignRecipe
+impl core::marker::Sync for formiga_travel::DesignRecipe
+impl core::marker::Unpin for formiga_travel::DesignRecipe
+impl core::marker::UnsafeUnpin for formiga_travel::DesignRecipe
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::DesignRecipe
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::DesignRecipe
+pub struct formiga_travel::Presentation
+pub formiga_travel::Presentation::reduce_motion: bool
+pub formiga_travel::Presentation::text_scale_percent: u8
+pub formiga_travel::Presentation::theme: formiga_travel::Theme
+impl core::clone::Clone for formiga_travel::Presentation
+pub fn formiga_travel::Presentation::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Presentation
+impl core::cmp::PartialEq for formiga_travel::Presentation
+pub fn formiga_travel::Presentation::eq(&self, &Self) -> bool
+impl core::default::Default for formiga_travel::Presentation
+pub fn formiga_travel::Presentation::default() -> Self
+impl core::fmt::Debug for formiga_travel::Presentation
+pub fn formiga_travel::Presentation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::Presentation
+impl core::marker::StructuralPartialEq for formiga_travel::Presentation
+impl serde_core::ser::Serialize for formiga_travel::Presentation
+pub fn formiga_travel::Presentation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Presentation where formiga_travel::Presentation: core::default::Default
+pub fn formiga_travel::Presentation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Presentation
+impl core::marker::Send for formiga_travel::Presentation
+impl core::marker::Sync for formiga_travel::Presentation
+impl core::marker::Unpin for formiga_travel::Presentation
+impl core::marker::UnsafeUnpin for formiga_travel::Presentation
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Presentation
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Presentation
+pub struct formiga_travel::Recall
+pub formiga_travel::Recall::at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_travel::Recall::format: alloc::string::String
+pub formiga_travel::Recall::min_reader_version: u32
+pub formiga_travel::Recall::reason: formiga_travel::RecallReason
+pub formiga_travel::Recall::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_travel::Recall::version: u32
+impl formiga_travel::Recall
+pub fn formiga_travel::Recall::new(formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, formiga_travel::RecallReason) -> Self
+impl core::clone::Clone for formiga_travel::Recall
+pub fn formiga_travel::Recall::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::Recall
+impl core::cmp::PartialEq for formiga_travel::Recall
+pub fn formiga_travel::Recall::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::Recall
+pub fn formiga_travel::Recall::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::Recall
+impl formiga_travel::Document for formiga_travel::Recall
+pub const formiga_travel::Recall::FORMAT: &'static str
+pub const formiga_travel::Recall::MAX_BYTES: u64
+pub fn formiga_travel::Recall::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl serde_core::ser::Serialize for formiga_travel::Recall
+pub fn formiga_travel::Recall::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Recall
+pub fn formiga_travel::Recall::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Recall
+impl core::marker::Send for formiga_travel::Recall
+impl core::marker::Sync for formiga_travel::Recall
+impl core::marker::Unpin for formiga_travel::Recall
+impl core::marker::UnsafeUnpin for formiga_travel::Recall
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Recall
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Recall
+pub struct formiga_travel::ReturnReceipt
+pub formiga_travel::ReturnReceipt::effects: alloc::vec::Vec<formiga_travel::ReturnEffect>
+pub formiga_travel::ReturnReceipt::format: alloc::string::String
+pub formiga_travel::ReturnReceipt::hill_version: alloc::string::String
+pub formiga_travel::ReturnReceipt::min_reader_version: u32
+pub formiga_travel::ReturnReceipt::returned_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_travel::ReturnReceipt::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_travel::ReturnReceipt::snapshot_sha256: alloc::string::String
+pub formiga_travel::ReturnReceipt::version: u32
+impl formiga_travel::ReturnReceipt
+pub fn formiga_travel::ReturnReceipt::answers(&self, &formiga_travel::SnapshotSeal) -> bool
+pub fn formiga_travel::ReturnReceipt::new(&formiga_travel::SnapshotSeal, time::offset_date_time::OffsetDateTime, &str, alloc::vec::Vec<formiga_travel::ReturnEffect>) -> Self
+impl core::clone::Clone for formiga_travel::ReturnReceipt
+pub fn formiga_travel::ReturnReceipt::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::ReturnReceipt
+impl core::cmp::PartialEq for formiga_travel::ReturnReceipt
+pub fn formiga_travel::ReturnReceipt::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::ReturnReceipt
+pub fn formiga_travel::ReturnReceipt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::ReturnReceipt
+impl formiga_travel::Document for formiga_travel::ReturnReceipt
+pub const formiga_travel::ReturnReceipt::FORMAT: &'static str
+pub const formiga_travel::ReturnReceipt::MAX_BYTES: u64
+pub fn formiga_travel::ReturnReceipt::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl serde_core::ser::Serialize for formiga_travel::ReturnReceipt
+pub fn formiga_travel::ReturnReceipt::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::ReturnReceipt
+pub fn formiga_travel::ReturnReceipt::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::ReturnReceipt
+impl core::marker::Send for formiga_travel::ReturnReceipt
+impl core::marker::Sync for formiga_travel::ReturnReceipt
+impl core::marker::Unpin for formiga_travel::ReturnReceipt
+impl core::marker::UnsafeUnpin for formiga_travel::ReturnReceipt
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::ReturnReceipt
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::ReturnReceipt
+pub struct formiga_travel::SnapshotSeal
+pub formiga_travel::SnapshotSeal::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_travel::SnapshotSeal::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_travel::SnapshotSeal::snapshot_sha256: alloc::string::String
+impl formiga_travel::SnapshotSeal
+pub fn formiga_travel::SnapshotSeal::of(&formiga_travel::TravelSnapshot, &[u8]) -> Self
+impl core::clone::Clone for formiga_travel::SnapshotSeal
+pub fn formiga_travel::SnapshotSeal::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::SnapshotSeal
+impl core::cmp::PartialEq for formiga_travel::SnapshotSeal
+pub fn formiga_travel::SnapshotSeal::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::SnapshotSeal
+pub fn formiga_travel::SnapshotSeal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::SnapshotSeal
+impl core::marker::Freeze for formiga_travel::SnapshotSeal
+impl core::marker::Send for formiga_travel::SnapshotSeal
+impl core::marker::Sync for formiga_travel::SnapshotSeal
+impl core::marker::Unpin for formiga_travel::SnapshotSeal
+impl core::marker::UnsafeUnpin for formiga_travel::SnapshotSeal
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::SnapshotSeal
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::SnapshotSeal
+pub struct formiga_travel::TravelAccessory
+pub formiga_travel::TravelAccessory::colors: formiga_travel::AccessoryColors
+pub formiga_travel::TravelAccessory::item: formiga_travel::AccessoryItem
+impl formiga_travel::TravelAccessory
+pub fn formiga_travel::TravelAccessory::to_accessory(&self) -> formiga_core::accessories::Accessory
+pub fn formiga_travel::TravelAccessory::to_art(&self) -> formiga_art::renderer::accessories::AccessoryArt
+impl core::clone::Clone for formiga_travel::TravelAccessory
+pub fn formiga_travel::TravelAccessory::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelAccessory
+impl core::cmp::PartialEq for formiga_travel::TravelAccessory
+pub fn formiga_travel::TravelAccessory::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelAccessory
+pub fn formiga_travel::TravelAccessory::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelAccessory
+impl core::marker::StructuralPartialEq for formiga_travel::TravelAccessory
+impl serde_core::ser::Serialize for formiga_travel::TravelAccessory
+pub fn formiga_travel::TravelAccessory::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelAccessory
+pub fn formiga_travel::TravelAccessory::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelAccessory
+impl core::marker::Send for formiga_travel::TravelAccessory
+impl core::marker::Sync for formiga_travel::TravelAccessory
+impl core::marker::Unpin for formiga_travel::TravelAccessory
+impl core::marker::UnsafeUnpin for formiga_travel::TravelAccessory
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelAccessory
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelAccessory
+pub struct formiga_travel::TravelAppearance
+pub formiga_travel::TravelAppearance::body_height: u8
+pub formiga_travel::TravelAppearance::body_width: u8
+pub formiga_travel::TravelAppearance::design: core::option::Option<formiga_travel::DesignRecipe>
+pub formiga_travel::TravelAppearance::echo_fox: bool
+pub formiga_travel::TravelAppearance::effect_motif: formiga_travel::EffectMotif
+pub formiga_travel::TravelAppearance::face: formiga_travel::TravelFace
+pub formiga_travel::TravelAppearance::face_signature: u32
+pub formiga_travel::TravelAppearance::family: formiga_travel::BodyFamily
+pub formiga_travel::TravelAppearance::foot_size: u8
+pub formiga_travel::TravelAppearance::forelimbs: formiga_travel::TravelForelimbs
+pub formiga_travel::TravelAppearance::gait_bob: f32
+pub formiga_travel::TravelAppearance::head_appendages: formiga_travel::TravelHeadAppendages
+pub formiga_travel::TravelAppearance::head_ratio: f32
+pub formiga_travel::TravelAppearance::leg_length: u8
+pub formiga_travel::TravelAppearance::logical_size: u8
+pub formiga_travel::TravelAppearance::marking_seed: alloc::string::String
+pub formiga_travel::TravelAppearance::palette_index: u8
+pub formiga_travel::TravelAppearance::pattern: formiga_travel::PatternKind
+pub formiga_travel::TravelAppearance::pattern_density: f32
+pub formiga_travel::TravelAppearance::roundness: f32
+pub formiga_travel::TravelAppearance::sculpt: core::option::Option<formiga_core::forms::sculpt::Sculpt>
+pub formiga_travel::TravelAppearance::tail: formiga_travel::TravelTail
+impl formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::to_genome(&self) -> core::result::Result<formiga_core::model::appearance::AppearanceGenome, formiga_travel::TravelError>
+impl core::clone::Clone for formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::eq(&self, &Self) -> bool
+impl core::convert::From<&formiga_core::model::appearance::AppearanceGenome> for formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::from(&formiga_core::model::appearance::AppearanceGenome) -> Self
+impl core::fmt::Debug for formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::TravelAppearance
+impl serde_core::ser::Serialize for formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelAppearance
+pub fn formiga_travel::TravelAppearance::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelAppearance
+impl core::marker::Send for formiga_travel::TravelAppearance
+impl core::marker::Sync for formiga_travel::TravelAppearance
+impl core::marker::Unpin for formiga_travel::TravelAppearance
+impl core::marker::UnsafeUnpin for formiga_travel::TravelAppearance
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelAppearance
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelAppearance
+pub struct formiga_travel::TravelAxes
+pub formiga_travel::TravelAxes::affection: f32
+pub formiga_travel::TravelAxes::boldness: f32
+pub formiga_travel::TravelAxes::curiosity: f32
+pub formiga_travel::TravelAxes::energy: f32
+pub formiga_travel::TravelAxes::feistiness: f32
+pub formiga_travel::TravelAxes::impulsiveness: f32
+pub formiga_travel::TravelAxes::playfulness: f32
+pub formiga_travel::TravelAxes::social: f32
+pub formiga_travel::TravelAxes::suspicion: f32
+impl core::clone::Clone for formiga_travel::TravelAxes
+pub fn formiga_travel::TravelAxes::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_travel::TravelAxes
+pub fn formiga_travel::TravelAxes::eq(&self, &Self) -> bool
+impl core::convert::From<formiga_core::temperament::Axes> for formiga_travel::TravelAxes
+pub fn formiga_travel::TravelAxes::from(formiga_core::temperament::Axes) -> Self
+impl core::convert::From<formiga_travel::TravelAxes> for formiga_core::temperament::Axes
+pub fn formiga_core::temperament::Axes::from(formiga_travel::TravelAxes) -> Self
+impl core::fmt::Debug for formiga_travel::TravelAxes
+pub fn formiga_travel::TravelAxes::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelAxes
+impl core::marker::StructuralPartialEq for formiga_travel::TravelAxes
+impl serde_core::ser::Serialize for formiga_travel::TravelAxes
+pub fn formiga_travel::TravelAxes::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelAxes
+pub fn formiga_travel::TravelAxes::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelAxes
+impl core::marker::Send for formiga_travel::TravelAxes
+impl core::marker::Sync for formiga_travel::TravelAxes
+impl core::marker::Unpin for formiga_travel::TravelAxes
+impl core::marker::UnsafeUnpin for formiga_travel::TravelAxes
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelAxes
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelAxes
+pub struct formiga_travel::TravelCharacter
+pub formiga_travel::TravelCharacter::axes: formiga_travel::TravelAxes
+pub formiga_travel::TravelCharacter::phrase: alloc::string::String
+pub formiga_travel::TravelCharacter::temperament: formiga_travel::TemperamentKind
+pub formiga_travel::TravelCharacter::tension: core::option::Option<formiga_travel::Tension>
+pub formiga_travel::TravelCharacter::trait_ids: alloc::vec::Vec<formiga_travel::Trait>
+pub formiga_travel::TravelCharacter::traits: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for formiga_travel::TravelCharacter
+pub fn formiga_travel::TravelCharacter::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_travel::TravelCharacter
+pub fn formiga_travel::TravelCharacter::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelCharacter
+pub fn formiga_travel::TravelCharacter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::TravelCharacter
+impl serde_core::ser::Serialize for formiga_travel::TravelCharacter
+pub fn formiga_travel::TravelCharacter::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelCharacter
+pub fn formiga_travel::TravelCharacter::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelCharacter
+impl core::marker::Send for formiga_travel::TravelCharacter
+impl core::marker::Sync for formiga_travel::TravelCharacter
+impl core::marker::Unpin for formiga_travel::TravelCharacter
+impl core::marker::UnsafeUnpin for formiga_travel::TravelCharacter
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelCharacter
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelCharacter
+pub struct formiga_travel::TravelFace
+pub formiga_travel::TravelFace::brow: formiga_travel::BrowStyle
+pub formiga_travel::TravelFace::cheek: formiga_travel::CheekStyle
+pub formiga_travel::TravelFace::eye_shape: formiga_travel::EyeShape
+pub formiga_travel::TravelFace::eye_size: u8
+pub formiga_travel::TravelFace::eye_spacing: u8
+pub formiga_travel::TravelFace::highlight: formiga_travel::HighlightStyle
+pub formiga_travel::TravelFace::mouth: formiga_travel::MouthStyle
+pub formiga_travel::TravelFace::pupil: formiga_travel::PupilStyle
+pub formiga_travel::TravelFace::vertical_offset: i8
+impl core::clone::Clone for formiga_travel::TravelFace
+pub fn formiga_travel::TravelFace::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelFace
+impl core::cmp::PartialEq for formiga_travel::TravelFace
+pub fn formiga_travel::TravelFace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelFace
+pub fn formiga_travel::TravelFace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelFace
+impl core::marker::StructuralPartialEq for formiga_travel::TravelFace
+impl serde_core::ser::Serialize for formiga_travel::TravelFace
+pub fn formiga_travel::TravelFace::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelFace
+pub fn formiga_travel::TravelFace::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelFace
+impl core::marker::Send for formiga_travel::TravelFace
+impl core::marker::Sync for formiga_travel::TravelFace
+impl core::marker::Unpin for formiga_travel::TravelFace
+impl core::marker::UnsafeUnpin for formiga_travel::TravelFace
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelFace
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelFace
+pub struct formiga_travel::TravelForelimbs
+pub formiga_travel::TravelForelimbs::length: u8
+pub formiga_travel::TravelForelimbs::rest_pose: formiga_travel::RestPose
+pub formiga_travel::TravelForelimbs::style: formiga_travel::ForelimbStyle
+pub formiga_travel::TravelForelimbs::thickness: u8
+pub formiga_travel::TravelForelimbs::tip: formiga_travel::LimbTipStyle
+impl core::clone::Clone for formiga_travel::TravelForelimbs
+pub fn formiga_travel::TravelForelimbs::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelForelimbs
+impl core::cmp::PartialEq for formiga_travel::TravelForelimbs
+pub fn formiga_travel::TravelForelimbs::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelForelimbs
+pub fn formiga_travel::TravelForelimbs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelForelimbs
+impl core::marker::StructuralPartialEq for formiga_travel::TravelForelimbs
+impl serde_core::ser::Serialize for formiga_travel::TravelForelimbs
+pub fn formiga_travel::TravelForelimbs::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelForelimbs
+pub fn formiga_travel::TravelForelimbs::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelForelimbs
+impl core::marker::Send for formiga_travel::TravelForelimbs
+impl core::marker::Sync for formiga_travel::TravelForelimbs
+impl core::marker::Unpin for formiga_travel::TravelForelimbs
+impl core::marker::UnsafeUnpin for formiga_travel::TravelForelimbs
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelForelimbs
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelForelimbs
+pub struct formiga_travel::TravelHeadAppendages
+pub formiga_travel::TravelHeadAppendages::size: u8
+pub formiga_travel::TravelHeadAppendages::style: formiga_travel::HeadAppendageStyle
+impl core::clone::Clone for formiga_travel::TravelHeadAppendages
+pub fn formiga_travel::TravelHeadAppendages::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelHeadAppendages
+impl core::cmp::PartialEq for formiga_travel::TravelHeadAppendages
+pub fn formiga_travel::TravelHeadAppendages::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelHeadAppendages
+pub fn formiga_travel::TravelHeadAppendages::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelHeadAppendages
+impl core::marker::StructuralPartialEq for formiga_travel::TravelHeadAppendages
+impl serde_core::ser::Serialize for formiga_travel::TravelHeadAppendages
+pub fn formiga_travel::TravelHeadAppendages::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelHeadAppendages
+pub fn formiga_travel::TravelHeadAppendages::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelHeadAppendages
+impl core::marker::Send for formiga_travel::TravelHeadAppendages
+impl core::marker::Sync for formiga_travel::TravelHeadAppendages
+impl core::marker::Unpin for formiga_travel::TravelHeadAppendages
+impl core::marker::UnsafeUnpin for formiga_travel::TravelHeadAppendages
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelHeadAppendages
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelHeadAppendages
+pub struct formiga_travel::TravelMotion
+pub formiga_travel::TravelMotion::activity: f32
+pub formiga_travel::TravelMotion::boldness: f32
+pub formiga_travel::TravelMotion::celebration: core::option::Option<formiga_travel::Celebration>
+pub formiga_travel::TravelMotion::playfulness: f32
+impl core::clone::Clone for formiga_travel::TravelMotion
+pub fn formiga_travel::TravelMotion::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_travel::TravelMotion
+pub fn formiga_travel::TravelMotion::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelMotion
+pub fn formiga_travel::TravelMotion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelMotion
+impl core::marker::StructuralPartialEq for formiga_travel::TravelMotion
+impl serde_core::ser::Serialize for formiga_travel::TravelMotion
+pub fn formiga_travel::TravelMotion::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelMotion
+pub fn formiga_travel::TravelMotion::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelMotion
+impl core::marker::Send for formiga_travel::TravelMotion
+impl core::marker::Sync for formiga_travel::TravelMotion
+impl core::marker::Unpin for formiga_travel::TravelMotion
+impl core::marker::UnsafeUnpin for formiga_travel::TravelMotion
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelMotion
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelMotion
+pub struct formiga_travel::TravelRelationship
+pub formiga_travel::TravelRelationship::a: formiga_travel::TravelerId
+pub formiga_travel::TravelRelationship::affinity: formiga_travel::Band
+pub formiga_travel::TravelRelationship::avoidance: formiga_travel::Band
+pub formiga_travel::TravelRelationship::b: formiga_travel::TravelerId
+pub formiga_travel::TravelRelationship::familiarity: formiga_travel::Band
+pub formiga_travel::TravelRelationship::playfulness: formiga_travel::Band
+impl core::clone::Clone for formiga_travel::TravelRelationship
+pub fn formiga_travel::TravelRelationship::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelRelationship
+impl core::cmp::PartialEq for formiga_travel::TravelRelationship
+pub fn formiga_travel::TravelRelationship::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelRelationship
+pub fn formiga_travel::TravelRelationship::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelRelationship
+impl core::marker::StructuralPartialEq for formiga_travel::TravelRelationship
+impl serde_core::ser::Serialize for formiga_travel::TravelRelationship
+pub fn formiga_travel::TravelRelationship::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelRelationship
+pub fn formiga_travel::TravelRelationship::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelRelationship
+impl core::marker::Send for formiga_travel::TravelRelationship
+impl core::marker::Sync for formiga_travel::TravelRelationship
+impl core::marker::Unpin for formiga_travel::TravelRelationship
+impl core::marker::UnsafeUnpin for formiga_travel::TravelRelationship
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelRelationship
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelRelationship
+pub struct formiga_travel::TravelSnapshot
+pub formiga_travel::TravelSnapshot::accepts_souvenirs: alloc::vec::Vec<alloc::string::String>
+pub formiga_travel::TravelSnapshot::capabilities: alloc::vec::Vec<formiga_travel::Capability>
+pub formiga_travel::TravelSnapshot::colony_id: alloc::string::String
+pub formiga_travel::TravelSnapshot::created_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_travel::TravelSnapshot::desktop_version: alloc::string::String
+pub formiga_travel::TravelSnapshot::format: alloc::string::String
+pub formiga_travel::TravelSnapshot::min_reader_version: u32
+pub formiga_travel::TravelSnapshot::presentation: formiga_travel::Presentation
+pub formiga_travel::TravelSnapshot::relationships: alloc::vec::Vec<formiga_travel::TravelRelationship>
+pub formiga_travel::TravelSnapshot::session_id: formiga_expansion_rulebook::ids::SessionId
+pub formiga_travel::TravelSnapshot::travelers: alloc::vec::Vec<formiga_travel::Traveler>
+pub formiga_travel::TravelSnapshot::version: u32
+impl formiga_travel::TravelSnapshot
+pub fn formiga_travel::TravelSnapshot::accepts_souvenir(&self, &str) -> bool
+pub fn formiga_travel::TravelSnapshot::offers(&self, formiga_travel::Capability) -> bool
+pub fn formiga_travel::TravelSnapshot::traveler(&self, formiga_travel::TravelerId) -> core::option::Option<&formiga_travel::Traveler>
+impl core::clone::Clone for formiga_travel::TravelSnapshot
+pub fn formiga_travel::TravelSnapshot::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_travel::TravelSnapshot
+pub fn formiga_travel::TravelSnapshot::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelSnapshot
+pub fn formiga_travel::TravelSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::TravelSnapshot
+impl formiga_travel::Document for formiga_travel::TravelSnapshot
+pub const formiga_travel::TravelSnapshot::FORMAT: &'static str
+pub const formiga_travel::TravelSnapshot::MAX_BYTES: u64
+pub fn formiga_travel::TravelSnapshot::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl serde_core::ser::Serialize for formiga_travel::TravelSnapshot
+pub fn formiga_travel::TravelSnapshot::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelSnapshot
+pub fn formiga_travel::TravelSnapshot::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelSnapshot
+impl core::marker::Send for formiga_travel::TravelSnapshot
+impl core::marker::Sync for formiga_travel::TravelSnapshot
+impl core::marker::Unpin for formiga_travel::TravelSnapshot
+impl core::marker::UnsafeUnpin for formiga_travel::TravelSnapshot
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelSnapshot
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelSnapshot
+pub struct formiga_travel::TravelTail
+pub formiga_travel::TravelTail::length: u8
+pub formiga_travel::TravelTail::style: formiga_travel::TailStyle
+impl core::clone::Clone for formiga_travel::TravelTail
+pub fn formiga_travel::TravelTail::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelTail
+impl core::cmp::PartialEq for formiga_travel::TravelTail
+pub fn formiga_travel::TravelTail::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::TravelTail
+pub fn formiga_travel::TravelTail::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_travel::TravelTail
+impl core::marker::StructuralPartialEq for formiga_travel::TravelTail
+impl serde_core::ser::Serialize for formiga_travel::TravelTail
+pub fn formiga_travel::TravelTail::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelTail
+pub fn formiga_travel::TravelTail::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelTail
+impl core::marker::Send for formiga_travel::TravelTail
+impl core::marker::Sync for formiga_travel::TravelTail
+impl core::marker::Unpin for formiga_travel::TravelTail
+impl core::marker::UnsafeUnpin for formiga_travel::TravelTail
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelTail
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelTail
+pub struct formiga_travel::Traveler
+pub formiga_travel::Traveler::accessory: core::option::Option<formiga_travel::TravelAccessory>
+pub formiga_travel::Traveler::appearance: formiga_travel::TravelAppearance
+pub formiga_travel::Traveler::born_at_utc: time::offset_date_time::OffsetDateTime
+pub formiga_travel::Traveler::character: formiga_travel::TravelCharacter
+pub formiga_travel::Traveler::habits: alloc::vec::Vec<formiga_travel::Habit>
+pub formiga_travel::Traveler::id: formiga_travel::TravelerId
+pub formiga_travel::Traveler::motion: formiga_travel::TravelMotion
+pub formiga_travel::Traveler::name: alloc::string::String
+pub formiga_travel::Traveler::role: formiga_travel::TravelRole
+pub formiga_travel::Traveler::scale_percent: u8
+pub formiga_travel::Traveler::stature_percent: u8
+impl formiga_travel::Traveler
+pub fn formiga_travel::Traveler::recipe(&self) -> core::option::Option<&formiga_travel::DesignRecipe>
+impl formiga_travel::Traveler
+pub fn formiga_travel::Traveler::to_creature(&self) -> core::result::Result<formiga_core::model::creature::Creature, formiga_travel::TravelError>
+impl core::clone::Clone for formiga_travel::Traveler
+pub fn formiga_travel::Traveler::clone(&self) -> Self
+impl core::cmp::PartialEq for formiga_travel::Traveler
+pub fn formiga_travel::Traveler::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_travel::Traveler
+pub fn formiga_travel::Traveler::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_travel::Traveler
+impl serde_core::ser::Serialize for formiga_travel::Traveler
+pub fn formiga_travel::Traveler::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::Traveler
+pub fn formiga_travel::Traveler::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::Traveler
+impl core::marker::Send for formiga_travel::Traveler
+impl core::marker::Sync for formiga_travel::Traveler
+impl core::marker::Unpin for formiga_travel::Traveler
+impl core::marker::UnsafeUnpin for formiga_travel::Traveler
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::Traveler
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::Traveler
+pub struct formiga_travel::TravelerId(pub u64)
+impl core::clone::Clone for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::clone(&self) -> Self
+impl core::cmp::Eq for formiga_travel::TravelerId
+impl core::cmp::Ord for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<formiga_travel::TravelerId> for alloc::string::String
+pub fn alloc::string::String::from(formiga_travel::TravelerId) -> Self
+impl core::convert::TryFrom<alloc::string::String> for formiga_travel::TravelerId
+pub type formiga_travel::TravelerId::Error = alloc::string::String
+pub fn formiga_travel::TravelerId::try_from(alloc::string::String) -> core::result::Result<Self, Self::Error>
+impl core::fmt::Debug for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for formiga_travel::TravelerId
+impl core::marker::StructuralPartialEq for formiga_travel::TravelerId
+impl serde_core::ser::Serialize for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for formiga_travel::TravelerId
+pub fn formiga_travel::TravelerId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for formiga_travel::TravelerId
+impl core::marker::Send for formiga_travel::TravelerId
+impl core::marker::Sync for formiga_travel::TravelerId
+impl core::marker::Unpin for formiga_travel::TravelerId
+impl core::marker::UnsafeUnpin for formiga_travel::TravelerId
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_travel::TravelerId
+impl core::panic::unwind_safe::UnwindSafe for formiga_travel::TravelerId
+pub const formiga_travel::ACK_FILE: &str
+pub const formiga_travel::ACK_FORMAT: &str
+pub const formiga_travel::LAUNCH_ARGUMENT: &str
+pub const formiga_travel::RECALL_FILE: &str
+pub const formiga_travel::RECALL_FORMAT: &str
+pub const formiga_travel::RECEIPT_FILE: &str
+pub const formiga_travel::RECEIPT_FORMAT: &str
+pub const formiga_travel::SNAPSHOT_FILE: &str
+pub const formiga_travel::SNAPSHOT_FORMAT: &str
+pub const formiga_travel::TRAVEL_FORMAT_VERSION: u32
+pub trait formiga_travel::Document: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
+pub const formiga_travel::Document::FORMAT: &'static str
+pub const formiga_travel::Document::MAX_BYTES: u64
+pub fn formiga_travel::Document::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl formiga_travel::Document for formiga_travel::Acknowledgement
+pub const formiga_travel::Acknowledgement::FORMAT: &'static str
+pub const formiga_travel::Acknowledgement::MAX_BYTES: u64
+pub fn formiga_travel::Acknowledgement::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl formiga_travel::Document for formiga_travel::Recall
+pub const formiga_travel::Recall::FORMAT: &'static str
+pub const formiga_travel::Recall::MAX_BYTES: u64
+pub fn formiga_travel::Recall::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl formiga_travel::Document for formiga_travel::ReturnReceipt
+pub const formiga_travel::ReturnReceipt::FORMAT: &'static str
+pub const formiga_travel::ReturnReceipt::MAX_BYTES: u64
+pub fn formiga_travel::ReturnReceipt::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+impl formiga_travel::Document for formiga_travel::TravelSnapshot
+pub const formiga_travel::TravelSnapshot::FORMAT: &'static str
+pub const formiga_travel::TravelSnapshot::MAX_BYTES: u64
+pub fn formiga_travel::TravelSnapshot::validate(&self) -> core::result::Result<(), formiga_travel::TravelError>
+pub fn formiga_travel::decode<T: formiga_travel::Document>(&[u8]) -> core::result::Result<T, formiga_travel::TravelError>
+pub fn formiga_travel::encode<T: formiga_travel::Document>(&T) -> core::result::Result<alloc::vec::Vec<u8>, formiga_travel::TravelError>
+pub fn formiga_travel::project_colony(&formiga_core::model::save::SaveFile, formiga_expansion_rulebook::ids::SessionId, time::offset_date_time::OffsetDateTime, &str) -> core::result::Result<formiga_travel::TravelSnapshot, formiga_travel::ProjectionError>
+pub fn formiga_travel::read_bounded(&std::path::Path, u64) -> core::result::Result<alloc::vec::Vec<u8>, formiga_travel::TravelError>
+pub fn formiga_travel::read_document<T: formiga_travel::Document>(&std::path::Path) -> core::result::Result<T, formiga_travel::TravelError>
+pub fn formiga_travel::reader_for_colony(&formiga_core::model::save::SaveFile) -> u32
+pub fn formiga_travel::write_document<T: formiga_travel::Document>(&std::path::Path, &T) -> core::result::Result<alloc::vec::Vec<u8>, formiga_travel::TravelError>
