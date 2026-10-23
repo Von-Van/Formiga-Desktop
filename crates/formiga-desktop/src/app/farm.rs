@@ -6,7 +6,7 @@
 use super::companions::Companion;
 use super::*;
 use crate::expansion::{Slot, Takes};
-use crate::farm::session::{FarmFiles, OpenSession, Purpose, refusal_text};
+use crate::farm::session::{CLOSED_BEFORE_OPENING, FarmFiles, OpenSession, Purpose, refusal_text};
 use crate::farm::{FARM, FarmEvent, FarmRequest, SessionState, Watcher};
 use crate::settings::GenerationPreview;
 use formiga_core::forms::Design;
@@ -249,11 +249,18 @@ impl FormigaApp {
                 };
                 self.decide_on_farm_proposal(Some(event_loop), &open);
                 let refusal = self.farm.files.refusal(&open);
+                let answered = self.farm.files.acknowledged(&open);
                 self.farm.files.close(&open);
                 self.farm.session = SessionState::Idle;
-                tracing::info!(refused = refusal.is_some(), "Formiga Farm has closed");
+                tracing::info!(
+                    refused = refusal.is_some(),
+                    answered,
+                    "Formiga Farm has closed"
+                );
                 if let Some(refusal) = refusal {
                     self.failure_dialog(STAYING_SHUT, &refusal_text(&refusal));
+                } else if !answered {
+                    self.failure_dialog(STAYING_SHUT, CLOSED_BEFORE_OPENING);
                 }
             }
         }

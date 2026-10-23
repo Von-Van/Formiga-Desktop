@@ -27,7 +27,7 @@ pub mod record;
 pub mod session;
 
 use crate::expansion::files::Folder;
-use crate::expansion::{Expansion, Words};
+use crate::expansion::{Expansion, Listing, Releases, Words};
 use crate::platform::companion_app::AppNames;
 use formiga_battle_contract::{SessionId, discovery};
 use session::OpenSession;
@@ -52,11 +52,22 @@ pub static BATTLE: Expansion = Expansion {
         marker_format: session::MARKER_FORMAT,
         kept: &[],
     },
+    // Battle's downloads are built and kept in Formiga-World-Releases, under tags like
+    // `battle-v0.67.14`.
+    releases: Some(Releases {
+        repo: "Von-Van/Formiga-World-Releases",
+        tag_prefix: "battle-v",
+    }),
+    listing: Listing {
+        blurb: "Pick three companions and play the visitors or a friend. Cups won come home with \
+                the colony.",
+        how: "Choose Play Formiga Battle… from Formiga's {tray}.",
+    },
     words: Words {
         staying: "Formiga Battle is staying shut",
         recover_first: "Finish recovering the colony in the notebook before opening Formiga Battle.",
         cannot_save: Some("The colony cannot be saved just now, so it is not leaving."),
-        contract: "battle",
+        get_newest: "Get the newest Formiga Battle at formigaworld.com, then try again.",
         update_to: "play with the colony's companions",
         busy: "already has a match open",
         unreadable: "could not read the companions it was given",
@@ -92,11 +103,12 @@ mod tests {
         };
         assert_eq!(BATTLE.incompatibility(&install, 1), None);
         assert_eq!(
-            BATTLE.incompatibility(&install, 2).as_deref(),
-            Some(
-                "Formiga Battle 0.1.0 reads battle version 1, and this colony needs version 2. \
-                 Update Formiga Battle to play with the colony's companions."
-            )
+            BATTLE.incompatibility(&install, 2),
+            Some(format!(
+                "Formiga Battle 0.1.0 is too old to play with the colony's companions with Formiga \
+                 {}. Get the newest Formiga Battle at formigaworld.com, then try again.",
+                crate::updater::APP_VERSION
+            ))
         );
     }
 

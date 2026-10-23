@@ -222,6 +222,19 @@ zones (UTC, Pacific/Auckland and America/Los_Angeles), so local midnights and we
 at different moments — and uploads any failure files. It can also be started by hand from the
 Actions tab with other numbers and a seed.
 
+### Proving a refactor changes nothing
+
+```sh
+taskpolicy -b cargo run --release -p formiga-tools -- soak --colonies 24 --days 1 --seed 7 --threads 2 --digest
+```
+
+`--digest` sums up each colony's life as a SHA-256 of every `WorldEvent` it raised and the file it
+ended with, prints one line per colony, and a last line, `# digest all …`, for the whole run in
+colony order. The same seed gives the same digests whatever `--threads` is, on the same machine and
+in the same time zone. A change meant to leave everything a colony does alone — moving code about,
+splitting a function — runs this before and after: equal digests show nothing changed; a different
+one names the colonies to replay with `--only`.
+
 ## Review sheets and documentation images
 
 `formiga-tools` draws every reference image in the repository. These commands regenerate all of

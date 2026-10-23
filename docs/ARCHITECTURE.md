@@ -2160,7 +2160,7 @@ Shared adoption reconstructs the exact source generation before assigning a loca
 fresh history. Capacity, Keep, duplicate identity, and mini reparenting are enforced before mutation.
 The rest of the colony is preserved.
 
-Persistence accepts save versions 1–31: version 31 is read directly, versions 1 through 30 are
+Persistence accepts save versions 1–33: version 33 is read directly, versions 1 through 32 are
 migrated on load, and anything else is refused. Version 17 adds classic parts to stored recipes and
 migrates nothing, since a recipe without them is a plain modular one; it moved so an older build
 refuses the colony rather than quietly dropping the parts. Version 18 moved for the same reason, so
@@ -2605,10 +2605,11 @@ visit by itself, its folder in the data directory, and the words it is spoken of
 
 | Piece | What it does for every app |
 |---|---|
-| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and notes it coming and going in the log |
+| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and again at once when the notebook opens or the pointer comes over the tray icon (at most every five seconds), and notes it coming and going in the log |
 | `Slot::start_due` | With the app's path override naming a stand-in and its development variable set, starts one visit that many seconds after Desktop starts, and never otherwise |
 | `Expansion::start` | Starts the app with its flag and the session directory, and waits for it on a thread that sleeps until it exits and then says so through the event loop |
-| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words |
+| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words; a copy too old is told so by version and pointed to `Words::get_newest`, and the contract's numbers go to the log only |
+| `Expansion::releases`, `Expansion::listing` | Where the app's downloads are published (`None` for Farm, which has none yet), and what the About page's **Formiga's apps** section says of it. The daily update check looks up the newest full release for this platform of each installed app with releases (`updater::check_companion`, highest version rather than the first GitHub lists) and the section says when one is newer than the installed copy |
 | `files::VisitFiles` | The app's directory: a fresh session directory for each visit, the marker that lets Desktop finish a visit after a restart, closing, forgetting while the app may still be running (leaving it its recall), and sweeping whatever is neither the open visit nor a file Desktop keeps there |
 | `Holding`, `busy_elsewhere` | Who the app has just now: nobody, the whole colony, or a few companions. A visit that wants any of them is turned away in the words of the app that has them (`Words::occupied`), so a companion is away in one app at a time |
 
@@ -2674,8 +2675,9 @@ a reader needs. The header is checked on the raw JSON before anything is shaped,
 is refused for its version rather than for its shape, and unknown fields and unknown enum values
 in lists (`Capability`, `ReturnEffect`, `Trait`) read as "unknown" rather than failing. Version 1
 shipped with 0.66.4; version 2 adds each trait's identifier, version 3, in 0.66.6, the souvenirs
-Desktop keeps, and version 4, in 0.67.0, four more of them; all are still marked readable by
-version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
+Desktop keeps, and version 4, in 0.67.0, four more of them; version 5, in 0.67.6, the Echo Fox,
+and version 6, in 0.68.0, a form sculpted in Formiga Farm
+([Sculpted forms](#sculpted-forms-save-v29)); all are still marked readable by version 1. A snapshot's `min_reader_version` rises by itself only if a companion is drawn in an edition an
 older reader cannot draw: `reader_for_colony` maps every edition to the first travel version that
 carries it, and a new edition in the core does not build until it is given one. Desktop checks
 that requirement against the version an installed Hill says it reads before starting it. The
@@ -2897,10 +2899,19 @@ design out of range, and `Design::revision` names one exactly.
 Save version 29 gives `AppearanceGenome` a `sculpt`, absent from the file for every creature drawn
 from its recipe or its genes. A sculpted creature keeps a recipe beside it,
 `Design::fallback_recipe`: the companion plan nearest its form, in its coat's colours. That recipe
-is what anything that cannot draw sculpts draws. A trip to Formiga Hill or a visit to Formiga Home
-carries the recipe and never the sculpt, a share code holds the recipe, and a mini's recipe grows
-from its parent's. Validation keeps a sculpt inside its bounds and never without a recipe beside
-it.
+is what anything that cannot draw sculpts draws. A share code holds the recipe, and a mini's recipe
+grows from its parent's. Validation keeps a sculpt inside its bounds and never without a recipe
+beside it.
+
+A trip to Formiga Hill, a visit to Formiga Home and a match in Formiga Battle carry the sculpt as
+well as the recipe, from travel version 6 (household version 12): `TravelAppearance::sculpt` is
+the core's own `Sculpt`, written as Formiga Farm's contract writes it, checked with
+`Sculpt::validate` and never without the recipe beside it, and `to_genome` puts it back, so an app
+built on this release's crates draws the form itself. An earlier app ignores the field and draws
+the recipe, so a sculpt asks nothing more of a reader than any other look. A sculpt this build
+cannot read (a plan or part from a newer design model) is left behind the same way rather than
+refusing the colony. A newer `DESIGN_VERSION` does not build in `formiga-travel` until the travel
+format says how its sculpts travel.
 
 `CreatureRenderer` draws a genome with a sculpt through `formiga_art::forms`, so a sculpted form is
 drawn wherever a companion is. Its body is painted there at the same 48 pixels, fitted to the frame
@@ -3036,6 +3047,9 @@ since version 4 each match played as a trio also names the three who played (`Tr
 and `BattleRecord::register_session` keeps any of those lineups the trio no longer has as earlier
 lineups before keeping the registry, so a lineup that played and was changed within one session is
 not lost.
+Since version 5 the record carries the colony's anonymous Handler key (`BattleRecord::handler_key`,
+32 lowercase hex digits), which Battle passes on to a friend's Battle so it can know the same
+Handler again. Desktop makes it and nothing in a result can change it.
 
 The sample roster, record and result in `sample` are Desktop's own sample colony, and Battle
 rehearses with them. `tests/fixtures` keeps every version's documents, and
@@ -3046,13 +3060,19 @@ version's files beside the others.
 
 Save version 31 gives `SaveFile` a `battle` (`formiga_core::BattleLog`, absent until the colony has
 played), and save version 32 adds the Handler card and the trios the Handler has named, retired ones
-included, each with its record (`BattleRecord::handler` and `trios`): Battle's `record`, written in exactly the shape the contract's `BattleRecord` has, and the
+included, each with its record (`BattleRecord::handler` and `trios`); save version 33 adds the
+anonymous Handler key (`BattleRecord::handler_key`), which `BattleRecord::give_handler_key` makes
+from the system's randomness as the colony first leaves for Battle, and which is never changed
+after. Battle's `record` is written in exactly the shape the contract's `BattleRecord` has, beside the
 `keepsakes` its matches earned. The record crosses between the two only through that shape
 (`battle/record.rs`), and validation holds it to the contract's own bounds, keeping the newest of
 anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
 trophy and medal of each of Battle's four cups, Backyard, Woodland, Millpond and Sandy Cove, by
 Battle's own identifiers), once each, with Desktop's own name
-and words for it. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
+and words for it. The Journal page shows them, newest first, in a Cups section beside the
+Souvenirs, under one line of the Handler's name, the cups won and the Open Circuit points; like the
+Souvenirs it exists only once one has come home. `formiga_art::cup_strip` draws them all on one
+texture, ported pixel for pixel from Formiga Home's own pictures so a cup looks the same in both. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
 line, since the team and the match are Battle's to name; it is one line of plain text, checked by
 `is_battle_line` (the contract's own rule for text that crosses) when it comes and whenever the
 colony is read. Formiga Home is offered each keepsake in its inventory as a `battle_keepsake`

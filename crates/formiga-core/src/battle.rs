@@ -7,6 +7,10 @@
 //! Battle's, and Desktop only keeps it inside its bounds. The keepsakes a match earns are
 //! Desktop's own: it keeps the ones it knows, once each, for Formiga Home to show, and says what
 //! they are in its own words.
+//!
+//! The one part of the record that is Desktop's own is the Handler key: 128 random bits made once
+//! for the colony, the first time it goes to Battle, so a friend's Battle can know the same
+//! Handler again without knowing anything else about them. Battle reads it and never changes it.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -182,11 +186,27 @@ pub struct BattleRecord {
     /// The trios the Handler has named, retired ones included.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trios: Vec<BattleTrio>,
+    /// The colony's anonymous Handler key: 32 lowercase hex digits made at random, once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler_key: Option<String>,
 }
 
 impl BattleRecord {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Give the colony its Handler key if it has none yet: 128 bits from the system's own source
+    /// of randomness, unrelated to the colony, the computer or anything else Desktop knows. A key
+    /// once made is never changed. True if one was made.
+    pub fn give_handler_key(&mut self) -> Result<bool, getrandom::Error> {
+        if self.handler_key.is_some() {
+            return Ok(false);
+        }
+        let mut bytes = [0_u8; 16];
+        getrandom::fill(&mut bytes)?;
+        self.handler_key = Some(bytes.iter().map(|b| format!("{b:02x}")).collect());
+        Ok(true)
     }
 
     /// Whether the record is inside every bound the Battle contract holds it to.
@@ -202,6 +222,7 @@ impl BattleRecord {
             && self.notebook.len() <= MAX_PAGES
             && self.notebook.iter().all(BattleNotebookPage::holds)
             && self.handler.as_ref().is_none_or(BattleHandlerCard::holds)
+            && self.handler_key.as_deref().is_none_or(is_handler_key)
             && self.trios.len() <= MAX_TRIOS
             && self.trios.iter().all(BattleTrio::holds)
             && self
@@ -232,6 +253,14 @@ impl BattleRecord {
         }
         if self.handler.as_ref().is_some_and(|card| !card.holds()) {
             self.handler = None;
+        }
+        // A key that is not one is made again, as for a colony that never had one.
+        if self
+            .handler_key
+            .as_deref()
+            .is_some_and(|key| !is_handler_key(key))
+        {
+            self.handler_key = None;
         }
         let mut seen = Vec::new();
         self.trios.retain(|trio| {
@@ -350,6 +379,11 @@ fn keep_newest<T>(items: &mut Vec<T>, max: usize) {
     if items.len() > max {
         items.drain(..items.len() - max);
     }
+}
+
+/// A Handler key is written as a match id is: 32 lowercase hex digits.
+fn is_handler_key(key: &str) -> bool {
+    is_match_id(key)
 }
 
 fn is_match_id(id: &str) -> bool {
@@ -671,5 +705,34 @@ mod tests {
         assert_eq!(record.trios.len(), 1);
         assert_eq!(record.trios[0].name, "Thistle");
         assert_eq!(record.trios[0].friends.won, 2);
+    }
+
+    #[test]
+    fn a_handler_key_is_made_once_and_one_that_is_not_a_key_is_left_out() {
+        let mut first = BattleRecord::default();
+        let mut second = BattleRecord::default();
+        assert!(first.give_handler_key().unwrap());
+        assert!(second.give_handler_key().unwrap());
+        assert!(first.holds() && second.holds());
+        assert_ne!(first.handler_key, second.handler_key);
+        let kept = first.handler_key.clone();
+        assert!(!first.give_handler_key().unwrap());
+        assert_eq!(first.handler_key, kept);
+
+        for odd in [
+            "",
+            "5F0C2A7E9B1D4C3A8E6F0B2D4A9C7E15",
+            "5f0c2a7e9b1d",
+            "not a key at all",
+        ] {
+            let mut record = BattleRecord {
+                handler_key: Some(odd.to_owned()),
+                ..BattleRecord::default()
+            };
+            assert!(!record.holds(), "{odd:?} is not a key");
+            record.normalize();
+            assert!(record.holds() && record.handler_key.is_none());
+            assert!(record.give_handler_key().unwrap());
+        }
     }
 }

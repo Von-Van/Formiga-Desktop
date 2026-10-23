@@ -92,7 +92,13 @@ impl FormigaApp {
             return;
         };
         let snapshot = {
-            let Some(world) = &self.world else { return };
+            let Some(world) = &mut self.world else { return };
+            // The colony's anonymous Handler key is made the first time it goes to Battle, and
+            // written with the colony as it leaves. Without one Battle still opens; a friend's
+            // Battle just cannot know this Handler again.
+            if let Err(error) = world.save.battle.record.give_handler_key() {
+                tracing::warn!(%error, "no Handler key could be made for Formiga Battle");
+            }
             SessionId::generate()
                 .map_err(|error| error.to_string())
                 .and_then(|session| {
