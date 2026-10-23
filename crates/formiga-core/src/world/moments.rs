@@ -302,7 +302,9 @@ impl World {
         let reduce_motion = self.save.settings.reduce_motion;
         let span = clear * (joining.len() - 1) as f32;
         let centre_x = if high - low >= span {
-            host_x.clamp(low + span / 2.0, high - span / 2.0)
+            // When the row only just fits, the two ends can cross by a rounding step.
+            let first = low + span / 2.0;
+            host_x.clamp(first, (high - span / 2.0).max(first))
         } else {
             (low + high) / 2.0
         };

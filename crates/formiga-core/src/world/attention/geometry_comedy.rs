@@ -69,8 +69,9 @@ impl World {
             _ if self.save.settings.reduce_motion || free.1 - free.0 < margin * 2.0 => None,
             _ => {
                 let direction = if closing[1].is_some() { -1.0 } else { 1.0 };
+                // A gap only just wide enough can leave its ends a rounding step apart.
                 let x = (c.state.position.x + direction * 60.0 * unit)
-                    .clamp(free.0 + margin, free.1 - margin);
+                    .clamp(free.0 + margin, (free.1 - margin).max(free.0 + margin));
                 ((x - c.state.position.x) * direction >= 16.0 * unit)
                     .then(|| motion::safe_goal(self, c, x, desktop))
                     .flatten()

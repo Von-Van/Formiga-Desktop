@@ -1254,7 +1254,9 @@ impl World {
             pick -= run.4;
         }
         let (ground, low, high, y, _) = chosen;
-        let (low, high) = (low + room / 2.0, high - room / 2.0);
+        // A run only just wide enough can leave the two ends a rounding step the wrong way round.
+        let low = low + room / 2.0;
+        let high = (high - room / 2.0).max(low);
         // A little way along from where the lead is, on whichever side has room.
         let away = self.wonders.rng.random_range(WONDERS.near_frames) * frame;
         let from = lead.state.position.x.clamp(low, high);
