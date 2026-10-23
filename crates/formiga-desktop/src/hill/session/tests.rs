@@ -144,8 +144,11 @@ fn hill_saying_no_is_heard() {
     };
     assert_eq!(
         refusal_text(&refusal),
-        "Formiga Hill 0.1.0 reads travel version 0, which is too old for this colony. Update \
-         Formiga Hill to take the colony there."
+        format!(
+            "Formiga Hill 0.1.0 is too old to take the colony there with Formiga {}. Get the \
+             newest Formiga Hill at formigaworld.com, then try again.",
+            crate::updater::APP_VERSION
+        )
     );
     // An acknowledgement for another trip says nothing about this one.
     let mut stranger = Acknowledgement::refused(&trip.seal, "0.1.0", AckRefusal::Busy);

@@ -50,6 +50,8 @@ pub struct SettingsOutcome {
     pub bring_household_back: bool,
     /// Reshape a companion in Formiga Farm, or draw a new one there.
     pub open_farm: Option<crate::farm::FarmRequest>,
+    /// Take the colony to one of Formiga's apps, from the About page's list of them.
+    pub open_app: Option<crate::clubhouse::AppOpen>,
     /// A house built as another type, by the companion who keeps it, or with `None` as its own.
     pub house_style: Option<(CreatureId, Option<formiga_core::ShelterStyle>)>,
     /// A house moved back on the ground or forward, by the companion who keeps it, or with `None`
@@ -1134,7 +1136,7 @@ fn draw_settings(
                 SettingsTab::About => {
                     clubhouse::journal::page_heading(ui, SettingsTab::About, "About & backups", "Who keeps this notebook, and where to find a spare copy.");
                     let echo_fox = save.creatures.iter().any(|creature| creature.appearance.echo_fox);
-                    about_tab(ui, &mut clubhouse.shell, &mut clubhouse.recovery, outcome, save_location, update_status, automatic_update_checks, echo_fox);
+                    about_tab(ui, &mut clubhouse.shell, &mut clubhouse.recovery, &clubhouse.apps, outcome, save_location, update_status, automatic_update_checks, echo_fox);
                 }
             }
         });
@@ -2436,6 +2438,7 @@ fn about_tab(
     ui: &mut egui::Ui,
     shell: &mut clubhouse::shell::Shell,
     recovery: &mut clubhouse::recovery::RecoveryState,
+    apps: &[clubhouse::AppListing],
     outcome: &mut SettingsOutcome,
     save_location: &str,
     update_status: &UpdateStatus,
@@ -2472,10 +2475,16 @@ fn about_tab(
                 "Windows"
             }
         ));
-        ui.hyperlink_to(
-            "Project repository",
-            "https://github.com/Von-Van/Formiga-Desktop",
-        );
+        ui.horizontal_wrapped(|ui| {
+            ui.hyperlink_to("Formiga's website", clubhouse::DOWNLOADS_URL);
+            ui.label("·");
+            ui.hyperlink_to("Send feedback", clubhouse::FEEDBACK_URL);
+            ui.label("·");
+            ui.hyperlink_to(
+                "Project repository",
+                "https://github.com/Von-Van/Formiga-Desktop",
+            );
+        });
     });
     ui.add_space(12.0);
     let updates_now = match update_status {
@@ -2500,6 +2509,7 @@ fn about_tab(
             "Colony backups",
             "Export the whole colony, or restore one",
         ),
+        Section::new("apps", "Formiga's apps", apps_summary(apps)),
         Section::new("updates", "Updates", updates_now),
         Section::new(
             "privacy",
@@ -2514,6 +2524,7 @@ fn about_tab(
     ];
     match clubhouse::sections::show(ui, shell, SettingsTab::About, &sections) {
         Some("backups") => recovery.backups(ui, outcome),
+        Some("apps") => apps_section(ui, apps, outcome),
         Some("updates") => {
             clubhouse::wide_card(ui, |ui| {
                 clubhouse::journal::kicker(ui, "Updates");
@@ -2521,7 +2532,8 @@ fn about_tab(
                 if ui
                 .checkbox(&mut automatic, "Check GitHub for updates automatically")
                 .on_hover_text(
-                    "At most once a day, when Formiga starts. Nothing is downloaded without asking.",
+                    "Once a day while Formiga runs, for Formiga and the other Formiga apps you have \
+                     installed. Nothing is downloaded without asking.",
                 )
                 .changed()
             {
@@ -2609,6 +2621,15 @@ fn about_tab(
                         }
                     }
                 }
+                for app in apps {
+                    if let Some(line) = newer_line(app) {
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(line);
+                            ui.hyperlink_to("Get it", clubhouse::DOWNLOADS_URL);
+                        });
+                    }
+                }
             });
         }
         Some("privacy") => {
@@ -2619,7 +2640,8 @@ fn about_tab(
                  telemetry. Formiga sees where windows are, never what is in them.",
                 );
                 ui.small(
-                    "Optional update checks contact only the public Formiga repository on GitHub.",
+                    "Optional update checks contact only the public release pages of Formiga and \
+                     its apps on GitHub.",
                 );
             });
         }
@@ -2639,6 +2661,93 @@ fn about_tab(
         }
         _ => {}
     }
+}
+
+/// The line on the About page's list of sections for Formiga's other apps: an update first, then
+/// which are installed.
+fn apps_summary(apps: &[clubhouse::AppListing]) -> String {
+    if let Some(app) = apps.iter().find(|app| app.newer.is_some()) {
+        return format!("A newer {} is out", app.name);
+    }
+    let installed: Vec<&str> = apps
+        .iter()
+        .filter(|app| app.installed.is_some())
+        .map(|app| app.name.trim_start_matches("Formiga "))
+        .collect();
+    match installed.as_slice() {
+        [] => "Places to visit, a dollhouse and friendly matches".to_owned(),
+        [one] => format!("{one} is installed"),
+        [rest @ .., last] => format!("{} and {last} are installed", rest.join(", ")),
+    }
+}
+
+/// That a newer release of `app` than the one installed is out, when one is.
+fn newer_line(app: &clubhouse::AppListing) -> Option<String> {
+    let (version, _) = app.newer.as_ref()?;
+    let installed = app.installed.clone().flatten();
+    Some(match installed {
+        Some(installed) => format!(
+            "{} {version} is out. This computer has {installed}.",
+            app.name
+        ),
+        None => format!("{} {version} is out.", app.name),
+    })
+}
+
+/// Formiga's other apps, each with what it is, whether it is here, and how it is opened. An app
+/// that is not installed is listed with where to get it, unless it is not offered yet.
+fn apps_section(ui: &mut egui::Ui, apps: &[clubhouse::AppListing], outcome: &mut SettingsOutcome) {
+    clubhouse::wide_card(ui, |ui| {
+        clubhouse::journal::kicker(ui, "Formiga's apps");
+        ui.label(
+            "Separate apps your colony can visit. Formiga runs exactly as it does without them, and \
+             whatever happens in one, everyone comes home as they left.",
+        );
+        for app in apps
+            .iter()
+            .filter(|app| app.offered || app.installed.is_some())
+        {
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new(app.name).strong());
+            ui.label(app.blurb);
+            match &app.installed {
+                Some(Some(version)) => ui.small(format!("Installed · {version}")),
+                Some(None) => ui.small("Installed"),
+                None => ui.small("Not installed"),
+            };
+            if let Some(line) = newer_line(app) {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(line);
+                    ui.hyperlink_to("Get it at formigaworld.com", clubhouse::DOWNLOADS_URL);
+                });
+            }
+            if app.installed.is_some() {
+                ui.small(&app.how);
+                if let Some((open, can)) = app.open {
+                    let label = match open {
+                        clubhouse::AppOpen::Hill => "Go to Formiga Hill",
+                        clubhouse::AppOpen::Battle => "Play Formiga Battle",
+                    };
+                    if ui
+                        .add_enabled(can, egui::Button::new(label))
+                        .on_disabled_hover_text(
+                            "Not while the colony is away, or a house is open in Formiga Home.",
+                        )
+                        .clicked()
+                    {
+                        outcome.open_app = Some(open);
+                    }
+                }
+            } else {
+                ui.hyperlink_to(
+                    format!("Get {} at formigaworld.com", app.name),
+                    clubhouse::DOWNLOADS_URL,
+                );
+            }
+        }
+    });
 }
 
 #[cfg(test)]

@@ -133,6 +133,11 @@ fn home_saying_no_is_heard() {
     let files = HouseFiles::new(&scratch.0);
     let snapshot = snapshot(&colony());
     let visit = files.open(&snapshot, &[]).unwrap();
+    let too_old = format!(
+        "Formiga Home 0.1.0 is too old to open its houses with Formiga {}. Get the newest Formiga \
+         Home at formigaworld.com, then try again.",
+        crate::updater::APP_VERSION
+    );
     for (reason, said) in [
         (
             AckRefusal::Busy,
@@ -140,8 +145,7 @@ fn home_saying_no_is_heard() {
         ),
         (
             AckRefusal::UnsupportedVersion { reads: 3 },
-            "Formiga Home 0.1.0 reads household version 3, which is too old for this colony. \
-             Update Formiga Home to open its houses.",
+            too_old.as_str(),
         ),
         (
             AckRefusal::Invalid,
