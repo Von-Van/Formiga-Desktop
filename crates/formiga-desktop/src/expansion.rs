@@ -39,15 +39,59 @@ pub struct Expansion {
     pub start_after_env: &'static str,
     /// Where its visits' files are kept.
     pub folder: files::Folder,
+    /// Where its downloads are published, so the owner can be told when a newer one is out;
+    /// `None` while it has none.
+    pub releases: Option<Releases>,
+    /// How the notebook's list of Formiga's apps describes it.
+    pub listing: Listing,
     /// How it is spoken of.
     pub words: Words,
 }
 
-/// The words an app is spoken of in, each said after its name.
+/// Where an app's downloads are published on GitHub.
+#[derive(Clone, Copy, Debug)]
+pub struct Releases {
+    /// `owner/name` of the repository whose releases carry its installers.
+    pub repo: &'static str,
+    /// What its release tags begin with, ahead of the version: `v`, or `battle-v`.
+    pub tag_prefix: &'static str,
+}
+
+/// What the notebook says of an app in its list of Formiga's apps.
+#[derive(Clone, Copy, Debug)]
+pub struct Listing {
+    /// What it is, in a sentence.
+    pub blurb: &'static str,
+    /// How it is opened from Formiga, in a sentence. `{tray}` stands for what the menu-bar or
+    /// notification-area icon is called on this platform.
+    pub how: &'static str,
+}
+
+impl Listing {
+    /// [`Listing::how`], with the icon named as this platform names it.
+    pub fn how(&self) -> String {
+        let tray = if cfg!(target_os = "macos") {
+            "menu-bar icon"
+        } else {
+            "icon in the notification area"
+        };
+        self.how.replace("{tray}", tray)
+    }
+}
+
+/// The words an app is spoken of in, each said after its name unless it says otherwise.
 pub struct Words {
-    /// What its contract's version is called: `travel` in "reads travel version 2".
-    pub contract: &'static str,
-    /// What updating it would let the colony do: "take the colony there".
+    /// The title every reason a visit cannot start is shown under: "The colony is staying home".
+    pub staying: &'static str,
+    /// The whole sentence said while the colony waits to be recovered in the notebook.
+    pub recover_first: &'static str,
+    /// For an app that takes companions away from the desktop, the sentence said, ahead of the
+    /// reason, while the colony cannot be saved; `None` for one that takes nobody.
+    pub cannot_save: Option<&'static str>,
+    /// Where a newer copy is found, as a sentence said after a version it is too old for: "Get the
+    /// newest Formiga Hill at formigaworld.com, then try again."
+    pub get_newest: &'static str,
+    /// What an older copy is too old to do: "take the colony there".
     pub update_to: &'static str,
     /// What it said when it was busy: "is already hosting a colony".
     pub busy: &'static str,
@@ -94,6 +138,40 @@ pub fn busy_elsewhere(
         .iter()
         .find(|(app, holding)| !std::ptr::eq(*app, asking) && holding.holds_any(wants))
         .map(|(app, _)| app.words.occupied)
+}
+
+/// Whom a visit takes away from the desktop while it is open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Takes<'a> {
+    /// Nobody, as Formiga Farm, which has only a copy of a companion's look.
+    Nobody,
+    /// The whole colony, as a trip to Formiga Hill or a match in Formiga Battle.
+    Everyone,
+    /// These creatures, as a household going indoors in Formiga Home.
+    These(&'a [CreatureId]),
+}
+
+impl Takes<'_> {
+    /// Whom another app would have to be holding to stand in the way: `None` for everyone.
+    pub fn wants(&self) -> Option<Option<&[CreatureId]>> {
+        match self {
+            Self::Nobody => None,
+            Self::Everyone => Some(None),
+            Self::These(ids) => Some(Some(ids)),
+        }
+    }
+}
+
+/// What the app knows, as a visit is asked for, that can stand in the way of it before anything
+/// of it is written.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Readiness<'a> {
+    /// The colony could not be opened and waits to be recovered in the notebook.
+    pub recovering: bool,
+    /// Why the colony could not be saved last time, while that is still so.
+    pub save_trouble: Option<&'a str>,
+    /// Why another app, holding someone the visit needs, stands in the way.
+    pub busy: Option<&'static str>,
 }
 
 /// An app's own reason for turning a visit away, as its acknowledgement gave it.
@@ -145,21 +223,48 @@ impl Expansion {
     }
 
     /// Why `install` cannot take a visit written as version `needs` of the app's contract, said so
-    /// that it can be acted on. `None` when it can, or when it does not say which versions it
-    /// reads; the app then answers for itself once it has read the snapshot.
+    /// that it can be acted on, without the contract's own numbers. `None` when it can, or when it
+    /// does not say which versions it reads; the app then answers for itself once it has read the
+    /// snapshot.
     pub fn incompatibility(&self, install: &AppInstall, needs: u32) -> Option<String> {
         let reads = install.reads?;
         (reads < needs).then(|| {
+            tracing::info!(reads, needs, "{} reads too old a contract", self.name);
             let which = install.version.as_deref().map_or_else(
                 || format!("This copy of {}", self.name),
                 |version| format!("{} {version}", self.name),
             );
-            format!(
-                "{which} reads {} version {reads}, and this colony needs version {needs}. Update \
-                 {} to {}.",
-                self.words.contract, self.name, self.words.update_to
-            )
+            self.too_old(&which)
         })
+    }
+
+    /// What stands in the way of a visit just now, before anything of it is written, as the owner
+    /// is told it, under [`Words::staying`]; `None` when nothing does. A colony being recovered
+    /// comes first, then a colony that cannot be saved (for an app that takes anyone away), then
+    /// someone the visit needs being away in another app.
+    pub fn blocked(&self, now: &Readiness) -> Option<String> {
+        if now.recovering {
+            return Some(self.words.recover_first.to_owned());
+        }
+        if let (Some(trouble), Some(cannot_save)) = (now.save_trouble, self.words.cannot_save) {
+            return Some(format!("{cannot_save} {trouble}"));
+        }
+        now.busy.map(str::to_owned)
+    }
+
+    /// What the owner is told when the app has gone since Desktop last looked.
+    pub fn gone(&self) -> String {
+        format!("{} is no longer installed.", self.name)
+    }
+
+    /// That `which` copy of the app is too old for this Formiga, and where to find a newer one.
+    fn too_old(&self, which: &str) -> String {
+        format!(
+            "{which} is too old to {} with Formiga {}. {}",
+            self.words.update_to,
+            crate::updater::APP_VERSION,
+            self.words.get_newest
+        )
     }
 
     /// The app's refusal, said so the owner can do something about it.
@@ -172,11 +277,10 @@ impl Expansion {
         };
         let words = &self.words;
         match refusal.reason {
-            AckRefusal::UnsupportedVersion { reads } => format!(
-                "{who} reads {} version {reads}, which is too old for this colony. Update {name} \
-                 to {}.",
-                words.contract, words.update_to
-            ),
+            AckRefusal::UnsupportedVersion { reads } => {
+                tracing::info!(reads, "{name} turned the visit away as too new for it");
+                self.too_old(&who)
+            }
             AckRefusal::Busy => format!("{who} {}.", words.busy),
             AckRefusal::Invalid => format!("{who} {}.", words.unreadable),
             AckRefusal::Other => format!("{who} {}.", words.declined),
@@ -245,6 +349,7 @@ impl Slot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::updater::APP_VERSION;
     use std::path::PathBuf;
 
     const SAMPLE_FOLDER: files::Folder = files::Folder {
@@ -268,8 +373,16 @@ mod tests {
         launch_argument: "--formiga-sample",
         start_after_env: "FORMIGA_SAMPLE_VISIT_AFTER",
         folder: SAMPLE_FOLDER,
+        releases: None,
+        listing: Listing {
+            blurb: "A sample.",
+            how: "Open it from Formiga's {tray}.",
+        },
         words: Words {
-            contract: "sample",
+            staying: "The sample is staying shut",
+            recover_first: "Finish recovering the colony in the notebook before opening the sample.",
+            cannot_save: Some("The colony cannot be saved just now, so it is not going."),
+            get_newest: "Get the newest Formiga Sample, then try again.",
             update_to: "open the sample",
             busy: "is already open",
             unreadable: "could not read the sample",
@@ -288,6 +401,15 @@ mod tests {
         ..SAMPLE
     };
 
+    static TAKES_NOBODY: Expansion = Expansion {
+        folder: SAMPLE_FOLDER,
+        words: Words {
+            cannot_save: None,
+            ..SAMPLE.words
+        },
+        ..SAMPLE
+    };
+
     fn install(version: Option<&str>, reads: Option<u32>) -> AppInstall {
         AppInstall {
             path: PathBuf::from("Formiga Sample.app"),
@@ -301,20 +423,18 @@ mod tests {
         let older = install(Some("0.1.0"), Some(1));
         assert_eq!(SAMPLE.incompatibility(&older, 1), None);
         assert_eq!(
-            SAMPLE.incompatibility(&older, 2).as_deref(),
-            Some(
-                "Formiga Sample 0.1.0 reads sample version 1, and this colony needs version 2. \
-                 Update Formiga Sample to open the sample."
-            )
+            SAMPLE.incompatibility(&older, 2),
+            Some(format!(
+                "Formiga Sample 0.1.0 is too old to open the sample with Formiga {APP_VERSION}. \
+                 Get the newest Formiga Sample, then try again."
+            ))
         );
         assert_eq!(
-            SAMPLE
-                .incompatibility(&install(None, Some(1)), 2)
-                .as_deref(),
-            Some(
-                "This copy of Formiga Sample reads sample version 1, and this colony needs \
-                 version 2. Update Formiga Sample to open the sample."
-            )
+            SAMPLE.incompatibility(&install(None, Some(1)), 2),
+            Some(format!(
+                "This copy of Formiga Sample is too old to open the sample with Formiga \
+                 {APP_VERSION}. Get the newest Formiga Sample, then try again."
+            ))
         );
         assert_eq!(
             SAMPLE.incompatibility(&install(Some("0.1.0"), None), 9),
@@ -333,8 +453,10 @@ mod tests {
         };
         assert_eq!(
             said(AckRefusal::UnsupportedVersion { reads: 0 }, "0.1.0"),
-            "Formiga Sample 0.1.0 reads sample version 0, which is too old for this colony. \
-             Update Formiga Sample to open the sample."
+            format!(
+                "Formiga Sample 0.1.0 is too old to open the sample with Formiga {APP_VERSION}. \
+                 Get the newest Formiga Sample, then try again."
+            )
         );
         assert_eq!(
             said(AckRefusal::Busy, ""),
@@ -348,6 +470,47 @@ mod tests {
             said(AckRefusal::Other, ""),
             "Formiga Sample could not open the sample this time."
         );
+    }
+
+    #[test]
+    fn what_stands_in_the_way_is_said_one_reason_at_a_time_recovery_first() {
+        let clear = Readiness::default();
+        assert_eq!(SAMPLE.blocked(&clear), None);
+        let everything = Readiness {
+            recovering: true,
+            save_trouble: Some("The disk is full."),
+            busy: Some("Someone is at the other app just now."),
+        };
+        assert_eq!(
+            SAMPLE.blocked(&everything).as_deref(),
+            Some("Finish recovering the colony in the notebook before opening the sample.")
+        );
+        let unsaved = Readiness {
+            recovering: false,
+            ..everything
+        };
+        assert_eq!(
+            SAMPLE.blocked(&unsaved).as_deref(),
+            Some("The colony cannot be saved just now, so it is not going. The disk is full.")
+        );
+        let busy = Readiness {
+            save_trouble: None,
+            ..unsaved
+        };
+        assert_eq!(
+            SAMPLE.blocked(&busy).as_deref(),
+            Some("Someone is at the other app just now.")
+        );
+        // An app that takes nobody away does not wait for the colony to be saveable.
+        assert_eq!(TAKES_NOBODY.blocked(&unsaved).as_deref(), busy.busy);
+        assert_eq!(SAMPLE.gone(), "Formiga Sample is no longer installed.");
+    }
+
+    #[test]
+    fn whom_a_visit_takes_says_whom_another_app_may_not_hold() {
+        assert_eq!(Takes::Nobody.wants(), None);
+        assert_eq!(Takes::Everyone.wants(), Some(None));
+        assert_eq!(Takes::These(&[4]).wants(), Some(Some(&[4][..])));
     }
 
     #[test]

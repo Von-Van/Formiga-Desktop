@@ -32,6 +32,8 @@ impl FormigaApp {
         }) else {
             return;
         };
+        // An app installed since the last look is offered as soon as the notebook opens.
+        self.look_for_apps_now();
         if self.settings_window.is_none() {
             let screens: Vec<notebook_window::Screen> = {
                 let primary = event_loop.primary_monitor();
@@ -147,6 +149,11 @@ impl FormigaApp {
         }
         if let Some(request) = outcome.open_farm {
             self.open_farm(request);
+        }
+        match outcome.open_app {
+            Some(crate::clubhouse::AppOpen::Hill) => self.go_to_hill(),
+            Some(crate::clubhouse::AppOpen::Battle) => self.play_battle(),
+            None => {}
         }
         let mut companion_changed = false;
         // A change to what the companions will do, said in its own words rather than as a plain
@@ -993,8 +1000,7 @@ impl FormigaApp {
             .is_some_and(|w| w.save.settings.launch_at_login);
         // A house open in Home, and a companion open in Farm, belong to the colony being
         // replaced.
-        self.abandon_house_visit();
-        self.abandon_farm_session();
+        self.abandon_visits();
         self.world = Some(imported);
         self.recovery_pending = false;
         self.milestone_notice = None;

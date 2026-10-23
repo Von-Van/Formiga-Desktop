@@ -26,7 +26,7 @@ pub mod scene;
 pub mod session;
 
 use crate::expansion::files::Folder;
-use crate::expansion::{Expansion, Words};
+use crate::expansion::{Expansion, Listing, Releases, Words};
 use crate::platform::companion_app::AppNames;
 use formiga_travel::{SessionId, discovery};
 use session::OpenTrip;
@@ -51,8 +51,20 @@ pub static HILL: Expansion = Expansion {
         marker_format: session::MARKER_FORMAT,
         kept: &[],
     },
+    releases: Some(Releases {
+        repo: "Von-Van/Formiga-Hill",
+        tag_prefix: "v",
+    }),
+    listing: Listing {
+        blurb: "Take the colony by train to a village green, a fairground and the woods. \
+                Souvenirs come home to the journal.",
+        how: "Choose Go to Formiga Hill… from Formiga's {tray}.",
+    },
     words: Words {
-        contract: "travel",
+        staying: "The colony is staying home",
+        recover_first: "Finish recovering the colony in the notebook before it travels.",
+        cannot_save: Some("The colony cannot be saved just now, so it is not leaving."),
+        get_newest: "Get the newest Formiga Hill at formigaworld.com, then try again.",
         update_to: "take the colony there",
         busy: "is already hosting a colony",
         unreadable: "could not read the colony's ticket",
@@ -88,11 +100,12 @@ mod tests {
         };
         assert_eq!(HILL.incompatibility(&install, 1), None);
         assert_eq!(
-            HILL.incompatibility(&install, 2).as_deref(),
-            Some(
-                "Formiga Hill 0.1.0 reads travel version 1, and this colony needs version 2. \
-                 Update Formiga Hill to take the colony there."
-            )
+            HILL.incompatibility(&install, 2),
+            Some(format!(
+                "Formiga Hill 0.1.0 is too old to take the colony there with Formiga {}. Get the \
+                 newest Formiga Hill at formigaworld.com, then try again.",
+                crate::updater::APP_VERSION
+            ))
         );
         let silent = AppInstall {
             reads: None,
@@ -115,8 +128,11 @@ mod tests {
         };
         assert_eq!(
             said(AckRefusal::UnsupportedVersion { reads: 0 }, "0.1.0"),
-            "Formiga Hill 0.1.0 reads travel version 0, which is too old for this colony. Update \
-             Formiga Hill to take the colony there."
+            format!(
+                "Formiga Hill 0.1.0 is too old to take the colony there with Formiga {}. Get the \
+                 newest Formiga Hill at formigaworld.com, then try again.",
+                crate::updater::APP_VERSION
+            )
         );
         assert_eq!(
             said(AckRefusal::Busy, "0.1.0"),

@@ -28,7 +28,7 @@ pub mod session;
 
 use crate::app::UserEvent;
 use crate::expansion::files::Folder;
-use crate::expansion::{Expansion, Words};
+use crate::expansion::{Expansion, Listing, Words};
 use crate::platform::companion_app::AppNames;
 use formiga_core::CreatureId;
 use formiga_farm_contract::{FarmProposal, PROPOSAL_FILE, SessionId, discovery, read_document};
@@ -62,8 +62,19 @@ pub static FARM: Expansion = Expansion {
         marker_format: session::MARKER_FORMAT,
         kept: &[],
     },
+    // Farm has no downloads of its own yet.
+    releases: None,
+    listing: Listing {
+        blurb: "Give a companion a new look, or draw a new one.",
+        how: "Choose Reshape in Formiga Farm on a companion's page, or Draw one in Formiga Farm \
+              in the Creature studio.",
+    },
     words: Words {
-        contract: "design",
+        staying: "Formiga Farm is staying shut",
+        recover_first: "Finish recovering the colony in the notebook before opening Formiga Farm.",
+        // Farm has only a copy of a companion's look, so nothing it does waits on a save.
+        cannot_save: None,
+        get_newest: "Update Formiga Farm, then try again.",
         update_to: "reshape the colony's companions",
         busy: "already has a companion open",
         unreadable: "could not read the companion it was given",
@@ -181,11 +192,12 @@ mod tests {
         };
         assert_eq!(FARM.incompatibility(&install, 1), None);
         assert_eq!(
-            FARM.incompatibility(&install, 2).as_deref(),
-            Some(
-                "Formiga Farm 0.1.0 reads design version 1, and this colony needs version 2. \
-                 Update Formiga Farm to reshape the colony's companions."
-            )
+            FARM.incompatibility(&install, 2),
+            Some(format!(
+                "Formiga Farm 0.1.0 is too old to reshape the colony's companions with Formiga {}. \
+                 Update Formiga Farm, then try again.",
+                crate::updater::APP_VERSION
+            ))
         );
     }
 

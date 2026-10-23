@@ -10,11 +10,17 @@ in memory. A creature's movement cadence is derived from data it already has and
 Established hangouts may reinforce the existing coarse preferred desktop region, without retaining
 the window identity or exact remembered spot in the save.
 
-The sole network feature is an assisted update checker. Automatic checks are enabled by default,
+Formiga's own sole network feature is an assisted update checker. (Formiga Battle, a separate app,
+can play a friend over the internet, as described below.) Automatic checks are enabled by default,
 can be disabled in **Settings → About**, and run no more than once per 24 hours, as Formiga starts or
 while it runs. A check that gets no answer, such as one made offline, is tried again an hour later.
 A manual check is also available from the tray and About screen. A check requests only public release
-metadata from `api.github.com` for the Formiga repository. If the user chooses to download an update,
+metadata from `api.github.com` for the Formiga repository, and, for each companion app installed
+(Formiga Hill, Formiga Home and Formiga Battle), for the public repository its downloads are
+published in, so the About page can say when a newer one is out. Nothing is downloaded for a
+companion app, and a lookup asks only for that repository's public list of releases. Formiga sends
+no list of installed apps, but since only installed apps are looked up, GitHub can tell from which
+repositories are asked for which of these apps are installed. If the user chooses to download an update,
 Formiga requests that release asset and its checksum from GitHub's release hosting. GitHub receives
 ordinary connection information such as the user's IP address and a Formiga user-agent; Formiga does
 not send its colony seed, save data, settings, desktop activity, window list, or a device identifier.
@@ -356,6 +362,41 @@ starts or next opens a house. While a visit is open, `home/visit.json` holds its
 two files' SHA-256 digests, its time, whose house it is, who went in, and what Formiga offered to
 take back, so a visit interrupted by Formiga itself stopping can be finished on its next start.
 Nothing about a visit leaves the computer.
+
+Formiga Battle is a separate application as well, and Formiga passes it nothing unless the owner
+chooses **Play Formiga Battle…** from the tray. Without Battle installed nothing is passed anywhere.
+Formiga looks for Battle as it looks for Hill and Home, by its bundle identifier (macOS) or the
+per-user key its installer writes (Windows), reading its version and the Battle contract version it
+says it reads.
+
+A match writes a **roster snapshot** into a new directory under `battle/` in Formiga's own data
+directory, and Battle is started with the path of that directory and nothing else. For every
+companion it holds exactly what a trip's snapshot holds, together with the companion's learned
+leanings, eight whole numbers from -100 to 100 for how it has come to treat the cursor, company,
+climbing, sleep, exploring, play, home and routine, because these shape how it plays. It holds the
+four coarse bands between each pair, the reduced-motion, theme and text-size preferences, the
+session's identifier, the time, Formiga's version, the same 64-bit one-way colony digest a trip
+carries, and the colony's **Battle record** as Battle last left it: its points and cups, a short
+history of matches, its notebook of how matches went, which matches have already been counted, and
+the Handler's card and named trios. It holds **no** seed, share code, position, display, window,
+cursor sample, habitat, routine, drive, memory, journal, guest book, scrapbook, schedule, other
+setting or diagnostic log.
+
+What comes back is read only once Battle has gone, only if it names this session and this exact
+snapshot, and only inside fixed bounds. Formiga applies each match's result to the Battle record by
+the contract's own rule, once per match; keeps the trophies and medals the cups earned, each once,
+with the time; and writes into the journal the lines of plain text Battle gives for each match, at
+most eight.
+Everything else Battle offers is set aside unread. The session's files are deleted once Battle has
+gone, and while one is open `battle/session.json` holds its identifier and the snapshot's SHA-256,
+so a session interrupted by Formiga itself stopping can still be kept on its next start.
+
+Formiga itself sends nothing about a match anywhere. Battle can play a friend over the internet,
+through a relay on the Formiga website, and only when the owner opens or joins a friend match in
+Battle. Before the first one Battle says exactly what that shares: the Handler's name and card, the
+three companions playing as the roster has them, each turn's orders and a check of the board, and
+the versions of Battle and Formiga. The relay keeps a room only while the match lasts. Battle's own
+documentation, `docs/FRIENDS.md` in the Formiga Battle repository, lists it in full.
 
 Full-colony backup is deliberately different from a share code: it contains the complete private
 save, including names, learned history, journal, habitat, and settings. Export writes only to a

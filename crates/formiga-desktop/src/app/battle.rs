@@ -4,11 +4,12 @@
 //! everyone home, and telling the owner in Battle's own words if it turned the roster away. The
 //! states and the guarantees are described in [`crate::battle`].
 
+use super::companions::Companion;
 use super::*;
 use crate::battle::record;
 use crate::battle::session::{BattleFiles, OpenSession, refusal_text};
 use crate::battle::{BATTLE, BattleEvent, SessionState};
-use crate::expansion::Slot;
+use crate::expansion::{Slot, Takes};
 use crate::hill::scene::TrainScene;
 use crate::platform::companion_app::AppInstall;
 use crate::tray::VisitOffer;
@@ -17,7 +18,7 @@ use formiga_battle_contract::{SessionId, project_roster};
 use visits::BATTLE_ITEM;
 
 /// The title every reason for not opening Battle is shown under.
-const STAYING_SHUT: &str = "Formiga Battle is staying shut";
+const STAYING_SHUT: &str = BATTLE.words.staying;
 
 /// The session's own state and files, and Battle's slot, as the app keeps them.
 pub(super) struct BattleLink {
@@ -87,29 +88,7 @@ impl FormigaApp {
         if self.battle.session.holds_world() || self.world.is_none() {
             return;
         }
-        if self.recovery_pending {
-            self.failure_dialog(
-                STAYING_SHUT,
-                "Finish recovering the colony in the notebook before opening Formiga Battle.",
-            );
-            return;
-        }
-        if let Some(trouble) = self.save_trouble.clone() {
-            self.failure_dialog(
-                STAYING_SHUT,
-                &format!("The colony cannot be saved just now, so it is not leaving. {trouble}"),
-            );
-            return;
-        }
-        if let Some(reason) = self.busy_elsewhere(&BATTLE, None) {
-            self.failure_dialog(STAYING_SHUT, reason);
-            return;
-        }
-        // Asked again now: it may have been removed since the last look.
-        self.battle.slot.look(true);
-        let Some(install) = self.battle.slot.install.clone() else {
-            self.sync_battle_menu();
-            self.failure_dialog(STAYING_SHUT, "Formiga Battle is no longer installed.");
+        let Some(install) = self.ready_for(Companion::Battle, Takes::Everyone) else {
             return;
         };
         let snapshot = {
@@ -234,13 +213,7 @@ impl FormigaApp {
             text,
             asked_for: true,
         });
-        let scene = self
-            .world
-            .as_ref()
-            .and_then(|world| match self.battle.session.scene() {
-                Some(scene) => scene.turn_back(&world.save, &self.monitors),
-                None => TrainScene::arrival(&world.save, &self.monitors),
-            });
+        let scene = self.train_home(self.battle.session.scene());
         match self.battle.session.come_home(scene, note) {
             None => self.enter_trip(),
             Some(note) => self.finish_battle_trip(note),

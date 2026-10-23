@@ -2,6 +2,62 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- The About page lists Formiga's other apps under **Formiga's apps**: what each is, whether it is
+  installed and which version, where to get it at formigaworld.com if not, and how to open it,
+  with buttons to take the colony to Formiga Hill or Formiga Battle. Formiga Farm is listed only
+  once it is installed. The colophon also links to the website and its feedback form.
+- The daily update check also looks up the newest release of each installed companion app, so the
+  About page says when a newer Formiga Hill, Home or Battle is out and where to get it. Nothing is
+  downloaded for them, and turning automatic checks off turns this off too.
+
+### Changed
+
+- A companion app installed while Formiga runs is offered as soon as the pointer comes over the
+  menu-bar or notification-area icon, or the notebook opens, instead of after up to ten minutes.
+- A companion app too old for this Formiga now says so in plain words, with where to get a newer
+  one, instead of naming its contract's version numbers: "Formiga Hill 0.67.9 is too old to take
+  the colony there with Formiga 0.68.0. Get the newest Formiga Hill at formigaworld.com, then try
+  again." The numbers still go to the log.
+- The update setting's tooltip says checks run once a day while Formiga runs, as they have since
+  0.67.14, not only as it starts.
+- Every companion app checks the same things, in the same order, before a visit starts: a colony
+  waiting to be recovered, then one that cannot be saved, then someone it needs being away in
+  another app. Formiga Home used to name the companion away elsewhere first, and Formiga Farm said
+  a companion was away before saying Farm had been removed.
+
+### Internal
+
+- Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
+  of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
+  two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
+  within its run-to-run noise.
+
+### Developer tools
+
+- `formiga-tools soak --digest` sums up each colony's life (every event it raised and the file it
+  ended with) as a SHA-256, so a refactor can be shown to change nothing: run it before and after
+  with the same seed and compare. See docs/BUILD.md.
+- `devtools/formiga validate` runs its soak on two threads at background priority on a Mac, so the
+  computer stays usable while it runs; `--full-speed` gives it every core as before.
+
+### Documentation
+
+- The guide gains "A match in Formiga Battle": how to open it, the train, what comes home, and that
+  the colony always comes home. The privacy notes say what Battle is told and what Formiga keeps of
+  a match, and point to Battle's own account of what a friend match shares.
+
+### Added
+
+- The Journal page shows what the colony has won in Formiga Battle, in a **Cups** section beside
+  the Souvenirs: each trophy and medal with its picture and the day it was won, newest first, under
+  a line of the Handler's name, the cups won and the circuit points. The pictures match Formiga
+  Home's, so a cup looks the same on its shelf there. Like the Souvenirs, the section appears only
+  once the first keepsake has come home.
+
 ## [0.67.14] - 2026-10-17
 
 Released alongside Formiga Hill 0.67.14, Formiga Home 0.67.14 and Formiga Battle 0.67.14, which are
