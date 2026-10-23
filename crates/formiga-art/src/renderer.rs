@@ -585,27 +585,9 @@ impl FramePlacement {
     }
 }
 
-#[derive(Clone)]
-pub struct AnimationAtlas {
-    pub action: ActionKind,
-    pub frames: Vec<Canvas>,
-}
-
 pub struct CreatureRenderer;
 
 impl CreatureRenderer {
-    pub fn render_atlas(
-        genome: &AppearanceGenome,
-        action: ActionKind,
-        facing_right: bool,
-    ) -> AnimationAtlas {
-        let spec = AnimationSpec::for_action(action);
-        let frames = (0..spec.frames)
-            .map(|frame| Self::render_frame(genome, action, frame, facing_right))
-            .collect();
-        AnimationAtlas { action, frames }
-    }
-
     pub fn render_frame(
         genome: &AppearanceGenome,
         action: ActionKind,

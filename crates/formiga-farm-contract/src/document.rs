@@ -4,60 +4,19 @@
 //! words for what went wrong, are Farm's, under Farm's own version.
 
 use crate::FARM_FORMAT_VERSION;
-use formiga_expansion_rulebook::{self as rulebook, Kind, RulebookError};
+use formiga_expansion_rulebook::{self as rulebook, Kind};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::io;
 use std::path::Path;
 
 pub use formiga_expansion_rulebook::sha256_hex;
 pub(crate) use formiga_expansion_rulebook::{header_ok, is_lower_hex};
 
-#[derive(Debug, thiserror::Error)]
-pub enum FarmError {
-    #[error("the Farm file could not be read or written: {0}")]
-    Io(#[from] io::Error),
-    #[error("the Farm file is larger than any Farm file can be ({limit} bytes)")]
-    TooLarge { limit: u64 },
-    #[error("the Farm file could not be read: {0}")]
-    Json(#[from] serde_json::Error),
-    #[error("expected a {expected} file, found {found:?}")]
-    WrongFormat {
-        expected: &'static str,
-        found: String,
-    },
-    #[error(
-        "the Farm file needs a reader of Farm version {needs}, and this build reads up to \
-         version {reads}"
-    )]
-    UnsupportedVersion { needs: u32, reads: u32 },
-    #[error("the Farm file is not usable: {0}")]
-    Invalid(String),
-}
+rulebook::contract_error!(pub enum FarmError, "Farm");
 
 impl FarmError {
     pub(crate) fn invalid(reason: impl Into<String>) -> Self {
         Self::Invalid(reason.into())
-    }
-
-    /// Whether the file was simply not there.
-    pub fn is_missing(&self) -> bool {
-        matches!(self, Self::Io(error) if error.kind() == io::ErrorKind::NotFound)
-    }
-}
-
-impl From<RulebookError> for FarmError {
-    fn from(error: RulebookError) -> Self {
-        match error {
-            RulebookError::Io(error) => Self::Io(error),
-            RulebookError::TooLarge { limit } => Self::TooLarge { limit },
-            RulebookError::Json(error) => Self::Json(error),
-            RulebookError::WrongFormat { expected, found } => Self::WrongFormat { expected, found },
-            RulebookError::UnsupportedVersion { needs, reads } => {
-                Self::UnsupportedVersion { needs, reads }
-            }
-            RulebookError::Invalid(reason) => Self::Invalid(reason),
-        }
     }
 }
 

@@ -18,7 +18,7 @@ ShortDescription: A privacy-first desktop companion of seeded procedural pixel c
 Description: >-
   Formiga is a privacy-first desktop companion. Seeded procedural pixel creatures live in
   transparent overlays on your desktop, perch on your real windows, react to your cursor, and
-  grow into a four-creature colony with a home of its own. Everything runs locally: there is no
+  grow into a colony of up to six with a home of its own. Everything runs locally: there is no
   account system, analytics, or advertising SDK, and the only optional network feature is a
   once-a-day check for new releases that can be turned off in Settings.
 
