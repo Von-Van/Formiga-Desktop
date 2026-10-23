@@ -15,7 +15,7 @@ fn migrate(value: serde_json::Value, version: u32) -> Result<SaveFile, Persisten
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 330] = [
+const SAVED_FIELDS: [&str; 331] = [
     "Battle",
     "Decoration",
     "Friendship",
@@ -157,6 +157,7 @@ const SAVED_FIELDS: [&str; 330] = [
     "habitat",
     "habits",
     "handler",
+    "handler_key",
     "hangouts",
     "hatch_day_acknowledged_year",
     "head",
@@ -836,6 +837,7 @@ fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
                 until_utc: now,
             }],
         }],
+        handler_key: Some("5f0c2a7e9b1d4c3a8e6f0b2d4a9c7e15".to_owned()),
     };
     world.keep_battle_match(
         &["They won the Backyard Cup.".to_owned()],
@@ -2677,5 +2679,45 @@ fn v32_keeps_a_handler_and_trios_and_older_colonies_have_named_none() {
     store.save(&world.save).unwrap();
     let loaded = store.load().unwrap().unwrap();
     assert_eq!(loaded.battle, world.save.battle);
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn v33_keeps_the_handler_key_and_older_colonies_are_given_one_at_battle() {
+    let desktop = crate::DesktopSnapshot::default();
+    let now = datetime!(2026-10-17 12:00 UTC);
+    let mut world = crate::World::new([33; 32], now, &desktop);
+    world.save.battle.record.circuit_points = 15;
+    let save = world.save.clone();
+    let mut value = serde_json::to_value(&save).unwrap();
+    assert!(value["battle"]["record"].get("handler_key").is_none());
+    value["save_version"] = 32.into();
+    let migrated = migrate(value, 32).unwrap();
+    assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+    assert_eq!(migrated.battle, save.battle);
+    assert!(migrated.battle.record.handler_key.is_none());
+
+    let mut world = crate::World::from_save(migrated);
+    assert!(world.save.battle.record.give_handler_key().unwrap());
+    let key = world.save.battle.record.handler_key.clone().unwrap();
+    assert_eq!(key.len(), 32);
+    assert!(
+        key.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    );
+    // Made once: asking again keeps the same key.
+    assert!(!world.save.battle.record.give_handler_key().unwrap());
+    assert_eq!(
+        world.save.battle.record.handler_key.as_deref(),
+        Some(key.as_str())
+    );
+    assert!(world.save.battle.holds());
+
+    let directory =
+        std::env::temp_dir().join(format!("formiga-battle-handler-key-{}", std::process::id()));
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&world.save).unwrap();
+    let loaded = store.load().unwrap().unwrap();
+    assert_eq!(loaded.battle.record.handler_key, Some(key));
     let _ = fs::remove_dir_all(directory);
 }

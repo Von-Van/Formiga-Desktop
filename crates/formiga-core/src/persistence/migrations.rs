@@ -205,6 +205,9 @@ const STEPS: &[Step] = &[
     // 32: the Handler card and named trios from Formiga Battle, with each trio's record. An older
     // colony has named neither.
     Step::adds_only(31),
+    // 33: the colony's anonymous Handler key for Formiga Battle. An older colony has none yet, and
+    // is given one the next time it goes to Battle.
+    Step::adds_only(32),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.

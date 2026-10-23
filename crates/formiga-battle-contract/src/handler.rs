@@ -15,6 +15,12 @@
 //! credited to someone who was not there. Since version 4 each match says which three played as
 //! the trio ([`TrioPlayed::members`]), so a lineup that played and was changed within one session
 //! is kept as an earlier lineup too ([`BattleRecord::register_session`]).
+//!
+//! Since version 5 the record also carries the Handler key ([`BattleRecord::handler_key`]): 128
+//! random bits Desktop makes once for the colony, the first time it opens Battle, and keeps with
+//! the record. It says nothing about the player, the colony or the computer; it only lets a
+//! friend's Battle know the same Handler again. Battle reads it and never sends it back, so only
+//! Desktop ever makes or changes one.
 
 use crate::BattleRecord;
 use crate::result::{CupWins, MatchResult, Mode};
@@ -35,6 +41,7 @@ pub mod handler_limits {
     pub const MAX_TRIO_CUPS: usize = 8;
     pub const MAX_STYLE_CHARS: usize = 24;
     pub const TRIO_ID_CHARS: usize = 16;
+    pub const HANDLER_KEY_CHARS: usize = 32;
 }
 use handler_limits::*;
 
@@ -173,6 +180,14 @@ fn is_style(text: &str) -> bool {
 pub fn is_trio_id(id: &str) -> bool {
     id.len() == TRIO_ID_CHARS
         && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// A Handler key: 32 lowercase hex digits.
+pub fn is_handler_key(key: &str) -> bool {
+    key.len() == HANDLER_KEY_CHARS
+        && key
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
@@ -407,6 +422,7 @@ impl BattleRecord {
             && self.trios.len() <= MAX_TRIOS
             && ids.len() == self.trios.len()
             && self.trios.iter().all(Trio::holds)
+            && self.handler_key.as_deref().is_none_or(is_handler_key)
     }
 }
 
@@ -790,5 +806,40 @@ mod tests {
         assert_eq!(record.trios[0].cups[0].wins, 1);
         assert_eq!(record.handler.as_ref().unwrap().name, "Jo");
         assert!(record.validate().is_ok());
+    }
+
+    #[test]
+    fn the_handler_key_is_desktops_and_nothing_battle_answers_changes_it() {
+        let mut record = sample::record();
+        assert!(record.validate().is_ok());
+        let result = sample::result();
+        record.register_session(result.registry.as_ref().unwrap(), &result.matches, LATER);
+        for m in &result.matches {
+            record.apply(m);
+        }
+        assert_eq!(record.handler_key.as_deref(), Some(sample::HANDLER_KEY));
+
+        assert!(is_handler_key(sample::HANDLER_KEY));
+        for odd in [
+            "",
+            "5F0C2A7E9B1D4C3A8E6F0B2D4A9C7E15",
+            "5f0c2a7e9b1d4c3a",
+            "5f0c2a7e9b1d4c3a8e6f0b2d4a9c7e15aa",
+            "5f0c2a7e9b1d4c3a8e6f0b2d4a9c7eg5",
+        ] {
+            let mut odd_record = sample::record();
+            odd_record.handler_key = Some(odd.to_owned());
+            assert!(odd_record.validate().is_err(), "{odd:?} is not a key");
+        }
+        // A colony that has none yet is as before.
+        let mut none = sample::record();
+        none.handler_key = None;
+        assert!(none.validate().is_ok());
+        let snapshot = crate::sample::snapshot().with_record(none);
+        assert!(
+            !String::from_utf8(snapshot.encode().unwrap())
+                .unwrap()
+                .contains("handler_key")
+        );
     }
 }
