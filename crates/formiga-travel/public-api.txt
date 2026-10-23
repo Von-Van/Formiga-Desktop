@@ -35,6 +35,7 @@ pub const formiga_travel::sample::MADE: time::offset_date_time::OffsetDateTime
 pub const formiga_travel::sample::SESSION: &str
 pub fn formiga_travel::sample::colony(u8) -> formiga_core::model::save::SaveFile
 pub fn formiga_travel::sample::desktop() -> formiga_core::model::desktop::DesktopSnapshot
+pub fn formiga_travel::sample::farm_colony(u8) -> formiga_core::model::save::SaveFile
 pub fn formiga_travel::sample::snapshot() -> formiga_travel::TravelSnapshot
 pub enum formiga_travel::AccessoryItem
 pub formiga_travel::AccessoryItem::Pin
@@ -1242,6 +1243,7 @@ pub formiga_travel::TravelAppearance::palette_index: u8
 pub formiga_travel::TravelAppearance::pattern: formiga_travel::PatternKind
 pub formiga_travel::TravelAppearance::pattern_density: f32
 pub formiga_travel::TravelAppearance::roundness: f32
+pub formiga_travel::TravelAppearance::sculpt: core::option::Option<formiga_core::forms::sculpt::Sculpt>
 pub formiga_travel::TravelAppearance::tail: formiga_travel::TravelTail
 impl formiga_travel::TravelAppearance
 pub fn formiga_travel::TravelAppearance::to_genome(&self) -> core::result::Result<formiga_core::model::appearance::AppearanceGenome, formiga_travel::TravelError>

@@ -11,6 +11,7 @@ pub const formiga_battle_contract::discovery::WINDOWS_REGISTRY_KEY: &str
 pub const formiga_battle_contract::discovery::WINDOWS_VERSION_VALUE: &str
 pub mod formiga_battle_contract::handler
 pub mod formiga_battle_contract::handler::handler_limits
+pub const formiga_battle_contract::handler::handler_limits::HANDLER_KEY_CHARS: usize
 pub const formiga_battle_contract::handler::handler_limits::MAX_CLUB_CHARS: usize
 pub const formiga_battle_contract::handler::handler_limits::MAX_HANDLER_CHARS: usize
 pub const formiga_battle_contract::handler::handler_limits::MAX_LINEUPS: usize
@@ -235,6 +236,7 @@ impl core::marker::Unpin for formiga_battle_contract::handler::TrioPlayed
 impl core::marker::UnsafeUnpin for formiga_battle_contract::handler::TrioPlayed
 impl core::panic::unwind_safe::RefUnwindSafe for formiga_battle_contract::handler::TrioPlayed
 impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::handler::TrioPlayed
+pub fn formiga_battle_contract::handler::is_handler_key(&str) -> bool
 pub fn formiga_battle_contract::handler::is_lineup(&[u64]) -> bool
 pub fn formiga_battle_contract::handler::is_trio_id(&str) -> bool
 pub fn formiga_battle_contract::handler::lineup_of(&[u64]) -> alloc::vec::Vec<u64>
@@ -285,6 +287,7 @@ pub formiga_battle_contract::result::BattleRecord::applied: alloc::vec::Vec<allo
 pub formiga_battle_contract::result::BattleRecord::circuit_points: u32
 pub formiga_battle_contract::result::BattleRecord::cups: alloc::vec::Vec<formiga_battle_contract::result::CupWins>
 pub formiga_battle_contract::result::BattleRecord::handler: core::option::Option<formiga_battle_contract::handler::HandlerCard>
+pub formiga_battle_contract::result::BattleRecord::handler_key: core::option::Option<alloc::string::String>
 pub formiga_battle_contract::result::BattleRecord::history: alloc::vec::Vec<formiga_battle_contract::result::MatchSummary>
 pub formiga_battle_contract::result::BattleRecord::notebook: alloc::vec::Vec<formiga_battle_contract::result::NotebookPage>
 pub formiga_battle_contract::result::BattleRecord::trios: alloc::vec::Vec<formiga_battle_contract::handler::Trio>
@@ -538,6 +541,7 @@ impl core::panic::unwind_safe::UnwindSafe for formiga_battle_contract::result::S
 pub const formiga_battle_contract::result::RESULT_FILE: &str
 pub const formiga_battle_contract::result::RESULT_FORMAT: &str
 pub mod formiga_battle_contract::sample
+pub const formiga_battle_contract::sample::HANDLER_KEY: &str
 pub const formiga_battle_contract::sample::TRIO: &str
 pub fn formiga_battle_contract::sample::colony() -> formiga_core::model::save::SaveFile
 pub fn formiga_battle_contract::sample::pennant(&str, &str, &str) -> formiga_battle_contract::handler::Pennant
@@ -671,6 +675,7 @@ pub formiga_battle_contract::BattleRecord::applied: alloc::vec::Vec<alloc::strin
 pub formiga_battle_contract::BattleRecord::circuit_points: u32
 pub formiga_battle_contract::BattleRecord::cups: alloc::vec::Vec<formiga_battle_contract::result::CupWins>
 pub formiga_battle_contract::BattleRecord::handler: core::option::Option<formiga_battle_contract::handler::HandlerCard>
+pub formiga_battle_contract::BattleRecord::handler_key: core::option::Option<alloc::string::String>
 pub formiga_battle_contract::BattleRecord::history: alloc::vec::Vec<formiga_battle_contract::result::MatchSummary>
 pub formiga_battle_contract::BattleRecord::notebook: alloc::vec::Vec<formiga_battle_contract::result::NotebookPage>
 pub formiga_battle_contract::BattleRecord::trios: alloc::vec::Vec<formiga_battle_contract::handler::Trio>
@@ -1235,6 +1240,7 @@ pub const formiga_battle_contract::RESULT_FILE: &str
 pub const formiga_battle_contract::RESULT_FORMAT: &str
 pub const formiga_battle_contract::SNAPSHOT_FILE: &str
 pub const formiga_battle_contract::SNAPSHOT_FORMAT: &str
+pub fn formiga_battle_contract::is_handler_key(&str) -> bool
 pub fn formiga_battle_contract::is_lineup(&[u64]) -> bool
 pub fn formiga_battle_contract::is_trio_id(&str) -> bool
 pub fn formiga_battle_contract::lineup_of(&[u64]) -> alloc::vec::Vec<u64>
