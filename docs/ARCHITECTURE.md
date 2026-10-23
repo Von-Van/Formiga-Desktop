@@ -229,10 +229,20 @@ belong to none of the themes. Everything else lives in a child module named afte
 `world/antics.rs`, `arrivals.rs`, `battle.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`,
 `discovery.rs`, `echo_fox.rs`, `experience.rs`, `generation.rs`, `habits.rs`, `home.rs`,
 `house_visits.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`, `movement.rs`, `new_looks.rs`,
-`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `surfaces.rs`,
-`tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and the
-`attention/` family. Each module adds methods to the one `World` type rather than owning state of
-its own, so there is still a single simulation object and a single tick.
+`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `step.rs`,
+`surfaces.rs`, `tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and
+the `attention/` family. Each module adds methods to the one `World` type rather than owning state
+of its own, so there is still a single simulation object and a single tick.
+
+`tick` runs the colony-wide passes, then each creature's own part of the tick through
+`world/step.rs`'s `step_creature`, in colony order. That is a sequence of named steps, each a
+method: `held_this_tick` (being handled, a wonder or a house elsewhere, arriving, a toss in the
+air), `advance_drives`, `advance_window_journey`, `behavior_context`, `react_to_tossed_friend`,
+then, once its action is over, `pick_next_action` (the priority list a finished action is weighed
+against) and `set_out`, and last `carry_out_action`. Each step returns whether the creature is done
+for this tick, as the `continue`s of the one loop they came from did; what every step shares within
+the tick is a `TickShared`. Splitting them out of `tick` changed nothing a colony does: 80 colonies
+over two simulated days each gave the same `soak --digest` before and after.
 
 The values that decide how a feature feels — how often something happens, how long it lasts, how
 far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
@@ -2595,10 +2605,11 @@ visit by itself, its folder in the data directory, and the words it is spoken of
 
 | Piece | What it does for every app |
 |---|---|
-| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and notes it coming and going in the log |
+| `Slot::look` | Looks for the app when Desktop starts and then at most every ten minutes, from a tick Desktop was taking anyway, and again at once when the notebook opens or the pointer comes over the tray icon (at most every five seconds), and notes it coming and going in the log |
 | `Slot::start_due` | With the app's path override naming a stand-in and its development variable set, starts one visit that many seconds after Desktop starts, and never otherwise |
 | `Expansion::start` | Starts the app with its flag and the session directory, and waits for it on a thread that sleeps until it exits and then says so through the event loop |
-| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words |
+| `Expansion::incompatibility`, `Expansion::refusal_text` | Says why an installed copy is too old before it is started, and why the app turned a visit away, in the app's own words; a copy too old is told so by version and pointed to `Words::get_newest`, and the contract's numbers go to the log only |
+| `Expansion::releases`, `Expansion::listing` | Where the app's downloads are published (`None` for Farm, which has none yet), and what the About page's **Formiga's apps** section says of it. The daily update check looks up the newest full release for this platform of each installed app with releases (`updater::check_companion`, highest version rather than the first GitHub lists) and the section says when one is newer than the installed copy |
 | `files::VisitFiles` | The app's directory: a fresh session directory for each visit, the marker that lets Desktop finish a visit after a restart, closing, forgetting while the app may still be running (leaving it its recall), and sweeping whatever is neither the open visit nor a file Desktop keeps there |
 | `Holding`, `busy_elsewhere` | Who the app has just now: nobody, the whole colony, or a few companions. A visit that wants any of them is turned away in the words of the app that has them (`Words::occupied`), so a companion is away in one app at a time |
 
@@ -2611,6 +2622,18 @@ through its slot, `hill::HILL`, and Formiga Home through `house::HOME`, whose fo
 The tray has an item for each app, in the order `app/visits.rs` lists them, straight after the
 everyday colony actions. Each app says what its item offers just now, as a `tray::VisitOffer`, or
 withdraws it, and a click comes back as `TrayAction::Visit` with the app's place in the list.
+
+On the app's side the four apps are one list, `app/companions.rs`'s `Companion`, and everything the
+app does for each of them at the same moment goes through it: looking for them as Desktop starts and
+finishing a visit a stop left open (`start_companions`), looking again on a tick
+(`check_for_companions`), letting go of a visit when the colony is reset or a backup restored
+(`abandon_visits`), the tray items (`sync_visit_menus`) and who each app has (`holding`). Each is a
+`match` over the list, so a new app is added there and the compiler names every place that needs a
+word for it. Before any visit writes anything, `ready_for` asks the same questions in the same order
+for every app, through `Expansion::blocked`: is the colony waiting to be recovered, can it not be
+saved (for an app that takes anyone away, `Takes`), and is anyone the visit needs away in another
+app; then it looks for the app again. Each reason is said in the app's own `Words`, under its own
+title (`Words::staying`).
 
 
 ## Trips to Formiga Hill (save v26)
@@ -3036,7 +3059,10 @@ after. Battle's `record` is written in exactly the shape the contract's `BattleR
 anything there is too much of. A keepsake is kept only if Desktop knows it (`BattleKeepsake`: the
 trophy and medal of each of Battle's four cups, Backyard, Woodland, Millpond and Sandy Cove, by
 Battle's own identifiers), once each, with Desktop's own name
-and words for it. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
+and words for it. The Journal page shows them, newest first, in a Cups section beside the
+Souvenirs, under one line of the Handler's name, the cups won and the Open Circuit points; like the
+Souvenirs it exists only once one has come home. `formiga_art::cup_strip` draws them all on one
+texture, ported pixel for pixel from Formiga Home's own pictures so a cup looks the same in both. A match's lines for the journal are kept as `JournalMoment::Battle`, Battle's own
 line, since the team and the match are Battle's to name; it is one line of plain text, checked by
 `is_battle_line` (the contract's own rule for text that crosses) when it comes and whenever the
 colony is read. Formiga Home is offered each keepsake in its inventory as a `battle_keepsake`

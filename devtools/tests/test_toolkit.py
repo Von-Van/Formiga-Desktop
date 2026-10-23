@@ -197,6 +197,25 @@ class AppStep(unittest.TestCase):
         clippy.assert_not_called()
 
 
+class Soak(unittest.TestCase):
+    def test_on_a_mac_the_soak_runs_on_two_threads_in_the_background(self):
+        with mock.patch.object(validate.shutil, "which", return_value="/usr/sbin/taskpolicy"):
+            command = validate.soak_command(platform="darwin")
+        self.assertEqual(command[:2], ["taskpolicy", "-b"])
+        self.assertEqual(command[command.index("--threads") + 1], "2")
+
+    def test_elsewhere_the_soak_keeps_its_own_default(self):
+        command = validate.soak_command(platform="linux")
+        self.assertEqual(command[0], "cargo")
+        self.assertNotIn("--threads", command)
+
+    def test_full_speed_takes_every_core_at_normal_priority(self):
+        with mock.patch.object(validate.os, "cpu_count", return_value=10):
+            command = validate.soak_command(full_speed=True, platform="darwin")
+        self.assertEqual(command[0], "cargo")
+        self.assertEqual(command[command.index("--threads") + 1], "10")
+
+
 class Expansions(unittest.TestCase):
     def test_pins_are_read_from_the_manifest(self):
         with tempfile.TemporaryDirectory() as folder:

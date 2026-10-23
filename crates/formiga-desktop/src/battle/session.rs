@@ -139,28 +139,8 @@ pub fn refusal_text(refusal: &Refusal) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
     use formiga_battle_contract::{AckRefusal, sample};
-
-    /// A data directory of its own under the system's temporary directory, removed when dropped.
-    struct Scratch(PathBuf);
-
-    impl Scratch {
-        fn new(name: &str) -> Self {
-            let path = std::env::temp_dir().join(format!(
-                "formiga-battle-session-{name}-{}",
-                std::process::id()
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
 
     fn roster() -> BattleSnapshot {
         let mut snapshot = sample::snapshot();
@@ -170,7 +150,7 @@ mod tests {
 
     #[test]
     fn a_session_is_written_whole_and_found_again_after_a_restart() {
-        let scratch = Scratch::new("open");
+        let scratch = Scratch::new("battle-session", "open");
         let files = BattleFiles::new(&scratch.0);
         assert_eq!(files.open_session(), None);
         let snapshot = roster();
@@ -192,7 +172,7 @@ mod tests {
 
     #[test]
     fn battles_answer_is_read_only_for_its_own_session() {
-        let scratch = Scratch::new("ack");
+        let scratch = Scratch::new("battle-session", "ack");
         let files = BattleFiles::new(&scratch.0);
         let open = files.open(&roster()).unwrap();
         assert_eq!(files.refusal(&open), None, "no answer is no refusal");
@@ -223,7 +203,7 @@ mod tests {
 
     #[test]
     fn an_old_session_is_swept_away_before_a_new_one() {
-        let scratch = Scratch::new("sweep");
+        let scratch = Scratch::new("battle-session", "sweep");
         let files = BattleFiles::new(&scratch.0);
         let first = files.open(&roster()).unwrap();
         files.sessions.forget();
