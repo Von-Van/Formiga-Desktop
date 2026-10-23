@@ -43,6 +43,19 @@ pub const FINEST_DETAIL: u32 = 4;
 const MAX_WIDTH: u32 = 44;
 const HEADROOM: u32 = 7;
 
+/// Where a design's figure stands in its frame, in frame pixels with the figure facing right.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Anchors {
+    /// The row its feet rest on when standing, or that a floater hovers above.
+    pub ground_row: i32,
+    /// The middle of its face.
+    pub face: PixelPoint,
+    /// Where someone picks it up.
+    pub scruff: PixelPoint,
+    /// The pixels it covers at rest: left, top, right, bottom, inclusive.
+    pub bounds: (u32, u32, u32, u32),
+}
+
 /// How a design is drawn: over `base`, the genome of the creature it is for, which keeps
 /// everything the design does not say (see [`Design::genome`]).
 pub struct DesignRenderer;
@@ -121,6 +134,30 @@ impl DesignRenderer {
     /// on whatever it rests on.
     pub fn resting_baseline(design: &Design, base: &AppearanceGenome, reduce_motion: bool) -> u32 {
         CreatureRenderer::resting_baseline(&design.genome(base), reduce_motion)
+    }
+
+    /// Where the figure stands in its frame, at rest.
+    pub fn anchors(design: &Design, base: &AppearanceGenome) -> Anchors {
+        let genome = design.genome(base);
+        let body = CreatureRenderer::render_body_frame(&genome, ActionKind::Idle, 0, true);
+        let bounds = body.canvas.alpha_bounds().unwrap_or((0, 0, 0, 0));
+        let baseline = CreatureRenderer::resting_baseline(&genome, true) as i32;
+        let scruff = match &genome.sculpt {
+            Some(sculpt) => {
+                let (_, figure) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true, 1);
+                point(figure.scruff)
+            }
+            None => PixelPoint {
+                x: body.face_anchor.x - 4,
+                y: bounds.1 as i32 + 2,
+            },
+        };
+        Anchors {
+            ground_row: FRAME_SIZE as i32 - 1 - baseline,
+            face: body.face_anchor,
+            scruff,
+            bounds,
+        }
     }
 }
 
