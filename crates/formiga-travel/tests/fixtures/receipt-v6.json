@@ -1,0 +1,20 @@
+{
+  "format": "formiga.travel.receipt",
+  "version": 6,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "snapshot_sha256": "790df7a34425cf2270dc1be113aeb7c2b7d3bebee890896a5cb9626517e58ae5",
+  "returned_at_utc": "2026-10-02T11:05:00Z",
+  "hill_version": "0.1.0",
+  "effects": [
+    {
+      "kind": "visit",
+      "arrived_at_utc": "2026-10-02T09:31:00Z",
+      "left_at_utc": "2026-10-02T11:04:00Z"
+    },
+    {
+      "kind": "souvenir",
+      "id": "picnic_ribbon"
+    }
+  ]
+}

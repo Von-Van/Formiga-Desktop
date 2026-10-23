@@ -1,0 +1,13 @@
+{
+  "format": "formiga.home.indoors",
+  "version": 12,
+  "min_reader_version": 8,
+  "session_id": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "snapshot_sha256": "7f1c2e6986647fb98c1e42ab6ccf0e21fefadeb761686377d730a1d6e27d12ca",
+  "state_sha256": "3a709e6b887cc7247ae6dd8e732038e32a4b74d19d88a2ad3035cbdd574ccb60",
+  "written_at_utc": "2026-11-11T10:20:00Z",
+  "indoors": [
+    "876a55d6a17221ef",
+    "66cd447617ba3991"
+  ]
+}

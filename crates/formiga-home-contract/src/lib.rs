@@ -60,6 +60,7 @@
 //! | 9 | Desktop 0.67.6. No new fields: residents are written in travel version 5, so one drawn as the Echo Fox on the desktop is a fox in the house too |
 //! | 10 | A home's `projects` and `tallies`: what each household has made of its home over time, kept by Desktop and read only by Home; a `project` moment. A result from an older Home leaves them as they were |
 //! | 11 | Keepsakes from Formiga Battle in the inventory, as a `battle_keepsake` source: a trophy and a medal for the Backyard Cup. No other new fields; an older Home shows one on its card |
+//! | 12 | Desktop 0.68.0. No new fields: residents are written in travel version 6, so one sculpted in Formiga Farm is itself in the house too |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it was first written, and must
 //! keep reading.
@@ -102,7 +103,7 @@ pub use state::{
 };
 
 /// The version of every Home document this build writes, and the newest it reads.
-pub const HOME_FORMAT_VERSION: u32 = 11;
+pub const HOME_FORMAT_VERSION: u32 = 12;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.home.snapshot";

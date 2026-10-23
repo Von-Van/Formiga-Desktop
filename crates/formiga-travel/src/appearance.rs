@@ -7,7 +7,18 @@
 
 use crate::document::{TravelError, hex, unhex};
 use formiga_core as core;
-use serde::{Deserialize, Serialize};
+use formiga_core::forms::Sculpt;
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// The design model a traveler's sculpt is carried in, since travel version 6. A sculpt is the
+/// core's own [`Sculpt`], written exactly as Formiga Farm's contract writes it, so a newer design
+/// model fails to build here until the travel format says how it travels: whether an older reader
+/// can still leave it behind and draw the recipe, or the snapshot must ask for a newer reader.
+const CARRIED_DESIGN_VERSION: u32 = 1;
+const _: () = assert!(
+    core::forms::DESIGN_VERSION == CARRIED_DESIGN_VERSION,
+    "a new design model needs a decision on how its sculpts travel"
+);
 
 /// An enum of the travel format's own, written in `snake_case`, with conversions to and from
 /// the core enum it mirrors.
@@ -233,6 +244,25 @@ pub struct TravelAppearance {
     /// is; a reader from before version 5 draws the companion as itself.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub echo_fox: bool,
+    /// The form it was sculpted into in Formiga Farm, if it was, drawn in place of its recipe.
+    /// The recipe beside it is the companion nearest the form, which a reader from before
+    /// version 6 draws instead. A sculpt this build cannot read, such as one on a plan from a
+    /// newer design model, is left behind the same way, so the traveler is drawn as its recipe
+    /// rather than the colony turned away.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "sculpt_if_readable"
+    )]
+    pub sculpt: Option<Sculpt>,
+}
+
+/// A sculpt, or none if this build cannot read it.
+fn sculpt_if_readable<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Sculpt>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| serde_json::from_value(value).ok()))
 }
 
 impl From<&core::AppearanceGenome> for TravelAppearance {
@@ -281,13 +311,14 @@ impl From<&core::AppearanceGenome> for TravelAppearance {
             gait_bob: genome.gait_bob,
             face_signature: genome.face_signature,
             echo_fox: genome.echo_fox,
+            sculpt: genome.sculpt.clone(),
         }
     }
 }
 
 impl TravelAppearance {
-    /// The genome the art crate draws from, exactly as Desktop held it. A form sculpted in
-    /// Formiga Farm does not travel: it is drawn as the recipe Desktop keeps beside it.
+    /// The genome the art crate draws from, exactly as Desktop held it: a form sculpted in
+    /// Formiga Farm as itself, and every other look as its recipe and genes.
     pub fn to_genome(&self) -> Result<core::AppearanceGenome, TravelError> {
         self.validate()?;
         Ok(core::AppearanceGenome {
@@ -296,7 +327,7 @@ impl TravelAppearance {
                 .as_ref()
                 .map(core::CreatureDesign::try_from)
                 .transpose()?,
-            sculpt: None,
+            sculpt: self.sculpt.clone(),
             family: self.family.into(),
             logical_size: self.logical_size,
             body_width: self.body_width,
@@ -342,11 +373,22 @@ impl TravelAppearance {
         })
     }
 
-    /// The bounds every look keeps: a recipe that decodes, a size the atlas can hold, and finite
-    /// proportions.
+    /// The bounds every look keeps: a recipe that decodes, a sculpt exactly as Desktop keeps one,
+    /// a size the atlas can hold, and finite proportions.
     pub(crate) fn validate(&self) -> Result<(), TravelError> {
         if let Some(recipe) = &self.design {
             core::CreatureDesign::try_from(recipe)?;
+        }
+        if let Some(sculpt) = &self.sculpt {
+            // Desktop keeps a sculpt only beside the recipe that stands in for it.
+            if self.design.is_none() {
+                return Err(TravelError::invalid(
+                    "a sculpt without the recipe beside it",
+                ));
+            }
+            sculpt
+                .validate()
+                .map_err(|error| TravelError::invalid(format!("a sculpt: {error}")))?;
         }
         // A frame is 48 art pixels square; nothing drawn into one is larger.
         let fits = |value: u8| value <= formiga_art::FRAME_SIZE as u8;

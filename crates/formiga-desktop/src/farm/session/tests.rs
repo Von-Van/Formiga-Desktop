@@ -141,6 +141,35 @@ fn a_refusal_is_read_only_for_this_session() {
 }
 
 #[test]
+fn a_session_farm_never_answered_is_told_apart_from_one_it_did() {
+    let scratch = Scratch::new("farm-session", "acknowledged");
+    let (files, open, _) = opened(&scratch);
+    assert!(!files.acknowledged(&open), "nothing written is no answer");
+    let other = SessionSeal {
+        session_id: SessionId::parse("0123456789abcdef0123456789abcdef").unwrap(),
+        snapshot_sha256: open.seal.snapshot_sha256.clone(),
+    };
+    write_document(
+        &open.dir.join(ACK_FILE),
+        &FarmAck::accepted(&other, "0.1.0"),
+    )
+    .unwrap();
+    assert!(!files.acknowledged(&open), "another session's answer");
+    fs::write(open.dir.join(ACK_FILE), b"{ half").unwrap();
+    assert!(!files.acknowledged(&open), "an answer that does not read");
+    write_document(
+        &open.dir.join(ACK_FILE),
+        &FarmAck::accepted(&open.seal, "0.1.0"),
+    )
+    .unwrap();
+    assert!(files.acknowledged(&open));
+    assert_eq!(files.refusal(&open), None, "a yes is no refusal");
+    let refused = FarmAck::refused(&open.seal, "0.1.0", AckRefusal::Busy);
+    write_document(&open.dir.join(ACK_FILE), &refused).unwrap();
+    assert!(files.acknowledged(&open), "a no is an answer too");
+}
+
+#[test]
 fn a_recall_is_left_where_farm_can_see_it_and_closing_clears_everything() {
     let scratch = Scratch::new("farm-session", "recall");
     let (files, open, _) = opened(&scratch);

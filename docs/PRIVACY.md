@@ -289,10 +289,11 @@ says it reads, and nothing about any other application.
 A trip writes a **travel snapshot** into a new directory under `travel/` in Formiga's own data
 directory, and Hill is started with the path of that directory and nothing else. The snapshot holds,
 for each companion: its identifier, its name with control and invisible formatting characters
-removed, whether it is a little one and whose, its birth time, its drawn look and size, its
-temperament, three traits (in words and as identifiers) and profile phrase, how lively, playful and
-bold it is (which sets its walking pace), how it celebrates, its habits, and what it is wearing with
-the colours to draw it in. For each pair it holds four coarse bands — none, low, medium or high —
+removed, whether it is a little one and whose, its birth time, its drawn look and size (with the
+form it was sculpted into in Formiga Farm, if it was), its temperament, three traits (in words
+and as identifiers) and profile phrase, how lively, playful and bold it is (which sets its
+walking pace), how it celebrates, its habits, and what it is wearing with the colours to draw it
+in. For each pair it holds four coarse bands — none, low, medium or high —
 rather than Formiga's scores. It also holds the trip's identifier, the time, Formiga's version, a
 64-bit one-way digest standing for the colony so Hill can tell one colony from another, the
 reduced-motion, theme and text-size preferences, and the list of Formiga Hill's souvenirs this

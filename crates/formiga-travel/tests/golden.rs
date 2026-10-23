@@ -1,13 +1,14 @@
 //! Every travel version as it shipped. These files are never regenerated to make a test pass: a
 //! change that breaks one of them breaks every Hill already installed, or every snapshot an older
 //! Desktop already wrote. Version 1 shipped with Desktop 0.66.4, version 2 added each trait's
-//! identifier, version 3 the souvenirs Desktop keeps, version 4 four more of them, and version 5 the Echo Fox. `FORMIGA_TRAVEL_BLESS=1` writes this
+//! identifier, version 3 the souvenirs Desktop keeps, version 4 four more of them, version 5 the Echo Fox, and
+//! version 6 a form sculpted in Formiga Farm. `FORMIGA_TRAVEL_BLESS=1` writes this
 //! build's own version's files only, so a new version's fixtures go beside the old ones and never
 //! over them.
 
 mod common;
 
-use common::{MADE, colony};
+use common::{MADE, farm_colony};
 use formiga_travel::*;
 use std::path::PathBuf;
 use time::macros::datetime;
@@ -29,9 +30,10 @@ fn session() -> SessionId {
 /// Every version a fixture set has been written for.
 const SHIPPED: std::ops::RangeInclusive<u32> = 1..=TRAVEL_FORMAT_VERSION;
 
-/// The fixtures as this build writes them, named for this build's version.
+/// The fixtures as this build writes them, named for this build's version. Since version 6 the
+/// colony has a companion reshaped in Formiga Farm.
 fn written_now() -> Vec<(String, Vec<u8>)> {
-    let snapshot = project_colony(&colony(3), session(), MADE, "0.66.1").unwrap();
+    let snapshot = project_colony(&farm_colony(3), session(), MADE, "0.66.1").unwrap();
     let snapshot_bytes = encode(&snapshot).unwrap();
     let seal = SnapshotSeal::of(&snapshot, &snapshot_bytes);
     let ack = Acknowledgement::accepted(&seal, "0.1.0");
@@ -169,6 +171,46 @@ fn the_souvenirs_desktop_keeps_are_listed_from_version_three_and_grow_by_version
         ReturnEffect::Souvenir {
             id: "picnic_ribbon".to_owned()
         }
+    );
+}
+
+#[test]
+fn version_six_carries_a_sculpted_form_and_draws_it_as_itself() {
+    for version in 1..6 {
+        let old: TravelSnapshot = decode(&read(&format!("snapshot-v{version}.json"))).unwrap();
+        assert!(
+            old.travelers
+                .iter()
+                .all(|traveler| traveler.appearance.sculpt.is_none()),
+            "version {version} never carried a sculpt"
+        );
+    }
+    let new: TravelSnapshot = decode(&read("snapshot-v6.json")).unwrap();
+    let sculpted: Vec<_> = new
+        .travelers
+        .iter()
+        .filter(|traveler| traveler.appearance.sculpt.is_some())
+        .collect();
+    assert_eq!(sculpted.len(), 1);
+    let genome = sculpted[0].appearance.to_genome().unwrap();
+    assert_eq!(
+        genome.sculpt.as_ref().map(|sculpt| sculpt.plan),
+        Some(formiga_core::forms::Plan::Floater)
+    );
+    assert!(
+        genome.design.is_some(),
+        "the recipe still travels beside it"
+    );
+    let clip = formiga_art::BodyClip::Action(formiga_core::ActionKind::Idle);
+    let drawn = formiga_art::CreatureRenderer::render_body_frame(&genome, clip, 0, false);
+    let recipe = formiga_core::AppearanceGenome {
+        sculpt: None,
+        ..genome.clone()
+    };
+    let instead = formiga_art::CreatureRenderer::render_body_frame(&recipe, clip, 0, false);
+    assert_ne!(
+        drawn.canvas, instead.canvas,
+        "drawn as its form, not its recipe"
     );
 }
 

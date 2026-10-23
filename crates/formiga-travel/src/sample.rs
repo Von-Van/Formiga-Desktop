@@ -2,7 +2,8 @@
 //! crate's own: one of everything the format has to carry — every recipe edition, a companion from
 //! before recipes, a little one, something worn, something pinned, habits, and bonds of every
 //! strength. It is built through Desktop's own `World`, so it is always a colony Desktop could
-//! really have, and it is the same every time.
+//! really have, and it is the same every time. [`farm_colony`] is the same colony with one
+//! companion reshaped in Formiga Farm.
 
 use crate::{SessionId, TravelSnapshot, project_colony};
 use formiga_core::*;
@@ -117,6 +118,26 @@ pub fn colony(seed: u8) -> SaveFile {
             save.relationships.push(bond);
         }
     }
+    save
+}
+
+/// The sample colony with one adult reshaped in Formiga Farm: a spotted floater, with the
+/// companion recipe nearest it kept beside it, as Desktop keeps it. Since travel version 6 it
+/// travels as itself; a reader from before draws it as that recipe.
+pub fn farm_colony(seed: u8) -> SaveFile {
+    use formiga_core::forms::{Design, Form, Marking, MarkingKind, Plan, Sculpt};
+    let mut save = colony(seed);
+    let creature = &mut save.creatures[1];
+    let mut sculpt = Sculpt::starter(Plan::Floater);
+    sculpt
+        .markings
+        .push(Marking::new(MarkingKind::Spots, [246, 240, 226]));
+    creature.appearance = Design {
+        form: Form::Sculpted { sculpt },
+        face: creature.appearance.face,
+    }
+    .genome(&creature.appearance);
+    creature.origin.design = creature.appearance.design;
     save
 }
 

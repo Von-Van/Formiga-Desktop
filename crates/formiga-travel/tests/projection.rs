@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{MADE, colony};
+use common::{MADE, colony, farm_colony};
 use formiga_art::{AccessoryArt, BodyClip, CreatureRenderer, MotionSignature, palette_for};
 use formiga_core::{ActionKind, Edition, Gesture};
 use formiga_travel::*;
@@ -453,40 +453,110 @@ fn a_souvenir_on_the_list_is_kept_only_while_the_capability_is_offered() {
     assert!(!snapshot.accepts_souvenir("picnic_ribbon"));
 }
 
-/// A form sculpted in Formiga Farm does not travel. The companion recipe Desktop keeps beside it
-/// does, so an app that cannot draw sculpts shows the nearest companion in its colours, and the
-/// snapshot says nothing a reader before sculpts would not understand.
+/// A form sculpted in Formiga Farm travels as itself, with the companion recipe Desktop keeps
+/// beside it, so a reader from before version 6 still draws the nearest companion in its colours.
+/// It asks nothing more of a reader than any other colony does.
 #[test]
-fn a_sculpted_form_travels_as_the_recipe_kept_beside_it() {
-    use formiga_core::forms::{Design, Form, Plan, Sculpt};
+fn a_sculpted_form_travels_as_itself_with_its_recipe_beside_it() {
     let plain = colony(3);
-    let mut save = plain.clone();
-    let creature = &mut save.creatures[0];
-    creature.appearance = Design {
-        form: Form::Sculpted {
-            sculpt: Sculpt::starter(Plan::Crawler),
-        },
-        face: creature.appearance.face,
-    }
-    .genome(&creature.appearance);
-    creature.origin.design = creature.appearance.design;
+    let save = farm_colony(3);
+    let sculpted = &save.creatures[1];
+    let sculpt = sculpted.appearance.sculpt.clone().expect("a sculpted form");
     let snapshot = snapshot_of(&save);
-    let written = String::from_utf8(encode(&snapshot).unwrap()).unwrap();
-    assert!(!written.contains("sculpt"));
     assert_eq!(
         snapshot.min_reader_version,
         snapshot_of(&plain).min_reader_version
     );
-    let genome = snapshot.travelers[0].appearance.to_genome().unwrap();
-    assert_eq!(genome.sculpt, None);
-    assert_eq!(genome.design, save.creatures[0].appearance.design);
+    let traveler = snapshot.traveler(TravelerId(sculpted.id)).unwrap();
+    assert_eq!(traveler.appearance.sculpt.as_ref(), Some(&sculpt));
+    let genome = traveler.appearance.to_genome().unwrap();
+    assert_eq!(genome, sculpted.appearance);
+    assert_eq!(genome.design, sculpted.appearance.design);
+    let written = String::from_utf8(encode(&snapshot).unwrap()).unwrap();
     assert_eq!(
-        genome,
-        formiga_core::AppearanceGenome {
-            sculpt: None,
-            ..save.creatures[0].appearance.clone()
-        }
+        written.matches("\"sculpt\"").count(),
+        1,
+        "only the sculpted one says so"
     );
+    let read: TravelSnapshot = decode(written.as_bytes()).unwrap();
+    assert_eq!(read, snapshot);
+}
+
+/// What a reader from before version 6 makes of a sculpted traveler: the recipe it always drew,
+/// because the sculpt is a field it ignores.
+#[test]
+fn a_reader_without_sculpts_draws_the_recipe_kept_beside_one() {
+    let save = farm_colony(3);
+    let mut value = serde_json::to_value(snapshot_of(&save)).unwrap();
+    for traveler in value["travelers"].as_array_mut().unwrap() {
+        traveler["appearance"]
+            .as_object_mut()
+            .unwrap()
+            .remove("sculpt");
+    }
+    let read: TravelSnapshot = decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+    let sculpted = &save.creatures[1];
+    let genome = read
+        .traveler(TravelerId(sculpted.id))
+        .unwrap()
+        .appearance
+        .to_genome()
+        .unwrap();
+    assert_eq!(genome.sculpt, None);
+    assert_eq!(genome.design, sculpted.appearance.design);
+}
+
+/// A sculpt from a newer design model, on a plan or with a part this build does not know, is left
+/// behind: the traveler is drawn as its recipe, and the colony still visits.
+#[test]
+fn a_sculpt_this_build_cannot_read_is_left_behind_for_its_recipe() {
+    let save = farm_colony(3);
+    let sculpted = &save.creatures[1];
+    let index = save
+        .creatures
+        .iter()
+        .position(|creature| creature.id == sculpted.id)
+        .unwrap();
+    for (field, value) in [("plan", "sea_serpent"), ("face_template", "wide")] {
+        let mut written = serde_json::to_value(snapshot_of(&save)).unwrap();
+        written["travelers"][index]["appearance"]["sculpt"][field] = value.into();
+        let read: TravelSnapshot = decode(&serde_json::to_vec(&written).unwrap())
+            .unwrap_or_else(|error| panic!("an unknown {field}: {error}"));
+        let appearance = &read.travelers[index].appearance;
+        assert_eq!(appearance.sculpt, None, "an unknown {field}");
+        assert_eq!(
+            appearance.to_genome().unwrap().design,
+            sculpted.appearance.design
+        );
+    }
+}
+
+/// A sculpt this build can read but Desktop would never keep is refused, as any other look out of
+/// bounds is: one out of range, and one with no recipe beside it for older readers.
+#[test]
+fn a_sculpt_desktop_would_not_keep_is_refused_both_ways() {
+    let save = farm_colony(3);
+    let snapshot = snapshot_of(&save);
+    let index = snapshot
+        .travelers
+        .iter()
+        .position(|traveler| traveler.appearance.sculpt.is_some())
+        .unwrap();
+    let mut out_of_range = snapshot.clone();
+    out_of_range.travelers[index]
+        .appearance
+        .sculpt
+        .as_mut()
+        .unwrap()
+        .shape
+        .head = 200;
+    let mut no_recipe = snapshot;
+    no_recipe.travelers[index].appearance.design = None;
+    for (what, case) in [("out of range", out_of_range), ("no recipe", no_recipe)] {
+        assert!(encode(&case).is_err(), "{what} was written");
+        let bytes = serde_json::to_vec(&case).unwrap();
+        assert!(decode::<TravelSnapshot>(&bytes).is_err(), "{what} was read");
+    }
 }
 
 /// A companion drawn as the Echo Fox on the desktop is a fox wherever it goes, and one that is
