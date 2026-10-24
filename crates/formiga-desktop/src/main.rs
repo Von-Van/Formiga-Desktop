@@ -80,6 +80,14 @@ pub(crate) fn data_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os("FORMIGA_DATA_DIR").filter(|dir| !dir.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
+    platform_data_dir()
+}
+
+/// The system's folder for Formiga's data: `~/Library/Application Support/com.Formiga.Formiga` on
+/// macOS and `%APPDATA%\Formiga\Formiga\data` on Windows. Every release has kept the colony
+/// there, so it must never move, whatever the `directories` crate does: a colony on disk would be
+/// lost from view. The tests below hold it to those two paths.
+fn platform_data_dir() -> Result<PathBuf> {
     let project = ProjectDirs::from("com", "Formiga", "Formiga")
         .ok_or_else(|| anyhow::anyhow!("resolve application data directory"))?;
     Ok(project.data_dir().to_path_buf())
@@ -163,5 +171,27 @@ mod tests {
         drop(first);
         assert!(hold_colony(&directory).unwrap().is_some());
         fs::remove_dir_all(&directory).unwrap();
+    }
+
+    // The home folder comes from the environment, as the `directories` crate reads it, so these
+    // hold on any Mac or Windows computer and not only the one they were written on.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_colony_folder_is_where_every_release_has_kept_it() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set"));
+        assert_eq!(
+            platform_data_dir().unwrap(),
+            home.join("Library/Application Support/com.Formiga.Formiga")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_colony_folder_is_where_every_release_has_kept_it() {
+        let appdata = PathBuf::from(std::env::var_os("APPDATA").expect("APPDATA is set"));
+        assert_eq!(
+            platform_data_dir().unwrap(),
+            appdata.join("Formiga").join("Formiga").join("data")
+        );
     }
 }

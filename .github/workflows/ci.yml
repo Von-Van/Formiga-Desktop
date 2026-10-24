@@ -25,6 +25,9 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # The developer toolkit's fixed colonies, held to what the soak holds a colony to (see
+      # crates/formiga-tools/src/dev.rs). Deterministic, and seconds on the build the tests left.
+      - run: cargo run -p formiga-tools -- dev check-fixtures
       # The developer toolkit (devtools/), on the oldest Python it supports.
       - uses: actions/setup-python@v5
         with:

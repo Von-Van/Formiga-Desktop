@@ -52,6 +52,10 @@ All notable changes are documented here.
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
   within its run-to-run noise.
+- The desktop crate takes `windows` 0.62 and `directories` 6, the lines the rest of the workspace
+  already pulls, so a Windows build no longer compiles nine `windows-*` crates twice, nor `dirs-sys`
+  twice. The colony's folder is unchanged, and a test now holds it to
+  `~/Library/Application Support/com.Formiga.Formiga` and `%APPDATA%\Formiga\Formiga\data`.
 
 ### Developer tools
 
@@ -74,6 +78,8 @@ All notable changes are documented here.
 - The public API of the contract crates the companion apps build on is kept beside each crate and
   checked on every pull request (`scripts/public-api.sh`).
 - `cargo audit` runs every week and whenever `Cargo.lock` changes.
+- The gate runs `formiga-tools dev check-fixtures` on macOS and Windows after the tests, so the
+  developer toolkit's fixed colonies are held to the soak's rules on every pull request.
 - The installers are built for a pull request only when it changes what goes into them; every push
   to `main` still builds them.
 
