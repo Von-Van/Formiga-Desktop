@@ -52,6 +52,10 @@ All notable changes are documented here.
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
   within its run-to-run noise.
+- The desktop crate takes `windows` 0.62 and `directories` 6, the lines the rest of the workspace
+  already pulls, so a Windows build no longer compiles nine `windows-*` crates twice, nor `dirs-sys`
+  twice. The colony's folder is unchanged, and a test now holds it to
+  `~/Library/Application Support/com.Formiga.Formiga` and `%APPDATA%\Formiga\Formiga\data`.
 
 ### Developer tools
 
