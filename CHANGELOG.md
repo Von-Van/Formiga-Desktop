@@ -52,6 +52,12 @@ All notable changes are documented here.
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
   within its run-to-run noise.
+- The colony's tick while it is home, `tick_homebound_creatures` in `world/home.rs`, which had
+  been one loop of about 830 lines, is a sequence of named phases: the village is looked over
+  once, then each resident sits the tick out, follows a plan of its own, is given a heading,
+  holds a quiet moment, takes and settles a step, and spends its time on its hands, in that
+  order. Nothing a colony does changes: every value, random draw and tuning constant is as it
+  was, in the order it was.
 
 ### Developer tools
 

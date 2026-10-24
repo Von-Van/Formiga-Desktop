@@ -242,7 +242,14 @@ then, once its action is over, `pick_next_action` (the priority list a finished 
 against) and `set_out`, and last `carry_out_action`. Each step returns whether the creature is done
 for this tick, as the `continue`s of the one loop they came from did; what every step shares within
 the tick is a `TickShared`. Splitting them out of `tick` changed nothing a colony does: 80 colonies
-over two simulated days each gave the same `soak --digest` before and after.
+over two simulated days each gave the same `soak --digest` before and after. The colony's tick
+while it is home, `tick_homebound_creatures` in `world/home.rs`, is laid out the same way:
+`survey_village` looks the village over once into a `HomeScene` (what stands where, and who) and a
+`HomeDoings` (what the residents set up for one another as the tick goes), then each resident in
+colony order passes through `sits_out_home_tick`, `follow_village_plan`, `homebound_heading`,
+`hold_home_moment`, `come_down_to_walk_home`, `homebound_step` and `settle_homebound_step`,
+`time_on_its_hands`, `take_up_village_plan` and `start_quiet_moment`, and `finish_homebound_tick`
+counts the roofs climbed, carries out the asides and has the neighbours wave back.
 
 The values that decide how a feature feels — how often something happens, how long it lasts, how
 far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
