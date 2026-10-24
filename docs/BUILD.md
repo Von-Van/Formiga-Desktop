@@ -13,8 +13,10 @@ cargo test --workspace
 python3 -m unittest discover devtools/tests
 ```
 
-Those four are the gate CI runs on macOS and Windows. The review sheets and a long simulated run
-are looked at by hand after a change to what they show:
+Those four are the gate CI runs on macOS and Windows; after the tests it also runs
+`cargo run -p formiga-tools -- dev check-fixtures` (`devtools/formiga validate --step fixtures`),
+which holds the toolkit's fixed colonies to the soak's rules. The review sheets and a long
+simulated run are looked at by hand after a change to what they show:
 
 ```sh
 cargo run -p formiga-tools -- simulate 181

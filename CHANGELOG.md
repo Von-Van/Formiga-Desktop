@@ -74,6 +74,8 @@ All notable changes are documented here.
 - The public API of the contract crates the companion apps build on is kept beside each crate and
   checked on every pull request (`scripts/public-api.sh`).
 - `cargo audit` runs every week and whenever `Cargo.lock` changes.
+- The gate runs `formiga-tools dev check-fixtures` on macOS and Windows after the tests, so the
+  developer toolkit's fixed colonies are held to the soak's rules on every pull request.
 - The installers are built for a pull request only when it changes what goes into them; every push
   to `main` still builds them.
 
