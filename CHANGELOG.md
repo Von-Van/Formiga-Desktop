@@ -48,6 +48,10 @@ All notable changes are documented here.
 
 ### Internal
 
+- One frozen colony file for every save version since 14, in the shape that version wrote, under
+  `crates/formiga-core/src/persistence/fixtures/`; a test opens each through the real load and
+  migration path and writes the current version's back byte for byte. The migration tests had
+  only ever downgraded a current colony by hand.
 - Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged

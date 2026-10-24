@@ -7,3 +7,6 @@ crates/formiga-travel/tests/fixtures/** -text
 crates/formiga-home-contract/tests/fixtures/** -text
 crates/formiga-farm-contract/tests/fixtures/** -text
 crates/formiga-battle-contract/tests/fixtures/** -text
+# The colony files frozen per save version are byte-exact too: the current version's must read
+# back exactly as this build writes it.
+crates/formiga-core/src/persistence/fixtures/** -text
