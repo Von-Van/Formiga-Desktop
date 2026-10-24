@@ -48,6 +48,10 @@ All notable changes are documented here.
 
 ### Internal
 
+- The settings window's `handle_settings_outcome`, which had been one function of about 770
+  lines over every request the notebook can make, is a short dispatcher over one method per
+  request or small group of them, called in the same order as before (`app/settings_window.rs`).
+  Nothing a setting does, saves or shows changes.
 - Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
