@@ -64,7 +64,7 @@ pub const ACK_FILE: &str = "ack.json";
 /// The argument Battle is started with, followed by the session directory's absolute path.
 pub const LAUNCH_ARGUMENT: &str = "--formiga-battle";
 
-/// How Desktop would find an installed Battle without starting it: the same arrangement as Hill,
+/// How Desktop finds an installed Battle without starting it: the same arrangement as Hill,
 /// Home and Farm, under Battle's own names.
 pub mod discovery {
     pub const MACOS_BUNDLE_ID: &str = "com.formiga.battle";
@@ -462,6 +462,19 @@ mod tests {
         assert!(matches!(
             BattleSnapshot::decode(&bytes),
             Err(BattleError::UnsupportedVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn a_trip_document_is_not_a_battle_snapshot() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "format": "formiga.travel.snapshot",
+            "version": 1,
+        }))
+        .unwrap();
+        assert!(matches!(
+            BattleSnapshot::decode(&bytes),
+            Err(BattleError::WrongFormat { .. })
         ));
     }
 

@@ -535,3 +535,39 @@ build of Formiga Home named by `FORMIGA_HOME_PATH`.
 | "Bring … household back" from the tray and from the house's menu; the Home page's button for a picked house, with the houses out and not | pending | pending | pending | pending |
 | An arrangement made in Home is there the next time the same house opens, and a find moved between houses is moved | pending | pending | pending | pending |
 | The installed Home found by its bundle identifier (macOS) and registry key (Windows) | pending | pending | pending | pending |
+
+## Sessions in Formiga Farm
+
+Formiga Farm is a separate application; these rows cover Desktop's side of a session. Without Farm
+installed the Journal offers nothing of it.
+
+### Automated
+
+| Check | macOS | Windows |
+|---|---:|---:|
+| The design contract's own: every version's fixtures still read, this version's written byte for byte; `accept_proposal` and `apply_design` keep everything but a creature's look; a proposal that does not check out, names a stale revision or claims anything beyond a design is refused | CI | CI |
+| End to end against the stand-in Farm (`formiga-tools/tests/farm_session.rs`): a reshaped companion keeps everything but its look; a new companion drawn in Farm is only a design until Desktop's own welcome gives it a life; a proposal that does not check out changes nothing; a refusal or a recall ends a session with nothing proposed | CI | CI |
+
+### Manual
+
+Use `formiga-farm-stub` as described in [BUILD.md](BUILD.md), or a build of Formiga Farm named by
+`FORMIGA_FARM_PATH`; the rows are the same shape as Hill's and Home's above and are not yet filled
+in.
+
+## Matches in Formiga Battle
+
+Formiga Battle is a separate application; these rows cover Desktop's side of a match. Without Battle
+installed nothing mentions it.
+
+### Automated
+
+| Check | macOS | Windows |
+|---|---:|---:|
+| The Battle contract's own: the sample roster round-trips byte for byte; a snapshot from a newer Battle reader is refused for its version, and a trip's document for its format; a session is opened and answered in its own directory; a result applies to the record once and only once and a session of many unlocks keeps the record within its bounds | CI | CI |
+| End to end against the stand-in Battle (`formiga-tools/tests/battle_session.rs`): the whole colony is read and accepted; a busy Battle says so for this session; a roster that does not check out, or is from a newer Desktop, is turned away; a roster copied into another session's directory is not mistaken for it; a match won is written for this snapshot and applied once; a silent Battle writes no result | CI | CI |
+
+### Manual
+
+Use `formiga-battle-stub` as described in [BUILD.md](BUILD.md), or a build of Formiga Battle named
+by `FORMIGA_BATTLE_PATH`; the rows are the same shape as Hill's and Home's above and are not yet
+filled in.

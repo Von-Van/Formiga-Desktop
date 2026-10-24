@@ -7,7 +7,6 @@ use crate::HOME_FORMAT_VERSION;
 use formiga_expansion_rulebook::{self as rulebook, Kind};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::io;
 use std::path::Path;
 
 pub use formiga_expansion_rulebook::sha256_hex;
@@ -18,11 +17,6 @@ rulebook::contract_error!(pub enum HomeError, "Home");
 impl HomeError {
     pub(crate) fn invalid(reason: impl Into<String>) -> Self {
         Self::Invalid(reason.into())
-    }
-
-    /// Whether the file was simply not there.
-    pub fn is_missing(&self) -> bool {
-        matches!(self, Self::Io(error) if error.kind() == io::ErrorKind::NotFound)
     }
 }
 

@@ -10,6 +10,13 @@ Line Tools, and Windows needs the Visual Studio C++ build tools.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+python3 -m unittest discover devtools/tests
+```
+
+Those four are the gate CI runs on macOS and Windows. The review sheets and a long simulated run
+are looked at by hand after a change to what they show:
+
+```sh
 cargo run -p formiga-tools -- simulate 181
 cargo run -p formiga-tools -- generation-sheet
 cargo run -p formiga-tools -- classic-sheet
@@ -340,7 +347,8 @@ published automatically:
 
 ## Downloads for nontechnical users
 
-Tagged builds publish four ready-to-run files on GitHub Releases. Recommend the macOS DMG and
+Tagged builds publish four ready-to-run files on GitHub Releases, each with a `.sha256` checksum
+beside it. Recommend the macOS DMG and
 Windows MSI; the ZIP files are portable alternatives. Opening Formiga for the first time creates a
 colony and opens Settings automatically. No Rust installation, command line, or separate runtime is
 needed.

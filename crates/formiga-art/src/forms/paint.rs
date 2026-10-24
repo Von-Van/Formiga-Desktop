@@ -17,12 +17,9 @@ pub(crate) const SIZE: i32 = FRAME_SIZE as i32;
 /// companion's, so a sculpted form sits among them in the same style.
 pub(crate) const HD_OUTLINE: f32 = 1.0;
 
-/// `a` moved `t` (0 to 1) of the way toward `b`, alpha and all.
-pub(crate) fn mix(a: Rgba, b: Rgba, t: f32) -> Rgba {
-    let t = t.clamp(0.0, 1.0);
-    let f = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
-    Rgba::new(f(a.r, b.r), f(a.g, b.g), f(a.b, b.b), f(a.a, b.a))
-}
+/// `a` moved `t` (0 to 1) of the way toward `b`, alpha and all: the same mix every companion is
+/// painted with.
+pub(crate) use crate::paint::mix;
 
 /// A smooth step from 0 at `low` to 1 at `high`.
 pub(crate) fn smoothstep(low: f32, high: f32, x: f32) -> f32 {

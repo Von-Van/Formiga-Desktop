@@ -65,9 +65,11 @@ fn every_family_renders_inside_frame() {
         BodyFamily::SoftQuadruped,
     ] {
         for action in ActionKind::ALL {
-            let atlas = CreatureRenderer::render_atlas(&genome(family), action, true);
-            assert!(!atlas.frames.is_empty());
-            for frame in atlas.frames {
+            let spec = AnimationSpec::for_action(action);
+            assert!(spec.frames > 0);
+            for frame in (0..spec.frames)
+                .map(|frame| CreatureRenderer::render_frame(&genome(family), action, frame, true))
+            {
                 let bounds = frame.alpha_bounds().expect("creature is visible");
                 assert!(
                     bounds.0 > 0
