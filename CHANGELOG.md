@@ -59,10 +59,22 @@ All notable changes are documented here.
 
 ### Internal
 
+- The settings window's `handle_settings_outcome`, which had been one function of about 770
+  lines over every request the notebook can make, is a short dispatcher over one method per
+  request or small group of them, called in the same order as before (`app/settings_window.rs`).
+  Nothing a setting does, saves or shows changes.
+- One frozen colony file for every save version since 14, in the shape that version wrote, under
+  `crates/formiga-core/src/persistence/fixtures/`; a test opens each through the real load and
+  migration path and writes the current version's back byte for byte. The migration tests had
+  only ever downgraded a current colony by hand.
 - Each creature's part of `World::tick`, which had been one loop of about 950 lines, is a sequence
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
   within its run-to-run noise.
+- The desktop crate takes `windows` 0.62 and `directories` 6, the lines the rest of the workspace
+  already pulls, so a Windows build no longer compiles nine `windows-*` crates twice, nor `dirs-sys`
+  twice. The colony's folder is unchanged, and a test now holds it to
+  `~/Library/Application Support/com.Formiga.Formiga` and `%APPDATA%\Formiga\Formiga\data`.
 - The colony's tick while it is home, `tick_homebound_creatures` in `world/home.rs`, which had
   been one loop of about 830 lines, is a sequence of named phases: the village is looked over
   once, then each resident sits the tick out, follows a plan of its own, is given a heading,
@@ -91,6 +103,8 @@ All notable changes are documented here.
 - The public API of the contract crates the companion apps build on is kept beside each crate and
   checked on every pull request (`scripts/public-api.sh`).
 - `cargo audit` runs every week and whenever `Cargo.lock` changes.
+- The gate runs `formiga-tools dev check-fixtures` on macOS and Windows after the tests, so the
+  developer toolkit's fixed colonies are held to the soak's rules on every pull request.
 - The installers are built for a pull request only when it changes what goes into them; every push
   to `main` still builds them.
 
