@@ -218,6 +218,10 @@ validation and for a running one at any moment it could be saved, and the long s
 exactly that. `a_damaged_file_is_refused_or_repaired_never_half_read` damages a busy colony's file
 600 ways — a value of the wrong kind, a list repeated, a field removed — and every one is either
 refused or comes back with nothing `violations` names, and opens and runs.
+`persistence/fixtures/` keeps one small colony file for every save version since 14, each in the
+shape that version wrote, and one test opens them all through the same path a file on disk takes
+and writes the current version's back byte for byte, so a new version freezes its own file beside
+the old ones rather than regenerating any of them.
 
 Opening a colony then resumes it in `World::from_save`: interrupted actions, motion and attention
 reset, and a visitor found waiting between gatherings. Those are about resuming, not validity, so
