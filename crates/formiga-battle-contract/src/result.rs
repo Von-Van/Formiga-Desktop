@@ -448,6 +448,13 @@ impl BattleResult {
                 (Some(named), Some(played)) => *named == played.id,
                 _ => true,
             };
+            // The three a trio played with are the three the history line says played.
+            let same_three = match (&r.history, &r.trio) {
+                (Some(history), Some(played)) if !played.members.is_empty() => {
+                    crate::handler::lineup_of(&history.team) == played.members
+                }
+                _ => true,
+            };
             if !fits {
                 return invalid("a match earned rewards its kind of match never earns");
             }
@@ -456,6 +463,9 @@ impl BattleResult {
             }
             if !one_trio {
                 return invalid("a match's history line and record name different trios");
+            }
+            if !same_three {
+                return invalid("a match's trio played with three its history line does not name");
             }
         }
         Ok(())
