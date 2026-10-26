@@ -71,12 +71,14 @@ pub enum Everywhere {
 /// Adds the hand to `fonts`: its two families, each falling back to the proportional fonts for
 /// anything Kalam has no glyph for, and, with [`Everywhere::Yes`], the proportional family too.
 pub fn add_to(fonts: &mut FontDefinitions, everywhere: Everywhere) {
-    fonts
-        .font_data
-        .insert("Kalam".into(), Arc::new(FontData::from_static(REGULAR)));
-    fonts
-        .font_data
-        .insert("Kalam-Bold".into(), Arc::new(FontData::from_static(BOLD)));
+    fonts.font_data.insert(
+        "Kalam".into(),
+        Arc::new(FontData::from_owned(tightened(REGULAR))),
+    );
+    fonts.font_data.insert(
+        "Kalam-Bold".into(),
+        Arc::new(FontData::from_owned(tightened(BOLD))),
+    );
     let fallback = fonts
         .families
         .get(&FontFamily::Proportional)
@@ -98,6 +100,43 @@ pub fn add_to(fonts: &mut FontDefinitions, everywhere: Everywhere) {
     }
 }
 
+/// How tall a line of the hand is, above and below its baseline, in thousandths of its size.
+/// Kalam leaves room for its Devanagari above and below, 1.59 of its size in all, which would
+/// space every line of Latin writing far apart; the Latin hand fits in 1.28.
+const ASCENT: i16 = 960;
+const DESCENT: i16 = 320;
+
+/// `font` with its line made only as tall as its Latin letters need, so egui spaces lines of the
+/// hand as a notebook's ruling does. Only the line metrics change: every glyph is drawn as it is.
+fn tightened(font: &[u8]) -> Vec<u8> {
+    let mut bytes = font.to_vec();
+    let read = |at: usize| u32::from_be_bytes([font[at], font[at + 1], font[at + 2], font[at + 3]]);
+    let tables = u16::from_be_bytes([font[4], font[5]]) as usize;
+    for index in 0..tables {
+        let record = 12 + 16 * index;
+        let offset = read(record + 8) as usize;
+        let mut put = |at: usize, value: i16| {
+            bytes[offset + at..offset + at + 2].copy_from_slice(&value.to_be_bytes());
+        };
+        match &font[record..record + 4] {
+            b"hhea" => {
+                put(4, ASCENT);
+                put(6, -DESCENT);
+                put(8, 0);
+            }
+            b"OS/2" => {
+                put(68, ASCENT);
+                put(70, -DESCENT);
+                put(72, 0);
+                put(74, ASCENT);
+                put(76, DESCENT);
+            }
+            _ => {}
+        }
+    }
+    bytes
+}
+
 /// Sets `ctx`'s fonts to egui's own with the hand added, and draws the hand in pencil from now on.
 /// Call once, before the first frame.
 pub fn install(ctx: &egui::Context, everywhere: Everywhere) {
@@ -105,4 +144,21 @@ pub fn install(ctx: &egui::Context, everywhere: Everywhere) {
     add_to(&mut fonts, everywhere);
     ctx.set_fonts(fonts);
     ctx.add_plugin(Pencil::new(everywhere));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_of_the_hand_is_spaced_for_its_latin_letters_not_its_devanagari() {
+        let ctx = egui::Context::default();
+        install(&ctx, Everywhere::No);
+        // Fonts come into use from the next pass.
+        ctx.run_ui(egui::RawInput::default(), |_| {})
+            .textures_delta
+            .clear();
+        let height = ctx.fonts_mut(|fonts| fonts.row_height(&hand(20.0)));
+        assert!((24.0..=26.5).contains(&height), "{height}");
+    }
 }
