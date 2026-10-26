@@ -116,6 +116,9 @@ A friend match in Battle needs both Handlers on Battle 0.68.0.
 - The tests in `habitat.rs` and `world/attention/games.rs` moved into `habitat/tests.rs` and
   `games/tests.rs`, and the renderer's tests split by topic into `renderer/tests/` (frames, faces,
   poses, belongings), so those files read as the code they ship. No test changed.
+- The save format's tests, one 2,787-line `persistence/tests.rs`, split by topic into
+  `persistence/tests/` (privacy, versions, bounds, saving, recovery, frozen) with the shared colony
+  builders in `mod.rs`. No test changed.
 
 ### Developer tools
 
