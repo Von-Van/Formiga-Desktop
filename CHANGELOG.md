@@ -2,10 +2,23 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.68.0] - 2026-10-26
+
+Released alongside Formiga Hill 0.68.0, Formiga Home 0.68.0 and Formiga Battle 0.68.0, which are
+built on it. Save version 33, travel version 6, household version 12 and Battle contract version 5
+are new; a colony saved by 0.67.14 opens as before, and older Hill and Home builds still host a
+colony written by this one, drawing a Farm creature as its nearest companion as they always have.
+A friend match in Battle needs both Handlers on Battle 0.68.0.
 
 ### Added
 
+- Travel version 6 carries a creature's Formiga Farm sculpt on trips, so Hill, Home and Battle
+  built on this release draw a Farm whale as a whale. Older Hill and Home builds ignore it and draw
+  the companion recipe beside it, as before. Household version 12 says residents come in travel
+  version 6.
+- If Formiga Farm closes before answering, for example when the computer blocks an unsigned
+  download, Formiga says "Formiga Farm closed before opening, so nothing changed" and how to get
+  past the block, instead of saying nothing.
 - Save version 33 and Battle contract version 5: the colony keeps an anonymous Handler key for
   Formiga Battle, 128 random bits made once, the first time the colony goes to Battle, and kept
   with the rest of its Battle record. It is made from nothing Desktop knows about the colony, the
@@ -51,6 +64,19 @@ All notable changes are documented here.
   another app. Formiga Home used to name the companion away elsewhere first, and Formiga Farm said
   a companion was away before saying Farm had been removed.
 
+### Fixed
+
+- Formiga no longer stops on a rounding slip in about one colony in 1,500: a row of companions at a
+  moment, a wonder's run on a ledge, or a gap beside a closing window that was exactly as wide as
+  it needed to be could leave its two ends the wrong way round, and the clamp between them stopped
+  the app.
+- A companion indoors when a display shrank, with the houses out and Formiga paused, came out at
+  their old door where no display reached, and stayed off-screen until Formiga was unpaused. A
+  display change now lets go of a resident's village plan before bringing them back.
+- A Battle trio retired to make room for a new one no longer loses a lineup the new trio played in
+  the same session, and a friend match whose trio disagrees with who its history says played is
+  refused.
+
 ### Security
 
 - The update checker's TLS certificate checks take rustls-webpki 0.103.16 and webpki-roots
@@ -59,6 +85,9 @@ All notable changes are documented here.
 
 ### Internal
 
+- `formiga-art` drops two exports no Formiga app uses (`MENU_ICON_BOX` and the animation atlas),
+  the sculpted forms share `paint::mix`, and every contract error comes from the rulebook's
+  `contract_error!` with an `is_missing`.
 - The settings window's `handle_settings_outcome`, which had been one function of about 770
   lines over every request the notebook can make, is a short dispatcher over one method per
   request or small group of them, called in the same order as before (`app/settings_window.rs`).

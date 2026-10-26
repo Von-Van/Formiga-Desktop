@@ -1,4 +1,4 @@
-# Formiga · v0.67.14
+# Formiga · v0.68.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.67.14-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.68.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,15 +107,18 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.67.14
+## New in 0.68.0
 
-A round of fixes to keep your colony safe. Formiga now checks for updates every day it runs,
-not only when it starts, and an update that couldn't be fetched offline is tried again within the
-hour. A colony backup can't be restored while the colony is away in Hill or Battle, a damaged save
-is repaired as it loads, companions grow sleepy by your own clock instead of UTC, and only one
-copy of Formiga runs on a colony at a time. Update Formiga Hill, Formiga Home and Formiga Battle
-to 0.67.14 alongside: Battle paints its board, results and places in Formiga's own style, Home
-hands a visit back cleanly even after the clock was set back, and Hill keeps its files safer.
+The notebook is written in a pencil hand now, and Today reads as a filled-in page: your colony on
+its plate, the day's highlight taped in, the day's log on its lines and the week as a strip. The About page lists all of
+Formiga's apps, says which are installed, and tells you when one has a newer version out. The
+Journal shows the cups and medals your colony has won in Formiga Battle, and a creature reshaped in
+Formiga Farm now travels as itself, so Hill, Home and Battle draw a Farm whale as a whale. A rare
+crash, and a companion left off-screen after a display change, are fixed. Update Formiga Hill,
+Formiga Home and Formiga Battle to 0.68.0 alongside: Battle gets the pencil notebook too, plus
+named rivals, seasons and events, coaching styles, keyboard orders and settings it remembers; Home
+gets a kitchen and a study, keyboard play and its own pencil notebook; and Hill gets undo in its
+editors, the Woods from the keyboard, gentler timing, new stories and a display case.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
