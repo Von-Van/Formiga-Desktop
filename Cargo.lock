@@ -1334,6 +1334,7 @@ dependencies = [
 name = "formiga-expansion-rulebook"
 version = "0.67.14"
 dependencies = [
+ "directories",
  "getrandom 0.4.3",
  "serde",
  "serde_json",
