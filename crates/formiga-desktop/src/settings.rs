@@ -285,7 +285,7 @@ impl SettingsWindow {
             view_formats: Vec::new(),
         };
         surface.configure(&device, &config);
-        let context = egui::Context::default();
+        let context = notebook_context();
         configure_style(&context, AppearancePreferences::default());
         let mut state = egui_winit::State::new(
             context.clone(),
@@ -756,6 +756,13 @@ pub(crate) fn appearance_changed(
 
 /// Apply the reader's chosen appearance. Called whenever the preference or the system's own
 /// appearance changes, which is the only thing that moves the interface between themes.
+/// A context for the notebook: egui's, with everything written in the notebook in the pencil hand.
+fn notebook_context() -> egui::Context {
+    let context = egui::Context::default();
+    formiga_pencil::install(&context, formiga_pencil::Everywhere::Yes);
+    context
+}
+
 fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
     let dark = match appearance.theme {
         ThemeChoice::Dark => true,
@@ -835,6 +842,7 @@ fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
     context.set_visuals(visuals);
     // Modest text scaling, applied to every style the window uses so nothing is left behind.
     let scale = f32::from(appearance.text_scale.clamp(100, 150)) / 100.0;
+    formiga_pencil::set_heading_size(context, formiga_pencil::HEADING_SIZE * scale);
     context.style_mut_of(theme, |style| {
         style.spacing.item_spacing = egui::vec2(10.0, 10.0);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
@@ -844,11 +852,12 @@ fn configure_style(context: &egui::Context, appearance: AppearancePreferences) {
         style.spacing.icon_width_inner *= scale;
         style.animation_time = 0.0;
         for (text_style, size) in [
-            (egui::TextStyle::Body, 14.0),
-            (egui::TextStyle::Button, 14.0),
-            (egui::TextStyle::Heading, 25.0),
+            // Written in the pencil hand, which is never set under 15 points.
+            (egui::TextStyle::Body, 16.0),
+            (egui::TextStyle::Button, 16.0),
+            (egui::TextStyle::Heading, 26.0),
             // Small print is for asides, not for squinting at: a step under the body, no more.
-            (egui::TextStyle::Small, 12.0),
+            (egui::TextStyle::Small, 15.0),
             (egui::TextStyle::Monospace, 13.0),
         ] {
             style
@@ -1371,7 +1380,7 @@ fn general_tab(
             );
                 ui.small("Keep a Work and Relax setup for habitat, movement, and cursor reactions. Loading a routine previews its preferences before Apply.");
                 for (index, name) in ["Work", "Relax"].into_iter().enumerate() {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.strong(name);
                         if ui.button("Save current preferences").clicked() {
                             outcome.save_mode =
@@ -1601,16 +1610,19 @@ fn colony_tab(
                         .strong()
                         .color(forest()),
                 );
-                clubhouse::journal::on_the_line(ui, |ui| {
-                    for t in creature.traits() {
-                        egui::Frame::new()
-                            .fill(mint())
-                            .inner_margin(egui::Margin::symmetric(5, 2))
-                            .show(ui, |ui| {
-                                ui.label(t.label());
-                            });
-                    }
-                });
+                // Its traits run over with a highlighter, so they wrap like any other line.
+                clubhouse::journal::write_marked(
+                    ui,
+                    creature
+                        .traits()
+                        .iter()
+                        .map(|t| t.label())
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                    None,
+                    egui::Sense::hover(),
+                    Some(mint()),
+                );
                 let small = |text: String| egui::RichText::new(text).small();
                 let learned = profile_descriptors(creature, creatures);
                 if !learned.is_empty() {
