@@ -27,6 +27,17 @@ All notable changes are documented here.
 
 ### Changed
 
+- The notebook is written in a pencil hand: Kalam, drawn onto a pixel grid with no anti-aliasing so
+  it reads as pixel-art pencil beside the stepped edges, with printed labels kept in monospace. Text
+  is a little larger (never under 15 points), and the notebook speaks in the researcher's own loose
+  first person ("Caught them napping together 9 times now!"), every claim still backed by the
+  colony's counts. A new crate, `formiga-pencil`, does the drawing, so Formiga Battle and Formiga
+  Home can write in the same hand.
+- Today is laid out as a filled-in page: the colony standing on a plate with the bubble of whatever
+  each did today, the day's highlight pasted in with tape and stamped NEW while unread, a tally of
+  the day with its first finds, the day's log on the page's lines with each moment's bubble and
+  faces, what the notebook has noticed, how today compares, and the week as a strip of seven days.
+  The date is stamped in the corner.
 - A companion app installed while Formiga runs is offered as soon as the pointer comes over the
   menu-bar or notification-area icon, or the notebook opens, instead of after up to ten minutes.
 - A companion app too old for this Formiga now says so in plain words, with where to get a newer

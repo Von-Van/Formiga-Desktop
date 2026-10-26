@@ -1019,3 +1019,51 @@ fn a_wonder_player_above_the_ground_hops_down_to_it() {
     }
     assert!(called, "the wonder turned up");
 }
+
+/// Somebody indoors when a display shrinks with the houses out and the colony paused: they come
+/// out onto the display that is left, not at a door it no longer reaches. Found by the long
+/// simulated runs.
+#[test]
+fn somebody_indoors_comes_out_onto_a_display_that_shrinks_while_paused() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    desktop.monitors[0].bounds.width = 2560.0;
+    desktop.monitors[0].bounds.height = 1440.0;
+    desktop.monitors[0].usable_bounds.width = 2560.0;
+    desktop.monitors[0].usable_bounds.height = 1380.0;
+    let mut world = settled_colony([101; 32], 3, created, &desktop);
+    let inside = world.save.creatures[1].id;
+    let door = world.save.creatures[1].state.position;
+    start_plan(
+        &mut world,
+        inside,
+        Plan::Indoors {
+            slot: 1,
+            door,
+            stay: 30.0,
+            nap: false,
+        },
+    );
+    for _ in 0..40 {
+        world.tick(created, 0.05, &desktop);
+    }
+    assert!(world.save.creatures[1].state.indoors, "went in");
+    world.save.settings.paused = true;
+    desktop.monitors[0].bounds.width = 1280.0;
+    desktop.monitors[0].bounds.height = 800.0;
+    desktop.monitors[0].usable_bounds.width = 1280.0;
+    desktop.monitors[0].usable_bounds.height = 726.0;
+    for _ in 0..20 {
+        world.tick(created, 0.05, &desktop);
+    }
+    for creature in &world.save.creatures {
+        let p = creature.state.position;
+        assert!(
+            (0.0..=1280.0).contains(&p.x) && (0.0..=800.0).contains(&p.y),
+            "{} is left at ({}, {})",
+            creature.name,
+            p.x,
+            p.y
+        );
+    }
+}

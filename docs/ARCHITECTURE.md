@@ -38,7 +38,7 @@ one feature at a time, and assumes you know where things are.
 Dependencies run one way: `formiga-art` depends on `formiga-core`; `formiga-expansion-rulebook`
 depends on neither; `formiga-travel` depends on all three; `formiga-home-contract` on those and
 `formiga-travel`; `formiga-farm-contract` and `formiga-battle-contract` on `formiga-core`, the
-rulebook and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the desktop crate.
+rulebook and `formiga-travel`; `formiga-pencil` on egui alone; and `formiga-desktop` and `formiga-tools` on the lot. Nothing depends on the desktop crate.
 
 | Crate | Start with | Then |
 |---|---|---|
@@ -50,6 +50,7 @@ rulebook and `formiga-travel`; and `formiga-desktop` and `formiga-tools` on the 
 | `formiga-travel` | `lib.rs`: the travel contract with Formiga Hill | `snapshot.rs` and `receipt.rs` for the documents; `projection.rs` for the colony as it travels; [Trips to Formiga Hill](#trips-to-formiga-hill-save-v26) |
 | `formiga-home-contract` | `lib.rs`: the household contract with Formiga Home | `snapshot.rs`, `state.rs` and `replies.rs` for the documents; `projection.rs` for a household as its house opens; `accept.rs` for what Desktop keeps; [Visits to Formiga Home](#visits-to-formiga-home-save-v28) |
 | `formiga-farm-contract` | `lib.rs`: the design contract with Formiga Farm | `snapshot.rs` and `replies.rs` for the documents; `projection.rs` for the one creature a session opens on; `accept.rs` for what Desktop keeps and how; [The Farm contract](#the-farm-contract) |
+| `formiga-pencil` | `lib.rs`: the pencil hand every notebook is written in | `plugin.rs` for how text set in it is drawn again from its own atlas; `atlas.rs` for the thresholded glyphs; [The pencil hand](#the-pencil-hand) |
 | `formiga-battle-contract` | `lib.rs`: the roster contract with Formiga Battle | `project_roster` for the colony as Battle reads it; `open_session` for how Battle answers; [Matches in Formiga Battle](#matches-in-formiga-battle-saves-v31-and-v32) |
 
 ### How the app starts
@@ -2427,13 +2428,20 @@ retains stationary looks and expressions. No game writes a journal entry.
 
 ## Colony history and the Today page (save v23)
 
-The notebook opens on Today, `clubhouse/today.rs`, page one of nine: what is new since the journal
-was last read, "Today in your colony", what each companion is doing right now, the last seven days
-counted by kind with the week's milestones, what the notebook has observed, and the last warm
-moment each pair shared in the past fortnight. A colony under a day old with nothing written but
-arrivals is welcomed first, with the three things to try on the desktop, and each section with
-nothing in it yet says what will appear there. Nothing on the page is
-a task, a score or a reminder, and all of it is read from what the colony recorded.
+The notebook opens on Today, `clubhouse/today.rs`, page one of nine, written as the researcher's
+own notes on the day: what each companion is doing right now, standing on a strip of ground with
+the bubble of the last thing it did today over its head; the day's highlight, pasted in with tape
+(the newest unread landmark, then the newest unread noteworthy moment, then the newest of each,
+stamped NEW while unread, with what the day book counted about the same companions beneath it);
+a tally of the day's moments by kind, with the keepsakes first found today; today's log on the
+page's lines, each moment with its time, its bubble and the faces it is about; the last warm moment
+each pair shared lately; what the notebook has noticed; how today compares with the week; and the
+last seven days as a strip of cells, a dot for each moment and the bubble of each day's landmark.
+The date is stamped in the corner. A colony under a day old with nothing written but arrivals gets
+a sticky note over the plate with the tour and its companions, and each section with nothing in it
+yet says what will appear there. Every bubble is one of the creatures' own, cut from the interface
+atlas (`clubhouse/paper.rs` maps each kind of moment to one). Nothing on the page is a task, a
+score or a reminder, and all of it is read from what the colony recorded.
 
 **Landmarks.** The journal still holds 64 moments, but when it is full an everyday moment rolls out
 before one of the colony's landmarks — an arrival, a friendship or a first visit — which are kept
@@ -2505,7 +2513,7 @@ sit up on a roof this week; a patch that came round to its third or fourth stage
 when it was planted, not stored); more time at home, or more play, than the whole of yesterday.
 Nothing is compared with a day the book did not count, so "first this week" needs the whole week
 counted and an upgraded colony has no yesterday until tomorrow. The thresholds are
-`tuning::TODAY_NOTES`. The Today page's "Today, compared" section prints each note with the counts
+`tuning::TODAY_NOTES`. The Today page's "Vs. the rest of the week" section prints each note with the counts
 it rests on, reading them again every half minute (`TodayState`) so a line does not come and go as
 its counts tick over.
 
@@ -2548,6 +2556,23 @@ or resumed, or a routine kept from the current preferences, a quiet while ("unti
 a garden put out or put away, and the village moved. Before preferences are applied the footer
 names what is waiting. Every sentence is a pure function of what changed, and each is tested. The behaviour checkboxes, routines and
 updates explain themselves on hover.
+
+### The pencil hand
+
+Everything the notebook writes is in Kalam, drawn as pixel pencil by `formiga-pencil`: the
+proportional family begins with it (`Everywhere::Yes`), its bold is `hand_bold`, and only printed
+things keep egui's monospace (the cover's name plate, tab numbers, figure numbers). egui lays the
+hand out as it lays out any font, so wrapping, hit-testing and screen readers are unchanged; an
+egui plugin then finds each piece of text with a glyph in the hand in the frame's output, leaves it
+there invisible, and draws its glyphs from an atlas of its own, rasterised once per size with a hard
+threshold (a third of a texel covered for writing, half for a heading) and sampled nearest-neighbour,
+each glyph's pen snapped to the screen's texel grid. Writing is a point to a texel; anything at or
+above 20 points (scaled with the text, through `set_heading_size`) two. Glyphs Kalam lacks, other
+fonts in the same text, and highlights behind it are drawn exactly as egui drew them. Body text is
+16 points, small print 15, and the hand is never set smaller; `journal::write` gives each line as
+many rules as its size needs rather than the font's own tall line, so a line of writing still takes
+one rule. Kickers are the hand's bold capitals (`kicker_job`), and `paper.rs` holds what is pasted
+or stamped onto a page rather than written on it: a taped card, a rubber stamp and a strip of tape.
 
 ## The tour
 

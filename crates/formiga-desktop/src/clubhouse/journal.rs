@@ -92,9 +92,9 @@ impl TabMarks {
     }
 }
 
-/// How far the window's text is scaled, from 1 to 1.5, read from the size of body text.
+/// How far the window's text is scaled, from 1 to 1.5, read from the size body text is set at.
 pub(crate) fn text_scale(ui: &Ui) -> f32 {
-    (ui.text_style_height(&egui::TextStyle::Body) / 14.0).clamp(1.0, 1.5)
+    (egui::TextStyle::Body.resolve(ui.style()).size / 16.0).clamp(1.0, 1.5)
 }
 
 /// The one size every printed label in the notebook is set at, for text scaled by `scale`: one
@@ -154,10 +154,33 @@ pub(crate) fn label_job(text: &str, size: f32, color: Color32) -> egui::text::La
     job
 }
 
-/// A section's printed label on a page: "TALLY · LIFE HERE", "ON YOUR DESKTOP".
+/// How big a kicker's capitals are written for text scaled by `scale`: never under 15 points, the
+/// smallest the pencil hand is written at.
+pub(crate) fn kicker_size(scale: f32) -> f32 {
+    15.0 * scale
+}
+
+/// A heading jotted in the pencil hand: bold capitals, spaced a little, the way the researcher
+/// heads a section.
+pub(crate) fn kicker_job(text: &str, size: f32, color: Color32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        &text.to_uppercase(),
+        0.0,
+        egui::TextFormat {
+            font_id: formiga_pencil::hand_bold(size),
+            color,
+            extra_letter_spacing: 1.0,
+            ..Default::default()
+        },
+    );
+    job
+}
+
+/// A section's heading on a page: "RIGHT NOW", "THINGS I'VE NOTICED".
 pub(crate) fn kicker(ui: &mut Ui, text: &str) -> egui::Response {
-    let size = label_size(text_scale(ui));
-    write(ui, label_job(text, size, forest()))
+    let size = kicker_size(text_scale(ui));
+    write(ui, kicker_job(text, size, forest()))
 }
 
 /// The head of a page: what kind of field note it is and its number, its name, and a line about
@@ -166,13 +189,13 @@ pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observ
     let scale = text_scale(ui);
     write(
         ui,
-        label_job(
+        kicker_job(
             &format!(
                 "Field notes · Nº {:02} · {}",
                 page_number(page),
                 page_kind(page)
             ),
-            label_size(scale),
+            kicker_size(scale),
             forest(),
         ),
     );
@@ -181,7 +204,7 @@ pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observ
     write(
         ui,
         RichText::new(heading)
-            .size(30.0 * scale.min(1.2))
+            .font(formiga_pencil::hand_bold(40.0 * scale.min(1.2)))
             .color(ink()),
     );
     write(ui, RichText::new(observation).color(muted()));
@@ -502,13 +525,14 @@ pub(crate) fn write_marked(
     ));
     job.wrap.max_width = width;
     // As many ruled lines to each line of text as it needs: one for writing, two for a name.
-    let natural = ui
-        .painter()
-        .layout_job(job.clone())
-        .rows
+    // Read from the size it is written at rather than the font's own line, which for the pencil
+    // hand leaves room for its tallest loops and would give every line two rules.
+    let natural = job
+        .sections
         .iter()
-        .map(|row| row.height())
-        .fold(0.0_f32, f32::max);
+        .map(|section| section.format.font_id.size)
+        .fold(0.0_f32, f32::max)
+        * 1.15;
     let line = (natural / grid.pitch).ceil().max(1.0) * grid.pitch;
     for section in &mut job.sections {
         section.format.line_height = Some(line);
@@ -559,7 +583,7 @@ pub(crate) fn on_the_line<R>(
     to_next_rule(ui);
     let band = ui.cursor().top();
     let height = ui.spacing().interact_size.y;
-    let size = ui.text_style_height(&egui::TextStyle::Body) / 1.17;
+    let size = egui::TextStyle::Body.resolve(ui.style()).size;
     // The middle of a control's words is about a third of their size above where they rest.
     let middle = band + grid.pitch - LIFT - size * 0.35;
     let top = (middle - height / 2.0).max(band - grid.pitch / 2.0);
@@ -851,7 +875,7 @@ fn paint_tab(
     );
     let text = painter.layout_no_wrap(
         label.to_owned(),
-        FontId::proportional(14.0 * scale),
+        FontId::proportional(16.0 * scale),
         label_color,
     );
     let x = rect.left() + 10.0;
@@ -872,7 +896,7 @@ fn paint_tab(
 }
 
 /// The note tucked under the tabs: what a researcher would jot down about the colony right now.
-/// Its lines are set in the window's small text, so they share its glyphs.
+/// Its lines are written in the pencil hand at its smallest.
 fn paint_conditions(
     painter: &egui::Painter,
     origin: Pos2,
@@ -881,17 +905,13 @@ fn paint_conditions(
     lines: &[String],
     scale: f32,
 ) {
-    let title = painter.layout_no_wrap(
-        "CONDITIONS".into(),
-        FontId::monospace(label_size(scale)),
-        forest(),
-    );
+    let title = painter.layout_job(kicker_job("Conditions", kicker_size(scale), forest()));
     let body: Vec<_> = lines
         .iter()
         .map(|line| {
             painter.layout(
                 line.clone(),
-                FontId::proportional(10.5 * scale),
+                FontId::proportional(15.0 * scale),
                 ink(),
                 width - 20.0,
             )
@@ -961,7 +981,7 @@ pub(crate) fn conditions(save: &SaveFile, monitors: &[MonitorInfo]) -> Vec<Strin
         .iter()
         .find(|creature| creature.state.surface.window_key.is_some())
     {
-        lines.push(format!("{} is up high again.", high.name));
+        lines.push(format!("{}'s up high again!", high.name));
     } else if let Some(asleep) = creatures
         .iter()
         .find(|creature| creature.state.action == ActionKind::Sleep)

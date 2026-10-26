@@ -384,13 +384,20 @@ impl BattleRecord {
     /// has: a trio that played as three and was then given another before the session ended keeps
     /// those three as an earlier lineup, ending `now` as every change kept from the session does.
     /// A match already applied, or one that does not say who played, changes nothing here, so
-    /// keeping the same session twice changes nothing more.
+    /// keeping the same session twice changes nothing more. The session's retirements are kept
+    /// first, so a trio retired to make room for a new one leaves that room for every lineup the
+    /// new one played with, not only its last.
     pub fn register_session(
         &mut self,
         registry: &Registry,
         matches: &[MatchResult],
         now: OffsetDateTime,
     ) {
+        for card in registry.trios.iter().filter(|c| c.retired) {
+            if let Some(trio) = self.trios.iter_mut().find(|t| t.id == card.id) {
+                trio.retired = true;
+            }
+        }
         for m in matches {
             let Some(played) = &m.rewards.trio else {
                 continue;
@@ -705,6 +712,29 @@ mod tests {
     }
 
     #[test]
+    fn who_played_as_a_trio_in_a_friend_match_is_who_its_history_line_says_played() {
+        let mut result = sample::result();
+        let friend = result
+            .matches
+            .iter()
+            .position(|m| m.mode == Mode::Friend)
+            .unwrap();
+        let team = result.matches[friend]
+            .rewards
+            .history
+            .as_ref()
+            .unwrap()
+            .team
+            .clone();
+        let trio = result.matches[friend].rewards.trio.as_mut().unwrap();
+        trio.members = lineup_of(&[team[0], team[1], team[2] + 1_000]);
+        assert!(result.validate().is_err());
+        let trio = result.matches[friend].rewards.trio.as_mut().unwrap();
+        trio.members = lineup_of(&team);
+        assert!(result.validate().is_ok());
+    }
+
+    #[test]
     fn a_trio_retired_in_the_same_registry_makes_room_wherever_it_is_listed() {
         let new = |n: u64, retired: bool| TrioCard {
             id: format!("{n:016x}"),
@@ -740,6 +770,51 @@ mod tests {
             assert!(record.trios.iter().all(|t| t.id != format!("{:016x}", 3)));
             assert!(record.validate().is_ok());
         }
+    }
+
+    #[test]
+    fn a_trio_retired_to_make_room_leaves_it_for_every_lineup_the_new_one_played() {
+        let new = |n: u64, members: &[u64], retired: bool| TrioCard {
+            id: format!("{n:016x}"),
+            name: format!("Trio {n}"),
+            members: lineup_of(members),
+            pennant: None,
+            retired,
+        };
+        let mut record = sample::record();
+        record.register(
+            &Registry {
+                handler: None,
+                trios: (1..MAX_TRIOS as u64)
+                    .map(|n| new(n, &[n * 10, n * 10 + 1, n * 10 + 2], false))
+                    .collect(),
+            },
+            LATER,
+        );
+        assert_eq!(record.trios.len(), MAX_TRIOS);
+        assert!(record.trios.iter().all(|t| !t.retired));
+        // Trio 3 is retired and trio 40 named in its place; 40 played as 400, 401 and 402, and
+        // was then changed to 400, 401 and 403 before the session ended.
+        let mut first = played_by(&"8".repeat(32), &[400, 401, 402]);
+        first.rewards.trio.as_mut().unwrap().id = format!("{:016x}", 40);
+        let registry = Registry {
+            handler: None,
+            trios: vec![
+                new(40, &[400, 401, 403], false),
+                new(3, &[30, 31, 32], true),
+            ],
+        };
+        record.register_session(&registry, std::slice::from_ref(&first), LATER);
+        let forty = record
+            .trios
+            .iter()
+            .find(|t| t.id == format!("{:016x}", 40))
+            .expect("the new trio is kept");
+        assert_eq!(forty.members, vec![400, 401, 403]);
+        let earlier: Vec<&[u64]> = forty.lineups.iter().map(|l| l.members.as_slice()).collect();
+        assert_eq!(earlier, [&[400, 401, 402][..]]);
+        assert!(record.trios.iter().all(|t| t.id != format!("{:016x}", 3)));
+        assert!(record.validate().is_ok());
     }
 
     #[test]

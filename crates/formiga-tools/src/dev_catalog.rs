@@ -44,7 +44,7 @@ fn ground_tile_room(scale: u8) -> (f32, f32) {
 }
 /// The Small text style, and the largest text size the settings offer
 /// (formiga-desktop/src/settings.rs, the style set up for every window).
-pub(crate) const SMALL_TEXT: f32 = 12.0;
+pub(crate) const SMALL_TEXT: f32 = 15.0;
 pub(crate) const TEXT_SCALES: [u8; 2] = [100, 150];
 
 pub fn catalog() -> Value {
@@ -624,7 +624,7 @@ fn reached(days: Option<&Vec<i64>>) -> Value {
     })
 }
 
-/// Names measured in egui's own font, the one every Formiga window draws its text in.
+/// Names measured in the font the notebook writes them in: egui's, with the pencil hand first.
 struct NameText {
     fonts: Fonts,
 }
@@ -632,7 +632,11 @@ struct NameText {
 impl NameText {
     fn new() -> Self {
         Self {
-            fonts: Fonts::new(TextOptions::default(), FontDefinitions::default()),
+            fonts: Fonts::new(TextOptions::default(), {
+                let mut fonts = FontDefinitions::default();
+                formiga_pencil::add_to(&mut fonts, formiga_pencil::Everywhere::Yes);
+                fonts
+            }),
         }
     }
 
@@ -705,7 +709,7 @@ mod tests {
         );
         let settings = include_str!("../../formiga-desktop/src/settings.rs");
         assert!(
-            settings.contains("(egui::TextStyle::Small, 12.0)"),
+            settings.contains("(egui::TextStyle::Small, 15.0)"),
             "small text"
         );
         assert!(
