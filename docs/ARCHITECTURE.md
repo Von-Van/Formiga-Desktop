@@ -2625,7 +2625,10 @@ Each contract wraps these in its own error, which says whose file it was ("the t
 under the names Hill, Home and Farm have always used. The rulebook has no format version of its own: anything that would
 change a byte a contract writes is a change to that contract, versioned there, and each
 contract's golden fixtures still read and write byte for byte. A new `AckRefusal` reason reads as
-`other` in an older build.
+`other` in an older build. Beside the visit, `data_dir`, `text_zoom` and `first_argument_request` are
+what each app does alike on its own side (its data folder with its `FORMIGA_<APP>_DATA_DIR` override,
+the zoom for the owner's text size, and its packaging scripts' `--<app>-version` and `--icon <folder>`
+as the first argument), for the apps to take by tag in place of their own copies.
 
 The places the apps draw share their painting helpers too: `formiga_art::paint` holds the
 material ramps, the deterministic grain (`noise`, `chance`), blending onto clear pixels without

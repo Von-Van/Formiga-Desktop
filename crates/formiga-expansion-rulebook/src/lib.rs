@@ -26,7 +26,13 @@
 //! A contract keeps its own version, its own documents and its own error, and says whose file a
 //! problem was in. Nothing here changes a byte of what any contract writes: each contract's golden
 //! fixtures are the proof.
+//!
+//! Beside the visit, each app does a few things the same way on its own side, and those live here
+//! too, so the apps take them by tag rather than keep copies: its data folder ([`data_dir`]), the
+//! zoom its window draws the owner's text at ([`text_zoom`]), and the requests its packaging
+//! scripts make of it as its first argument ([`first_argument_request`]).
 
+mod app;
 #[doc(hidden)]
 pub mod contract_error;
 mod document;
@@ -34,6 +40,7 @@ mod ids;
 mod refusal;
 mod text;
 
+pub use app::{EarlyRequest, IconFolderMissing, data_dir, first_argument_request, text_zoom};
 pub use document::{
     Kind, RulebookError, check_header, decode, encode, header_ok, hex, is_lower_hex, is_sha256_hex,
     read_bounded, sha256_hex, unhex, write_atomically,
