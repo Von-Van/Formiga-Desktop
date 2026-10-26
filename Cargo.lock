@@ -1391,6 +1391,7 @@ dependencies = [
  "formiga-expansion-rulebook",
  "formiga-farm-contract",
  "formiga-home-contract",
+ "formiga-pencil",
  "formiga-travel",
  "gif",
  "png",
