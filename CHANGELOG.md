@@ -84,6 +84,9 @@ All notable changes are documented here.
   holds a quiet moment, takes and settles a step, and spends its time on its hands, in that
   order. Nothing a colony does changes: every value, random draw and tuning constant is as it
   was, in the order it was.
+- The tests in `habitat.rs` and `world/attention/games.rs` moved into `habitat/tests.rs` and
+  `games/tests.rs`, and the renderer's tests split by topic into `renderer/tests/` (frames, faces,
+  poses, belongings), so those files read as the code they ship. No test changed.
 
 ### Developer tools
 
