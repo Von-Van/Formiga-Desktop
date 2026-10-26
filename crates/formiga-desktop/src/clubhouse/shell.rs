@@ -11,6 +11,8 @@ pub(crate) struct Shell {
     /// The colony's own sheet of found things: one texture the scrapbook cuts every slot out of,
     /// and the very same sheet the desktop samples when a companion holds one up.
     trinket_atlas: Option<([u8; 32], TextureHandle)>,
+    /// The creatures' speech bubbles, for the pictures moments are jotted beside.
+    bubble_sheet: Option<TextureHandle>,
     /// Where the tour has got to, while it is being taken.
     pub(crate) tour: tour::TourState,
     /// Which section of each page is open, and which was read last.
@@ -29,56 +31,90 @@ impl Shell {
             .values()
             .map(|(_, t)| t.id())
             .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
+            .chain(self.bubble_sheet.iter().map(TextureHandle::id))
     }
 
     pub(super) fn release_images(&mut self) {
         self.portraits.clear();
         self.trinket_atlas = None;
+        self.bubble_sheet = None;
+    }
+
+    /// A companion's portrait, greeting, drawn once and kept until its look changes.
+    pub(crate) fn portrait_texture(
+        &mut self,
+        ctx: &egui::Context,
+        creature: &Creature,
+    ) -> TextureHandle {
+        let drawn = |ctx: &egui::Context| {
+            upload(
+                ctx,
+                "colony-portrait",
+                &CreatureRenderer::render_frame(&creature.appearance, ActionKind::Greet, 2, true),
+            )
+        };
+        let entry = self
+            .portraits
+            .entry(creature.id)
+            .or_insert_with(|| (creature.appearance.clone(), drawn(ctx)));
+        if entry.0 != creature.appearance {
+            *entry = (creature.appearance.clone(), drawn(ctx));
+        }
+        entry.1.clone()
     }
 
     pub fn portrait(&mut self, ui: &mut Ui, creature: &Creature, size: f32) {
-        let entry = self.portraits.entry(creature.id).or_insert_with(|| {
-            (
-                creature.appearance.clone(),
-                upload(
-                    ui.ctx(),
-                    "colony-portrait",
-                    &CreatureRenderer::render_frame(
-                        &creature.appearance,
-                        ActionKind::Greet,
-                        2,
-                        true,
-                    ),
-                ),
-            )
-        });
-        if entry.0 != creature.appearance {
-            *entry = (
-                creature.appearance.clone(),
-                upload(
-                    ui.ctx(),
-                    "colony-portrait",
-                    &CreatureRenderer::render_frame(
-                        &creature.appearance,
-                        ActionKind::Greet,
-                        2,
-                        true,
-                    ),
-                ),
-            );
-        }
+        let texture = self.portrait_texture(ui.ctx(), creature);
         egui::Frame::new()
             .fill(forest())
             .stroke(egui::Stroke::new(2.0, gold()))
             .inner_margin(8)
             .show(ui, |ui| {
                 ui.add(
-                    egui::Image::new(&entry.1)
+                    egui::Image::new(&texture)
                         .maintain_aspect_ratio(false)
                         .fit_to_exact_size(egui::vec2(size, size)),
                 );
             });
     }
+
+    /// The creatures' speech bubbles, the sheet the desktop draws them from, uploaded once.
+    fn bubble_sheet(&mut self, ctx: &egui::Context) -> TextureHandle {
+        self.bubble_sheet
+            .get_or_insert_with(|| {
+                upload(ctx, "bubble-sheet", &formiga_art::UiAtlasRenderer::render())
+            })
+            .clone()
+    }
+
+    /// One speech bubble, drawn at a whole number of its pixels to each of the sheet's so it stays
+    /// crisp: as many as fit in `height`, and never fewer than one.
+    pub(crate) fn bubble(
+        &mut self,
+        painter: &egui::Painter,
+        at: egui::Pos2,
+        height: f32,
+        icon: formiga_core::BubbleIcon,
+    ) -> egui::Rect {
+        let sheet = self.bubble_sheet(painter.ctx());
+        let cell = formiga_art::UiAtlasRenderer::bubble(icon, formiga_core::BubbleGrowth::Full);
+        let times = (height / cell.height as f32).floor().max(1.0);
+        let rect = egui::Rect::from_min_size(
+            at,
+            egui::vec2(cell.width as f32, cell.height as f32) * times,
+        );
+        let (w, h) = (
+            formiga_art::UI_ATLAS_WIDTH as f32,
+            formiga_art::UI_ATLAS_HEIGHT as f32,
+        );
+        let uv = egui::Rect::from_min_size(
+            egui::pos2(cell.x as f32 / w, cell.y as f32 / h),
+            egui::vec2(cell.width as f32 / w, cell.height as f32 / h),
+        );
+        painter.image(sheet.id(), rect, uv, Color32::WHITE);
+        rect
+    }
+
     pub fn retain_portraits(&mut self, creatures: &[Creature]) {
         self.portraits
             .retain(|id, _| creatures.iter().any(|c| c.id == *id));
