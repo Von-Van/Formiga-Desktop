@@ -1,0 +1,1381 @@
+{
+  "companion": {
+    "journal": [
+      {
+        "at": "2026-06-01T09:00:00Z",
+        "creature": 7184412093021,
+        "moment": "Arrival"
+      },
+      {
+        "at": "2026-06-03T10:15:00Z",
+        "creature": 7184412093021,
+        "moment": "Discovery"
+      },
+      {
+        "at": "2026-06-20T12:00:00Z",
+        "creature": 7184412093021,
+        "moment": {
+          "Preference": "Playful"
+        }
+      },
+      {
+        "at": "2026-07-01T09:00:00Z",
+        "creature": 15590233477560,
+        "moment": "Arrival"
+      },
+      {
+        "at": "2026-07-05T13:00:00Z",
+        "creature": null,
+        "moment": {
+          "Ritual": "Picnic"
+        }
+      },
+      {
+        "at": "2026-07-09T08:00:00Z",
+        "creature": null,
+        "moment": {
+          "Decoration": "Lamp"
+        }
+      },
+      {
+        "at": "2026-07-12T16:00:00Z",
+        "creature": null,
+        "moment": {
+          "Visit": "Wren"
+        }
+      },
+      {
+        "at": "2026-07-20T11:00:00Z",
+        "creature": 7184412093021,
+        "moment": {
+          "Habit": "WavesHello"
+        }
+      },
+      {
+        "at": "2026-07-30T09:30:00Z",
+        "creature": 7184412093021,
+        "moment": {
+          "Friendship": 15590233477560
+        }
+      },
+      {
+        "at": "2026-08-02T09:00:00Z",
+        "creature": null,
+        "moment": {
+          "Unlocked": {
+            "Garden": "Sunflowers"
+          }
+        }
+      },
+      {
+        "at": "2026-08-04T09:00:00Z",
+        "creature": null,
+        "moment": {
+          "Unlocked": {
+            "Decoration": "Leaf"
+          }
+        }
+      },
+      {
+        "at": "2026-08-15T16:00:00Z",
+        "creature": null,
+        "moment": {
+          "Revisit": [
+            "Wren",
+            2
+          ]
+        }
+      },
+      {
+        "at": "2026-08-20T14:00:00Z",
+        "creature": 7184412093021,
+        "moment": {
+          "Wonder": "Chair"
+        }
+      },
+      {
+        "at": "2026-09-01T12:00:00Z",
+        "creature": null,
+        "moment": "Trip"
+      },
+      {
+        "at": "2026-09-10T19:00:00Z",
+        "creature": 7184412093021,
+        "moment": "HouseVisit"
+      }
+    ],
+    "onboarding_complete": true,
+    "quiet_until": null,
+    "modes": [
+      {
+        "habitat": {
+          "preset": "BottomEdge",
+          "zones": []
+        },
+        "window_ledges": true,
+        "cursor_reactions": true,
+        "reduce_motion": false
+      },
+      null
+    ],
+    "pins": [
+      {
+        "at": "2026-06-03T10:15:00Z",
+        "creature": 7184412093021,
+        "moment": "Discovery"
+      }
+    ],
+    "scrapbook": [
+      {
+        "variant": 3,
+        "first_at": "2026-06-03T10:15:00Z",
+        "finder": 7184412093021,
+        "finder_name": "Mallow"
+      },
+      {
+        "variant": 11,
+        "first_at": "2026-07-14T08:40:00Z",
+        "finder": 15590233477560,
+        "finder_name": "Pip"
+      }
+    ],
+    "wonders": [
+      {
+        "kind": "Chair",
+        "first_at": "2026-08-20T14:00:00Z",
+        "finder": 7184412093021,
+        "finder_name": "Mallow",
+        "goes": 3
+      }
+    ],
+    "appearance": {
+      "theme": "Dark",
+      "text_scale": 110,
+      "sprite_outline": true
+    },
+    "schedule": {
+      "enabled": true,
+      "transitions": [
+        {
+          "days": 31,
+          "minute": 540,
+          "preset": 0
+        },
+        {
+          "days": 31,
+          "minute": 1080,
+          "preset": 1
+        }
+      ],
+      "overridden": false,
+      "applied": 1
+    },
+    "journal_seen_until": "2026-10-20T18:00:00Z"
+  },
+  "save_version": 28,
+  "colony_seed": [
+    11,
+    48,
+    85,
+    122,
+    159,
+    196,
+    233,
+    14,
+    51,
+    88,
+    125,
+    162,
+    199,
+    236,
+    17,
+    54,
+    91,
+    128,
+    165,
+    202,
+    239,
+    20,
+    57,
+    94,
+    131,
+    168,
+    205,
+    242,
+    23,
+    60,
+    97,
+    134
+  ],
+  "created_at_utc": "2026-06-01T09:00:00Z",
+  "maximum_seen_utc": "2026-10-20T18:30:00Z",
+  "arrival_state": {
+    "arrived": [
+      true,
+      false,
+      false
+    ]
+  },
+  "home": {
+    "display": [
+      7,
+      60,
+      113,
+      166,
+      219,
+      16,
+      69,
+      122,
+      175,
+      228,
+      25,
+      78,
+      131,
+      184,
+      237,
+      34
+    ],
+    "corner": "BottomLeft",
+    "shelter": {
+      "style": "LeafTent",
+      "palette_index": 4,
+      "accent_index": 8,
+      "width": 38,
+      "height": 31,
+      "detail_seed": 7730219465503118
+    },
+    "active_since_utc": "2026-10-20T18:00:00Z",
+    "last_disappeared_utc": "2026-10-20T17:45:00Z",
+    "hangouts": [
+      {
+        "kind": "Cushion",
+        "along": 0.3
+      }
+    ],
+    "palette": "Meadow",
+    "gardens": [
+      {
+        "kind": "Herbs",
+        "along": 0.72,
+        "planted_at_utc": "2026-10-18T08:00:00Z"
+      }
+    ],
+    "house_styles": [
+      {
+        "keeper": 15590233477560,
+        "style": "MushroomHut"
+      }
+    ],
+    "unlocks": {
+      "decorations": [
+        "Banner",
+        "Flower",
+        "Lamp",
+        "Leaf"
+      ],
+      "hangouts": [
+        "Cushion",
+        "Blanket",
+        "Lookout"
+      ],
+      "gardens": [
+        "Flowers",
+        "Vegetables",
+        "Herbs",
+        "Sunflowers"
+      ],
+      "ornaments": [
+        "LampPost",
+        "BirdBath",
+        "Signpost"
+      ],
+      "next_at_utc": "2026-10-22T09:00:00Z",
+      "ordinal": 2
+    },
+    "dressing": [
+      {
+        "keeper": 7184412093021,
+        "decorations": [
+          "Banner",
+          "Leaf"
+        ]
+      }
+    ],
+    "ornaments": [
+      {
+        "kind": "LampPost",
+        "along": 0.55
+      }
+    ],
+    "tree_keepsakes": {
+      "hooks": [
+        3,
+        11,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "settings": {
+    "visible": true,
+    "paused": false,
+    "display_scale": 3,
+    "window_ledges": true,
+    "cursor_reactions": true,
+    "reduce_motion": false,
+    "launch_at_login": true,
+    "direct_manipulation": true,
+    "fullscreen_app_occlusion": true,
+    "habitat": {
+      "preset": "Custom",
+      "zones": [
+        {
+          "id": 1,
+          "display": [
+            7,
+            60,
+            113,
+            166,
+            219,
+            16,
+            69,
+            122,
+            175,
+            228,
+            25,
+            78,
+            131,
+            184,
+            237,
+            34
+          ],
+          "normalized_bounds": {
+            "x": 0.0,
+            "y": 0.5,
+            "width": 1.0,
+            "height": 0.5
+          },
+          "kind": "Allowed",
+          "enabled": true
+        }
+      ]
+    },
+    "application_occlusion_rules": [
+      {
+        "application": {
+          "MacBundleId": "com.example.Editor"
+        },
+        "display_name": "Editor",
+        "enabled": true
+      }
+    ]
+  },
+  "creatures": [
+    {
+      "id": 7184412093021,
+      "generation": 0,
+      "origin": {
+        "design": {
+          "body": "Round",
+          "ears": "Pointed",
+          "tail": 2,
+          "width": 10,
+          "height": 9,
+          "head": 8,
+          "ear_size": 5,
+          "legs": 4,
+          "muzzle": 1,
+          "marking": 3,
+          "coat": [
+            214,
+            165,
+            123
+          ],
+          "accent": [
+            232,
+            138,
+            138
+          ],
+          "classic": {
+            "coat": 1,
+            "face": 0,
+            "limbs": 0,
+            "crown": 0,
+            "pattern": 2,
+            "tail": 0
+          },
+          "archetype": 3,
+          "face_template": 5,
+          "details": {
+            "wings": 0,
+            "horns": 1,
+            "belly": 1,
+            "tip": 0,
+            "belly_color": [
+              244,
+              227,
+              200
+            ],
+            "tip_color": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "source_colony_seed": [
+          11,
+          48,
+          85,
+          122,
+          159,
+          196,
+          233,
+          14,
+          51,
+          88,
+          125,
+          162,
+          199,
+          236,
+          17,
+          54,
+          91,
+          128,
+          165,
+          202,
+          239,
+          20,
+          57,
+          94,
+          131,
+          168,
+          205,
+          242,
+          23,
+          60,
+          97,
+          134
+        ],
+        "source_generation": 0
+      },
+      "colony_order": 0,
+      "role": {
+        "kind": "adult"
+      },
+      "kept": true,
+      "mini_arrivals": {
+        "enabled": true,
+        "arrived": [
+          true,
+          false
+        ]
+      },
+      "name": "Mallow",
+      "born_at_utc": "2026-06-01T09:00:00Z",
+      "display_scale_percent": 100,
+      "appearance": {
+        "design": {
+          "body": "Round",
+          "ears": "Pointed",
+          "tail": 2,
+          "width": 10,
+          "height": 9,
+          "head": 8,
+          "ear_size": 5,
+          "legs": 4,
+          "muzzle": 1,
+          "marking": 3,
+          "coat": [
+            214,
+            165,
+            123
+          ],
+          "accent": [
+            232,
+            138,
+            138
+          ],
+          "classic": {
+            "coat": 1,
+            "face": 0,
+            "limbs": 0,
+            "crown": 0,
+            "pattern": 2,
+            "tail": 0
+          },
+          "archetype": 3,
+          "face_template": 5,
+          "details": {
+            "wings": 0,
+            "horns": 1,
+            "belly": 1,
+            "tip": 0,
+            "belly_color": [
+              244,
+              227,
+              200
+            ],
+            "tip_color": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "family": "Blob",
+        "logical_size": 38,
+        "body_width": 20,
+        "body_height": 18,
+        "head_ratio": 0.55,
+        "roundness": 0.7,
+        "leg_length": 3,
+        "foot_size": 2,
+        "head_appendages": {
+          "style": "Round",
+          "size": 3
+        },
+        "tail_style": "Tuft",
+        "tail_length": 4,
+        "face": {
+          "eye_shape": "Round",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": 0,
+          "pupil_style": "Dot",
+          "highlight_style": "Single",
+          "brow_style": "Soft",
+          "mouth_style": "Smile",
+          "cheek_style": "Blush"
+        },
+        "forelimbs": {
+          "style": "SoftNub",
+          "length": 4,
+          "thickness": 1,
+          "tip_style": "Round",
+          "rest_pose": "AtSides"
+        },
+        "effect_motif": "Heart",
+        "palette_index": 4,
+        "pattern": "Spots",
+        "pattern_density": 0.35,
+        "marking_seed": 8167429031154782,
+        "gait_bob": 0.6,
+        "face_signature": 2890172345
+      },
+      "personality": {
+        "activity": 0.62,
+        "curiosity": 0.71,
+        "boldness": 0.55,
+        "playfulness": 0.8,
+        "sociability": 0.66,
+        "routine_affinity": 0.4,
+        "sleep_timing": 0.5,
+        "window_tolerance": 0.7,
+        "cursor_interest": 0.6,
+        "decision_temperature": 0.45
+      },
+      "temperament": {
+        "kind": "Sweetheart",
+        "axes": {
+          "social": 0.7,
+          "energy": 0.6,
+          "boldness": 0.55,
+          "playfulness": 0.8,
+          "curiosity": 0.7,
+          "feistiness": 0.3,
+          "impulsiveness": 0.4,
+          "suspicion": 0.2,
+          "affection": 0.85
+        },
+        "tension": "PlayfulButShy"
+      },
+      "behavior_seed": [
+        3,
+        74,
+        145,
+        216,
+        31,
+        102,
+        173,
+        244,
+        59,
+        130,
+        201,
+        16,
+        87,
+        158,
+        229,
+        44,
+        115,
+        186,
+        1,
+        72,
+        143,
+        214,
+        29,
+        100,
+        171,
+        242,
+        57,
+        128,
+        199,
+        14,
+        85,
+        156
+      ],
+      "memory": {
+        "times_petted": 14,
+        "times_tossed": 2,
+        "placements": 5,
+        "sleep_interruptions": 1,
+        "window_climbs": 9,
+        "discoveries_found": 6,
+        "play_sessions": 11,
+        "home_visits": 4,
+        "ledge_seconds": 3600,
+        "window_ride_seconds": 120,
+        "longest_sleep_seconds": 5400,
+        "favorite_display": {
+          "display": [
+            7,
+            60,
+            113,
+            166,
+            219,
+            16,
+            69,
+            122,
+            175,
+            228,
+            25,
+            78,
+            131,
+            184,
+            237,
+            34
+          ],
+          "confidence": 200
+        },
+        "preferred_region": {
+          "display": [
+            7,
+            60,
+            113,
+            166,
+            219,
+            16,
+            69,
+            122,
+            175,
+            228,
+            25,
+            78,
+            131,
+            184,
+            237,
+            34
+          ],
+          "cell": 7,
+          "confidence": 150
+        },
+        "descriptor_flags": 1024,
+        "profile_revision": 1,
+        "viewed_profile_revision": 1,
+        "milestone_cooldown_active_seconds": 0,
+        "milestone_bubble_shown": true,
+        "habits": [
+          "WavesHello"
+        ]
+      },
+      "tendencies": {
+        "cursor_trust": 12.5,
+        "sociability": 20.0,
+        "climbing": 30.0,
+        "sleep_security": 5.0,
+        "exploration": 18.0,
+        "play": 40.0,
+        "home_affinity": -6.5,
+        "routine": 3.0
+      },
+      "routines": {
+        "slots": [
+          {
+            "key": 97,
+            "strength": 180
+          },
+          {
+            "key": 33,
+            "strength": 120
+          },
+          {
+            "key": 161,
+            "strength": 45
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          }
+        ],
+        "len": 3
+      },
+      "state": {
+        "position": {
+          "x": 612.0,
+          "y": 420.0
+        },
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "facing_right": true,
+        "action": "Perch",
+        "action_elapsed": 3.25,
+        "action_duration": 18.0,
+        "drives": {
+          "energy": 0.74,
+          "sleep_pressure": 0.22,
+          "curiosity_satisfaction": 0.51,
+          "boredom": 0.18,
+          "comfort": 0.69,
+          "arousal": 0.12,
+          "social_need": 0.33
+        },
+        "surface": {
+          "kind": "WindowLedge",
+          "monitor_id": 1,
+          "window_key": 4821,
+          "relative_x": 0.6
+        },
+        "cursor_cooldown": 0.0,
+        "activity_variant": 0,
+        "arrival_delay_secs": 0.0
+      },
+      "leaning": "Climber",
+      "accessory": {
+        "Pin": 3
+      }
+    },
+    {
+      "id": 15590233477560,
+      "generation": 1,
+      "origin": {
+        "design": {
+          "body": "Upright",
+          "ears": "Round",
+          "tail": 1,
+          "width": 9,
+          "height": 10,
+          "head": 8,
+          "ear_size": 4,
+          "legs": 5,
+          "muzzle": 0,
+          "marking": 1,
+          "coat": [
+            154,
+            106,
+            75
+          ],
+          "accent": [
+            241,
+            230,
+            210
+          ],
+          "classic": {
+            "coat": 0,
+            "face": 3,
+            "limbs": 0,
+            "crown": 0,
+            "pattern": 0,
+            "tail": 0
+          },
+          "archetype": 5,
+          "face_template": 2
+        },
+        "source_colony_seed": [
+          11,
+          48,
+          85,
+          122,
+          159,
+          196,
+          233,
+          14,
+          51,
+          88,
+          125,
+          162,
+          199,
+          236,
+          17,
+          54,
+          91,
+          128,
+          165,
+          202,
+          239,
+          20,
+          57,
+          94,
+          131,
+          168,
+          205,
+          242,
+          23,
+          60,
+          97,
+          134
+        ],
+        "source_generation": 1
+      },
+      "colony_order": 1,
+      "role": {
+        "kind": "mini",
+        "parent_id": 7184412093021
+      },
+      "kept": true,
+      "mini_arrivals": {
+        "enabled": false,
+        "arrived": [
+          false,
+          false
+        ]
+      },
+      "name": "Pip",
+      "born_at_utc": "2026-07-01T09:00:00Z",
+      "display_scale_percent": 55,
+      "appearance": {
+        "design": {
+          "body": "Upright",
+          "ears": "Round",
+          "tail": 1,
+          "width": 9,
+          "height": 10,
+          "head": 8,
+          "ear_size": 4,
+          "legs": 5,
+          "muzzle": 0,
+          "marking": 1,
+          "coat": [
+            154,
+            106,
+            75
+          ],
+          "accent": [
+            241,
+            230,
+            210
+          ],
+          "classic": {
+            "coat": 0,
+            "face": 3,
+            "limbs": 0,
+            "crown": 0,
+            "pattern": 0,
+            "tail": 0
+          },
+          "archetype": 5,
+          "face_template": 2
+        },
+        "family": "Hopper",
+        "logical_size": 21,
+        "body_width": 16,
+        "body_height": 17,
+        "head_ratio": 0.6,
+        "roundness": 0.5,
+        "leg_length": 4,
+        "foot_size": 2,
+        "head_appendages": {
+          "style": "Pointed",
+          "size": 4
+        },
+        "tail_style": "Stub",
+        "tail_length": 2,
+        "face": {
+          "eye_shape": "Tall",
+          "eye_size": 1,
+          "eye_spacing": 4,
+          "vertical_offset": 1,
+          "pupil_style": "Wide",
+          "highlight_style": "Double",
+          "brow_style": "None",
+          "mouth_style": "Cat",
+          "cheek_style": "Dots"
+        },
+        "forelimbs": {
+          "style": "MittenArm",
+          "length": 5,
+          "thickness": 2,
+          "tip_style": "Mitten",
+          "rest_pose": "Folded"
+        },
+        "effect_motif": "Star",
+        "palette_index": 9,
+        "pattern": "Socks",
+        "pattern_density": 0.5,
+        "marking_seed": 3302918476651027,
+        "gait_bob": 0.8,
+        "face_signature": 1744021977
+      },
+      "personality": {
+        "activity": 0.8,
+        "curiosity": 0.65,
+        "boldness": 0.72,
+        "playfulness": 0.9,
+        "sociability": 0.5,
+        "routine_affinity": 0.3,
+        "sleep_timing": 0.65,
+        "window_tolerance": 0.55,
+        "cursor_interest": 0.75,
+        "decision_temperature": 0.6
+      },
+      "temperament": {
+        "kind": "Troublemaker",
+        "axes": {
+          "social": 0.5,
+          "energy": 0.8,
+          "boldness": 0.72,
+          "playfulness": 0.9,
+          "curiosity": 0.65,
+          "feistiness": 0.7,
+          "impulsiveness": 0.75,
+          "suspicion": 0.35,
+          "affection": 0.5
+        }
+      },
+      "behavior_seed": [
+        101,
+        120,
+        139,
+        158,
+        177,
+        196,
+        215,
+        234,
+        253,
+        16,
+        35,
+        54,
+        73,
+        92,
+        111,
+        130,
+        149,
+        168,
+        187,
+        206,
+        225,
+        244,
+        7,
+        26,
+        45,
+        64,
+        83,
+        102,
+        121,
+        140,
+        159,
+        178
+      ],
+      "memory": {
+        "times_petted": 6,
+        "times_tossed": 4,
+        "placements": 1,
+        "sleep_interruptions": 3,
+        "window_climbs": 2,
+        "discoveries_found": 1,
+        "play_sessions": 15,
+        "home_visits": 2,
+        "ledge_seconds": 420,
+        "window_ride_seconds": 0,
+        "longest_sleep_seconds": 2700,
+        "favorite_display": null,
+        "preferred_region": null,
+        "descriptor_flags": 0,
+        "profile_revision": 0,
+        "viewed_profile_revision": 0,
+        "milestone_cooldown_active_seconds": 1200,
+        "milestone_bubble_shown": false
+      },
+      "tendencies": {
+        "cursor_trust": -4.25,
+        "sociability": 8.0,
+        "climbing": 2.0,
+        "sleep_security": -10.0,
+        "exploration": 25.0,
+        "play": 45.5,
+        "home_affinity": 1.0,
+        "routine": -12.0
+      },
+      "routines": {
+        "slots": [
+          {
+            "key": 449,
+            "strength": 60
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          },
+          {
+            "key": 0,
+            "strength": 0
+          }
+        ],
+        "len": 1
+      },
+      "state": {
+        "position": {
+          "x": 546.0,
+          "y": 866.0
+        },
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "facing_right": false,
+        "action": "Sleep",
+        "action_elapsed": 12.5,
+        "action_duration": 90.0,
+        "drives": {
+          "energy": 0.31,
+          "sleep_pressure": 0.78,
+          "curiosity_satisfaction": 0.4,
+          "boredom": 0.1,
+          "comfort": 0.8,
+          "arousal": 0.05,
+          "social_need": 0.45
+        },
+        "surface": {
+          "kind": "ScreenFloor",
+          "monitor_id": 1,
+          "window_key": null,
+          "relative_x": 0.38
+        },
+        "cursor_cooldown": 4.5,
+        "activity_variant": 1,
+        "arrival_delay_secs": 0.0
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "a": 7184412093021,
+      "b": 15590233477560,
+      "affinity": 180,
+      "familiarity": 140,
+      "playfulness": 60,
+      "avoidance": 4
+    }
+  ],
+  "tallies": [
+    {
+      "a": 7184412093021,
+      "b": 15590233477560,
+      "tally": {
+        "calm_spells": 4,
+        "greetings": 2,
+        "shared_rests": 1,
+        "plays": 3,
+        "gifts": 0,
+        "squabbles": 1,
+        "sought": [
+          1,
+          0
+        ],
+        "memory": {
+          "at": "2026-10-19T15:20:00Z",
+          "kind": "Play"
+        }
+      }
+    }
+  ],
+  "ritual": {
+    "next_at_utc": "2026-10-21T15:00:00Z",
+    "last_kind": "Picnic",
+    "ordinal": 9,
+    "hatch_day_acknowledged_year": null
+  },
+  "objects": {
+    "objects": [
+      {
+        "id": 1,
+        "kind": "Pillow",
+        "display": [
+          7,
+          60,
+          113,
+          166,
+          219,
+          16,
+          69,
+          122,
+          175,
+          228,
+          25,
+          78,
+          131,
+          184,
+          237,
+          34
+        ],
+        "normalized_position": {
+          "x": 0.42,
+          "y": 0.9
+        },
+        "role": "Sleep"
+      },
+      {
+        "id": 2,
+        "kind": "Cup",
+        "display": [
+          7,
+          60,
+          113,
+          166,
+          219,
+          16,
+          69,
+          122,
+          175,
+          228,
+          25,
+          78,
+          131,
+          184,
+          237,
+          34
+        ],
+        "normalized_position": {
+          "x": 0.47,
+          "y": 0.9
+        },
+        "role": "Social"
+      }
+    ],
+    "next_at_utc": "2026-10-24T09:00:00Z",
+    "ordinal": 2
+  },
+  "visitors": {
+    "guest": null,
+    "gatherings": 7,
+    "guest_book": [
+      {
+        "visited_at_utc": "2026-07-12T16:00:00Z",
+        "name": "Wren",
+        "origin": {
+          "source_colony_seed": [
+            70,
+            99,
+            128,
+            157,
+            186,
+            215,
+            244,
+            17,
+            46,
+            75,
+            104,
+            133,
+            162,
+            191,
+            220,
+            249,
+            22,
+            51,
+            80,
+            109,
+            138,
+            167,
+            196,
+            225,
+            254,
+            27,
+            56,
+            85,
+            114,
+            143,
+            172,
+            201
+          ],
+          "source_generation": 1
+        },
+        "source": "Invited"
+      }
+    ],
+    "favorites": [
+      {
+        "kept_at_utc": "2026-07-12T16:30:00Z",
+        "name": "Wren",
+        "origin": {
+          "source_colony_seed": [
+            70,
+            99,
+            128,
+            157,
+            186,
+            215,
+            244,
+            17,
+            46,
+            75,
+            104,
+            133,
+            162,
+            191,
+            220,
+            249,
+            22,
+            51,
+            80,
+            109,
+            138,
+            167,
+            196,
+            225,
+            254,
+            27,
+            56,
+            85,
+            114,
+            143,
+            172,
+            201
+          ],
+          "source_generation": 1
+        }
+      }
+    ]
+  },
+  "finds_today": {
+    "day": 2461334,
+    "count": 2
+  },
+  "day_book": {
+    "since": 2461328,
+    "days": [
+      {
+        "day": 2461333,
+        "home_seconds": 1800,
+        "roof": [
+          7184412093021
+        ],
+        "pairs": [
+          {
+            "a": 7184412093021,
+            "b": 15590233477560,
+            "sought": [
+              1,
+              0
+            ],
+            "rests": 1,
+            "plays": 0,
+            "gifts": 0
+          }
+        ]
+      },
+      {
+        "day": 2461334,
+        "home_seconds": 600
+      }
+    ]
+  },
+  "trips": {
+    "count": 1,
+    "last": {
+      "session": "3f9a1c2e4b5d60718293a4b5c6d7e8f9",
+      "arrived_at_utc": "2026-09-01T11:00:00Z",
+      "left_at_utc": "2026-09-01T12:00:00Z"
+    },
+    "souvenirs": [
+      {
+        "souvenir": "well_penny",
+        "brought_home_at_utc": "2026-09-01T12:00:00Z"
+      },
+      {
+        "souvenir": "fair_ticket",
+        "brought_home_at_utc": "2026-09-20T12:00:00Z"
+      }
+    ]
+  }
+}
