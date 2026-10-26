@@ -1307,6 +1307,7 @@ dependencies = [
  "formiga-expansion-rulebook",
  "formiga-farm-contract",
  "formiga-home-contract",
+ "formiga-pencil",
  "formiga-travel",
  "image",
  "libc",
@@ -1367,6 +1368,15 @@ dependencies = [
  "sha2",
  "thiserror 2.0.20",
  "time",
+]
+
+[[package]]
+name = "formiga-pencil"
+version = "0.67.14"
+dependencies = [
+ "egui",
+ "skrifa",
+ "vello_cpu",
 ]
 
 [[package]]

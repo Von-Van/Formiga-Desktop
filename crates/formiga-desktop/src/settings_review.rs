@@ -142,7 +142,7 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
         .flat_map(|appearance| [(appearance, (940, 720)), (appearance, (760, 560))])
     {
         for page in crate::clubhouse::journal::PAGES {
-            let context = egui::Context::default();
+            let context = notebook_context();
             configure_style(&context, appearance);
             let mut clubhouse = Clubhouse::default();
             if page == SettingsTab::Studio {
@@ -419,7 +419,7 @@ struct Harness {
 impl Harness {
     fn new(tab: SettingsTab) -> Self {
         let (save, monitors) = fixture();
-        let context = egui::Context::default();
+        let context = notebook_context();
         configure_style(&context, AppearancePreferences::default());
         Self {
             context,
@@ -894,7 +894,7 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
         (ThemeChoice::Light, 100),
         (ThemeChoice::System, 125),
     ] {
-        let context = egui::Context::default();
+        let context = notebook_context();
         configure_style(
             &context,
             AppearancePreferences {
@@ -1743,7 +1743,7 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
             finder_name: "Mallow".into(),
         });
     }
-    let context = egui::Context::default();
+    let context = notebook_context();
     let mut clubhouse = Clubhouse::default();
     for index in 0..4 {
         let seed = [index + 17; 32];
@@ -2100,7 +2100,7 @@ fn the_notebook_keeps_its_proportions_and_gives_up_margins_before_room() {
 #[test]
 fn every_page_at_the_largest_text_fits_one_font_atlas() {
     let (save, monitors) = fixture();
-    let context = egui::Context::default();
+    let context = notebook_context();
     configure_style(
         &context,
         AppearancePreferences {
@@ -2770,7 +2770,7 @@ fn the_notebook_follows_the_system_into_the_dark_and_back() {
     };
     assert!(!appearance_changed(Some(fixed), light, fixed, dark));
     // And applying it really does move the palette both ways.
-    let context = egui::Context::default();
+    let context = notebook_context();
     for (theme, want_dark) in [(dark, true), (light, false), (dark, true)] {
         let mut input = egui::RawInput {
             system_theme: theme,
@@ -2877,4 +2877,65 @@ fn the_colophon_title_switches_echo_fox_mode() {
             .any(|(text, _)| text.starts_with("Echo Fox Mode")),
         "the page says the mode is on"
     );
+}
+
+/// The Today page of a colony with a full day behind it, pictured whole for review when
+/// `FORMIGA_UI_REVIEW_DIR` is set: a new friendship still unread, a find, a shared moment and a
+/// returning visitor today, and a pair the day book counted seeking each other out.
+#[test]
+fn a_full_day_is_laid_out_on_today() {
+    let mut h = Harness::new(SettingsTab::Today);
+    let now = time::OffsetDateTime::now_utc();
+    let local = now.to_offset(clubhouse::local_offset());
+    let midnight = local.date().midnight().assume_offset(local.offset());
+    let at = |minutes: i64| (midnight + time::Duration::minutes(minutes)).min(now);
+    let (a, b, c) = (
+        h.save.creatures[0].id,
+        h.save.creatures[1].id,
+        h.save.creatures[2].id,
+    );
+    h.save.companion.journal_seen_until = Some(at(0));
+    for (minutes, creature, moment) in [
+        (10 * 60 + 31, Some(c), JournalMoment::Discovery),
+        (
+            12 * 60 + 15,
+            None,
+            JournalMoment::Ritual(RitualKind::Picnic),
+        ),
+        (14 * 60 + 2, Some(a), JournalMoment::Friendship(b)),
+        (16 * 60 + 40, None, JournalMoment::Revisit("Pip".into(), 3)),
+    ] {
+        h.save.companion.journal.push(JournalEntry {
+            at: at(minutes),
+            creature,
+            moment,
+        });
+    }
+    h.save.companion.scrapbook.push(ScrapbookRecord {
+        variant: 9,
+        first_at: at(10 * 60 + 31),
+        finder: Some(c),
+        finder_name: h.save.creatures[2].name.clone(),
+    });
+    let day = local.date().to_julian_day();
+    h.save.day_book.count_home(day - 1, 600);
+    for a_began in [true, true, true, true, false, false] {
+        h.save.day_book.count_pair(
+            day,
+            a,
+            b,
+            Some(a_began),
+            formiga_core::SharedMomentKind::Greeting,
+            true,
+        );
+    }
+    h.screen = egui::vec2(1152.0, 1700.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let picture = h.picture();
+    assert!(shown(&h, "TODAY'S HIGHLIGHT"));
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        picture.save(path.join("Today-full-day.png")).unwrap();
+    }
 }
