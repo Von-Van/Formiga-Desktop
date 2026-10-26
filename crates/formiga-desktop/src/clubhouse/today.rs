@@ -502,16 +502,18 @@ fn moment_faces<'a>(save: &'a SaveFile, entry: &JournalEntry) -> Vec<&'a Creatur
         .collect()
 }
 
-/// The moment today's highlight is about: a landmark, the newest unread one first, then the
-/// newest; failing that, the newest moment worth a small sign. The page only ever pastes in
+/// The moment today's highlight is about: the newest unread landmark, then the newest unread
+/// moment worth a small sign, then the newest of each read. The page only ever pastes in
 /// something the journal wrote down.
 fn highlight<'a>(today: &Today<'a>, reading: Option<&Reading>) -> Option<&'a JournalEntry> {
     let unread = |entry: &&&JournalEntry| reading.is_some_and(|r| r.is_new(entry));
     let landmarks = || today.moments.iter().filter(|e| e.moment.is_landmark());
+    let noteworthy = || today.moments.iter().filter(|e| e.moment.is_noteworthy());
     landmarks()
         .find(unread)
+        .or_else(|| noteworthy().find(unread))
         .or_else(|| landmarks().next())
-        .or_else(|| today.moments.iter().find(|e| e.moment.is_noteworthy()))
+        .or_else(|| noteworthy().next())
         .copied()
 }
 
@@ -551,7 +553,7 @@ impl TodayState {
             &today_observation(save, now),
         );
         // The date, stamped in the corner the way a field note is dated.
-        let corner = egui::pos2(ui.max_rect().right() - 70.0 * scale, top + 52.0 * scale);
+        let corner = egui::pos2(ui.max_rect().right() - 92.0 * scale, top + 52.0 * scale);
         let date = format!(
             "{} {} {} {}",
             &local.weekday().to_string()[..3],

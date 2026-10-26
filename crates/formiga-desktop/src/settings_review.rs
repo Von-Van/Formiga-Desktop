@@ -927,7 +927,7 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
         // Text scaling reaches every style, and never runs away.
         let style = context.style_of(egui_theme);
         let body = style.text_styles[&egui::TextStyle::Body].size;
-        assert!((body - 14.0 * f32::from(scale) / 100.0).abs() < 0.01);
+        assert!((body - 16.0 * f32::from(scale) / 100.0).abs() < 0.01);
         assert!((10.0..=24.0).contains(&body));
     }
     configure_style(&h.context, AppearancePreferences::default());
@@ -1670,7 +1670,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     assert!(shown(&h, "Mallow"));
     assert!(shown(&h, "Notes on Mallow"));
     assert!(!shown(&h, "Save name"), "the name is in its own section");
-    h.scroll_page(200.0);
+    h.scroll_page(400.0);
     let list = h.text_top("Share Mallow");
     // Opened, the section stands alone under a way back, and the companion's summary is gone.
     h.click("Share Mallow");
@@ -1693,6 +1693,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     assert_eq!(h.clubhouse.shell.sections.open(SettingsTab::Colony), None);
     // Other pages keep sections of their own.
     h.tab = SettingsTab::About;
+    h.screen = egui::vec2(940.0, 1400.0);
     h.click("Privacy");
     h.tab = SettingsTab::Colony;
     h.frame(Vec::new());
@@ -2157,8 +2158,9 @@ fn every_page_at_the_largest_text_fits_one_font_atlas() {
         }
     }
     let [width, height] = context.fonts(|fonts| fonts.font_image_size());
+    // The pencil hand's two weights, laid out by egui as any font is, cost a second strip.
     assert!(
-        width * height <= 2048 * 128,
+        width * height <= 2048 * 256,
         "the font atlas grew to {width}x{height}"
     );
 }
@@ -2263,12 +2265,12 @@ fn a_brand_new_colony_is_welcomed_on_today_rather_than_shown_empty_sections() {
     h.frame(Vec::new());
     h.frame(Vec::new());
     assert!(
-        shown(&h, "Settling in"),
+        shown(&h, "Settling in!"),
         "{:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
-    assert!(shown_starting(&h, "Nothing observed yet."));
-    assert!(shown_starting(&h, "Day 1 of the colony."));
+    assert!(shown_starting(&h, "Nothing I can vouch for yet."));
+    assert!(shown_starting(&h, "Day 1!"));
     h.click("Meet your companions");
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Colony);
@@ -2286,9 +2288,12 @@ fn today_says_what_it_has_observed_and_why() {
     }
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, &format!("{climber} prefers high places.")));
-    assert!(shown_starting(&h, "2 h 15 min up on window ledges in all"));
-    assert!(!shown_starting(&h, "Nothing observed yet."));
+    assert!(shown(&h, &format!("{climber} loves high places!")));
+    assert!(shown_starting(
+        &h,
+        "I've clocked 2 h 15 min up on window ledges"
+    ));
+    assert!(!shown_starting(&h, "Nothing I can vouch for yet."));
 }
 
 /// What is new is marked on the cover and the reader asked to have it counted as read only once
@@ -2316,14 +2321,14 @@ fn news_is_marked_until_it_is_read_and_stays_on_show_while_it_is() {
     // The app marks it read; the page keeps showing what was new.
     assert!(h.save.companion.mark_read());
     h.frame(Vec::new());
-    assert!(shown(&h, "NEW SINCE YOU LAST LOOKED"));
+    assert!(shown(&h, "NEW"), "the highlight is stamped as new");
     assert!(shown(&h, "Wren came back to visit, for the third time"));
     assert!(shown(&h, "Today"), "the dot goes once it is read");
     // Turning elsewhere lets it go: coming back, there is nothing new.
     h.click("Your colony");
     h.click("Today");
     h.frame(Vec::new());
-    assert!(!shown(&h, "NEW SINCE YOU LAST LOOKED"));
+    assert!(!shown(&h, "NEW"));
 }
 
 /// The journal can be searched and filtered by kind, says how much of it is showing, and offers
@@ -2688,11 +2693,8 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
     let mut h = Harness::new(SettingsTab::Today);
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "TODAY, COMPARED"));
-    assert!(shown_starting(
-        &h,
-        "The notebook began counting the colony's days today"
-    ));
+    assert!(shown(&h, "VS. THE REST OF THE WEEK"));
+    assert!(shown_starting(&h, "I only started counting days today"));
     let local = time::OffsetDateTime::now_utc().to_offset(clubhouse::local_offset());
     let day = local.date().to_julian_day();
     let (a, b) = (h.save.creatures[0].id, h.save.creatures[1].id);
@@ -2725,7 +2727,7 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
         shown(
             &h,
             &format!(
-                "{} and {} sought each other out 3 times today",
+                "{} and {} went looking for each other 3 times today!",
                 name(first),
                 name(second)
             )
@@ -2737,7 +2739,7 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
     assert!(shown(
         &h,
         &format!(
-            "{} went looking {}, {} {}.",
+            "{} {}, {} {}.",
             name(first),
             if by_first == 2 { "twice" } else { "once" },
             name(second),

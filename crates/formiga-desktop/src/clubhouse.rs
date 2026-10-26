@@ -704,7 +704,7 @@ pub fn quiet_controls(ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcom
                 .request_repaint_after(std::time::Duration::from_secs(30));
         } else {
             ui.label("Let everyone settle at home, then return to their usual adventures.");
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 for minutes in [15, 30, 60] {
                     if ui.button(format!("{minutes} minutes")).clicked() {
                         outcome.quiet_minutes = Some(minutes);

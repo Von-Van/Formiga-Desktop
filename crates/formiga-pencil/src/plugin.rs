@@ -289,3 +289,85 @@ impl egui::Plugin for Pencil {
         self.atlas.dirty = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One frame of `ctx` with a line in the hand and a printed line, and what came out of it.
+    fn frame(ctx: &egui::Context) -> egui::FullOutput {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 200.0))),
+            ..Default::default()
+        };
+        ctx.run_ui(input, |ui| {
+            ui.label(egui::RichText::new("Two down, one to go!").font(crate::hand(16.0)));
+            ui.label(egui::RichText::new("FORMIGA").monospace());
+        })
+    }
+
+    fn texts(shape: &Shape, out: &mut Vec<(String, f32)>) {
+        match shape {
+            Shape::Vec(shapes) => shapes.iter().for_each(|shape| texts(shape, out)),
+            Shape::Text(text) => out.push((text.galley.text().to_owned(), text.opacity_factor)),
+            _ => {}
+        }
+    }
+
+    fn meshes_on(shape: &Shape, texture: TextureId) -> usize {
+        match shape {
+            Shape::Vec(shapes) => shapes.iter().map(|shape| meshes_on(shape, texture)).sum(),
+            Shape::Mesh(mesh) if mesh.texture_id == texture && !mesh.is_empty() => 1,
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn writing_in_the_hand_is_drawn_in_pencil_and_print_is_left_to_egui() {
+        let ctx = egui::Context::default();
+        crate::install(&ctx, Everywhere::No);
+        let mut output = frame(&ctx);
+        let mut found = Vec::new();
+        for clipped in &output.shapes {
+            texts(&clipped.shape, &mut found);
+        }
+        // Both lines are still there for whatever reads the frame's words; only the hand is
+        // hidden, because the pencil draws it.
+        assert!(found.contains(&("Two down, one to go!".to_owned(), 0.0)));
+        assert!(found.contains(&("FORMIGA".to_owned(), 1.0)));
+        let texture = ctx
+            .tex_manager()
+            .read()
+            .allocated()
+            .find(|(_, meta)| meta.name == "formiga-pencil")
+            .map(|(id, _)| *id)
+            .expect("the pencil has a texture");
+        let pencilled: usize = output
+            .shapes
+            .iter()
+            .map(|clipped| meshes_on(&clipped.shape, texture))
+            .sum();
+        assert_eq!(pencilled, 1, "one line is drawn from the pencil atlas");
+        // The atlas goes out with the frame that first needs it, and holds only drawn or blank
+        // texels: nothing is anti-aliased.
+        let deltas = &output.textures_delta.set[&texture];
+        let egui::ImageData::Color(image) = &deltas[0].image;
+        assert!(image.pixels.iter().any(|p| p.a() == 255));
+        assert!(image.pixels.iter().all(|p| p.a() == 0 || p.a() == 255));
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn a_heading_is_drawn_on_a_grid_twice_as_coarse_as_writing() {
+        let faces = [Face::new(crate::REGULAR), Face::new(crate::BOLD)];
+        let mut atlas = Atlas::new();
+        let a = faces[0].glyph('a').expect("Kalam has an a");
+        let writing = atlas.glyph(&faces, 0, a, 16.0, 84).unwrap();
+        let heading = atlas.glyph(&faces, 0, a, 20.0, 128).unwrap();
+        // A 40-point heading at two points a texel is drawn from a glyph half as many texels
+        // across as a 40-point line of writing would be.
+        let full = atlas.glyph(&faces, 0, a, 40.0, 84).unwrap();
+        assert!(heading.size[0] * 2 <= full.size[0] + 2);
+        assert!(writing.size[0] < full.size[0]);
+    }
+}

@@ -1380,7 +1380,7 @@ fn general_tab(
             );
                 ui.small("Keep a Work and Relax setup for habitat, movement, and cursor reactions. Loading a routine previews its preferences before Apply.");
                 for (index, name) in ["Work", "Relax"].into_iter().enumerate() {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.strong(name);
                         if ui.button("Save current preferences").clicked() {
                             outcome.save_mode =
@@ -1610,16 +1610,19 @@ fn colony_tab(
                         .strong()
                         .color(forest()),
                 );
-                clubhouse::journal::on_the_line(ui, |ui| {
-                    for t in creature.traits() {
-                        egui::Frame::new()
-                            .fill(mint())
-                            .inner_margin(egui::Margin::symmetric(5, 2))
-                            .show(ui, |ui| {
-                                ui.label(t.label());
-                            });
-                    }
-                });
+                // Its traits run over with a highlighter, so they wrap like any other line.
+                clubhouse::journal::write_marked(
+                    ui,
+                    creature
+                        .traits()
+                        .iter()
+                        .map(|t| t.label())
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                    None,
+                    egui::Sense::hover(),
+                    Some(mint()),
+                );
                 let small = |text: String| egui::RichText::new(text).small();
                 let learned = profile_descriptors(creature, creatures);
                 if !learned.is_empty() {
