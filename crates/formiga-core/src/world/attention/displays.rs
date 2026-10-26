@@ -393,6 +393,9 @@ impl World {
             self.tosses.remove(&id);
             self.bond_plans.remove(&id);
             self.action_choices.remove(&id);
+            // A village plan holds on to where it began, such as the door someone went in by,
+            // which this display may no longer reach: let it go, so nothing puts them back there.
+            self.drop_village_activity(id);
             let creature = self.save.creatures.iter().find(|c| c.id == id).unwrap();
             // Resolution/layout changes can leave a resting contact perfectly valid. Preserve it;
             // only displaced or airborne creatures need a new floor position.

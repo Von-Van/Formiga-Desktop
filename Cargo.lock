@@ -1295,6 +1295,7 @@ dependencies = [
  "formiga-expansion-rulebook",
  "formiga-farm-contract",
  "formiga-home-contract",
+ "formiga-pencil",
  "formiga-travel",
  "image",
  "libc",
@@ -1358,6 +1359,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-pencil"
+version = "0.67.14"
+dependencies = [
+ "egui",
+ "skrifa",
+ "vello_cpu",
+]
+
+[[package]]
 name = "formiga-tools"
 version = "0.67.14"
 dependencies = [
@@ -1369,6 +1379,7 @@ dependencies = [
  "formiga-expansion-rulebook",
  "formiga-farm-contract",
  "formiga-home-contract",
+ "formiga-pencil",
  "formiga-travel",
  "gif",
  "png",

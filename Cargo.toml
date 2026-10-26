@@ -6,6 +6,7 @@ members = [
     "crates/formiga-desktop",
     "crates/formiga-expansion-rulebook",
     "crates/formiga-farm-contract",
+    "crates/formiga-pencil",
     "crates/formiga-home-contract",
     "crates/formiga-tools",
     "crates/formiga-travel",
