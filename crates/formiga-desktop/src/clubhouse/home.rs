@@ -303,8 +303,10 @@ impl HomeState {
                 let name = |palette: Option<VillagePalette>| {
                     palette.map_or("From the colony", VillagePalette::label)
                 };
+                // Tall enough to show every palette at once, written in the pencil hand.
                 egui::ComboBox::from_id_salt("village-palette")
                     .selected_text(name(chosen))
+                    .height(480.0)
                     .show_ui(ui, |ui| {
                         for palette in std::iter::once(None).chain(VillagePalette::ALL.map(Some)) {
                             ui.horizontal(|ui| {

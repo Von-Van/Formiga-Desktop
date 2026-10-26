@@ -15,6 +15,7 @@ pub(crate) mod collection;
 pub(crate) mod home;
 pub(crate) mod journal;
 pub(crate) mod journal_page;
+pub(crate) mod paper;
 pub(crate) mod recovery;
 pub(crate) mod sections;
 pub(crate) mod shell;
@@ -104,6 +105,15 @@ pub fn margin_line() -> Color32 {
 /// A sticky note: the tour, and the conditions noted on the cover.
 pub fn note_fill() -> Color32 {
     shade((246, 220, 154), (74, 68, 51))
+}
+
+/// The strip of ground companions stand on, on the Today page, and its edge.
+pub fn ground_strip() -> Color32 {
+    shade((246, 236, 208), (34, 42, 38))
+}
+
+pub fn ground_edge() -> Color32 {
+    shade((227, 211, 166), (52, 62, 56))
 }
 
 /// The red of a rubber stamp, and of the dashes round whatever the tour points at.
@@ -694,7 +704,7 @@ pub fn quiet_controls(ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcom
                 .request_repaint_after(std::time::Duration::from_secs(30));
         } else {
             ui.label("Let everyone settle at home, then return to their usual adventures.");
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 for minutes in [15, 30, 60] {
                     if ui.button(format!("{minutes} minutes")).clicked() {
                         outcome.quiet_minutes = Some(minutes);
