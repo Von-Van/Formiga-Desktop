@@ -52,6 +52,9 @@ All notable changes are documented here.
   of named steps in `world/step.rs`. Nothing a colony does changes: two seeds of 40 colonies over
   two simulated days gave the same `soak --digest` before and after, and `tick-bench` is unchanged
   within its run-to-run noise.
+- The tests in `habitat.rs` and `world/attention/games.rs` moved into `habitat/tests.rs` and
+  `games/tests.rs`, and the renderer's tests split by topic into `renderer/tests/` (frames, faces,
+  poses, belongings), so those files read as the code they ship. No test changed.
 
 ### Developer tools
 
