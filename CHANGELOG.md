@@ -75,6 +75,12 @@ All notable changes are documented here.
   already pulls, so a Windows build no longer compiles nine `windows-*` crates twice, nor `dirs-sys`
   twice. The colony's folder is unchanged, and a test now holds it to
   `~/Library/Application Support/com.Formiga.Formiga` and `%APPDATA%\Formiga\Formiga\data`.
+- The colony's tick while it is home, `tick_homebound_creatures` in `world/home.rs`, which had
+  been one loop of about 830 lines, is a sequence of named phases: the village is looked over
+  once, then each resident sits the tick out, follows a plan of its own, is given a heading,
+  holds a quiet moment, takes and settles a step, and spends its time on its hands, in that
+  order. Nothing a colony does changes: every value, random draw and tuning constant is as it
+  was, in the order it was.
 
 ### Developer tools
 
