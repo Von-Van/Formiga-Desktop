@@ -59,6 +59,10 @@ All notable changes are documented here.
 
 ### Internal
 
+- The settings window's `handle_settings_outcome`, which had been one function of about 770
+  lines over every request the notebook can make, is a short dispatcher over one method per
+  request or small group of them, called in the same order as before (`app/settings_window.rs`).
+  Nothing a setting does, saves or shows changes.
 - One frozen colony file for every save version since 14, in the shape that version wrote, under
   `crates/formiga-core/src/persistence/fixtures/`; a test opens each through the real load and
   migration path and writes the current version's back byte for byte. The migration tests had
