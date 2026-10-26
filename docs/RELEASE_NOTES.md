@@ -4,6 +4,19 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.68.0
+
+The notebook is written in a pencil hand now, and Today reads as a filled-in page: your colony on
+its plate, the day's highlight taped in, the day's log on its lines and the week as a strip. The About page lists all of
+Formiga's apps, says which are installed, and tells you when one has a newer version out. The
+Journal shows the cups and medals your colony has won in Formiga Battle, and a creature reshaped in
+Formiga Farm now travels as itself, so Hill, Home and Battle draw a Farm whale as a whale. A rare
+crash, and a companion left off-screen after a display change, are fixed. Update Formiga Hill,
+Formiga Home and Formiga Battle to 0.68.0 alongside: Battle gets the pencil notebook too, plus
+named rivals, seasons and events, coaching styles, keyboard orders and settings it remembers; Home
+gets a kitchen and a study, keyboard play and its own pencil notebook; and Hill gets undo in its
+editors, the Woods from the keyboard, gentler timing, new stories and a display case.
+
 ## New in 0.67.14
 
 A round of fixes to keep your colony safe. Formiga now checks for updates every day it runs,
