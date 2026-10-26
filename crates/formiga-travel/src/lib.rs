@@ -155,7 +155,7 @@ pub mod limits {
     pub const MAX_CAPABILITIES: usize = 16;
     pub const MAX_VERSION_CHARS: usize = 32;
     pub const MAX_EFFECTS: usize = 16;
-    /// The souvenirs a snapshot can say Desktop keeps. Desktop keeps seven; the room is for
+    /// The souvenirs a snapshot can say Desktop keeps. Desktop keeps eleven; the room is for
     /// Formiga Hill's catalogue to grow without a refusal on Hill's side.
     pub const MAX_SOUVENIRS: usize = 64;
     /// A souvenir or keepsake identifier: lowercase letters, digits, `-`, `_` and `.`.

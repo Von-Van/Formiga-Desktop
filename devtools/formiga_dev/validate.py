@@ -81,7 +81,7 @@ def _clippy(step: str, extra: List[str], env: Optional[Dict[str, str]] = None) -
                 "--", "-D", "warnings"], env=env)
     problems = cargo.compiler_problems(done.output, step)
     if done.code != 0 and not problems:
-        problems = [Problem(step, _last_error(done.output))]
+        problems = [Problem(step, cargo.last_error(done.output))]
     return Step(step, "failed" if done.code else "passed",
                 f"{len(problems)} error(s)" if done.code else "no warnings",
                 done.seconds, problems)
@@ -115,10 +115,10 @@ def step_app(with_lint: bool = False) -> Step:
 
 def step_fixtures() -> Step:
     done = run(["cargo", "run", "-q", "-p", "formiga-tools", "--", "dev", "check-fixtures"])
-    report = _json_document(done.output)
+    report = cargo.json_document(done.output)
     if report is None:
         problems = cargo.compiler_problems(done.output, "fixtures") or [
-            Problem("fixtures", _last_error(done.output))]
+            Problem("fixtures", cargo.last_error(done.output))]
         return Step("fixtures", "failed", "could not run the fixture check", done.seconds, problems)
     problems = [
         Problem("fixtures", message, system="formiga-core", object=f"fixture:{fixture['name']}",
@@ -138,7 +138,7 @@ def step_tests() -> Step:
     passed = sum(_count(line, "passed") for line in done.output.splitlines())
     failed = sum(_count(line, "failed") for line in done.output.splitlines())
     if done.code != 0 and not problems:
-        problems = [Problem("tests", _last_error(done.output))]
+        problems = [Problem("tests", cargo.last_error(done.output))]
     summary = f"{passed} passed" + (f", {failed} failed" if failed else "")
     return Step("tests", "failed" if done.code else "passed", summary, done.seconds, problems)
 
@@ -179,7 +179,7 @@ def step_soak(full_speed: bool = False) -> Step:
                        f"{out}"))
     if done.code != 0 and not problems:
         problems = cargo.compiler_problems(done.output, "soak") or [
-            Problem("soak", _last_error(done.output))]
+            Problem("soak", cargo.last_error(done.output))]
     summary_line = next((line[2:] for line in done.output.splitlines()
                          if line.startswith("# lived")), "")
     return Step("soak", "failed" if done.code else "passed",
@@ -211,7 +211,7 @@ def step_expansion(key: str) -> Step:
         if problem.file and not problem.file.startswith("/"):
             problem.file = f"{expansion.path.name}/{problem.file}"
     if done.code != 0 and not problems:
-        problems = [Problem(key, _last_error(done.output), system=expansion.package)]
+        problems = [Problem(key, cargo.last_error(done.output), system=expansion.package)]
     if stray:
         problems.append(Problem(
             key, f"built {', '.join(stray)} from Desktop {', '.join(pins)} on GitHub, not from "
@@ -288,6 +288,3 @@ def _count(line: str, what: str) -> int:
             return int(words[0])
     return 0
 
-
-_json_document = cargo.json_document
-_last_error = cargo.last_error

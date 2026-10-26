@@ -1,0 +1,13 @@
+[package]
+name = "formiga-pencil"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+egui.workspace = true
+# The same outline reader and rasteriser egui draws its own text with, at the versions egui
+# already brings, so the hand's glyphs land where egui laid them out and nothing new is built.
+skrifa = { version = "0.44.0", default-features = false, features = ["std"] }
+vello_cpu = { version = "0.1.0", default-features = false, features = ["std", "u8_pipeline"] }

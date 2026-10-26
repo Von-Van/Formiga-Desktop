@@ -142,7 +142,7 @@ fn all_pages_render_with_bounded_resources_and_release_preview_images() {
         .flat_map(|appearance| [(appearance, (940, 720)), (appearance, (760, 560))])
     {
         for page in crate::clubhouse::journal::PAGES {
-            let context = egui::Context::default();
+            let context = notebook_context();
             configure_style(&context, appearance);
             let mut clubhouse = Clubhouse::default();
             if page == SettingsTab::Studio {
@@ -419,7 +419,7 @@ struct Harness {
 impl Harness {
     fn new(tab: SettingsTab) -> Self {
         let (save, monitors) = fixture();
-        let context = egui::Context::default();
+        let context = notebook_context();
         configure_style(&context, AppearancePreferences::default());
         Self {
             context,
@@ -894,7 +894,7 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
         (ThemeChoice::Light, 100),
         (ThemeChoice::System, 125),
     ] {
-        let context = egui::Context::default();
+        let context = notebook_context();
         configure_style(
             &context,
             AppearancePreferences {
@@ -927,7 +927,7 @@ fn appearance_choices_reach_the_colony_and_stay_within_their_own_limits() {
         // Text scaling reaches every style, and never runs away.
         let style = context.style_of(egui_theme);
         let body = style.text_styles[&egui::TextStyle::Body].size;
-        assert!((body - 14.0 * f32::from(scale) / 100.0).abs() < 0.01);
+        assert!((body - 16.0 * f32::from(scale) / 100.0).abs() < 0.01);
         assert!((10.0..=24.0).contains(&body));
     }
     configure_style(&h.context, AppearancePreferences::default());
@@ -1670,7 +1670,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     assert!(shown(&h, "Mallow"));
     assert!(shown(&h, "Notes on Mallow"));
     assert!(!shown(&h, "Save name"), "the name is in its own section");
-    h.scroll_page(200.0);
+    h.scroll_page(400.0);
     let list = h.text_top("Share Mallow");
     // Opened, the section stands alone under a way back, and the companion's summary is gone.
     h.click("Share Mallow");
@@ -1693,6 +1693,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     assert_eq!(h.clubhouse.shell.sections.open(SettingsTab::Colony), None);
     // Other pages keep sections of their own.
     h.tab = SettingsTab::About;
+    h.screen = egui::vec2(940.0, 1400.0);
     h.click("Privacy");
     h.tab = SettingsTab::Colony;
     h.frame(Vec::new());
@@ -1743,7 +1744,7 @@ fn no_page_is_drawn_past_the_edge_of_its_window() {
             finder_name: "Mallow".into(),
         });
     }
-    let context = egui::Context::default();
+    let context = notebook_context();
     let mut clubhouse = Clubhouse::default();
     for index in 0..4 {
         let seed = [index + 17; 32];
@@ -2100,7 +2101,7 @@ fn the_notebook_keeps_its_proportions_and_gives_up_margins_before_room() {
 #[test]
 fn every_page_at_the_largest_text_fits_one_font_atlas() {
     let (save, monitors) = fixture();
-    let context = egui::Context::default();
+    let context = notebook_context();
     configure_style(
         &context,
         AppearancePreferences {
@@ -2157,8 +2158,9 @@ fn every_page_at_the_largest_text_fits_one_font_atlas() {
         }
     }
     let [width, height] = context.fonts(|fonts| fonts.font_image_size());
+    // The pencil hand's two weights, laid out by egui as any font is, cost a second strip.
     assert!(
-        width * height <= 2048 * 128,
+        width * height <= 2048 * 256,
         "the font atlas grew to {width}x{height}"
     );
 }
@@ -2263,12 +2265,12 @@ fn a_brand_new_colony_is_welcomed_on_today_rather_than_shown_empty_sections() {
     h.frame(Vec::new());
     h.frame(Vec::new());
     assert!(
-        shown(&h, "Settling in"),
+        shown(&h, "Settling in!"),
         "{:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
-    assert!(shown_starting(&h, "Nothing observed yet."));
-    assert!(shown_starting(&h, "Day 1 of the colony."));
+    assert!(shown_starting(&h, "Nothing I can vouch for yet."));
+    assert!(shown_starting(&h, "Day 1!"));
     h.click("Meet your companions");
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Colony);
@@ -2286,9 +2288,12 @@ fn today_says_what_it_has_observed_and_why() {
     }
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, &format!("{climber} prefers high places.")));
-    assert!(shown_starting(&h, "2 h 15 min up on window ledges in all"));
-    assert!(!shown_starting(&h, "Nothing observed yet."));
+    assert!(shown(&h, &format!("{climber} loves high places!")));
+    assert!(shown_starting(
+        &h,
+        "I've clocked 2 h 15 min up on window ledges"
+    ));
+    assert!(!shown_starting(&h, "Nothing I can vouch for yet."));
 }
 
 /// What is new is marked on the cover and the reader asked to have it counted as read only once
@@ -2316,14 +2321,14 @@ fn news_is_marked_until_it_is_read_and_stays_on_show_while_it_is() {
     // The app marks it read; the page keeps showing what was new.
     assert!(h.save.companion.mark_read());
     h.frame(Vec::new());
-    assert!(shown(&h, "NEW SINCE YOU LAST LOOKED"));
+    assert!(shown(&h, "NEW"), "the highlight is stamped as new");
     assert!(shown(&h, "Wren came back to visit, for the third time"));
     assert!(shown(&h, "Today"), "the dot goes once it is read");
     // Turning elsewhere lets it go: coming back, there is nothing new.
     h.click("Your colony");
     h.click("Today");
     h.frame(Vec::new());
-    assert!(!shown(&h, "NEW SINCE YOU LAST LOOKED"));
+    assert!(!shown(&h, "NEW"));
 }
 
 /// The journal can be searched and filtered by kind, says how much of it is showing, and offers
@@ -2688,11 +2693,8 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
     let mut h = Harness::new(SettingsTab::Today);
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "TODAY, COMPARED"));
-    assert!(shown_starting(
-        &h,
-        "The notebook began counting the colony's days today"
-    ));
+    assert!(shown(&h, "VS. THE REST OF THE WEEK"));
+    assert!(shown_starting(&h, "I only started counting days today"));
     let local = time::OffsetDateTime::now_utc().to_offset(clubhouse::local_offset());
     let day = local.date().to_julian_day();
     let (a, b) = (h.save.creatures[0].id, h.save.creatures[1].id);
@@ -2725,7 +2727,7 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
         shown(
             &h,
             &format!(
-                "{} and {} sought each other out 3 times today",
+                "{} and {} went looking for each other 3 times today!",
                 name(first),
                 name(second)
             )
@@ -2737,7 +2739,7 @@ fn today_compares_itself_with_yesterday_once_yesterday_was_counted() {
     assert!(shown(
         &h,
         &format!(
-            "{} went looking {}, {} {}.",
+            "{} {}, {} {}.",
             name(first),
             if by_first == 2 { "twice" } else { "once" },
             name(second),
@@ -2770,7 +2772,7 @@ fn the_notebook_follows_the_system_into_the_dark_and_back() {
     };
     assert!(!appearance_changed(Some(fixed), light, fixed, dark));
     // And applying it really does move the palette both ways.
-    let context = egui::Context::default();
+    let context = notebook_context();
     for (theme, want_dark) in [(dark, true), (light, false), (dark, true)] {
         let mut input = egui::RawInput {
             system_theme: theme,
@@ -2877,4 +2879,65 @@ fn the_colophon_title_switches_echo_fox_mode() {
             .any(|(text, _)| text.starts_with("Echo Fox Mode")),
         "the page says the mode is on"
     );
+}
+
+/// The Today page of a colony with a full day behind it, pictured whole for review when
+/// `FORMIGA_UI_REVIEW_DIR` is set: a new friendship still unread, a find, a shared moment and a
+/// returning visitor today, and a pair the day book counted seeking each other out.
+#[test]
+fn a_full_day_is_laid_out_on_today() {
+    let mut h = Harness::new(SettingsTab::Today);
+    let now = time::OffsetDateTime::now_utc();
+    let local = now.to_offset(clubhouse::local_offset());
+    let midnight = local.date().midnight().assume_offset(local.offset());
+    let at = |minutes: i64| (midnight + time::Duration::minutes(minutes)).min(now);
+    let (a, b, c) = (
+        h.save.creatures[0].id,
+        h.save.creatures[1].id,
+        h.save.creatures[2].id,
+    );
+    h.save.companion.journal_seen_until = Some(at(0));
+    for (minutes, creature, moment) in [
+        (10 * 60 + 31, Some(c), JournalMoment::Discovery),
+        (
+            12 * 60 + 15,
+            None,
+            JournalMoment::Ritual(RitualKind::Picnic),
+        ),
+        (14 * 60 + 2, Some(a), JournalMoment::Friendship(b)),
+        (16 * 60 + 40, None, JournalMoment::Revisit("Pip".into(), 3)),
+    ] {
+        h.save.companion.journal.push(JournalEntry {
+            at: at(minutes),
+            creature,
+            moment,
+        });
+    }
+    h.save.companion.scrapbook.push(ScrapbookRecord {
+        variant: 9,
+        first_at: at(10 * 60 + 31),
+        finder: Some(c),
+        finder_name: h.save.creatures[2].name.clone(),
+    });
+    let day = local.date().to_julian_day();
+    h.save.day_book.count_home(day - 1, 600);
+    for a_began in [true, true, true, true, false, false] {
+        h.save.day_book.count_pair(
+            day,
+            a,
+            b,
+            Some(a_began),
+            formiga_core::SharedMomentKind::Greeting,
+            true,
+        );
+    }
+    h.screen = egui::vec2(1152.0, 1700.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let picture = h.picture();
+    assert!(shown(&h, "TODAY'S HIGHLIGHT"));
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        picture.save(path.join("Today-full-day.png")).unwrap();
+    }
 }

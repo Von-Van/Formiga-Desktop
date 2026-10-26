@@ -93,8 +93,6 @@ pub const BUBBLE_ANCHOR: (u32, u32) = (8, 15);
 
 /// One menu cell, icon plus its padding.
 pub const MENU_CELL: u32 = 14;
-/// The icon box inside a cell.
-pub const MENU_ICON_BOX: u32 = 12;
 /// Paper plus outline between a cell and the strip edge.
 const MENU_BORDER: u32 = 2;
 /// Paper between two neighbouring cells.

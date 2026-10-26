@@ -100,6 +100,19 @@ mod tests {
     }
 
     #[test]
+    fn a_home_document_is_not_a_travel_document() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "format": "formiga.home.state",
+            "version": 1,
+        }))
+        .unwrap();
+        assert!(matches!(
+            decode::<TravelSnapshot>(&bytes),
+            Err(TravelError::WrongFormat { .. })
+        ));
+    }
+
+    #[test]
     fn a_file_larger_than_its_limit_is_refused_in_travel_words() {
         let directory =
             std::env::temp_dir().join(format!("formiga-travel-bounded-{}", std::process::id()));

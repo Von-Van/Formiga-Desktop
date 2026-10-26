@@ -40,7 +40,7 @@ three matter most for the page's thumbnail carousel.
 7. `docs/assets/activity-sheet.png` - everyday behaviors (snacks, drinks, sprints).
 8. `docs/assets/expression-sheet.png` - close-up emotional readability.
 9. `docs/assets/generation-sheet.png` - body-plan x ear-style variety, for the customization angle.
-10. `docs/assets/ambient-sheet.png` - climbing, dangling, inspecting, and the eight trinkets.
+10. `docs/assets/ambient-sheet.png` - climbing, dangling, inspecting, and the trinkets they find.
 11. `docs/assets/postcards.png` - the four postcard scenes, a ready-made "look what they get up to".
 
 `docs/assets/shelter-sheet.png` and `docs/assets/animation-preview.png` are optional extras (the
@@ -69,7 +69,7 @@ friendship - or a rivalry - with a neighbor.
 
 **What your creatures get up to**
 
-- Twelve expressions, natural blinking, and a gaze that actually follows what's nearby.
+- Fifteen expressions, natural blinking, and a gaze that actually follows what's nearby.
 - Climbing, hopping between window ledges, riding windows as you move them, and squeezing
   through gaps that vanish the moment your desktop layout changes.
 - Small, spontaneous games - chases, tag, tug-of-war, hide-and-seek across your own windows, and
@@ -117,8 +117,8 @@ ships with a matching `.sha256` file if you'd like to verify it yourself.
 **Open source**
 
 Formiga is MIT-licensed and developed in the open at
-[github.com/Von-Van/Formiga-Desktop](https://github.com/Von-Van/Formiga-Desktop). Issues, ideas,
-and pull requests are welcome there.
+[github.com/Von-Van/Formiga-Desktop](https://github.com/Von-Van/Formiga-Desktop). Issues and ideas are
+welcome there; it does not take outside pull requests, but forks are.
 
 ---
 

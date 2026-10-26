@@ -9,7 +9,8 @@ pub use serde_json;
 ///
 /// The enum has the cases of [`RulebookError`](crate::RulebookError), each saying "the travel
 /// file" (or whichever word is given) where the rulebook says "the file", and converts from it,
-/// from [`std::io::Error`] and from [`serde_json::Error`].
+/// from [`std::io::Error`] and from [`serde_json::Error`]. `is_missing` says whether the file
+/// was simply not there.
 #[macro_export]
 macro_rules! contract_error {
     ($(#[$meta:meta])* $vis:vis enum $name:ident, $word:literal) => {
@@ -66,6 +67,13 @@ macro_rules! contract_error {
                         write!(f, concat!("the ", $word, " file is not usable: {}"), reason)
                     }
                 }
+            }
+        }
+
+        impl $name {
+            /// Whether the file was simply not there.
+            pub fn is_missing(&self) -> bool {
+                matches!(self, Self::Io(error) if error.kind() == ::std::io::ErrorKind::NotFound)
             }
         }
 

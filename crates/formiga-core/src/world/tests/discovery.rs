@@ -698,6 +698,15 @@ fn a_colony_finds_a_few_trinkets_a_day_whatever_its_size() {
             target,
             "{size} companions against an allowance of {target}"
         );
+        // And it stays closed every hour that is left of the day, not only the hour watched.
+        let mut later = now + Duration::hours(1);
+        while local_time_or_utc(later).date().to_julian_day() == day {
+            assert!(
+                !world.trinket_find_allowed(later),
+                "open again at {later:?}"
+            );
+            later += Duration::hours(1);
+        }
         // Tomorrow is a new allowance.
         let tomorrow = created + Duration::days(1);
         assert!(world.trinket_find_allowed(tomorrow));

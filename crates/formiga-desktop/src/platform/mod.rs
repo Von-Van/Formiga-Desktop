@@ -37,4 +37,4 @@ pub use windows::{
 };
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-compile_error!("Formiga v0.1 supports macOS and Windows only");
+compile_error!("Formiga supports macOS and Windows only");

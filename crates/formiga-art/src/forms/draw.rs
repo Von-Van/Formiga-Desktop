@@ -125,14 +125,14 @@ impl Painter<'_> {
         {
             self.mane_behind(mane);
         }
-        let legs: Vec<Limb> = fig.legs.clone();
+        let legs = &fig.legs;
         for leg in legs.iter().filter(|leg| !leg.near) {
             if flippers && leg.front {
                 continue;
             }
             self.limb(*leg, Region::Leg { front: leg.front });
         }
-        for arm in fig.arms.clone().iter().filter(|arm| !arm.near) {
+        for arm in fig.arms.iter().filter(|arm| !arm.near) {
             self.limb(*arm, Region::Arm);
         }
 
@@ -177,7 +177,7 @@ impl Painter<'_> {
         {
             self.tuft(mane);
         }
-        for arm in fig.arms.clone().iter().filter(|arm| arm.near) {
+        for arm in fig.arms.iter().filter(|arm| arm.near) {
             self.limb(*arm, Region::Arm);
         }
     }

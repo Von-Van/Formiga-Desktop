@@ -562,6 +562,8 @@ pub formiga_battle_contract::BattleError::UnsupportedVersion::reads: u32
 pub formiga_battle_contract::BattleError::WrongFormat
 pub formiga_battle_contract::BattleError::WrongFormat::expected: &'static str
 pub formiga_battle_contract::BattleError::WrongFormat::found: alloc::string::String
+impl formiga_battle_contract::BattleError
+pub fn formiga_battle_contract::BattleError::is_missing(&self) -> bool
 impl core::convert::From<core::io::error::Error> for formiga_battle_contract::BattleError
 pub fn formiga_battle_contract::BattleError::from(core::io::error::Error) -> Self
 impl core::convert::From<formiga_battle_contract::BattleError> for formiga_battle_contract::ProjectionError

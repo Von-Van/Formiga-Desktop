@@ -8,7 +8,7 @@ sorts them by what they mean for a change, and answers three questions:
   remove      removing it, which colonies that hold it, the expansions and the code all feel
 
 The places are grouped as: saves (where a colony file keeps it, and data files holding it), the
-expansions (Hill, Home, Farm and Battle), the trip, Home and Farm contracts, the save upgrades,
+expansions (Hill, Home, Farm and Battle), the trip, Home, Farm and Battle contracts, the save upgrades,
 Desktop's code, the review tools, tests, and other places that spell its name out.
 
 Nothing is changed: it only reads.
@@ -29,15 +29,15 @@ from .workspace import EXPANSIONS, find_expansion
 GROUPS = {
     "data": "data files holding it (saves, fixtures, story packages)",
     "expansions": "Hill, Home, Farm and Battle",
-    "contracts": "the trip, Home and Farm contracts in Desktop",
+    "contracts": "the trip, Home, Farm and Battle contracts in Desktop",
     "upgrades": "Desktop's save upgrades",
     "code": "Desktop's code",
     "tools": "the review and developer tools",
     "tests": "tests",
 }
-# formiga-farm-contract is only on the `farm` branch for now.
 CONTRACT_CRATES = ("crates/formiga-travel/", "crates/formiga-home-contract/",
-                   "crates/formiga-farm-contract/", "crates/formiga-expansion-rulebook/")
+                   "crates/formiga-farm-contract/", "crates/formiga-battle-contract/",
+                   "crates/formiga-expansion-rulebook/")
 MIGRATIONS = "crates/formiga-core/src/persistence/migrations.rs"
 # How many places of each group the summary lists; --json lists them all.
 SHOWN = 6

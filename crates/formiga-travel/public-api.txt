@@ -948,6 +948,8 @@ pub formiga_travel::TravelError::UnsupportedVersion::reads: u32
 pub formiga_travel::TravelError::WrongFormat
 pub formiga_travel::TravelError::WrongFormat::expected: &'static str
 pub formiga_travel::TravelError::WrongFormat::found: alloc::string::String
+impl formiga_travel::TravelError
+pub fn formiga_travel::TravelError::is_missing(&self) -> bool
 impl core::convert::From<core::io::error::Error> for formiga_travel::TravelError
 pub fn formiga_travel::TravelError::from(core::io::error::Error) -> Self
 impl core::convert::From<formiga_expansion_rulebook::document::RulebookError> for formiga_travel::TravelError

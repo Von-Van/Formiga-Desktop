@@ -424,3 +424,24 @@ fn night_runs_from_ten_in_the_evening_to_six_in_the_morning() {
         .collect();
     assert_eq!(night, [0, 1, 2, 3, 4, 5, 22, 23]);
 }
+
+/// The same seed under the same desktop gives the same colony, tick for tick: nothing in the
+/// simulation reads the clock, the machine or an unordered map in a way that could leak into
+/// what is saved.
+#[test]
+fn two_worlds_from_one_seed_stay_byte_identical() {
+    let created = datetime!(2026-05-01 0:00 UTC);
+    let desktop = desktop();
+    let mut first = two_creature_world([21; 32], created);
+    let mut second = two_creature_world([21; 32], created);
+    let now = created + Duration::hours(1);
+    for step in 1..=2_000 {
+        let at = now + Duration::milliseconds(step * 50);
+        first.tick(at, 0.05, &desktop);
+        second.tick(at, 0.05, &desktop);
+    }
+    assert_eq!(
+        serde_json::to_string(&first.save).unwrap(),
+        serde_json::to_string(&second.save).unwrap()
+    );
+}

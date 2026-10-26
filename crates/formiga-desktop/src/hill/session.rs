@@ -23,7 +23,6 @@ use formiga_travel::{
     read_document, write_document,
 };
 use serde::{Deserialize, Serialize};
-use std::io;
 use std::path::{Path, PathBuf};
 use time::{Duration, OffsetDateTime};
 
@@ -129,7 +128,7 @@ impl TravelFiles {
         match read_document::<ReturnReceipt>(&trip.dir.join(RECEIPT_FILE)) {
             Ok(receipt) if receipt.answers(&trip.seal) => return Answer::Receipt(receipt),
             Ok(_) => problem = Some("the receipt is for another trip".to_owned()),
-            Err(TravelError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) if error.is_missing() => {}
             Err(error) => problem = Some(error.to_string()),
         }
         let refusal = read_document::<Acknowledgement>(&trip.dir.join(ACK_FILE))

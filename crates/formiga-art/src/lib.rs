@@ -34,10 +34,10 @@ pub use postcard::{
     postcard_caption,
 };
 pub use renderer::{
-    AccessoryArt, AlphaMask, AnimationAtlas, AnimationSpec, BodyClip, BodyPresentation,
-    CreatureRenderer, DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE,
-    FaceRenderState, FramePlacement, GazeDirection, MotionSignature, PixelPoint, PlaybackMode,
-    PropAnchor, RenderedBodyFrame, SNACK_KINDS, TOY_KINDS, prop_variants,
+    AccessoryArt, AlphaMask, AnimationSpec, BodyClip, BodyPresentation, CreatureRenderer,
+    DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
+    FramePlacement, GazeDirection, MotionSignature, PixelPoint, PlaybackMode, PropAnchor,
+    RenderedBodyFrame, SNACK_KINDS, TOY_KINDS, prop_variants,
 };
 pub use shelter::{
     ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,
@@ -63,9 +63,8 @@ pub use trinkets::{
 };
 pub use ui_atlas::{
     BUBBLE_ANCHOR, BUBBLE_CELL, LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT, MENU_CELL,
-    MENU_ICON_BOX, MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MenuIcon,
-    MenuLayout, MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
-    menu_label_text,
+    MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MenuIcon, MenuLayout,
+    MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, menu_label_text,
 };
 pub use village_ground::{
     GROUND_ATLAS_HEIGHT, GROUND_BAND, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundHouse,
