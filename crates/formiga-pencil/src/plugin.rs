@@ -63,7 +63,7 @@ impl Pencil {
     /// `text` drawn again: what egui drew of it that is not in the hand, then the hand in pencil.
     /// `None` when none of it is in the hand, or the galley's glyphs cannot be matched to its
     /// characters (shaped into ligatures, or cut short), in which case egui draws it as it is.
-    fn pencil(&mut self, text: &TextShape, frame: &Frame) -> Option<[Shape; 2]> {
+    fn pencil(&mut self, text: &TextShape, frame: &Frame) -> Option<Vec<Shape>> {
         let galley = &text.galley;
         let job = &galley.job;
         if galley.elided
@@ -222,7 +222,14 @@ impl Pencil {
         for vertex in &mut pencilled.vertices {
             vertex.uv = pos2(vertex.uv.x / w as f32, vertex.uv.y / h as f32);
         }
-        Some([Shape::mesh(rest), Shape::mesh(pencilled)])
+        // A mesh with nothing to draw is left out: a renderer may refuse an empty buffer.
+        Some(
+            [rest, pencilled]
+                .into_iter()
+                .filter(|mesh| !mesh.indices.is_empty())
+                .map(Shape::mesh)
+                .collect(),
+        )
     }
 }
 
@@ -348,6 +355,15 @@ mod tests {
             .map(|clipped| meshes_on(&clipped.shape, texture))
             .sum();
         assert_eq!(pencilled, 1, "one line is drawn from the pencil atlas");
+        // Nothing empty goes to the renderer: wgpu refuses an empty buffer.
+        fn empty(shape: &Shape) -> bool {
+            match shape {
+                Shape::Vec(shapes) => shapes.iter().any(empty),
+                Shape::Mesh(mesh) => mesh.indices.is_empty(),
+                _ => false,
+            }
+        }
+        assert!(!output.shapes.iter().any(|clipped| empty(&clipped.shape)));
         // The atlas goes out with the frame that first needs it, and holds only drawn or blank
         // texels: nothing is anti-aliased.
         let deltas = &output.textures_delta.set[&texture];
