@@ -26,6 +26,24 @@ impl core::marker::Unpin for formiga_expansion_rulebook::AckRefusal
 impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::AckRefusal
 impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::AckRefusal
 impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::AckRefusal
+pub enum formiga_expansion_rulebook::EarlyRequest
+pub formiga_expansion_rulebook::EarlyRequest::PrintVersion
+pub formiga_expansion_rulebook::EarlyRequest::WriteIcon(std::path::PathBuf)
+impl core::clone::Clone for formiga_expansion_rulebook::EarlyRequest
+pub fn formiga_expansion_rulebook::EarlyRequest::clone(&self) -> Self
+impl core::cmp::Eq for formiga_expansion_rulebook::EarlyRequest
+impl core::cmp::PartialEq for formiga_expansion_rulebook::EarlyRequest
+pub fn formiga_expansion_rulebook::EarlyRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for formiga_expansion_rulebook::EarlyRequest
+pub fn formiga_expansion_rulebook::EarlyRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for formiga_expansion_rulebook::EarlyRequest
+impl core::marker::Freeze for formiga_expansion_rulebook::EarlyRequest
+impl core::marker::Send for formiga_expansion_rulebook::EarlyRequest
+impl core::marker::Sync for formiga_expansion_rulebook::EarlyRequest
+impl core::marker::Unpin for formiga_expansion_rulebook::EarlyRequest
+impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::EarlyRequest
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::EarlyRequest
+impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::EarlyRequest
 pub enum formiga_expansion_rulebook::RulebookError
 pub formiga_expansion_rulebook::RulebookError::Invalid(alloc::string::String)
 pub formiga_expansion_rulebook::RulebookError::Io(core::io::error::Error)
@@ -55,6 +73,26 @@ impl core::marker::Unpin for formiga_expansion_rulebook::RulebookError
 impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::RulebookError
 impl !core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::RulebookError
 impl !core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::RulebookError
+pub struct formiga_expansion_rulebook::IconFolderMissing
+impl core::clone::Clone for formiga_expansion_rulebook::IconFolderMissing
+pub fn formiga_expansion_rulebook::IconFolderMissing::clone(&self) -> Self
+impl core::cmp::Eq for formiga_expansion_rulebook::IconFolderMissing
+impl core::cmp::PartialEq for formiga_expansion_rulebook::IconFolderMissing
+pub fn formiga_expansion_rulebook::IconFolderMissing::eq(&self, &Self) -> bool
+impl core::error::Error for formiga_expansion_rulebook::IconFolderMissing
+impl core::fmt::Debug for formiga_expansion_rulebook::IconFolderMissing
+pub fn formiga_expansion_rulebook::IconFolderMissing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for formiga_expansion_rulebook::IconFolderMissing
+pub fn formiga_expansion_rulebook::IconFolderMissing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for formiga_expansion_rulebook::IconFolderMissing
+impl core::marker::StructuralPartialEq for formiga_expansion_rulebook::IconFolderMissing
+impl core::marker::Freeze for formiga_expansion_rulebook::IconFolderMissing
+impl core::marker::Send for formiga_expansion_rulebook::IconFolderMissing
+impl core::marker::Sync for formiga_expansion_rulebook::IconFolderMissing
+impl core::marker::Unpin for formiga_expansion_rulebook::IconFolderMissing
+impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::IconFolderMissing
+impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::IconFolderMissing
+impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::IconFolderMissing
 pub struct formiga_expansion_rulebook::Kind
 pub formiga_expansion_rulebook::Kind::format: &'static str
 pub formiga_expansion_rulebook::Kind::max_bytes: u64
@@ -113,8 +151,10 @@ impl core::marker::UnsafeUnpin for formiga_expansion_rulebook::SessionId
 impl core::panic::unwind_safe::RefUnwindSafe for formiga_expansion_rulebook::SessionId
 impl core::panic::unwind_safe::UnwindSafe for formiga_expansion_rulebook::SessionId
 pub fn formiga_expansion_rulebook::check_header(&serde_json::value::Value, &'static str, u32) -> core::result::Result<(), formiga_expansion_rulebook::RulebookError>
+pub fn formiga_expansion_rulebook::data_dir(&str, &str) -> core::option::Option<std::path::PathBuf>
 pub fn formiga_expansion_rulebook::decode<T: serde_core::de::DeserializeOwned>(&[u8], formiga_expansion_rulebook::Kind) -> core::result::Result<T, formiga_expansion_rulebook::RulebookError>
 pub fn formiga_expansion_rulebook::encode<T: serde_core::ser::Serialize>(&T, formiga_expansion_rulebook::Kind) -> core::result::Result<alloc::vec::Vec<u8>, formiga_expansion_rulebook::RulebookError>
+pub fn formiga_expansion_rulebook::first_argument_request(&str, impl core::iter::traits::collect::IntoIterator<Item = std::ffi::os_str::OsString>) -> core::result::Result<core::option::Option<formiga_expansion_rulebook::EarlyRequest>, formiga_expansion_rulebook::IconFolderMissing>
 pub fn formiga_expansion_rulebook::header_ok(&str, u32, u32, &str) -> bool
 pub fn formiga_expansion_rulebook::hex(&[u8]) -> alloc::string::String
 pub fn formiga_expansion_rulebook::is_lower_hex(&str, usize) -> bool
@@ -123,5 +163,6 @@ pub fn formiga_expansion_rulebook::is_sha256_hex(&str) -> bool
 pub fn formiga_expansion_rulebook::read_bounded(&std::path::Path, u64) -> core::result::Result<alloc::vec::Vec<u8>, formiga_expansion_rulebook::RulebookError>
 pub fn formiga_expansion_rulebook::sanitize_text(&str, usize) -> alloc::string::String
 pub fn formiga_expansion_rulebook::sha256_hex(&[u8]) -> alloc::string::String
+pub fn formiga_expansion_rulebook::text_zoom(u16) -> f32
 pub fn formiga_expansion_rulebook::unhex<const N: usize>(&str) -> core::option::Option<[u8; N]>
 pub fn formiga_expansion_rulebook::write_atomically(&std::path::Path, &[u8]) -> core::io::error::Result<()>
