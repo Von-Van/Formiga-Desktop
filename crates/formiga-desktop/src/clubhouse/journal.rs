@@ -10,7 +10,6 @@
 use super::*;
 use crate::settings::SettingsTab;
 use egui::{Align2, FontId, Pos2, Rect, pos2, vec2};
-use std::sync::Arc;
 
 /// The pages in the order their tabs run down the cover.
 pub(crate) const PAGES: [SettingsTab; 9] = [
@@ -431,80 +430,25 @@ pub(crate) fn rule_pitch(scale: f32) -> f32 {
     (24.0 * scale).round()
 }
 
-/// Where the page's ruled lines are this frame: one every `pitch` below `top`, the top of the
-/// page's writing, wherever the scroll has put it. Kept for the frame while the page is drawn, so
-/// whatever is written on the page can find a line to sit on.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct RuleGrid {
-    pub(crate) top: f32,
-    pub(crate) pitch: f32,
-}
-
-impl RuleGrid {
-    fn id() -> egui::Id {
-        egui::Id::new("notebook-rule-grid")
-    }
-
-    /// Keeps this grid for what is drawn on the page from here on.
-    pub(crate) fn keep(self, ctx: &egui::Context) {
-        ctx.data_mut(|data| data.insert_temp(Self::id(), self));
-    }
-
-    /// Lets the grid go once the page has been drawn, so nothing drawn off the page lines up
-    /// with it.
-    pub(crate) fn forget(ctx: &egui::Context) {
-        ctx.data_mut(|data| data.remove::<Self>(Self::id()));
-    }
-
-    pub(crate) fn of(ctx: &egui::Context) -> Option<Self> {
-        ctx.data(|data| data.get_temp(Self::id()))
-    }
-
-    /// The first ruled line at or below `y`.
-    pub(crate) fn rule_at_or_below(self, y: f32) -> f32 {
-        self.top + ((y - self.top) / self.pitch - 1e-3).ceil() * self.pitch
-    }
-}
-
-/// Moves what is written next down to the page's next ruled line: the first at or below the
-/// bottom of whatever came before, so writing follows writing line after line, and follows a card
-/// or a row of buttons on the first line clear of it. Nothing happens off the page or in a row.
-pub(crate) fn to_next_rule(ui: &mut Ui) {
-    let Some(grid) = RuleGrid::of(ui.ctx()) else {
-        return;
-    };
-    if ui.layout().main_dir().is_horizontal() {
-        return;
-    }
-    let y = ui.cursor().top();
-    let after = y - ui.spacing().item_spacing.y;
-    let rule = grid.rule_at_or_below(after);
-    ui.add_space(rule - y);
-}
-
-/// How far above its ruled line a line of writing's baseline sits.
-const LIFT: f32 = 3.0;
-
-/// Writes `text` on the page's lines: on the next ruled line, and each line of it, however it
-/// wraps, sitting on a line of its own; text too tall for one line, like a page's name, takes two.
-/// Off the page, or on a card over it, it is an ordinary label.
-pub(crate) fn write(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
-    write_with(ui, text, None, egui::Sense::hover())
-}
+/// Where the page's ruled lines are this frame, and writing that rests on them: formiga-pencil's,
+/// so every Formiga notebook writes on its lines alike. The grid is kept for the frame while the
+/// page is drawn ([`RuleGrid::keep`]), so whatever is written on the page can find a line to rest
+/// on; off the page, or on a card over it, writing is an ordinary label.
+pub(crate) use formiga_pencil::ruled::{RuleGrid, on_the_line, ruled_row, to_next_rule, write};
 
 /// `write`, wrapped at `wrap` points rather than the room there is, and answering to `sense`. In
-/// a row (`ruled_row`), each thing written sits on the row's line.
+/// a row (`ruled_row`), each thing written rests on the row's line.
 pub(crate) fn write_with(
     ui: &mut Ui,
     text: impl Into<egui::WidgetText>,
     wrap: Option<f32>,
     sense: egui::Sense,
 ) -> egui::Response {
-    write_marked(ui, text, wrap, sense, None)
+    formiga_pencil::ruled::write_with(ui, text, wrap, sense, None)
 }
 
 /// `write_with`, run over with a highlighter in `marker` if given: a band behind the letters of
-/// each line, from just above their capitals down to the rule they sit on.
+/// each line, from just above their capitals down to the rule they rest on.
 pub(crate) fn write_marked(
     ui: &mut Ui,
     text: impl Into<egui::WidgetText>,
@@ -512,105 +456,7 @@ pub(crate) fn write_marked(
     sense: egui::Sense,
     marker: Option<Color32>,
 ) -> egui::Response {
-    let text = text.into();
-    let Some(grid) = RuleGrid::of(ui.ctx()) else {
-        return ui.add(egui::Label::new(text).wrap().sense(sense));
-    };
-    to_next_rule(ui);
-    let width = wrap.unwrap_or_else(|| ui.available_width()).max(24.0);
-    let mut job = Arc::unwrap_or_clone(text.into_layout_job(
-        ui.style(),
-        egui::FontSelection::Default,
-        egui::Align::Min,
-    ));
-    job.wrap.max_width = width;
-    // As many ruled lines to each line of text as it needs: one for writing, two for a name.
-    // Read from the size it is written at rather than the font's own line, which for the pencil
-    // hand leaves room for its tallest loops and would give every line two rules.
-    let natural = job
-        .sections
-        .iter()
-        .map(|section| section.format.font_id.size)
-        .fold(0.0_f32, f32::max)
-        * 1.15;
-    let line = (natural / grid.pitch).ceil().max(1.0) * grid.pitch;
-    for section in &mut job.sections {
-        section.format.line_height = Some(line);
-    }
-    let galley = ui.painter().layout_job(job);
-    let rows = galley.rows.len().max(1) as f32;
-    let baseline = galley
-        .rows
-        .first()
-        .and_then(|row| row.glyphs.first())
-        .map_or(line - LIFT, |glyph| glyph.pos.y);
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(galley.size().x, rows * line), sense);
-    if ui.is_rect_visible(rect) {
-        let at = pos2(rect.left(), rect.top() + line - LIFT - baseline);
-        if let Some(marker) = marker {
-            let cap = galley
-                .rows
-                .first()
-                .and_then(|row| row.glyphs.first())
-                .map_or(line * 0.6, |glyph| glyph.font_ascent);
-            for row in &galley.rows {
-                let rule = at.y + row.pos.y + baseline + LIFT;
-                ui.painter().rect_filled(
-                    Rect::from_min_max(
-                        pos2(at.x + row.rect().left() - 2.0, rule - LIFT - cap - 2.0),
-                        pos2(at.x + row.rect().right() + 2.0, rule),
-                    ),
-                    0.0,
-                    marker,
-                );
-            }
-        }
-        ui.painter().galley(at, galley, ui.visuals().text_color());
-    }
-    response
-}
-
-/// One control on the page's next ruled line, a checkbox or a row of buttons, set so that the
-/// words on it rest on the line as written words do. A control taller than the line stands up
-/// above it, and what follows goes on the next line clear of it.
-pub(crate) fn on_the_line<R>(
-    ui: &mut Ui,
-    add: impl FnOnce(&mut Ui) -> R,
-) -> egui::InnerResponse<R> {
-    let Some(grid) = RuleGrid::of(ui.ctx()) else {
-        return ui.scope(add);
-    };
-    to_next_rule(ui);
-    let band = ui.cursor().top();
-    let height = ui.spacing().interact_size.y;
-    let size = egui::TextStyle::Body.resolve(ui.style()).size;
-    // The middle of a control's words is about a third of their size above where they rest.
-    let middle = band + grid.pitch - LIFT - size * 0.35;
-    let top = (middle - height / 2.0).max(band - grid.pitch / 2.0);
-    let rect = Rect::from_min_size(
-        pos2(ui.cursor().left(), top),
-        vec2(ui.available_width(), height),
-    );
-    let shown = ui.scope_builder(
-        egui::UiBuilder::new()
-            .max_rect(rect)
-            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        add,
-    );
-    // The control's clickable edge may hang a little past the line under its words; what follows
-    // still goes on the very next line, unless the control reaches half a line past it.
-    let lines = ((shown.response.rect.bottom() - band) / grid.pitch - 0.5)
-        .ceil()
-        .max(1.0);
-    let next = band + lines * grid.pitch + ui.spacing().item_spacing.y;
-    ui.add_space(next - ui.cursor().top());
-    shown
-}
-
-/// A row on the page's next ruled line: whatever is written in it with `write` sits on that line.
-pub(crate) fn ruled_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
-    to_next_rule(ui);
-    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), add)
+    formiga_pencil::ruled::write_with(ui, text, wrap, sense, marker)
 }
 
 /// The leather all of the window is bound in, its stitching, and the brass at its corners.

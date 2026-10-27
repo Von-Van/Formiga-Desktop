@@ -11,10 +11,12 @@
 //! drawn at twice its size. Tilted writing is always drawn the finer way.
 //!
 //! Install it once per context with [`install`], then write with [`hand`] or [`hand_bold`], or
-//! everywhere at once by installing it with [`Everywhere::Yes`].
+//! everywhere at once by installing it with [`Everywhere::Yes`]. On a ruled page, [`ruled`] sets
+//! the writing on the page's lines.
 
 mod atlas;
 mod plugin;
+pub mod ruled;
 
 use egui::{FontData, FontDefinitions, FontFamily, FontId};
 use std::sync::Arc;
