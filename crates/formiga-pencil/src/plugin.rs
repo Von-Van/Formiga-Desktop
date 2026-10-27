@@ -144,8 +144,7 @@ impl Pencil {
                     continue;
                 };
                 let heading = format.font_id.size >= frame.heading_size && text.angle == 0.0;
-                // Screen pixels to a texel: a point's worth for writing, two for a heading.
-                let k = (ppp * if heading { 2.0 } else { 1.0 }).round().max(1.0);
+                let k = texel(ppp, heading);
                 let threshold = if heading { 128 } else { 84 };
                 let em = format.font_id.size * ppp / k;
                 let ink = colour(&visuals.mesh.vertices[first], true);
@@ -158,7 +157,7 @@ impl Pencil {
                         continue;
                     };
                     // The pen, snapped to the texel grid of the screen, so every glyph's texels
-                    // fall on whole pixels and line up with the next glyph's.
+                    // line up with the next glyph's.
                     let absolute = origin * ppp + pen;
                     let snapped = vec2((absolute.x / k).round() * k, (absolute.y / k).round() * k)
                         - origin * ppp;
@@ -231,6 +230,14 @@ impl Pencil {
                 .collect(),
         )
     }
+}
+
+/// Screen pixels to a texel: a grain's worth for writing, twice that for a heading. A texel under
+/// two pixels may fall between them, so it is as fine as asked; a coarser one is kept to whole
+/// pixels, where one more or less would show.
+fn texel(pixels_per_point: f32, heading: bool) -> f32 {
+    let k = pixels_per_point * crate::GRAIN * if heading { 2.0 } else { 1.0 };
+    if k < 2.0 { k.max(1.0) } else { k.round() }
 }
 
 /// What every piece of text in a frame is drawn against.
@@ -374,13 +381,23 @@ mod tests {
     }
 
     #[test]
+    fn the_grain_is_finer_than_a_point_and_a_heading_keeps_to_whole_pixels() {
+        // On a Retina screen: writing a little under two pixels a texel, headings three, not four.
+        assert_eq!(texel(2.0, false), 1.6);
+        assert_eq!(texel(2.0, true), 3.0);
+        // On an ordinary screen writing never goes under a pixel a texel, or strokes would drop out.
+        assert_eq!(texel(1.0, false), 1.0);
+        assert_eq!(texel(1.0, true), 1.6);
+    }
+
+    #[test]
     fn a_heading_is_drawn_on_a_grid_twice_as_coarse_as_writing() {
         let faces = [Face::new(crate::REGULAR), Face::new(crate::BOLD)];
         let mut atlas = Atlas::new();
         let a = faces[0].glyph('a').expect("Kalam has an a");
         let writing = atlas.glyph(&faces, 0, a, 16.0, 84).unwrap();
         let heading = atlas.glyph(&faces, 0, a, 20.0, 128).unwrap();
-        // A 40-point heading at two points a texel is drawn from a glyph half as many texels
+        // A 40-point heading at twice the grain is drawn from a glyph half as many texels
         // across as a 40-point line of writing would be.
         let full = atlas.glyph(&faces, 0, a, 40.0, 84).unwrap();
         assert!(heading.size[0] * 2 <= full.size[0] + 2);

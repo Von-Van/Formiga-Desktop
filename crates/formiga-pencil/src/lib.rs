@@ -7,14 +7,16 @@
 //! readers are egui's own. Only how its glyphs are drawn changes: [`Pencil`], an egui plugin, finds
 //! each piece of text set in the hand in the frame's output and draws its glyphs from an atlas of
 //! its own, rasterised once per size with a hard threshold and sampled nearest-neighbour. Writing
-//! under 20 points is drawn a point to a texel; headings two points to a texel, as a sprite is
-//! drawn at twice its size. Tilted writing is always drawn the finer way.
+//! under 20 points is drawn [`GRAIN`] points to a texel; headings twice that, as a sprite is drawn
+//! at twice its size. Tilted writing is always drawn the finer way.
 //!
 //! Install it once per context with [`install`], then write with [`hand`] or [`hand_bold`], or
-//! everywhere at once by installing it with [`Everywhere::Yes`].
+//! everywhere at once by installing it with [`Everywhere::Yes`]. On a ruled page, [`ruled`] sets
+//! the writing on the page's lines.
 
 mod atlas;
 mod plugin;
+pub mod ruled;
 
 use egui::{FontData, FontDefinitions, FontFamily, FontId};
 use std::sync::Arc;
@@ -29,7 +31,12 @@ pub const HAND_BOLD: &str = "hand-bold";
 pub(crate) static REGULAR: &[u8] = include_bytes!("../fonts/Kalam-Regular.ttf");
 pub(crate) static BOLD: &[u8] = include_bytes!("../fonts/Kalam-Bold.ttf");
 
-/// Writing at or above this size, in points, is a heading, drawn two points to a texel, unless
+/// How many points of writing a texel of the pencil covers; a heading's texels cover twice as
+/// many. Under a point, so the grain reads as pencil rather than as blocks: on a Retina screen a
+/// heading's texels are three pixels across, not four.
+pub const GRAIN: f32 = 0.8;
+
+/// Writing at or above this size, in points, is a heading, drawn at twice the grain, unless
 /// [`set_heading_size`] says otherwise.
 pub const HEADING_SIZE: f32 = 20.0;
 
