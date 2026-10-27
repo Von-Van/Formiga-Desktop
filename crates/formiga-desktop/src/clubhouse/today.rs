@@ -627,15 +627,54 @@ impl TodayState {
             "What each companion is doing this minute.",
         );
         journal::to_next_rule(ui);
-        let (plate, _) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), 8.0 * pitch),
-            egui::Sense::hover(),
-        );
+        let width = ui.available_width();
+
+        // Everyone stands on the ground, as many to a row as fit, centred when they are few.
+        let count = save.creatures.len().max(1) as f32;
+        let gap = 10.0;
+        let column = (104.0 * scale).min((width - 32.0 - gap * (count - 1.0)) / count);
+        let doing_font = egui::FontId::proportional(15.0 * scale);
+        // What each is doing, wrapped to its column. The names sit on the line under the ground's
+        // edge whatever the length, so a longer one wraps downward and the plate grows a rule.
+        let doings: Vec<_> = save
+            .creatures
+            .iter()
+            .map(|creature| {
+                let doing = if creature.state.surface.window_key.is_some() {
+                    "Up on a window".to_owned()
+                } else {
+                    capitalised(&crate::settings::activity_label(creature.state.action))
+                };
+                let mut job = egui::text::LayoutJob::simple(
+                    doing.clone(),
+                    doing_font.clone(),
+                    muted(),
+                    column,
+                );
+                job.halign = egui::Align::Center;
+                let galley = ui.painter().layout_job(job);
+                (doing, galley)
+            })
+            .collect();
+        let one_line = ui
+            .painter()
+            .layout_no_wrap(" ".to_owned(), doing_font, muted())
+            .size()
+            .y;
+        let tallest = doings
+            .iter()
+            .map(|(_, galley)| galley.size().y)
+            .fold(one_line, f32::max);
+        let grown = ((tallest - one_line) / pitch).ceil() * pitch;
+        let (plate, _) =
+            ui.allocate_exact_size(egui::vec2(width, 8.0 * pitch + grown), egui::Sense::hover());
+        // Where a one-line activity ends: everything above the writing keeps its place.
+        let writing_bottom = plate.bottom() - grown;
         let painter = ui.painter().clone();
         let mut fills = journal::Fills::default();
         journal::stepped_box(&mut fills, plate, card_fill(), line());
         let ground = egui::Rect::from_min_max(
-            egui::pos2(plate.left(), plate.bottom() - 46.0 * scale),
+            egui::pos2(plate.left(), writing_bottom - 46.0 * scale),
             plate.right_bottom(),
         );
         fills.rect(ground, ground_strip());
@@ -690,10 +729,6 @@ impl TodayState {
             return;
         }
 
-        // Everyone stands on the ground, as many to a row as fit, centred when they are few.
-        let count = save.creatures.len() as f32;
-        let gap = 10.0;
-        let column = (104.0 * scale).min((plate.width() - 32.0 - gap * (count - 1.0)) / count);
         let portrait = (76.0 * scale.min(1.2)).min(column - 8.0).max(24.0);
         let row = column * count + gap * (count - 1.0);
         let left = if count <= 3.0 {
@@ -702,27 +737,17 @@ impl TodayState {
             plate.left() + (plate.width() - row) / 2.0
         };
         let name_size = 16.0 * scale;
-        let doing_size = 15.0 * scale;
-        for (index, creature) in save.creatures.iter().enumerate() {
+        for (index, (creature, (doing, doing_galley))) in
+            save.creatures.iter().zip(doings).enumerate()
+        {
             let x = left + index as f32 * (column + gap);
             let middle = x + column / 2.0;
-            let doing = if creature.state.surface.window_key.is_some() {
-                "Up on a window".to_owned()
-            } else {
-                capitalised(&crate::settings::activity_label(creature.state.action))
-            };
-            let doing_galley = painter.layout(
-                doing.clone(),
-                egui::FontId::proportional(doing_size),
-                muted(),
-                column,
-            );
             let name_galley = painter.layout_no_wrap(
                 creature.name.clone(),
                 formiga_pencil::hand_bold(name_size),
                 ink(),
             );
-            let doing_top = plate.bottom() - 8.0 - doing_galley.size().y;
+            let doing_top = writing_bottom - 8.0 - one_line;
             let name_top = doing_top - name_galley.size().y + 4.0;
             let face = egui::Rect::from_min_size(
                 egui::pos2(middle - portrait / 2.0, name_top - 4.0 - portrait),
@@ -735,11 +760,8 @@ impl TodayState {
                 name_galley,
                 ink(),
             );
-            painter.galley(
-                egui::pos2(middle - doing_galley.size().x / 2.0, doing_top),
-                doing_galley,
-                muted(),
-            );
+            // Centred rows: the galley is laid out about its own middle.
+            painter.galley(egui::pos2(middle, doing_top), doing_galley, muted());
             // The bubble of the last thing it did today, over its head.
             let last = today.moments.iter().find(|entry| {
                 entry.creature == Some(creature.id)

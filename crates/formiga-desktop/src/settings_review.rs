@@ -2941,3 +2941,52 @@ fn a_full_day_is_laid_out_on_today() {
         picture.save(path.join("Today-full-day.png")).unwrap();
     }
 }
+
+/// Right now keeps each companion's name on the line above the ground and its portrait level
+/// with the others', however long what it is doing runs and however big the text: a long
+/// activity wraps downward into the ground, never up past it. Pictured for review when
+/// `FORMIGA_UI_REVIEW_DIR` is set.
+#[test]
+fn a_long_activity_in_right_now_stays_below_the_ground_line() {
+    let mut raised = Vec::new();
+    for (text_scale, width) in [(100, 940.0), (150, 760.0)] {
+        let mut h = Harness::new(SettingsTab::Today);
+        configure_style(
+            &h.context,
+            AppearancePreferences {
+                text_scale,
+                ..Default::default()
+            },
+        );
+        for (index, creature) in h.save.creatures.iter_mut().enumerate() {
+            creature.state.surface.window_key = None;
+            creature.state.action = [
+                ActionKind::Idle,
+                ActionKind::Traverse,
+                ActionKind::PetReaction,
+                ActionKind::Homebound,
+            ][index % 4];
+        }
+        h.screen = egui::vec2(width, 1400.0);
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        let picture = h.picture();
+        let tops: Vec<f32> = h
+            .save
+            .creatures
+            .iter()
+            .map(|creature| h.text_top(&creature.name))
+            .collect();
+        if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from)
+        {
+            std::fs::create_dir_all(&path).unwrap();
+            picture
+                .save(path.join(format!("Today-right-now-{text_scale}.png")))
+                .unwrap();
+        }
+        if tops.iter().any(|top| (top - tops[0]).abs() >= 0.5) {
+            raised.push(format!("text at {text_scale}%: {tops:?}"));
+        }
+    }
+    assert!(raised.is_empty(), "every name sits on one line: {raised:?}");
+}

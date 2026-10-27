@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Today's Right now keeps every companion's name on the line under the ground, with the portraits
+  level, however long what it is doing runs: a long activity such as "Taking a quiet moment" wraps
+  downward, its lines centred, and the plate grows by a rule to hold it, instead of lifting that
+  companion's name and portrait above the ground line.
+
 ## [0.68.0] - 2026-10-26
 
 Released alongside Formiga Hill 0.68.0, Formiga Home 0.68.0 and Formiga Battle 0.68.0, which are
