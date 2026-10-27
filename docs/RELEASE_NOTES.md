@@ -4,6 +4,15 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.68.1
+
+A patch for the notebook's pencil hand. Its writing is drawn on a finer grain, so it reads less
+blocky, and every line of writing now rests on its rule rather than floating above it. Today's
+Right now keeps each companion's name on the line under the ground however long what it is doing
+runs. Update Formiga Hill, Formiga Home and Formiga Battle to 0.68.1 alongside: Battle and Home take
+the same finer hand and ruled lines, Battle's foot line no longer overlaps its pages, and Hill
+redraws a place only when something on it changes, with the same pictures.
+
 ## New in 0.68.0
 
 The notebook is written in a pencil hand now, and Today reads as a filled-in page: your colony on
