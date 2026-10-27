@@ -2,7 +2,20 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.68.1] - 2026-10-26
+
+A patch to the notebook's pencil hand, released alongside Formiga Hill, Home and Battle 0.68.1.
+Save version 33, travel version 6, household version 12 and Battle contract version 5 are
+unchanged, so the 0.68.0 apps still work with it.
+
+### Changed
+
+- The pencil hand is drawn on a grain about a fifth finer, so the notebook's writing reads less
+  blocky: a texel of writing now covers 0.8 pt rather than 1 pt, and a heading's 1.6 pt rather than
+  2 pt. Formiga Hill, Home and Battle take the same hand from this release.
+- Writing sits 1 pt above its rule rather than 3 pt, so the letters rest on the notebook's lines,
+  and the ruled-lines writing now lives in `formiga-pencil` so Home and Battle write on their lines
+  exactly as the Journal does.
 
 ### Fixed
 
