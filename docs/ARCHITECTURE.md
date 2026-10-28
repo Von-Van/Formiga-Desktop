@@ -1234,6 +1234,64 @@ and it adds two quads and two draws to a frame. The Home page's preview draws th
 Nothing on the ground moves, so reduced motion changes nothing. `formiga-tools home-yard-sheet`
 shows it under every panel.
 
+## Standing back in the village
+
+Companions at home stand on the same shallow strip the houses do. `CreatureState::depth` is how
+far back on it a companion stands, in the same shelter pixels as a house's depth: nought at the
+front edge of the grass, where everything stood before, and up to `MAX_HOUSE_DEPTH`. It is
+runtime only, `#[serde(skip)]` like `indoors`, so the save, its version and every contract are as
+they were, and a colony always opens with everybody at the front. Away from home it is always
+nought.
+
+`world/village_paths.rs` keeps the rule that makes depth believable with houses that are flat
+pictures facing the desk: a companion never changes how far back it stands where a house stands
+across its way. It goes up and down only on the paths the ground already draws in from the front
+of the grass to each door, which run in front of their own house and nobody else's, and along the
+strip it keeps whatever depth it has. `VillagePaths` is built once a tick in the village survey
+from each shown house's door, lot width and depth; `toward` gives the next place on the way from
+one depth to another — the foot of the door path with the least walking among those running back
+at least as far as the further of the two, then its head — and `step` goes up or down the path,
+all the way, before another step along. A step back covers 0.6 of the display a step along does.
+
+Three things use it. A stroll, now and then, goes in among the houses instead of along the front:
+35 times in a hundred up onto the trodden path along the middle of the grass (`PATH_DEPTH` = 4.5,
+between the two rows the ground draws it on, and reachable only where some house stands back past
+it), to a place along it that is clear of everybody and not behind a house, and 25 times in a
+hundred up to a doorstep set back three or more pixels; either way it stands there three to eight
+seconds and comes back down to its own place at the front. These choices come from a stream of
+their own, `village-paths`, so the strolls along the front choose as they always have. A chore at
+a resident's own house is done at the front of the house, up its path and to one side of the door,
+and a spell indoors goes up the path to the door and comes back out onto the doorstep. Resting
+places, quiet moments, shared village moments and everything else stay at the front, and
+everybody arrives at the front of the grass and leaves from it. Over a long afternoon with four
+residents (`residents_go_into_the_village_only_by_its_paths`), about 5% of resident time is spent
+on the path or a doorstep.
+
+Whoever the village did not walk in a tick — a visit over, a companion picked up or off to a
+wonder — steps forward to the front at 14 pixels a second, except while the colony is paused. A
+companion picked up from back in the village is lifted from where it is drawn: its depth is folded
+into its position and the grab offset, so it stays under the hand.
+
+The overlay draws a companion `depth` shelter pixels higher up the display, exactly as a house set
+back is raised (`CreatureState::drawn_position`, `OverlayRenderer::drawn_contact`), and the hit
+proxy, bubbles and menu anchor follow the drawn position. Houses and trees are emitted one quad
+each from the back of the ground to the front (`VillageQuad`, ordered by depth, the trees at the
+front after the houses there); which changes no picture, since neighbouring houses never overlap,
+and `home-yard-sheet` is pixel-identical. A companion standing back is drawn between the houses
+behind it and the ones in front (`quads_behind`: in front of every house as far back or further,
+so a companion on a doorstep is in front of its house), with whatever it is holding, and before
+the grass along the front; everybody at the front is drawn as before. Each companion standing
+back splits the village's one draw in two, so a frame with three of them costs at most three
+more draw calls. A companion mostly out of sight behind a house nearer the front
+(`World::behind_a_house`, refreshed each village tick) has its hit proxy treated as occluded, so a
+click there is the house's.
+
+Companions are not drawn smaller further back. A house set back is not either, and a pixel-art
+frame shrunk by a tenth drops rows of its drawing unevenly; the drawing's height up the display,
+the houses in front of it and the front grass over its feet carry the depth instead.
+`formiga-tools village-depth-sheet` shows a full village with everybody at the front, out on the
+path, on doorsteps and partway up a path, and the path after dark, at both corners.
+
 ## How high companions go
 
 `find_nearby_ledge` lets a companion on the floor think of any window at least 36 points above it

@@ -176,10 +176,7 @@ impl OverlayRenderer {
         let scale = 2.0;
         let width = bubble.width as f32 * scale;
         let height = bubble.height as f32 * scale;
-        let local_x = self
-            .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
-        let contact_y = self
-            .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
         let creature_height = FRAME_SIZE as f32 * f32::from(display_scale);
         let center_x = local_x.clamp(width / 2.0, self.layout.width as f32 - width / 2.0);
         let bottom_px = (contact_y - creature_height - 6.0).max(height);
@@ -213,10 +210,7 @@ impl OverlayRenderer {
         display_scale: u8,
     ) -> (f32, f32, f32) {
         let scale = f32::from(display_scale);
-        let local_x = self
-            .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
-        let contact_y = self
-            .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
         let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * scale;
         let BodyPresentation { clip, frame, .. } = BodyPresentation::for_creature(creature);

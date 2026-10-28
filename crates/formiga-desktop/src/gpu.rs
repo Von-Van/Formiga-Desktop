@@ -103,6 +103,19 @@ struct ShelterGpu {
     look: VillageLook,
 }
 
+/// One creature's stretch of the frame's vertices: its body, face, any keepsake it is holding up,
+/// and anything the village has put in its hands, which is drawn with it rather than over the
+/// colony when it stands back among the houses. `among_houses` is how many of the village's
+/// quads are drawn before it, when it is drawn among them.
+struct CreatureDraw {
+    id: CreatureId,
+    start: usize,
+    trinket: bool,
+    held: usize,
+    among_houses: Option<usize>,
+    depth: f32,
+}
+
 /// The ground the village stands on, both layers by day and after dark, for the way the village
 /// is laid out now.
 struct GroundGpu {
@@ -618,6 +631,19 @@ impl OverlayRenderer {
         (physical / divisor).round() * divisor
     }
 
+    /// Where a creature's contact point is drawn, in monitor-local physical pixels on the
+    /// drawable's grid: raised by however far back on the village ground it stands, as far as a
+    /// house set back that far is.
+    pub(super) fn drawn_contact(&self, creature: &Creature, display_scale: u8) -> (f32, f32) {
+        let drawn = creature
+            .state
+            .drawn_position(f32::from(display_scale) / self.monitor.scale_factor.max(1.0));
+        (
+            self.snap((drawn.x - self.monitor.bounds.x) * self.monitor.scale_factor),
+            self.snap((drawn.y - self.monitor.bounds.y) * self.monitor.scale_factor),
+        )
+    }
+
     pub fn render(
         &mut self,
         save: &SaveFile,
@@ -698,7 +724,7 @@ impl OverlayRenderer {
             self.ensure_colony_object_atlas(save.colony_seed);
             self.cached_colony_object_vertices(save).to_vec()
         };
-        let village_vertices = if shelter_visible {
+        let village_quads = if shelter_visible {
             self.village_vertices(save, ui.night, ui.village)
         } else {
             Vec::new()
@@ -722,7 +748,7 @@ impl OverlayRenderer {
         let mut vertices = Vec::with_capacity(
             object_vertices.len()
                 + visible.len() * 18
-                + village_vertices.len()
+                + village_quads.len() * 6
                 + tree_vertices.len()
                 + usize::from(bubble_creature.is_some()) * 6,
         );
@@ -734,8 +760,10 @@ impl OverlayRenderer {
             vertices.extend_from_slice(back);
         }
         let shelter_start = vertices.len();
-        vertices.extend_from_slice(&village_vertices);
-        let shelter_vertex_count = village_vertices.len();
+        for quad in &village_quads {
+            vertices.extend_from_slice(&quad.vertices);
+        }
+        let shelter_vertex_count = village_quads.len() * 6;
         let ground_front_start = vertices.len();
         if let Some([_, front]) = &ground_layers {
             vertices.extend_from_slice(front);
@@ -791,11 +819,35 @@ impl OverlayRenderer {
             if let Some(trinket) = trinket {
                 vertices.extend_from_slice(&trinket);
             }
+            // Somebody standing back in the village is drawn among the houses, in front of the
+            // ones as far back or further and behind the rest, with whatever it is holding.
+            let among_houses = (creature.state.depth > 0.0 && !village_quads.is_empty())
+                .then(|| quads_behind(&village_quads, creature.state.depth));
+            let mut held_count = 0;
             for quad in held.into_iter().flatten() {
-                prop_vertices.extend_from_slice(&quad);
+                if among_houses.is_some() {
+                    vertices.extend_from_slice(&quad);
+                    held_count += 6;
+                } else {
+                    prop_vertices.extend_from_slice(&quad);
+                }
             }
-            creature_draws.push((creature.id, start, trinket.is_some()));
+            creature_draws.push(CreatureDraw {
+                id: creature.id,
+                start,
+                trinket: trinket.is_some(),
+                held: held_count,
+                among_houses,
+                depth: creature.state.depth,
+            });
         }
+        // Among the houses, back to front; everybody at the front after them, in colony order.
+        creature_draws.sort_by(|a, b| {
+            a.among_houses
+                .unwrap_or(usize::MAX)
+                .cmp(&b.among_houses.unwrap_or(usize::MAX))
+                .then(b.depth.total_cmp(&a.depth))
+        });
         // Everything small the village holds or has loose, over the colony, from the same sheet
         // as its belongings.
         let prop_start = vertices.len();
@@ -928,14 +980,53 @@ impl OverlayRenderer {
             if let Some(ground) = ground {
                 draw(&mut pass, &ground.bind_group, 0, 6);
             }
-            if shelter_vertex_count > 0
+            // The houses and trees from the back of the ground to the front, with whoever is
+            // standing back among them drawn between the ones behind it and the ones in front.
+            let draw_creature = |pass: &mut wgpu::RenderPass<'_>, creature: &CreatureDraw| {
+                if let Some(sprite) = self.sprites.get(&creature.id) {
+                    draw(pass, &sprite.body_bind_group, creature.start, 6);
+                    draw(pass, &sprite.face_bind_group, creature.start + 6, 6);
+                    let mut next = creature.start + 12;
+                    if creature.trinket
+                        && let Some(trinkets) = &self.trinkets
+                    {
+                        draw(pass, &trinkets.bind_group, next, 6);
+                        next += 6;
+                    }
+                    if creature.held > 0
+                        && let Some(objects) = &self.colony_objects
+                    {
+                        draw(pass, &objects.bind_group, next, creature.held);
+                    }
+                }
+            };
+            let (among_houses, in_front): (Vec<&CreatureDraw>, Vec<&CreatureDraw>) = creature_draws
+                .iter()
+                .partition(|draw| draw.among_houses.is_some());
+            let mut drawn = 0;
+            for creature in &among_houses {
+                let behind = creature.among_houses.unwrap_or(0) * 6;
+                if behind > drawn
+                    && let Some(shelter) = &self.shelter
+                {
+                    draw(
+                        &mut pass,
+                        &shelter.bind_group,
+                        shelter_start + drawn,
+                        behind - drawn,
+                    );
+                }
+                drawn = drawn.max(behind);
+                draw_creature(&mut pass, creature);
+            }
+            if shelter_vertex_count > drawn
                 && let Some(shelter) = &self.shelter
             {
                 draw(
                     &mut pass,
                     &shelter.bind_group,
-                    shelter_start,
-                    shelter_vertex_count,
+                    shelter_start + drawn,
+                    shelter_vertex_count - drawn,
                 );
             }
             if let Some(ground) = ground {
@@ -978,14 +1069,8 @@ impl OverlayRenderer {
                     wonder_vertex_count,
                 );
             }
-            for (creature_id, start, has_trinket) in creature_draws {
-                if let Some(sprite) = self.sprites.get(&creature_id) {
-                    draw(&mut pass, &sprite.body_bind_group, start, 6);
-                    draw(&mut pass, &sprite.face_bind_group, start + 6, 6);
-                    if has_trinket && let Some(trinkets) = &self.trinkets {
-                        draw(&mut pass, &trinkets.bind_group, start + 12, 6);
-                    }
-                }
+            for creature in in_front {
+                draw_creature(&mut pass, creature);
             }
             if prop_vertex_count > 0
                 && let Some(objects) = &self.colony_objects
@@ -1116,10 +1201,7 @@ impl OverlayRenderer {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
         let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
-        let local_x = self
-            .snap((creature.state.position.x - self.monitor.bounds.x) * self.monitor.scale_factor);
-        let contact_y = self
-            .snap((creature.state.position.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
         let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * display_scale as f32;
         let frame_bottom = frame_top + sprite_size;

@@ -38,6 +38,9 @@ pub(super) enum MomentPhase {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RoamStep {
     target: Point,
+    /// How far back on the village ground the target is: the front for its own place and most
+    /// strolls, the middle path or somebody's doorstep for the rest.
+    depth: f32,
     dwell: f32,
     leg: RoamLeg,
 }
@@ -59,6 +62,12 @@ impl RoamStep {
     /// Out on a stroll, there or back, rather than at home on its own place.
     fn strolling(&self) -> bool {
         matches!(self.leg, RoamLeg::Out | RoamLeg::Back)
+    }
+
+    /// Whether `creature` is where this step takes it, as far back as it takes it.
+    fn reached(&self, creature: &Creature) -> bool {
+        creature.state.position == self.target
+            && village_paths::same_depth(creature.state.depth, self.depth)
     }
 }
 
@@ -99,6 +108,15 @@ pub(super) const WALK_SPEED_PER_ACTIVITY: f32 = 34.0;
 /// How far a stroll goes at the least, in creature widths: far enough to read as going somewhere.
 const STROLL_REACH_FRAMES: f32 = 1.5;
 
+/// How often a stroll goes into the village rather than along its front, in hundredths: up onto
+/// the trodden path along the middle, or up to a doorstep set back from the front.
+const PATH_STROLL_CHANCE: u32 = 35;
+const DOORSTEP_STROLL_CHANCE: u32 = 25;
+
+/// How long a resident stands somewhere it strolled up to in the village, on the path or a
+/// doorstep, looking about, before heading back down.
+const INSIDE_PAUSE: std::ops::Range<f32> = 3.0..8.0;
+
 /// How many places a companion considers before settling for the best of a bad lot. Six is
 /// enough that a busy commons still finds somewhere, and few enough to be free.
 const ROAM_TRIES: usize = 6;
@@ -120,6 +138,7 @@ const DOORSTEP_STEPS: usize = 3;
 fn roam_target(
     roam: &mut BTreeMap<CreatureId, RoamStep>,
     rng: &mut ChaCha12Rng,
+    paths: (&village_paths::VillagePaths, &mut ChaCha12Rng),
     creature: &Creature,
     commons: HomeCommons,
     house: Option<(Point, f32)>,
@@ -128,7 +147,7 @@ fn roam_target(
     doorways: &[(f32, f32)],
     settled: Point,
     dt: f32,
-) -> (Point, f32) {
+) -> (Point, f32, f32) {
     let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * commons.scale;
     let pace = |leg: RoamLeg| {
         if matches!(leg, RoamLeg::Out | RoamLeg::Back) {
@@ -169,17 +188,18 @@ fn roam_target(
             creature.id,
             RoamStep {
                 target: first,
+                depth: 0.0,
                 dwell: rng.random_range(STROLL_REST),
                 leg: RoamLeg::Arriving,
             },
         );
-        return (first, 1.0);
+        return (first, 1.0, 0.0);
     };
     // A stop at the door, or at the far end of a stroll, is over once somebody comes to stand
     // beside it: it goes on rather than keep that one company with a face behind it.
     let joined = matches!(step.leg, RoamLeg::Arriving | RoamLeg::Out)
         && step.target != settled
-        && creature.state.position == step.target
+        && step.reached(creature)
         && roam.iter().any(|(id, other)| {
             *id != creature.id
                 && spacing::closer_than(other.target.x - step.target.x, clear)
@@ -198,18 +218,19 @@ fn roam_target(
         .any(|(id, spot)| *id != creature.id && spacing::closer_than(spot.x - settled.x, clear));
     let crowded_out = step.target == settled && !home_free;
     // Still on the way there, or still where it meant to be for a while.
-    if !crowded_out && (creature.state.position != step.target || step.dwell > 0.0) {
-        if creature.state.position == step.target
+    if !crowded_out && (!step.reached(creature) || step.dwell > 0.0) {
+        if step.reached(creature)
             && let Some(step) = roam.get_mut(&creature.id)
         {
             step.dwell -= dt;
         }
-        return (step.target, pace(step.leg));
+        return (step.target, pace(step.leg), step.depth);
     }
     let next = match step.leg {
         // Seen the far end: back to its own place, and a rest there.
         RoamLeg::Out if home_free => RoamStep {
             target: settled,
+            depth: 0.0,
             dwell: rng.random_range(STROLL_REST),
             leg: RoamLeg::Back,
         },
@@ -218,6 +239,7 @@ fn roam_target(
         {
             RoamStep {
                 target: settled,
+                depth: 0.0,
                 dwell: rng.random_range(STROLL_REST),
                 leg: RoamLeg::Resting,
             }
@@ -240,22 +262,27 @@ fn roam_target(
             if !home_free {
                 RoamStep {
                     target: stroll.waiting_spot(creature, commons),
+                    depth: 0.0,
                     dwell: rng.random_range(STROLL_WAIT),
                     leg: RoamLeg::Out,
                 }
             } else if out >= MAX_STROLLING {
                 RoamStep {
                     target: settled,
+                    depth: 0.0,
                     dwell: rng.random_range(STROLL_WAIT),
                     leg: RoamLeg::Resting,
                 }
             } else {
-                stroll.to(rng, creature, commons)
+                let (paths, path_rng) = paths;
+                stroll
+                    .in_among_the_houses(path_rng, creature, commons, paths)
+                    .unwrap_or_else(|| stroll.to(rng, creature, commons))
             }
         }
     };
     roam.insert(creature.id, next);
-    (next.target, pace(next.leg))
+    (next.target, pace(next.leg), next.depth)
 }
 
 /// What the next stroll has to keep clear of, and where it starts from.
@@ -309,6 +336,7 @@ impl Stroll<'_> {
         match best {
             Some((target, score)) => RoamStep {
                 target,
+                depth: 0.0,
                 dwell: rng.random_range(if score >= 2 {
                     STROLL_PAUSE
                 } else {
@@ -319,10 +347,80 @@ impl Stroll<'_> {
             // A commons too short to go anywhere on: stay home a while and ask again.
             None => RoamStep {
                 target: self.settled,
+                depth: 0.0,
                 dwell: rng.random_range(STROLL_WAIT),
                 leg: RoamLeg::Resting,
             },
         }
+    }
+
+    /// Now and then a stroll goes into the village instead of along its front: up the path to a
+    /// door set back from the front and along the trodden path in the middle, to stand
+    /// somewhere along it that is not behind a house, or up to a doorstep set back from the
+    /// front to look about from there. `None` for an ordinary stroll, and whenever the village
+    /// has nowhere clear to go in to.
+    fn in_among_the_houses(
+        &self,
+        rng: &mut ChaCha12Rng,
+        creature: &Creature,
+        commons: HomeCommons,
+        paths: &village_paths::VillagePaths,
+    ) -> Option<RoamStep> {
+        let near = |x: f32| spacing::closer_than(x, self.clear);
+        let crowded = |x: f32| {
+            self.occupied
+                .iter()
+                .chain(self.taken)
+                .any(|(id, point)| *id != creature.id && near(point.x - x))
+                || self
+                    .roam
+                    .iter()
+                    .any(|(id, step)| *id != creature.id && near(step.target.x - x))
+        };
+        let roll = rng.random_range(0..100);
+        if roll < PATH_STROLL_CHANCE {
+            let (low, high) = paths.path_span()?;
+            let half = RESTING_WIDTH / 2.0 * commons.scale;
+            let (low, high) = (
+                low.max(commons.low_x + half),
+                high.min(commons.high_x - half),
+            );
+            if high <= low {
+                return None;
+            }
+            let target = (0..ROAM_TRIES)
+                .map(|_| Point {
+                    x: rng.random_range(low..=high),
+                    y: commons.ground_y,
+                })
+                .find(|point| {
+                    !crowded(point.x) && !paths.hidden(point.x, village_paths::PATH_DEPTH, half)
+                })?;
+            return Some(RoamStep {
+                target,
+                depth: village_paths::PATH_DEPTH,
+                dwell: rng.random_range(INSIDE_PAUSE),
+                leg: RoamLeg::Out,
+            });
+        }
+        if roll < PATH_STROLL_CHANCE + DOORSTEP_STROLL_CHANCE {
+            let free: Vec<village_paths::Door> =
+                paths.doorsteps().filter(|door| !crowded(door.x)).collect();
+            if free.is_empty() {
+                return None;
+            }
+            let door = free[rng.random_range(0..free.len())];
+            return Some(RoamStep {
+                target: Point {
+                    x: door.x,
+                    y: commons.ground_y,
+                },
+                depth: door.depth,
+                dwell: rng.random_range(INSIDE_PAUSE),
+                leg: RoamLeg::Out,
+            });
+        }
+        None
     }
 
     /// Where a companion kept out of its own place waits: the nearest place to its own that is
@@ -372,6 +470,11 @@ impl Stroll<'_> {
             y: commons.ground_y,
         }
     }
+}
+
+/// Half the ground a settled companion claims, in points, on the village's commons.
+fn commons_half_width(commons: Option<HomeCommons>) -> f32 {
+    RESTING_WIDTH / 2.0 * commons.map_or(1.0, |commons| commons.scale)
 }
 
 /// Places along the ground from `low` to `high`, `step` apart, nearest to `from` first.
@@ -791,6 +894,8 @@ struct HomeScene<'a> {
     commons: Option<HomeCommons>,
     /// Each house's middle on the commons, and how close to it puts a frame across its door.
     doorways: Vec<(f32, f32)>,
+    /// The paths in from the front of the grass to every door, and the one along the middle.
+    paths: village_paths::VillagePaths,
     /// Where everyone stood as the tick began.
     standing: Vec<(CreatureId, Point)>,
     belongings: Vec<Point>,
@@ -859,6 +964,8 @@ struct HomeDoings {
 #[derive(Clone, Copy, Debug)]
 struct HomeHeading {
     target: Point,
+    /// How far back on the village ground `target` is.
+    depth: f32,
     pace: f32,
     shared: Option<moments::MomentPlace>,
 }
@@ -989,6 +1096,16 @@ impl World {
             return;
         };
         for index in 0..self.save.creatures.len() {
+            // However far back a resident has gone, it stays there while the village has it:
+            // only being carried off, or going off to a wonder, takes it forward again.
+            let creature = &self.save.creatures[index];
+            if !matches!(
+                creature.state.action,
+                ActionKind::Dragged | ActionKind::Tossed
+            ) && !self.wonders.owns(creature.id)
+            {
+                self.village_walked.push(creature.id);
+            }
             if self.sits_out_home_tick(index, &scene) {
                 continue;
             }
@@ -1022,6 +1139,18 @@ impl World {
             }
             self.start_quiet_moment(index, &scene, &mut doings, heading.target);
         }
+        let half = commons_half_width(scene.commons);
+        self.behind_houses = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| {
+                scene
+                    .paths
+                    .hidden(creature.state.position.x, creature.state.depth, half)
+            })
+            .map(|creature| creature.id)
+            .collect();
         self.finish_homebound_tick(now, doings);
     }
 
@@ -1059,6 +1188,15 @@ impl World {
             self.save.settings.display_scale,
         );
         let mut doorways = Vec::with_capacity(cottage_list.as_slice().len() + 1);
+        let mut doors = Vec::with_capacity(cottage_list.as_slice().len() + 1);
+        let house_depths = self.save.home.house_depth_list(&self.save.creatures);
+        let lot_widths = home_lot_widths(
+            &self.save.home,
+            cottage_list.as_slice(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
         if let Some(commons) = commons {
             for slot in 0..=cottage_list.as_slice().len() {
                 let Some((_, point)) = home_dwelling_position(
@@ -1073,8 +1211,17 @@ impl World {
                 };
                 // Standing this close to a house's middle puts a frame across its door.
                 doorways.push((point.x, CREATURE_FRAME_WIDTH / 2.0 * commons.scale));
+                if let Some(width) = lot_widths.get(slot).copied().flatten() {
+                    doors.push(village_paths::Door {
+                        slot,
+                        x: point.x,
+                        half: width / 2.0 * commons.scale,
+                        depth: f32::from(house_depths[slot.min(house_depths.len() - 1)]),
+                    });
+                }
             }
         }
+        let paths = village_paths::VillagePaths::new(doors, commons.map_or(1.0, |c| c.scale));
         let standing: Vec<(CreatureId, Point)> = self
             .save
             .creatures
@@ -1176,7 +1323,6 @@ impl World {
             .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
             .count();
         let house_styles = self.save.home.house_style_list(&self.save.creatures);
-        let house_depths = self.save.home.house_depth_list(&self.save.creatures);
         // Whose roof somebody is already sitting on.
         let roofs_taken: Vec<usize> = self
             .village_life
@@ -1232,6 +1378,7 @@ impl World {
                 houses,
                 commons,
                 doorways,
+                paths,
                 standing,
                 belongings,
                 frame,
@@ -1423,15 +1570,16 @@ impl World {
         if shared.is_some() {
             self.home_moments.remove(&creature.id);
         }
-        let (target, pace) = if let Some(place) = shared {
-            (place.spot, 1.0)
+        let (target, pace, depth) = if let Some(place) = shared {
+            (place.spot, 1.0, 0.0)
         } else if let Some(moment) = self.home_moments.get(&creature.id) {
-            (moment.rest, 1.0)
+            (moment.rest, 1.0, 0.0)
         } else {
             match commons.filter(|_| !quiet) {
                 Some(commons) => roam_target(
                     &mut self.home_roam,
                     &mut self.home_roam_rng,
+                    (&scene.paths, &mut self.village_paths_rng),
                     creature,
                     commons,
                     scene
@@ -1444,11 +1592,13 @@ impl World {
                     anchored,
                     dt,
                 ),
-                None => (anchored, 1.0),
+                // Still, or hidden, a resident stays as far back as it is.
+                None => (anchored, 1.0, creature.state.depth),
             }
         };
         HomeHeading {
             target,
+            depth,
             pace,
             shared,
         }
@@ -1589,6 +1739,7 @@ impl World {
         scene: &HomeScene,
         HomeHeading {
             target,
+            depth,
             pace,
             shared,
         }: HomeHeading,
@@ -1622,7 +1773,11 @@ impl World {
             }
             ActionKind::Landing
         } else {
-            let distance = previous.distance(target);
+            // On the way somewhere further into the village or back out of it, the next stretch
+            // is to the foot or the head of a path, and up or down it.
+            let waypoint = scene
+                .paths
+                .toward(previous, creature.state.depth, target, depth);
             // A stroll is unhurried, but it does not dawdle past anybody: in front of
             // somebody, it is the ordinary walk until it is by. Picking up the pace and
             // easing off again take a moment, rather than happening between two steps.
@@ -1631,7 +1786,7 @@ impl World {
             });
             // Somebody close ahead going the same way is not walked in step with, face behind
             // body: it drops back until there is room.
-            let heading = (target.x - previous.x).signum();
+            let heading = (waypoint.point.x - previous.x).signum();
             let leading = scene
                 .in_view
                 .iter()
@@ -1658,17 +1813,19 @@ impl World {
                 wanted
             };
             let pace = speed / stride;
-            if distance > 0.0 {
-                creature.state.facing_right = target.x >= previous.x;
-                creature.state.position =
-                    lerp_point(previous, target, (speed * dt / distance).clamp(0.0, 1.0));
+            let arrived_before =
+                previous == target && village_paths::same_depth(creature.state.depth, depth);
+            if !arrived_before {
+                scene.paths.step(creature, waypoint, speed, dt);
                 // A stroll's steps are slower as well as shorter, so its feet keep pace with
                 // the ground: the walk cycle runs at the stroll's own pace.
                 if pace < 1.0 && creature.state.action == ActionKind::Traverse {
                     creature.state.action_elapsed -= dt * (1.0 - pace);
                 }
             }
-            if creature.state.position == target
+            let arrived = creature.state.position == target
+                && village_paths::same_depth(creature.state.depth, depth);
+            if arrived
                 && let Some(place) = shared
                 && let Some(plan) = &self.village_moment
             {
@@ -1682,7 +1839,7 @@ impl World {
                 } else {
                     ActionKind::Homebound
                 }
-            } else if creature.state.position == target {
+            } else if arrived {
                 creature.state.facing_right = inward > 0.0;
                 match self.home_moments.get_mut(&creature.id) {
                     Some(moment) if moment.remaining > 0.0 => {
@@ -1867,9 +2024,10 @@ impl World {
         let house = scene.houses.get(&creature.id).map(|(at, half, slot)| {
             let style = scene.house_styles[(*slot).min(scene.house_styles.len() - 1)];
             // A house set back on the ground stands that much higher up the display.
-            let height = house_roof_height(&self.save.home.shelter, style, *slot == 0)
-                + f32::from(scene.house_depths[(*slot).min(scene.house_depths.len() - 1)]);
+            let depth = f32::from(scene.house_depths[(*slot).min(scene.house_depths.len() - 1)]);
+            let height = house_roof_height(&self.save.home.shelter, style, *slot == 0) + depth;
             village_life::OwnHouse {
+                depth,
                 slot: *slot,
                 at: *at,
                 half: *half,
@@ -2067,6 +2225,7 @@ impl World {
             creature_id,
             RoamStep {
                 target,
+                depth: 0.0,
                 dwell: STROLL_PAUSE.start,
                 leg: RoamLeg::Out,
             },
@@ -2080,6 +2239,7 @@ impl World {
             creature_id,
             RoamStep {
                 target: place,
+                depth: 0.0,
                 dwell: seconds,
                 leg: RoamLeg::Resting,
             },

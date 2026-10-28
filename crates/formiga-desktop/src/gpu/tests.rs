@@ -1381,3 +1381,31 @@ fn a_tow_rope_hangs_between_its_ends_without_a_gap() {
         }
     }
 }
+
+/// A companion standing back in the village is drawn after every house as far back as it or
+/// further, its own house's doorstep included, and before every house nearer the front.
+#[test]
+fn a_companion_back_in_the_village_is_drawn_between_the_houses() {
+    let quad = |depth: f32| VillageQuad {
+        depth,
+        vertices: [Vertex::zeroed(); 6],
+    };
+    // Back to front, as `village_vertices` orders them: the trees at the front come last.
+    let quads = [
+        quad(8.0),
+        quad(7.0),
+        quad(6.0),
+        quad(3.0),
+        quad(2.0),
+        quad(0.0),
+        quad(0.0),
+    ];
+    assert_eq!(quads_behind(&quads, 4.5), 3, "on the path");
+    assert_eq!(
+        quads_behind(&quads, 7.0),
+        2,
+        "on the doorstep of the house set back seven"
+    );
+    assert_eq!(quads_behind(&quads, 8.0), 1, "on the furthest doorstep");
+    assert_eq!(quads_behind(&quads, 0.5), 5, "a step up from the front");
+}

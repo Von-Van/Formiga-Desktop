@@ -18,6 +18,7 @@ fn measured(seed: u8) -> Creature {
         since: 30.0,
         last: Some(PresenceMark {
             x: creature.state.position.x,
+            depth: 0.0,
             window: None,
         }),
         ..Presence::default()

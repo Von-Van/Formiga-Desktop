@@ -44,17 +44,21 @@ pub(super) enum Plan {
         face_right: bool,
         task: GardenTask,
     },
-    /// A chore at its own door, in the way its house asks for.
+    /// A chore at its own door, in the way its house asks for: up its path to the front of the
+    /// house however far back it stands, and along to one side of the door.
     Chore {
         slot: usize,
         stand: Point,
+        door_x: f32,
+        depth: f32,
         face_right: bool,
         chore: BeatKind,
     },
-    /// Indoors for a while, behind the drawn curtain.
+    /// Indoors for a while, behind the drawn curtain: up its path to the door, and in.
     Indoors {
         slot: usize,
         door: Point,
+        depth: f32,
         stay: f32,
         nap: bool,
     },
@@ -449,14 +453,23 @@ pub(super) fn advance(
         },
         Plan::Chore {
             stand,
+            door_x,
+            depth,
             face_right,
             chore,
             ..
         } => match activity.step {
             0 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, stand, speed, dt)
-                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                if village_paths::by_own_door(
+                    creature,
+                    door_x,
+                    stand,
+                    depth,
+                    speed,
+                    context.frame / CREATURE_ART_WIDTH,
+                    dt,
+                ) || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.facing_right = face_right;
                     show(creature, ActionKind::Idle, context.events);
@@ -477,14 +490,26 @@ pub(super) fn advance(
             _ => false,
         },
         Plan::Indoors {
-            door, stay, nap, ..
+            door,
+            depth,
+            stay,
+            nap,
+            ..
         } => match activity.step {
             0 => {
                 show(creature, ActionKind::Traverse, context.events);
-                if walk(creature, door, speed, dt)
-                    || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
+                if village_paths::by_own_door(
+                    creature,
+                    door.x,
+                    door,
+                    depth,
+                    speed,
+                    context.frame / CREATURE_ART_WIDTH,
+                    dt,
+                ) || activity.step_elapsed > VILLAGE_LIFE.walk_limit_secs
                 {
                     creature.state.position = door;
+                    creature.state.depth = depth;
                     creature.state.indoors = true;
                     show(
                         creature,
@@ -792,6 +817,8 @@ pub(super) struct OwnHouse {
     pub(super) half: f32,
     pub(super) style: ShelterStyle,
     pub(super) roof: Point,
+    /// How far back on the ground it stands, in shelter pixels.
+    pub(super) depth: f32,
 }
 
 /// A garden patch on the ground, and how far along it is.
@@ -1008,6 +1035,8 @@ pub(super) fn choose(
                     x: stand_at(side),
                     y: ground,
                 },
+                door_x: house.at.x,
+                depth: house.depth,
                 face_right: side < 0.0,
                 chore: chore_for(house.style),
             }
@@ -1020,6 +1049,7 @@ pub(super) fn choose(
                     x: house.at.x,
                     y: ground,
                 },
+                depth: house.depth,
                 stay: rng.random_range(if nap {
                     VILLAGE_LIFE.indoors_nap_secs
                 } else {
@@ -1152,8 +1182,9 @@ pub(super) fn settle(activity: &VillageActivity, creature: &mut Creature) -> Opt
     creature.state.velocity = Point::default();
     let landing = match activity.plan {
         Plan::Roof { beside, .. } if activity.step >= 1 => Some(beside),
-        Plan::Indoors { door, .. } if activity.step >= 1 => {
+        Plan::Indoors { door, depth, .. } if activity.step >= 1 => {
             creature.state.position = door;
+            creature.state.depth = depth;
             None
         }
         _ => None,

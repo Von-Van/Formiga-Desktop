@@ -308,6 +308,7 @@ impl Traveler {
                 nudge: None,
                 beat: None,
                 indoors: false,
+                depth: 0.0,
                 presence: core::Presence::default(),
             },
             leaning: core::RoamingLeaning::default(),

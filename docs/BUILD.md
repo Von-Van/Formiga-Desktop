@@ -268,6 +268,7 @@ cargo run -p formiga-tools -- shelter-sheet
 cargo run -p formiga-tools -- decoration-sheet
 cargo run -p formiga-tools -- village-palette-sheet
 cargo run -p formiga-tools -- home-yard-sheet
+cargo run -p formiga-tools -- village-depth-sheet
 cargo run -p formiga-tools -- prop-sheet
 cargo run -p formiga-tools -- wonder-sheet
 cargo run -p formiga-tools -- train-sheet
@@ -325,7 +326,10 @@ drinking, playing alone and with a friend, saying hello and being petted, at 2x,
 desktop shows them. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
 walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
 moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
-on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them.
+on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them. `village-depth-sheet`
+draws a full village with its residents among the houses as the overlay orders them: all at the
+front, out on the trodden path in the middle, on doorsteps set back and partway up a door path, and
+the path after dark.
 `face-sheet` draws the twelve face layouts a new companion can wear in every expression and a
 blink, and `temperament-sheet` every frame of the six poses a temperament strikes, each with the
 face its moment wears. `shelter-sheet` draws every kind of house plain, dressed two ways

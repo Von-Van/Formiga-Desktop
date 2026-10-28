@@ -98,6 +98,22 @@ pub(super) struct TreeVertexCacheKey {
 /// Where a lot samples the village atlas, as the top-left texture coordinate of its cell: each
 /// house its own cell, by day or lit after dark and with somebody at home or not, and both trees
 /// the one tree cell, the inward one drawn from it mirrored.
+/// One house or tree as the overlay draws it, and how far back on the village ground it stands.
+pub(super) struct VillageQuad {
+    pub(super) depth: f32,
+    pub(super) vertices: [Vertex; 6],
+}
+
+/// How many of `quads`, ordered back to front, stand as far back as `depth` or further: the
+/// houses somebody standing `depth` back is drawn in front of. Somebody on the doorstep of a
+/// house is in front of it.
+pub(super) fn quads_behind(quads: &[VillageQuad], depth: f32) -> usize {
+    quads
+        .iter()
+        .take_while(|quad| quad.depth + 0.01 >= depth)
+        .count()
+}
+
 pub(super) fn village_cell(cell: VillageCell) -> (f32, f32) {
     let (x, y) = ShelterRenderer::village_cell(cell);
     (
@@ -191,8 +207,9 @@ impl OverlayRenderer {
                 (point.y - self.monitor.bounds.y) * self.monitor.scale_factor,
             )
         };
-        let (tower_x, tower_y) = local(tower.state.position);
-        let (sleeper_x, sleeper_y) = local(sleeper.state.position);
+        let points_per_pixel = px / self.monitor.scale_factor.max(1.0);
+        let (tower_x, tower_y) = local(tower.state.drawn_position(points_per_pixel));
+        let (sleeper_x, sleeper_y) = local(sleeper.state.drawn_position(points_per_pixel));
         let ahead = if tower.state.position.x >= sleeper.state.position.x {
             1.0
         } else {
@@ -489,17 +506,21 @@ impl OverlayRenderer {
     /// their own cells of the shared atlas. The colony house is always first; companion cottages
     /// follow along the same ground line, and a tree closes each end of it, drawn last so it
     /// stands in front of the house it reaches in over.
+    /// Every house and both trees, one quad each, from the back of the village ground to the
+    /// front, each with how far back it stands, so whoever is standing among them can be drawn
+    /// between the ones behind and the ones in front. Houses as far back as one another keep
+    /// their order along the row, and the trees, at the front, come after the houses there.
     pub(super) fn village_vertices(
         &self,
         save: &SaveFile,
         night: bool,
         scene: VillageScene<'_>,
-    ) -> Vec<Vertex> {
+    ) -> Vec<VillageQuad> {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let depths = save.home.house_depth_list(&save.creatures);
         let points_per_pixel =
             f32::from(save.settings.display_scale) / self.monitor.scale_factor.max(1.0);
-        let mut vertices = Vec::with_capacity((cottages.len() + 3) * 6);
+        let mut quads = Vec::with_capacity(cottages.len() + 3);
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
                 &save.home,
@@ -523,21 +544,25 @@ impl OverlayRenderer {
                 .copied()
                 .find(|motion| motion.slot == slot);
             // Set back on the ground, which is higher up the display.
+            let depth = f32::from(depths[slot.min(depths.len() - 1)]);
             let point = formiga_core::Point {
-                y: point.y - f32::from(depths[slot.min(depths.len() - 1)]) * points_per_pixel,
+                y: point.y - depth * points_per_pixel,
                 ..point
             };
-            vertices.extend_from_slice(&self.village_cell_vertices(
-                point,
-                village_cell(VillageCell::House {
-                    slot,
-                    lit: night,
-                    occupied,
-                }),
-                false,
-                save.settings.display_scale,
-                house_sway(motion),
-            ));
+            quads.push(VillageQuad {
+                depth,
+                vertices: self.village_cell_vertices(
+                    point,
+                    village_cell(VillageCell::House {
+                        slot,
+                        lit: night,
+                        occupied,
+                    }),
+                    false,
+                    save.settings.display_scale,
+                    house_sway(motion),
+                ),
+            });
         }
         // The trees after the houses: each stands a little in over the house at its end, and is
         // drawn in front of it.
@@ -551,16 +576,20 @@ impl OverlayRenderer {
                 save.settings.display_scale,
             ) && monitor_id == self.monitor.id
             {
-                vertices.extend_from_slice(&self.village_cell_vertices(
-                    point,
-                    village_cell(VillageCell::Tree),
-                    tree_is_mirrored(end),
-                    save.settings.display_scale,
-                    (0.0, 0.0),
-                ));
+                quads.push(VillageQuad {
+                    depth: 0.0,
+                    vertices: self.village_cell_vertices(
+                        point,
+                        village_cell(VillageCell::Tree),
+                        tree_is_mirrored(end),
+                        save.settings.display_scale,
+                        (0.0, 0.0),
+                    ),
+                });
             }
         }
-        vertices
+        quads.sort_by(|a, b| b.depth.total_cmp(&a.depth));
+        quads
     }
 
     /// One layer of the ground the village stands on, its foot on the village's ground line from

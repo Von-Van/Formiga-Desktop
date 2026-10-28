@@ -223,97 +223,106 @@ fn somebody_is_always_outside_and_the_curtain_drawn_is_the_right_one() {
 fn gardens_are_tended_for_what_is_growing_in_them() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
-    let mut world = settled_colony([91; 32], 4, created, &desktop);
-    let home = &mut world.save.home;
-    assert!(home.set_garden(GardenKind::Flowers, Some(0.1), created));
-    assert!(home.set_garden(GardenKind::Herbs, Some(0.5), created - Duration::hours(10)));
-    assert!(home.set_garden(
-        GardenKind::Vegetables,
-        Some(0.9),
-        created - Duration::hours(24)
-    ));
-    assert_eq!(
-        world
-            .save
-            .home
-            .garden(GardenKind::Flowers)
-            .unwrap()
-            .stage(created),
-        GardenStage::Sprout
-    );
-    assert_eq!(
-        world
-            .save
-            .home
-            .garden(GardenKind::Herbs)
-            .unwrap()
-            .stage(created),
-        GardenStage::Grown
-    );
-    assert_eq!(
-        world
-            .save
-            .home
-            .garden(GardenKind::Vegetables)
-            .unwrap()
-            .stage(created),
-        GardenStage::Bounty
-    );
+    // Everything a garden is for turns up over a long afternoon, but whether one colony's
+    // afternoon holds all of it depends on what else it gets up to: a few colonies in turn, until
+    // everything has been seen.
     let mut tasks: BTreeSet<(u8, &'static str)> = BTreeSet::new();
     let mut admired = false;
     let mut ate_what_was_picked = false;
-    let mut picking: BTreeMap<CreatureId, bool> = BTreeMap::new();
-    for _ in 0..80_000 {
-        world.tick(created, 0.05, &desktop);
-        world.save.home.active_since_utc = Some(created);
-        for (id, activity) in &world.village_life {
-            let Plan::Garden { patch, task, .. } = activity.plan else {
-                continue;
-            };
-            let name = match task {
-                GardenTask::Water => "water",
-                GardenTask::Inspect => {
-                    assert_eq!(
-                        patch,
-                        GardenKind::Flowers,
-                        "only a sprout is looked at closely"
-                    );
-                    "inspect"
-                }
-                GardenTask::Pick => {
-                    assert!(patch.edible(), "picked something that is not to eat");
-                    "pick"
-                }
-                GardenTask::Show { friend } => {
-                    assert_eq!(patch, GardenKind::Vegetables, "shown off from its fullest");
-                    assert_ne!(friend, *id);
-                    "show"
-                }
-            };
-            tasks.insert((patch.index(), name));
-            let creature = world.save.creatures.iter().find(|c| c.id == *id).unwrap();
-            if let Some(beat) = creature.state.beat {
-                match beat.kind {
-                    BeatKind::Watering => {
-                        assert_eq!(beat.held, Some(VillageProp::WateringCan));
+    for seed in 91..=97 {
+        let mut world = settled_colony([seed; 32], 4, created, &desktop);
+        let home = &mut world.save.home;
+        assert!(home.set_garden(GardenKind::Flowers, Some(0.1), created));
+        assert!(home.set_garden(GardenKind::Herbs, Some(0.5), created - Duration::hours(10)));
+        assert!(home.set_garden(
+            GardenKind::Vegetables,
+            Some(0.9),
+            created - Duration::hours(24)
+        ));
+        assert_eq!(
+            world
+                .save
+                .home
+                .garden(GardenKind::Flowers)
+                .unwrap()
+                .stage(created),
+            GardenStage::Sprout
+        );
+        assert_eq!(
+            world
+                .save
+                .home
+                .garden(GardenKind::Herbs)
+                .unwrap()
+                .stage(created),
+            GardenStage::Grown
+        );
+        assert_eq!(
+            world
+                .save
+                .home
+                .garden(GardenKind::Vegetables)
+                .unwrap()
+                .stage(created),
+            GardenStage::Bounty
+        );
+        let mut picking: BTreeMap<CreatureId, bool> = BTreeMap::new();
+        for _ in 0..80_000 {
+            world.tick(created, 0.05, &desktop);
+            world.save.home.active_since_utc = Some(created);
+            for (id, activity) in &world.village_life {
+                let Plan::Garden { patch, task, .. } = activity.plan else {
+                    continue;
+                };
+                let name = match task {
+                    GardenTask::Water => "water",
+                    GardenTask::Inspect => {
+                        assert_eq!(
+                            patch,
+                            GardenKind::Flowers,
+                            "only a sprout is looked at closely"
+                        );
+                        "inspect"
                     }
-                    BeatKind::Picking => {
-                        assert_eq!(beat.held, Some(VillageProp::Produce(patch)));
-                        picking.insert(*id, true);
+                    GardenTask::Pick => {
+                        assert!(patch.edible(), "picked something that is not to eat");
+                        "pick"
                     }
-                    _ => {}
+                    GardenTask::Show { friend } => {
+                        assert_eq!(patch, GardenKind::Vegetables, "shown off from its fullest");
+                        assert_ne!(friend, *id);
+                        "show"
+                    }
+                };
+                tasks.insert((patch.index(), name));
+                let creature = world.save.creatures.iter().find(|c| c.id == *id).unwrap();
+                if let Some(beat) = creature.state.beat {
+                    match beat.kind {
+                        BeatKind::Watering => {
+                            assert_eq!(beat.held, Some(VillageProp::WateringCan));
+                        }
+                        BeatKind::Picking => {
+                            assert_eq!(beat.held, Some(VillageProp::Produce(patch)));
+                            picking.insert(*id, true);
+                        }
+                        _ => {}
+                    }
+                }
+                if creature.state.action == ActionKind::Eat && picking.remove(id).is_some() {
+                    ate_what_was_picked = true;
                 }
             }
-            if creature.state.action == ActionKind::Eat && picking.remove(id).is_some() {
-                ate_what_was_picked = true;
-            }
+            admired |= world.save.creatures.iter().any(|creature| {
+                creature
+                    .state
+                    .beat
+                    .is_some_and(|beat| beat.kind == BeatKind::Admiring)
+            });
         }
-        admired |= world.save.creatures.iter().any(|creature| {
-            creature
-                .state
-                .beat
-                .is_some_and(|beat| beat.kind == BeatKind::Admiring)
-        });
+        let seen: BTreeSet<&str> = tasks.iter().map(|(_, name)| *name).collect();
+        if seen.len() == 4 && ate_what_was_picked && admired {
+            break;
+        }
     }
     let names: BTreeSet<&str> = tasks.iter().map(|(_, name)| *name).collect();
     for task in ["water", "inspect", "pick", "show"] {
@@ -675,6 +684,8 @@ fn each_house_has_its_own_chore_and_answers_to_it() {
         Plan::Chore {
             slot,
             stand: at,
+            door_x: at.x,
+            depth: 0.0,
             face_right: true,
             chore: BeatKind::FluffCushion,
         },
@@ -727,6 +738,7 @@ fn a_roof_sitter_can_be_picked_up_and_somebody_indoors_cannot() {
         Plan::Indoors {
             slot: 1,
             door,
+            depth: 0.0,
             stay: 30.0,
             nap: true,
         },
@@ -855,6 +867,7 @@ fn every_way_of_ending_a_visit_brings_everyone_out_and_down() {
             Plan::Indoors {
                 slot: 1,
                 door,
+                depth: 0.0,
                 stay: 30.0,
                 nap: false,
             },
@@ -932,6 +945,7 @@ fn a_plan_for_the_village_as_it_was_is_let_go_when_the_village_changes() {
             Plan::Indoors {
                 slot: 1,
                 door,
+                depth: 0.0,
                 stay: 30.0,
                 nap: true,
             },
@@ -1040,6 +1054,7 @@ fn somebody_indoors_comes_out_onto_a_display_that_shrinks_while_paused() {
         Plan::Indoors {
             slot: 1,
             door,
+            depth: 0.0,
             stay: 30.0,
             nap: false,
         },

@@ -316,6 +316,7 @@ impl World {
             .max(interaction.press_cursor.distance(cursor));
         if interaction.max_excursion > DRAG_THRESHOLD && !interaction.dragging {
             self.start_drag_motion();
+            self.lift_out_of_the_village(desktop);
         }
         let Some(interaction) = &mut self.interaction else {
             return false;
@@ -361,6 +362,7 @@ impl World {
             .max(interaction.press_cursor.distance(cursor));
         if interaction.max_excursion > DRAG_THRESHOLD && !interaction.dragging {
             self.start_drag_motion();
+            self.lift_out_of_the_village(desktop);
         }
         let Some(mut interaction) = self.interaction.take() else {
             return false;

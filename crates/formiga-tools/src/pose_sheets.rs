@@ -344,6 +344,7 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
                         since: at,
                         last: Some(PresenceMark {
                             x: creature.state.position.x,
+                            depth: 0.0,
                             window: None,
                         }),
                         ..Presence::default()
