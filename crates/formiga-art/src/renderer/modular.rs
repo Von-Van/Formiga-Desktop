@@ -899,6 +899,53 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
                 [Limb::Rest, push(1)]
             }
         }
+        // A wing brought round to the face, preening along it.
+        BodyClip::Gesture(Gesture::Groom) if plan == BodyPlan::Winged => {
+            front(to(hx + head, hy + 1 + tick * 2))
+        }
+        // A paw up at the cheek, rubbing down it, and brought to the mouth to be licked.
+        BodyClip::Gesture(Gesture::Groom) => {
+            let paw = hx + head / 2 + 2;
+            front(match frame % 4 {
+                1 => to(paw, hy + 3),
+                3 => to(paw - 1, hy + 4),
+                _ => to(paw, hy + 1),
+            })
+        }
+        // Wings flung out one way and the other as it shakes; paws stay down.
+        BodyClip::Gesture(Gesture::Shake) if plan == BodyPlan::Winged => {
+            both(&|side| to(x + side * (rx + 3), y - 2 - (tick + side).rem_euclid(2) * 2))
+        }
+        // A wing curled forward round the can.
+        BodyClip::Gesture(Gesture::Pour) if plan == BodyPlan::Winged => {
+            front(to(hx + head + 3, hy + 7))
+        }
+        // Both paws out low in front, holding the can where it hangs.
+        BodyClip::Gesture(Gesture::Pour) => [to(hx + 5, hy + 8), to(hx + 8, hy + 7)],
+        // A wing can't pick: it stoops and the beak does it.
+        BodyClip::Gesture(Gesture::Pluck) if plan == BodyPlan::Winged => [Limb::Rest; 2],
+        // A paw down at the ground, gripping, tugging back, and up with what came away.
+        BodyClip::Gesture(Gesture::Pluck) => front(match frame % 4 {
+            0 | 1 => to(x + rx + 3, floor - 2),
+            2 => to(x + rx + 2, y + 2),
+            _ => to(hx + 7, hy + 6),
+        }),
+        // A wing working at it.
+        BodyClip::Gesture(Gesture::Tend) if plan == BodyPlan::Winged => {
+            front(to(hx + head + 2, hy + 2 + tick))
+        }
+        // Both paws up in front, working in turn.
+        BodyClip::Gesture(Gesture::Tend) => [to(hx + 5, hy + 3 + beat), to(hx + 8, hy + 2 - beat)],
+        BodyClip::Gesture(Gesture::Bask) => [Limb::Rest; 2],
+        // Wings laid out flat on the ground to either side.
+        BodyClip::Gesture(Gesture::Sprawl) if plan == BodyPlan::Winged => {
+            both(&|side| to(x + side * (rx + 4), floor - 3))
+        }
+        // The near paw flopped out on the ground ahead of it.
+        BodyClip::Gesture(Gesture::Sprawl) => front(to(x + rx + 4, floor - 2)),
+        BodyClip::Gesture(
+            Gesture::Shake | Gesture::Sniff | Gesture::Loaf | Gesture::Skip | Gesture::Trudge,
+        ) => [Limb::Rest; 2],
         // Wings open up and out as far as they go.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Winged => {
             let up = [0, 1, 2, 2][usize::from(frame.min(3))];
@@ -1047,7 +1094,7 @@ fn walks(clip: BodyClip) -> bool {
                 | ActionKind::AvoidCursor
                 | ActionKind::ReactToWindow
                 | ActionKind::Landing
-        )
+        ) | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
     )
 }
 
@@ -1160,6 +1207,28 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         BodyClip::Gesture(Gesture::Strut) => [rest, lift(near, 7 + tick, room)],
         BodyClip::Gesture(Gesture::Peek) => [rest, to(hx + 3, hy - 1 + tick * 4)],
         BodyClip::Gesture(Gesture::Huff) => [rest, lift(near, 3, room / 2)],
+        // The near forepaw lifted under the chin and the head dipped to it: licked, and lifted
+        // again, rather than rubbed across the face, so the face stays clear.
+        BodyClip::Gesture(Gesture::Groom) => [rest, lift(near, 5, room - i32::from(frame % 2))],
+        // The near forepaw lifted out low, steadying the can.
+        BodyClip::Gesture(Gesture::Pour) => [rest, lift(near, 7, 1)],
+        // Head down to the ground for it, then the near forepaw up with what came away.
+        BodyClip::Gesture(Gesture::Pluck) if frame % 4 == 3 => [rest, lift(near, 6, room - 1)],
+        // Working at it with one forepaw and then the other.
+        BodyClip::Gesture(Gesture::Tend) => match frame % 4 {
+            2 => [lift(far, 5, room - 1), rest],
+            _ => [rest, lift(near, 6, room - 1 - tick)],
+        },
+        BodyClip::Gesture(
+            Gesture::Shake
+            | Gesture::Sniff
+            | Gesture::Sprawl
+            | Gesture::Loaf
+            | Gesture::Skip
+            | Gesture::Trudge
+            | Gesture::Pluck
+            | Gesture::Bask,
+        ) => [rest; 2],
         BodyClip::Gesture(
             Gesture::Crouch
             | Gesture::Watch

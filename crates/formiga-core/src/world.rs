@@ -29,6 +29,7 @@ mod movement;
 mod new_looks;
 mod objects;
 mod offers;
+mod presence;
 mod rides;
 mod rituals;
 mod routine;
@@ -448,6 +449,12 @@ impl World {
     }
 
     pub fn tick(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {
+        self.tick_colony(now, dt, desktop);
+        // Last, once everyone has got wherever this tick takes them.
+        self.carry_presence(dt, desktop);
+    }
+
+    fn tick_colony(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {
         if now > self.save.maximum_seen_utc {
             self.save.maximum_seen_utc = now;
         }

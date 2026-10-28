@@ -34,6 +34,17 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Peek => (ExpressionKind::Worried, EyelidPose::Half),
         Gesture::Sit => (ExpressionKind::Content, EyelidPose::Open),
         Gesture::Scoot => (ExpressionKind::Joy, EyelidPose::Open),
+        // Washing with its eyes shut, pleased with itself.
+        Gesture::Groom => (ExpressionKind::Content, EyelidPose::Closed),
+        Gesture::Shake => (ExpressionKind::Determined, EyelidPose::Closed),
+        Gesture::Sniff => (ExpressionKind::Curious, EyelidPose::Half),
+        Gesture::Sprawl | Gesture::Loaf => (ExpressionKind::Sleepy, EyelidPose::Closed),
+        Gesture::Skip => (ExpressionKind::Joy, EyelidPose::Open),
+        Gesture::Trudge => (ExpressionKind::Sleepy, EyelidPose::Half),
+        Gesture::Pour | Gesture::Tend => (ExpressionKind::Focused, EyelidPose::Open),
+        Gesture::Pluck => (ExpressionKind::Determined, EyelidPose::Open),
+        // Eyes shut on a smile under the hand.
+        Gesture::Bask => (ExpressionKind::Affectionate, EyelidPose::Closed),
     };
     FaceRenderState {
         expression,
@@ -115,6 +126,256 @@ pub fn motion_sheet(path: PathBuf) -> Result<()> {
                 column += 1;
             }
             column += 1;
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// What every body does with itself, frame by frame with the face it is drawn with: washing,
+/// shaking, sniffing the air, the three ways it sleeps — curled, sprawled and loafed — and the
+/// three ways it walks — plainly, skipping and trudging. One row per body at 3x, a gap between
+/// each clip, so the moods can be told apart at a glance and a pose that reads as something else
+/// shows up beside the ones it might be mistaken for.
+pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 3;
+    let clips: [(formiga_art::BodyClip, FaceRenderState); 10] = {
+        use formiga_art::BodyClip::{Action, Gesture as G};
+        let face = |expression, eyelids| FaceRenderState {
+            expression,
+            eyelids,
+            gaze: GazeDirection::default(),
+        };
+        [
+            (G(Gesture::Groom), gesture_face(Gesture::Groom)),
+            (G(Gesture::Shake), gesture_face(Gesture::Shake)),
+            (G(Gesture::Sniff), gesture_face(Gesture::Sniff)),
+            (
+                Action(ActionKind::Sleep),
+                face(ExpressionKind::Sleepy, EyelidPose::Closed),
+            ),
+            (G(Gesture::Sprawl), gesture_face(Gesture::Sprawl)),
+            (G(Gesture::Loaf), gesture_face(Gesture::Loaf)),
+            (
+                Action(ActionKind::Traverse),
+                face(ExpressionKind::Content, EyelidPose::Open),
+            ),
+            (G(Gesture::Skip), gesture_face(Gesture::Skip)),
+            (G(Gesture::Trudge), gesture_face(Gesture::Trudge)),
+            (
+                Action(ActionKind::Homebound),
+                face(ExpressionKind::Content, EyelidPose::Open),
+            ),
+        ]
+    };
+    let subjects = gesture_subjects();
+    let cell = FRAME_SIZE * SCALE;
+    let columns: u32 = clips
+        .iter()
+        .map(|(clip, _)| u32::from(formiga_art::AnimationSpec::for_clip(*clip).frames))
+        .sum::<u32>()
+        + clips.len() as u32
+        - 1;
+    let width = columns * cell;
+    let height = subjects.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    for (row, genome) in subjects.iter().enumerate() {
+        let mut column = 0_u32;
+        for (clip, face) in clips {
+            for frame in 0..formiga_art::AnimationSpec::for_clip(clip).frames {
+                let rendered = CreatureRenderer::render_composited_frame(
+                    genome, clip, frame, true, false, face,
+                );
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    row as u32 * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+                column += 1;
+            }
+            column += 1;
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Every body going about the village's business, frame by frame with its face, at 2x — the
+/// size a desktop at display scale 2 draws a companion — so what reads and what doesn't is judged
+/// where it will be seen: watering, picking, tending, holding up what it grew, eating, drinking,
+/// keeping a toy up, playing with a friend, saying hello, and being petted. What the village puts
+/// in its hands, a watering can or what it picked, is drawn over the body by the overlay and is
+/// not drawn here.
+pub fn doings_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 2;
+    let clips: [(formiga_art::BodyClip, FaceRenderState); 10] = {
+        use formiga_art::BodyClip::{Action, Gesture as G};
+        let face = |expression, eyelids| FaceRenderState {
+            expression,
+            eyelids,
+            gaze: GazeDirection::default(),
+        };
+        [
+            (G(Gesture::Pour), gesture_face(Gesture::Pour)),
+            (G(Gesture::Pluck), gesture_face(Gesture::Pluck)),
+            (G(Gesture::Tend), gesture_face(Gesture::Tend)),
+            (
+                Action(ActionKind::PresentDiscovery),
+                face(ExpressionKind::Joy, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Eat),
+                face(ExpressionKind::Content, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Drink),
+                face(ExpressionKind::Content, EyelidPose::Half),
+            ),
+            (
+                Action(ActionKind::SoloPlay),
+                face(ExpressionKind::Joy, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::SocialPlay),
+                face(ExpressionKind::Joy, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Greet),
+                face(ExpressionKind::Affectionate, EyelidPose::Open),
+            ),
+            (G(Gesture::Bask), gesture_face(Gesture::Bask)),
+        ]
+    };
+    let subjects = gesture_subjects();
+    let cell = FRAME_SIZE * SCALE;
+    let columns: u32 = clips
+        .iter()
+        .map(|(clip, _)| u32::from(formiga_art::AnimationSpec::for_clip(*clip).frames))
+        .sum::<u32>()
+        + clips.len() as u32
+        - 1;
+    let width = columns * cell;
+    let height = subjects.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    for (row, genome) in subjects.iter().enumerate() {
+        let mut column = 0_u32;
+        for (clip, face) in clips {
+            for frame in 0..formiga_art::AnimationSpec::for_clip(clip).frames {
+                let rendered = CreatureRenderer::render_composited_frame(
+                    genome, clip, frame, true, false, face,
+                );
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    row as u32 * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+                column += 1;
+            }
+            column += 1;
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Ten seconds of every body at rest, a frame every third of a second — the rate a resting colony
+/// is drawn at — with its face as the overlay resolves it. Each body has two rows: the first as its
+/// action alone draws it, the six-beat rest going round and a blink on the beat; the second as it
+/// carries itself on the desktop, coming to rest with a settle, holding still, shifting its weight
+/// or looking off when it does, glancing about and blinking at its own pace. The two rows are what
+/// a rest looked like and what it looks like now, side by side.
+pub fn rest_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 2;
+    const COLUMNS: u32 = 30;
+    const GAP: u32 = 16;
+    let preview = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    let mut subjects = reference_creatures();
+    for (index, plan) in BodyPlan::ALL.into_iter().enumerate() {
+        let mut creature = preview.clone();
+        let mut design = CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        creature.appearance.design = Some(design);
+        // A companion of its own, so each rests and looks about in its own way.
+        creature.id = preview.id.wrapping_add(index as u64 + 1);
+        creature.behavior_seed[0] = creature.behavior_seed[0].wrapping_add(index as u8 + 1);
+        subjects.push(creature);
+    }
+    let cell = FRAME_SIZE * SCALE;
+    let width = COLUMNS * cell;
+    let height = subjects.len() as u32 * (2 * cell + GAP);
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    for (index, subject) in subjects.iter().enumerate() {
+        let mut creature = subject.clone();
+        creature.state.action = ActionKind::Idle;
+        creature.state.attention = None;
+        creature.state.beat = None;
+        creature.state.flourish = None;
+        creature.state.facing_right = true;
+        creature.state.drives = Drives::default();
+        for (row, measured) in [false, true].into_iter().enumerate() {
+            for column in 0..COLUMNS {
+                let at = column as f32 / 3.0;
+                creature.state.action_elapsed = at;
+                creature.state.presence = if measured {
+                    Presence {
+                        clock: 40.0 + at,
+                        since: at,
+                        last: Some(PresenceMark {
+                            x: creature.state.position.x,
+                            window: None,
+                        }),
+                        ..Presence::default()
+                    }
+                } else {
+                    Presence::default()
+                };
+                let body = formiga_art::BodyPresentation::for_creature(&creature);
+                let face = CreatureRenderer::resolve_face_state_among(
+                    &creature,
+                    &[],
+                    CursorSnapshot::default(),
+                    false,
+                    false,
+                );
+                let rendered = CreatureRenderer::render_composited_frame(
+                    &creature.appearance,
+                    body.clip,
+                    body.frame,
+                    body.facing_right,
+                    false,
+                    face,
+                );
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    index as u32 * (2 * cell + GAP) + row as u32 * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+            }
         }
     }
     write_png(&path, width, height, &pixels)?;

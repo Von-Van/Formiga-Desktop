@@ -121,6 +121,57 @@ pub(super) fn draw_gesture_effects(
     match gesture {
         // A seat and a sled are drawn by the wonder itself; the body needs nothing more.
         Gesture::Sit | Gesture::Scoot => {}
+        // Asleep however it lies, the same little z as a curled sleeper's.
+        Gesture::Sprawl | Gesture::Loaf => {
+            let x = (face.x + 7).min(44);
+            let y = (face.y - 7 - pulse).max(3);
+            canvas.line(x, y + 2, x + 2, y + 2, 1, palette.accent);
+            canvas.line(x + 2, y + 2, x, y, 1, palette.accent);
+            canvas.line(x, y, x + 2, y, 1, palette.accent);
+        }
+        // Flecks thrown off either side, on the side it has just shaken toward.
+        Gesture::Shake => {
+            if !reduce_motion {
+                let side = if frame.is_multiple_of(2) { 1 } else { -1 };
+                let x = (face.x + side * 13).clamp(2, 45);
+                let y = (face.y + 2).min(43);
+                canvas.set(x, y, palette.highlight);
+                canvas.set((x + side * 2).clamp(2, 45), y - 2, palette.highlight);
+                canvas.set((x + side).clamp(2, 45), y + 3, palette.highlight);
+            }
+        }
+        // Two wisps of something on the air, drawn in toward the nose.
+        Gesture::Sniff => {
+            if frame % 4 >= 1 && frame % 4 <= 2 {
+                let x = (face.x + 10).min(44);
+                let y = (face.y - 1).max(3);
+                canvas.set(x, y, palette.highlight);
+                canvas.set((x + 2).min(45), y - 1, palette.highlight);
+            }
+        }
+        Gesture::Groom | Gesture::Skip | Gesture::Trudge | Gesture::Pour | Gesture::Tend => {}
+        // A puff of earth where the tug comes away.
+        Gesture::Pluck => {
+            if frame % 4 == 2 && !reduce_motion {
+                let x = (face.x + 9).min(44);
+                let y = (face.y + 18).min(44);
+                canvas.set(x, y, palette.shadow);
+                canvas.set((x + 2).min(45), y - 1, palette.shadow);
+                canvas.set((x - 1).max(2), y - 2, palette.highlight);
+            }
+        }
+        // A little heart over a companion being petted, on the push up into the hand.
+        Gesture::Bask => {
+            if frame % 2 == 1 || reduce_motion {
+                draw_motif(
+                    canvas,
+                    EffectMotif::Heart,
+                    (face.x + 9).min(42),
+                    (face.y - 11).max(4),
+                    palette.highlight,
+                );
+            }
+        }
         Gesture::Cheer => draw_motif(
             canvas,
             if genome.effect_motif == EffectMotif::None {

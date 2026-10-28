@@ -79,10 +79,39 @@ pub enum Gesture {
     /// Sat low with its feet out in front, leaning in and pushing at the ground with one paw and
     /// then the other: scooting a leaf sled along.
     Scoot,
+    /// Sat back a little with a paw up at its cheek, rubbing its face and licking the paw clean:
+    /// washing, the way a cat does when it has nothing else to do. A wing preens instead. This
+    /// and the two after it are what a companion does with itself while it rests.
+    Groom,
+    /// Braced and shaking itself all over, ears and tail flying, eyes shut: shaking off a nap, a
+    /// fall, or nothing in particular.
+    Shake,
+    /// Nose up and out, ears forward, the head bobbing in little sniffs: something on the air.
+    Sniff,
+    /// Asleep stretched right out on its side, legs out and head down: the sleep of a companion
+    /// with nothing on its mind. This and the next are ways to sleep besides the curl.
+    Sprawl,
+    /// Asleep sitting tucked up, paws and tail folded under, the head nodding: dozing off where
+    /// it sat.
+    Loaf,
+    /// A walk with a hop in each step, ears up and the tail high: going somewhere happily.
+    Skip,
+    /// A slow walk with the head low and the ears and tail down: tired, and on its way to bed.
+    Trudge,
+    /// Leaning over with both paws out low in front, tipping something slowly: watering.
+    Pour,
+    /// Down low with a paw at the ground, a tug, and up again with what came away: picking
+    /// something, or picking something up.
+    Pluck,
+    /// Close in with both paws up in front, working at something in turn: tying a flap, tidying
+    /// leaves, plumping a cushion.
+    Tend,
+    /// Pressed down under a hand and pushing up into it, eyes shut, tail going: being petted.
+    Bask,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 31] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -103,6 +132,17 @@ impl Gesture {
         Self::Stomp,
         Self::Sit,
         Self::Scoot,
+        Self::Groom,
+        Self::Shake,
+        Self::Sniff,
+        Self::Sprawl,
+        Self::Loaf,
+        Self::Skip,
+        Self::Trudge,
+        Self::Pour,
+        Self::Pluck,
+        Self::Tend,
+        Self::Bask,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -120,6 +160,17 @@ impl Gesture {
                 | Self::Stomp
                 | Self::Sit
                 | Self::Scoot
+                | Self::Groom
+                | Self::Shake
+                | Self::Sniff
+                | Self::Sprawl
+                | Self::Loaf
+                | Self::Skip
+                | Self::Trudge
+                | Self::Pour
+                | Self::Pluck
+                | Self::Tend
+                | Self::Bask
         )
     }
 }

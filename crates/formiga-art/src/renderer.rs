@@ -301,6 +301,24 @@ impl AnimationSpec {
             Gesture::Sit => (4, 3),
             // Push, and push: one paw and then the other.
             Gesture::Scoot => (4, 6),
+            // Up to the cheek, a rub down it, up again, and a lick of the paw: a second a wash.
+            Gesture::Groom => (4, 4),
+            // Side to side and back, fast: a shake is over in under a second.
+            Gesture::Shake => (4, 10),
+            // Sniff, sniff.
+            Gesture::Sniff => (4, 5),
+            // Breathing, as asleep in a curl.
+            Gesture::Sprawl | Gesture::Loaf => (2, 2),
+            // Strides, counted from the ground covered like any walk's.
+            Gesture::Skip | Gesture::Trudge => (6, 10),
+            // A slow tip of the can, and back.
+            Gesture::Pour => (4, 3),
+            // Down, grip, tug, up.
+            Gesture::Pluck => (4, 4),
+            // One paw and the other, busily.
+            Gesture::Tend => (4, 5),
+            // Pressed down and pushing up, twice a second.
+            Gesture::Bask => (4, 4),
         };
         Self {
             frames,
@@ -345,6 +363,31 @@ impl AnimationSpec {
 pub struct MotionSignature {
     tempo: [f32; 4],
     phase: [u8; 4],
+    /// Where its own run of rests comes from: which beats it does between settles, and how long
+    /// it holds still in between.
+    rest_seed: u64,
+    /// How calm and patient it is, from 0 to 1: a calm companion holds still longer between
+    /// shifts of its weight.
+    calm: f32,
+    /// How curious it is, from 0 to 1: a curious one looks about more often when it rests.
+    curiosity: f32,
+    /// How energetic it is, from 0 to 1: a lively one shakes itself off more than it washes.
+    energy: f32,
+    /// How playful it is, from 0 to 1: a playful one skips more of its walks.
+    playful: f32,
+    /// How trusting it is, from 0 to 1: a trusting one sleeps sprawled out more often than a
+    /// wary one, which dozes sitting up.
+    trusting: f32,
+}
+
+/// One moment of a companion's rest: holding still on its settle, one of the authored beats of
+/// the rest, or something it does with itself — a wash, a shake, a sniff of the air — and the
+/// frame of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestMoment {
+    Settle,
+    Beat(u8),
+    Own(Gesture, u8),
 }
 
 /// Walking, resting, greeting, and recovery share one small vocabulary of timings. Gestures are
@@ -389,7 +432,178 @@ impl MotionSignature {
             0.9 + unit(next()) * 0.2,
         ];
         let phase = std::array::from_fn(|_| (next() & 0x7) as u8);
-        Self { tempo, phase }
+        let rest_seed = next();
+        let axes = creature.temperament().axes;
+        Self {
+            tempo,
+            phase,
+            rest_seed,
+            calm: (1.0 - (axes.energy + axes.impulsiveness) / 2.0).clamp(0.0, 1.0),
+            curiosity: axes.curiosity.clamp(0.0, 1.0),
+            energy: axes.energy.clamp(0.0, 1.0),
+            playful: axes.playfulness.clamp(0.0, 1.0),
+            trusting: (1.0 - axes.suspicion).clamp(0.0, 1.0),
+        }
+    }
+
+    /// A fraction from 0 to 1 out of its own stream, for `salt` and `index`.
+    fn roll(self, salt: u64, index: u64) -> f32 {
+        let mixed =
+            face::mix_u64(self.rest_seed ^ salt ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+        (mixed & 0xffff) as f32 / 65_535.0
+    }
+
+    /// Which of the things a companion does with itself it does now, from a fraction: washing
+    /// more the calmer it is, shaking itself off more the livelier, and sniffing the air more
+    /// the more curious.
+    fn fidget(self, pick: f32) -> Gesture {
+        let groom = 0.35 + 0.4 * self.calm;
+        let shake = 0.15 + 0.4 * self.energy;
+        let sniff = 0.2 + 0.5 * self.curiosity;
+        let at = pick * (groom + shake + sniff);
+        if at < groom {
+            Gesture::Groom
+        } else if at < groom + shake {
+            Gesture::Shake
+        } else {
+            Gesture::Sniff
+        }
+    }
+
+    /// How long one of its own moments lasts, in seconds: a wash twice over, three times for a
+    /// calm companion; a shake twice; two sniffs.
+    fn fidget_secs(self, gesture: Gesture) -> f32 {
+        let spec = AnimationSpec::for_clip(gesture);
+        let loops = match gesture {
+            Gesture::Groom if self.calm > 0.6 => 3.0,
+            _ => 2.0,
+        };
+        loops * f32::from(spec.frames) / f32::from(spec.fps)
+    }
+
+    /// The frame of a walk or a run its feet have reached, `stride` walking frames along: the
+    /// count the world keeps from how far the creature has actually gone, so its steps keep up
+    /// with the ground going by under it.
+    pub fn stride_frame(self, stride: f32) -> u8 {
+        ((stride.max(0.0) as u32).wrapping_add(u32::from(self.phase[0])) % 6) as u8
+    }
+
+    /// The frame of the authored rest loop it shows `elapsed` seconds after it came to rest:
+    /// [`Self::rest_moment`] without anything of its own, the settle drawn for any stillness.
+    pub fn rest_frame(self, elapsed: f32) -> u8 {
+        match self.rest_moment(elapsed, false) {
+            RestMoment::Beat(beat) => beat,
+            RestMoment::Settle | RestMoment::Own(..) => 0,
+        }
+    }
+
+    /// What it is doing with its rest `elapsed` seconds after it came to rest.
+    ///
+    /// The six authored beats of resting are not played round and round. A companion comes to
+    /// rest with a settle onto one foot, and then holds still on the plain settle for a while —
+    /// longer the calmer it is — before it does something: shifts its weight over and back,
+    /// looks off to one side and back, plays the whole of the authored loop, or, where `fidgets`
+    /// allows, something of its own — washes its face, shakes itself off, or sniffs the air, as
+    /// its temperament leans. Which, and how long each stillness lasts, come from its own stream,
+    /// so the same companion rests the same way every time it is shown and no two rest in step.
+    pub fn rest_moment(self, elapsed: f32, fidgets: bool) -> RestMoment {
+        let spec = AnimationSpec::for_action(ActionKind::Idle);
+        let rate = self.tempo[1] * f32::from(spec.fps);
+        // A rest this long starts over: the run is irregular, so nobody can see where.
+        const ROUND_SECS: f32 = 300.0;
+        let mut left = elapsed.max(0.0) % ROUND_SECS;
+        let mut run = 0_u64;
+        loop {
+            let roll = face::mix_u64(self.rest_seed ^ run.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+            let pick = (roll & 0xff) as f32 / 255.0;
+            let own = run > 0 && fidgets && ((roll >> 16) & 0xff) as f32 / 255.0 < 0.3;
+            if own {
+                let gesture = self.fidget(((roll >> 24) & 0xff) as f32 / 255.0);
+                let secs = self.fidget_secs(gesture);
+                if left < secs {
+                    let spec = AnimationSpec::for_clip(gesture);
+                    let frame = (left * f32::from(spec.fps)) as u32 % u32::from(spec.frames);
+                    return RestMoment::Own(gesture, frame as u8);
+                }
+                left -= secs;
+            } else {
+                let beats: &[u8] = if run == 0 {
+                    // Coming to rest: a settle onto the foot, before the first stillness.
+                    &[1]
+                } else if pick < 0.25 + 0.3 * self.curiosity {
+                    // A look off to the side, and back.
+                    &[5, 3, 4, 3, 5]
+                } else if pick < 0.5 + 0.3 * self.curiosity {
+                    // Weight over onto the other foot, and back.
+                    &[1, 2, 1]
+                } else {
+                    &[1, 2, 3, 4, 5]
+                };
+                let secs = beats.len() as f32 / rate;
+                if left < secs {
+                    return RestMoment::Beat(beats[((left * rate) as usize).min(beats.len() - 1)]);
+                }
+                left -= secs;
+            }
+            // Still, on the plain settle, for a third of a second to about three and a half.
+            let shortest = 1 + (self.calm * 3.0).round() as u64;
+            let longest = shortest + 3 + (self.calm * 3.0).round() as u64;
+            let hold = (shortest + (roll >> 8) % (longest - shortest + 1)) as f32 / rate;
+            if left < hold {
+                return RestMoment::Settle;
+            }
+            left -= hold;
+            run += 1;
+        }
+    }
+
+    /// How it lies `into` seconds into a nap that began at `began` on its clock and lasts
+    /// `length`: curled up, sprawled out, or loafed sitting up — a trusting companion sprawls
+    /// more and a wary one dozes sitting up — and, in a long nap, now and then turned over into
+    /// another way partway through.
+    pub fn nap_pose(self, began: f32, into: f32, length: f32, turns: bool) -> Option<Gesture> {
+        let nap = (began * 4.0).max(0.0) as u64;
+        let way = |pick: f32| {
+            let sprawl = 0.15 + 0.35 * self.trusting;
+            let loaf = 0.1 + 0.3 * (1.0 - self.trusting);
+            if pick < sprawl {
+                Some(Gesture::Sprawl)
+            } else if pick < sprawl + loaf {
+                Some(Gesture::Loaf)
+            } else {
+                None
+            }
+        };
+        let first = way(self.roll(0x6e61_7031, nap));
+        let turn_at = length * (0.4 + 0.25 * self.roll(0x6e61_7032, nap));
+        if turns && length > 25.0 && self.roll(0x6e61_7033, nap) < 0.45 && into >= turn_at {
+            let mut pick = self.roll(0x6e61_7034, nap);
+            // Over into a different way, not the same one again.
+            for _ in 0..4 {
+                let then = way(pick);
+                if then != first {
+                    return then;
+                }
+                pick = (pick + 0.37) % 1.0;
+            }
+        }
+        first
+    }
+
+    /// The mood a walk is taken in, if it has one: a trudge when the companion is tired or on
+    /// its way to bed, and otherwise, on some of the walks a contented companion takes — more of
+    /// a playful one's — a skip. `began` is when on its clock this walk set off, so the whole of
+    /// one walk is taken the same way.
+    pub fn walk_mood(self, creature: &Creature, began: f32, eager: bool) -> Option<Gesture> {
+        let state = &creature.state;
+        let drives = &state.drives;
+        if state.walking_to_sleep() || drives.sleep_pressure > 0.75 || drives.energy < 0.22 {
+            return Some(Gesture::Trudge);
+        }
+        let content = drives.comfort > 0.5 && drives.boredom < 0.6 && drives.arousal < 0.8;
+        let chance = 0.04 + 0.3 * self.playful + if eager { 0.25 } else { 0.0 };
+        (content && self.roll(0x736b_6970, (began * 4.0).max(0.0) as u64) < chance)
+            .then_some(Gesture::Skip)
     }
 
     /// The body frame this creature shows, in place of the shared `AnimationSpec::frame_at`.
@@ -448,9 +662,9 @@ impl BodyPresentation {
         }
         // A small moment of its own comes next: a yawn, a start, a turn at the garden.
         if let Some(beat) = state.beat
-            && let Some((gesture, into)) = beats::beat_pose(beat)
+            && let Some((clip, into)) = beats::beat_pose(beat)
         {
-            return shown(BodyClip::Gesture(gesture), into);
+            return shown(clip, into);
         }
         let Some((habit, action, into)) = flourish_shown(creature) else {
             // Wriggling over in its sleep: the breaths come quicker, a squirm rather than a slide.
@@ -462,15 +676,14 @@ impl BodyPresentation {
                     state.action_elapsed * WRIGGLE_RATE,
                 );
             }
-            // On its way to bed it walks there, and lies down when it arrives.
-            if state.walking_to_sleep() {
-                return shown(BodyClip::Action(ActionKind::Traverse), state.action_elapsed);
-            }
             // Getting down to sleep rather than dropping into it: a crouch for a moment first.
-            if state.action == ActionKind::Sleep && state.action_elapsed < LIE_DOWN_SECS {
+            if state.action == ActionKind::Sleep
+                && !state.walking_to_sleep()
+                && state.action_elapsed < LIE_DOWN_SECS
+            {
                 return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
             }
-            return shown(BodyClip::Action(state.action), state.action_elapsed);
+            return Self::footing(creature, motion);
         };
         match habit {
             // The snack or the drink held up in front before the first bite or sip: the opening
@@ -489,6 +702,143 @@ impl BodyPresentation {
             }
             Habit::WavesHello => shown(BodyClip::Gesture(Gesture::Reach), into),
             Habit::PlayBows => shown(BodyClip::Gesture(Gesture::Crouch), into),
+        }
+    }
+
+    /// The action's own clip, drawn to agree with what the creature's feet are actually doing.
+    ///
+    /// An action says what a creature is about, not always whether it is moving: a walk to a
+    /// friend ends on its mark with time left on the walk, and a greeting can still have a few
+    /// steps to go. Once the world has measured it (see [`formiga_core::Presence`]), a walk that
+    /// is going nowhere is drawn as a rest, and a rest, a greeting, a meal or a look that its feet
+    /// are carrying along is drawn as the walk it is, until it gets there. A walk's steps are
+    /// counted from the ground it has covered rather than the time it has spent, so its feet
+    /// keep pace with it. A creature never measured — on a review sheet, say — is drawn exactly
+    /// as its action says.
+    fn footing(creature: &Creature, motion: MotionSignature) -> Self {
+        let state = &creature.state;
+        let presence = state.presence;
+        let action = if state.walking_to_sleep() {
+            // On its way to bed it walks there, and lies down when it arrives.
+            ActionKind::Traverse
+        } else {
+            state.action
+        };
+        let body = |clip: BodyClip, frame: u8| Self {
+            clip,
+            frame,
+            facing_right: state.facing_right,
+        };
+        if !presence.measured() {
+            return body(
+                BodyClip::Action(action),
+                motion.frame(BodyClip::Action(action), state.action_elapsed),
+            );
+        }
+        let walking = matches!(
+            AnimationSpec::body_action(action),
+            ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint
+        );
+        let planted = matches!(
+            action,
+            ActionKind::Idle
+                | ActionKind::Greet
+                | ActionKind::Eat
+                | ActionKind::Drink
+                | ActionKind::InspectScreen
+                | ActionKind::InvestigateCursor
+                | ActionKind::Homebound
+                | ActionKind::Perch
+        );
+        if presence.stepping && (walking || planted) {
+            let walk = if walking {
+                action
+            } else {
+                ActionKind::Traverse
+            };
+            let frame = motion.stride_frame(presence.stride);
+            // A plain walk can be taken in a mood; a run, a squeeze and a bob along a ledge
+            // cannot. A greeting walking over is eager about it.
+            let mood = matches!(walk, ActionKind::Traverse | ActionKind::Follow)
+                .then(|| {
+                    motion.walk_mood(
+                        creature,
+                        presence.clock - presence.since,
+                        action == ActionKind::Greet,
+                    )
+                })
+                .flatten();
+            return match mood {
+                Some(mood) => body(BodyClip::Gesture(mood), frame),
+                None => body(BodyClip::Action(walk), frame),
+            };
+        }
+        let resting = walking || matches!(action, ActionKind::Idle | ActionKind::Homebound);
+        // Just up from a nap, or just set down: a stretch or a shake before anything else.
+        if resting
+            && !presence.reduced
+            && let Some((was, ago)) = presence.after
+            && let Some((gesture, lasts)) = motion.after_moment(was)
+            && ago < lasts
+        {
+            return body(BodyClip::Gesture(gesture), motion.frame(gesture, ago));
+        }
+        if action == ActionKind::Sleep && state.nudge.is_none() {
+            let into = state.action_elapsed;
+            if let Some(way) = motion.nap_pose(
+                presence.clock - into,
+                into,
+                state.action_duration,
+                !presence.reduced,
+            ) {
+                return body(BodyClip::Gesture(way), motion.frame(way, into));
+            }
+        }
+        // Being petted leans into the hand rather than waving at it.
+        if action == ActionKind::PetReaction {
+            return body(
+                BodyClip::Gesture(Gesture::Bask),
+                motion.frame(Gesture::Bask, state.action_elapsed),
+            );
+        }
+        if resting {
+            // At rest since it stopped, or since the rest began, whichever came later.
+            let rested = if walking {
+                presence.since
+            } else {
+                state.action_elapsed.min(presence.since)
+            };
+            let at_home = action == ActionKind::Homebound;
+            return match motion.rest_moment(rested, !presence.reduced) {
+                RestMoment::Own(gesture, frame) => body(BodyClip::Gesture(gesture), frame),
+                // At home it sits as residents do there, and keeps the settle through the beats.
+                _ if at_home => body(
+                    BodyClip::Action(action),
+                    motion.frame(BodyClip::Action(action), state.action_elapsed),
+                ),
+                RestMoment::Beat(beat) => body(BodyClip::Action(ActionKind::Idle), beat),
+                RestMoment::Settle => body(BodyClip::Action(ActionKind::Idle), 0),
+            };
+        }
+        body(
+            BodyClip::Action(action),
+            motion.frame(BodyClip::Action(action), state.action_elapsed),
+        )
+    }
+}
+
+impl MotionSignature {
+    /// What a companion does on stopping `was`, and for how long: up from a nap with a stretch
+    /// if it is calm and a shake if it is lively, and a shake on being set down from a hand or
+    /// landing from a throw.
+    fn after_moment(self, was: ActionKind) -> Option<(Gesture, f32)> {
+        match was {
+            ActionKind::Sleep if self.calm >= 0.5 => Some((Gesture::Stretch, 1.6)),
+            ActionKind::Sleep => Some((Gesture::Shake, 0.8)),
+            ActionKind::Dragged | ActionKind::Tossed | ActionKind::Landing => {
+                Some((Gesture::Shake, 0.8))
+            }
+            _ => None,
         }
     }
 }
@@ -1054,15 +1404,31 @@ impl CreatureRenderer {
             .unwrap_or(0)
     }
 
+    /// The face a creature wears on its own, with nobody else about to look at.
     pub fn resolve_face_state(
         creature: &Creature,
         cursor: CursorSnapshot,
         cursor_reactions: bool,
     ) -> FaceRenderState {
+        Self::resolve_face_state_among(creature, &[], cursor, cursor_reactions, false)
+    }
+
+    /// The face a creature wears among the rest of its `colony`, which its eyes wander to when
+    /// nothing else has them. Under reduced motion they do not wander, and look out as they
+    /// always have.
+    pub fn resolve_face_state_among(
+        creature: &Creature,
+        colony: &[Creature],
+        cursor: CursorSnapshot,
+        cursor_reactions: bool,
+        reduce_motion: bool,
+    ) -> FaceRenderState {
+        let (gaze, at_cursor) =
+            resolve_gaze(creature, colony, cursor, cursor_reactions, reduce_motion);
         FaceRenderState {
             expression: resolve_expression(creature),
-            eyelids: resolve_eyelids(creature),
-            gaze: resolve_gaze(creature, cursor, cursor_reactions),
+            eyelids: resolve_eyelids(creature, at_cursor),
+            gaze,
         }
     }
 }

@@ -5,6 +5,7 @@ use super::*;
 mod belongings;
 mod faces;
 mod frames;
+mod liveliness;
 mod poses;
 
 fn genome(family: BodyFamily) -> AppearanceGenome {

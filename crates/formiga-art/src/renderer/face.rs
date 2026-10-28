@@ -1141,6 +1141,16 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     if creature.state.action == ActionKind::Sleep {
         return ExpressionKind::Sleepy;
     }
+    if let Some((own, _)) = own_moment(creature) {
+        return match own {
+            Gesture::Groom | Gesture::Stretch => ExpressionKind::Content,
+            Gesture::Shake => ExpressionKind::Determined,
+            Gesture::Sniff => ExpressionKind::Curious,
+            Gesture::Skip => ExpressionKind::Joy,
+            Gesture::Bask => ExpressionKind::Affectionate,
+            _ => ExpressionKind::Sleepy,
+        };
+    }
     if let Some(pose) = creature.state.attention {
         // A temperament's own poses wear their own faces, whatever the moment is about.
         match pose.gesture {
@@ -1248,7 +1258,7 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     }
 }
 
-pub(super) fn resolve_eyelids(creature: &Creature) -> EyelidPose {
+pub(super) fn resolve_eyelids(creature: &Creature, at_cursor: bool) -> EyelidPose {
     if creature.state.attention.is_none()
         && let Some(eyelids) = creature.state.beat.and_then(super::beats::beat_eyelids)
     {
@@ -1272,8 +1282,30 @@ pub(super) fn resolve_eyelids(creature: &Creature) -> EyelidPose {
     if creature.state.action == ActionKind::Sleep && flourish.is_none() {
         return EyelidPose::Closed;
     }
-    if matches!(resolve_expression(creature), ExpressionKind::Startled) {
+    match own_moment(creature) {
+        // Eyes shut to wash and to shake, under a petting hand, and at the top of a stretch.
+        Some((Gesture::Groom | Gesture::Shake | Gesture::Bask, _)) => return EyelidPose::Closed,
+        Some((Gesture::Stretch, frame)) => {
+            return if frame >= 2 {
+                EyelidPose::Closed
+            } else {
+                EyelidPose::Half
+            };
+        }
+        Some((Gesture::Sniff | Gesture::Trudge, _)) => return EyelidPose::Half,
+        _ => {}
+    }
+    let expression = resolve_expression(creature);
+    if matches!(expression, ExpressionKind::Startled) {
         return EyelidPose::Open;
+    }
+    if creature.state.presence.measured() {
+        let blink = blink_at(creature, expression, at_cursor);
+        return if blink == EyelidPose::Open && expression == ExpressionKind::Sleepy {
+            EyelidPose::Half
+        } else {
+            blink
+        };
     }
     let elapsed = creature.state.action_elapsed.max(0.0);
     let block = (elapsed / 5.0).floor() as u64;
@@ -1299,53 +1331,89 @@ pub(super) fn mix_u64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
+/// Where a creature is looking, and whether that is at the cursor.
 pub(super) fn resolve_gaze(
     creature: &Creature,
+    colony: &[Creature],
     cursor: CursorSnapshot,
     cursor_reactions: bool,
-) -> GazeDirection {
+    reduce_motion: bool,
+) -> (GazeDirection, bool) {
+    let gaze = looking_at(creature, cursor, cursor_reactions);
+    match gaze {
+        Looking::Fixed(gaze) => (gaze, false),
+        Looking::Cursor(gaze) => (gaze, true),
+        Looking::Free => (
+            if reduce_motion || !creature.state.presence.measured() {
+                GazeDirection::default()
+            } else {
+                wandering_gaze(creature, colony)
+            },
+            false,
+        ),
+    }
+}
+
+/// What decides where a creature looks: something it is looking at, the cursor, or nothing, which
+/// leaves its eyes free to wander.
+enum Looking {
+    Fixed(GazeDirection),
+    Cursor(GazeDirection),
+    Free,
+}
+
+fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: bool) -> Looking {
+    let fixed = |gaze| Looking::Fixed(gaze);
     if let Some(pose) = creature.state.attention {
-        return GazeDirection::new(
+        return fixed(GazeDirection::new(
             axis_direction(pose.target.x - creature.state.position.x, 10.0),
             axis_direction(pose.target.y - (creature.state.position.y - 28.0), 10.0),
-        );
+        ));
     }
     if let Some(gaze) = creature
         .state
         .beat
         .and_then(|beat| super::beats::beat_gaze(creature, beat))
     {
-        return gaze;
+        return fixed(gaze);
     }
     let forward = if creature.state.facing_right { 1 } else { -1 };
     // Looking the snack over: down at it, closer, then up and along it.
     if let Some((Habit::LooksFoodOver, _, into)) = flourish_shown(creature) {
-        return match into {
+        return fixed(match into {
             into if into < 0.55 => GazeDirection::new(forward, 1),
             into if into < 1.1 => GazeDirection::new(0, 1),
             _ => GazeDirection::new(forward, 0),
-        };
+        });
+    }
+    match own_moment(creature) {
+        // Nose up at whatever is on the air; down at the paw it is washing, or the ground ahead.
+        Some((Gesture::Sniff, _)) => return fixed(GazeDirection::new(forward, -1)),
+        Some((Gesture::Groom | Gesture::Trudge, _)) => {
+            return fixed(GazeDirection::new(forward, 1));
+        }
+        _ => {}
     }
     match creature.state.action {
         ActionKind::InspectScreen => {
-            return GazeDirection::new(
+            return fixed(GazeDirection::new(
                 if creature.state.facing_right { 1 } else { -1 },
                 if creature.state.surface.kind == formiga_core::SurfaceKind::WindowLedge {
                     1
                 } else {
                     -1
                 },
-            );
+            ));
         }
-        ActionKind::Dangle => return GazeDirection::new(0, 1),
-        ActionKind::PresentDiscovery => return GazeDirection::new(0, -1),
+        ActionKind::Dangle => return fixed(GazeDirection::new(0, 1)),
+        ActionKind::PresentDiscovery => return fixed(GazeDirection::new(0, -1)),
         _ => {}
     }
     if !cursor_reactions
         || !cursor.available
         || creature.state.position.distance(cursor.position) > 240.0
     {
-        return GazeDirection::default();
+        return Looking::Free;
     }
     let face_position = formiga_core::Point {
         x: creature.state.position.x,
@@ -1353,7 +1421,10 @@ pub(super) fn resolve_gaze(
     };
     let dx = cursor.position.x - face_position.x;
     let dy = cursor.position.y - face_position.y;
-    GazeDirection::new(axis_direction(dx, 10.0), axis_direction(dy, 10.0))
+    Looking::Cursor(GazeDirection::new(
+        axis_direction(dx, 10.0),
+        axis_direction(dy, 10.0),
+    ))
 }
 
 pub(super) fn axis_direction(delta: f32, dead_zone: f32) -> i8 {
@@ -1363,5 +1434,250 @@ pub(super) fn axis_direction(delta: f32, dead_zone: f32) -> i8 {
         1
     } else {
         -1
+    }
+}
+
+/// A number from a creature's own behaviour seed and a salt, so its blinks and its glances each
+/// come from a stream of their own.
+fn own_roll(creature: &Creature, salt: u64) -> u64 {
+    let seed = u64::from_le_bytes(creature.behavior_seed[..8].try_into().unwrap());
+    mix_u64(seed ^ salt)
+}
+
+/// A fraction from 0 to 1 out of eight bits of a roll.
+fn fraction(roll: u64, shift: u32) -> f32 {
+    ((roll >> shift) & 0xff) as f32 / 255.0
+}
+
+/// How long a creature lets go between one look about and the next, in seconds: a curious one
+/// looks about more often. One glance at most falls in each stretch.
+fn glance_stretch(curiosity: f32) -> f32 {
+    3.0 + (1.0 - curiosity.clamp(0.0, 1.0)) * 3.5
+}
+
+/// One glance: when it starts and ends on the creature's clock, and the roll that says where.
+#[derive(Clone, Copy)]
+struct Glance {
+    start: f32,
+    end: f32,
+    roll: u64,
+}
+
+/// The glance falling in the stretch of the creature's clock that `clock` is in, if one does.
+fn glance_near(creature: &Creature, clock: f32) -> Option<Glance> {
+    let axes = creature.temperament().axes;
+    let stretch = glance_stretch(axes.curiosity);
+    // Everyone's stretches start at a different moment, so a colony does not look about in step.
+    let offset = fraction(own_roll(creature, 0x6c61_6e63), 0) * stretch;
+    let shifted = clock + offset;
+    let index = (shifted / stretch).floor();
+    let roll = own_roll(
+        creature,
+        0x676c_616e ^ (index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
+    );
+    if fraction(roll, 0) > 0.35 + 0.35 * axes.curiosity {
+        return None;
+    }
+    let from = index * stretch - offset;
+    let start = from + fraction(roll, 8) * stretch * 0.4;
+    let length = 0.9 + fraction(roll, 16) * stretch * 0.45;
+    let end = (start + length).min(from + stretch - 0.3);
+    Some(Glance { start, end, roll })
+}
+
+/// Where a creature's eyes go when nothing in particular has them: where it is going while it
+/// walks, and straight out while it rests, with now and then a glance — at a friend nearby, a
+/// sociable companion more often than a solitary one, or off to one side, down or up — a
+/// companion walking with or waiting on a friend keeping an eye on them throughout, and one a
+/// friend is walking over to watching it come.
+///
+/// Nine gaze directions are already in every face texture, so a glance costs nothing to draw,
+/// and it lasts a second or two, long enough to be seen at the slowest rate a resting colony is
+/// drawn at.
+fn wandering_gaze(creature: &Creature, colony: &[Creature]) -> GazeDirection {
+    let state = &creature.state;
+    let forward = if state.facing_right { 1 } else { -1 };
+    let walking = state.presence.stepping;
+    let friend = nearest_friend(creature, colony);
+    let toward = |other: &Creature| {
+        GazeDirection::new(
+            axis_direction(other.state.position.x - state.position.x, 10.0),
+            axis_direction(other.state.position.y - state.position.y, 18.0),
+        )
+    };
+    let with_friend = matches!(
+        state.action,
+        ActionKind::Follow | ActionKind::Greet | ActionKind::SocialPlay
+    );
+    // A friend on its way over to say hello or to play is watched as it comes.
+    if let Some(caller) = coming_over(creature, colony) {
+        return toward(caller);
+    }
+    let clock = state.presence.clock;
+    let glance = glance_near(creature, clock).filter(|g| (g.start..g.end).contains(&clock));
+    let Some(glance) = glance else {
+        return match friend {
+            Some(friend) if with_friend && !walking => toward(friend),
+            _ if walking => GazeDirection::new(forward, 0),
+            _ => GazeDirection::default(),
+        };
+    };
+    let social = creature.temperament().axes.social;
+    if let Some(friend) = friend
+        && (with_friend || fraction(glance.roll, 24) < 0.35 + 0.45 * social)
+    {
+        return toward(friend);
+    }
+    let pick = (glance.roll >> 32) as usize;
+    if walking {
+        // A walker glances out at the desk, or down at where its feet are going.
+        return [GazeDirection::new(0, 0), GazeDirection::new(forward, 1)][pick % 2];
+    }
+    [
+        GazeDirection::new(forward, 0),
+        GazeDirection::new(-forward, 0),
+        GazeDirection::new(forward, 1),
+        GazeDirection::new(forward, -1),
+        GazeDirection::new(0, -1),
+        GazeDirection::new(-forward, -1),
+    ][pick % 6]
+}
+
+/// A friend nearby walking over to greet, follow or play, and coming this way: the one a
+/// companion turns its eyes to, so whoever is being approached is seen to notice.
+fn coming_over<'a>(creature: &Creature, colony: &'a [Creature]) -> Option<&'a Creature> {
+    const REACH: f32 = 260.0;
+    colony
+        .iter()
+        .filter(|other| {
+            other.id != creature.id
+                && !other.state.indoors
+                && other.state.presence.stepping
+                && other.state.surface.monitor_id == creature.state.surface.monitor_id
+                && matches!(
+                    other.state.action,
+                    ActionKind::Greet | ActionKind::SocialPlay | ActionKind::Follow
+                )
+                && other.state.facing_right == (creature.state.position.x > other.state.position.x)
+        })
+        .map(|other| {
+            (
+                other.state.position.distance(creature.state.position),
+                other,
+            )
+        })
+        .filter(|(distance, _)| *distance <= REACH)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, other)| other)
+}
+
+/// The nearest other companion out on the same display and close enough to look at.
+fn nearest_friend<'a>(creature: &Creature, colony: &'a [Creature]) -> Option<&'a Creature> {
+    const REACH: f32 = 260.0;
+    colony
+        .iter()
+        .filter(|other| {
+            other.id != creature.id
+                && !other.state.indoors
+                && other.state.arrival_delay_secs <= 0.0
+                && other.state.surface.monitor_id == creature.state.surface.monitor_id
+        })
+        .map(|other| {
+            (
+                other.state.position.distance(creature.state.position),
+                other,
+            )
+        })
+        .filter(|(distance, _)| *distance <= REACH)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, other)| other)
+}
+
+/// The eyelids a creature's own blinking gives it at this moment on its clock.
+///
+/// Blinks come irregularly rather than on a beat: one somewhere in each stretch of three and a
+/// half to six seconds — longer the calmer the companion — now and then none, and now and
+/// then two in quick succession. A content or affectionate companion, or one fond of the person
+/// gazing at their cursor, blinks slowly instead: lids easing down and up again, the way a cat
+/// says it is at ease. A glance often begins with a blink, as eyes moving do. Each blink is long
+/// enough to be caught at the slowest rate a resting colony is drawn at, so blinking asks for no
+/// frame of its own.
+fn blink_at(creature: &Creature, expression: ExpressionKind, at_cursor: bool) -> EyelidPose {
+    let clock = creature.state.presence.clock;
+    let axes = creature.temperament().axes;
+    let calm = (1.0 - (axes.energy + axes.impulsiveness) / 2.0).clamp(0.0, 1.0);
+    let stretch = 3.4 + calm * 2.6;
+    let index = (clock / stretch).floor();
+    let local = clock - index * stretch;
+    let roll = own_roll(
+        creature,
+        0x626c_696e ^ (index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
+    );
+    let fond = at_cursor && axes.affection > 0.55;
+    let slow = (matches!(
+        expression,
+        ExpressionKind::Content | ExpressionKind::Affectionate
+    ) || fond)
+        && fraction(roll, 24) < 0.5;
+    let lids = |delta: f32, closed: f32, half: f32| {
+        if delta < closed {
+            EyelidPose::Closed
+        } else if delta < half {
+            EyelidPose::Half
+        } else {
+            EyelidPose::Open
+        }
+    };
+    let mut shown = EyelidPose::Open;
+    let mut close = |pose: EyelidPose| {
+        if pose == EyelidPose::Closed || (pose == EyelidPose::Half && shown == EyelidPose::Open) {
+            shown = pose;
+        }
+    };
+    if fraction(roll, 0) >= 0.12 {
+        let at = 0.45 + fraction(roll, 8) * (stretch - 1.4);
+        if slow {
+            close(lids((local - at).abs(), 0.18, 0.42));
+        } else {
+            close(lids((local - at).abs(), 0.08, 0.2));
+            if fraction(roll, 16) < 0.18 {
+                close(lids((local - at - 0.45).abs(), 0.08, 0.2));
+            }
+        }
+    }
+    if let Some(glance) = glance_near(creature, clock)
+        && fraction(glance.roll, 40) < 0.6
+    {
+        close(lids((clock - glance.start).abs(), 0.08, 0.2));
+    }
+    shown
+}
+
+/// Something a companion is doing with itself on its own account — a wash, a shake, a sniff, a
+/// stretch on waking, a walk with a mood in it, a way of sleeping — and the frame of it, when
+/// nothing its attention is on, no small moment and no habit has the body instead.
+fn own_moment(creature: &Creature) -> Option<(Gesture, u8)> {
+    let state = &creature.state;
+    if state.attention.is_some() || state.beat.is_some() || flourish_shown(creature).is_some() {
+        return None;
+    }
+    match BodyPresentation::for_creature(creature) {
+        BodyPresentation {
+            clip:
+                BodyClip::Gesture(
+                    gesture @ (Gesture::Groom
+                    | Gesture::Shake
+                    | Gesture::Sniff
+                    | Gesture::Stretch
+                    | Gesture::Skip
+                    | Gesture::Trudge
+                    | Gesture::Sprawl
+                    | Gesture::Loaf
+                    | Gesture::Bask),
+                ),
+            frame,
+            ..
+        } => Some((gesture, frame)),
+        _ => None,
     }
 }
