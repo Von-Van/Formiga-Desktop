@@ -16,6 +16,16 @@ All notable changes are documented here.
   there to the house, and one picked up from back in the village stays under the hand. The front
   of the grass is still where the village mostly lives: about 5% of an afternoon is spent further
   in. `formiga-tools village-depth-sheet` draws it.
+- Jump'n'Catch, a new game two companions play on their own. When a bold, playful companion is
+  down on the ground beside a window worth leaping off, with a playful friend nearby, it climbs the
+  window, walks to the edge, teeters, crouches and leaps off on a real thrown arc, while the friend
+  judges where it will come down and dashes there with its paws up. Under it in time, the friend
+  catches it and holds it up overhead before setting it down, and the two cheer and share a heart;
+  a misjudged leap lands on its own, dizzy, and is shaken off while the catcher frets and then the
+  two of them make light of it. A quick, watchful catcher who knows the jumper well judges best.
+  It needs a window at least about a hundred points tall and no taller than the jumper can climb,
+  with open ground beside it; it never starts under reduced motion, and moving or closing the window
+  calls it off with nobody left up in the air. A new catch sheet draws two rounds frame by frame.
 
 ### Changed
 

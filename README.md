@@ -65,7 +65,7 @@ one costs.
   Right-click (Control-click on macOS) for a small menu: offer a snack or a toy, send everyone
   home, or open a profile. Creatures answer in pictures, not words.
 - **A colony.** Friendships form, games start (chase, tag, hide and seek, a race across your
-  windows), and now and then the whole colony gathers for a picnic, a nap, or a late-night sleep
+  windows, a leap off a window into a friend's arms), and now and then the whole colony gathers for a picnic, a nap, or a late-night sleep
   pile.
 - **A village.** When the colony goes home, a village of up to six houses stands in a corner of the
   screen, with keepsake trees, gardens that grow, and visitors who drop by, and the colony gets on

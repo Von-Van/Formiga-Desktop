@@ -16,8 +16,12 @@ pub(super) struct HopJourney {
     pub(super) elapsed: f32,
     pub(super) duration: f32,
     /// How high above the straight line the middle of the hop goes, in points, besides the arc a
-    /// hop onto a window ledge always has. Zero for every hop but getting down off a roof.
+    /// hop onto a window ledge always has. Zero for every hop but getting down off a roof and a
+    /// leap.
     pub(super) lift: f32,
+    /// A leap off a ledge, which rises and falls the way anything thrown does: steadily across,
+    /// slowing to the top and quickening all the way down, rather than easing into the landing.
+    pub(super) ballistic: bool,
 }
 
 #[derive(Clone)]
@@ -236,8 +240,11 @@ impl WindowJourney {
                         .mul_add(0.12, 24.0)
                         .min(90.0);
                 // A lifted hop eases its height in and out as the roof plan's own hops do; every
-                // other hop keeps the straight line it always had.
-                let (rise, lift) = if journey.lift > 0.0 {
+                // other hop keeps the straight line it always had. A leap's straight line and
+                // its lift together are one parabola, which is the path of a throw.
+                let (rise, lift) = if journey.ballistic {
+                    (progress, journey.lift * 4.0 * progress * (1.0 - progress))
+                } else if journey.lift > 0.0 {
                     (
                         progress * progress * (3.0 - 2.0 * progress),
                         journey.lift * 4.0 * progress * (1.0 - progress),
@@ -382,6 +389,7 @@ pub(super) fn build_window_journey(
             elapsed: 0.0,
             duration: (distance / 280.0).clamp(1.0, 2.6),
             lift: 0.0,
+            ballistic: false,
         });
     };
 

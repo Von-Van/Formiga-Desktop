@@ -896,6 +896,7 @@ impl World {
                 elapsed: 0.0,
                 duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
                 lift: 0.0,
+                ballistic: false,
             });
             next = journey.initial_action();
             self.window_journeys.insert(creature.id, journey);

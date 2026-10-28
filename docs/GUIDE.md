@@ -93,9 +93,11 @@ rasterized into deterministic 48×48 sprite atlases when the creature loads.
   best spot on a ledge, a staring match, or creeping around a companion who is asleep. Each player
   shows a music note as it joins, so a game reads as starting rather than as two creatures
   wandering about.
-- Three of the games are about your desktop itself. Two creatures race across the windows to a ledge
+- Four of the games are about your desktop itself. Two creatures race across the windows to a ledge
   they can both reach, or play the-floor-is-lava along the ledge tops, or one hides around the far
-  end of a surface while the other counts and then goes looking. Any invitation can be turned down.
+  end of a surface while the other counts and then goes looking. In Jump'n'Catch, one climbs a
+  window and leaps off the top while the other dashes to where it will land and tries to catch it
+  overhead. Any invitation can be turned down.
 - Spot two riders on the same moving window watching each other and showing off once the ride
   settles, or a playful creature dashing alongside a fast cursor for a moment without leaving its
   own display.

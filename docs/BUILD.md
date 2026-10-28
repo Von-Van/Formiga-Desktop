@@ -278,6 +278,7 @@ cargo run -p formiga-tools -- repertoire-sheet
 cargo run -p formiga-tools -- doings-sheet
 cargo run -p formiga-tools -- accessory-sheet
 cargo run -p formiga-tools -- village-life-sheet
+cargo run -p formiga-tools -- catch-sheet
 cargo run -p formiga-tools -- ui-sheet
 cargo run -p formiga-tools -- creature-card
 cargo run -p formiga-tools -- colony-card
@@ -330,6 +331,9 @@ on a roof, the three mishaps, and a yawn going round — composed the way the ov
 draws a full village with its residents among the houses as the overlay orders them: all at the
 front, out on the trodden path in the middle, on doorsteps set back and partway up a door path, and
 the path after dark.
+`catch-sheet` draws two real rounds of jump and catch frame by frame, a third of a second apart,
+from the climb to the end — one caught by a quick, watchful catcher and one missed by a slow,
+absent-minded one — as the overlay places them.
 `face-sheet` draws the twelve face layouts a new companion can wear in every expression and a
 blink, and `temperament-sheet` every frame of the six poses a temperament strikes, each with the
 face its moment wears. `shelter-sheet` draws every kind of house plain, dressed two ways

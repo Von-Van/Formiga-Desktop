@@ -217,6 +217,7 @@ fn ledge_journey_visibly_moves_before_attaching() {
             elapsed: 0.0,
             duration: 1.0,
             lift: 0.0,
+            ballistic: false,
         }),
     );
     world.tick(created, 0.4, &desktop);

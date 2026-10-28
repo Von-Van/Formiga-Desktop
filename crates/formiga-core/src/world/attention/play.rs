@@ -21,6 +21,7 @@ pub(super) enum Kind {
     Race,
     Lava,
     HideAndSeek,
+    JumpAndCatch,
 }
 
 impl Kind {
@@ -54,6 +55,7 @@ impl Kind {
             Self::Race => 1.4,
             Self::Lava => 1.2,
             Self::HideAndSeek => 1.6,
+            Self::JumpAndCatch => 1.2,
             Self::Parade => 1.4,
             Self::Pile => 1.5,
             Self::Stare => 2.5,
@@ -80,6 +82,9 @@ impl Kind {
             Self::Race => 16.0,
             Self::Lava => 12.0,
             Self::HideAndSeek => 20.0,
+            // Long enough for a climb, a walk along the top, the leap and its ending; a round
+            // that finishes sooner ends itself.
+            Self::JumpAndCatch => 32.0,
             _ => 9.0,
         }
     }
@@ -99,13 +104,14 @@ impl Kind {
             Self::Race => 0.6,
             Self::Lava => 0.5,
             Self::HideAndSeek => 0.55,
+            Self::JumpAndCatch => 0.6,
         }
     }
 
     /// Games whose whole point is how the members feel about where they are standing. These set
     /// their own mood; the shared wind-down still speaks for everyone at the end.
     fn expressive(self) -> bool {
-        matches!(self, Self::Lava | Self::HideAndSeek)
+        matches!(self, Self::Lava | Self::HideAndSeek | Self::JumpAndCatch)
     }
 
     /// Whose side of the scene the audience is on. Usually whoever is leading it — the runner,
@@ -183,6 +189,8 @@ pub(super) struct Session {
     pub(super) trail: [Option<Point>; 4],
     /// The window a race runs to. Other scenes leave it empty.
     pub(super) goal: Option<WindowKey>,
+    /// How far a round of jump and catch has got. Other scenes leave it empty.
+    pub(super) catch: Option<super::catching::Progress>,
     /// How long each member of a game that is all about moving has stood where it stands, and
     /// how far along its surface that is (not a number until it has been measured). Along the
     /// surface is enough: none of these games hops.
@@ -512,6 +520,20 @@ impl World {
                     Some(Kind::JumpContest)
                 } else if travelling
                     && receptive
+                    && a.personality.playfulness > 0.6
+                    && a.personality.boldness > 0.55
+                    && b.personality.playfulness > 0.5
+                    && a.state.drives.energy > 0.55
+                    && b.state.drives.energy > 0.5
+                    && matches!(a.state.action, ActionKind::Idle | ActionKind::Perch)
+                    && self.attention.setback(a.id).is_none()
+                    && self.catch_spot(a, b, desktop).is_some()
+                {
+                    // Down on the ground beside a window worth leaping off, with a friend to
+                    // catch: climb it and jump.
+                    Some(Kind::JumpAndCatch)
+                } else if travelling
+                    && receptive
                     && a.personality.playfulness > 0.55
                     && b.personality.playfulness > 0.55
                     && matches!(a.state.action, ActionKind::Idle | ActionKind::Perch)
@@ -637,6 +659,14 @@ impl World {
             self.attention.play.cooldown = 12.0;
             return;
         }
+        // Where a round of jump and catch is played is settled as it starts, and with nowhere
+        // left to play it there is no round.
+        let catch = (e.kind == Kind::JumpAndCatch)
+            .then(|| self.catch_spot(initiator, invitee, desktop))
+            .flatten();
+        if e.kind == Kind::JumpAndCatch && catch.is_none() {
+            return;
+        }
         // The creature that started it leads a dance, but follows in a chase or a procession.
         let roles = match e.kind {
             // The one being followed leads; the one already on the spot holds it.
@@ -659,7 +689,7 @@ impl World {
                 PlayRole::Partner,
             ],
             // Whoever started it has the toy or is "it"; the others answer.
-            Kind::KeepAway | Kind::Tag | Kind::JumpContest => [
+            Kind::KeepAway | Kind::Tag | Kind::JumpContest | Kind::JumpAndCatch => [
                 PlayRole::Lead,
                 PlayRole::Follow,
                 PlayRole::Follow,
@@ -736,9 +766,13 @@ impl World {
             focus: matches!(e.kind, Kind::Hush | Kind::Prank).then_some(e.pair[1]),
             trail: [None; 4],
             goal: None,
+            catch: None,
             still_for: [0.0; MAX_PARTICIPANTS],
             still_x: [f32::NAN; MAX_PARTICIPANTS],
         });
+        if let (Some(session), Some(spot)) = (&mut self.attention.play.session, catch) {
+            super::catching::begin_round(session, spot);
+        }
         self.attention.colony_cooldown = 15.0;
     }
 
@@ -975,6 +1009,7 @@ impl World {
             Kind::Race => self.advance_race(&mut s, desktop),
             Kind::Lava => self.advance_lava(&mut s, desktop),
             Kind::HideAndSeek => self.advance_hide_and_seek(&mut s, desktop),
+            Kind::JumpAndCatch => self.advance_jump_and_catch(&mut s, desktop, dt),
             Kind::Parade => self.advance_parade(&mut s, desktop),
             Kind::Dance => self.advance_dance(&mut s, desktop),
             Kind::Pile => self.advance_pile(&mut s, desktop),

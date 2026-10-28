@@ -1,5 +1,6 @@
 mod accessory_sheet;
 mod app_icon;
+mod catch_sheet;
 mod colony_card;
 mod creature_sheets;
 mod cuteness_sheet;
@@ -113,6 +114,10 @@ fn main() -> Result<()> {
         Some("decoration-sheet") => decoration_sheet::run(output_argument_with_default(
             &args,
             "docs/assets/decoration-sheet.png",
+        )),
+        Some("catch-sheet") => catch_sheet::run(output_argument_with_default(
+            &args,
+            "docs/assets/catch-sheet.png",
         )),
         Some("village-life-sheet") => village_life_sheet::run(output_argument_with_default(
             &args,

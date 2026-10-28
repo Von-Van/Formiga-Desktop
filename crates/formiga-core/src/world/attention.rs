@@ -2,6 +2,7 @@
 use super::*;
 use crate::attention::{GeometryChange, GeometrySignal};
 mod assistance;
+mod catching;
 mod cursor;
 mod dares;
 mod displays;
@@ -942,11 +943,14 @@ impl World {
                 .as_ref()
                 .is_some_and(|i| i.creature_id == id)
             || (self.tosses.contains_key(&id) && !matches!(plan.role, Role::Tumble { .. }))
-            || !point_exposed(
-                head_point(creature, &self.save.settings, desktop),
-                creature.state.surface.window_key,
-                desktop,
-            )
+            // A member mid-climb or mid-leap is judged where it comes down, not on its way up a
+            // window's face, where the window it is climbing would otherwise count as covering it.
+            || (!matches!(plan.role, Role::Play { hopping: true, .. })
+                && !point_exposed(
+                    head_point(creature, &self.save.settings, desktop),
+                    creature.state.surface.window_key,
+                    desktop,
+                ))
             || !desktop.monitors.iter().any(|m| {
                 m.id == plan.surface.0
                     && habitat_contains(&self.save.settings.habitat, m, creature.state.position)

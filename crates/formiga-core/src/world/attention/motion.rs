@@ -11,6 +11,11 @@ pub(super) struct ShortWalk {
     pub watched_bounds: Option<DesktopRect>,
     /// Multiplies the spacing kept from companions. Play comes closer than an audience does.
     pub spacing_factor: f32,
+    /// Multiplies the creature's own pace. Only a dash to catch a friend runs faster than it.
+    pub pace: f32,
+    /// The friend a dash is to catch. Where it is coming down is where the dash is going, so
+    /// neither it nor its landing stands in the way.
+    pub catching: Option<CreatureId>,
 }
 
 impl ShortWalk {
@@ -19,6 +24,8 @@ impl ShortWalk {
             destination,
             watched_bounds: None,
             spacing_factor: 1.0,
+            pace: 1.0,
+            catching: None,
         }
     }
 
@@ -27,6 +34,8 @@ impl ShortWalk {
             destination,
             watched_bounds: Some(bounds),
             spacing_factor: 1.0,
+            pace: 1.0,
+            catching: None,
         }
     }
 
@@ -35,9 +44,25 @@ impl ShortWalk {
             destination,
             watched_bounds: None,
             spacing_factor: PLAY_SPACING,
+            pace: 1.0,
+            catching: None,
+        }
+    }
+
+    /// A run flat out to be under a friend coming down: a playing walk at the pace the creature
+    /// sprints across the desk at.
+    pub fn dashing(destination: Point, catching: CreatureId) -> Self {
+        Self {
+            pace: DASH_PACE,
+            catching: Some(catching),
+            ..Self::playing(destination)
         }
     }
 }
+
+/// How much faster than its own pace a catcher runs to be under a friend coming down: the same as
+/// a sprint of its own (`movement.rs`).
+pub(super) const DASH_PACE: f32 = 2.35;
 
 /// Creature-scale contact spacing for play, as a fraction of ordinary personal space. Play is
 /// allowed inside the face-clear distance because its contact is momentary — a tag, a vault, a
@@ -120,7 +145,7 @@ pub(super) fn safe_goal(
     x: f32,
     desktop: &DesktopSnapshot,
 ) -> Option<Point> {
-    goal_with_spacing(world, creature, x, desktop, 1.0)
+    goal_with_spacing(world, creature, x, desktop, 1.0, None)
 }
 
 /// A goal a playing creature may take, which allows closer approach than an audience spot.
@@ -130,7 +155,20 @@ pub(super) fn play_goal(
     x: f32,
     desktop: &DesktopSnapshot,
 ) -> Option<Point> {
-    goal_with_spacing(world, creature, x, desktop, PLAY_SPACING)
+    goal_with_spacing(world, creature, x, desktop, PLAY_SPACING, None)
+}
+
+/// Where a catcher may run to be under `leaper` as it comes down. That spot is the whole point, so
+/// the leap does not keep the catcher off it as a landing keeps everyone else off, and the run may
+/// be as long as a dash covers in the time an approach is allowed.
+pub(super) fn catch_goal(
+    world: &World,
+    creature: &Creature,
+    x: f32,
+    desktop: &DesktopSnapshot,
+    leaper: CreatureId,
+) -> Option<Point> {
+    goal_with_spacing(world, creature, x, desktop, PLAY_SPACING, Some(leaper))
 }
 
 fn goal_with_spacing(
@@ -139,14 +177,16 @@ fn goal_with_spacing(
     x: f32,
     desktop: &DesktopSnapshot,
     spacing_factor: f32,
+    leaper: Option<CreatureId>,
 ) -> Option<Point> {
     let destination = Point {
         x,
         y: creature.state.position.y,
     };
     let distance = (x - creature.state.position.x).abs();
+    let pace = if leaper.is_some() { DASH_PACE } else { 1.0 };
     if distance < MIN_STRIDE
-        || distance > (speed(creature) * MAX_APPROACH_SECONDS).min(120.0)
+        || distance > (speed(creature) * pace * MAX_APPROACH_SECONDS).min(120.0 * pace)
         || !corridor_allows(creature, destination, desktop, &world.save.settings)
     {
         return None;
@@ -157,7 +197,10 @@ fn goal_with_spacing(
         return None;
     }
     let gap = spacing(creature, &world.save.settings, desktop) * spacing_factor;
-    if world.window_journeys.values().any(|journey| {
+    if world.window_journeys.iter().any(|(&id, journey)| {
+        if Some(id) == leaper {
+            return false;
+        }
         let surface = journey.surface();
         surface.monitor_id == creature.state.surface.monitor_id
             && surface.window_key == creature.state.surface.window_key
@@ -167,6 +210,7 @@ fn goal_with_spacing(
     }
     if world.save.creatures.iter().any(|other| {
         if other.id == creature.id
+            || Some(other.id) == leaper
             || other.state.arrival_delay_secs > 0.0
             || !same_surface(creature, other)
         {
@@ -268,7 +312,8 @@ pub(super) fn step(
     dt: f32,
 ) -> bool {
     let dx = walk.destination.x - creature.state.position.x;
-    let distance = (speed(creature) * dt).min(dx.abs());
+    let pace = speed(creature) * walk.pace;
+    let distance = (pace * dt).min(dx.abs());
     let next = Point {
         x: creature.state.position.x + dx.signum() * distance,
         y: creature.state.position.y,
@@ -279,6 +324,7 @@ pub(super) fn step(
     let gap = spacing(creature, settings, desktop) * walk.spacing_factor;
     if neighbors.iter().any(|(id, surface, point)| {
         *id != creature.id
+            && Some(*id) != walk.catching
             && surface.monitor_id == creature.state.surface.monitor_id
             && surface.window_key == creature.state.surface.window_key
             && (point.y - next.y).abs() < 8.0
@@ -293,7 +339,7 @@ pub(super) fn step(
         return false;
     }
     creature.state.position = next;
-    creature.state.velocity.x = dx.signum() * speed(creature);
+    creature.state.velocity.x = dx.signum() * pace;
     creature.state.facing_right = dx >= 0.0;
     (walk.destination.x - next.x).abs() > 0.5
 }

@@ -24,7 +24,7 @@ const FOUND_SECONDS: f32 = 0.5;
 impl World {
     /// Give a member the feeling its own game calls for. Expressive games keep it; the shared
     /// wind-down still overrides everyone at the end of a scene.
-    fn feel(&mut self, id: CreatureId, emotion: AttentionEmotion) {
+    pub(super) fn feel(&mut self, id: CreatureId, emotion: AttentionEmotion) {
         if let Some(plan) = self.attention.plans.get_mut(&id) {
             plan.emotion = emotion;
         }
