@@ -345,6 +345,14 @@ impl AnimationSpec {
 pub struct MotionSignature {
     tempo: [f32; 4],
     phase: [u8; 4],
+    /// Where its own run of rests comes from: which beats it does between settles, and how long
+    /// it holds still in between.
+    rest_seed: u64,
+    /// How calm and patient it is, from 0 to 1: a calm companion holds still longer between
+    /// shifts of its weight.
+    calm: f32,
+    /// How curious it is, from 0 to 1: a curious one looks about more often when it rests.
+    curiosity: f32,
 }
 
 /// Walking, resting, greeting, and recovery share one small vocabulary of timings. Gestures are
@@ -389,7 +397,73 @@ impl MotionSignature {
             0.9 + unit(next()) * 0.2,
         ];
         let phase = std::array::from_fn(|_| (next() & 0x7) as u8);
-        Self { tempo, phase }
+        let rest_seed = next();
+        let axes = creature.temperament().axes;
+        Self {
+            tempo,
+            phase,
+            rest_seed,
+            calm: (1.0 - (axes.energy + axes.impulsiveness) / 2.0).clamp(0.0, 1.0),
+            curiosity: axes.curiosity.clamp(0.0, 1.0),
+        }
+    }
+
+    /// The frame of a walk or a run its feet have reached, `stride` walking frames along: the
+    /// count the world keeps from how far the creature has actually gone, so its steps keep up
+    /// with the ground going by under it.
+    pub fn stride_frame(self, stride: f32) -> u8 {
+        ((stride.max(0.0) as u32).wrapping_add(u32::from(self.phase[0])) % 6) as u8
+    }
+
+    /// The frame of its rest `elapsed` seconds after it came to rest.
+    ///
+    /// The six authored beats of resting are not played round and round. A companion comes to
+    /// rest with a settle onto one foot, and then holds still on the plain settle for a while —
+    /// longer the calmer it is — before it does something with its weight: shifts it over and
+    /// back, looks off to one side and back, or the whole of the authored loop, shift, look and
+    /// settle. Which, and how long each stillness lasts, come from its own stream, so the same
+    /// companion rests the same way every time it is shown and no two rest in step. The beats
+    /// are the authored ones at their authored rate, so a rest costs no frame it did not cost
+    /// before; what has gone is the metronome.
+    pub fn rest_frame(self, elapsed: f32) -> u8 {
+        let spec = AnimationSpec::for_action(ActionKind::Idle);
+        let rate = self.tempo[1] * f32::from(spec.fps);
+        // A rest long enough to have gone round this many beats starts over: the run is
+        // irregular, so nobody can see where.
+        const ROUND: u32 = 900;
+        let mut left = (elapsed.max(0.0) * rate) as u32 % ROUND;
+        let mut run = 0_u64;
+        loop {
+            let roll = face::mix_u64(self.rest_seed ^ run.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+            let beats: &[u8] = if run == 0 {
+                // Coming to rest: a settle onto the foot, before the first stillness.
+                &[1]
+            } else {
+                let pick = (roll & 0xff) as f32 / 255.0;
+                if pick < 0.25 + 0.3 * self.curiosity {
+                    // A look off to the side, and back.
+                    &[5, 3, 4, 3, 5]
+                } else if pick < 0.5 + 0.3 * self.curiosity {
+                    // Weight over onto the other foot, and back.
+                    &[1, 2, 1]
+                } else {
+                    &[1, 2, 3, 4, 5]
+                }
+            };
+            if let Some(&beat) = beats.get(left as usize) {
+                return beat;
+            }
+            left -= beats.len() as u32;
+            // Still, on the plain settle, for a third of a second to about three and a half.
+            let shortest = 1 + (self.calm * 3.0).round() as u32;
+            let longest = shortest + 3 + (self.calm * 3.0).round() as u32;
+            let hold = shortest + ((roll >> 8) % u64::from(longest - shortest + 1)) as u32;
+            if left < hold {
+                return 0;
+            }
+            left -= hold;
+            run += 1;
+        }
     }
 
     /// The body frame this creature shows, in place of the shared `AnimationSpec::frame_at`.
@@ -462,15 +536,14 @@ impl BodyPresentation {
                     state.action_elapsed * WRIGGLE_RATE,
                 );
             }
-            // On its way to bed it walks there, and lies down when it arrives.
-            if state.walking_to_sleep() {
-                return shown(BodyClip::Action(ActionKind::Traverse), state.action_elapsed);
-            }
             // Getting down to sleep rather than dropping into it: a crouch for a moment first.
-            if state.action == ActionKind::Sleep && state.action_elapsed < LIE_DOWN_SECS {
+            if state.action == ActionKind::Sleep
+                && !state.walking_to_sleep()
+                && state.action_elapsed < LIE_DOWN_SECS
+            {
                 return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
             }
-            return shown(BodyClip::Action(state.action), state.action_elapsed);
+            return Self::footing(creature, motion);
         };
         match habit {
             // The snack or the drink held up in front before the first bite or sip: the opening
@@ -490,6 +563,77 @@ impl BodyPresentation {
             Habit::WavesHello => shown(BodyClip::Gesture(Gesture::Reach), into),
             Habit::PlayBows => shown(BodyClip::Gesture(Gesture::Crouch), into),
         }
+    }
+
+    /// The action's own clip, drawn to agree with what the creature's feet are actually doing.
+    ///
+    /// An action says what a creature is about, not always whether it is moving: a walk to a
+    /// friend ends on its mark with time left on the walk, and a greeting can still have a few
+    /// steps to go. Once the world has measured it (see [`formiga_core::Presence`]), a walk that
+    /// is going nowhere is drawn as a rest, and a rest, a greeting, a meal or a look that its feet
+    /// are carrying along is drawn as the walk it is, until it gets there. A walk's steps are
+    /// counted from the ground it has covered rather than the time it has spent, so its feet
+    /// keep pace with it. A creature never measured — on a review sheet, say — is drawn exactly
+    /// as its action says.
+    fn footing(creature: &Creature, motion: MotionSignature) -> Self {
+        let state = &creature.state;
+        let presence = state.presence;
+        let action = if state.walking_to_sleep() {
+            // On its way to bed it walks there, and lies down when it arrives.
+            ActionKind::Traverse
+        } else {
+            state.action
+        };
+        let body = |clip: BodyClip, frame: u8| Self {
+            clip,
+            frame,
+            facing_right: state.facing_right,
+        };
+        if !presence.measured() {
+            return body(
+                BodyClip::Action(action),
+                motion.frame(BodyClip::Action(action), state.action_elapsed),
+            );
+        }
+        let walking = matches!(
+            AnimationSpec::body_action(action),
+            ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint
+        );
+        let planted = matches!(
+            action,
+            ActionKind::Idle
+                | ActionKind::Greet
+                | ActionKind::Eat
+                | ActionKind::Drink
+                | ActionKind::InspectScreen
+                | ActionKind::InvestigateCursor
+                | ActionKind::Homebound
+                | ActionKind::Perch
+        );
+        if presence.stepping && (walking || planted) {
+            let walk = if walking {
+                action
+            } else {
+                ActionKind::Traverse
+            };
+            return body(BodyClip::Action(walk), motion.stride_frame(presence.stride));
+        }
+        if walking || action == ActionKind::Idle {
+            // At rest since it stopped, or since the rest began, whichever came later.
+            let rested = if action == ActionKind::Idle {
+                state.action_elapsed.min(presence.since)
+            } else {
+                presence.since
+            };
+            return body(
+                BodyClip::Action(ActionKind::Idle),
+                motion.rest_frame(rested),
+            );
+        }
+        body(
+            BodyClip::Action(action),
+            motion.frame(BodyClip::Action(action), state.action_elapsed),
+        )
     }
 }
 
@@ -1054,15 +1198,31 @@ impl CreatureRenderer {
             .unwrap_or(0)
     }
 
+    /// The face a creature wears on its own, with nobody else about to look at.
     pub fn resolve_face_state(
         creature: &Creature,
         cursor: CursorSnapshot,
         cursor_reactions: bool,
     ) -> FaceRenderState {
+        Self::resolve_face_state_among(creature, &[], cursor, cursor_reactions, false)
+    }
+
+    /// The face a creature wears among the rest of its `colony`, which its eyes wander to when
+    /// nothing else has them. Under reduced motion they do not wander, and look out as they
+    /// always have.
+    pub fn resolve_face_state_among(
+        creature: &Creature,
+        colony: &[Creature],
+        cursor: CursorSnapshot,
+        cursor_reactions: bool,
+        reduce_motion: bool,
+    ) -> FaceRenderState {
+        let (gaze, at_cursor) =
+            resolve_gaze(creature, colony, cursor, cursor_reactions, reduce_motion);
         FaceRenderState {
             expression: resolve_expression(creature),
-            eyelids: resolve_eyelids(creature),
-            gaze: resolve_gaze(creature, cursor, cursor_reactions),
+            eyelids: resolve_eyelids(creature, at_cursor),
+            gaze,
         }
     }
 }

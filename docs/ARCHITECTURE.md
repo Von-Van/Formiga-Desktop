@@ -407,6 +407,62 @@ While active, creatures use a calm `Homebound` pose at the resolved habitat-safe
 pet them in place; only crossing the six-logical-point drag threshold dismisses the shelter and
 starts the cooldown.
 
+### Between the big moments
+
+Most of what a companion is drawn doing is walking about and resting, so how those look sets how
+alive it feels more than any single clip. Three things keep them from reading as loops, and none
+of them adds a texture, a saved field or a presented frame.
+
+**Feet that agree with where it is going.** An action says what a creature is about, not always
+whether it is moving: a walk to a friend reaches its mark with time left on the walk, and a
+greeting can have a few steps still to go. At the end of every tick `World::carry_presence`
+(`world/presence.rs`) measures where each creature has got to and keeps a runtime-only
+`Presence` on its state: whether its own feet are carrying it, since when, and how many walking
+frames the ground it covered is worth. It measures along a window ledge by the creature's place on
+the window, so a window carrying a creature is not walking, ignores anything that moves a creature
+some other way (a hand, a toss, a hop, a climb, a dangle, a ride, a tow in its sleep), and needs two
+ticks of a change before it shows, with a quarter of a second at least between changes, so a nudge
+is never a step and a creature hovering on its mark does not flicker. A walk shows from its first
+step, since the walk already says it is going somewhere. `BodyPresentation::footing` draws a walk
+that is going nowhere as a rest, and a rest, a greeting, a meal, a look at the screen or the
+cursor, or a resident at home that its feet are carrying as the walk it is, until it arrives. In a
+twenty-minute run of a wandering colony of six, the time spent walking on the spot fell from 1.6–3%
+of all creature time (a companion that had followed a friend did it for about 45% of the follow)
+to 0.3–0.4%, which is the two ticks it takes to see a stop, and greetings no longer slide.
+
+A walk's frames are counted from the ground covered rather than the clock: a stride is about 0.4
+of the body's own size (0.83 for a run), so at the default display scale an average companion
+walks at the ten frames a second it always did, a slow stroller steps slowly, a busy one briskly,
+and a mini patters, kept between 7 and 15 frames a second (9 and 18 running) so a step never sticks
+or blurs. Walking speeds differ 2.4 times across companions; before, their steps differed 1.5 times.
+
+**A rest that holds still.** The six authored beats of resting are no longer played round and
+round every two seconds. `MotionSignature::rest_frame` comes to rest on a settle onto one foot,
+holds the plain settle for a third of a second to about three and a half — longer the calmer and
+more patient the temperament — and then does one thing with its weight: shifts it over and back,
+looks off to one side and back (more often the more curious it is), or the whole authored loop.
+Which, and how long each stillness lasts, come from the creature's own stream, so it rests the
+same way every time it is shown and no two rest in step. The beats play at their authored rate, so
+the cadence a resting colony is drawn at is unchanged; reduced motion still draws only the settle.
+
+**Eyes that live.** With nothing in particular to look at, a companion's eyes used to look
+straight out forever, and it blinked once every five seconds on the dot. Now its eyes look where
+it is going while it walks and out at the desk while it rests, with a glance now and then — at the
+nearest friend on its display, a sociable companion more often than a solitary one, or off to one
+side, up or down — and a companion walking with or waiting on a friend watches them. It blinks
+once somewhere in each stretch of three and a half to six seconds, longer the calmer it is, now and
+then not at all and now and then twice; a glance often starts with a blink; and a content or
+affectionate companion, or a fond one looking at the cursor, sometimes blinks slowly, the lids
+easing down and up the way a cat says it is at ease. A quick blink now lasts longer than the third
+of a second between frames of a resting colony, so every one shows at least half-shut, where about
+one in six of the old ones fell between two frames and went unseen; blinking asks for no frame of
+its own. All of it reads the nine
+gaze directions and three lid states every face texture already holds, from a clock `Presence`
+keeps; `CreatureRenderer::resolve_face_state_among` takes the colony for the friend a glance goes
+to. Under reduced motion the eyes do not wander and look out as they always have; blinks are
+unchanged. A creature the world has never ticked — on a review sheet, say — is drawn and blinks
+exactly as before, so the sheets still show each action's own clip.
+
 ## Lived-experience projection
 
 `World::emit` is the sole event queue path. Before events become visible through `drain_events`, a
@@ -1933,6 +1989,9 @@ remain minis.
   creature, and discovery one to two and a half hours per colony, within a daily allowance of one
   to five finds; countdowns stop while paused or hidden. A wonder every 10–20 visible minutes, and
   20 Hz only while one is out.
+- How each creature carries itself (`Presence`): measured once at the end of every world tick from
+  where it got to, a few comparisons per creature; the walks, rests, glances and blinks it drives
+  are chosen from it when a frame is drawn, and ask for no frame of their own.
 - Experience observations: one summary per creature per 60 active visible seconds; no new loop.
 - Calm proximity: accumulated from those same summaries and projected once per five active minutes;
   no separate pair polling loop. It does not accumulate at all while the home is out, and the

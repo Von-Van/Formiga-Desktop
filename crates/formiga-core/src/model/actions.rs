@@ -227,6 +227,60 @@ pub struct CreatureState {
     /// always opens with everybody outside.
     #[serde(skip)]
     pub indoors: bool,
+    /// How it has been carrying itself from one tick to the next, kept for the art. Runtime
+    /// only, like `attention`.
+    #[serde(skip)]
+    pub presence: Presence,
+}
+
+/// How a creature has been carrying itself lately: whether its feet are actually taking it
+/// anywhere, since when, how far they have taken it, and a clock of its own for its eyes.
+///
+/// The world keeps this up to date at the end of every tick, from where the creature has got to,
+/// and only the art reads it, so nothing a colony does can change because of it. It is what lets
+/// a companion that has walked up to a friend stand beside them instead of walking on the spot, a
+/// greeting that still has a few steps to go walk them before it wiggles, and a walk step as
+/// briskly as the ground is going by under it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Presence {
+    /// Seconds it has been about since the colony opened, counted round every two hours.
+    pub clock: f32,
+    /// Whether its own feet are carrying it along: walking, running, or shuffling over.
+    pub stepping: bool,
+    /// Seconds since it last set off or came to a stop.
+    pub since: f32,
+    /// How many walking frames its feet have gone through, from how far they have carried it.
+    pub stride: f32,
+    /// Seconds it has spent wanting to change between stepping and standing.
+    pub pending: f32,
+    /// Where it was at the end of the last tick, where it was measured at all: its contact
+    /// point's x, and the window it stood on with how far along it, so a window carrying it does
+    /// not count as walking.
+    pub last: Option<PresenceMark>,
+}
+
+/// Where a creature stood at the end of a tick, as [`Presence`] measures it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PresenceMark {
+    pub x: f32,
+    pub window: Option<(WindowKey, f32)>,
+}
+
+/// Two presences are always equal. A presence is how a creature has been carrying itself lately,
+/// never part of what it is, and a save drops it, so a colony compared before and after a save —
+/// or a creature compared with itself a tick later — compares the same.
+impl PartialEq for Presence {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Presence {
+    /// Whether the world has measured this creature yet. A creature put together for a sheet or
+    /// a test, never ticked, has not, and is drawn as its action alone would draw it.
+    pub fn measured(&self) -> bool {
+        self.last.is_some()
+    }
 }
 
 /// A short moment a companion has between everything else it does: a yawn it caught from a

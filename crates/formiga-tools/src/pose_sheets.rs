@@ -122,6 +122,96 @@ pub fn motion_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Ten seconds of every body at rest, a frame every third of a second — the rate a resting colony
+/// is drawn at — with its face as the overlay resolves it. Each body has two rows: the first as its
+/// action alone draws it, the six-beat rest going round and a blink on the beat; the second as it
+/// carries itself on the desktop, coming to rest with a settle, holding still, shifting its weight
+/// or looking off when it does, glancing about and blinking at its own pace. The two rows are what
+/// a rest looked like and what it looks like now, side by side.
+pub fn rest_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 2;
+    const COLUMNS: u32 = 30;
+    const GAP: u32 = 16;
+    let preview = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    let mut subjects = reference_creatures();
+    for (index, plan) in BodyPlan::ALL.into_iter().enumerate() {
+        let mut creature = preview.clone();
+        let mut design = CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        creature.appearance.design = Some(design);
+        // A companion of its own, so each rests and looks about in its own way.
+        creature.id = preview.id.wrapping_add(index as u64 + 1);
+        creature.behavior_seed[0] = creature.behavior_seed[0].wrapping_add(index as u8 + 1);
+        subjects.push(creature);
+    }
+    let cell = FRAME_SIZE * SCALE;
+    let width = COLUMNS * cell;
+    let height = subjects.len() as u32 * (2 * cell + GAP);
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    for (index, subject) in subjects.iter().enumerate() {
+        let mut creature = subject.clone();
+        creature.state.action = ActionKind::Idle;
+        creature.state.attention = None;
+        creature.state.beat = None;
+        creature.state.flourish = None;
+        creature.state.facing_right = true;
+        creature.state.drives = Drives::default();
+        for (row, measured) in [false, true].into_iter().enumerate() {
+            for column in 0..COLUMNS {
+                let at = column as f32 / 3.0;
+                creature.state.action_elapsed = at;
+                creature.state.presence = if measured {
+                    Presence {
+                        clock: 40.0 + at,
+                        since: at,
+                        last: Some(PresenceMark {
+                            x: creature.state.position.x,
+                            window: None,
+                        }),
+                        ..Presence::default()
+                    }
+                } else {
+                    Presence::default()
+                };
+                let body = formiga_art::BodyPresentation::for_creature(&creature);
+                let face = CreatureRenderer::resolve_face_state_among(
+                    &creature,
+                    &[],
+                    CursorSnapshot::default(),
+                    false,
+                    false,
+                );
+                let rendered = CreatureRenderer::render_composited_frame(
+                    &creature.appearance,
+                    body.clip,
+                    body.frame,
+                    body.facing_right,
+                    false,
+                    face,
+                );
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    index as u32 * (2 * cell + GAP) + row as u32 * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+            }
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
 /// The two poses a body pose is most easily mistaken for: standing about, and the plain peer a
 /// gesture usually stands in for. Every body plan is shown holding both, right beside its
 /// gestures, so "does this look like anything in particular?" can be answered by looking.

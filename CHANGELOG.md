@@ -2,6 +2,28 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Companions walk only when their feet are taking them somewhere. One that has walked up to a
+  friend stands beside it and watches it, rather than walking on the spot, and a greeting with a
+  few steps still to go walks over before it wiggles, rather than sliding across the floor. Walking
+  on the spot fell from 1.6–3% of a wandering colony's time to 0.3–0.4%.
+- A walk's steps keep pace with the ground going by: a slow stroller steps slowly, a busy one
+  briskly, a run stretches out, and a mini patters.
+- Resting holds still and shifts at its own pace instead of playing the same two-second loop over
+  and over: a settle on coming to rest, then stillness broken by a shift of weight, a look off to
+  the side, or the whole loop, with calmer companions holding still longer and curious ones looking
+  about more.
+- Eyes look where a companion is going, glance now and then at a friend nearby or about the desk,
+  and watch a friend it is waiting on. Blinks come irregularly, sometimes two together, often with
+  a glance, and are long enough to be seen at the rate a resting colony is drawn at; a content or
+  affectionate companion sometimes blinks slowly. Under reduced motion the eyes stay still as
+  before.
+- None of this adds a texture, a saved field, or a frame drawn: save version 33 and every contract
+  version are unchanged.
+
 ## [0.68.1] - 2026-10-26
 
 A patch to the notebook's pencil hand, released alongside Formiga Hill, Home and Battle 0.68.1.

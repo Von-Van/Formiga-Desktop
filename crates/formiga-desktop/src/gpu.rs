@@ -776,10 +776,12 @@ impl OverlayRenderer {
         let wonder_vertex_count = vertices.len() - wonder_start;
         for creature in &visible {
             let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
-            let face_state = CreatureRenderer::resolve_face_state(
+            let face_state = CreatureRenderer::resolve_face_state_among(
                 creature,
+                &save.creatures,
                 cursor,
                 save.settings.cursor_reactions,
+                save.settings.reduce_motion,
             );
             let start = vertices.len();
             let (body, face, trinket, held) =

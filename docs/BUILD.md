@@ -272,6 +272,7 @@ cargo run -p formiga-tools -- prop-sheet
 cargo run -p formiga-tools -- wonder-sheet
 cargo run -p formiga-tools -- train-sheet
 cargo run -p formiga-tools -- motion-sheet
+cargo run -p formiga-tools -- rest-sheet
 cargo run -p formiga-tools -- accessory-sheet
 cargo run -p formiga-tools -- village-life-sheet
 cargo run -p formiga-tools -- ui-sheet
@@ -312,7 +313,10 @@ the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keep
 way the overlay holds them, and the toys, snacks and drinkware in the paws and mouths that hold
 them. `wonder-sheet` draws every wonder's frames and its script played out at six moments, alone and for
 two, by the reference companions; `motion-sheet` draws every body's walk, run, rest, meal and sleep
-loops frame by frame, where a loop that hitches or repeats itself shows. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
+loops frame by frame, where a loop that hitches or repeats itself shows. `rest-sheet` draws ten
+seconds of every body at rest, a frame every third of a second with its face, once as the action
+alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
+glancing about and blinking. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
 walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
 moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
 on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them.
