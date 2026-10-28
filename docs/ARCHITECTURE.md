@@ -538,6 +538,12 @@ release. Slow releases use precise placement. Fast releases enter a runtime-only
 horizontal drag, swept downward support tests, at most one soft bounce, and a three-second recovery
 limit. There is no rotation, wall ricochet, creature collision, or general physics dependency.
 
+None of these windows is one to switch to, so the notebook is Formiga's only entry in the Windows
+taskbar and Alt-Tab. Each overlay, creature proxy, menu proxy and house proxy is a tool window and
+never an app window, and it vets every change to its own extended style (`WM_STYLECHANGING`, in
+`platform/windows.rs`) to stay one, because winit rewrites that style on every show, hide and
+hit-test change and would otherwise make it an app window again.
+
 Habitat policies are the union of allowed rectangles (or a preset) minus excluded rectangles.
 Rectangles are normalized against privacy-safe display identities, so DPI and resolution changes do
 not invalidate them. Window-ledges are clipped to the same reachable habitat.
