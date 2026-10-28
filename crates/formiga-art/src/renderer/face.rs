@@ -1147,6 +1147,7 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
             Gesture::Shake => ExpressionKind::Determined,
             Gesture::Sniff => ExpressionKind::Curious,
             Gesture::Skip => ExpressionKind::Joy,
+            Gesture::Bask => ExpressionKind::Affectionate,
             _ => ExpressionKind::Sleepy,
         };
     }
@@ -1282,8 +1283,8 @@ pub(super) fn resolve_eyelids(creature: &Creature, at_cursor: bool) -> EyelidPos
         return EyelidPose::Closed;
     }
     match own_moment(creature) {
-        // Eyes shut to wash and to shake, and at the top of a stretch.
-        Some((Gesture::Groom | Gesture::Shake, _)) => return EyelidPose::Closed,
+        // Eyes shut to wash and to shake, under a petting hand, and at the top of a stretch.
+        Some((Gesture::Groom | Gesture::Shake | Gesture::Bask, _)) => return EyelidPose::Closed,
         Some((Gesture::Stretch, frame)) => {
             return if frame >= 2 {
                 EyelidPose::Closed
@@ -1486,8 +1487,9 @@ fn glance_near(creature: &Creature, clock: f32) -> Option<Glance> {
 
 /// Where a creature's eyes go when nothing in particular has them: where it is going while it
 /// walks, and straight out while it rests, with now and then a glance — at a friend nearby, a
-/// sociable companion more often than a solitary one, or off to one side, down or up — and a
-/// companion walking with or waiting on a friend keeping an eye on them throughout.
+/// sociable companion more often than a solitary one, or off to one side, down or up — a
+/// companion walking with or waiting on a friend keeping an eye on them throughout, and one a
+/// friend is walking over to watching it come.
 ///
 /// Nine gaze directions are already in every face texture, so a glance costs nothing to draw,
 /// and it lasts a second or two, long enough to be seen at the slowest rate a resting colony is
@@ -1507,6 +1509,10 @@ fn wandering_gaze(creature: &Creature, colony: &[Creature]) -> GazeDirection {
         state.action,
         ActionKind::Follow | ActionKind::Greet | ActionKind::SocialPlay
     );
+    // A friend on its way over to say hello or to play is watched as it comes.
+    if let Some(caller) = coming_over(creature, colony) {
+        return toward(caller);
+    }
     let clock = state.presence.clock;
     let glance = glance_near(creature, clock).filter(|g| (g.start..g.end).contains(&clock));
     let Some(glance) = glance else {
@@ -1535,6 +1541,34 @@ fn wandering_gaze(creature: &Creature, colony: &[Creature]) -> GazeDirection {
         GazeDirection::new(0, -1),
         GazeDirection::new(-forward, -1),
     ][pick % 6]
+}
+
+/// A friend nearby walking over to greet, follow or play, and coming this way: the one a
+/// companion turns its eyes to, so whoever is being approached is seen to notice.
+fn coming_over<'a>(creature: &Creature, colony: &'a [Creature]) -> Option<&'a Creature> {
+    const REACH: f32 = 260.0;
+    colony
+        .iter()
+        .filter(|other| {
+            other.id != creature.id
+                && !other.state.indoors
+                && other.state.presence.stepping
+                && other.state.surface.monitor_id == creature.state.surface.monitor_id
+                && matches!(
+                    other.state.action,
+                    ActionKind::Greet | ActionKind::SocialPlay | ActionKind::Follow
+                )
+                && other.state.facing_right == (creature.state.position.x > other.state.position.x)
+        })
+        .map(|other| {
+            (
+                other.state.position.distance(creature.state.position),
+                other,
+            )
+        })
+        .filter(|(distance, _)| *distance <= REACH)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, other)| other)
 }
 
 /// The nearest other companion out on the same display and close enough to look at.
@@ -1638,7 +1672,8 @@ fn own_moment(creature: &Creature) -> Option<(Gesture, u8)> {
                     | Gesture::Skip
                     | Gesture::Trudge
                     | Gesture::Sprawl
-                    | Gesture::Loaf),
+                    | Gesture::Loaf
+                    | Gesture::Bask),
                 ),
             frame,
             ..

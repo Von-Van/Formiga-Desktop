@@ -11,46 +11,51 @@ use super::*;
 use formiga_core::{Beat, BeatKind};
 
 /// The pose a beat strikes at this point, if it strikes one, and how far into that pose it is.
-pub(super) fn beat_pose(beat: Beat) -> Option<(Gesture, f32)> {
+/// Each chore has a pose of its own, so a companion watering, picking, tidying or holding up what
+/// it grew can be told apart at a glance rather than all reaching for something.
+pub(super) fn beat_pose(beat: Beat) -> Option<(BodyClip, f32)> {
     let p = beat.progress();
     let at = |from: f32| (beat.elapsed - from * beat.length).max(0.0);
-    let gesture = match beat.kind {
-        BeatKind::Yawn => return Some((Gesture::Yawn, beat.elapsed)),
+    let gesture = |gesture: Gesture, into: f32| Some((BodyClip::Gesture(gesture), into));
+    let pose = match beat.kind {
+        BeatKind::Yawn => return gesture(Gesture::Yawn, beat.elapsed),
         BeatKind::ResistYawn => Gesture::Worry,
         BeatKind::Notice => Gesture::Watch,
         BeatKind::LeafOnFace if p < 0.3 => Gesture::Gasp,
         // Paws up to the face, eyes shut, brushing it off.
-        BeatKind::LeafOnFace if p < 0.8 => return Some((Gesture::Cover, at(0.3))),
+        BeatKind::LeafOnFace if p < 0.8 => return gesture(Gesture::Cover, at(0.3)),
         BeatKind::LeafOnFace => return None,
         BeatKind::DroppedSnack if p < 0.35 => Gesture::Gasp,
         BeatKind::DroppedSnack => return None,
-        BeatKind::Retrieve => Gesture::Crouch,
+        // Bending down for what rolled away and coming up with it.
+        BeatKind::Retrieve => Gesture::Pluck,
         BeatKind::MissedCushion if p < 0.3 => Gesture::Crouch,
-        BeatKind::MissedCushion if p < 0.55 => return Some((Gesture::Gasp, at(0.3))),
+        BeatKind::MissedCushion if p < 0.55 => return gesture(Gesture::Gasp, at(0.3)),
         BeatKind::MissedCushion => return None,
-        BeatKind::Watering
-        | BeatKind::Picking
-        | BeatKind::AdjustFlap
-        | BeatKind::TidyLeaves
-        | BeatKind::FluffCushion => Gesture::Reach,
+        BeatKind::Watering => Gesture::Pour,
+        BeatKind::Picking => Gesture::Pluck,
+        BeatKind::AdjustFlap | BeatKind::TidyLeaves | BeatKind::FluffCushion => Gesture::Tend,
         BeatKind::InspectSprout => Gesture::Crouch,
-        BeatKind::ShowingOff => Gesture::Reach,
+        // Holding it up in both paws, as a find is held up.
+        BeatKind::ShowingOff => {
+            return Some((BodyClip::Action(ActionKind::PresentDiscovery), beat.elapsed));
+        }
         BeatKind::Admiring | BeatKind::InspectCap => Gesture::Watch,
         BeatKind::RoofSit | BeatKind::Carrying => return None,
         BeatKind::Huff => Gesture::Huff,
         // A start, and then over it goes.
         BeatKind::Swoon if p < 0.18 => Gesture::Gasp,
-        BeatKind::Swoon => return Some((Gesture::Swoon, at(0.18))),
+        BeatKind::Swoon => return gesture(Gesture::Swoon, at(0.18)),
         BeatKind::Beg => Gesture::Beg,
         BeatKind::Strut => Gesture::Strut,
         BeatKind::Peek => Gesture::Peek,
         BeatKind::Stomp => Gesture::Stomp,
         // Wound up low, then up and over.
         BeatKind::Pounce if p < 0.55 => Gesture::Crouch,
-        BeatKind::Pounce => return Some((Gesture::Cheer, at(0.55))),
+        BeatKind::Pounce => return gesture(Gesture::Cheer, at(0.55)),
         BeatKind::Startle => Gesture::Gasp,
     };
-    Some((gesture, beat.elapsed))
+    gesture(pose, beat.elapsed)
 }
 
 /// The face a beat wears at this point.

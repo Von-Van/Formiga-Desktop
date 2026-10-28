@@ -425,3 +425,93 @@ fn waking_and_washing_show() {
         assert_eq!(face.eyelids, EyelidPose::Closed, "eyes shut to wash");
     }
 }
+
+/// Each chore has its own pose — watering, picking, tidying, holding up what was grown — rather
+/// than all reaching, a pet is leaned into rather than waved at, and eating and drinking, and
+/// playing alone and with a friend, move differently.
+#[test]
+fn what_a_companion_is_doing_shows() {
+    use formiga_core::{Beat, BeatKind};
+    let mut creature = measured(83);
+    creature.state.action = ActionKind::Idle;
+    let doing = |creature: &mut Creature, kind: BeatKind| {
+        creature.state.beat = Some(Beat {
+            elapsed: 0.5,
+            ..Beat::new(kind, 3.0)
+        });
+        BodyPresentation::for_creature(creature).clip
+    };
+    let chores = [
+        (BeatKind::Watering, BodyClip::Gesture(Gesture::Pour)),
+        (BeatKind::Picking, BodyClip::Gesture(Gesture::Pluck)),
+        (BeatKind::Retrieve, BodyClip::Gesture(Gesture::Pluck)),
+        (BeatKind::TidyLeaves, BodyClip::Gesture(Gesture::Tend)),
+        (BeatKind::AdjustFlap, BodyClip::Gesture(Gesture::Tend)),
+        (BeatKind::FluffCushion, BodyClip::Gesture(Gesture::Tend)),
+        (
+            BeatKind::ShowingOff,
+            BodyClip::Action(ActionKind::PresentDiscovery),
+        ),
+    ];
+    for (kind, clip) in chores {
+        assert_eq!(doing(&mut creature, kind), clip, "{kind:?}");
+    }
+    creature.state.beat = None;
+    creature.state.action = ActionKind::PetReaction;
+    assert_eq!(
+        BodyPresentation::for_creature(&creature).clip,
+        BodyClip::Gesture(Gesture::Bask)
+    );
+    let face = CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+    assert_eq!(face.eyelids, EyelidPose::Closed, "eyes shut under the hand");
+    let genome = &creature.appearance;
+    let differ = |a: ActionKind, b: ActionKind| {
+        (0..4).any(|frame| {
+            Pose::new(genome, BodyClip::Action(a), frame, false).lean
+                != Pose::new(genome, BodyClip::Action(b), frame, false).lean
+                || Pose::new(genome, BodyClip::Action(a), frame, false).crouch
+                    != Pose::new(genome, BodyClip::Action(b), frame, false).crouch
+        })
+    };
+    assert!(differ(ActionKind::Eat, ActionKind::Drink));
+    assert!(differ(ActionKind::SoloPlay, ActionKind::SocialPlay));
+    // Drinking tips the head back; eating dips it forward.
+    let leans = |action| {
+        (0..4)
+            .map(|frame| Pose::new(genome, BodyClip::Action(action), frame, false).lean)
+            .collect::<Vec<_>>()
+    };
+    assert!(leans(ActionKind::Drink).iter().any(|lean| *lean < 0));
+    assert!(leans(ActionKind::Eat).iter().all(|lean| *lean >= 0));
+}
+
+/// A companion a friend is walking over to watches it come.
+#[test]
+fn a_friend_coming_over_is_watched() {
+    let mut creature = measured(89);
+    creature.state.action = ActionKind::Idle;
+    creature.state.presence.since = 0.5;
+    let mut friend = measured(97);
+    friend.id = creature.id + 1;
+    friend.state.surface = creature.state.surface.clone();
+    friend.state.position.x = creature.state.position.x + 150.0;
+    friend.state.action = ActionKind::Greet;
+    friend.state.presence.stepping = true;
+    friend.state.facing_right = false;
+    let colony = [creature.clone(), friend];
+    let watched = (0..600)
+        .filter(|step| {
+            creature.state.presence.clock = *step as f32 / 10.0;
+            CreatureRenderer::resolve_face_state_among(
+                &creature,
+                &colony,
+                CursorSnapshot::default(),
+                true,
+                false,
+            )
+            .gaze
+            .x == 1
+        })
+        .count();
+    assert!(watched > 540, "watching its friend come: {watched} of 600");
+}

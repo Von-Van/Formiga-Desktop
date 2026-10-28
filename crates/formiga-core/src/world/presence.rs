@@ -60,7 +60,8 @@ impl World {
     }
 }
 
-/// Where a creature is standing now, as [`Presence`] measures it.
+/// Where a creature is standing now, as [`Presence`] measures it: its contact point, and the
+/// window it stands on with where that window's left edge is.
 fn mark(creature: &Creature, desktop: &DesktopSnapshot) -> PresenceMark {
     let surface = &creature.state.surface;
     PresenceMark {
@@ -70,7 +71,7 @@ fn mark(creature: &Creature, desktop: &DesktopSnapshot) -> PresenceMark {
                 .windows
                 .iter()
                 .find(|window| window.key == key)
-                .map(|window| (key, surface.relative_x * window.bounds.width))
+                .map(|window| (key, window.bounds.x))
         }),
     }
 }
@@ -130,12 +131,14 @@ pub(super) fn carry(
     };
     presence.last_action = Some(action);
     let walked = match presence.last {
-        // Along the same window, how far along it; anywhere else, how far across.
+        // On the same window, how far it went less how far the window went: a window dragged
+        // with a creature on it carries the creature, and that is not walking.
         Some(PresenceMark {
-            window: Some((was_on, was_at)),
-            ..
+            x: was_x,
+            window: Some((was_on, was_left)),
         }) if now.window.is_some_and(|(key, _)| key == was_on) => {
-            now.window.map_or(0.0, |(_, at)| (at - was_at).abs())
+            let carried = now.window.map_or(0.0, |(_, left)| left - was_left);
+            (now.x - was_x - carried).abs()
         }
         Some(was) => (now.x - was.x).abs(),
         None => 0.0,

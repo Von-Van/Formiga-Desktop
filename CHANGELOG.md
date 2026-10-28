@@ -30,10 +30,18 @@ All notable changes are documented here.
   one sometimes skips, more often if it is playful or walking over to say hello. Waking up, a calm
   companion stretches and a lively one shakes itself, and one set down or landing from a throw
   shakes itself off. `formiga-tools repertoire-sheet` draws them all on every body.
-- Save version 33 and every contract version are unchanged. The repertoire's 28 frames bring a
-  companion's textures from about 1.24 MB to 1.52 MB, inside the per-creature and colony budgets,
-  and add about 1.5% to the frames a resting colony at home presents; the other changes add no
-  texture and no frame.
+- What companions are doing is easier to tell apart. Watering is a pour, picking (and fetching a
+  snack that rolled away) a pluck down at the ground, and tidying leaves, tying a flap or plumping a
+  cushion a tend with both paws busy, where all of them used to be the same reach; showing off
+  what it grew holds it up like a find. Eating dips and chews while drinking tips back with the
+  cup; keeping a toy up and playing with a friend (a play bow, a spring and a bounce) no longer
+  share one bounce; a pet is leaned into with eyes shut and a heart rather than waved at; and a
+  companion a friend is walking over to watches it come. `formiga-tools doings-sheet` draws them
+  all at the size the desktop shows them.
+- Save version 33 and every contract version are unchanged. The 44 new frames bring a companion's
+  textures from about 1.24 MB to 1.61 MB, inside the per-creature and colony budgets, and add about
+  1.5% to the frames a resting colony at home presents; the other changes add no texture and no
+  frame.
 
 ## [0.68.1] - 2026-10-26
 

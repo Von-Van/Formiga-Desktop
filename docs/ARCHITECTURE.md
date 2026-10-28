@@ -356,8 +356,8 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 183 frames: 92 for actions, because
-`Tossed` reuses the dragged body clip, and 91 for twenty-seven gesture poses. Since 0.62.0 a frame or a
+directions and three eyelid states. The body atlas holds 199 frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 107 for thirty-one gesture poses. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -366,19 +366,20 @@ trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a r
 companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
-adds one or two from the object sheet. A new companion's textures come to about 1.52 MB — 1.24 MB
-before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks
-added three rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
+adds one or two from the object sheet. A new companion's textures come to about 1.61 MB — 1.24 MB
+before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
+its chores and its pet added four rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,165,760 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,257,920 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch; the stretch and
 yawn a habit or a yawn going round shows; the huff, swoon, beg, strut, peek and stomp a
-temperament strikes; and the wash, shake and sniff, sprawl and loaf, and skip and trudge a
-companion does on its own account (see [between the big moments](#between-the-big-moments)) — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
+temperament strikes; the wash, shake and sniff, sprawl and loaf, and skip and trudge a
+companion does on its own account; and the pour, pluck and tend of its chores and the bask of
+being petted (see [between the big moments](#between-the-big-moments)) — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
 shows its baked clip in place of the action's; the action still owns movement, placement, facing,
 and frame timing, and the GPU quad, the interaction mask, and the review sheets resolve the same
 clip. One place decides whether a body is free to show a pose — `body_free` in `world/attention.rs`,
@@ -394,7 +395,8 @@ three paws; a walk lifts one leg at a time, and only hanging from or climbing a 
 forepaws, which go up the front and the back of the head so the face between them stays clear.
 Covering the face also closes the eyes, which the layered face still draws over the paws.
 
-`PetReaction` maps to the existing greeting body clip, so lived experience does not grow that atlas.
+`PetReaction` is drawn as a bask, leaning up into the hand with its eyes shut and a heart over it,
+rather than the greeting's wave.
 A newly earned profile descriptor may allocate one small sprout thought-bubble texture for five
 seconds; descriptor text remains available only in the Colony profile. Only one sprout exists
 globally, and the GPU texture and CPU pixels are dropped at expiry, so there is no idle sprout
@@ -411,16 +413,17 @@ starts the cooldown.
 ### Between the big moments
 
 Most of what a companion is drawn doing is walking about, resting and sleeping, so how those look
-sets how alive it feels more than any single clip. Four things keep them from reading as loops;
-none adds a saved field, and only the repertoire adds frames to the atlas or to what is presented.
+sets how alive it feels more than any single clip. Five things keep them, and everything else it
+does, from reading as loops or as one another; none adds a saved field, and only the repertoire and
+the chores add frames to the atlas or to what is presented.
 
 **Feet that agree with where it is going.** An action says what a creature is about, not always
 whether it is moving: a walk to a friend reaches its mark with time left on the walk, and a
 greeting can have a few steps still to go. At the end of every tick `World::carry_presence`
 (`world/presence.rs`) measures where each creature has got to and keeps a runtime-only
 `Presence` on its state: whether its own feet are carrying it, since when, and how many walking
-frames the ground it covered is worth. It measures along a window ledge by the creature's place on
-the window, so a window carrying a creature is not walking, ignores anything that moves a creature
+frames the ground it covered is worth. On a window ledge it takes away however
+far the window itself moved, so a window carrying a creature is not walking, ignores anything that moves a creature
 some other way (a hand, a toss, a hop, a climb, a dangle, a ride, a tow in its sleep), and needs two
 ticks of a change before it shows, with a quarter of a second at least between changes, so a nudge
 is never a step and a creature hovering on its mark does not flicker. A walk shows from its first
@@ -471,6 +474,22 @@ colonies) and nothing to a wandering one, whose companions mostly sleep and walk
 motion a rest keeps to its settle, nobody turns over in a nap, and nobody stretches on waking.
 `formiga-tools repertoire-sheet` draws every body doing each of them beside the clip it might be
 mistaken for.
+
+**Doings that can be told apart.** Behaviours that meant different things shared one body: six
+chores all reached up, eating and drinking bobbed the same way, playing alone and with a friend was
+one bounce, and a pet was answered with a wave. Each now has a shape of its own, judged at 2x, the
+size a desktop at display scale 2 draws it (`formiga-tools doings-sheet`). Watering is a pour,
+leaning out over the patch with both paws low round the can and tipping it; picking, and fetching a
+snack that rolled away, is a pluck, down to the ground, a tug and up with it; tying a flap, tidying
+leaves and plumping a cushion are a tend, close in on its toes with both paws working in turn; and
+showing off what it grew holds it up the way a find is held up. Eating dips the head to the snack,
+chomps and chews; drinking tips the head back with the cup and settles with an "ahh". Keeping a toy
+up crouches as it rests on the paw, stretches up to knock it and watches it at the top, while play
+with a friend is a play bow, a spring, a landing and a bounce aside. Being petted presses the body
+down under the hand and pushes it up into it, eyes shut, tail going, with a heart. And a companion
+a friend is walking over to — to greet, follow or play — watches it come, so the one being
+approached is seen to notice. These sixteen frames, and the chores' slower clips in place of the
+reach, change the frames presented by nothing measurable.
 
 **Eyes that live.** With nothing in particular to look at, a companion's eyes used to look
 straight out forever, and it blinked once every five seconds on the dot. Now its eyes look where

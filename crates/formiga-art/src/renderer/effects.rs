@@ -149,7 +149,29 @@ pub(super) fn draw_gesture_effects(
                 canvas.set((x + 2).min(45), y - 1, palette.highlight);
             }
         }
-        Gesture::Groom | Gesture::Skip | Gesture::Trudge => {}
+        Gesture::Groom | Gesture::Skip | Gesture::Trudge | Gesture::Pour | Gesture::Tend => {}
+        // A puff of earth where the tug comes away.
+        Gesture::Pluck => {
+            if frame % 4 == 2 && !reduce_motion {
+                let x = (face.x + 9).min(44);
+                let y = (face.y + 18).min(44);
+                canvas.set(x, y, palette.shadow);
+                canvas.set((x + 2).min(45), y - 1, palette.shadow);
+                canvas.set((x - 1).max(2), y - 2, palette.highlight);
+            }
+        }
+        // A little heart over a companion being petted, on the push up into the hand.
+        Gesture::Bask => {
+            if frame % 2 == 1 || reduce_motion {
+                draw_motif(
+                    canvas,
+                    EffectMotif::Heart,
+                    (face.x + 9).min(42),
+                    (face.y - 11).max(4),
+                    palette.highlight,
+                );
+            }
+        }
         Gesture::Cheer => draw_motif(
             canvas,
             if genome.effect_motif == EffectMotif::None {

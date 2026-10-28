@@ -114,8 +114,10 @@ fn a_window_carrying_a_creature_is_not_its_feet() {
             "carried along on the window"
         );
     }
+    // Walked along the ledge by a journey, which moves the contact point and leaves the place on
+    // the window to be worked out later: still walking. Measuring by the place on the window
+    // missed these, and drew companions gliding along window tops on their way to a climb.
     for _ in 0..4 {
-        creature.state.surface.relative_x += 0.004;
         creature.state.position.x += 2.0;
         carry(&mut creature, TICK, &desktop, 1.0);
     }

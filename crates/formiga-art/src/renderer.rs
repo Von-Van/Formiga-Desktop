@@ -311,6 +311,14 @@ impl AnimationSpec {
             Gesture::Sprawl | Gesture::Loaf => (2, 2),
             // Strides, counted from the ground covered like any walk's.
             Gesture::Skip | Gesture::Trudge => (6, 10),
+            // A slow tip of the can, and back.
+            Gesture::Pour => (4, 3),
+            // Down, grip, tug, up.
+            Gesture::Pluck => (4, 4),
+            // One paw and the other, busily.
+            Gesture::Tend => (4, 5),
+            // Pressed down and pushing up, twice a second.
+            Gesture::Bask => (4, 4),
         };
         Self {
             frames,
@@ -654,9 +662,9 @@ impl BodyPresentation {
         }
         // A small moment of its own comes next: a yawn, a start, a turn at the garden.
         if let Some(beat) = state.beat
-            && let Some((gesture, into)) = beats::beat_pose(beat)
+            && let Some((clip, into)) = beats::beat_pose(beat)
         {
-            return shown(BodyClip::Gesture(gesture), into);
+            return shown(clip, into);
         }
         let Some((habit, action, into)) = flourish_shown(creature) else {
             // Wriggling over in its sleep: the breaths come quicker, a squirm rather than a slide.
@@ -785,6 +793,13 @@ impl BodyPresentation {
             ) {
                 return body(BodyClip::Gesture(way), motion.frame(way, into));
             }
+        }
+        // Being petted leans into the hand rather than waving at it.
+        if action == ActionKind::PetReaction {
+            return body(
+                BodyClip::Gesture(Gesture::Bask),
+                motion.frame(Gesture::Bask, state.action_elapsed),
+            );
         }
         if resting {
             // At rest since it stopped, or since the rest began, whichever came later.

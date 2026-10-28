@@ -636,6 +636,9 @@ pub(super) fn draw_quadruped_forelimbs(
                 | Gesture::Strut
                 | Gesture::Peek
                 | Gesture::Groom
+                | Gesture::Pour
+                | Gesture::Pluck
+                | Gesture::Tend
         )
     ) {
         draw_quad_leg(
@@ -895,8 +898,33 @@ pub(super) fn gesture_limb_targets(
         Gesture::Sprawl => offset_pair(left, right, ((-length - 1, 2), (length + 1, 2))),
         // Tucked in under the chest.
         Gesture::Loaf => offset_pair(left, right, ((2, 2), (-2, 2))),
-        // A shake, a sniff and a walk with a mood in it leave the paws where they hang.
-        Gesture::Shake | Gesture::Sniff | Gesture::Skip | Gesture::Trudge => resting(),
+        // A shake, a sniff, a pet and a walk with a mood in it leave the paws where they hang.
+        Gesture::Shake | Gesture::Sniff | Gesture::Skip | Gesture::Trudge | Gesture::Bask => {
+            resting()
+        }
+        // Both paws out low in front, holding the can, tipping it further and back.
+        Gesture::Pour => {
+            let tip = [0, 1, 1, 0][usize::from(frame % 4)];
+            (
+                at(middle + 4 + tip, left.y + 3 + tip),
+                at(middle + 6 + tip, right.y + 2 + tip),
+            )
+        }
+        // The near paw down at the ground, tugging, and up with what came away.
+        Gesture::Pluck => {
+            let (resting_left, _) = resting();
+            let near = match frame % 4 {
+                0 | 1 => at(right.x + 3, right.y + length + 2),
+                2 => at(right.x + 3, right.y + 1),
+                _ => at(middle + 5, right.y - 1),
+            };
+            (resting_left, near)
+        }
+        // Both paws up in front, working in turn.
+        Gesture::Tend => (
+            at(middle + 3, left.y - length / 2 + beat),
+            at(middle + 6, right.y - length / 2 - beat),
+        ),
         // One paw pushing at the ground beside it, and then the other.
         Gesture::Scoot => {
             let (resting_left, resting_right) = resting();

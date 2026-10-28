@@ -97,31 +97,110 @@ impl Pose {
                 tail_sway: 0,
                 ..Self::default()
             },
-            ActionKind::SoloPlay | ActionKind::SocialPlay => Self {
-                bob: -walk.abs(),
-                squash_x: -walk,
-                squash_y: walk,
-                step_a: walk * 2,
-                step_b: alternate * 2,
-                play_lift: walk.abs(),
-                appendage_lift: 2 + walk.abs(),
-                tail_sway: walk * 2,
-                ..Self::default()
+            // Keeping a toy up off its paw: crouched ready as it rests there, stretched up to knock
+            // it, watching it at the top of its arc with its ears up, and bobbing to catch it.
+            ActionKind::SoloPlay => match frame % 4 {
+                0 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: 1,
+                    tail_sway: 2,
+                    crouch: 1,
+                    ..Self::default()
+                },
+                1 => Self {
+                    squash_x: -1,
+                    squash_y: 1,
+                    play_lift: 1,
+                    appendage_lift: 2,
+                    tail_sway: -1,
+                    lean: -1,
+                    ear_perk: 1,
+                    ..Self::default()
+                },
+                2 => Self {
+                    squash_y: 1,
+                    appendage_lift: 2,
+                    tail_sway: 2,
+                    lean: -1,
+                    ear_perk: 2,
+                    ..Self::default()
+                },
+                _ => Self {
+                    bob: 1,
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: 1,
+                    tail_sway: -2,
+                    ..Self::default()
+                },
             },
-            // A nibble or a sip on every other frame: the head dips in to it, and the tail
-            // gives a happy flick.
-            ActionKind::Eat | ActionKind::Drink => Self {
-                bob: i32::from(frame % 2),
-                squash_x: 1,
-                squash_y: -1,
-                step_a: 0,
-                step_b: 0,
-                play_lift: 0,
+            // Playing with a friend: a play bow with the tail up, a spring, a landing, and a
+            // bounce off to one side, over and over.
+            ActionKind::SocialPlay => match frame % 4 {
+                0 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: -1,
+                    tail_sway: 2,
+                    lean: 2,
+                    crouch: 2,
+                    ..Self::default()
+                },
+                1 => Self {
+                    squash_x: -1,
+                    squash_y: 1,
+                    play_lift: 2,
+                    appendage_lift: 2,
+                    tail_sway: -1,
+                    ear_perk: 2,
+                    ..Self::default()
+                },
+                2 => Self {
+                    bob: 1,
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: 1,
+                    tail_sway: 2,
+                    ..Self::default()
+                },
+                _ => Self {
+                    step_a: 2,
+                    step_b: -2,
+                    play_lift: 1,
+                    appendage_lift: 2,
+                    tail_sway: -2,
+                    lean: -1,
+                    ..Self::default()
+                },
+            },
+            // A bite: the snack carried up as the head dips to meet it, a chomp, and a chew with
+            // a happy flick of the tail.
+            ActionKind::Eat => Self {
+                bob: i32::from(frame % 4 == 3),
+                squash_x: 1 + i32::from(frame % 4 == 2),
+                squash_y: -1 - i32::from(frame % 4 == 2),
                 appendage_lift: 1,
-                tail_sway: if frame.is_multiple_of(3) { 2 } else { 0 },
-                lean: i32::from(frame % 2),
+                tail_sway: if frame % 4 == 3 { 2 } else { 0 },
+                lean: i32::from(frame % 4 == 1 || frame % 4 == 2),
+                ear_perk: i32::from(frame % 4 == 2),
                 ..Self::default()
             },
+            // A sip: the cup lifted, the head tipped back with it while it drinks, and lowered
+            // again with a satisfied settle.
+            ActionKind::Drink => {
+                let tipped = frame % 4 == 1 || frame % 4 == 2;
+                Self {
+                    bob: i32::from(frame % 4 == 3),
+                    squash_x: if tipped { -1 } else { 1 },
+                    squash_y: if tipped { 1 } else { -1 },
+                    appendage_lift: if tipped { 2 } else { 1 },
+                    tail_sway: if frame % 4 == 3 { 2 } else { 1 },
+                    lean: -i32::from(tipped),
+                    ear_perk: i32::from(frame % 4 == 2),
+                    ..Self::default()
+                }
+            }
             // Hello, or a pet: a wiggle on the spot, bouncing a little, ears up and the tail
             // going.
             ActionKind::Greet => Self {
@@ -672,6 +751,83 @@ impl Pose {
             },
             // Walks with a mood in them are strides; see [`Self::mood_walk`].
             Gesture::Skip | Gesture::Trudge => Self::default(),
+            // Leant out over the patch, braced, tipping the can further and back.
+            Gesture::Pour => {
+                let tip = [0, 1, 1, 0][usize::from(frame % 4)];
+                Self {
+                    bob: tip,
+                    squash_x: 1,
+                    squash_y: -1,
+                    step_a: -1,
+                    step_b: 1,
+                    appendage_lift: 1,
+                    tail_sway: 1 - tip,
+                    lean: 2 + tip,
+                    crouch: 1,
+                    ..Self::default()
+                }
+            }
+            // Down to the ground, a grip, a tug back, and up holding what came away.
+            Gesture::Pluck => match frame % 4 {
+                0 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    tail_sway: 1,
+                    lean: 2,
+                    crouch: 2,
+                    ..Self::default()
+                },
+                1 => Self {
+                    squash_x: 2,
+                    squash_y: -2,
+                    tail_sway: 2,
+                    lean: 2,
+                    crouch: 2,
+                    ..Self::default()
+                },
+                2 => Self {
+                    squash_y: 1,
+                    step_a: -1,
+                    appendage_lift: 1,
+                    tail_sway: -1,
+                    lean: -1,
+                    crouch: 1,
+                    ..Self::default()
+                },
+                _ => Self {
+                    squash_y: 1,
+                    appendage_lift: 2,
+                    tail_sway: 1,
+                    ear_perk: 1,
+                    ..Self::default()
+                },
+            },
+            // Close in and up on its toes, working with one paw and then the other.
+            Gesture::Tend => Self {
+                bob: tick,
+                squash_x: -1,
+                squash_y: 1,
+                step_a: beat,
+                step_b: -beat,
+                appendage_lift: 2,
+                tail_sway: beat,
+                lean: 1,
+                ..Self::default()
+            },
+            // Pressed flat under the hand, then pushing up into it, the tail going each way.
+            Gesture::Bask => {
+                let up = frame % 2 == 1;
+                Self {
+                    bob: i32::from(!up),
+                    squash_x: if up { -1 } else { 2 },
+                    squash_y: if up { 1 } else { -2 },
+                    appendage_lift: -1,
+                    tail_sway: if frame % 4 < 2 { 2 } else { -2 },
+                    lean: -i32::from(up),
+                    crouch: i32::from(!up),
+                    ..Self::default()
+                }
+            }
             // Square and stiff, one foot lifting and coming down again.
             Gesture::Stomp => Self {
                 bob: 1 - tick,

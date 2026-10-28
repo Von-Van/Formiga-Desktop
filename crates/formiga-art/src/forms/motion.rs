@@ -78,6 +78,8 @@ impl Intent {
                 G::Shake => Self::React,
                 G::Sniff => Self::Inspect,
                 G::Skip | G::Trudge => Self::Move,
+                G::Pour | G::Pluck | G::Tend => Self::Inspect,
+                G::Bask => Self::React,
             },
         }
     }

@@ -41,6 +41,10 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Sprawl | Gesture::Loaf => (ExpressionKind::Sleepy, EyelidPose::Closed),
         Gesture::Skip => (ExpressionKind::Joy, EyelidPose::Open),
         Gesture::Trudge => (ExpressionKind::Sleepy, EyelidPose::Half),
+        Gesture::Pour | Gesture::Tend => (ExpressionKind::Focused, EyelidPose::Open),
+        Gesture::Pluck => (ExpressionKind::Determined, EyelidPose::Open),
+        // Eyes shut on a smile under the hand.
+        Gesture::Bask => (ExpressionKind::Affectionate, EyelidPose::Closed),
     };
     FaceRenderState {
         expression,
@@ -163,6 +167,91 @@ pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
                 Action(ActionKind::Homebound),
                 face(ExpressionKind::Content, EyelidPose::Open),
             ),
+        ]
+    };
+    let subjects = gesture_subjects();
+    let cell = FRAME_SIZE * SCALE;
+    let columns: u32 = clips
+        .iter()
+        .map(|(clip, _)| u32::from(formiga_art::AnimationSpec::for_clip(*clip).frames))
+        .sum::<u32>()
+        + clips.len() as u32
+        - 1;
+    let width = columns * cell;
+    let height = subjects.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    for (row, genome) in subjects.iter().enumerate() {
+        let mut column = 0_u32;
+        for (clip, face) in clips {
+            for frame in 0..formiga_art::AnimationSpec::for_clip(clip).frames {
+                let rendered = CreatureRenderer::render_composited_frame(
+                    genome, clip, frame, true, false, face,
+                );
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    row as u32 * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+                column += 1;
+            }
+            column += 1;
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Every body going about the village's business, frame by frame with its face, at 2x — the
+/// size a desktop at display scale 2 draws a companion — so what reads and what doesn't is judged
+/// where it will be seen: watering, picking, tending, holding up what it grew, eating, drinking,
+/// keeping a toy up, playing with a friend, saying hello, and being petted. What the village puts
+/// in its hands, a watering can or what it picked, is drawn over the body by the overlay and is
+/// not drawn here.
+pub fn doings_sheet(path: PathBuf) -> Result<()> {
+    const SCALE: u32 = 2;
+    let clips: [(formiga_art::BodyClip, FaceRenderState); 10] = {
+        use formiga_art::BodyClip::{Action, Gesture as G};
+        let face = |expression, eyelids| FaceRenderState {
+            expression,
+            eyelids,
+            gaze: GazeDirection::default(),
+        };
+        [
+            (G(Gesture::Pour), gesture_face(Gesture::Pour)),
+            (G(Gesture::Pluck), gesture_face(Gesture::Pluck)),
+            (G(Gesture::Tend), gesture_face(Gesture::Tend)),
+            (
+                Action(ActionKind::PresentDiscovery),
+                face(ExpressionKind::Joy, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Eat),
+                face(ExpressionKind::Content, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Drink),
+                face(ExpressionKind::Content, EyelidPose::Half),
+            ),
+            (
+                Action(ActionKind::SoloPlay),
+                face(ExpressionKind::Joy, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::SocialPlay),
+                face(ExpressionKind::Joy, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Greet),
+                face(ExpressionKind::Affectionate, EyelidPose::Open),
+            ),
+            (G(Gesture::Bask), gesture_face(Gesture::Bask)),
         ]
     };
     let subjects = gesture_subjects();

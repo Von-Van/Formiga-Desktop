@@ -98,10 +98,20 @@ pub enum Gesture {
     Skip,
     /// A slow walk with the head low and the ears and tail down: tired, and on its way to bed.
     Trudge,
+    /// Leaning over with both paws out low in front, tipping something slowly: watering.
+    Pour,
+    /// Down low with a paw at the ground, a tug, and up again with what came away: picking
+    /// something, or picking something up.
+    Pluck,
+    /// Close in with both paws up in front, working at something in turn: tying a flap, tidying
+    /// leaves, plumping a cushion.
+    Tend,
+    /// Pressed down under a hand and pushing up into it, eyes shut, tail going: being petted.
+    Bask,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 31] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -129,6 +139,10 @@ impl Gesture {
         Self::Loaf,
         Self::Skip,
         Self::Trudge,
+        Self::Pour,
+        Self::Pluck,
+        Self::Tend,
+        Self::Bask,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -153,6 +167,10 @@ impl Gesture {
                 | Self::Loaf
                 | Self::Skip
                 | Self::Trudge
+                | Self::Pour
+                | Self::Pluck
+                | Self::Tend
+                | Self::Bask
         )
     }
 }

@@ -254,8 +254,8 @@ pub struct Presence {
     /// Seconds it has spent wanting to change between stepping and standing.
     pub pending: f32,
     /// Where it was at the end of the last tick, where it was measured at all: its contact
-    /// point's x, and the window it stood on with how far along it, so a window carrying it does
-    /// not count as walking.
+    /// point's x, and the window it stood on with where that window was, so a window carrying it
+    /// does not count as walking.
     pub last: Option<PresenceMark>,
     /// What it was doing at the end of the last tick.
     pub last_action: Option<ActionKind>,

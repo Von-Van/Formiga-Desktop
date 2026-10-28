@@ -274,6 +274,7 @@ cargo run -p formiga-tools -- train-sheet
 cargo run -p formiga-tools -- motion-sheet
 cargo run -p formiga-tools -- rest-sheet
 cargo run -p formiga-tools -- repertoire-sheet
+cargo run -p formiga-tools -- doings-sheet
 cargo run -p formiga-tools -- accessory-sheet
 cargo run -p formiga-tools -- village-life-sheet
 cargo run -p formiga-tools -- ui-sheet
@@ -318,7 +319,10 @@ loops frame by frame, where a loop that hitches or repeats itself shows. `rest-s
 seconds of every body at rest, a frame every third of a second with its face, once as the action
 alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
 glancing about and blinking. `repertoire-sheet` draws every body washing, shaking and sniffing,
-sleeping curled, sprawled and loafed, and walking plainly, skipping and trudging. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
+sleeping curled, sprawled and loafed, and walking plainly, skipping and trudging, and
+`doings-sheet` draws every body watering, picking, tending, holding up what it grew, eating,
+drinking, playing alone and with a friend, saying hello and being petted, at 2x, the size the
+desktop shows them. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,
 walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
 moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
 on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them.
