@@ -21,8 +21,19 @@ All notable changes are documented here.
   a glance, and are long enough to be seen at the rate a resting colony is drawn at; a content or
   affectionate companion sometimes blinks slowly. Under reduced motion the eyes stay still as
   before.
-- None of this adds a texture, a saved field, or a frame drawn: save version 33 and every contract
-  version are unchanged.
+- Companions have a repertoire of their own. While resting, and while sitting about at home,
+  they now and then wash their face with a paw (a winged one preens), shake themselves off all
+  over, or sniff the air, as their temperament leans: calm ones wash most, lively ones shake,
+  curious ones sniff. They nap three ways — curled, sprawled out on their side, or loafed sitting
+  up — trusting ones sprawling more and wary ones dozing upright, and a long nap sometimes turns
+  over partway. A tired companion, or one off to bed, trudges with its head low, and a contented
+  one sometimes skips, more often if it is playful or walking over to say hello. Waking up, a calm
+  companion stretches and a lively one shakes itself, and one set down or landing from a throw
+  shakes itself off. `formiga-tools repertoire-sheet` draws them all on every body.
+- Save version 33 and every contract version are unchanged. The repertoire's 28 frames bring a
+  companion's textures from about 1.24 MB to 1.52 MB, inside the per-creature and colony budgets,
+  and add about 1.5% to the frames a resting colony at home presents; the other changes add no
+  texture and no frame.
 
 ## [0.68.1] - 2026-10-26
 

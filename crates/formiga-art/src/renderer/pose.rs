@@ -48,6 +48,13 @@ impl Pose {
                 }
                 return pose;
             }
+            BodyClip::Gesture(mood @ (Gesture::Skip | Gesture::Trudge)) => {
+                let mut pose = Self::mood_walk(genome, mood, frame);
+                if reduce_motion {
+                    pose.calm();
+                }
+                return pose;
+            }
             BodyClip::Gesture(gesture) => {
                 let mut pose = Self::for_gesture(gesture, frame);
                 if reduce_motion {
@@ -284,6 +291,39 @@ impl Pose {
             ear_perk: i32::from(top),
             ..Self::default()
         }
+    }
+
+    /// One frame of a walk with a mood in it, `frame` of six: the body's own stride, with a hop
+    /// in each step and everything carried high for a skip, or slower-footed with the head, the
+    /// ears and the tail hung low for a trudge.
+    fn mood_walk(genome: &AppearanceGenome, mood: Gesture, frame: u8) -> Self {
+        let phase = usize::from(frame % 6);
+        let bob = genome.gait_bob.max(0.2).round() as i32;
+        let mut pose = Self::stride(genome, phase, bob, false);
+        if mood == Gesture::Skip {
+            // Up off the ground between footfalls, landing squashed on each.
+            let hop = [0, 2, 1, 0, 2, 1][phase];
+            pose.play_lift = hop;
+            pose.bob = if hop == 0 { bob } else { 0 };
+            pose.squash_x = i32::from(hop == 0) - i32::from(hop == 2);
+            pose.squash_y = i32::from(hop == 2) - i32::from(hop == 0);
+            pose.appendage_lift = 1 + i32::from(hop > 0);
+            pose.tail_sway = [2, 3, 2, 2, 3, 2][phase];
+            pose.ear_perk = 1 + i32::from(hop == 2);
+            pose.lean = 0;
+        } else {
+            // Steps half the size, the head hung forward and low, nothing lifted.
+            pose.step_a /= 2;
+            pose.step_b /= 2;
+            pose.bob = bob.max(1);
+            pose.play_lift = 0;
+            pose.appendage_lift = -1;
+            pose.tail_sway = -2 + i32::from(phase % 3 == 0);
+            pose.lean = 2;
+            pose.crouch = 1;
+            pose.ear_perk = 0;
+        }
+        pose
     }
 
     /// The rest a companion holds when it has nothing else to do: settle, shift its weight, look
@@ -563,6 +603,75 @@ impl Pose {
                 splay: 2,
                 ..Self::default()
             },
+            // Sat back a little, the head tipped down to the paw as it rubs the cheek, and dipped
+            // to lick it on the last frame; the tail curls round, content.
+            Gesture::Groom => {
+                let lick = frame % 4 == 3;
+                Self {
+                    bob: 1,
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: 1,
+                    tail_sway: [1, 2, 1, 1][usize::from(frame % 4)],
+                    lean: i32::from(lick),
+                    crouch: 1,
+                    ..Self::default()
+                }
+            }
+            // Braced low and wrung from side to side, ears and tail flung out each way.
+            Gesture::Shake => {
+                let side = if frame.is_multiple_of(2) { 1 } else { -1 };
+                Self {
+                    bob: tick,
+                    squash_x: side,
+                    squash_y: -side,
+                    step_a: -side,
+                    step_b: side,
+                    appendage_lift: 1 + side,
+                    tail_sway: side * 2,
+                    lean: side * 2,
+                    crouch: 1,
+                    ear_perk: 1 + side,
+                    ..Self::default()
+                }
+            }
+            // Drawn up with the nose out, ears forward, the head bobbing in little sniffs.
+            Gesture::Sniff => Self {
+                bob: 0,
+                squash_x: -1,
+                squash_y: 1,
+                appendage_lift: 1,
+                tail_sway: [0, 1, 0, 1][usize::from(frame % 4)],
+                lean: [2, 3, 3, 2][usize::from(frame % 4)],
+                ear_perk: [1, 2, 2, 1][usize::from(frame % 4)],
+                play_lift: i32::from(frame % 4 == 1),
+                ..Self::default()
+            },
+            // Flat out on its side, legs out and the head laid down ahead of it, breathing.
+            Gesture::Sprawl => Self {
+                bob: tick,
+                squash_x: 3 + tick,
+                squash_y: -3,
+                appendage_lift: -1,
+                tail_sway: 2,
+                lean: 2,
+                crouch: 3,
+                splay: 3,
+                ..Self::default()
+            },
+            // Sat tucked up, nothing showing below it, the head drawn in and nodding.
+            Gesture::Loaf => Self {
+                bob: 1 + tick,
+                squash_x: 2,
+                squash_y: -1,
+                appendage_lift: -1,
+                tail_sway: -1,
+                lean: -1,
+                crouch: 3,
+                ..Self::default()
+            },
+            // Walks with a mood in them are strides; see [`Self::mood_walk`].
+            Gesture::Skip | Gesture::Trudge => Self::default(),
             // Square and stiff, one foot lifting and coming down again.
             Gesture::Stomp => Self {
                 bob: 1 - tick,

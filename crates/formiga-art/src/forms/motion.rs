@@ -73,6 +73,11 @@ impl Intent {
                 }
                 G::Watch | G::Reach | G::Balance | G::Heave => Self::Inspect,
                 G::Crouch | G::Stretch | G::Yawn | G::Swoon | G::Sit | G::Scoot => Self::Rest,
+                G::Sprawl | G::Loaf => Self::Rest,
+                G::Groom => Self::Idle,
+                G::Shake => Self::React,
+                G::Sniff => Self::Inspect,
+                G::Skip | G::Trudge => Self::Move,
             },
         }
     }

@@ -1141,6 +1141,15 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     if creature.state.action == ActionKind::Sleep {
         return ExpressionKind::Sleepy;
     }
+    if let Some((own, _)) = own_moment(creature) {
+        return match own {
+            Gesture::Groom | Gesture::Stretch => ExpressionKind::Content,
+            Gesture::Shake => ExpressionKind::Determined,
+            Gesture::Sniff => ExpressionKind::Curious,
+            Gesture::Skip => ExpressionKind::Joy,
+            _ => ExpressionKind::Sleepy,
+        };
+    }
     if let Some(pose) = creature.state.attention {
         // A temperament's own poses wear their own faces, whatever the moment is about.
         match pose.gesture {
@@ -1272,6 +1281,19 @@ pub(super) fn resolve_eyelids(creature: &Creature, at_cursor: bool) -> EyelidPos
     if creature.state.action == ActionKind::Sleep && flourish.is_none() {
         return EyelidPose::Closed;
     }
+    match own_moment(creature) {
+        // Eyes shut to wash and to shake, and at the top of a stretch.
+        Some((Gesture::Groom | Gesture::Shake, _)) => return EyelidPose::Closed,
+        Some((Gesture::Stretch, frame)) => {
+            return if frame >= 2 {
+                EyelidPose::Closed
+            } else {
+                EyelidPose::Half
+            };
+        }
+        Some((Gesture::Sniff | Gesture::Trudge, _)) => return EyelidPose::Half,
+        _ => {}
+    }
     let expression = resolve_expression(creature);
     if matches!(expression, ExpressionKind::Startled) {
         return EyelidPose::Open;
@@ -1362,6 +1384,14 @@ fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: boo
             into if into < 1.1 => GazeDirection::new(0, 1),
             _ => GazeDirection::new(forward, 0),
         });
+    }
+    match own_moment(creature) {
+        // Nose up at whatever is on the air; down at the paw it is washing, or the ground ahead.
+        Some((Gesture::Sniff, _)) => return fixed(GazeDirection::new(forward, -1)),
+        Some((Gesture::Groom | Gesture::Trudge, _)) => {
+            return fixed(GazeDirection::new(forward, 1));
+        }
+        _ => {}
     }
     match creature.state.action {
         ActionKind::InspectScreen => {
@@ -1587,4 +1617,32 @@ fn blink_at(creature: &Creature, expression: ExpressionKind, at_cursor: bool) ->
         close(lids((clock - glance.start).abs(), 0.08, 0.2));
     }
     shown
+}
+
+/// Something a companion is doing with itself on its own account — a wash, a shake, a sniff, a
+/// stretch on waking, a walk with a mood in it, a way of sleeping — and the frame of it, when
+/// nothing its attention is on, no small moment and no habit has the body instead.
+fn own_moment(creature: &Creature) -> Option<(Gesture, u8)> {
+    let state = &creature.state;
+    if state.attention.is_some() || state.beat.is_some() || flourish_shown(creature).is_some() {
+        return None;
+    }
+    match BodyPresentation::for_creature(creature) {
+        BodyPresentation {
+            clip:
+                BodyClip::Gesture(
+                    gesture @ (Gesture::Groom
+                    | Gesture::Shake
+                    | Gesture::Sniff
+                    | Gesture::Stretch
+                    | Gesture::Skip
+                    | Gesture::Trudge
+                    | Gesture::Sprawl
+                    | Gesture::Loaf),
+                ),
+            frame,
+            ..
+        } => Some((gesture, frame)),
+        _ => None,
+    }
 }

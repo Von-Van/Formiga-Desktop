@@ -33,6 +33,9 @@ const RUN_STRIDE: f32 = 0.83;
 /// slower and a step reads as the picture sticking, any faster as a blur.
 const WALK_FRAMES_PER_SEC: std::ops::RangeInclusive<f32> = 7.0..=15.0;
 const RUN_FRAMES_PER_SEC: std::ops::RangeInclusive<f32> = 9.0..=18.0;
+/// How long what a creature last did is remembered after it stops, in seconds: long enough for
+/// a stretch on waking or a shake on being set down.
+const AFTER_SECS: f32 = 3.0;
 /// The clock goes round every two hours, which keeps it precise; the eyes never notice.
 const CLOCK_ROUND_SECS: f32 = 7_200.0;
 /// The stride count goes round too, at a whole number of six-frame strides.
@@ -43,6 +46,7 @@ impl World {
     /// tick, paused or not.
     pub(super) fn carry_presence(&mut self, dt: f32, desktop: &DesktopSnapshot) {
         let display_scale = f32::from(self.save.settings.display_scale.max(1));
+        let reduced = self.save.settings.reduce_motion;
         for creature in &mut self.save.creatures {
             let pixels_per_point = desktop
                 .monitors
@@ -50,6 +54,7 @@ impl World {
                 .find(|monitor| monitor.id == creature.state.surface.monitor_id)
                 .map_or(1.0, |monitor| monitor.scale_factor.max(0.1))
                 / display_scale;
+            creature.state.presence.reduced = reduced;
             carry(creature, dt, desktop, pixels_per_point);
         }
     }
@@ -112,10 +117,18 @@ pub(super) fn carry(
                 | ActionKind::Sprint
                 | ActionKind::SqueezeWindow
         );
+    let action = creature.state.action;
     let presence = &mut creature.state.presence;
     let dt = dt.max(0.0);
     presence.clock = (presence.clock + dt) % CLOCK_ROUND_SECS;
     presence.since += dt;
+    // What it has just stopped doing, kept for as long as a moment after it could matter.
+    presence.after = match (presence.last_action, presence.after) {
+        (Some(was), _) if was != action => Some((was, 0.0)),
+        (_, Some((was, ago))) if ago < AFTER_SECS => Some((was, ago + dt)),
+        _ => None,
+    };
+    presence.last_action = Some(action);
     let walked = match presence.last {
         // Along the same window, how far along it; anywhere else, how far across.
         Some(PresenceMark {

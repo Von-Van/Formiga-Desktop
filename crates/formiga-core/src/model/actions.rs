@@ -257,6 +257,14 @@ pub struct Presence {
     /// point's x, and the window it stood on with how far along it, so a window carrying it does
     /// not count as walking.
     pub last: Option<PresenceMark>,
+    /// What it was doing at the end of the last tick.
+    pub last_action: Option<ActionKind>,
+    /// What it was doing before what it is doing now, and how many seconds ago it stopped: what
+    /// tells the art a companion has just woken, or just been set down.
+    pub after: Option<(ActionKind, f32)>,
+    /// Whether the person has asked for reduced motion, so the art keeps a resting companion's
+    /// own little moments to itself.
+    pub reduced: bool,
 }
 
 /// Where a creature stood at the end of a tick, as [`Presence`] measures it.

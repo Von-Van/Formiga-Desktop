@@ -192,3 +192,33 @@ fn presence_changes_nothing_the_colony_does() {
     };
     assert_eq!(run(false), run(true));
 }
+
+/// What a creature has just stopped doing is remembered for a few seconds, so the art can show
+/// it waking or being set down, and then forgotten.
+#[test]
+fn what_it_just_stopped_doing_is_remembered_for_a_moment() {
+    let desktop = desktop();
+    let mut creature = walker(ActionKind::Sleep, 400.0);
+    for _ in 0..4 {
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert_eq!(creature.state.presence.after, None);
+    creature.state.action = ActionKind::Idle;
+    carry(&mut creature, TICK, &desktop, 1.0);
+    assert_eq!(
+        creature.state.presence.after,
+        Some((ActionKind::Sleep, 0.0)),
+        "just woken"
+    );
+    for _ in 0..20 {
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert!(matches!(
+        creature.state.presence.after,
+        Some((ActionKind::Sleep, ago)) if (0.9..1.1).contains(&ago)
+    ));
+    for _ in 0..60 {
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert_eq!(creature.state.presence.after, None, "and then forgotten");
+}

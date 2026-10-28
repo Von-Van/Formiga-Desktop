@@ -43,9 +43,11 @@ fn the_body_drawn_agrees_with_the_feet() {
         BodyClip::Action(ActionKind::Follow)
     );
     creature.state.action = ActionKind::Greet;
-    assert_eq!(
-        BodyPresentation::for_creature(&creature).clip,
-        BodyClip::Action(ActionKind::Traverse),
+    assert!(
+        matches!(
+            BodyPresentation::for_creature(&creature).clip,
+            BodyClip::Action(ActionKind::Traverse) | BodyClip::Gesture(Gesture::Skip)
+        ),
         "walking over to say hello"
     );
     creature.state.presence.stepping = false;
@@ -216,6 +218,8 @@ fn eyes_wander_when_nothing_has_them() {
         .count();
     assert!(ahead > 600, "a walker looks where it is going: {ahead}");
     creature.state.presence.stepping = false;
+    // Just stopped beside its friend: settling, not washing.
+    creature.state.presence.since = 0.5;
     creature.state.action = ActionKind::Follow;
     let mut friend = measured(61);
     friend.id = creature.id + 1;
@@ -230,4 +234,194 @@ fn eyes_wander_when_nothing_has_them() {
         watching > 900,
         "keeps an eye on the friend it is with: {watching}"
     );
+}
+
+/// A rest has room for things a companion does with itself — washing, shaking itself off,
+/// sniffing the air — as its temperament leans, and none of them under reduced motion.
+#[test]
+fn a_rest_has_moments_of_its_own() {
+    let motion = MotionSignature::for_creature(&measured(67));
+    let own = |motion: MotionSignature, fidgets: bool| {
+        let mut seen = std::collections::HashMap::new();
+        for step in 0..3_000 {
+            if let RestMoment::Own(gesture, _) = motion.rest_moment(step as f32 / 10.0, fidgets) {
+                *seen.entry(gesture).or_insert(0) += 1;
+            }
+        }
+        seen
+    };
+    assert!(
+        own(motion, false).is_empty(),
+        "nothing of its own when asked not to"
+    );
+    let seen = own(motion, true);
+    let total: i32 = seen.values().sum();
+    assert!(
+        (150..=1_500).contains(&total),
+        "some of a rest is its own, not most: {total} of 3000"
+    );
+    let washer = MotionSignature {
+        calm: 1.0,
+        energy: 0.0,
+        curiosity: 0.0,
+        ..motion
+    };
+    let shaker = MotionSignature {
+        calm: 0.0,
+        energy: 1.0,
+        curiosity: 0.0,
+        ..motion
+    };
+    let count = |seen: &std::collections::HashMap<Gesture, i32>, gesture| {
+        seen.get(&gesture).copied().unwrap_or(0)
+    };
+    let (washes, shakes) = (own(washer, true), own(shaker, true));
+    assert!(count(&washes, Gesture::Groom) > count(&shakes, Gesture::Groom));
+    assert!(count(&shakes, Gesture::Shake) > count(&washes, Gesture::Shake));
+}
+
+/// Naps are taken different ways — curled, sprawled, loafed — a trusting companion sprawling
+/// more than a wary one, and a long nap now and then turning over into another way.
+#[test]
+fn naps_are_taken_different_ways() {
+    let motion = MotionSignature::for_creature(&measured(71));
+    let ways = |motion: MotionSignature| {
+        let mut seen = std::collections::HashMap::new();
+        for nap in 0..400 {
+            *seen
+                .entry(motion.nap_pose(nap as f32 * 37.0, 1.0, 30.0, true))
+                .or_insert(0) += 1;
+        }
+        seen
+    };
+    let seen = ways(motion);
+    assert_eq!(seen.len(), 3, "curled, sprawled and loafed: {seen:?}");
+    let trusting = ways(MotionSignature {
+        trusting: 1.0,
+        ..motion
+    });
+    let wary = ways(MotionSignature {
+        trusting: 0.0,
+        ..motion
+    });
+    let sprawled = |seen: &std::collections::HashMap<Option<Gesture>, i32>| {
+        seen.get(&Some(Gesture::Sprawl)).copied().unwrap_or(0)
+    };
+    assert!(sprawled(&trusting) > sprawled(&wary) + 40);
+    let turned = (0..400)
+        .filter(|nap| {
+            let began = *nap as f32 * 37.0;
+            motion.nap_pose(began, 1.0, 40.0, true) != motion.nap_pose(began, 39.0, 40.0, true)
+        })
+        .count();
+    assert!(
+        (40..=250).contains(&turned),
+        "{turned} of 400 long naps turn over"
+    );
+    assert!(
+        (0..400).all(|nap| {
+            let began = nap as f32 * 37.0;
+            motion.nap_pose(began, 1.0, 40.0, false) == motion.nap_pose(began, 39.0, 40.0, false)
+        }),
+        "never under reduced motion"
+    );
+}
+
+/// The three ways of sleeping and the three ways of walking are each drawn differently, on every
+/// body: a sprawl lies lower and wider than a curl, a loaf sits taller, and a skip bounces up
+/// where a trudge hangs low.
+#[test]
+fn every_body_sleeps_and_walks_in_more_than_one_way() {
+    let creature = measured(73);
+    let mut bodies = vec![creature.appearance.clone()];
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut appearance = creature.appearance.clone();
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        appearance.design = Some(design);
+        bodies.push(appearance);
+    }
+    for family in [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ] {
+        bodies.push(genome(family));
+    }
+    for genome in &bodies {
+        let bounds = |clip: BodyClip, frame: u8| {
+            CreatureRenderer::render_body_frame(genome, clip, frame, false)
+                .canvas
+                .alpha_bounds()
+                .expect("drawn")
+        };
+        let curl = bounds(BodyClip::Action(ActionKind::Sleep), 0);
+        let sprawl = bounds(BodyClip::Gesture(Gesture::Sprawl), 0);
+        let loaf = bounds(BodyClip::Gesture(Gesture::Loaf), 0);
+        let width = |(left, _, right, _): (u32, u32, u32, u32)| right - left;
+        let height = |(_, top, _, bottom): (u32, u32, u32, u32)| bottom - top;
+        assert!(
+            width(sprawl) > width(curl) || height(sprawl) < height(curl),
+            "{:?}: a sprawl is longer or lower than a curl",
+            genome.design.map(|design| design.body)
+        );
+        assert_ne!(
+            (sprawl, loaf, curl.1),
+            (curl, curl, loaf.1),
+            "three different ways to sleep"
+        );
+        // A body bounces up off its legs in a skip, and carries itself low in a trudge.
+        let highest = |clip: BodyClip| {
+            (0..6)
+                .map(|frame| bounds(clip, frame).1)
+                .min()
+                .expect("six frames")
+        };
+        assert!(
+            highest(BodyClip::Gesture(Gesture::Skip)) < highest(BodyClip::Gesture(Gesture::Trudge)),
+            "{:?}: a skip carries itself higher than a trudge",
+            genome.design.map(|design| design.body)
+        );
+    }
+}
+
+/// Up from a nap, a companion stretches or shakes itself before it rests, and it washes with
+/// its eyes shut.
+#[test]
+fn waking_and_washing_show() {
+    let mut creature = measured(79);
+    creature.state.action = ActionKind::Idle;
+    creature.state.action_elapsed = 0.3;
+    creature.state.presence.since = 0.3;
+    creature.state.presence.after = Some((ActionKind::Sleep, 0.3));
+    let body = BodyPresentation::for_creature(&creature);
+    assert!(
+        matches!(
+            body.clip,
+            BodyClip::Gesture(Gesture::Stretch | Gesture::Shake)
+        ),
+        "{body:?}"
+    );
+    creature.state.presence.reduced = true;
+    assert_eq!(
+        BodyPresentation::for_creature(&creature).clip,
+        BodyClip::Action(ActionKind::Idle),
+        "not under reduced motion"
+    );
+    creature.state.presence.reduced = false;
+    creature.state.presence.after = None;
+    let motion = MotionSignature::for_creature(&creature);
+    let washing = (0..3_000).map(|step| step as f32 / 10.0).find(|at| {
+        matches!(
+            motion.rest_moment(*at, true),
+            RestMoment::Own(Gesture::Groom, _)
+        )
+    });
+    if let Some(at) = washing {
+        creature.state.action_elapsed = at;
+        creature.state.presence.since = at;
+        let face =
+            CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+        assert_eq!(face.eyelids, EyelidPose::Closed, "eyes shut to wash");
+    }
 }

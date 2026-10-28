@@ -356,8 +356,8 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 155 frames: 92 for actions, because
-`Tossed` reuses the dragged body clip, and 63 for twenty gesture poses. Since 0.62.0 a frame or a
+directions and three eyelid states. The body atlas holds 183 frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 91 for twenty-seven gesture poses. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -366,18 +366,19 @@ trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a r
 companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
-adds one or two from the object sheet. A new companion's textures come to about 1.24 MB — 1.34 MB
-in 0.66.0 alone, when the walk, the run, the greeting and the meal stopped repeating frames, and
-back under that row of cells once a leaf sled's scoot replaced pedalling in 0.66.1 — and about
-0.5 MB under reduced motion, where every creature's cost 1,649,664 bytes in 0.61.0. With no two
-frames alike they would be 1,889,280 bytes, which is what the budgets hold: below a 4,500,000-byte
+adds one or two from the object sheet. A new companion's textures come to about 1.52 MB — 1.24 MB
+before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks
+added three rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
+meal stopped repeating frames — and much less under reduced motion, where each clip holds one
+frame. With no two frames alike they would be 2,165,760 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch; the stretch and
-yawn a habit or a yawn going round shows; and the huff, swoon, beg, strut, peek and stomp a
-temperament strikes — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
+yawn a habit or a yawn going round shows; the huff, swoon, beg, strut, peek and stomp a
+temperament strikes; and the wash, shake and sniff, sprawl and loaf, and skip and trudge a
+companion does on its own account (see [between the big moments](#between-the-big-moments)) — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
 shows its baked clip in place of the action's; the action still owns movement, placement, facing,
 and frame timing, and the GPU quad, the interaction mask, and the review sheets resolve the same
 clip. One place decides whether a body is free to show a pose — `body_free` in `world/attention.rs`,
@@ -409,9 +410,9 @@ starts the cooldown.
 
 ### Between the big moments
 
-Most of what a companion is drawn doing is walking about and resting, so how those look sets how
-alive it feels more than any single clip. Three things keep them from reading as loops, and none
-of them adds a texture, a saved field or a presented frame.
+Most of what a companion is drawn doing is walking about, resting and sleeping, so how those look
+sets how alive it feels more than any single clip. Four things keep them from reading as loops;
+none adds a saved field, and only the repertoire adds frames to the atlas or to what is presented.
 
 **Feet that agree with where it is going.** An action says what a creature is about, not always
 whether it is moving: a walk to a friend reaches its mark with time left on the walk, and a
@@ -444,6 +445,32 @@ looks off to one side and back (more often the more curious it is), or the whole
 Which, and how long each stillness lasts, come from the creature's own stream, so it rests the
 same way every time it is shown and no two rest in step. The beats play at their authored rate, so
 the cadence a resting colony is drawn at is unchanged; reduced motion still draws only the settle.
+
+**A repertoire of its own.** Even fitting its situation, a companion used to have few ways to fill
+it: residents at home spent about two thirds of their time in one held pose, every companion slept
+curled the same way, and every walk was the same walk. Seven poses baked beside the gestures (28
+frames, drawn by every body plan and the classic families, and mapped onto a sculpted form's
+intents) give it more. While it rests, `MotionSignature::rest_moment` sometimes spends a spell on
+something of its own instead of a beat — washing its face with a paw (a long body licks a forepaw
+lifted under its chin, keeping the face clear; a wing preens), shaking itself off all over, or
+sniffing the air nose up — chosen as its temperament leans: the calm wash most, the lively shake,
+the curious sniff. A resident at home does the same between spells of its usual sit, so the most
+common pose in the village is no longer held still. A nap is taken curled, sprawled out on its side
+with a paw flopped ahead, or loafed sitting up (`nap_pose`): a trusting companion sprawls more, a
+wary one dozes sitting up, and a long nap now and then turns over into another way partway
+through. A walk can carry a mood (`walk_mood`): a trudge, head and tail low on half-size steps, when
+it is tired or on its way to bed, and on some of a contented companion's walks — more of a playful
+one's, and more when it is walking over to say hello — a skip, bouncing up off its legs with its
+ears and tail high. Up from a nap a calm companion stretches and a lively one shakes itself, and
+one set down from a hand or landing from a throw shakes itself off; `Presence` remembers what a
+creature last did for three seconds so the art can tell. Each has its face: eyes shut to wash and
+shake and at the top of a stretch, curious and half-lidded to sniff with the nose up, joyful
+skipping, sleepy trudging. The spells and walks are drawn at their own clip rates, which at home
+adds about 1.5% to the frames a resting colony presents (1,042 to 1,058 a minute, summed over three
+colonies) and nothing to a wandering one, whose companions mostly sleep and walk. Under reduced
+motion a rest keeps to its settle, nobody turns over in a nap, and nobody stretches on waking.
+`formiga-tools repertoire-sheet` draws every body doing each of them beside the clip it might be
+mistaken for.
 
 **Eyes that live.** With nothing in particular to look at, a companion's eyes used to look
 straight out forever, and it blinked once every five seconds on the dot. Now its eyes look where
@@ -1991,7 +2018,9 @@ remain minis.
   20 Hz only while one is out.
 - How each creature carries itself (`Presence`): measured once at the end of every world tick from
   where it got to, a few comparisons per creature; the walks, rests, glances and blinks it drives
-  are chosen from it when a frame is drawn, and ask for no frame of their own.
+  are chosen from it when a frame is drawn, and ask for no frame of their own. The washes, shakes
+  and sniffs a resting companion has are drawn at their own clip rates while they last, about 1.5%
+  more frames for a colony at home.
 - Experience observations: one summary per creature per 60 active visible seconds; no new loop.
 - Calm proximity: accumulated from those same summaries and projected once per five active minutes;
   no separate pair polling loop. It does not accumulate at all while the home is out, and the
