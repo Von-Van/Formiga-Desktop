@@ -376,6 +376,7 @@ fn generate_creature(
             nudge: None,
             beat: None,
             indoors: false,
+            depth: 0.0,
             presence: Presence::default(),
         },
     }

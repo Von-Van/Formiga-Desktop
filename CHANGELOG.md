@@ -4,6 +4,19 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- The village has a little depth for its residents, not just its houses. Now and then a stroll at
+  home goes up a door path onto the trodden path along the middle of the grass, passing behind
+  the houses near the front and in front of the ones set back, or up onto a doorstep set back
+  from the front to look about; a chore is done up at the front of the house, and a spell indoors
+  goes up the path to the door and comes back out onto the doorstep. Companions only go further
+  in or back out on the paths the ground draws to each door, so nobody walks through a wall, and
+  they are drawn among the houses accordingly. One mostly hidden behind a house leaves a click
+  there to the house, and one picked up from back in the village stays under the hand. The front
+  of the grass is still where the village mostly lives: about 5% of an afternoon is spent further
+  in. `formiga-tools village-depth-sheet` draws it.
+
 ### Changed
 
 - Companions walk only when their feet are taking them somewhere. One that has walked up to a

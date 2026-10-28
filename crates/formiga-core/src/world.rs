@@ -40,6 +40,7 @@ mod tows;
 mod trips;
 mod undo;
 mod village_life;
+mod village_paths;
 mod visitors;
 mod wonders;
 use attention::{AttentionRuntime, DisplayAttention};
@@ -59,6 +60,7 @@ pub(crate) use rituals::scheduled_ritual_at;
 use rituals::*;
 use surfaces::SurfaceMemory;
 pub use undo::{ColonyEdit, UndoError};
+pub use village_paths::PATH_DEPTH as VILLAGE_PATH_DEPTH;
 pub use wonders::{WonderPose, wonder_length, wonder_motion, wonder_poses};
 
 /// Width of a creature's art frame, matching `formiga_art::FRAME_SIZE`. The simulation crate
@@ -106,6 +108,14 @@ pub struct World {
     /// for choosing. Runtime-only: a relaunch simply sends everybody wandering again.
     home_roam: BTreeMap<CreatureId, home::RoamStep>,
     home_roam_rng: ChaCha12Rng,
+    /// Whether a stroll goes into the village, and where: a stream of its own, so the strolls
+    /// along the front choose as they always have.
+    village_paths_rng: ChaCha12Rng,
+    /// Who the village walked this tick, and so keeps however far back it has gone. Everybody
+    /// else steps forward to the front of the grass.
+    village_walked: Vec<CreatureId>,
+    /// Who is out of sight behind a house nearer the front, as the village last stood.
+    behind_houses: Vec<CreatureId>,
     /// Whether a moment becomes a habit, and whether a habit is done this time. A stream of its
     /// own, so habits never shift any other choice the colony makes.
     habit_rng: ChaCha12Rng,
@@ -422,6 +432,9 @@ impl World {
             home_moment_rng: streams.rng("home-moments", 0),
             home_roam: BTreeMap::new(),
             home_roam_rng: streams.rng("home-roaming", 0),
+            village_paths_rng: streams.rng("village-paths", 0),
+            village_walked: Vec::new(),
+            behind_houses: Vec::new(),
             habit_rng: streams.rng("habits", 0),
             village_moment: None,
             undo_history: VecDeque::new(),
@@ -449,7 +462,16 @@ impl World {
     }
 
     pub fn tick(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {
+        self.village_walked.clear();
         self.tick_colony(now, dt, desktop);
+        if !self.save.settings.paused {
+            let walked = std::mem::take(&mut self.village_walked);
+            self.step_forward_out_of_the_village(dt, &walked);
+            self.village_walked = walked;
+        }
+        if !self.save.home.is_active() {
+            self.behind_houses.clear();
+        }
         // Last, once everyone has got wherever this tick takes them.
         self.carry_presence(dt, desktop);
     }

@@ -166,7 +166,7 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
                 YARD_SCALE,
                 [120, 134, 128, 140],
             );
-            draw_yard_panel(&mut pixels, width, x, y, panel, corner);
+            draw_yard_panel(&mut pixels, width, x, y, panel, corner, &[]);
         }
     }
     write_png(&path, width, height, &pixels)?;
@@ -174,14 +174,200 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn draw_yard_panel(
-    pixels: &mut [u8],
-    width: u32,
-    base_x: u32,
-    base_y: u32,
-    panel: &YardPanel,
-    corner: HomeCorner,
-) {
+/// The village with its residents among the houses, as the overlay draws them: everyone at the
+/// front, as a village stood before it had any depth; out along the trodden path in the middle,
+/// in front of the houses set back past it and behind the ones nearer the front; up on doorsteps
+/// set back from the front, and partway up a door path; and the path again after dark. Each at
+/// both corners.
+pub fn village_depth_sheet(path: PathBuf) -> Result<()> {
+    let full = vec![DwellingKind::Cottage; MAX_COLONY_CREATURES - 1];
+    let panel = |night: bool| YardPanel {
+        cottages: full.clone(),
+        objects: MAX_COLONY_OBJECTS,
+        hangouts: [None; 3],
+        gardens: [None; 3],
+        palette: None,
+        styles: (0..MAX_COLONY_CREATURES)
+            .map(|slot| ShelterStyle::ALL[slot % ShelterStyle::ALL.len()])
+            .collect(),
+        found: 8,
+        style_seed: 1,
+        night,
+    };
+    // Where each panel puts its residents, from where the doors are: `None` leaves everyone at
+    // their own place at the front.
+    type Placing = fn(&[(f32, f32)]) -> Vec<Stand>;
+    let on_path: Placing = |doors| {
+        let along = |a: usize, b: usize, t: f32| doors[a].0 + (doors[b].0 - doors[a].0) * t;
+        let path = VILLAGE_PATH_DEPTH;
+        vec![
+            // In front of the cottage set furthest back, behind the one at the front beside it.
+            Stand {
+                resident: 1,
+                x: doors[1].0,
+                depth: path,
+                facing_right: true,
+            },
+            Stand {
+                resident: 2,
+                x: along(3, 4, 0.15),
+                depth: path,
+                facing_right: false,
+            },
+            Stand {
+                resident: 3,
+                x: along(2, 3, 0.5),
+                depth: path,
+                facing_right: true,
+            },
+            Stand {
+                resident: 0,
+                x: along(0, 1, 0.5),
+                depth: 0.0,
+                facing_right: true,
+            },
+            Stand {
+                resident: 4,
+                x: along(4, 5, 0.5),
+                depth: 0.0,
+                facing_right: false,
+            },
+            Stand {
+                resident: 5,
+                x: doors[5].0,
+                depth: path,
+                facing_right: false,
+            },
+        ]
+    };
+    let doorsteps: Placing = |doors| {
+        let along = |a: usize, b: usize, t: f32| doors[a].0 + (doors[b].0 - doors[a].0) * t;
+        vec![
+            Stand {
+                resident: 1,
+                x: doors[1].0,
+                depth: doors[1].1,
+                facing_right: true,
+            },
+            Stand {
+                resident: 3,
+                x: doors[3].0,
+                depth: doors[3].1,
+                facing_right: false,
+            },
+            // Partway up the path to its door.
+            Stand {
+                resident: 5,
+                x: doors[5].0,
+                depth: doors[5].1 * 0.5,
+                facing_right: true,
+            },
+            Stand {
+                resident: 0,
+                x: along(0, 1, 0.5),
+                depth: 0.0,
+                facing_right: true,
+            },
+            Stand {
+                resident: 2,
+                x: along(2, 3, 0.5),
+                depth: 0.0,
+                facing_right: false,
+            },
+            Stand {
+                resident: 4,
+                x: along(4, 5, 0.4),
+                depth: 0.0,
+                facing_right: true,
+            },
+        ]
+    };
+    let rows: [(YardPanel, Option<Placing>); 4] = [
+        (panel(false), None),
+        (panel(false), Some(on_path)),
+        (panel(false), Some(doorsteps)),
+        (panel(true), Some(on_path)),
+    ];
+    let gap = 10;
+    let panel_width = YARD_STRIP * YARD_SCALE;
+    let panel_height = YARD_HEIGHT * YARD_SCALE;
+    let width = panel_width * 2 + gap * 3;
+    let height = (panel_height + gap) * rows.len() as u32 + gap;
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [237, 234, 224, 255],
+        [209, 226, 219, 255],
+    );
+    for (row, (panel, placing)) in rows.iter().enumerate() {
+        for (column, corner) in [HomeCorner::BottomRight, HomeCorner::BottomLeft]
+            .into_iter()
+            .enumerate()
+        {
+            let (x, y) = (
+                gap + column as u32 * (panel_width + gap),
+                gap + row as u32 * (panel_height + gap),
+            );
+            fill_rect(
+                &mut pixels,
+                width,
+                x,
+                y,
+                panel_width,
+                panel_height,
+                if panel.night {
+                    [28, 34, 58, 235]
+                } else {
+                    [255, 255, 255, 90]
+                },
+            );
+            let stands =
+                placing.map_or_else(Vec::new, |placing| placing(&door_places(panel, corner)));
+            draw_yard_panel(&mut pixels, width, x, y, panel, corner, &stands);
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// A square to lay down on a panel: what is drawn, its size, and its top-left corner.
+type Square = (formiga_art::Canvas, u32, i32, i32);
+
+/// A resident put somewhere on the village ground by hand, for the depth sheet: which one, where
+/// its feet are along the strip, how far back on the grass, and which way it faces.
+#[derive(Clone, Copy)]
+struct Stand {
+    resident: usize,
+    x: f32,
+    depth: f32,
+    facing_right: bool,
+}
+
+/// Where each house's door is along the strip and how far back the house stands, so stands can
+/// be put on doorsteps and paths.
+fn door_places(panel: &YardPanel, corner: HomeCorner) -> Vec<(f32, f32)> {
+    let (home, monitor) = panel_home(panel, corner);
+    let policy = HabitatPolicy::default();
+    (0..=panel.cottages.len())
+        .filter_map(|slot| {
+            let (_, p) = home_dwelling_position(
+                &home,
+                slot,
+                &panel.cottages,
+                std::slice::from_ref(&monitor),
+                &policy,
+                1,
+            )?;
+            Some((p.x, f32::from(DEFAULT_HOUSE_DEPTHS[slot])))
+        })
+        .collect()
+}
+
+/// The panel's colony home, laid out on a display the size of the panel.
+fn panel_home(panel: &YardPanel, corner: HomeCorner) -> (ColonyHome, MonitorInfo) {
     let mut seed = [55; 32];
     seed[1] = panel.style_seed;
     let mut monitor = fixture_desktop().monitors.remove(0);
@@ -200,6 +386,21 @@ fn draw_yard_panel(
         None,
     );
     home.corner = corner;
+    (home, monitor)
+}
+
+fn draw_yard_panel(
+    pixels: &mut [u8],
+    width: u32,
+    base_x: u32,
+    base_y: u32,
+    panel: &YardPanel,
+    corner: HomeCorner,
+    stands: &[Stand],
+) {
+    let mut seed = [55; 32];
+    seed[1] = panel.style_seed;
+    let (mut home, monitor) = panel_home(panel, corner);
     home.palette = panel.palette;
     for (kind, along) in HangoutKind::ALL.into_iter().zip(panel.hangouts) {
         home.set_hangout(kind, along);
@@ -321,6 +522,9 @@ fn draw_yard_panel(
         }
     };
     lay_ground(formiga_art::GroundLayer::Back, &mut corner_of);
+    // Every house and tree as the overlay draws them: from the back of the ground to the front,
+    // each a list of squares to lay down, with how far back it stands.
+    let mut village_items: Vec<(f32, Vec<Square>)> = Vec::new();
     for slot in 0..=cottages.len() {
         let Some((_, p)) = home_dwelling_position(&home, slot, cottages, monitors, &policy, 1)
         else {
@@ -342,7 +546,10 @@ fn draw_yard_panel(
             }
         }
         let (x, y) = standing(SHELTER_SIZE, p);
-        corner_of(&cell, SHELTER_SIZE, x, y);
+        village_items.push((
+            f32::from(DEFAULT_HOUSE_DEPTHS.get(slot).copied().unwrap_or(0)),
+            vec![(cell, SHELTER_SIZE, x, y)],
+        ));
     }
 
     // The two trees in front of the houses they reach in over, and then whatever the scrapbook
@@ -379,7 +586,7 @@ fn draw_yard_panel(
             }
         }
         let (left, top) = standing(SHELTER_SIZE, tree);
-        corner_of(&cell, SHELTER_SIZE, left, top);
+        let mut squares = vec![(cell, SHELTER_SIZE, left, top)];
         // With nothing chosen, the first sixteen finds each hang on the hook numbered after them.
         for variant in 0..panel.found as u8 {
             let Some((hangs_in, anchor)) = formiga_art::hook_place(usize::from(variant)) else {
@@ -401,12 +608,61 @@ fn draw_yard_panel(
             }
             let half = formiga_art::TRINKET_CELL as i32 / 2;
             let (inset_x, inset_y) = formiga_art::TREE_INSET;
-            corner_of(
-                &quad,
+            squares.push((
+                quad,
                 formiga_art::TRINKET_CELL,
                 left + inset_x + anchor.x - half,
                 top + inset_y + anchor.y - half,
-            );
+            ));
+        }
+        village_items.push((0.0, squares));
+    }
+    village_items.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+    // Whoever stands back on the grass is drawn among the houses, in front of the ones as far
+    // back or further and behind the rest, and before the grass along the front.
+    let facing = corner == HomeCorner::BottomLeft;
+    let ground_y = home_commons(&home, cottages, monitors, &policy, 1).map_or(
+        monitor.usable_bounds.y + monitor.usable_bounds.height,
+        |c| c.ground_y,
+    );
+    let resident_square = |stand: &Stand| {
+        let frame = CreatureRenderer::render_frame(
+            &residents[stand.resident].appearance,
+            ActionKind::Homebound,
+            0,
+            stand.facing_right,
+        );
+        let p = Point {
+            x: stand.x,
+            y: ground_y - stand.depth,
+        };
+        let (x, y) = standing(FRAME_SIZE, p);
+        (frame, x, y)
+    };
+    let mut deep: Vec<&Stand> = stands.iter().filter(|stand| stand.depth > 0.0).collect();
+    let behind = |depth: f32| {
+        village_items
+            .iter()
+            .take_while(|(back, _)| back + 0.01 >= depth)
+            .count()
+    };
+    deep.sort_by_key(|stand| behind(stand.depth));
+    let mut laid = 0;
+    for stand in &deep {
+        let upto = behind(stand.depth);
+        for (_, squares) in &village_items[laid..upto.max(laid)] {
+            for (canvas, size, x, y) in squares {
+                corner_of(canvas, *size, *x, *y);
+            }
+        }
+        laid = laid.max(upto);
+        let (frame, x, y) = resident_square(stand);
+        corner_of(&frame, FRAME_SIZE, x, y);
+    }
+    for (_, squares) in &village_items[laid..] {
+        for (canvas, size, x, y) in squares {
+            corner_of(canvas, *size, *x, *y);
         }
     }
 
@@ -451,8 +707,15 @@ fn draw_yard_panel(
         corner_of(&tile, 16, x, y);
     }
 
-    // The residents themselves, spread along the ground in front of the row and facing the strip.
-    let facing = corner == HomeCorner::BottomLeft;
+    // Whoever was put at the front of the grass by hand, or else the residents themselves,
+    // spread along the ground in front of the row and facing the strip.
+    if !stands.is_empty() {
+        for stand in stands.iter().filter(|stand| stand.depth <= 0.0) {
+            let (frame, x, y) = resident_square(stand);
+            corner_of(&frame, FRAME_SIZE, x, y);
+        }
+        return;
+    }
     for (slot, member) in residents.iter().enumerate() {
         let Some((_, p)) = home_resting_position(
             &home,

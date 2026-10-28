@@ -66,6 +66,7 @@ fn mark(creature: &Creature, desktop: &DesktopSnapshot) -> PresenceMark {
     let surface = &creature.state.surface;
     PresenceMark {
         x: creature.state.position.x,
+        depth: creature.state.depth,
         window: surface.window_key.and_then(|key| {
             desktop
                 .windows
@@ -136,11 +137,14 @@ pub(super) fn carry(
         Some(PresenceMark {
             x: was_x,
             window: Some((was_on, was_left)),
+            ..
         }) if now.window.is_some_and(|(key, _)| key == was_on) => {
             let carried = now.window.map_or(0.0, |(_, left)| left - was_left);
             (now.x - was_x - carried).abs()
         }
-        Some(was) => (now.x - was.x).abs(),
+        // Up or down a path in the village is walking too, a shelter pixel back for every one
+        // the drawing rises.
+        Some(was) => (now.x - was.x).abs() + (now.depth - was.depth).abs() / pixels_per_point,
         None => 0.0,
     };
     let first = presence.last.is_none();

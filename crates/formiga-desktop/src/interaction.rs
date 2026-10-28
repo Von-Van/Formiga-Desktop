@@ -136,15 +136,18 @@ impl InteractionProxy {
         };
         let placement = FramePlacement::for_creature(creature, baseline);
         let origin_y = placement.origin_y as f32 * f32::from(scale);
+        // Wherever the overlay draws it: higher up for somebody standing back in the village.
+        let drawn = creature
+            .state
+            .drawn_position(f32::from(scale) / monitor.scale_factor.max(1.0));
         self.logical_bounds = DesktopRect {
-            x: creature.state.position.x - logical_size * 0.5,
-            y: creature.state.position.y + origin_y / monitor.scale_factor,
+            x: drawn.x - logical_size * 0.5,
+            y: drawn.y + origin_y / monitor.scale_factor,
             width: logical_size,
             height: logical_size,
         };
-        let local_anchor_x = (creature.state.position.x - monitor.bounds.x) * monitor.scale_factor;
-        let local_anchor_y =
-            (creature.state.position.y - monitor.bounds.y) * monitor.scale_factor + origin_y;
+        let local_anchor_x = (drawn.x - monitor.bounds.x) * monitor.scale_factor;
+        let local_anchor_y = (drawn.y - monitor.bounds.y) * monitor.scale_factor + origin_y;
         let position = PhysicalPosition::new(
             overlay_origin.x + (local_anchor_x - physical_size as f32 * 0.5).round() as i32,
             overlay_origin.y + local_anchor_y.round() as i32,

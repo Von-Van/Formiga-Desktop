@@ -35,6 +35,7 @@ mod trips;
 mod undo;
 mod village;
 mod village_life;
+mod village_paths;
 mod visitors;
 mod wonders;
 

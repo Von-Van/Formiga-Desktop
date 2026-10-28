@@ -227,6 +227,13 @@ pub struct CreatureState {
     /// always opens with everybody outside.
     #[serde(skip)]
     pub indoors: bool,
+    /// How far back on the village ground it is standing, in shelter pixels from the front edge
+    /// of the grass: nought everywhere but at home, where a path or a doorstep set back takes it
+    /// further in. Drawn that much higher up the display, in front of the houses further back
+    /// and behind the ones further forward. Runtime only, like `indoors`: a colony always opens
+    /// with everybody at the front.
+    #[serde(skip)]
+    pub depth: f32,
     /// How it has been carrying itself from one tick to the next, kept for the art. Runtime
     /// only, like `attention`.
     #[serde(skip)]
@@ -271,6 +278,8 @@ pub struct Presence {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PresenceMark {
     pub x: f32,
+    /// How far back on the village ground it stood, in shelter pixels.
+    pub depth: f32,
     pub window: Option<(WindowKey, f32)>,
 }
 
@@ -435,5 +444,15 @@ impl CreatureState {
     /// to bed, drowsy, not already asleep and gliding across the floor.
     pub fn walking_to_sleep(&self) -> bool {
         self.action == ActionKind::Sleep && self.velocity.x.abs() > 1.0
+    }
+
+    /// Where it is drawn standing: its contact point, raised up the display by how far back on
+    /// the village ground it is. `points_per_pixel` is how many desktop points one shelter pixel
+    /// takes on its display, the measure houses set back are raised by too.
+    pub fn drawn_position(&self, points_per_pixel: f32) -> Point {
+        Point {
+            x: self.position.x,
+            y: self.position.y - self.depth * points_per_pixel,
+        }
     }
 }

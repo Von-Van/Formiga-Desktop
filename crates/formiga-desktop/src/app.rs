@@ -747,6 +747,8 @@ impl FormigaApp {
             let fullscreen_hidden = world.save.settings.fullscreen_app_occlusion
                 && !dragging_this
                 && monitor_has_fullscreen_window(monitor.bounds, &self.cached_windows);
+            // Out of sight behind a house in the village: a click there is the house's.
+            let behind_a_house = !dragging_this && world.behind_a_house(creature.id);
             proxy.sync(
                 creature,
                 &world.save.settings,
@@ -755,7 +757,7 @@ impl FormigaApp {
                 self.current_cursor,
                 ProxyRuntimeState {
                     dragging: dragging_this,
-                    occluded: fullscreen_hidden,
+                    occluded: fullscreen_hidden || behind_a_house,
                 },
             );
         }
