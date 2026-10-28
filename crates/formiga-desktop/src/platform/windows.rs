@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{COLORREF, CloseHandle, HWND, LPARAM, POINT, RECT};
+use windows::Win32::Foundation::{
+    COLORREF, CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+};
 use windows::Win32::Graphics::Dwm::{
     DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
 };
@@ -25,11 +27,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetLastInputInfo, LASTINPUTINFO, ReleaseCapture, SetCapture, VK_LBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetCursorPos, GetWindowLongW,
-    GetWindowRect, GetWindowThreadProcessId, HWND_TOPMOST, IsIconic, IsWindowVisible, LWA_ALPHA,
+    CallWindowProcW, DefWindowProcW, EnumWindows, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC,
+    GetClassNameW, GetCursorPos, GetWindowLongPtrW, GetWindowLongW, GetWindowRect,
+    GetWindowThreadProcessId, HWND_TOPMOST, IsIconic, IsWindowVisible, LWA_ALPHA, STYLESTRUCT,
     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetLayeredWindowAttributes,
-    SetWindowLongW, SetWindowPos, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
+    SetWindowLongPtrW, SetWindowLongW, SetWindowPos, WM_NCDESTROY, WM_STYLECHANGING, WNDPROC,
+    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+    WS_POPUP,
 };
 use windows::core::{BOOL, PWSTR};
 use winit::monitor::MonitorHandle;
@@ -40,6 +44,9 @@ use winit::window::Window;
 static ENUMERATED: Mutex<Vec<DesktopWindow>> = Mutex::new(Vec::new());
 static ENUMERATED_OWNERS: Mutex<BTreeMap<u32, Option<(ApplicationKey, String)>>> =
     Mutex::new(BTreeMap::new());
+/// The window procedure each helper window had before `keep_off_taskbar` stood in front of it,
+/// by window handle.
+static HELPER_PROCEDURES: Mutex<BTreeMap<isize, isize>> = Mutex::new(BTreeMap::new());
 
 pub fn display_key(monitor: &MonitorHandle) -> DisplayKey {
     let digest: [u8; 32] = Sha256::digest(monitor.native_id().as_bytes()).into();
@@ -109,7 +116,75 @@ pub fn raise_above_overlays(window: &Window, raised: bool) {
 }
 
 pub fn configure_native_overlay(window: &Window, hittest_enabled: bool) {
+    if let Some(hwnd) = window_hwnd(window) {
+        keep_off_taskbar(hwnd);
+    }
     set_overlay_hittest(window, hittest_enabled);
+}
+
+/// The extended style every overlay and proxy keeps: a tool window, never an app window, so the
+/// taskbar and Alt-Tab pass it over and the notebook is Formiga's only entry in either.
+fn helper_extended_style(extended: u32) -> u32 {
+    (extended | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0
+}
+
+/// Keep a helper window out of the taskbar and Alt-Tab for as long as it lives. Setting the style
+/// once is not enough: winit rebuilds the extended style from its own flags on every show, hide and
+/// hit-test change, adding `WS_EX_APPWINDOW` and dropping `WS_EX_TOOLWINDOW` each time, so every
+/// creature, menu and house proxy turned into its own Alt-Tab entry the first time it appeared.
+/// Instead the window vets each change to its extended style before it lands, whoever makes it.
+fn keep_off_taskbar(hwnd: HWND) {
+    let filter = helper_window_procedure as *const () as isize;
+    // SAFETY: the handle is a live window owned by this thread, and the procedure that replaces
+    // its own forwards every message to the one it replaced.
+    unsafe {
+        let previous = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
+        if previous == filter || previous == 0 {
+            return;
+        }
+        helper_procedures().insert(hwnd.0 as isize, previous);
+        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, filter);
+        let extended = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        SetWindowLongW(hwnd, GWL_EXSTYLE, helper_extended_style(extended) as i32);
+    }
+}
+
+fn helper_procedures() -> std::sync::MutexGuard<'static, BTreeMap<isize, isize>> {
+    HELPER_PROCEDURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+unsafe extern "system" fn helper_window_procedure(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if message == WM_STYLECHANGING && wparam.0 as i32 == GWL_EXSTYLE.0 {
+        // SAFETY: for WM_STYLECHANGING, lparam points at the STYLESTRUCT about to be applied.
+        let change = unsafe { &mut *(lparam.0 as *mut STYLESTRUCT) };
+        change.styleNew = helper_extended_style(change.styleNew);
+    }
+    let previous = if message == WM_NCDESTROY {
+        helper_procedures().remove(&(hwnd.0 as isize))
+    } else {
+        helper_procedures().get(&(hwnd.0 as isize)).copied()
+    };
+    match previous {
+        // SAFETY: `previous` was read from this window's GWLP_WNDPROC, so it is a window
+        // procedure, or a handle CallWindowProcW knows how to call.
+        Some(previous) => unsafe {
+            CallWindowProcW(
+                std::mem::transmute::<isize, WNDPROC>(previous),
+                hwnd,
+                message,
+                wparam,
+                lparam,
+            )
+        },
+        None => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
+    }
 }
 
 pub fn set_overlay_hittest(window: &Window, enabled: bool) {
@@ -124,8 +199,7 @@ pub fn set_overlay_hittest(window: &Window, enabled: bool) {
         let style = GetWindowLongW(hwnd, GWL_STYLE) as u32 | WS_POPUP.0;
         SetWindowLongW(hwnd, GWL_STYLE, style as i32);
         let mut extended =
-            (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 | WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0)
-                & !WS_EX_APPWINDOW.0;
+            helper_extended_style(GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 | WS_EX_NOACTIVATE.0);
         if enabled {
             extended &= !(WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0);
         } else {
@@ -154,14 +228,13 @@ pub fn configure_interaction_proxy(window: &Window) {
     let Some(hwnd) = window_hwnd(window) else {
         return;
     };
+    keep_off_taskbar(hwnd);
     unsafe {
         let style = GetWindowLongW(hwnd, GWL_STYLE) as u32 | WS_POPUP.0;
         SetWindowLongW(hwnd, GWL_STYLE, style as i32);
-        let extended = (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32
-            | WS_EX_LAYERED.0
-            | WS_EX_TOOLWINDOW.0
-            | WS_EX_NOACTIVATE.0)
-            & !WS_EX_TRANSPARENT.0;
+        let extended = helper_extended_style(
+            GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 | WS_EX_LAYERED.0 | WS_EX_NOACTIVATE.0,
+        ) & !WS_EX_TRANSPARENT.0;
         SetWindowLongW(hwnd, GWL_EXSTYLE, extended as i32);
         let _ = SetWindowPos(
             hwnd,
@@ -664,5 +737,25 @@ mod tests {
         // Layered alone is just transparency; a plain tool window is still interactive.
         assert!(!is_noninteractive_overlay(WS_EX_LAYERED.0));
         assert!(!is_noninteractive_overlay(WS_EX_TOOLWINDOW.0));
+    }
+
+    #[test]
+    fn helper_windows_stay_off_the_taskbar_and_alt_tab() {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            WS_EX_ACCEPTFILES, WS_EX_TOPMOST, WS_EX_WINDOWEDGE,
+        };
+        // What winit writes for an always-on-top, click-through window on every show or hide.
+        let winit = WS_EX_WINDOWEDGE.0
+            | WS_EX_ACCEPTFILES.0
+            | WS_EX_APPWINDOW.0
+            | WS_EX_TOPMOST.0
+            | WS_EX_LAYERED.0
+            | WS_EX_TRANSPARENT.0;
+        let kept = helper_extended_style(winit);
+        assert_eq!(kept & WS_EX_APPWINDOW.0, 0);
+        assert_ne!(kept & WS_EX_TOOLWINDOW.0, 0);
+        // Nothing else winit asked for is lost: still topmost and still click-through.
+        assert_eq!(kept & !WS_EX_TOOLWINDOW.0, winit & !WS_EX_APPWINDOW.0);
+        assert_eq!(helper_extended_style(kept), kept);
     }
 }

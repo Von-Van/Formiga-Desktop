@@ -56,6 +56,13 @@ All notable changes are documented here.
   1.5% to the frames a resting colony at home presents; the other changes add no texture and no
   frame.
 
+### Fixed
+
+- On Windows, Formiga shows up once in Alt-Tab and the taskbar, as its notebook, rather than once
+  for every creature, house, menu and display. The invisible windows that catch clicks on
+  creatures, houses and menus, and the overlays the colony is drawn on, lost their tool-window
+  style the first time they were shown, so each became an app window of its own.
+
 ## [0.68.1] - 2026-10-26
 
 A patch to the notebook's pencil hand, released alongside Formiga Hill, Home and Battle 0.68.1.
