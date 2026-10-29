@@ -960,6 +960,7 @@ mod tests {
                 elapsed: 0.5,
                 duration: 2.0,
                 lift: 0.0,
+                ballistic: false,
             }),
         );
         world.window_routes.insert(

@@ -433,7 +433,10 @@ of one scene, in memory only. It is a creature position, never a cursor position
 anything about the desktop, and it is excluded from saves, journals, exports, and creature codes.
 Being hidden means being out of a companion's line of sight along a surface; a creature is never
 placed where the person at the desk cannot see it, so no window's contents are ever consulted or
-inferred. The window race reads the same rectangles and stacking order every other behavior does.
+inferred. The window race reads the same rectangles and stacking order every other behavior does,
+and so does Jump'n'Catch, which keeps the window it is played on and four creature positions — the
+edge leapt from, where the catcher waits, where the leap lands and where the catcher judged it
+would — for the length of one round, in memory only.
 
 Cursor curiosity retains one previous cursor point/time and a bounded local aggregate (center,
 travel distance, turns, and elapsed time), with no trail or historical log. Native sample times,

@@ -2553,8 +2553,9 @@ timer. Copycat recruits eligible observers in turn and remembers visited members
 contest ends when the less composed of the pair looks away, or early when something nearby
 distracts one of them.
 
-Eighteen kinds of scene exist, each described by its kind, a seed, per-member roles, an expiry, at
-most one temporary plaything, four remembered points, and — for a race — the window it runs to.
+Nineteen kinds of scene exist, each described by its kind, a seed, per-member roles, an expiry, at
+most one temporary plaything, four remembered points, and — for a race and a round of jump and
+catch — the window it is played on.
 `world/attention/games.rs` holds the ones that move: a chase that swaps roles on
 contact, a procession that keeps station and releases stragglers, a dance circle that gathers on
 staggered beats, a pile beside a resting companion, leapfrog using ordinary validated hops,
@@ -2583,6 +2584,27 @@ takes. Hide and seek defines hiding as being out of a companion's line of sight,
 user's: a creature is never sent somewhere the person at the desk cannot see it. The seeker counts
 facing away, then searches from the one position it last actually had the hider in view, and the
 memory refreshes only while the hider is on the same ledge, within sight range, and in front of it.
+
+`world/attention/catching.rs` is Jump'n'Catch. It starts between a pair on the ground when the
+bolder one is playful and lively and a window is near enough to climb: at least a hundred
+creature-scale points tall, no taller than the jumper's own reach, its top open to stand on, and
+open ground beside one of its edges — inside the habitat, under no other window, with no lower ledge
+in between — reaching past the farthest leap to where the catcher waits. The jumper climbs on the
+ordinary climb journey and walks to the brink while the catcher takes its place a hundred and fifty
+points out from the edge; then a wobble at the edge, a crouch, and the leap: a hop whose straight
+line and lift together are one parabola (`HopJourney::ballistic`), rising twenty-four points and
+coming down under a gentler gravity than a throw, out between thirty-six and a hundred and ten
+points as boldness and the moment decide. As it leaves, the catcher judges where it will land — out
+by up to forty-eight points either way, less for a watchful, lively catcher that knows the jumper
+well — and dashes there at a sprint's pace (`ShortWalk::dashing`), which, unlike any other walk,
+the leaper's own landing does not hold off. The catch is decided the tick before the leaper comes
+down past the catcher's raised paws: within eighteen points, the rest of the leap is replaced by one
+hop that waits up on the paws for most of a second and then sets it down beside the catcher, so even
+a game called off mid-hold still sets it down; otherwise it lands on its own. Members keep their
+play plans throughout, marked as hopping while the climb or leap has them, and a hopping member is
+judged for exposure where it comes down rather than on the window face it climbs. A round keeps two
+bytes of its own: the window is the session's goal and its places the session's four remembered
+points.
 
 `world/attention/dares.rs` offers a gap someone just cleared to a watcher standing where the same
 gap is reachable; it walks to its own edge and answers through the ordinary attempt machinery,

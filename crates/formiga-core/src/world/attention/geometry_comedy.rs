@@ -147,6 +147,7 @@ impl World {
                     elapsed: -0.3,
                     duration: (c.state.position.distance(landing) / 280.0).clamp(0.6, 1.6),
                     lift: 0.0,
+                    ballistic: false,
                 });
                 reaction.role = Role::Journey {
                     target_window: surface.window_key,

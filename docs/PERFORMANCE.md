@@ -188,7 +188,9 @@ quad sits and not how many there are. The weekly routine is evaluated inside the
 tick — no timer, and no new event-loop deadline. The three geometry games cost the play session one
 new field between them: the race stores the window it runs to, hide and seek reuses the four
 remembered points a leader already had for the one place a seeker last saw someone, and the lava
-round holds nothing at all, reading each member's support afresh every tick. All of it is
+round holds nothing at all, reading each member's support afresh every tick. Jump'n'Catch adds
+two bytes, its phase and whether it was caught: its window is the race's field and its four places
+are the remembered points, so the play runtime stays inside its 512 bytes. All of it is
 runtime-only.
 
 Colony objects add one 128×16 RGBA atlas (8 KiB) per loaded colony and at most eight static quads.

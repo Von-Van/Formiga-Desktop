@@ -1724,6 +1724,7 @@ impl World {
                     elapsed: 0.0,
                     duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
                     lift: 0.0,
+                    ballistic: false,
                 }),
             );
         }

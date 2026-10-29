@@ -1565,6 +1565,7 @@ fn wonder_route(
             elapsed: 0.0,
             duration: (from.state.position.distance(floor) / 180.0).max(0.25),
             lift: 0.0,
+            ballistic: false,
         })));
         from.state.position = floor;
         from.state.surface = surface;

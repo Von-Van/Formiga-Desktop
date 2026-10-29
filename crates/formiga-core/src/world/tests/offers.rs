@@ -155,6 +155,7 @@ fn an_offer_is_not_made_at_all_when_it_would_cut_something_short() {
                     elapsed: 0.0,
                     duration: 1.0,
                     lift: 0.0,
+                    ballistic: false,
                 }),
             );
         }),

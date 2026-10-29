@@ -288,7 +288,7 @@ Use `pass`, `fail`, or an issue link. Do not mark a row from compilation evidenc
 | Bond sequence cancellation when a target moves, sleeps, enters shelter, is tossed, or disappears [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
 | Picnic, group nap, floor race, shelter gathering, catch, presentation, hatch day, quiet huddle, and sleep pile playback [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
 | Ritual interruption by hide, pause, drag, toss, geometry change, and reduced-motion substitution [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
-| Chase, procession, dance, pile, leapfrog, keep-away, tug, tag, gap turns, copied route, ledge contest, window race, the-floor-is-lava, and hide-and-seek playback [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
+| Chase, procession, dance, pile, leapfrog, keep-away, tug, tag, gap turns, copied route, ledge contest, window race, the-floor-is-lava, hide-and-seek, and jump-and-catch playback [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
 | Habitat create/move/resize/toggle/delete [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
 | The desktop editor draws the region under the cursor, the settings window stays in front of it throughout, and Apply, Cancel and Reset all remain clickable [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
 | Creature menus, petting and dragging all still work after an edit is applied and after one is cancelled [#13](https://github.com/Von-Van/Formiga-Desktop/issues/13) | pending | pending | pending | pending |
@@ -420,6 +420,15 @@ and for its remembered position to change only while the hider is genuinely in v
 scenario asserts that no two playing creatures ever claim the same spot and that no hop is aimed at
 a spot another creature has taken or reserved — the honest-space contract, without a collision
 solver. Reduced motion starts none of the three.
+
+Jump'n'Catch is asserted to play a whole round in order — the climb, the walk to the brink, the
+teeter and crouch, the leap, the catch and the ending — with a quick catcher holding its friend up
+overhead for most of a second, running on its own feet as Presence measures them, sharing a heart,
+and both ending on the ground face-clear of each other; to land a misjudged leap on its own with a
+dizzy bubble and no hearts, the catcher stepping clear of a near miss; to call the game off with
+nobody left in the air when the window closes mid-climb; and never to start under reduced motion,
+with no window, or with one too low to be worth the leap. The leap's arc is asserted to rise to its
+apex, quicken all the way down and land where it was aimed.
 
 Body poses are covered as a layer over the action, never as a replacement for one. A recorder runs
 inside every scene test and fails on a pose struck over travel, a hop, a hanging creature, reduced

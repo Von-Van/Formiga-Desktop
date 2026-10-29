@@ -535,6 +535,7 @@ impl World {
                 elapsed: 0.0,
                 duration: 0.55,
                 lift: 0.0,
+                ballistic: false,
             }),
         );
         if let Some(plan) = self.attention.plans.get_mut(&back_id)

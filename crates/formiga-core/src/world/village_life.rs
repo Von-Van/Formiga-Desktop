@@ -1213,6 +1213,7 @@ pub(super) fn roof_hop_down(creature: &Creature, landing: Point) -> WindowJourne
         elapsed: 0.0,
         duration: ROOF_HOP_DOWN_SECS,
         lift: (landing.y - start.y).abs().max(6.0) * 0.5 + 6.0,
+        ballistic: false,
     })
 }
 
