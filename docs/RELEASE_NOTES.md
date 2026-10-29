@@ -4,7 +4,7 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
-## New in 0.68.3
+## New in 0.68.21
 
 Companions move more like living things. They walk only when they are going somewhere, step in
 time with the ground going by, and rest still between small moments of their own: washing a face,
@@ -15,7 +15,7 @@ live in among the houses now, in staggered rows rather than along the front, str
 paths, along the middle path and onto doorsteps, and drawn a little smaller further back.
 Jump'n'Catch is a new game: a bold companion leaps off a window and a friend runs to catch it. On
 Windows, Formiga shows up once in Alt-Tab and the taskbar. Formiga Hill, Home and Battle stay at
-0.68.1 and work with this release; for a Battle friend match, both of you need Desktop 0.68.3.
+0.68.1 and work with this release; for a Battle friend match, both of you need Desktop 0.68.21.
 
 ## New in 0.68.1
 
