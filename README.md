@@ -1,4 +1,4 @@
-# Formiga · v0.68.2
+# Formiga · v0.68.3
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.68.2-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.68.3-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,17 +107,18 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.68.2
+## New in 0.68.3
 
 Companions move more like living things. They walk only when they are going somewhere, step in
 time with the ground going by, and rest still between small moments of their own: washing a face,
 shaking off, sniffing the air, napping curled, sprawled or sitting up, trudging off to bed or
 skipping over to say hello. Their eyes look where they are going and glance at friends, and
-watering, picking, tending, eating and being petted each look like what they are. At home they now
-go up the door paths, along the middle path and onto doorsteps among the houses. Jump'n'Catch is a
-new game: a bold companion leaps off a window and a friend runs to catch it. On Windows, Formiga
-shows up once in Alt-Tab and the taskbar. Formiga Hill, Home and Battle stay at 0.68.1 and work
-with this release; for a Battle friend match, both of you need Desktop 0.68.2.
+watering, picking, tending, eating and being petted each look like what they are. At home they
+live in among the houses now, in staggered rows rather than along the front, strolling up the door
+paths, along the middle path and onto doorsteps, and drawn a little smaller further back.
+Jump'n'Catch is a new game: a bold companion leaps off a window and a friend runs to catch it. On
+Windows, Formiga shows up once in Alt-Tab and the taskbar. Formiga Hill, Home and Battle stay at
+0.68.1 and work with this release; for a Battle friend match, both of you need Desktop 0.68.3.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
