@@ -2,7 +2,12 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.68.2] - 2026-10-28
+
+Livelier companions, a village with some depth, a new game and a Windows fix, released on its own:
+Formiga Hill, Home and Battle stay at 0.68.1. Save version 33, travel version 6, household version
+12 and Battle contract version 5 are unchanged, so the 0.68.1 apps still work with it. Battle pairs
+friends only on the same Desktop version, so a friend match needs both sides on 0.68.2.
 
 ### Added
 
