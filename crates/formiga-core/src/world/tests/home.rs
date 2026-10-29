@@ -636,7 +636,7 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
                 creature.state.position.x
             );
             // Only somebody sitting on its roof, or hopping up or down, is off the ground, and
-            // never higher than the tallest house.
+            // never higher than the tallest house set as far back as a house goes.
             let aloft = world
                 .village_life
                 .get(&creature.id)
@@ -646,7 +646,11 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
             if aloft {
                 assert!(
                     creature.state.position.y <= ground
-                        && creature.state.position.y >= ground - 80.0,
+                        && creature.state.position.y
+                            >= ground
+                                - 80.0
+                                - f32::from(crate::MAX_HOUSE_DEPTH)
+                                    * f32::from(world.save.settings.display_scale),
                     "somebody went higher than a roof: {}",
                     creature.state.position.y
                 );

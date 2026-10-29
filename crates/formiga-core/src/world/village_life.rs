@@ -233,6 +233,8 @@ pub(super) struct VillageContext<'a> {
     pub(super) frame: f32,
     /// Whether the colony has a find left today.
     pub(super) find_allowed: bool,
+    /// The way down to the front from somewhere back in the village.
+    pub(super) paths: &'a village_paths::VillagePaths,
 }
 
 impl VillageContext<'_> {
@@ -317,6 +319,18 @@ pub(super) fn advance(
         return true;
     }
     let speed = errand_speed(creature);
+    // The garden, the cushions and the hop up onto a roof are all at the front of the grass: a
+    // resident somewhere back in the village goes down a path to the front first, and the plan
+    // starts from there.
+    if activity.step == 0
+        && creature.state.depth > 0.0
+        && let Some(goal) = activity.plan.at_the_front()
+    {
+        show(creature, ActionKind::Traverse, context.events);
+        context.paths.walk_to(creature, goal, 0.0, speed, dt);
+        activity.step_elapsed = 0.0;
+        return true;
+    }
     match activity.plan {
         Plan::Garden {
             patch,
@@ -463,6 +477,7 @@ pub(super) fn advance(
                 show(creature, ActionKind::Traverse, context.events);
                 if village_paths::by_own_door(
                     creature,
+                    context.paths,
                     door_x,
                     stand,
                     depth,
@@ -500,6 +515,7 @@ pub(super) fn advance(
                 show(creature, ActionKind::Traverse, context.events);
                 if village_paths::by_own_door(
                     creature,
+                    context.paths,
                     door.x,
                     door,
                     depth,
@@ -1133,6 +1149,15 @@ pub(super) fn choose(
 }
 
 impl Plan {
+    /// Where a plan that is had at the front of the grass first takes its resident.
+    fn at_the_front(&self) -> Option<Point> {
+        match *self {
+            Plan::Garden { stand, .. } => Some(stand),
+            Plan::Roof { beside, .. } | Plan::MissedCushion { beside, .. } => Some(beside),
+            _ => None,
+        }
+    }
+
     /// Where on the ground this plan keeps its resident a while, from the moment it sets off: the
     /// spot everybody else keeps clear of until it is done. A chore, a leaf on its face and the
     /// chase after a snack are over in a moment, and indoors and up on the roof it is nowhere
@@ -1358,6 +1383,7 @@ impl World {
             .find(|monitor| Some(monitor.display_key) == self.save.home.display)
             .map_or(1.0, |monitor| monitor.scale_factor);
         let face = spacing::frame_width(self.save.settings.display_scale, scale_factor) * 0.5;
+        let points_per_pixel = f32::from(self.save.settings.display_scale) / scale_factor.max(1.0);
         self.village_life
             .iter()
             .filter_map(|(creature_id, activity)| {
@@ -1366,7 +1392,15 @@ impl World {
                     .creatures
                     .iter()
                     .find(|creature| creature.id == *creature_id)?;
-                loose_prop(activity, creature, face)
+                // A mishap back in the village happens as far up the display as it is drawn.
+                let (prop, at) = loose_prop(activity, creature, face)?;
+                Some((
+                    prop,
+                    Point {
+                        y: at.y - creature.state.depth * points_per_pixel,
+                        ..at
+                    },
+                ))
             })
             .collect()
     }

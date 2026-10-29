@@ -230,7 +230,7 @@ impl OverlayRenderer {
     /// Where a menu for this creature would go, for `creature_menu` to place a strip against.
     /// `None` until the creature's own atlas has been baked, which happens on its first frame.
     pub fn menu_anchor(&self, creature: &Creature, display_scale: u8) -> Option<MenuAnchor> {
-        let sprite = self.sprites.get(&creature.id)?;
+        let sprite = self.sprite_for(creature)?;
         let (centre_x, head_top, foot_bottom) =
             self.creature_extent(creature, sprite, display_scale);
         let bounds = self.monitor.bounds;
@@ -303,7 +303,7 @@ impl OverlayRenderer {
             else {
                 continue;
             };
-            let Some(sprite) = self.sprites.get(&creature.id) else {
+            let Some(sprite) = self.sprite_for(creature) else {
                 continue;
             };
             let (centre_x, head_top, _) = self.creature_extent(creature, sprite, display_scale);

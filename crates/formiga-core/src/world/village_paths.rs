@@ -30,17 +30,25 @@ const SAME_DEPTH: f32 = 0.01;
 /// How far back a house has to stand for its doorstep to be worth a stroll up to.
 const DOORSTEP_DEPTH: f32 = 3.0;
 
+/// How much of a resident's width, either side of its middle, has to be clear of a house nearer
+/// the front for it to stand somewhere: its face. A lot is wider than the house drawn on it, so
+/// the rest of it is clear of the house too, or nearly.
+const FACE_SHARE: f32 = 0.3;
+
 /// Whether two depths are one.
 pub(super) fn same_depth(a: f32, b: f32) -> bool {
     (a - b).abs() <= SAME_DEPTH
 }
 
 /// One step of a resident's way to `goal`, `goal_depth` back, by the path to its own door at
-/// `door_x`: along the strip to the foot or head of the path while it is not yet as far back as
-/// it is going, up or down the path there, and then along to the goal. `scale` is shelter pixels
-/// to desktop points. Returns whether it is there.
+/// `door_x`: along the strip to the foot of the path while it is not yet as far back as it is
+/// going, up the path there, and then along to the goal. A resident standing further back than
+/// its own door comes down by whichever path runs back as far as it is first. `scale` is
+/// shelter pixels to desktop points. Returns whether it is there.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn by_own_door(
     creature: &mut Creature,
+    paths: &VillagePaths,
     door_x: f32,
     goal: Point,
     goal_depth: f32,
@@ -48,23 +56,19 @@ pub(super) fn by_own_door(
     scale: f32,
     dt: f32,
 ) -> bool {
-    let paths = VillagePaths::new(
+    if creature.state.depth > goal_depth + SAME_DEPTH {
+        return paths.walk_to(creature, goal, goal_depth, speed, dt);
+    }
+    let own = VillagePaths::new(
         vec![Door {
             slot: 0,
             x: door_x,
             half: 0.0,
-            depth: creature.state.depth.max(goal_depth),
+            depth: goal_depth,
         }],
         scale,
     );
-    let waypoint = paths.toward(
-        creature.state.position,
-        creature.state.depth,
-        goal,
-        goal_depth,
-    );
-    paths.step(creature, waypoint, speed, dt);
-    creature.state.position == goal && same_depth(creature.state.depth, goal_depth)
+    own.walk_to(creature, goal, goal_depth, speed, dt)
 }
 
 /// The paths up from the front of the grass, one to every house's door, and the trodden path
@@ -123,6 +127,43 @@ impl VillagePaths {
         self.doors.iter().any(|door| {
             door.depth + SAME_DEPTH < depth && (door.x - x).abs() + half * 0.5 < door.half
         })
+    }
+
+    /// How far back a resident `half` wide can stand at `x` with no house in front of its face:
+    /// as far back as the house whose lot it stands in front of, and no further. Off the end of
+    /// the row of houses, toward the trees, it is the front.
+    pub(super) fn open_depth(&self, x: f32, half: f32) -> f32 {
+        let (Some(first), Some(last)) = (self.doors.first(), self.doors.last()) else {
+            return 0.0;
+        };
+        if x < first.x - first.half || x > last.x + last.half {
+            return 0.0;
+        }
+        self.doors
+            .iter()
+            .filter(|door| (door.x - x).abs() < door.half + half * FACE_SHARE)
+            .map(|door| door.depth)
+            .fold(f32::from(crate::MAX_HOUSE_DEPTH), f32::min)
+    }
+
+    /// One step of the way to `goal`, `goal_depth` back, by whichever path takes it there.
+    /// Returns whether it is there.
+    pub(super) fn walk_to(
+        &self,
+        creature: &mut Creature,
+        goal: Point,
+        goal_depth: f32,
+        speed: f32,
+        dt: f32,
+    ) -> bool {
+        let waypoint = self.toward(
+            creature.state.position,
+            creature.state.depth,
+            goal,
+            goal_depth,
+        );
+        self.step(creature, waypoint, speed, dt);
+        creature.state.position == goal && same_depth(creature.state.depth, goal_depth)
     }
 
     /// The next place on the way from `at`, `depth` back, to `goal`, `goal_depth` back. At the

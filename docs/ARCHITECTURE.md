@@ -1259,19 +1259,53 @@ one depth to another — the foot of the door path with the least walking among 
 at least as far as the further of the two, then its head — and `step` goes up or down the path,
 all the way, before another step along. A step back covers 0.6 of the display a step along does.
 
-Three things use it. A stroll, now and then, goes in among the houses instead of along the front:
-35 times in a hundred up onto the trodden path along the middle of the grass (`PATH_DEPTH` = 4.5,
-between the two rows the ground draws it on, and reachable only where some house stands back past
-it), to a place along it that is clear of everybody and not behind a house, and 25 times in a
-hundred up to a doorstep set back three or more pixels; either way it stands there three to eight
-seconds and comes back down to its own place at the front. These choices come from a stream of
-their own, `village-paths`, so the strolls along the front choose as they always have. A chore at
-a resident's own house is done at the front of the house, up its path and to one side of the door,
-and a spell indoors goes up the path to the door and comes back out onto the doorstep. Resting
-places, quiet moments, shared village moments and everything else stay at the front, and
-everybody arrives at the front of the grass and leaves from it. Over a long afternoon with four
-residents (`residents_go_into_the_village_only_by_its_paths`), about 5% of resident time is spent
-on the path or a doorstep.
+`open_depth` says how far back a resident can stand at a place along the strip with no house
+in front of its face: as far back as the house whose lot is behind it, judged over the middle
+0.3 of its width either side, and the front off the ends of the row. `walk_to` is `toward` and
+`step` together, and `by_own_door` takes a resident up its own door path, or, when it is
+standing further back than its own door, down whichever path runs back as far as it first.
+
+Back among the houses is where the village mostly lives:
+
+- **Resting.** A resident's own place along the strip stays where the village lays it out, but
+  each time it goes back to it it stands somewhere from the front of the grass to the house
+  behind, in whole shelter pixels so it lines up with the houses. Beside a neighbour (within
+  three face-clear distances) it takes the other row: up to 0.3 of the way back in front of one
+  standing back, and from 0.7 of the way to all the way back, at least `SET_BACK_DEPTH`, behind
+  one at the front. Neighbours so stand in staggered rows, which reads as room rather than as a
+  queue along the front. On its own it rests at the front 15 times in a hundred, and otherwise
+  between halfway and all the way back. A resident whose place is in front of a house at the
+  front rests at the front. Arriving, it goes up onto the doorstep
+  beside its door, as far back as the grass there goes. Waiting its turn for a stroll keeps the
+  depth it is resting at.
+- **Strolls.** 40 times in a hundred a stroll goes up onto the trodden path along the middle of
+  the grass (`PATH_DEPTH` = 4.5, between the two rows the ground draws it on, and reachable only
+  where some house stands back past it), to a place along it that is clear of everybody and not
+  behind a house, and 30 times in a hundred up to a doorstep set back three or more pixels;
+  either way it stands there four to twelve seconds. Half of the rest go along the strip
+  somewhere back from the front, from a third of the way to all the way back to the house there.
+  These choices come from a stream of their own, `village-paths`, so the strolls along the strip
+  choose their places as they always have.
+- **Quiet moments.** A moment had where it stands — a snack, a drink, a nap, a wave, a look
+  about — is had as far back as the resident is standing (`HomeMoment::depth`). One at a
+  belonging or a hangout spot, which stand at the front, walks down a path to the front first and
+  starts once it is there; so do a request from the person at the desk and a neighbour waving
+  back, from wherever they are standing.
+- **Plans.** A chore at a resident's own house is done at the front of the house, up its path and
+  to one side of the door, and a spell indoors goes up the path to the door and comes back out
+  onto the doorstep. The garden, a cushion and the hop up onto a roof are at the front, so a
+  resident back in the village goes down a path first (`Plan::at_the_front`); a leaf on its face
+  or a dropped snack happen where it stands, and the leaf and the apple are drawn as far up the
+  display as it is (`World::loose_props`).
+- Shared village moments still gather at the front, and everybody arrives at the front of the
+  grass and leaves from it.
+
+Over a long afternoon with four residents
+(`residents_live_in_among_the_houses_and_go_in_only_by_its_paths`), about 58% of resident time
+outdoors is spent back from the front: 5% on the path, 9% on doorsteps and 44% elsewhere back
+among the houses, against 42% at the front. Neighbours standing side by side are in different
+rows more often than the same one, about 2% of the time is spent passing behind a house nearer
+the front, and nobody stands still behind one for long.
 
 Whoever the village did not walk in a tick — a visit over, a companion picked up or off to a
 wonder — steps forward to the front at 14 pixels a second, except while the colony is paused. A
@@ -1292,11 +1326,24 @@ more draw calls. A companion mostly out of sight behind a house nearer the front
 (`World::behind_a_house`, refreshed each village tick) has its hit proxy treated as occluded, so a
 click there is the house's.
 
-Companions are not drawn smaller further back. A house set back is not either, and a pixel-art
-frame shrunk by a tenth drops rows of its drawing unevenly; the drawing's height up the display,
-the houses in front of it and the front grass over its feet carry the depth instead.
-`formiga-tools village-depth-sheet` shows a full village with everybody at the front, out on the
-path, on doorsteps and partway up a path, and the path after dark, at both corners.
+Further back, companions are drawn smaller, cleanly. From `SET_BACK_DEPTH` = 3.5 back — the
+middle path and anything beyond it — a companion is drawn at `set_back_size`, 90% of its logical
+size (38 becomes 34). The art draws it afresh at that size from the same rig, the way it draws a
+small companion, rather than shrinking the picture of it at its own size, which would drop rows
+and columns of the pixel art unevenly; its face stays its readable size, as a small companion's
+does, and its feet stay on the same ground (`resting_baseline` comes from the drawn size). The
+overlay bakes a second atlas for a resident (`OverlayRenderer::set_back_sprites`, about 1.5 MB)
+as soon as it starts up a path, keeps it while the village is out and lets it go when the
+village goes, and draws from it, with its face anchors, silhouette and baseline, whenever the
+companion stands that far back (`sprite_for`); bubbles and the menu anchor follow it. The
+smallest minis, already drawn at the art's smallest size, stay that size. Houses set back are
+not drawn smaller; the drawing's height up the display, the houses in front of it and the front
+grass over its feet carry their depth.
+
+`formiga-tools village-depth-sheet` shows a full village with everybody at the front, everybody
+at home at their places in staggered rows, out on the path, on doorsteps and partway
+up a path, and at home after dark, at both corners, with whoever is set back at its set-back
+size.
 
 ## How high companions go
 

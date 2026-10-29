@@ -175,10 +175,11 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
 }
 
 /// The village with its residents among the houses, as the overlay draws them: everyone at the
-/// front, as a village stood before it had any depth; out along the trodden path in the middle,
-/// in front of the houses set back past it and behind the ones nearer the front; up on doorsteps
-/// set back from the front, and partway up a door path; and the path again after dark. Each at
-/// both corners.
+/// front, as a village stood before it had any depth; at home at their places, each well back
+/// toward its house; out along the trodden path in the middle, in front of the houses set back
+/// past it and behind the ones nearer the front; up on doorsteps set back from the front, and
+/// partway up a door path; and at home again after dark. Each at both corners. Whoever stands
+/// as far back as the middle path or further is drawn at its set-back size.
 pub fn village_depth_sheet(path: PathBuf) -> Result<()> {
     let full = vec![DwellingKind::Cottage; MAX_COLONY_CREATURES - 1];
     let panel = |night: bool| YardPanel {
@@ -282,11 +283,28 @@ pub fn village_depth_sheet(path: PathBuf) -> Result<()> {
             },
         ]
     };
-    let rows: [(YardPanel, Option<Placing>); 4] = [
+    // At home at their own places, the way an afternoon mostly finds them: each beside its door,
+    // neighbours in staggered rows, one well back at its house and the next near the front.
+    let at_home: Placing = |doors| {
+        (0..doors.len())
+            .map(|resident| Stand {
+                resident,
+                x: doors[resident].0 + if resident % 2 == 0 { 14.0 } else { -14.0 },
+                depth: if resident % 2 == 1 {
+                    doors[resident].1
+                } else {
+                    (doors[resident].1 * 0.25).round()
+                },
+                facing_right: resident % 2 == 0,
+            })
+            .collect()
+    };
+    let rows: [(YardPanel, Option<Placing>); 5] = [
         (panel(false), None),
+        (panel(false), Some(at_home)),
         (panel(false), Some(on_path)),
         (panel(false), Some(doorsteps)),
-        (panel(true), Some(on_path)),
+        (panel(true), Some(at_home)),
     ];
     let gap = 10;
     let panel_width = YARD_STRIP * YARD_SCALE;
@@ -626,16 +644,21 @@ fn draw_yard_panel(
         monitor.usable_bounds.y + monitor.usable_bounds.height,
         |c| c.ground_y,
     );
+    // Far enough back, a resident is drawn afresh at its set-back size, its feet on the same
+    // ground as at its own size, as the overlay draws it.
     let resident_square = |stand: &Stand| {
-        let frame = CreatureRenderer::render_frame(
-            &residents[stand.resident].appearance,
-            ActionKind::Homebound,
-            0,
-            stand.facing_right,
-        );
+        let own = &residents[stand.resident].appearance;
+        let mut drawn = own.clone();
+        if stand.depth >= formiga_core::SET_BACK_DEPTH {
+            drawn.logical_size = formiga_core::set_back_size(own.logical_size);
+        }
+        let frame =
+            CreatureRenderer::render_frame(&drawn, ActionKind::Homebound, 0, stand.facing_right);
+        let lift = CreatureRenderer::resting_baseline(own, false) as f32
+            - CreatureRenderer::resting_baseline(&drawn, false) as f32;
         let p = Point {
             x: stand.x,
-            y: ground_y - stand.depth,
+            y: ground_y - stand.depth - lift,
         };
         let (x, y) = standing(FRAME_SIZE, p);
         (frame, x, y)

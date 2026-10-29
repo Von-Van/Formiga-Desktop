@@ -4,6 +4,36 @@ use super::*;
 
 impl OverlayRenderer {
     pub(super) fn ensure_sprite(&mut self, creature: &Creature, save: &SaveFile) {
+        let size = creature.appearance.logical_size;
+        if let Some(sprite) =
+            self.bake_if_stale(self.sprites.get(&creature.id), creature, size, save)
+        {
+            self.sprites.insert(creature.id, sprite);
+        }
+    }
+
+    /// The companion drawn at its set-back size, for when it stands back in the village: baked
+    /// as it starts up a path, and kept for as long as the village is out.
+    pub(super) fn ensure_set_back_sprite(&mut self, creature: &Creature, save: &SaveFile) {
+        let size = formiga_core::set_back_size(creature.appearance.logical_size);
+        if let Some(sprite) = self.bake_if_stale(
+            self.set_back_sprites.get(&creature.id),
+            creature,
+            size,
+            save,
+        ) {
+            self.set_back_sprites.insert(creature.id, sprite);
+        }
+    }
+
+    /// The atlas for `creature` drawn at `logical_size`, unless `current` is already that.
+    fn bake_if_stale(
+        &self,
+        current: Option<&SpriteGpu>,
+        creature: &Creature,
+        logical_size: u8,
+        save: &SaveFile,
+    ) -> Option<SpriteGpu> {
         let reduce_motion = save.settings.reduce_motion;
         let outline = save.companion.appearance.sprite_outline;
         let detail = baked_detail(
@@ -13,146 +43,153 @@ impl OverlayRenderer {
         );
         // What it is wearing is baked into every frame, so choosing something else, or taking it
         // off, bakes the atlas again. Nothing else about the choice is looked at frame to frame.
-        let requires_bake = self.sprites.get(&creature.id).is_none_or(|sprite| {
+        let requires_bake = current.is_none_or(|sprite| {
             sprite.reduce_motion != reduce_motion
                 || sprite.outline != outline
                 || sprite.dress.map(|dress| dress.accessory) != creature.accessory
                 || sprite.appearance != creature.appearance
+                || sprite.logical_size != logical_size
                 || sprite.detail != detail
         });
-        if requires_bake {
-            let dress = creature.accessory.map(|accessory| {
-                let members: Vec<formiga_art::Palette> = save
-                    .creatures
-                    .iter()
-                    .map(|member| formiga_art::palette_for(&member.appearance))
-                    .collect();
-                AccessoryArt::resolve(accessory, save.colony_seed, &members)
-            });
-            let atlas = build_atlas_pixels(creature, reduce_motion, outline, dress, detail);
-            let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("procedural creature body atlas"),
-                size: wgpu::Extent3d {
-                    width: atlas.body_width,
-                    height: atlas.body_height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            self.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &body_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &atlas.body_pixels,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(atlas.body_width * 4),
-                    rows_per_image: Some(atlas.body_height),
-                },
-                wgpu::Extent3d {
-                    width: atlas.body_width,
-                    height: atlas.body_height,
-                    depth_or_array_layers: 1,
-                },
-            );
-            let body_view = body_texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let body_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("creature body frame bindings"),
-                layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&body_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            });
-            let face_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("procedural creature face atlas"),
-                size: wgpu::Extent3d {
-                    width: atlas.face_width,
-                    height: atlas.face_height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            self.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &face_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &atlas.face_pixels,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(atlas.face_width * 4),
-                    rows_per_image: Some(atlas.face_height),
-                },
-                wgpu::Extent3d {
-                    width: atlas.face_width,
-                    height: atlas.face_height,
-                    depth_or_array_layers: 1,
-                },
-            );
-            let face_view = face_texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let face_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("creature face frame bindings"),
-                layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&face_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            });
-            self.sprites.insert(
-                creature.id,
-                SpriteGpu {
-                    _body_texture: body_texture,
-                    body_bind_group,
-                    _face_texture: face_texture,
-                    face_bind_group,
-                    reduce_motion,
-                    outline,
-                    detail: atlas.detail,
-                    body_atlas_width: atlas.body_width,
-                    body_atlas_height: atlas.body_height,
-                    body_cells: atlas.body_cells,
-                    face_atlas_width: atlas.face_width,
-                    face_atlas_height: atlas.face_height,
-                    face_cells: atlas.face_cells,
-                    face_anchors: atlas.face_anchors,
-                    silhouette: atlas.silhouette,
-                    resting_baseline: CreatureRenderer::resting_baseline(
-                        &creature.appearance,
-                        reduce_motion,
-                    ),
-                    dress,
-                    appearance: creature.appearance.clone(),
-                },
-            );
+        if !requires_bake {
+            return None;
         }
+        // Drawn afresh at the size asked for, the way the art draws any companion that size.
+        let resized;
+        let drawn = if logical_size == creature.appearance.logical_size {
+            creature
+        } else {
+            let mut copy = creature.clone();
+            copy.appearance.logical_size = logical_size;
+            resized = copy;
+            &resized
+        };
+        let dress = creature.accessory.map(|accessory| {
+            let members: Vec<formiga_art::Palette> = save
+                .creatures
+                .iter()
+                .map(|member| formiga_art::palette_for(&member.appearance))
+                .collect();
+            AccessoryArt::resolve(accessory, save.colony_seed, &members)
+        });
+        let atlas = build_atlas_pixels(drawn, reduce_motion, outline, dress, detail);
+        let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("procedural creature body atlas"),
+            size: wgpu::Extent3d {
+                width: atlas.body_width,
+                height: atlas.body_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &body_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &atlas.body_pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(atlas.body_width * 4),
+                rows_per_image: Some(atlas.body_height),
+            },
+            wgpu::Extent3d {
+                width: atlas.body_width,
+                height: atlas.body_height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let body_view = body_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let body_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("creature body frame bindings"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&body_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        let face_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("procedural creature face atlas"),
+            size: wgpu::Extent3d {
+                width: atlas.face_width,
+                height: atlas.face_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &face_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &atlas.face_pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(atlas.face_width * 4),
+                rows_per_image: Some(atlas.face_height),
+            },
+            wgpu::Extent3d {
+                width: atlas.face_width,
+                height: atlas.face_height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let face_view = face_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let face_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("creature face frame bindings"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&face_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        Some(SpriteGpu {
+            _body_texture: body_texture,
+            body_bind_group,
+            _face_texture: face_texture,
+            face_bind_group,
+            reduce_motion,
+            outline,
+            detail: atlas.detail,
+            body_atlas_width: atlas.body_width,
+            body_atlas_height: atlas.body_height,
+            body_cells: atlas.body_cells,
+            face_atlas_width: atlas.face_width,
+            face_atlas_height: atlas.face_height,
+            face_cells: atlas.face_cells,
+            face_anchors: atlas.face_anchors,
+            silhouette: atlas.silhouette,
+            resting_baseline: CreatureRenderer::resting_baseline(&drawn.appearance, reduce_motion),
+            dress,
+            logical_size,
+            appearance: creature.appearance.clone(),
+        })
     }
 
     pub(super) fn ensure_shelter(&mut self, look: VillageLook) {
