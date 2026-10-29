@@ -4,6 +4,18 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.68.2
+
+Companions move more like living things. They walk only when they are going somewhere, step in
+time with the ground going by, and rest still between small moments of their own: washing a face,
+shaking off, sniffing the air, napping curled, sprawled or sitting up, trudging off to bed or
+skipping over to say hello. Their eyes look where they are going and glance at friends, and
+watering, picking, tending, eating and being petted each look like what they are. At home they now
+go up the door paths, along the middle path and onto doorsteps among the houses. Jump'n'Catch is a
+new game: a bold companion leaps off a window and a friend runs to catch it. On Windows, Formiga
+shows up once in Alt-Tab and the taskbar. Formiga Hill, Home and Battle stay at 0.68.1 and work
+with this release; for a Battle friend match, both of you need Desktop 0.68.2.
+
 ## New in 0.68.1
 
 A patch for the notebook's pencil hand. Its writing is drawn on a finer grain, so it reads less
