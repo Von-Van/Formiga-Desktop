@@ -92,6 +92,8 @@ struct SpriteGpu {
     resting_baseline: u32,
     /// What it was baked wearing, in the inks it was baked in.
     dress: Option<AccessoryArt>,
+    /// The size it was drawn at: its own, or its set-back size for standing back in the village.
+    logical_size: u8,
     /// The look it was baked in. A companion given a new look in Formiga Farm keeps its id, so
     /// its atlas is baked again when this changes.
     appearance: AppearanceGenome,
@@ -250,6 +252,8 @@ pub struct OverlayRenderer {
     vertex_capacity: usize,
     zone_vertex_buffer: wgpu::Buffer,
     sprites: BTreeMap<CreatureId, SpriteGpu>,
+    /// Each resident drawn at its set-back size, for while it stands back in the village.
+    set_back_sprites: BTreeMap<CreatureId, SpriteGpu>,
     shelter: Option<ShelterGpu>,
     ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
@@ -525,6 +529,7 @@ impl OverlayRenderer {
             vertex_capacity: INITIAL_VERTEX_CAPACITY,
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
+            set_back_sprites: BTreeMap::new(),
             shelter: None,
             ground: None,
             bubble: None,
@@ -634,6 +639,21 @@ impl OverlayRenderer {
     /// Where a creature's contact point is drawn, in monitor-local physical pixels on the
     /// drawable's grid: raised by however far back on the village ground it stands, as far as a
     /// house set back that far is.
+    /// The atlas a companion is drawn from: its set-back one while it stands back in the village,
+    /// once that is baked, and its own otherwise.
+    fn sprite_for(&self, creature: &Creature) -> Option<&SpriteGpu> {
+        self.sprite_at(creature.id, creature.state.depth)
+    }
+
+    fn sprite_at(&self, id: CreatureId, depth: f32) -> Option<&SpriteGpu> {
+        if depth >= formiga_core::SET_BACK_DEPTH
+            && let Some(sprite) = self.set_back_sprites.get(&id)
+        {
+            return Some(sprite);
+        }
+        self.sprites.get(&id)
+    }
+
     pub(super) fn drawn_contact(&self, creature: &Creature, display_scale: u8) -> (f32, f32) {
         let drawn = creature
             .state
@@ -695,6 +715,17 @@ impl OverlayRenderer {
         };
         self.sprites
             .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
+        // Baked as a resident starts up a path, before it is far enough back to be drawn smaller,
+        // and kept while the village is out for whenever it goes back in again.
+        self.set_back_sprites
+            .retain(|id, _| shelter_visible && visible.iter().any(|creature| creature.id == *id));
+        if shelter_visible {
+            for creature in &visible {
+                if creature.state.depth > 0.0 {
+                    self.ensure_set_back_sprite(creature, save);
+                }
+            }
+        }
         let bubble_creature = milestone.and_then(|creature_id| {
             visible
                 .iter()
@@ -803,7 +834,7 @@ impl OverlayRenderer {
         }
         let wonder_vertex_count = vertices.len() - wonder_start;
         for creature in &visible {
-            let sprite = self.sprites.get(&creature.id).expect("sprite atlas exists");
+            let sprite = self.sprite_for(creature).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state_among(
                 creature,
                 &save.creatures,
@@ -983,7 +1014,7 @@ impl OverlayRenderer {
             // The houses and trees from the back of the ground to the front, with whoever is
             // standing back among them drawn between the ones behind it and the ones in front.
             let draw_creature = |pass: &mut wgpu::RenderPass<'_>, creature: &CreatureDraw| {
-                if let Some(sprite) = self.sprites.get(&creature.id) {
+                if let Some(sprite) = self.sprite_at(creature.id, creature.depth) {
                     draw(pass, &sprite.body_bind_group, creature.start, 6);
                     draw(pass, &sprite.face_bind_group, creature.start + 6, 6);
                     let mut next = creature.start + 12;

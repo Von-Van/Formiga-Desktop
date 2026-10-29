@@ -71,6 +71,20 @@ pub fn apply_statures(creatures: &mut [Creature]) {
     }
 }
 
+/// How far back on the village grass, in shelter pixels, a companion stands before it is drawn
+/// at its set-back size: the trodden path along the middle and anything further back.
+pub const SET_BACK_DEPTH: f32 = 3.5;
+
+/// The share of its own size, in percent, a companion standing back in the village is drawn at.
+pub const SET_BACK_PERCENT: u8 = 90;
+
+/// The logical size a companion of `logical_size` is drawn at standing back in the village. The
+/// art draws it afresh at that size, as it draws a small companion, rather than shrinking the
+/// picture of it at its own size, which would drop rows and columns of the pixel art unevenly.
+pub fn set_back_size(logical_size: u8) -> u8 {
+    (f32::from(logical_size) * f32::from(SET_BACK_PERCENT) / 100.0).round() as u8
+}
+
 /// An adult adopted from a code made for a mini: the first of its line in this colony, though
 /// its code says it was drawn as a later generation.
 pub fn is_adopted_root(creature: &Creature) -> bool {

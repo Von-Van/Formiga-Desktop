@@ -75,8 +75,8 @@ pub use seed_share::{
 };
 pub use souvenirs::{Souvenir, SouvenirRecord};
 pub use stature::{
-    AVERAGE_SIZE, STATURE_MAX, STATURE_MIN, apply_statures, size_after_parent, size_for,
-    stature_percent,
+    AVERAGE_SIZE, SET_BACK_DEPTH, SET_BACK_PERCENT, STATURE_MAX, STATURE_MIN, apply_statures,
+    set_back_size, size_after_parent, size_for, stature_percent,
 };
 pub use temperament::{Axes, Temperament, TemperamentKind, Tension, Trait, Valence};
 pub use topology::{

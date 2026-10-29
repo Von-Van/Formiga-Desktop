@@ -328,9 +328,9 @@ desktop shows them. `accessory-sheet` draws everything a companion can wear on s
 walking, asleep and cheering. `village-life-sheet` draws the village getting on with things, a
 moment to a cell — the gardens tended, every kind of house seen to, somebody indoors and somebody
 on a roof, the three mishaps, and a yawn going round — composed the way the overlay composes them. `village-depth-sheet`
-draws a full village with its residents among the houses as the overlay orders them: all at the
-front, out on the trodden path in the middle, on doorsteps set back and partway up a door path, and
-the path after dark.
+draws a full village with its residents among the houses as the overlay orders and sizes them: all
+at the front, at home at their places in staggered rows, out on the trodden path in the
+middle, on doorsteps set back and partway up a door path, and at home after dark.
 `catch-sheet` draws two real rounds of jump and catch frame by frame, a third of a second apart,
 from the climb to the end — one caught by a quick, watchful catcher and one missed by a slow,
 absent-minded one — as the overlay places them.

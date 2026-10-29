@@ -2,6 +2,23 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Companions live in among the village's houses now, not along its front, and the village
+  feels roomier for it. Each rests at its own place anywhere from the front of the grass to the
+  house behind it, neighbours in staggered rows rather than a line, most strolls go up onto the
+  middle path, onto a doorstep or along the strip further back, and the quiet things they do —
+  a snack, a nap, a wave, a request from you — are done wherever they are standing. The garden,
+  a cushion, a roof and the hangout spots are still at the front, and a companion back in the
+  village walks down a path to them first. Over a long afternoon about 58% of their time
+  outdoors is spent back among the houses, up from about 5%.
+- Companions standing back in the village, from the middle path back, are drawn a tenth smaller.
+  The art draws each afresh at that size from its own rig, as it draws a small companion, so the
+  pixel art stays clean rather than having rows dropped out of it; faces keep their size.
+  `formiga-tools village-depth-sheet` now shows the village at home as well.
+
 ## [0.68.2] - 2026-10-28
 
 Livelier companions, a village with some depth, a new game and a Windows fix, released on its own:

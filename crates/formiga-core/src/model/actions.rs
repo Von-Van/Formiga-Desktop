@@ -455,4 +455,10 @@ impl CreatureState {
             y: self.position.y - self.depth * points_per_pixel,
         }
     }
+
+    /// Whether it stands far enough back in the village to be drawn at its set-back size
+    /// ([`crate::set_back_size`]).
+    pub fn set_back(&self) -> bool {
+        self.depth >= crate::SET_BACK_DEPTH
+    }
 }
