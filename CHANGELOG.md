@@ -2,6 +2,20 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Visitors walk round the village and use it now, rather than standing at its outer edge. After
+  the hello a guest tours the places a resident would go: one of the spots you put down, used the
+  way it is for (a nap on the cushion, a snack on the blanket, a seat on the bench), a doorstep up
+  the path to a house set back, the trodden path in the middle, a garden patch and a keepsake. It
+  goes up and down the same door paths the residents use and is drawn smaller further back like
+  them, picks somewhere nobody is standing or busy, and the residents make room for it as they do
+  for each other. It comes back to the edge only to say goodbye. On a village of four, the time a
+  visit spends standing at the edge went from 239 to 30 seconds of 779, and from none to about 300
+  seconds back among the houses. `formiga-tools village-depth-sheet` shows a visitor on a doorstep.
+
 ## [0.68.21] - 2026-10-29
 
 Companions living in among the village's houses, released on its own: Formiga Hill, Home and

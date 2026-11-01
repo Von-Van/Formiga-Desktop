@@ -629,6 +629,7 @@ fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
             at: crate::Point { x: 700.0, y: 846.0 },
             look: crate::Point { x: 712.0, y: 846.0 },
             interest: crate::TourInterest::Keepsake,
+            depth: 4.5,
         }],
         stop: 1,
         moment: crate::TourMoment::Greeting(7),

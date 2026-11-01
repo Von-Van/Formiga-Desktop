@@ -1,4 +1,4 @@
-use crate::{Creature, CreatureId, CreatureOrigin, Gesture, Point};
+use crate::{Creature, CreatureId, CreatureOrigin, Gesture, HangoutKind, Point};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -10,9 +10,10 @@ pub const MAX_GUEST_BOOK_ENTRIES: usize = 24;
 pub const MAX_FAVORITE_VISITORS: usize = 8;
 
 /// How many places a guest's walk around the village stops at, counting the spot it walked in
-/// to. Three to five is a tour; more would be pacing, and a village laid out for four rarely
-/// has the spare ground for more anyway.
-pub const MAX_TOUR_STOPS: usize = 5;
+/// to: the one place it comes back to before the goodbye, and up to five out in the village —
+/// the spots the person at the desk put down, a garden, a keepsake, a doorstep and the middle
+/// path. More would be pacing.
+pub const MAX_TOUR_STOPS: usize = 6;
 
 /// Why an invitation was turned down. A code that will not decode at all is refused before it
 /// ever reaches the colony, by the seed code itself.
@@ -65,26 +66,38 @@ pub enum VisitPhase {
     Gone,
 }
 
-/// What a guest has walked over to look at, once it has stopped.
+/// What a guest has walked over to, once it has stopped.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TourInterest {
-    /// A house: the guest stands beside it, as close as the wall sliver allows, and looks up.
+    /// A house: the guest stands on its doorstep, up the path to its door, and looks up.
     House,
-    /// Something the colony keeps: a belonging in the tree's yard, or a keepsake above it.
+    /// Something the colony keeps: a belonging in the tree's yard, or an ornament on the grass.
     Keepsake,
+    /// One of the garden patches, looked in on from beside it.
+    Garden,
+    /// One of the spots the person at the desk put down, used the way a resident uses it: a nap
+    /// on the cushion, a snack on the blanket, a look out from beside the lookout, a seat on the
+    /// bench.
+    Hangout(HangoutKind),
+    /// The trodden path along the middle of the grass, somewhere not behind a house.
+    Path,
     /// Nothing in particular. The spot the guest walked in to, and comes back to.
     #[default]
     Ground,
 }
 
 /// One place on a guest's walk around the village: somewhere a creature may legitimately stand,
-/// and what it turns to look at when it gets there. Worked out from the village's own layout, so
-/// a tour follows wherever the houses, the shared ground and the trees' yards have ended up.
+/// how far back on the village ground that is, and what it turns to when it gets there. Worked
+/// out from the village's own layout, so a tour follows wherever the houses, their paths, the
+/// spots, the garden and the trees' yards have ended up.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TourStop {
     pub at: Point,
     pub look: Point,
     pub interest: TourInterest,
+    /// How far back on the village ground it stands, in shelter pixels, as
+    /// `CreatureState::depth` measures it: nought for anything at the front.
+    pub depth: f32,
 }
 
 /// What the guest is doing this moment of its tour.
@@ -139,8 +152,9 @@ pub struct VisitProgress {
     pub answers: Vec<ResidentAnswer>,
     /// The guest's walk around the village: everywhere it stops, which stop it is standing at or
     /// heading for, what it is doing there, and how long that has left. The first stop is always
-    /// the spot the guest walked in to, so the ring runs out along the houses and back again.
-    /// Never more than [`MAX_TOUR_STOPS`] of them.
+    /// the spot the guest walked in to, which it comes back to only for the goodbye; the rest are
+    /// a ring through the village, walked round for as long as the visit lasts. Never more than
+    /// [`MAX_TOUR_STOPS`] of them.
     pub stops: Vec<TourStop>,
     pub stop: u8,
     pub moment: TourMoment,
