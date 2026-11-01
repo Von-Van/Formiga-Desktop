@@ -291,17 +291,31 @@ fn a_visit_arrives_after_the_colony_settles_says_hello_once_and_leaves_before_th
         world.save.relationships, quiet.save.relationships,
         "a visit wrote a bond of its own"
     );
-    let bonds_of = |world: &World| {
+    // The residents make room for a guest walking round the village, so their own afternoon
+    // can go a little differently — a turn in the garden on another tick turns up a find of its
+    // own — but nothing they keep is about the guest: no tendency moves and no counter counts
+    // for having had a visitor, only for what each of them did with the afternoon.
+    let memory_of = |world: &World| {
         world
             .save
             .creatures
             .iter()
-            .map(|creature| (creature.tendencies, creature.memory.clone()))
+            .map(|creature| {
+                let memory = &creature.memory;
+                (
+                    creature.tendencies.sociability,
+                    creature.tendencies.cursor_trust,
+                    memory.times_petted,
+                    memory.home_visits,
+                    memory.play_sessions,
+                    memory.sleep_interruptions,
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        bonds_of(&world),
-        bonds_of(&quiet),
+        memory_of(&world),
+        memory_of(&quiet),
         "a visit taught the colony something"
     );
     assert!(
@@ -883,7 +897,9 @@ fn a_guest_can_be_petted_but_never_picked_up() {
 }
 
 /// Every rule a stop on a guest's walk around the village has to keep, checked against the
-/// village exactly as it stands right now.
+/// village exactly as it stands right now: on the accessible ground, no further back than the
+/// grass goes there with no house in front of it, off every belonging and everything on the grass
+/// it has not come to use, and a face-clear step from every other stop.
 fn every_stop_is_somewhere_a_guest_may_stand(world: &World, desktop: &DesktopSnapshot) {
     let guest = world
         .save
@@ -897,6 +913,9 @@ fn every_stop_is_somewhere_a_guest_may_stand(world: &World, desktop: &DesktopSna
     let monitor = &desktop.monitors[0];
     let scale = f32::from(display_scale) / monitor.scale_factor.max(1.0);
     let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * scale;
+    let half = RESTING_WIDTH / 2.0 * scale;
+    let underfoot = OBJECT_WIDTH / 2.0 * scale;
+    let paths = world.village_paths(desktop);
     let places = home_object_positions(
         &world.save.home,
         &cottages,
@@ -904,52 +923,43 @@ fn every_stop_is_somewhere_a_guest_may_stand(world: &World, desktop: &DesktopSna
         policy,
         display_scale,
     );
-    for stop in &guest.visit.stops {
+    let ground = home_ground_positions(
+        &world.save.home,
+        &cottages,
+        &desktop.monitors,
+        policy,
+        display_scale,
+    );
+    let stops = &guest.visit.stops;
+    for (index, stop) in stops.iter().enumerate() {
         assert!(
             habitat_contains(policy, monitor, stop.at),
             "{stop:?} is outside the habitat"
         );
-        for slot in 0..=cottages.len() {
-            if let Some((_, house)) = home_dwelling_position(
-                &world.save.home,
-                slot,
-                &cottages,
-                &desktop.monitors,
-                policy,
-                display_scale,
-            ) {
-                let kind = if slot == 0 {
-                    DwellingKind::Main
-                } else {
-                    cottages[slot - 1]
-                };
-                let reach =
-                    (kind.width() / 2.0 + CREATURE_FRAME_WIDTH / 2.0 - REST_WALL_SLIVER) * scale;
+        assert!(
+            stop.depth <= paths.open_depth(stop.at.x, half) + 0.01,
+            "{stop:?} stands behind a house"
+        );
+        if stop.depth <= 0.0 {
+            for (_, thing) in places[..world.save.objects.objects.len()].iter().flatten() {
                 assert!(
-                    (stop.at.x - house.x).abs() >= reach,
-                    "{stop:?} stands over house {slot}'s doorway"
+                    (stop.at.x - thing.x).abs() >= underfoot,
+                    "{stop:?} stands on a belonging"
                 );
             }
-            let residents = world.save.creatures.len().max(1);
-            if let Some((_, resting)) = home_resting_position(
-                &world.save.home,
-                slot,
-                residents,
-                &cottages,
-                &desktop.monitors,
-                policy,
-                display_scale,
-            ) {
+            for (item, _, at) in &ground {
+                let using = matches!((stop.interest, item),
+                    (TourInterest::Hangout(a), GroundItem::Hangout(b)) if a == *b);
                 assert!(
-                    (stop.at.x - resting.x).abs() >= clear,
-                    "{stop:?} crowds the resident at door {slot}"
+                    using || (stop.at.x - at.x).abs() >= underfoot,
+                    "{stop:?} stands on {item:?}"
                 );
             }
         }
-        for (_, thing) in places[..world.save.objects.objects.len()].iter().flatten() {
+        for other in &stops[index + 1..] {
             assert!(
-                (stop.at.x - thing.x).abs() >= OBJECT_WIDTH / 2.0 * scale,
-                "{stop:?} stands on a belonging"
+                (stop.at.x - other.at.x).abs() >= clear - 0.01,
+                "{stop:?} and {other:?} are one place twice"
             );
         }
     }
@@ -1364,4 +1374,180 @@ fn only_residents_who_were_here_before_recognise_a_returning_guest() {
         false,
     );
     assert_eq!(bop.gesture, Some(Gesture::Bop));
+}
+
+/// A colony of four with a cushion and a blanket put down, a flower bed planted and a bird bath
+/// on the grass, and its houses at their usual depths, so two doorsteps and the middle path are
+/// there to go up to.
+fn village_of_four(created: OffsetDateTime) -> World {
+    let desktop = desktop();
+    let mut world = colony_of_two(seed_expecting_a_visitor(), created);
+    for (order, seed) in [(2, [61_u8; 32]), (3, [83; 32])] {
+        let mut friend = World::preview_adult(seed, created, &desktop);
+        friend.colony_order = order;
+        world.save.creatures.push(friend);
+    }
+    let mut world = World::from_save(world.save);
+    for creature in &mut world.save.creatures {
+        creature.state.arrival_delay_secs = 0.0;
+    }
+    let home = &mut world.save.home;
+    assert!(home.set_hangout(HangoutKind::Cushion, Some(0.3)));
+    assert!(home.set_hangout(HangoutKind::Blanket, Some(0.75)));
+    assert!(home.set_garden(GardenKind::Flowers, Some(0.55), created));
+    assert!(home.set_ornament(OrnamentKind::BirdBath, Some(0.95)));
+    world
+}
+
+/// Where a guest spends one visit to `world`: seconds visiting in all, seconds standing at the
+/// spot it walked in to (within a face-clear step of it), and seconds standing anywhere else.
+fn where_a_visit_is_spent(
+    world: &mut World,
+    now: OffsetDateTime,
+    desktop: &DesktopSnapshot,
+) -> (f32, f32, f32) {
+    gather(world, now, desktop);
+    let scale =
+        f32::from(world.save.settings.display_scale) / desktop.monitors[0].scale_factor.max(1.0);
+    let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * scale;
+    let (mut visiting, mut at_the_edge, mut in_the_village) = (0.0, 0.0, 0.0);
+    for step in 1..=18_000_i64 {
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, desktop);
+        world.drain_events().for_each(drop);
+        let Some(guest) = world.save.visitors.guest.as_ref() else {
+            break;
+        };
+        if guest.visit.phase == VisitPhase::Gone {
+            break;
+        }
+        if guest.visit.phase != VisitPhase::Visiting {
+            continue;
+        }
+        let spot = home_guest_position(
+            &world.save.home,
+            &colony_cottages(&world.save.creatures),
+            &desktop.monitors,
+            &world.save.settings.habitat,
+            world.save.settings.display_scale,
+        )
+        .expect("the village has room for a guest")
+        .1;
+        visiting += 0.05;
+        if guest.creature.state.action == ActionKind::Traverse {
+            continue;
+        }
+        if (guest.creature.state.position.x - spot.x).abs() < clear {
+            at_the_edge += 0.05;
+        } else {
+            in_the_village += 0.05;
+        }
+    }
+    (visiting, at_the_edge, in_the_village)
+}
+
+#[test]
+fn a_guest_spends_its_visit_in_among_the_village_using_its_spots() {
+    let desktop = desktop();
+    let created = datetime!(2026-04-02 9:00 UTC);
+    let mut world = village_of_four(created);
+    let now = run(&mut world, created, 40.0, &desktop);
+    world.save.visitors.gatherings = 0;
+    gather(&mut world, now, &desktop);
+    let scale =
+        f32::from(world.save.settings.display_scale) / desktop.monitors[0].scale_factor.max(1.0);
+    let face_clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * scale;
+
+    let mut interests = BTreeSet::new();
+    let mut used = BTreeSet::new();
+    let mut back = 0.0_f32;
+    let mut visiting = 0.0_f32;
+    let mut beside: BTreeMap<CreatureId, f32> = BTreeMap::new();
+    let mut worst_beside = 0.0_f32;
+    for step in 1..=18_000_i64 {
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+        world.drain_events().for_each(drop);
+        let guest = world
+            .save
+            .visitors
+            .guest
+            .as_ref()
+            .expect("the guest stays until it has gone");
+        if guest.visit.phase == VisitPhase::Gone {
+            break;
+        }
+        if guest.visit.phase != VisitPhase::Visiting {
+            continue;
+        }
+        every_stop_is_somewhere_a_guest_may_stand(&world, &desktop);
+        visiting += 0.05;
+        let standing = guest.creature.state.action != ActionKind::Traverse;
+        if guest.creature.state.depth >= SET_BACK_DEPTH {
+            back += 0.05;
+        }
+        let stop = guest.visit.stops[usize::from(guest.visit.stop)];
+        if standing && guest.creature.state.position == stop.at {
+            interests.insert(format!("{:?}", stop.interest));
+            if let TourInterest::Hangout(kind) = stop.interest
+                && guest.visit.moment == TourMoment::Looking
+            {
+                used.insert(format!("{kind:?} {:?}", guest.creature.state.action));
+            }
+        }
+        // Nobody stands with its face in the guest's, or the guest in theirs, for long: the
+        // guest goes where nobody is, and the residents leave it room where it is.
+        for creature in &world.save.creatures {
+            let close = standing
+                && !creature.state.indoors
+                && creature.state.velocity.x.abs() < 1.0
+                && (creature.state.position.x - guest.creature.state.position.x).abs() < face_clear;
+            if close {
+                let run = beside.entry(creature.id).or_default();
+                *run += 0.05;
+                worst_beside = worst_beside.max(*run);
+            } else {
+                beside.remove(&creature.id);
+            }
+        }
+    }
+    eprintln!(
+        "visiting {visiting:.0}s, back {back:.0}s, interests {interests:?}, used {used:?}, worst beside {worst_beside:.1}s"
+    );
+    // Every kind of place the village has, and the spots used the way they are for.
+    for kind in ["Hangout(Cushion)", "House", "Path", "Garden", "Keepsake"] {
+        assert!(
+            interests
+                .iter()
+                .any(|seen| seen.starts_with(kind.split('(').next().unwrap())),
+            "the guest never went to a {kind}: {interests:?}"
+        );
+    }
+    assert!(
+        used.iter().any(|seen| ["Sleep", "Eat", "Drink"]
+            .iter()
+            .any(|clip| seen.ends_with(clip))),
+        "the guest never used a spot: {used:?}"
+    );
+    // A good share of it back among the houses, up the paths, rather than all at the front.
+    assert!(
+        back >= visiting * 0.15,
+        "only {back}s of {visiting}s back in the village"
+    );
+    assert!(
+        worst_beside <= 12.0,
+        "a resident stood in the guest's face for {worst_beside}s"
+    );
+
+    // And over a whole visit, the guest is out in the village far more than at the edge it came
+    // in at.
+    let mut again = village_of_four(created);
+    let now = run(&mut again, created, 40.0, &desktop);
+    again.save.visitors.gatherings = 0;
+    let (visiting, at_the_edge, in_the_village) = where_a_visit_is_spent(&mut again, now, &desktop);
+    eprintln!(
+        "visiting {visiting:.0}s, at the edge {at_the_edge:.0}s, in the village {in_the_village:.0}s"
+    );
+    assert!(
+        in_the_village >= visiting * 0.6 && at_the_edge <= visiting * 0.2,
+        "{in_the_village:.0}s in the village and {at_the_edge:.0}s at the edge of {visiting:.0}s"
+    );
 }
