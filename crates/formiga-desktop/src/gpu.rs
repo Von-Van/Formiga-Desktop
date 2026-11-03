@@ -5,12 +5,13 @@ use formiga_art::{
     AccessoryArt, AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, BodyPresentation,
     COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
     ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, MenuIcon, MenuLayout, MilestoneBubbleRenderer, PixelPoint, PropAnchor,
-    PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT,
-    TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor,
-    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT,
-    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH,
-    WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
+    FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing,
+    MenuIcon, MenuLayout, MilestoneBubbleRenderer, PixelPoint, PropAnchor, PropSprite, Rgba,
+    SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH,
+    TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor, TrinketAtlasRenderer,
+    UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH,
+    VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
+    WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
     GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
@@ -85,6 +86,8 @@ struct SpriteGpu {
     /// Which cell of the face texture each face is drawn from, by face slot.
     face_cells: Vec<u16>,
     face_anchors: Vec<PixelPoint>,
+    /// What each baked frame holds and where, by slot.
+    held: Vec<Option<HeldPlacement>>,
     /// The topmost and just-past-the-lowest drawn rows of each baked body frame, in art pixels
     /// from the frame's top edge. A bubble hangs off the crown rather than off the frame, so a
     /// mini keeps its bubble as close to its head as an adult does.
@@ -114,6 +117,9 @@ struct CreatureDraw {
     start: usize,
     trinket: bool,
     held: usize,
+    /// Whether what it is eating, sipping or playing with follows its held things, from the
+    /// held sheet.
+    carried: bool,
     among_houses: Option<usize>,
     depth: f32,
 }
@@ -199,6 +205,12 @@ pub struct SideView<'a> {
     pub hovered: Option<usize>,
 }
 
+/// Everything a companion can eat, sip or play with, one sheet for every companion.
+struct HeldSheetGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+}
+
 struct ColonyObjectsGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
@@ -260,6 +272,7 @@ pub struct OverlayRenderer {
     ui_atlas: Option<UiAtlasGpu>,
     ui_atlas_idle: u32,
     colony_objects: Option<ColonyObjectsGpu>,
+    held_sheet: Option<HeldSheetGpu>,
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
     wonder: Option<WonderGpu>,
@@ -536,6 +549,7 @@ impl OverlayRenderer {
             ui_atlas: None,
             ui_atlas_idle: 0,
             colony_objects: None,
+            held_sheet: None,
             trinkets: None,
             rope: None,
             wonder: None,
@@ -843,7 +857,7 @@ impl OverlayRenderer {
                 save.settings.reduce_motion,
             );
             let start = vertices.len();
-            let (body, face, trinket, held) =
+            let (body, face, trinket, held, carried) =
                 self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
             vertices.extend_from_slice(&body);
             vertices.extend_from_slice(&face);
@@ -863,11 +877,17 @@ impl OverlayRenderer {
                     prop_vertices.extend_from_slice(&quad);
                 }
             }
+            // What it is eating or playing with is drawn with it wherever it stands, so nobody
+            // else's snack is ever drawn over it.
+            if let Some(quad) = carried {
+                vertices.extend_from_slice(&quad);
+            }
             creature_draws.push(CreatureDraw {
                 id: creature.id,
                 start,
                 trinket: trinket.is_some(),
                 held: held_count,
+                carried: carried.is_some(),
                 among_houses,
                 depth: creature.state.depth,
             });
@@ -884,8 +904,11 @@ impl OverlayRenderer {
         let prop_start = vertices.len();
         vertices.extend_from_slice(&prop_vertices);
         let prop_vertex_count = prop_vertices.len();
-        if prop_vertex_count > 0 {
+        if prop_vertex_count > 0 || creature_draws.iter().any(|draw| draw.held > 0) {
             self.ensure_colony_object_atlas(save.colony_seed);
+        }
+        if creature_draws.iter().any(|draw| draw.carried) {
+            self.ensure_held_sheet();
         }
         // The train, in front of everyone: a companion walking up to its door goes behind it.
         let train_start = vertices.len();
@@ -1028,6 +1051,12 @@ impl OverlayRenderer {
                         && let Some(objects) = &self.colony_objects
                     {
                         draw(pass, &objects.bind_group, next, creature.held);
+                    }
+                    next += creature.held;
+                    if creature.carried
+                        && let Some(sheet) = &self.held_sheet
+                    {
+                        draw(pass, &sheet.bind_group, next, 6);
                     }
                 }
             };
@@ -1228,6 +1257,7 @@ impl OverlayRenderer {
         [Vertex; 6],
         Option<[Vertex; 6]>,
         [Option<[Vertex; 6]>; 2],
+        Option<[Vertex; 6]>,
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
@@ -1414,6 +1444,25 @@ impl OverlayRenderer {
         // Something the village has put in its hands — a watering can, something just picked —
         // held where a keepsake is held, and the water running out of the can while it waters.
         let mut held = [None, None];
+        // What it is eating, sipping or playing with, where this frame holds it.
+        let carried = sprite.held[slot as usize].map(|HeldPlacement { thing, at }| {
+            let across = if facing_right {
+                at.x
+            } else {
+                FRAME_SIZE as i32 - at.x
+            } as f32;
+            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+            self.held_quad_at(
+                thing,
+                (
+                    local_x + (unscaled_x - local_x) * horizontal_scale,
+                    frame_top + at.y as f32 * display_scale as f32,
+                ),
+                !facing_right,
+                display_scale,
+                occlusion_enabled,
+            )
+        });
         if let Some(beat) = creature.state.beat
             && let Some(prop) = beat.held
         {
@@ -1441,7 +1490,42 @@ impl OverlayRenderer {
                 ));
             }
         }
-        (body, face, trinket, held)
+        (body, face, trinket, held, carried)
+    }
+
+    /// One held thing's quad from the held sheet, its cell's middle at `centre`.
+    fn held_quad_at(
+        &self,
+        thing: HeldThing,
+        (centre_x, centre_y): (f32, f32),
+        mirrored: bool,
+        display_scale: u8,
+        occlusion_enabled: f32,
+    ) -> [Vertex; 6] {
+        let size = HELD_CELL as f32 * f32::from(display_scale);
+        let centre_x = self.snap(centre_x);
+        let centre_y = self.snap(centre_y);
+        let left = (centre_x - size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (centre_x + size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - (centre_y - size * 0.5) / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - (centre_y + size * 0.5) / self.layout.height as f32 * 2.0;
+        let (mut u_left, v_top, mut u_right, v_bottom) = thing.uv();
+        if mirrored {
+            std::mem::swap(&mut u_left, &mut u_right);
+        }
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled,
+        };
+        [
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, top], [u_right, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, bottom], [u_left, v_bottom]),
+        ]
     }
 }
 

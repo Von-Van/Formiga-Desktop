@@ -335,9 +335,18 @@ is held below the mouth, so a body that sits low holds it below its feet, becaus
 of the ground would put it across the face.
 
 Passive toys, snacks, and drinkware are deterministically derived from genes already stored in the
-appearance genome. Their colors, shape variants, motion phases, and hand targets are baked into the
-same action atlas as the creature. Eating and drinking therefore add no runtime asset lookup or
-procedural work; sprinting reuses the existing movement tick with a distinct six-frame gait.
+appearance genome. What is held is drawn apart from the body (`renderer/held.rs`): each body frame
+returns a `HeldPlacement` saying which `HeldThing` it holds and where the middle of its 16-pixel
+cell lands in the frame, and the thing itself is a cell of the held sheet (`render_held_sheet`,
+one texture every companion and colony shares), drawn in its own colours — food as food, each toy in one of
+three colourways — with the shared dark edge. The overlay keeps each slot's placement with the atlas
+and draws the cell as one quad right after the body and face, mirrored with the frame, so a
+companion standing in front of another is never drawn under the other's snack; whole-frame renders
+(`render_dressed_composited_frame` and everything built on it: stickers, postcards, review sheets,
+Formiga Home) paint it in the same place. The marks a creature makes while it plays or eats — the
+dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A body holding
+something else needs no new frames; sprinting reuses the existing movement tick with a distinct
+six-frame gait.
 
 Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
 window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second

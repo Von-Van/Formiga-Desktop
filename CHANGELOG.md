@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- What a companion eats, sips or plays with is drawn apart from its body, from one sheet every
+  companion shares, in the paw or at the mouth where each frame holds it. Food is drawn in its own
+  colours, so a berry is red and a biscuit golden whoever is eating it, and each toy comes in one
+  of three colourways. This is the groundwork for companions eating and playing with more than
+  the one snack and toy they were born with; nothing else about eating or play changes yet.
+
 ## [0.68.21] - 2026-10-29
 
 Companions living in among the village's houses, released on its own: Formiga Hill, Home and

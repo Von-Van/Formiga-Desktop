@@ -1,5 +1,5 @@
 //! Belongings a body holds: which toy, snack and cup it owns, where it holds them, and how each is
-//! drawn.
+//! drawn. The things themselves are drawn apart from the body; see [`super::held`].
 use super::*;
 
 /// How many kinds of each belonging the generator can produce. Every one is resolved from genes
@@ -80,9 +80,65 @@ pub(super) fn prop_hold(
     }
 }
 
-/// One round of play, one mouthful, or one sip — placed where the body can reach it.
+/// What a body is holding in one frame of play, a mouthful or a sip, and where: the thing itself
+/// is drawn apart from the body (see [`super::held`]), so this only says which picture and where
+/// its middle goes.
+pub(super) fn activity_held(
+    genome: &AppearanceGenome,
+    face: PixelPoint,
+    pose: Pose,
+    action: ActionKind,
+    frame: u8,
+    reduce_motion: bool,
+) -> Option<HeldPlacement> {
+    let phase = if reduce_motion { 0 } else { frame % 4 };
+    let (toy, snack, drink) = prop_variants(genome);
+    let hold = prop_hold(genome, pose, face, BodyClip::Action(action));
+    match action {
+        ActionKind::SoloPlay => {
+            // One round of keep-up, read straight off the paw: knocked up off the paw, over the
+            // head, caught coming down, and back onto the paw. The toy is the thing that moves,
+            // and it passes through the paw twice a loop, so play reads as play even on a body
+            // whose forelimbs stay folded.
+            let (x, y, spin) = play_path(hold, phase);
+            let thing = HeldThing::Toy {
+                kind: toy,
+                colourway: toy_colourway(genome),
+                spin,
+            };
+            Some(HeldPlacement::centred(thing, x, y))
+        }
+        ActionKind::Eat => {
+            // Carried up to the mouth and taken down to a crumb.
+            let lift = [0, 2, 3, 1][usize::from(phase)];
+            let x = hold.mouth.x - 1 + i32::from(phase == 0) * 2;
+            let y = hold.mouth.y + 2 - lift;
+            let thing = HeldThing::Snack {
+                kind: snack,
+                bite: phase,
+            };
+            Some(HeldPlacement::centred(thing, x, y))
+        }
+        ActionKind::Drink => {
+            let tipped = phase == 1 || phase == 2;
+            let x = hold.mouth.x - 1;
+            let y = hold.mouth.y + 4 - i32::from(tipped) * 3;
+            let thing = HeldThing::Cup {
+                kind: drink,
+                tipped,
+                sip: phase % 2,
+            };
+            Some(HeldPlacement::centred(thing, x, y))
+        }
+        _ => None,
+    }
+}
+
+/// The marks play and a mouthful leave on the body's own frame: the dashes behind a toy in the
+/// air, the knock where it meets the paw, and the crumbs at the end of a mouthful. They are the
+/// creature's own doing, so they stay in its frame while the thing it holds is drawn apart.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn draw_activity_prop(
+pub(super) fn draw_activity_marks(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
     palette: Palette,
@@ -93,23 +149,17 @@ pub(super) fn draw_activity_prop(
     reduce_motion: bool,
 ) {
     let phase = if reduce_motion { 0 } else { frame % 4 };
-    let (toy, snack, drink) = prop_variants(genome);
-    // Belongings are coloured against the creature, not from it, so a held toy stays readable.
+    // Marks are coloured against the creature, not from it, so they stay readable on its coat.
     let palette = crate::prop_palette(palette, prop_signature(genome));
     let hold = prop_hold(genome, pose, face, BodyClip::Action(action));
     match action {
         ActionKind::SoloPlay => {
-            // One round of keep-up, read straight off the paw: knocked up off the paw, over the
-            // head, caught coming down, and back onto the paw. The toy is the thing that moves,
-            // and it passes through the paw twice a loop, so play reads as play even on a body
-            // whose forelimbs stay folded.
             let at = |phase: u8| play_path(hold, phase);
-            let (x, y, spin) = at(phase);
+            let (x, y, _) = at(phase);
             if !reduce_motion {
                 let (px, py, _) = at((phase + 3) % 4);
                 draw_prop_trail(canvas, palette, (px, py), (x, y));
             }
-            draw_generated_toy(canvas, palette, genome.effect_motif, toy, x, y, spin);
             if phase == 0 || phase == 3 {
                 // The knock itself: two ticks where the toy meets the paw that is keeping it up.
                 for (dx, dy) in [(-1, 3), (1, 4)] {
@@ -117,32 +167,19 @@ pub(super) fn draw_activity_prop(
                 }
             }
         }
-        ActionKind::Eat => {
-            // Carried up to the mouth and taken down to a crumb.
-            let lift = [0, 2, 3, 1][usize::from(phase)];
-            let x = hold.mouth.x - 1 + i32::from(phase == 0) * 2;
-            let y = hold.mouth.y + 2 - lift;
-            draw_generated_snack(canvas, palette, snack, x, y, phase);
-            if phase == 3 {
-                // Crumbs, so the last frame is the end of a mouthful rather than an empty hand.
-                // They fall no further than the ground.
-                canvas.set(
-                    hold.mouth.x - 2,
-                    (hold.mouth.y + 5).min(hold.ground),
-                    palette.shadow,
-                );
-                canvas.set(
-                    hold.mouth.x + 1,
-                    (hold.mouth.y + 6).min(hold.ground),
-                    palette.highlight,
-                );
-            }
-        }
-        ActionKind::Drink => {
-            let tipped = phase == 1 || phase == 2;
-            let x = hold.mouth.x - 1;
-            let y = hold.mouth.y + 4 - i32::from(tipped) * 3;
-            draw_generated_drinkware(canvas, palette, drink, x, y, tipped, phase);
+        ActionKind::Eat if phase == 3 => {
+            // Crumbs, so the last frame is the end of a mouthful rather than an empty hand.
+            // They fall no further than the ground.
+            canvas.set(
+                hold.mouth.x - 2,
+                (hold.mouth.y + 5).min(hold.ground),
+                palette.shadow,
+            );
+            canvas.set(
+                hold.mouth.x + 1,
+                (hold.mouth.y + 6).min(hold.ground),
+                palette.highlight,
+            );
         }
         _ => {}
     }
