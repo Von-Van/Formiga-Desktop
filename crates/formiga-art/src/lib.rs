@@ -38,9 +38,9 @@ pub use renderer::{
     DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
     FramePlacement, GazeDirection, HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT,
     HELD_SHEET_WIDTH, HeldPlacement, HeldThing, Holding, MealPose, MotionSignature, PixelPoint,
-    PlaybackMode, PropAnchor, RenderedBodyFrame, SNACK_KINDS, TOY_COLOURWAYS, TOY_KINDS, held_now,
-    meal_eyelids, meal_face, meal_held, meal_pose, prop_variants, render_held_sheet,
-    shows_held_by_default,
+    PlayPicture, PlaybackMode, PropAnchor, RenderedBodyFrame, SNACK_KINDS, TOY_COLOURWAYS,
+    TOY_KINDS, held_now, meal_eyelids, meal_face, meal_held, meal_pose, play_face, play_held,
+    play_offset, play_pose, prop_variants, render_held_sheet, shows_held_by_default,
 };
 pub use shelter::{
     ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,

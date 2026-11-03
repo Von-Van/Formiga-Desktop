@@ -143,6 +143,9 @@ pub fn held_now(
     if let Some(meal) = meal_shown(creature) {
         return Some(baked.holding(meal_held(meal)?));
     }
+    if let Some(play) = super::play::play_shown(creature) {
+        return Some(super::play::play_placement(creature, play, clip, baked));
+    }
     shows_held_by_default(clip).then_some(baked)
 }
 

@@ -117,9 +117,9 @@ struct CreatureDraw {
     start: usize,
     trinket: bool,
     held: usize,
-    /// Whether what it is eating, sipping or playing with follows its held things, from the
-    /// held sheet.
-    carried: bool,
+    /// What it is eating, sipping or playing with, after its held things: from the held sheet,
+    /// or for a find borrowed to play with, from the colony's sheet of finds.
+    carried: Option<CarriedSheet>,
     among_houses: Option<usize>,
     depth: f32,
 }
@@ -203,6 +203,13 @@ pub struct SideView<'a> {
     pub layout: &'a MenuLayout,
     pub placement: SidePlacement,
     pub hovered: Option<usize>,
+}
+
+/// Which sheet what a companion is eating or playing with is drawn from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CarriedSheet {
+    Held,
+    Finds,
 }
 
 /// Everything a companion can eat, sip or play with, one sheet for every companion.
@@ -879,7 +886,7 @@ impl OverlayRenderer {
             }
             // What it is eating or playing with is drawn with it wherever it stands, so nobody
             // else's snack is ever drawn over it.
-            if let Some(quad) = carried {
+            if let Some((quad, _)) = carried {
                 vertices.extend_from_slice(&quad);
             }
             creature_draws.push(CreatureDraw {
@@ -887,7 +894,7 @@ impl OverlayRenderer {
                 start,
                 trinket: trinket.is_some(),
                 held: held_count,
-                carried: carried.is_some(),
+                carried: carried.map(|(_, sheet)| sheet),
                 among_houses,
                 depth: creature.state.depth,
             });
@@ -907,8 +914,17 @@ impl OverlayRenderer {
         if prop_vertex_count > 0 || creature_draws.iter().any(|draw| draw.held > 0) {
             self.ensure_colony_object_atlas(save.colony_seed);
         }
-        if creature_draws.iter().any(|draw| draw.carried) {
+        if creature_draws
+            .iter()
+            .any(|draw| draw.carried == Some(CarriedSheet::Held))
+        {
             self.ensure_held_sheet();
+        }
+        if creature_draws
+            .iter()
+            .any(|draw| draw.carried == Some(CarriedSheet::Finds))
+        {
+            self.ensure_trinket_atlas(save);
         }
         // The train, in front of everyone: a companion walking up to its door goes behind it.
         let train_start = vertices.len();
@@ -1053,10 +1069,18 @@ impl OverlayRenderer {
                         draw(pass, &objects.bind_group, next, creature.held);
                     }
                     next += creature.held;
-                    if creature.carried
-                        && let Some(sheet) = &self.held_sheet
-                    {
-                        draw(pass, &sheet.bind_group, next, 6);
+                    match creature.carried {
+                        Some(CarriedSheet::Held) => {
+                            if let Some(sheet) = &self.held_sheet {
+                                draw(pass, &sheet.bind_group, next, 6);
+                            }
+                        }
+                        Some(CarriedSheet::Finds) => {
+                            if let Some(trinkets) = &self.trinkets {
+                                draw(pass, &trinkets.bind_group, next, 6);
+                            }
+                        }
+                        None => {}
                     }
                 }
             };
@@ -1257,7 +1281,7 @@ impl OverlayRenderer {
         [Vertex; 6],
         Option<[Vertex; 6]>,
         [Option<[Vertex; 6]>; 2],
-        Option<[Vertex; 6]>,
+        Option<([Vertex; 6], CarriedSheet)>,
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
@@ -1453,7 +1477,12 @@ impl OverlayRenderer {
                     FRAME_SIZE as i32 - at.x
                 } as f32;
                 let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
-                self.held_quad_at(
+                let sheet = if thing.find().is_some() {
+                    CarriedSheet::Finds
+                } else {
+                    CarriedSheet::Held
+                };
+                let quad = self.held_quad_at(
                     thing,
                     (
                         local_x + (unscaled_x - local_x) * horizontal_scale,
@@ -1462,7 +1491,8 @@ impl OverlayRenderer {
                     !facing_right,
                     display_scale,
                     occlusion_enabled,
-                )
+                );
+                (quad, sheet)
             },
         );
         if let Some(beat) = creature.state.beat
@@ -1511,7 +1541,20 @@ impl OverlayRenderer {
         let right = (centre_x + size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
         let top = 1.0 - (centre_y - size * 0.5) / self.layout.height as f32 * 2.0;
         let bottom = 1.0 - (centre_y + size * 0.5) / self.layout.height as f32 * 2.0;
-        let (mut u_left, v_top, mut u_right, v_bottom) = thing.uv();
+        let (mut u_left, v_top, mut u_right, v_bottom) = match thing.find() {
+            // A find is the colony's own, from its sheet of finds.
+            Some(variant) => {
+                let (x, y, _, _) = TrinketAtlasRenderer::cell_rect(variant, TRINKET_FRAME_REST);
+                let (w, h) = (TRINKET_ATLAS_WIDTH as f32, TRINKET_ATLAS_HEIGHT as f32);
+                (
+                    x as f32 / w,
+                    y as f32 / h,
+                    (x + TRINKET_CELL) as f32 / w,
+                    (y + TRINKET_CELL) as f32 / h,
+                )
+            }
+            None => thing.uv(),
+        };
         if mirrored {
             std::mem::swap(&mut u_left, &mut u_right);
         }

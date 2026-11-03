@@ -27,6 +27,7 @@ mod new_looks;
 mod objects_and_decorations;
 mod offers;
 mod perches;
+mod play;
 mod presence;
 mod rituals;
 mod spacing;

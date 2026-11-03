@@ -11,6 +11,7 @@
 //! any coat.
 
 use super::foods::{draw_food, food_offset};
+use super::playthings::{Plaything, draw_plaything};
 use super::*;
 use formiga_core::meals::Food;
 
@@ -34,15 +35,21 @@ pub enum HeldThing {
     Cup { kind: u8, tipped: bool, sip: u8 },
     /// Something from a meal (see [`formiga_core::meals::Food`]), `bite` mouthfuls in.
     Food { food: Food, bite: u8 },
+    /// Something a game is played with (see [`Plaything`]).
+    Play(Plaything),
+    /// Something the colony has found, borrowed from the scrapbook to play with. Drawn from the
+    /// colony's own sheet of finds in its own colours, not from the held sheet.
+    Trinket(u8),
 }
 
 const SNACK_CELLS: u32 = SNACK_KINDS as u32 * 4;
 const TOY_CELLS: u32 = TOY_KINDS as u32 * TOY_COLOURWAYS as u32 * 4;
 const CUP_CELLS: u32 = DRINK_KINDS as u32 * 4;
 const FOOD_CELLS: u32 = Food::ALL.len() as u32 * 4;
+const PLAY_CELLS: u32 = Plaything::ALL.len() as u32;
 
 /// Every held picture, one cell each.
-pub const HELD_CELLS: u32 = SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS;
+pub const HELD_CELLS: u32 = SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + PLAY_CELLS;
 pub const HELD_SHEET_WIDTH: u32 = HELD_CELL * HELD_SHEET_COLUMNS;
 pub const HELD_SHEET_HEIGHT: u32 = HELD_CELL * HELD_CELLS.div_ceil(HELD_SHEET_COLUMNS);
 
@@ -68,7 +75,8 @@ impl HeldThing {
         let foods = Food::ALL
             .into_iter()
             .flat_map(|food| (0..4).map(move |bite| Self::Food { food, bite }));
-        snacks.chain(toys).chain(cups).chain(foods)
+        let play = Plaything::ALL.into_iter().map(Self::Play);
+        snacks.chain(toys).chain(cups).chain(foods).chain(play)
     }
 
     /// Which of the held cells this picture is, from 0.
@@ -102,6 +110,17 @@ impl HeldThing {
                     + u32::from(food.index()) * 4
                     + u32::from(bite.min(3))
             }
+            Self::Play(thing) => SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + thing.index(),
+            // Not on the held sheet at all.
+            Self::Trinket(_) => 0,
+        }
+    }
+
+    /// The find this is, if it is one: drawn from the colony's sheet of finds instead.
+    pub fn find(self) -> Option<u8> {
+        match self {
+            Self::Trinket(variant) => Some(variant),
+            _ => None,
         }
     }
 
@@ -117,7 +136,7 @@ impl HeldThing {
             },
             Self::Cup { .. } => 3,
             Self::Food { food, .. } => food_offset(food),
-            Self::Snack { .. } => 0,
+            Self::Snack { .. } | Self::Play(_) | Self::Trinket(_) => 0,
         };
         PixelPoint { x: 0, y: dy }
     }
@@ -145,6 +164,19 @@ impl HeldThing {
                 draw_generated_drinkware(canvas, cup_palette(kind), kind, x, y, tipped, sip)
             }
             Self::Food { food, bite } => draw_food(canvas, food, x, y, bite),
+            Self::Play(thing) => draw_plaything(canvas, thing, x, y),
+            Self::Trinket(variant) => {
+                let ink = crate::trinkets::ink_against(crate::PALETTES[0], u64::from(variant));
+                let half = crate::TRINKET_CELL as i32 / 2;
+                crate::draw_trinket(
+                    canvas,
+                    ink,
+                    variant,
+                    crate::TRINKET_FRAME_REST,
+                    x - half,
+                    y - half,
+                );
+            }
         }
     }
 
@@ -199,7 +231,7 @@ pub struct HeldPlacement {
 
 impl HeldPlacement {
     /// Holding `thing` with its own middle at `x`, `y` of the frame.
-    pub(super) fn centred(thing: HeldThing, x: i32, y: i32) -> Self {
+    pub fn centred(thing: HeldThing, x: i32, y: i32) -> Self {
         let offset = thing.offset();
         Self {
             thing,
@@ -363,6 +395,7 @@ mod tests {
                 thing,
                 HeldThing::Snack { bite: 0, .. }
                     | HeldThing::Food { bite: 0, .. }
+                    | HeldThing::Play(_)
                     | HeldThing::Toy { spin: 0, .. }
                     | HeldThing::Cup {
                         tipped: false,

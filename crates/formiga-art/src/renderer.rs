@@ -18,6 +18,8 @@ mod fox;
 mod held;
 mod meals;
 mod modular;
+mod play;
+mod playthings;
 mod pose;
 mod props;
 pub use accessories::AccessoryArt;
@@ -32,6 +34,8 @@ pub use held::{
 pub use meals::{
     MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_pose, shows_held_by_default,
 };
+pub use play::{play_face, play_held, play_offset, play_pose};
+pub use playthings::Plaything as PlayPicture;
 use pose::*;
 use props::*;
 pub use props::{DRINK_KINDS, SNACK_KINDS, TOY_KINDS, prop_variants};
@@ -706,6 +710,19 @@ impl BodyPresentation {
                 return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
             }
             let body = Self::footing(creature, motion);
+            // At play: each move of the game in its own pose.
+            if body.clip == BodyClip::Action(ActionKind::SoloPlay)
+                && let Some(pose) = play::play_shown(creature).and_then(play::play_pose)
+            {
+                return match pose {
+                    meals::MealPose::Playing(clip, into) => shown(clip, into),
+                    meals::MealPose::Held(clip, frame) => Self {
+                        clip,
+                        frame,
+                        facing_right: state.facing_right,
+                    },
+                };
+            }
             // Settled down to a meal: each step of it in its own pose.
             if body.clip == BodyClip::Action(ActionKind::Eat)
                 && let Some(meal) = meals::meal_shown(creature)

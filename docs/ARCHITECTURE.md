@@ -365,6 +365,25 @@ the frame baked, and a pose borrowed for a meal shows nothing in its paws outsid
 drawn in `renderer/foods.rs` at four stages each, on the held sheet after the cups.
 `formiga-tools meal-sheet` shows every food eaten through a meal.
 
+Play works the same way (`formiga-core/src/play.rs`, carried by `world/play.rs`, runtime only and
+checked by the same wiped-every-tick test). Every plaything has a `PlayShape` — round, stick,
+umbrella, flying, spinning, noisy, soft, stacking, floating — read from a toy's kind, a belonging's
+kind, or a find's name (`trinket_shape`; a stamp or a key has none). A companion settling down to
+SoloPlay picks its own toy, one of the colony's belongings, or a find borrowed from the scrapbook,
+and plays two or three of its shape's moves between picking it up and putting it down: a round
+thing kept up, tossed high, bounced or balanced on the head; a stick swished like a sword, leaned
+on like a cane, fished with (and sometimes a fish comes up) or conducted with; an umbrella twirled
+overhead or sat in like a boat; a kite flown, a plane thrown to glide away; a top spun on the
+ground; a drum drummed; a plush hugged; a tower of blocks stacked and knocked down; a paper boat
+sailed. A hop down off a ledge, when the colony has an umbrella, is ridden down under it half the
+time. `renderer/play.rs` gives each move a pose from the existing gestures and moves the thing from
+where the frame holds things (every gesture and the landing bake a hold), so it can leave the
+frame: a ball goes above the head, a plane across the desktop. Props a game needs (a stick at four
+angles, a rod and a fish, the umbrella open, closed and upturned, a kite, a plane, a tower, a drum,
+a paper boat) are on the held sheet; a borrowed find is drawn from the colony's own sheet of finds,
+so `CreatureDraw` notes which sheet its carried quad uses. `formiga-tools play-sheet` shows each
+shape played with through a session.
+
 Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
 window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
 vertical climb, and a 0.7-second continuous climbing mantle; downward transfers keep the existing

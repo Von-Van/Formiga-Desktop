@@ -1136,6 +1136,9 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     {
         return super::meals::meal_expression(creature, meal);
     }
+    if let Some(play) = super::play::play_shown(creature) {
+        return super::play::play_face(play);
+    }
     if let Some((habit, ..)) = flourish_shown(creature) {
         return match habit {
             Habit::LooksFoodOver => ExpressionKind::Curious,
@@ -1390,6 +1393,11 @@ fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: boo
     }
     if let Some(gaze) =
         super::meals::meal_shown(creature).and_then(|meal| super::meals::meal_gaze(creature, meal))
+    {
+        return fixed(gaze);
+    }
+    if let Some(gaze) =
+        super::play::play_shown(creature).and_then(|play| super::play::play_gaze(creature, play))
     {
         return fixed(gaze);
     }
