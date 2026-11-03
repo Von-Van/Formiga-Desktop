@@ -87,13 +87,45 @@ pub(super) fn activity_held(
     genome: &AppearanceGenome,
     face: PixelPoint,
     pose: Pose,
-    action: ActionKind,
+    clip: BodyClip,
     frame: u8,
     reduce_motion: bool,
 ) -> Option<HeldPlacement> {
     let phase = if reduce_motion { 0 } else { frame % 4 };
     let (toy, snack, drink) = prop_variants(genome);
-    let hold = prop_hold(genome, pose, face, BodyClip::Action(action));
+    let hold = prop_hold(genome, pose, face, clip);
+    let snack_at = |bite: u8, x: i32, y: i32| {
+        Some(HeldPlacement::centred(
+            HeldThing::Snack { kind: snack, bite },
+            x,
+            y,
+        ))
+    };
+    let action = match clip {
+        BodyClip::Action(action) => action,
+        // The eating gestures carry their food at the mouth: nibbled at in little dips, pushed in
+        // for a big bite, lowered while the mouth works, and up over the face to drop in.
+        BodyClip::Gesture(Gesture::Nibble) => {
+            let dip = [0, 1, 0, 1][usize::from(phase)];
+            return snack_at(1, hold.mouth.x, hold.mouth.y + 2 - dip);
+        }
+        BodyClip::Gesture(Gesture::Chomp) => {
+            let push = [0, 1, 2, 0][usize::from(phase)];
+            return snack_at(1, hold.mouth.x + 1 - push, hold.mouth.y + 3 - push);
+        }
+        BodyClip::Gesture(Gesture::Chew) => {
+            return snack_at(2, hold.mouth.x + 1, (hold.mouth.y + 6).min(hold.floor - 3));
+        }
+        BodyClip::Gesture(Gesture::Gulp) => {
+            let up = [2, 7, 4, 0][usize::from(phase)];
+            return snack_at(0, hold.mouth.x, hold.mouth.y + 1 - up);
+        }
+        // Poses a meal borrows between bites, holding the food where the paws are.
+        BodyClip::Gesture(Gesture::Gasp | Gesture::Loaf | Gesture::Worry) => {
+            return snack_at(1, hold.hands.x, hold.hands.y.min(hold.floor - 3));
+        }
+        BodyClip::Gesture(_) => return None,
+    };
     match action {
         ActionKind::SoloPlay => {
             // One round of keep-up, read straight off the paw: knocked up off the paw, over the

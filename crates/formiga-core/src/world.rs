@@ -24,6 +24,7 @@ mod home;
 mod house_visits;
 mod interaction;
 mod journeys;
+mod meals;
 mod moments;
 mod movement;
 mod new_looks;
@@ -474,6 +475,7 @@ impl World {
         }
         // Last, once everyone has got wherever this tick takes them.
         self.carry_presence(dt, desktop);
+        self.carry_meals(now, dt);
     }
 
     fn tick_colony(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {

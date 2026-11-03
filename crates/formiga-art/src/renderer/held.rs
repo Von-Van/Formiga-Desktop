@@ -10,7 +10,9 @@
 //! toy keeps its colour whoever picks it up. The shared dark edge keeps each one readable against
 //! any coat.
 
+use super::foods::{draw_food, food_offset};
 use super::*;
+use formiga_core::meals::Food;
 
 /// How big a held thing's cell is, in art pixels.
 pub const HELD_CELL: u32 = 16;
@@ -30,14 +32,17 @@ pub enum HeldThing {
     Toy { kind: u8, colourway: u8, spin: u8 },
     /// One of the cups, tipped to the mouth or resting, on the first or second beat of a sip.
     Cup { kind: u8, tipped: bool, sip: u8 },
+    /// Something from a meal (see [`formiga_core::meals::Food`]), `bite` mouthfuls in.
+    Food { food: Food, bite: u8 },
 }
 
 const SNACK_CELLS: u32 = SNACK_KINDS as u32 * 4;
 const TOY_CELLS: u32 = TOY_KINDS as u32 * TOY_COLOURWAYS as u32 * 4;
 const CUP_CELLS: u32 = DRINK_KINDS as u32 * 4;
+const FOOD_CELLS: u32 = Food::ALL.len() as u32 * 4;
 
 /// Every held picture, one cell each.
-pub const HELD_CELLS: u32 = SNACK_CELLS + TOY_CELLS + CUP_CELLS;
+pub const HELD_CELLS: u32 = SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS;
 pub const HELD_SHEET_WIDTH: u32 = HELD_CELL * HELD_SHEET_COLUMNS;
 pub const HELD_SHEET_HEIGHT: u32 = HELD_CELL * HELD_CELLS.div_ceil(HELD_SHEET_COLUMNS);
 
@@ -60,7 +65,10 @@ impl HeldThing {
                 .into_iter()
                 .flat_map(move |tipped| (0..2).map(move |sip| Self::Cup { kind, tipped, sip }))
         });
-        snacks.chain(toys).chain(cups)
+        let foods = Food::ALL
+            .into_iter()
+            .flat_map(|food| (0..4).map(move |bite| Self::Food { food, bite }));
+        snacks.chain(toys).chain(cups).chain(foods)
     }
 
     /// Which of the held cells this picture is, from 0.
@@ -87,6 +95,13 @@ impl HeldThing {
                     + u32::from(tipped) * 2
                     + u32::from(sip % 2)
             }
+            Self::Food { food, bite } => {
+                SNACK_CELLS
+                    + TOY_CELLS
+                    + CUP_CELLS
+                    + u32::from(food.index()) * 4
+                    + u32::from(bite.min(3))
+            }
         }
     }
 
@@ -101,6 +116,7 @@ impl HeldThing {
                 _ => 0,
             },
             Self::Cup { .. } => 3,
+            Self::Food { food, .. } => food_offset(food),
             Self::Snack { .. } => 0,
         };
         PixelPoint { x: 0, y: dy }
@@ -128,6 +144,7 @@ impl HeldThing {
             Self::Cup { kind, tipped, sip } => {
                 draw_generated_drinkware(canvas, cup_palette(kind), kind, x, y, tipped, sip)
             }
+            Self::Food { food, bite } => draw_food(canvas, food, x, y, bite),
         }
     }
 
@@ -191,6 +208,12 @@ impl HeldPlacement {
                 y: y - offset.y,
             },
         }
+    }
+
+    /// The same hold with something else in it, its middle where this one's was.
+    pub fn holding(self, thing: HeldThing) -> Self {
+        let offset = self.thing.offset();
+        Self::centred(thing, self.at.x + offset.x, self.at.y + offset.y)
     }
 
     pub(super) fn translated(self, dx: i32, dy: i32) -> Self {
@@ -323,7 +346,10 @@ mod tests {
             let cell = thing.cell();
             let opaque = cell.pixels().iter().filter(|pixel| pixel.a > 100).count();
             // The last of a snack is meant to be small; it still has to be there.
-            let least = if matches!(thing, HeldThing::Snack { bite: 3, .. }) {
+            let least = if matches!(
+                thing,
+                HeldThing::Snack { bite: 3, .. } | HeldThing::Food { bite: 3, .. }
+            ) {
                 4
             } else {
                 12
@@ -336,6 +362,7 @@ mod tests {
             if matches!(
                 thing,
                 HeldThing::Snack { bite: 0, .. }
+                    | HeldThing::Food { bite: 0, .. }
                     | HeldThing::Toy { spin: 0, .. }
                     | HeldThing::Cup {
                         tipped: false,
@@ -346,6 +373,23 @@ mod tests {
                 assert!(!firsts.contains(&cell), "{thing:?} looks like another");
                 firsts.push(cell);
             }
+        }
+    }
+
+    /// Every food goes down mouthful by mouthful: the last of it is less than all of it.
+    #[test]
+    fn every_food_is_eaten_down() {
+        for food in Food::ALL {
+            let opaque = |bite| {
+                HeldThing::Food { food, bite }
+                    .cell()
+                    .pixels()
+                    .iter()
+                    .filter(|pixel| pixel.a > 0)
+                    .count()
+            };
+            assert!(opaque(3) < opaque(0), "{food:?} is never eaten");
+            assert!(opaque(0) >= 20, "{food:?} is too small to read as food");
         }
     }
 

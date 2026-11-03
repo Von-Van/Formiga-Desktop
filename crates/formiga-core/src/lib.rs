@@ -11,6 +11,7 @@ mod design;
 pub mod forms;
 mod habitat;
 mod habits;
+pub mod meals;
 mod model;
 mod observations;
 mod persistence;

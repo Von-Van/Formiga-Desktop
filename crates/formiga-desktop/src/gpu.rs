@@ -1445,24 +1445,26 @@ impl OverlayRenderer {
         // held where a keepsake is held, and the water running out of the can while it waters.
         let mut held = [None, None];
         // What it is eating, sipping or playing with, where this frame holds it.
-        let carried = sprite.held[slot as usize].map(|HeldPlacement { thing, at }| {
-            let across = if facing_right {
-                at.x
-            } else {
-                FRAME_SIZE as i32 - at.x
-            } as f32;
-            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
-            self.held_quad_at(
-                thing,
-                (
-                    local_x + (unscaled_x - local_x) * horizontal_scale,
-                    frame_top + at.y as f32 * display_scale as f32,
-                ),
-                !facing_right,
-                display_scale,
-                occlusion_enabled,
-            )
-        });
+        let carried = formiga_art::held_now(creature, clip, sprite.held[slot as usize]).map(
+            |HeldPlacement { thing, at }| {
+                let across = if facing_right {
+                    at.x
+                } else {
+                    FRAME_SIZE as i32 - at.x
+                } as f32;
+                let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+                self.held_quad_at(
+                    thing,
+                    (
+                        local_x + (unscaled_x - local_x) * horizontal_scale,
+                        frame_top + at.y as f32 * display_scale as f32,
+                    ),
+                    !facing_right,
+                    display_scale,
+                    occlusion_enabled,
+                )
+            },
+        );
         if let Some(beat) = creature.state.beat
             && let Some(prop) = beat.held
         {

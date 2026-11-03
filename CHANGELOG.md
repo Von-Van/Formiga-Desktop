@@ -12,6 +12,17 @@ All notable changes are documented here.
   of three colourways. This is the groundwork for companions eating and playing with more than
   the one snack and toy they were born with; nothing else about eating or play changes yet.
 
+### Added
+
+- Meals. A companion that settles down to eat now has a meal rather than the same mouthful over
+  and over: one of 18 foods, from berries and peas to an apple, a slice of cake, a carrot, a walnut
+  or a bowl of soup, chosen from the time of day, what is ripe in the village's gardens, its own
+  favourite, or a treat when you offer a snack. Each is eaten its own way — tiny things gulped or
+  tossed up and caught, hand-sized ones nibbled, big ones chomped in both paws, long ones munched
+  end to end, nuts cracked first, soup blown on and slurped — and goes down bite by bite. Between
+  the first look and the last lick of a paw, most meals have a moment of their own: a crumb wiped
+  off a cheek, cheeks stuffed full, a hiccup, or nodding off over it when tired.
+
 ## [0.68.21] - 2026-10-29
 
 Companions living in among the village's houses, released on its own: Formiga Hill, Home and

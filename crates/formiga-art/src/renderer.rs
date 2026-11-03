@@ -13,8 +13,10 @@ mod beats;
 mod classic;
 mod effects;
 mod face;
+mod foods;
 mod fox;
 mod held;
+mod meals;
 mod modular;
 mod pose;
 mod props;
@@ -26,6 +28,9 @@ use held::toy_colourway;
 pub use held::{
     HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,
     HeldThing, TOY_COLOURWAYS, render_held_sheet,
+};
+pub use meals::{
+    MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_pose, shows_held_by_default,
 };
 use pose::*;
 use props::*;
@@ -328,6 +333,14 @@ impl AnimationSpec {
             Gesture::Tend => (4, 5),
             // Pressed down and pushing up, twice a second.
             Gesture::Bask => (4, 4),
+            // Quick little bites, two a second.
+            Gesture::Nibble => (4, 8),
+            // In, a big bite, and back.
+            Gesture::Chomp => (4, 5),
+            // Munch, munch.
+            Gesture::Chew => (2, 4),
+            // Head back, mouth open, and down it goes.
+            Gesture::Gulp => (4, 6),
         };
         Self {
             frames,
@@ -692,7 +705,21 @@ impl BodyPresentation {
             {
                 return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
             }
-            return Self::footing(creature, motion);
+            let body = Self::footing(creature, motion);
+            // Settled down to a meal: each step of it in its own pose.
+            if body.clip == BodyClip::Action(ActionKind::Eat)
+                && let Some(meal) = meals::meal_shown(creature)
+            {
+                return match meals::meal_pose(meal) {
+                    meals::MealPose::Playing(clip, into) => shown(clip, into),
+                    meals::MealPose::Held(clip, frame) => Self {
+                        clip,
+                        frame,
+                        facing_right: state.facing_right,
+                    },
+                };
+            }
+            return body;
         };
         match habit {
             // The snack or the drink held up in front before the first bite or sip: the opening
@@ -946,6 +973,17 @@ impl FramePlacement {
 
 pub struct CreatureRenderer;
 
+/// What a whole-frame render puts in the paws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Holding {
+    /// Whatever the clip holds by default (see [`shows_held_by_default`]).
+    AsClip,
+    /// This, where the clip holds things.
+    Thing(HeldThing),
+    /// Nothing.
+    Nothing,
+}
+
 impl CreatureRenderer {
     pub fn render_frame(
         genome: &AppearanceGenome,
@@ -1130,10 +1168,9 @@ impl CreatureRenderer {
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
-        let mut held = None;
+        let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
         match clip {
             BodyClip::Action(action) => {
-                held = activity_held(genome, face_anchor, pose, action, frame, reduce_motion);
                 draw_activity_marks(
                     &mut canvas,
                     genome,
@@ -1357,6 +1394,33 @@ impl CreatureRenderer {
         reduce_motion: bool,
         face_state: FaceRenderState,
     ) -> Canvas {
+        Self::render_composited_frame_holding(
+            genome,
+            dress,
+            clip,
+            frame,
+            facing_right,
+            reduce_motion,
+            face_state,
+            Holding::AsClip,
+        )
+    }
+
+    /// [`Self::render_dressed_composited_frame`] with something chosen in its paws: a meal's
+    /// food, say, in place of the snack the clip holds by default, or nothing at all, for a page
+    /// that draws its own thing at [`Self::held_point`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_composited_frame_holding(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+        face_state: FaceRenderState,
+        holding: Holding,
+    ) -> Canvas {
+        let clip = clip.into();
         let mut body = Self::render_dressed_body_frame(genome, dress, clip, frame, reduce_motion);
         if !facing_right {
             body.canvas.mirror_horizontal();
@@ -1379,10 +1443,37 @@ impl CreatureRenderer {
             body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
         );
         // What it holds goes over the face, as the overlay draws it.
-        if let Some(held) = body.held {
+        let held = match holding {
+            Holding::AsClip => body.held.filter(|_| shows_held_by_default(clip)),
+            Holding::Thing(thing) => body.held.map(|held| held.holding(thing)),
+            Holding::Nothing => None,
+        };
+        if let Some(held) = held {
             held.paint(&mut body.canvas, facing_right);
         }
         body.canvas
+    }
+
+    /// Where the middle of what a frame of `clip` holds sits, in frame pixels facing the way
+    /// asked, if the frame holds anything: for a page that draws its own thing in the paws.
+    pub fn held_point(
+        genome: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+    ) -> Option<PixelPoint> {
+        let held = Self::render_body_frame(genome, clip, frame, reduce_motion).held?;
+        let offset = held.thing.offset();
+        let x = held.at.x + offset.x;
+        Some(PixelPoint {
+            x: if facing_right {
+                x
+            } else {
+                FRAME_SIZE as i32 - 1 - x
+            },
+            y: held.at.y + offset.y,
+        })
     }
 
     /// Empty rows beneath the creature's feet in its resting poses, in art pixels.
