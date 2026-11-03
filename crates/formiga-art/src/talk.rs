@@ -294,11 +294,12 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             }
             tile.fill_circle(7, 6, 1, BALL_LIGHT);
         }
-        // A twig, as found: a stick with a fork near the top and one leaf on it.
+        // A wooden toy sword: play-fighting with sticks.
         TalkTopic::Stick => {
-            stroke(tile, (4, 17), (15, 3), WOOD);
-            stroke(tile, (11, 8), (16, 8), WOOD);
-            blob(tile, 16, 4, 2, 1, LEAFY);
+            // The blade, a short guard across it, and the grip below.
+            stroke(tile, (8, 11), (16, 3), Rgba::new(210, 214, 222, 255));
+            stroke(tile, (5, 10), (9, 14), GOLD);
+            stroke(tile, (6, 13), (3, 16), WOOD);
         }
         // An open umbrella with its hooked handle.
         TalkTopic::Umbrella => {
@@ -364,12 +365,29 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             star(tile, 10, 10, 8, GOLD);
             tile.fill_circle(10, 10, 1, GOLD_LIGHT);
         }
+        // A crescent moon with a small star, set pixel by pixel so its curve is smooth.
         TalkTopic::Moon => {
-            blob(tile, 9, 10, 6, 6, NIGHT);
-            tile.fill_circle(12, 8, 5, Rgba::TRANSPARENT);
-            tile.set(16, 4, GOLD);
-            tile.set(15, 4, GOLD);
-            tile.set(16, 3, GOLD);
+            stamp(
+                tile,
+                3,
+                3,
+                &[
+                    "...####...",
+                    ".######...",
+                    ".#####....",
+                    "#####.....",
+                    "####......",
+                    "####......",
+                    "####......",
+                    "####......",
+                    "#####.....",
+                    ".#####....",
+                    ".######...",
+                    "...####...",
+                ],
+                NIGHT,
+            );
+            stamp(tile, 13, 4, &[".#.", "###", ".#."], GOLD);
         }
         // Zz, as Zs: each a bar across, a clean stroke from its right end down to the left, and
         // a bar across, set pixel by pixel so no stray pixel hangs off the stroke.
@@ -430,21 +448,29 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
                 last = at;
             }
         }
-        // A shy face: eyes shut in little arcs and pink cheeks.
+        // A Formiga's face, shy: round with two ears, big dark eyes looking down and pink cheeks.
         TalkTopic::Blush => {
-            blob(tile, 10, 10, 7, 7, SKIN);
-            for x in [6, 14] {
-                tile.fill_ellipse(x, 12, 2, 1, HEART_LIGHT);
+            let coat = Rgba::new(176, 206, 236, 255);
+            blob(tile, 5, 4, 2, 2, coat);
+            blob(tile, 15, 4, 2, 2, coat);
+            blob(tile, 10, 11, 7, 6, coat);
+            for x in [7, 13] {
+                tile.fill_ellipse(x, 11, 1, 2, INK);
+                tile.set(x, 10, Rgba::new(255, 255, 255, 255));
             }
-            tile.line(5, 8, 8, 8, 1, INK);
-            tile.line(12, 8, 15, 8, 1, INK);
-            tile.line(9, 14, 11, 14, 1, INK);
+            for x in [4, 16] {
+                tile.fill_ellipse(x, 14, 2, 1, HEART_LIGHT);
+            }
+            tile.line(9, 15, 11, 15, 1, INK);
         }
+        // Two big eyes looking over: keeping an eye on somebody.
         TalkTopic::Eye => {
-            tile.fill_ellipse(10, 10, 8, 5, INK);
-            tile.fill_ellipse(10, 10, 7, 4, Rgba::new(255, 255, 255, 255));
-            tile.fill_circle(10, 10, 3, BLUE);
-            tile.fill_circle(10, 10, 1, INK);
+            for x in [6, 14] {
+                tile.fill_ellipse(x, 10, 4, 5, INK);
+                tile.fill_ellipse(x, 10, 3, 4, Rgba::new(255, 255, 255, 255));
+                tile.fill_ellipse(x + 1, 11, 2, 3, INK);
+                tile.set(x + 2, 9, Rgba::new(255, 255, 255, 255));
+            }
         }
         TalkTopic::Dots => {
             for x in [4, 10, 16] {
@@ -457,14 +483,28 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.line(5, 5, 15, 15, 2, RED);
             tile.line(15, 5, 5, 15, 2, RED);
         }
-        // Two paw prints, one ahead of the other: running about, chasing, tag.
+        // A paw print: four toes over a round pad. Running about, chasing, tag.
         TalkTopic::Footprints => {
-            for (x, y) in [(6, 14), (14, 6)] {
-                blob(tile, x, y + 1, 2, 2, WOOD);
-                for dx in [-3, 0, 3] {
-                    blob(tile, x + dx, y - 3, 1, 1, WOOD);
-                }
-            }
+            stamp(
+                tile,
+                4,
+                3,
+                &[
+                    "...##.##....",
+                    "...##.##....",
+                    "............",
+                    "##.......##.",
+                    "##.......##.",
+                    "............",
+                    "...######...",
+                    "..########..",
+                    ".##########.",
+                    ".##########.",
+                    "..########..",
+                    "...######...",
+                ],
+                WOOD,
+            );
         }
         TalkTopic::Flag => {
             tile.fill_rect(5, 3, 2, 15, INK);
@@ -480,19 +520,29 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
                 }
             }
         }
+        // A sun: a round face and eight short rays, set pixel by pixel.
         TalkTopic::Sun => {
-            for i in 0..8 {
-                let t = i as f32 / 8.0 * std::f32::consts::TAU;
-                tile.line(
-                    10,
-                    10,
-                    10 + (8.0 * t.cos()) as i32,
-                    10 + (8.0 * t.sin()) as i32,
-                    1,
-                    GOLD,
-                );
-            }
-            blob(tile, 10, 10, 4, 4, GOLD);
+            stamp(
+                tile,
+                3,
+                3,
+                &[
+                    "......#......",
+                    "......#......",
+                    "..#.......#..",
+                    "....#####....",
+                    "...#######...",
+                    "...#######...",
+                    "##.#######.##",
+                    "...#######...",
+                    "...#######...",
+                    "....#####....",
+                    "..#.......#..",
+                    "......#......",
+                    "......#......",
+                ],
+                GOLD,
+            );
         }
         TalkTopic::Flower => {
             for (dx, dy) in [(-3, 0), (3, 0), (0, -3), (0, 3)] {
