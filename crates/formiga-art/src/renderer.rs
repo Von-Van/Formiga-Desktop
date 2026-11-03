@@ -29,7 +29,9 @@ pub use held::{
     HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,
     HeldThing, TOY_COLOURWAYS, render_held_sheet,
 };
-pub use meals::{held_now, shows_held_by_default};
+pub use meals::{
+    MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_pose, shows_held_by_default,
+};
 use pose::*;
 use props::*;
 pub use props::{DRINK_KINDS, SNACK_KINDS, TOY_KINDS, prop_variants};

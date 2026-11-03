@@ -19,12 +19,13 @@ pub(super) fn meal_shown(creature: &Creature) -> Option<&Meal> {
 }
 
 /// The clip a step of a meal shows, and either how far into it the clip is, or a frame held.
-pub(super) enum MealPose {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MealPose {
     Playing(BodyClip, f32),
     Held(BodyClip, u8),
 }
 
-pub(super) fn meal_pose(meal: &Meal) -> MealPose {
+pub fn meal_pose(meal: &Meal) -> MealPose {
     let (step, into, _) = meal.step();
     let size = meal.food.size();
     let gesture = |gesture: Gesture, into: f32| MealPose::Playing(BodyClip::Gesture(gesture), into);
@@ -55,7 +56,6 @@ pub(super) fn meal_pose(meal: &Meal) -> MealPose {
 
 /// The face each step of a meal wears.
 pub(super) fn meal_expression(creature: &Creature, meal: &Meal) -> ExpressionKind {
-    let (step, _, progress) = meal.step();
     let traits = creature.traits();
     let loves = traits.contains(&formiga_core::Trait::FoodMotivated);
     let picky = traits.iter().any(|t| {
@@ -64,6 +64,13 @@ pub(super) fn meal_expression(creature: &Creature, meal: &Meal) -> ExpressionKin
             formiga_core::Trait::Picky | formiga_core::Trait::Particular
         )
     });
+    meal_face(meal, picky, loves)
+}
+
+/// The face a step of a meal wears for one that is `picky`, or that `loves` its food: for a
+/// companion app with its own idea of who is which.
+pub fn meal_face(meal: &Meal, picky: bool, loves: bool) -> ExpressionKind {
+    let (step, _, progress) = meal.step();
     match step {
         MealStep::LookOver if picky => ExpressionKind::Focused,
         MealStep::LookOver | MealStep::Crack => ExpressionKind::Curious,
@@ -85,7 +92,7 @@ pub(super) fn meal_expression(creature: &Creature, meal: &Meal) -> ExpressionKin
 }
 
 /// The eyelids a step holds, where it holds any.
-pub(super) fn meal_eyelids(meal: &Meal) -> Option<EyelidPose> {
+pub fn meal_eyelids(meal: &Meal) -> Option<EyelidPose> {
     let (step, _, progress) = meal.step();
     match step {
         MealStep::Doze if progress <= 0.85 => Some(EyelidPose::Closed),
@@ -117,6 +124,14 @@ pub fn shows_held_by_default(clip: BodyClip) -> bool {
     )
 }
 
+/// What a meal has in its paws just now, if anything: its food, eaten down as far as it has got.
+pub fn meal_held(meal: &Meal) -> Option<HeldThing> {
+    meal.bite().map(|bite| HeldThing::Food {
+        food: meal.food,
+        bite,
+    })
+}
+
 /// What a creature has in its paws in a frame of `clip`, given the hold that frame baked: the
 /// food of its meal, eaten down as far as the meal has got, or what the clip holds by default.
 pub fn held_now(
@@ -126,11 +141,7 @@ pub fn held_now(
 ) -> Option<HeldPlacement> {
     let baked = baked?;
     if let Some(meal) = meal_shown(creature) {
-        let bite = meal.bite()?;
-        return Some(baked.holding(HeldThing::Food {
-            food: meal.food,
-            bite,
-        }));
+        return Some(baked.holding(meal_held(meal)?));
     }
     shows_held_by_default(clip).then_some(baked)
 }
