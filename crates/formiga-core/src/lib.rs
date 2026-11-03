@@ -20,6 +20,7 @@ mod rng;
 mod seed_share;
 mod souvenirs;
 mod stature;
+pub mod talk;
 mod temperament;
 mod topology;
 mod trinkets;

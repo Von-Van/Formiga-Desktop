@@ -1,5 +1,6 @@
 use super::ui::*;
 use super::*;
+use formiga_art::{TALK_DOUBLE, TALK_SINGLE};
 use formiga_core::{ApplicationKey, DisplayKey, MonitorInfo, Point, World};
 
 fn window(
@@ -948,78 +949,62 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
         "a smaller creature's crown is further down its frame ({mini_top} vs {adult_top})"
     );
     // Both bubbles sit the same distance above their own crown, so neither floats.
+    let size = (TALK_SINGLE.0 as f32, TALK_SINGLE.1 as f32);
     for (name, top) in [("adult", adult_top), ("mini", mini_top)] {
         let scale = 3.0;
         let head_top = 400.0 + f32::from(top) * scale;
-        let (_, y) = bubble_origin(700.0, head_top, scale, DRAWABLE);
+        let (_, y) = talk_origin(700.0, head_top, scale, DRAWABLE, size);
         assert_eq!(
-            y + BUBBLE_ANCHOR.1 as f32 * scale,
+            y + size.1 * scale,
             head_top - scale,
-            "{name}: the anchor pixel belongs one art pixel above the crown"
+            "{name}: the tail's tip belongs one art pixel above the crown"
         );
     }
 }
 
 #[test]
 fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
-    for scale in [2.0_f32, 3.0, 4.0] {
-        let (x, y) = bubble_origin(700.0, 400.0, scale, DRAWABLE);
-        // Centred: the tail column is the creature's own centre column.
-        assert_eq!(x + BUBBLE_ANCHOR.0 as f32 * scale, 700.0);
-        // The tail's tip is the cell's row 14, so exactly one art pixel of daylight is left
-        // between the tip and the crown.
-        let tip_bottom = y + 15.0 * scale;
-        assert_eq!(
-            400.0 - tip_bottom,
-            scale,
-            "one art pixel of gap at {scale}x"
+    for double in [false, true] {
+        let frame = TalkSheet::frame(
+            formiga_core::talk::TalkStyle::Chat,
+            double,
+            formiga_core::BubbleGrowth::Full,
         );
-        let quad = ui_atlas_quad(
-            UiAtlasRenderer::bubble(
-                formiga_core::BubbleIcon::Heart,
-                formiga_core::BubbleGrowth::Full,
-            ),
-            x,
-            y,
-            scale,
-            false,
-            1.0,
-            DRAWABLE,
+        let size = (
+            (frame.width / TALK_DETAIL) as f32,
+            (frame.height / TALK_DETAIL) as f32,
         );
-        let (left, top, right, bottom) = quad_pixels(&quad);
-        close(right - left, BUBBLE_CELL.0 as f32 * scale, "bubble width");
-        close(bottom - top, BUBBLE_CELL.1 as f32 * scale, "bubble height");
-        close(left, x, "bubble left");
-        close(top, y, "bubble top");
-        let sprite = quad_sprite(&quad);
-        close(sprite.2, BUBBLE_CELL.0 as f32, "bubble sprite width");
-        close(sprite.3, BUBBLE_CELL.1 as f32, "bubble sprite height");
+        for scale in [2.0_f32, 3.0, 4.0] {
+            let (x, y) = talk_origin(700.0, 400.0, scale, DRAWABLE, size);
+            // Centred: the tail's column is the creature's own centre column.
+            assert_eq!(x + (size.0 / 2.0).floor() * scale, 700.0);
+            // Exactly one art pixel of daylight between the tip and the crown.
+            assert_eq!(400.0 - (y + size.1 * scale), scale, "one art pixel of gap");
+            let quad = talk_quad(frame, x, y, scale, 1.0, DRAWABLE);
+            let (left, top, right, bottom) = quad_pixels(&quad);
+            close(right - left, size.0 * scale, "bubble width");
+            close(bottom - top, size.1 * scale, "bubble height");
+            close(left, x, "bubble left");
+            close(top, y, "bubble top");
+        }
     }
 }
 
 #[test]
 fn a_bubble_at_the_top_or_the_edge_of_a_display_stays_on_it() {
     let scale = 4.0;
-    let width = BUBBLE_CELL.0 as f32 * scale;
-    let height = BUBBLE_CELL.1 as f32 * scale;
+    let size = (TALK_DOUBLE.0 as f32, TALK_DOUBLE.1 as f32);
+    let width = size.0 * scale;
+    let height = size.1 * scale;
     // A creature with its head at the very top of the display.
-    let (_, y) = bubble_origin(700.0, 6.0, scale, DRAWABLE);
+    let (_, y) = talk_origin(700.0, 6.0, scale, DRAWABLE, size);
     assert_eq!(y, 0.0);
     assert!(y + height <= DRAWABLE.height as f32);
     // And one pressed against either side.
-    let (left, _) = bubble_origin(2.0, 400.0, scale, DRAWABLE);
+    let (left, _) = talk_origin(2.0, 400.0, scale, DRAWABLE, size);
     assert_eq!(left, 0.0);
-    let (right, _) = bubble_origin(DRAWABLE.width as f32 - 2.0, 400.0, scale, DRAWABLE);
+    let (right, _) = talk_origin(DRAWABLE.width as f32 - 2.0, 400.0, scale, DRAWABLE, size);
     assert_eq!(right, DRAWABLE.width as f32 - width);
-    // Every growth step is the same cell, so growing never pushes a clamped bubble off.
-    for growth in [
-        formiga_core::BubbleGrowth::Small,
-        formiga_core::BubbleGrowth::Medium,
-        formiga_core::BubbleGrowth::Full,
-    ] {
-        let rect = UiAtlasRenderer::bubble(formiga_core::BubbleIcon::Snack, growth);
-        assert_eq!((rect.width, rect.height), BUBBLE_CELL);
-    }
 }
 
 fn placed_menu(below: bool) -> (MenuLayout, [MenuIcon; 4], MenuPlacement) {
