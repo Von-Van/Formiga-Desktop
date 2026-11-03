@@ -188,6 +188,38 @@ fn heart(tile: &mut Canvas, x: i32, y: i32, r: i32, fill: Rgba) {
     }
 }
 
+/// `rows` drawn at `x`, `y` in `fill`, one pixel of ink round every filled pixel.
+fn stamp(tile: &mut Canvas, x: i32, y: i32, rows: &[&str], fill: Rgba) {
+    let filled = |dx: i32, dy: i32| {
+        dy >= 0
+            && dx >= 0
+            && rows
+                .get(dy as usize)
+                .and_then(|row| row.as_bytes().get(dx as usize))
+                == Some(&b'#')
+    };
+    for (dy, row) in rows.iter().enumerate() {
+        for (dx, code) in row.bytes().enumerate() {
+            if code != b'#' {
+                continue;
+            }
+            for (ox, oy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (dx as i32 + ox, dy as i32 + oy);
+                if !filled(nx, ny) {
+                    tile.set(x + nx, y + ny, INK);
+                }
+            }
+        }
+    }
+    for (dy, row) in rows.iter().enumerate() {
+        for (dx, code) in row.bytes().enumerate() {
+            if code == b'#' {
+                tile.set(x + dx as i32, y + dy as i32, fill);
+            }
+        }
+    }
+}
+
 /// A four-pointed twinkle, `r` from its middle to each point.
 fn star(tile: &mut Canvas, x: i32, y: i32, r: i32, fill: Rgba) {
     for (grow, colour) in [(1, INK), (0, fill)] {
@@ -335,16 +367,33 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.set(15, 4, GOLD);
             tile.set(16, 3, GOLD);
         }
-        // Z, as a Z: a bar across, a stroke down from its right end to the left, a bar across.
+        // Zz, as Zs: each a bar across, a clean stroke from its right end down to the left, and
+        // a bar across, set pixel by pixel so no stray pixel hangs off the stroke.
         TalkTopic::Sleep => {
-            for (x, y, s) in [(3, 7, 8), (13, 2, 5)] {
-                tile.fill_rect(x - 1, y - 1, s + 2, 4, INK);
-                tile.fill_rect(x - 1, y + s - 2, s + 2, 4, INK);
-                tile.line(x + s - 1, y + 1, x, y + s - 1, 3, INK);
-                tile.fill_rect(x, y, s, 2, BLUE);
-                tile.fill_rect(x, y + s - 1, s, 2, BLUE);
-                tile.line(x + s - 1, y + 1, x, y + s - 1, 1, BLUE);
-            }
+            stamp(
+                tile,
+                2,
+                8,
+                &[
+                    "#########",
+                    "#########",
+                    ".....###.",
+                    "....###..",
+                    "...###...",
+                    "..###....",
+                    ".###.....",
+                    "#########",
+                    "#########",
+                ],
+                BLUE,
+            );
+            stamp(
+                tile,
+                12,
+                2,
+                &["#####", "...#.", "..#..", ".#...", "#####"],
+                BLUE,
+            );
         }
         TalkTopic::Home => {
             for row in 0..6 {
@@ -527,8 +576,9 @@ mod tests {
         draw_icon(&mut tile, TalkTopic::Sleep);
         // Between the big Z's bars, high on the right and low on the left is drawn; high on the
         // left and low on the right is not.
-        assert!(tile.get(9, 9).a > 0 && tile.get(5, 12).a > 0);
-        assert_eq!(tile.get(4, 10), Rgba::TRANSPARENT);
-        assert_eq!(tile.get(9, 12), Rgba::TRANSPARENT);
+        assert_eq!(tile.get(8, 10), BLUE);
+        assert_eq!(tile.get(5, 13), BLUE);
+        assert_eq!(tile.get(3, 11), Rgba::TRANSPARENT);
+        assert_eq!(tile.get(9, 13), Rgba::TRANSPARENT);
     }
 }
