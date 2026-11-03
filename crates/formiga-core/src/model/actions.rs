@@ -242,6 +242,10 @@ pub struct CreatureState {
     /// `presence`, and read by nothing but the art.
     #[serde(skip)]
     pub meal: Option<crate::meals::Meal>,
+    /// What it is playing with and how far through the game it is, while it plays, and an
+    /// umbrella it is riding down from a ledge. Runtime only, like `meal`.
+    #[serde(skip)]
+    pub play: Option<crate::play::Play>,
 }
 
 /// How a creature has been carrying itself lately: whether its feet are actually taking it

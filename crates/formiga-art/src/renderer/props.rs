@@ -124,7 +124,11 @@ pub(super) fn activity_held(
         BodyClip::Gesture(Gesture::Gasp | Gesture::Loaf | Gesture::Worry) => {
             return snack_at(1, hold.hands.x, hold.hands.y.min(hold.floor - 3));
         }
-        BodyClip::Gesture(_) => return None,
+        // Every other pose holds things where its paws are, for a game that needs it; nothing is
+        // drawn there unless a meal or a game says so.
+        BodyClip::Gesture(_) => {
+            return snack_at(1, hold.hands.x, hold.hands.y.min(hold.floor - 3));
+        }
     };
     match action {
         ActionKind::SoloPlay => {
@@ -162,6 +166,8 @@ pub(super) fn activity_held(
             };
             Some(HeldPlacement::centred(thing, x, y))
         }
+        // Down off a ledge, under an umbrella if the colony has one.
+        ActionKind::Landing => snack_at(1, hold.hands.x, hold.hands.y.min(hold.floor - 3)),
         _ => None,
     }
 }

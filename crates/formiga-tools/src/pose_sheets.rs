@@ -682,3 +682,127 @@ pub fn meal_sheet(path: PathBuf) -> Result<()> {
     println!("wrote {}", path.display());
     Ok(())
 }
+
+/// Every shape of plaything played with through a session: a row each, twelve moments from
+/// picking it up to putting it down, and a last row riding an umbrella down off a ledge. Each
+/// moment has room round the body, so a ball thrown high or a plane gliding away stays in view.
+pub fn play_sheet(path: PathBuf) -> Result<()> {
+    use formiga_core::play::{Play, Plaything};
+    use rand::SeedableRng;
+    const SCALE: u32 = 2;
+    const MOMENTS: u32 = 12;
+    const LENGTH: f32 = 8.0;
+    // The body's frame sits this far in from each moment's left and top.
+    const PAD: i32 = 24;
+    let find = |name: &str| {
+        formiga_core::all_trinkets()
+            .find(|info| info.name == name)
+            .map(|info| info.variant)
+            .expect("a find of that name")
+    };
+    let things = [
+        Plaything::Toy(0),
+        Plaything::Toy(1),
+        Plaything::Toy(2),
+        Plaything::Toy(3),
+        Plaything::Toy(5),
+        Plaything::Belonging(ColonyObjectKind::Umbrella),
+        Plaything::Belonging(ColonyObjectKind::Kite),
+        Plaything::Belonging(ColonyObjectKind::Paper),
+        Plaything::Belonging(ColonyObjectKind::Drum),
+        Plaything::Trinket(find("Twig")),
+        Plaything::Trinket(find("Walking stick")),
+        Plaything::Trinket(find("Paper boat")),
+        Plaything::Trinket(find("Marble")),
+    ];
+    let subjects = gesture_subjects();
+    let (cw, ch) = (FRAME_SIZE as i32 + PAD * 3, FRAME_SIZE as i32 + PAD);
+    let width = MOMENTS * cw as u32 * SCALE;
+    let rows = things.len() as u32 + 1;
+    let height = rows * ch as u32 * SCALE;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    let mut creature = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    creature.state.facing_right = true;
+    for row in 0..rows as usize {
+        creature.appearance = subjects[row % subjects.len()].clone();
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(row as u64 + 3);
+        let (mut play, action) = match things.get(row) {
+            Some(thing) => (Play::plan(*thing, LENGTH, &mut rng), ActionKind::SoloPlay),
+            None => (Play::umbrella_ride(LENGTH), ActionKind::Landing),
+        };
+        creature.state.action = action;
+        creature.state.action_duration = LENGTH;
+        for moment in 0..MOMENTS {
+            play.elapsed = (moment as f32 + 0.5) * LENGTH / MOMENTS as f32;
+            creature.state.action_elapsed = play.elapsed;
+            creature.state.play = Some(play);
+            let body = formiga_art::BodyPresentation::for_creature(&creature);
+            let face =
+                CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+            let frame = CreatureRenderer::render_composited_frame_holding(
+                &creature.appearance,
+                None,
+                body.clip,
+                body.frame,
+                true,
+                false,
+                face,
+                formiga_art::Holding::Nothing,
+            );
+            let mut cell = formiga_art::Canvas::new(cw as u32, ch as u32);
+            for y in 0..FRAME_SIZE as i32 {
+                for x in 0..FRAME_SIZE as i32 {
+                    let pixel = frame.get(x, y);
+                    if pixel.a > 0 {
+                        cell.set(x + PAD, y + PAD, pixel);
+                    }
+                }
+            }
+            let baked = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                false,
+            )
+            .held;
+            if let Some(held) = formiga_art::held_now(&creature, body.clip, baked) {
+                let offset = held.thing.offset();
+                let mut thing = formiga_art::Canvas::new(cw as u32, ch as u32);
+                formiga_art::HeldPlacement::centred(
+                    held.thing,
+                    held.at.x + offset.x + PAD,
+                    held.at.y + offset.y + PAD,
+                )
+                .paint(&mut thing, true);
+                for y in 0..ch {
+                    for x in 0..cw {
+                        let pixel = thing.get(x, y);
+                        if pixel.a > 0 {
+                            cell.set(x, y, pixel);
+                        }
+                    }
+                }
+            }
+            let (left, top) = (moment * cw as u32 * SCALE, row as u32 * ch as u32 * SCALE);
+            for y in 0..ch as u32 * SCALE {
+                for x in 0..cw as u32 * SCALE {
+                    let pixel = cell.get((x / SCALE) as i32, (y / SCALE) as i32);
+                    if pixel.a > 0 {
+                        let at = (((top + y) * width + left + x) * 4) as usize;
+                        pixels[at..at + 4].copy_from_slice(&[pixel.r, pixel.g, pixel.b, 255]);
+                    }
+                }
+            }
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}

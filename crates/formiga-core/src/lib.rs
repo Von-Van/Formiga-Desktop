@@ -15,6 +15,7 @@ pub mod meals;
 mod model;
 mod observations;
 mod persistence;
+pub mod play;
 mod rng;
 mod seed_share;
 mod souvenirs;

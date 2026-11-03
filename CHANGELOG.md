@@ -22,6 +22,15 @@ All notable changes are documented here.
   end to end, nuts cracked first, soup blown on and slurped — and goes down bite by bite. Between
   the first look and the last lick of a paw, most meals have a moment of their own: a crumb wiped
   off a cheek, cheeks stuffed full, a hiccup, or nodding off over it when tired.
+- Play by shape. What a companion plays with is played with the way that thing is played with:
+  something round is kept up, tossed high and caught, bounced or balanced on the head; a stick is
+  swished like a sword, leaned on like a cane, conducted with, or fished with, and now and then a
+  fish comes up; an umbrella is twirled overhead or sat in like a boat; a kite is flown and a paper
+  plane thrown to glide away; a top is set spinning; a drum is drummed; a plush is hugged; a tower
+  of blocks goes up and comes down; a paper boat is sailed. Besides its own toy, a companion now
+  plays with the colony's belongings and borrows finds from the scrapbook — a marble, a twig, a
+  paper boat — for a while. With an umbrella in the colony, a hop down off a window is sometimes
+  ridden down under it.
 
 ## [0.68.21] - 2026-10-29
 
