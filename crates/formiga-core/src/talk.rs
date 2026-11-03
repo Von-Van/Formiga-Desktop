@@ -71,12 +71,11 @@ pub enum TalkTopic {
     Flag,
     Sun,
     Flower,
-    Hand,
     Blocks,
 }
 
 impl TalkTopic {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 27] = [
         Self::Heart,
         Self::Wave,
         Self::Food,
@@ -103,7 +102,6 @@ impl TalkTopic {
         Self::Flag,
         Self::Sun,
         Self::Flower,
-        Self::Hand,
         Self::Blocks,
     ];
 

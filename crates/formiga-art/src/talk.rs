@@ -267,11 +267,6 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
                 tile.line(x, y, x + 2, y - 2, 1, INK);
             }
         }
-        TalkTopic::Hand => {
-            blob(tile, 10, 11, 5, 4, SKIN);
-            tile.fill_rect(4, 9, 3, 5, INK);
-            tile.fill_rect(5, 10, 1, 3, SKIN);
-        }
         TalkTopic::Food => {
             blob(tile, 10, 11, 5, 5, RED);
             tile.set(7, 9, HEART_LIGHT);
