@@ -45,6 +45,9 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Pluck => (ExpressionKind::Determined, EyelidPose::Open),
         // Eyes shut on a smile under the hand.
         Gesture::Bask => (ExpressionKind::Affectionate, EyelidPose::Closed),
+        Gesture::Nibble | Gesture::Chomp => (ExpressionKind::Content, EyelidPose::Open),
+        Gesture::Chew => (ExpressionKind::Content, EyelidPose::Half),
+        Gesture::Gulp => (ExpressionKind::Joy, EyelidPose::Open),
     };
     FaceRenderState {
         expression,
@@ -602,6 +605,79 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
         }
     }
 
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Every food, eaten through a whole meal: a row for each, twelve moments from the first look to
+/// the finish, on a different body each row, with its face and what is in its paws as the
+/// overlay draws them. The meals are laid out from a fixed seed, so the sheet is the same every
+/// time.
+pub fn meal_sheet(path: PathBuf) -> Result<()> {
+    use formiga_core::meals::{Appetite, Food, Meal};
+    use rand::SeedableRng;
+    const SCALE: u32 = 2;
+    const MOMENTS: u32 = 12;
+    const LENGTH: f32 = 9.0;
+    let subjects = gesture_subjects();
+    let cell = FRAME_SIZE * SCALE;
+    let width = MOMENTS * cell;
+    let height = Food::ALL.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    let mut creature = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    creature.state.facing_right = true;
+    creature.state.action = ActionKind::Eat;
+    creature.state.action_duration = LENGTH;
+    for (row, food) in Food::ALL.into_iter().enumerate() {
+        creature.appearance = subjects[row % subjects.len()].clone();
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(row as u64);
+        let mut meal = Meal::plan(food, LENGTH, Appetite::default(), &mut rng);
+        for moment in 0..MOMENTS {
+            meal.elapsed = (moment as f32 + 0.5) * LENGTH / MOMENTS as f32;
+            creature.state.action_elapsed = meal.elapsed;
+            creature.state.meal = Some(meal);
+            let body = formiga_art::BodyPresentation::for_creature(&creature);
+            let face =
+                CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+            let baked = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                false,
+            )
+            .held;
+            let holding = formiga_art::held_now(&creature, body.clip, baked)
+                .map_or(formiga_art::Holding::Nothing, |held| {
+                    formiga_art::Holding::Thing(held.thing)
+                });
+            let rendered = CreatureRenderer::render_composited_frame_holding(
+                &creature.appearance,
+                None,
+                body.clip,
+                body.frame,
+                true,
+                false,
+                face,
+                holding,
+            );
+            blit_scaled(
+                &mut pixels,
+                width,
+                moment * cell,
+                row as u32 * cell,
+                &rendered.rgba_bytes(),
+                SCALE,
+            );
+        }
+    }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())

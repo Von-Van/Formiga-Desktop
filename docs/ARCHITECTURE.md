@@ -348,6 +348,23 @@ dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A
 something else needs no new frames; sprinting reuses the existing movement tick with a distinct
 six-frame gait.
 
+A companion eating has a `Meal` (`formiga-core/src/meals.rs`), runtime only like `Presence`:
+`world/meals.rs` gives one to anyone whose action has just become Eat, carries it while they eat,
+and clears it when they stop, at the end of every tick, with dice of its own from the colony seed,
+the companion and the clock, so it changes nothing the colony does (a test runs a colony with its
+meals wiped every tick and compares). The food is one of 18 in six sizes — tiny, in the hand, big,
+long, in a shell, in a bowl — chosen from the hour by the desk's clock, the village's ripe gardens,
+the companion's favourite (read from its looks) or, for a snack the person offered, a treat. The
+meal is laid out to fill the Eat action's time: a look it over, a crack or a blow for a nut or a
+hot bowl, bites and chews in the food's own manner, one moment that makes the meal its own (a crumb
+wiped off, cheeks stuffed, a hiccup, nodding off when sleepy, or nothing), and a finish (paws
+licked, a pat of the tummy). `renderer/meals.rs` shows each step: four eating gestures (Nibble,
+Chomp, Chew, Gulp), the drink's tip for a bowl, and Gasp, Loaf, Groom and Worry between bites, with
+a face per step; `held_now` swaps the meal's food, eaten down by `Meal::bite`, into whatever hold
+the frame baked, and a pose borrowed for a meal shows nothing in its paws outside one. Foods are
+drawn in `renderer/foods.rs` at four stages each, on the held sheet after the cups.
+`formiga-tools meal-sheet` shows every food eaten through a meal.
+
 Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
 window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
 vertical climb, and a 0.7-second continuous climbing mantle; downward transfers keep the existing
@@ -365,8 +382,8 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 199 frames: 92 for actions, because
-`Tossed` reuses the dragged body clip, and 107 for thirty-one gesture poses. Since 0.62.0 a frame or a
+directions and three eyelid states. The body atlas holds 213 frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 121 for thirty-five gesture poses. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -375,11 +392,12 @@ trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a r
 companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
-adds one or two from the object sheet. A new companion's textures come to about 1.61 MB — 1.24 MB
+adds one or two from the object sheet, and what it eats or plays with one from the held sheet. A
+new companion's textures come to about 1.70 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
-its chores and its pet added four rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
+its chores, its pet and the four ways it eats a meal added five rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,257,920 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.

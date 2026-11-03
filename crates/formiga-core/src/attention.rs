@@ -108,10 +108,20 @@ pub enum Gesture {
     Tend,
     /// Pressed down under a hand and pushing up into it, eyes shut, tail going: being petted.
     Bask,
+    /// Something held up to the mouth in one paw, nibbled at in quick little bites. This and the
+    /// three after it are how a meal is eaten (see [`crate::meals`]); no attention scene strikes
+    /// them.
+    Nibble,
+    /// Something big held in both paws, the head leaning right in for a big bite.
+    Chomp,
+    /// The food lowered to the chest, the cheeks working.
+    Chew,
+    /// Head tipped back and the mouth open for something small dropped or tossed into it.
+    Gulp,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 35] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -143,6 +153,10 @@ impl Gesture {
         Self::Pluck,
         Self::Tend,
         Self::Bask,
+        Self::Nibble,
+        Self::Chomp,
+        Self::Chew,
+        Self::Gulp,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -171,6 +185,10 @@ impl Gesture {
                 | Self::Pluck
                 | Self::Tend
                 | Self::Bask
+                | Self::Nibble
+                | Self::Chomp
+                | Self::Chew
+                | Self::Gulp
         )
     }
 }

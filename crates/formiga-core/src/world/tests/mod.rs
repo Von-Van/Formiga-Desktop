@@ -20,6 +20,7 @@ mod home;
 mod house_visits;
 mod interaction;
 mod journeys;
+mod meals;
 mod misc;
 mod moments;
 mod new_looks;

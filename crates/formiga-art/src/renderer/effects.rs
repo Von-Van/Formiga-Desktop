@@ -149,7 +149,15 @@ pub(super) fn draw_gesture_effects(
                 canvas.set((x + 2).min(45), y - 1, palette.highlight);
             }
         }
-        Gesture::Groom | Gesture::Skip | Gesture::Trudge | Gesture::Pour | Gesture::Tend => {}
+        Gesture::Groom
+        | Gesture::Skip
+        | Gesture::Trudge
+        | Gesture::Pour
+        | Gesture::Tend
+        | Gesture::Nibble
+        | Gesture::Chomp
+        | Gesture::Chew
+        | Gesture::Gulp => {}
         // A puff of earth where the tug comes away.
         Gesture::Pluck => {
             if frame % 4 == 2 && !reduce_motion {

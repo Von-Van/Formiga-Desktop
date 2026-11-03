@@ -80,6 +80,7 @@ impl Intent {
                 G::Skip | G::Trudge => Self::Move,
                 G::Pour | G::Pluck | G::Tend => Self::Inspect,
                 G::Bask => Self::React,
+                G::Nibble | G::Chomp | G::Chew | G::Gulp => Self::Inspect,
             },
         }
     }

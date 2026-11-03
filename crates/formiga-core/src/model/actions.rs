@@ -238,6 +238,10 @@ pub struct CreatureState {
     /// only, like `attention`.
     #[serde(skip)]
     pub presence: Presence,
+    /// What it is eating and how far through the meal it is, while it eats. Runtime only, like
+    /// `presence`, and read by nothing but the art.
+    #[serde(skip)]
+    pub meal: Option<crate::meals::Meal>,
 }
 
 /// How a creature has been carrying itself lately: whether its feet are actually taking it

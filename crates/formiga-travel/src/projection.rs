@@ -310,6 +310,7 @@ impl Traveler {
                 indoors: false,
                 depth: 0.0,
                 presence: core::Presence::default(),
+                meal: None,
             },
             leaning: core::RoamingLeaning::default(),
             accessory: self.accessory.map(|accessory| accessory.to_accessory()),
