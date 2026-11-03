@@ -408,12 +408,16 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
         }
         // A spiral, wound in from the outside: dizzy, or something spinning.
         TalkTopic::Spiral => {
+            // Two and a half turns, a fine line with a little room between them.
             let mut last = (10, 10);
-            for step in 0..60 {
-                let t = step as f32 * 0.2;
-                let r = 0.9 * t;
-                let at = (10 + (r * t.cos()) as i32, 10 + (r * t.sin()) as i32);
-                tile.line(last.0, last.1, at.0, at.1, 2, INK);
+            for step in 0..120 {
+                let t = step as f32 * 0.13;
+                let r = 0.48 * t;
+                let at = (
+                    10 + (r * t.cos()).round() as i32,
+                    10 + (r * t.sin()).round() as i32,
+                );
+                tile.line(last.0, last.1, at.0, at.1, 1, INK);
                 last = at;
             }
         }
