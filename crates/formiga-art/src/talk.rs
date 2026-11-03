@@ -249,12 +249,21 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.set(6, 6, HEART_LIGHT);
             tile.set(7, 5, HEART_LIGHT);
         }
-        // A green heart broken down the middle: jealous.
+        // A broken heart, green with envy: a whole heart with a jagged crack open down its
+        // middle, edged in ink on both sides.
         TalkTopic::CrackedHeart => {
-            heart(tile, 10, 7, 3, GREEN);
-            tile.line(10, 5, 8, 8, 1, INK);
-            tile.line(8, 8, 11, 11, 1, INK);
-            tile.line(11, 11, 10, 14, 1, INK);
+            heart(tile, 10, 6, 4, GREEN);
+            tile.set(5, 5, Rgba::new(190, 236, 170, 255));
+            tile.set(6, 4, Rgba::new(190, 236, 170, 255));
+            for y in 3..17 {
+                let x = 10 + [0, 1, 1, 0, -1, -1][(y as usize) % 6];
+                if tile.get(x, y).a == 0 || tile.get(x, y) == INK {
+                    continue;
+                }
+                tile.set(x - 1, y, INK);
+                tile.set(x, y, Rgba::TRANSPARENT);
+                tile.set(x + 1, y, INK);
+            }
         }
         // A paw held up and waving: a round pad with three toes close over it, and the lines of
         // the wave beside it.
