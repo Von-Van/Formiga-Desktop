@@ -794,11 +794,17 @@ impl BodyPresentation {
                 return body(BodyClip::Gesture(way), motion.frame(way, into));
             }
         }
-        // Being petted leans into the hand rather than waving at it.
+        // Being petted leans into the hand rather than waving at it, unless it is a grump, which
+        // huffs at it as its bubble grumbles.
         if action == ActionKind::PetReaction {
+            let gesture = if creature.grumbles_when_petted() {
+                Gesture::Huff
+            } else {
+                Gesture::Bask
+            };
             return body(
-                BodyClip::Gesture(Gesture::Bask),
-                motion.frame(Gesture::Bask, state.action_elapsed),
+                BodyClip::Gesture(gesture),
+                motion.frame(gesture, state.action_elapsed),
             );
         }
         if resting {
