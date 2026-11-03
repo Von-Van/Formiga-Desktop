@@ -806,3 +806,166 @@ pub fn play_sheet(path: PathBuf) -> Result<()> {
     println!("wrote {}", path.display());
     Ok(())
 }
+
+/// Every bubble a companion says things in, over a companion, at the size the desktop shows them
+/// at 2x: a row for each style with the topics it is said about, then two companions talking —
+/// an invitation and its answer, a meal offered and thanks for it, a goodnight whispered back.
+pub fn talk_sheet(path: PathBuf) -> Result<()> {
+    use formiga_art::{TALK_DETAIL, TALK_ICON_AT, TalkSheet};
+    use formiga_core::talk::{Saying, TalkStyle as S, TalkTopic as T};
+    const SCALE: u32 = 2;
+    let d = TALK_DETAIL as i32;
+    let rows: Vec<Vec<(Saying, Option<Saying>)>> = vec![
+        vec![
+            (Saying::one(S::Chat, T::Wave), None),
+            (Saying::one(S::Chat, T::Food), None),
+            (Saying::one(S::Chat, T::Home), None),
+            (Saying::one(S::Chat, T::No), None),
+        ],
+        vec![
+            (Saying::one(S::Excited, T::Ball), None),
+            (Saying::one(S::Excited, T::Sparkle), None),
+            (Saying::two(S::Excited, T::Kite, T::Question), None),
+            (Saying::two(S::Excited, T::Fish, T::Exclaim), None),
+        ],
+        vec![
+            (Saying::one(S::Whisper, T::Moon), None),
+            (Saying::one(S::Whisper, T::Blush), None),
+            (Saying::one(S::Thought, T::Sleep), None),
+            (Saying::one(S::Thought, T::Question), None),
+        ],
+        vec![
+            (Saying::one(S::Song, T::Note), None),
+            (Saying::one(S::Tender, T::Heart), None),
+            (Saying::one(S::Grumble, T::Storm), None),
+            (Saying::one(S::Shout, T::Exclaim), None),
+        ],
+        vec![
+            (
+                Saying::two(S::Excited, T::Stick, T::Question),
+                Some(Saying::one(S::Excited, T::Exclaim)),
+            ),
+            (
+                Saying::two(S::Chat, T::Food, T::Question),
+                Some(Saying::one(S::Tender, T::Heart)),
+            ),
+        ],
+        vec![
+            (
+                Saying::one(S::Whisper, T::Moon),
+                Some(Saying::one(S::Whisper, T::Heart)),
+            ),
+            (
+                Saying::one(S::Chat, T::Wave),
+                Some(Saying::one(S::Chat, T::Wave)),
+            ),
+        ],
+    ];
+    let sheet = TalkSheet::render();
+    let subjects = gesture_subjects();
+    // Each companion's place, in texture pixels: room for a double bubble over a body.
+    let (cw, ch) = (40 * d, 72 * d);
+    let width = (4 * cw) as u32;
+    let height = (rows.len() as i32 * ch) as u32;
+    let mut canvas = formiga_art::Canvas::new(width, height);
+    canvas.fill_rect(
+        0,
+        0,
+        width as i32,
+        height as i32,
+        formiga_art::Rgba::new(236, 234, 228, 255),
+    );
+    let put = |canvas: &mut formiga_art::Canvas,
+               x0: i32,
+               y0: i32,
+               subject: usize,
+               facing_right: bool,
+               saying: Saying| {
+        let genome = &subjects[subject % subjects.len()];
+        let face = FaceRenderState {
+            expression: ExpressionKind::Joy,
+            eyelids: EyelidPose::Open,
+            gaze: GazeDirection::default(),
+        };
+        let frame = CreatureRenderer::render_composited_frame(
+            genome,
+            ActionKind::Idle,
+            0,
+            facing_right,
+            false,
+            face,
+        );
+        let top = frame.alpha_bounds().map_or(0, |(_, t, _, _)| t as i32);
+        let fx = x0 + cw / 2 - FRAME_SIZE as i32 / 2 * d;
+        let fy = y0 + ch - FRAME_SIZE as i32 * d;
+        for y in 0..FRAME_SIZE as i32 {
+            for x in 0..FRAME_SIZE as i32 {
+                let pixel = frame.get(x, y);
+                if pixel.a > 0 {
+                    canvas.fill_rect(fx + x * d, fy + y * d, d, d, pixel);
+                }
+            }
+        }
+        let head_top = fy + top * d;
+        let rect = TalkSheet::frame(saying.style, saying.second.is_some(), BubbleGrowth::Full);
+        let bx = x0 + cw / 2 - (rect.width as i32 / d / 2) * d;
+        let by = head_top - rect.height as i32 - d;
+        let mut blit = |rect: formiga_art::SpriteRect, x: i32, y: i32| {
+            for sy in 0..rect.height as i32 {
+                for sx in 0..rect.width as i32 {
+                    let pixel = sheet.get(rect.x as i32 + sx, rect.y as i32 + sy);
+                    if pixel.a > 0 {
+                        canvas.set(x + sx, y + sy, pixel);
+                    }
+                }
+            }
+        };
+        blit(rect, bx, by);
+        let spots = if saying.second.is_some() {
+            &TALK_ICON_AT[1..3]
+        } else {
+            &TALK_ICON_AT[0..1]
+        };
+        for (topic, (ix, iy)) in [Some(saying.first), saying.second]
+            .into_iter()
+            .flatten()
+            .zip(spots)
+        {
+            blit(
+                TalkSheet::icon(topic),
+                bx + *ix as i32 * d,
+                by + *iy as i32 * d,
+            );
+        }
+    };
+    for (row, sayings) in rows.iter().enumerate() {
+        let y0 = row as i32 * ch;
+        let mut column = 0;
+        for (saying, answer) in sayings {
+            put(
+                &mut canvas,
+                column * cw,
+                y0,
+                row + column as usize,
+                true,
+                *saying,
+            );
+            column += 1;
+            if let Some(answer) = answer {
+                put(&mut canvas, column * cw, y0, row + 3, false, *answer);
+                column += 1;
+            }
+        }
+    }
+    let mut pixels = vec![0_u8; (width * SCALE * height * SCALE * 4) as usize];
+    for y in 0..height * SCALE {
+        for x in 0..width * SCALE {
+            let pixel = canvas.get((x / SCALE) as i32, (y / SCALE) as i32);
+            let at = ((y * width * SCALE + x) * 4) as usize;
+            pixels[at..at + 4].copy_from_slice(&[pixel.r, pixel.g, pixel.b, 255]);
+        }
+    }
+    write_png(&path, width * SCALE, height * SCALE, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}

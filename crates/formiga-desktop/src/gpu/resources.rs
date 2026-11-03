@@ -385,18 +385,22 @@ impl OverlayRenderer {
         });
     }
 
-    pub(super) fn ensure_held_sheet(&mut self) {
-        if self.held_sheet.is_some() {
-            return;
-        }
-        let pixels = formiga_art::render_held_sheet().rgba_bytes();
+    /// A texture drawn once and kept: what every companion holds, or every bubble they say
+    /// things in.
+    fn static_texture(
+        &self,
+        label: &str,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> (wgpu::Texture, wgpu::BindGroup) {
         let size = wgpu::Extent3d {
-            width: HELD_SHEET_WIDTH,
-            height: HELD_SHEET_HEIGHT,
+            width,
+            height,
             depth_or_array_layers: 1,
         };
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("held things"),
+            label: Some(label),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -412,17 +416,17 @@ impl OverlayRenderer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &pixels,
+            pixels,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(HELD_SHEET_WIDTH * 4),
-                rows_per_image: Some(HELD_SHEET_HEIGHT),
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
             },
             size,
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("held things bindings"),
+            label: Some(label),
             layout: &self.bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -435,7 +439,30 @@ impl OverlayRenderer {
                 },
             ],
         });
+        (texture, bind_group)
+    }
+
+    pub(super) fn ensure_held_sheet(&mut self) {
+        if self.held_sheet.is_some() {
+            return;
+        }
+        let pixels = formiga_art::render_held_sheet().rgba_bytes();
+        let (texture, bind_group) =
+            self.static_texture("held things", HELD_SHEET_WIDTH, HELD_SHEET_HEIGHT, &pixels);
         self.held_sheet = Some(HeldSheetGpu {
+            _texture: texture,
+            bind_group,
+        });
+    }
+
+    pub(super) fn ensure_talk_sheet(&mut self) {
+        if self.talk_sheet.is_some() {
+            return;
+        }
+        let pixels = TalkSheet::render().rgba_bytes();
+        let (texture, bind_group) =
+            self.static_texture("talk bubbles", TALK_SHEET_WIDTH, TALK_SHEET_HEIGHT, &pixels);
+        self.talk_sheet = Some(HeldSheetGpu {
             _texture: texture,
             bind_group,
         });

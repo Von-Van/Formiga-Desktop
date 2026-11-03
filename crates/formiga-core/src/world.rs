@@ -38,6 +38,7 @@ mod routine;
 mod spacing;
 mod step;
 mod surfaces;
+mod talk;
 mod tows;
 mod trips;
 mod undo;
@@ -161,6 +162,10 @@ pub struct World {
     surface_memory: SurfaceMemory,
     ride_memory: rides::RideMemory,
     bubbles: Vec<ThoughtBubble>,
+    /// What companions are saying to each other, and when each may speak again. Runtime only.
+    talk: Vec<crate::talk::TalkBubble>,
+    talk_quiet: BTreeMap<CreatureId, f32>,
+    talk_seen: BTreeMap<CreatureId, talk::Seen>,
     /// What each creature carries between offers: recent answers, a beat it is taking, and the
     /// clip it is still enjoying. Runtime-only, and never wider than whoever is actually here.
     offers: BTreeMap<CreatureId, offers::OfferMemory>,
@@ -413,6 +418,9 @@ impl World {
             surface_memory: SurfaceMemory::default(),
             ride_memory: rides::RideMemory::default(),
             bubbles: Vec::new(),
+            talk: Vec::new(),
+            talk_quiet: BTreeMap::new(),
+            talk_seen: BTreeMap::new(),
             offers: BTreeMap::new(),
             overlaps: spacing::OverlapWatch::default(),
             window_routes: BTreeMap::new(),
@@ -478,6 +486,7 @@ impl World {
         self.carry_presence(dt, desktop);
         self.carry_meals(now, dt);
         self.carry_play(now, dt);
+        self.carry_talk(now, dt);
     }
 
     fn tick_colony(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {

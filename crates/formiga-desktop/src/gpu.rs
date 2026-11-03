@@ -2,26 +2,27 @@ use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement, SidePlacement};
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AccessoryArt, AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, BodyPresentation,
-    COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
-    ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing,
-    MenuIcon, MenuLayout, MilestoneBubbleRenderer, PixelPoint, PropAnchor, PropSprite, Rgba,
-    SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH,
-    TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor, TrinketAtlasRenderer,
-    UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH,
-    VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
-    WonderRenderer, wonder_frame, wonder_frames,
+    AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT,
+    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
+    PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect,
+    TALK_DETAIL, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT,
+    TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TalkSheet,
+    TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
+    VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT,
+    WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
     GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
     VillageGroundRenderer,
 };
 use formiga_core::{
-    ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature,
-    CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind,
-    HouseMotion, HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble,
-    VillageProp, WonderKind, WonderView, accessible_regions, resolved_home_anchor,
+    ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, BubbleGrowth, ColonyObject,
+    Creature, CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy,
+    HabitatZoneKind, HouseMotion, HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge,
+    ThoughtBubble, VillageProp, WonderKind, WonderView, accessible_regions, resolved_home_anchor,
+    talk::{Saying, TalkBubble},
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -158,6 +159,8 @@ const UI_ATLAS_IDLE_FRAMES: u32 = 240;
 pub struct OverlayUi<'a> {
     /// The simulation's answers, one per creature at most.
     pub bubbles: &'a [ThoughtBubble],
+    /// What companions are saying to each other just now.
+    pub talk: &'a [TalkBubble],
     pub reduce_motion: bool,
     /// Whether it is dark out where the owner is, so the houses glow from inside.
     pub night: bool,
@@ -280,6 +283,8 @@ pub struct OverlayRenderer {
     ui_atlas_idle: u32,
     colony_objects: Option<ColonyObjectsGpu>,
     held_sheet: Option<HeldSheetGpu>,
+    /// Every bubble companions say things in, to each other and to the person at the desk.
+    talk_sheet: Option<HeldSheetGpu>,
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
     wonder: Option<WonderGpu>,
@@ -557,6 +562,7 @@ impl OverlayRenderer {
             ui_atlas_idle: 0,
             colony_objects: None,
             held_sheet: None,
+            talk_sheet: None,
             trinkets: None,
             rope: None,
             wonder: None,
@@ -949,7 +955,14 @@ impl OverlayRenderer {
             vertices.extend_from_slice(&bubble_vertices);
         }
         let bubble_vertex_count = vertices.len() - bubble_start;
-        let ui_vertices = self.ui_vertices(&visible, save.settings.display_scale, ui);
+        let talk_vertices = self.talk_vertices(&visible, save.settings.display_scale, ui);
+        if !talk_vertices.is_empty() {
+            self.ensure_talk_sheet();
+        }
+        let talk_start = vertices.len();
+        vertices.extend_from_slice(&talk_vertices);
+        let talk_vertex_count = talk_vertices.len();
+        let ui_vertices = self.ui_vertices(&visible, ui);
         self.sync_ui_atlas(!ui_vertices.is_empty());
         let ui_start = vertices.len();
         vertices.extend_from_slice(&ui_vertices);
@@ -1185,6 +1198,12 @@ impl OverlayRenderer {
                     bubble_start,
                     bubble_vertex_count,
                 );
+            }
+            // Every bubble, on top of the colony it is talking about and under an open menu.
+            if talk_vertex_count > 0
+                && let Some(sheet) = &self.talk_sheet
+            {
+                draw(&mut pass, &sheet.bind_group, talk_start, talk_vertex_count);
             }
             // Every icon bubble and every part of the open menu comes out of one texture, so the
             // whole on-desktop UI is a single extra bind group and a single extra draw, last and

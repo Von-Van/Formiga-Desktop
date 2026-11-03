@@ -384,6 +384,24 @@ a paper boat) are on the held sheet; a borrowed find is drawn from the colony's 
 so `CreatureDraw` notes which sheet its carried quad uses. `formiga-tools play-sheet` shows each
 shape played with through a session.
 
+Companions talk to each other in pictures (`formiga-core/src/talk.rs`, carried by
+`world/talk.rs`, runtime only and checked by the same wiped-every-tick test). A `Saying` is a
+`TalkStyle` — chat, excited, whisper, thought, song, tender, grumble, shout — and one or two
+`TalkTopic` pictures. At the end of each tick the pass sees what each companion has just started
+and, with dice of its own, has it say something to the nearest friend within 150 points: a hello
+(answered with a hello or a heart), an invitation to play about its own toy's shape (answered
+"!"), a meal offered (answered with a heart), a goodnight whispered (whispered back), a grumble at
+being pounced on, a "!" at a fish caught or a tower down, a note while drumming or dancing. An
+answer waits 0.9 s; a speaker keeps quiet 9 s after it speaks; at most four are up at once, and an
+answer to the person at the desk wins over talk. Those answers (`ThoughtBubble`, unchanged) are
+drawn in the same bubbles through `Saying::answering`. The overlay draws every bubble from the talk
+sheet (`TalkSheet`), which is baked at `TALK_DETAIL` = 2 texture pixels to the art pixel, so a
+bubble's frame and pictures are twice as fine as the companion under it; each bubble is its frame
+quad and, once grown, one or two picture quads, placed by `talk_origin` with the tail's tip an art
+pixel over the crown. The interface atlas keeps the menu and the notebook's icons. A sleeper's z is
+four pixels square, since three square can only join its bars with one middle pixel and reads as
+an I. `formiga-tools talk-sheet` shows every style and a few conversations.
+
 Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
 window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
 vertical climb, and a 0.7-second continuous climbing mantle; downward transfers keep the existing

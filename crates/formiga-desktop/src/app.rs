@@ -560,7 +560,9 @@ impl FormigaApp {
             self.last_frame = Some(now);
             if let Some(world) = &self.world {
                 let habitat_editor = self.habitat_editor.as_ref().map(|editor| &editor.draft);
-                let ui_active = self.creature_menu.is_some() || !world.thought_bubbles().is_empty();
+                let ui_active = self.creature_menu.is_some()
+                    || !world.thought_bubbles().is_empty()
+                    || world.talk_bubbles().next().is_some();
                 for overlay in self.overlays.values() {
                     if overlay.is_visible()
                         && overlay.needs_redraw(
@@ -1140,6 +1142,12 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             world.loose_props(&self.monitors),
                         )
                     });
+                // What companions are saying to each other.
+                let talk: Vec<formiga_core::talk::TalkBubble> = self
+                    .world
+                    .as_ref()
+                    .map(|world| world.talk_bubbles().copied().collect())
+                    .unwrap_or_default();
                 // While a trip has the colony, the overlay draws the trip's copy of it: whoever
                 // is on the platform, and the train. Nobody is indoors and nothing is said.
                 let trip = self
@@ -1163,6 +1171,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     let ui = if on_trip {
                         OverlayUi {
                             bubbles: &[],
+                            talk: &[],
                             reduce_motion: world.save.settings.reduce_motion,
                             night: self.night,
                             menu: None,
@@ -1173,6 +1182,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     } else {
                         OverlayUi {
                             bubbles: world.thought_bubbles(),
+                            talk: &talk,
                             reduce_motion: world.save.settings.reduce_motion,
                             night: self.night,
                             menu,

@@ -12,6 +12,7 @@ mod renderer;
 mod shelter;
 mod souvenirs;
 mod sticker;
+mod talk;
 mod train;
 mod tree;
 mod trinkets;
@@ -49,6 +50,10 @@ pub use shelter::{
 pub use souvenirs::{SOUVENIR_ICON, SOUVENIR_TILE, draw_souvenir, souvenir_strip};
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
+};
+pub use talk::{
+    TALK_DETAIL, TALK_DOUBLE, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
+    TALK_SINGLE, TalkSheet,
 };
 pub use train::{
     RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND, TRAIN_HEIGHT, TRAIN_WIDTH, TrainLook,
