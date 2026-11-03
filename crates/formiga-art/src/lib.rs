@@ -36,8 +36,10 @@ pub use postcard::{
 pub use renderer::{
     AccessoryArt, AlphaMask, AnimationSpec, BodyClip, BodyPresentation, CreatureRenderer,
     DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, GazeDirection, MotionSignature, PixelPoint, PlaybackMode, PropAnchor,
-    RenderedBodyFrame, SNACK_KINDS, TOY_KINDS, prop_variants,
+    FramePlacement, GazeDirection, HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT,
+    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MotionSignature, PixelPoint, PlaybackMode,
+    PropAnchor, RenderedBodyFrame, SNACK_KINDS, TOY_COLOURWAYS, TOY_KINDS, prop_variants,
+    render_held_sheet,
 };
 pub use shelter::{
     ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,

@@ -14,6 +14,7 @@ mod classic;
 mod effects;
 mod face;
 mod fox;
+mod held;
 mod modular;
 mod pose;
 mod props;
@@ -21,6 +22,11 @@ pub use accessories::AccessoryArt;
 use classic::*;
 use effects::*;
 use face::*;
+use held::toy_colourway;
+pub use held::{
+    HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,
+    HeldThing, TOY_COLOURWAYS, render_held_sheet,
+};
 use pose::*;
 use props::*;
 pub use props::{DRINK_KINDS, SNACK_KINDS, TOY_KINDS, prop_variants};
@@ -167,6 +173,9 @@ pub struct RenderedBodyFrame {
     pub canvas: Canvas,
     pub face_anchor: PixelPoint,
     pub alpha_mask: AlphaMask,
+    /// What the body is holding in this frame and where, drawn apart from it over the body and
+    /// face. Not in `canvas` or `alpha_mask`.
+    pub held: Option<HeldPlacement>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1121,9 +1130,11 @@ impl CreatureRenderer {
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
+        let mut held = None;
         match clip {
             BodyClip::Action(action) => {
-                draw_activity_prop(
+                held = activity_held(genome, face_anchor, pose, action, frame, reduce_motion);
+                draw_activity_marks(
                     &mut canvas,
                     genome,
                     palette,
@@ -1166,6 +1177,7 @@ impl CreatureRenderer {
             canvas,
             face_anchor,
             alpha_mask,
+            held: held.map(|held| held.translated(dx, dy)),
         };
         (rendered, fine)
     }
@@ -1366,6 +1378,10 @@ impl CreatureRenderer {
             body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2,
             body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
         );
+        // What it holds goes over the face, as the overlay draws it.
+        if let Some(held) = body.held {
+            held.paint(&mut body.canvas, facing_right);
+        }
         body.canvas
     }
 

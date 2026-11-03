@@ -184,6 +184,7 @@ impl OverlayRenderer {
             face_atlas_height: atlas.face_height,
             face_cells: atlas.face_cells,
             face_anchors: atlas.face_anchors,
+            held: atlas.held,
             silhouette: atlas.silhouette,
             resting_baseline: CreatureRenderer::resting_baseline(&drawn.appearance, reduce_motion),
             dress,
@@ -381,6 +382,62 @@ impl OverlayRenderer {
             _texture: texture,
             bind_group,
             colony_seed,
+        });
+    }
+
+    pub(super) fn ensure_held_sheet(&mut self) {
+        if self.held_sheet.is_some() {
+            return;
+        }
+        let pixels = formiga_art::render_held_sheet().rgba_bytes();
+        let size = wgpu::Extent3d {
+            width: HELD_SHEET_WIDTH,
+            height: HELD_SHEET_HEIGHT,
+            depth_or_array_layers: 1,
+        };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("held things"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(HELD_SHEET_WIDTH * 4),
+                rows_per_image: Some(HELD_SHEET_HEIGHT),
+            },
+            size,
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("held things bindings"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.held_sheet = Some(HeldSheetGpu {
+            _texture: texture,
+            bind_group,
         });
     }
 
