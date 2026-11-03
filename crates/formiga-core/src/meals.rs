@@ -8,8 +8,9 @@
 //! finish. Runtime only, like a beat: nothing here is saved, journaled or counted, and nothing in
 //! the simulation reads it. It is there for the art.
 
-use crate::GardenKind;
-use rand::Rng;
+use crate::{AppearanceGenome, GardenKind};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha12Rng;
 
 /// How a food is eaten, which is mostly how big it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -110,6 +111,13 @@ impl Food {
             Self::Soup => "a bowl of soup",
             Self::Porridge => "a bowl of porridge",
         }
+    }
+
+    /// A companion's own favourite, read from its looks so nothing is saved to say so: the same
+    /// in every Formiga app it visits.
+    pub fn favourite_of(appearance: &AppearanceGenome) -> Self {
+        let looks = appearance.marking_seed ^ u64::from(appearance.face_signature);
+        Self::ALL[((looks >> 23) % Self::ALL.len() as u64) as usize]
     }
 
     /// What a garden of this kind gives to eat, once it has grown.
@@ -272,6 +280,24 @@ impl Meal {
         }
         let hour = Food::of_the_hour(setting.hour);
         hour[rng.random_range(0..hour.len())]
+    }
+
+    /// [`Self::choose_food`] and [`Self::plan`] in one, from a seed: for a companion app with dice
+    /// of its own rather than a random number generator.
+    pub fn seeded(appetite: Appetite, setting: MealSetting<'_>, length: f32, seed: u64) -> Self {
+        let mut rng = ChaCha12Rng::seed_from_u64(seed);
+        let food = Self::choose_food(appetite, setting, &mut rng);
+        Self::plan(food, length, appetite, &mut rng)
+    }
+
+    /// [`Self::plan`] from a seed.
+    pub fn plan_seeded(food: Food, length: f32, appetite: Appetite, seed: u64) -> Self {
+        Self::plan(
+            food,
+            length,
+            appetite,
+            &mut ChaCha12Rng::seed_from_u64(seed),
+        )
     }
 
     /// Lays out a meal of `food` that fills `length` seconds.

@@ -66,11 +66,10 @@ impl World {
 pub(crate) fn appetite(creature: &Creature) -> Appetite {
     let traits = creature.traits();
     let has = |any: &[Trait]| traits.iter().any(|t| any.contains(t));
-    let looks = creature.appearance.marking_seed ^ u64::from(creature.appearance.face_signature);
     Appetite {
         picky: has(&[Trait::Picky, Trait::Particular]),
         greedy: has(&[Trait::FoodMotivated]),
         sleepy: creature.state.drives.sleep_pressure > 0.6,
-        favourite: Food::ALL[((looks >> 23) % Food::ALL.len() as u64) as usize],
+        favourite: Food::favourite_of(&creature.appearance),
     }
 }
