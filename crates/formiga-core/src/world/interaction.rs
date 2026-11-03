@@ -11,6 +11,9 @@ const TOSS_BOUNCE_HORIZONTAL_RETENTION: f32 = 0.65;
 const TOSS_MIN_BOUNCE_SPEED: f32 = 140.0;
 pub(super) const TOSS_MAX_DURATION: f32 = 3.0;
 pub(super) const DRAG_THRESHOLD: f32 = 6.0;
+/// A companion takes one pet a second: a click sooner than that, while it is still answering the
+/// last one, is not another pet, so a burst of clicks is one pet and not a string of them.
+pub(super) const PET_INTERVAL_SECS: f32 = 1.0;
 
 #[derive(Clone)]
 pub(super) struct InteractionSession {
@@ -381,6 +384,11 @@ impl World {
             let Some(creature) = self.member_or_guest_mut(creature_id) else {
                 return false;
             };
+            if creature.state.action == ActionKind::PetReaction
+                && creature.state.action_elapsed < PET_INTERVAL_SECS
+            {
+                return true;
+            }
             let elapsed = creature.state.action_elapsed as u32;
             creature.state.action = ActionKind::PetReaction;
             creature.state.action_elapsed = 0.0;

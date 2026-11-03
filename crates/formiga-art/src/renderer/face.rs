@@ -1253,6 +1253,7 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
         ActionKind::InspectScreen => ExpressionKind::Curious,
         ActionKind::PresentDiscovery => ExpressionKind::Joy,
         ActionKind::Tossed => ExpressionKind::Startled,
+        ActionKind::PetReaction if creature.grumbles_when_petted() => ExpressionKind::Grumpy,
         ActionKind::PetReaction => ExpressionKind::Affectionate,
         ActionKind::Sleep => ExpressionKind::Sleepy,
     }
@@ -1407,6 +1408,16 @@ fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: boo
         }
         ActionKind::Dangle => return fixed(GazeDirection::new(0, 1)),
         ActionKind::PresentDiscovery => return fixed(GazeDirection::new(0, -1)),
+        // A grump under the hand puts its nose in the air and looks away from it.
+        ActionKind::PetReaction if creature.grumbles_when_petted() => {
+            let hand = if cursor.available {
+                -axis_direction(cursor.position.x - creature.state.position.x, 10.0)
+            } else {
+                0
+            };
+            let away = if hand == 0 { -forward } else { hand };
+            return fixed(GazeDirection::new(away, -1));
+        }
         _ => {}
     }
     if !cursor_reactions
