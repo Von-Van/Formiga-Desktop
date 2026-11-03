@@ -64,7 +64,7 @@ fn a_hello_is_answered_and_then_there_is_quiet() {
         .find(|bubble| bubble.creature_id == a)
         .expect("a greeting says hello");
     assert_eq!(hello.saying.style, TalkStyle::Chat);
-    assert_eq!(hello.saying.first, TalkTopic::Wave);
+    assert_eq!(hello.saying.topic, TalkTopic::Wave);
     assert!(
         world.talk_bubbles().all(|bubble| bubble.creature_id != b),
         "the answer waits a moment"

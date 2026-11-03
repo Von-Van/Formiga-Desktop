@@ -33,15 +33,17 @@ All notable changes are documented here.
   ridden down under it.
 - Companions talk to each other. When one greets another, asks a friend to play, offers to share
   its meal, says goodnight, gets pounced on or catches a fish, it says so in a little picture
-  bubble, and the friend answers a moment later. How it is said shows in the bubble: a cream chat
-  bubble, a sunny excited one, a pale dotted whisper, a thought cloud, a blue song bubble, a pink
-  tender one, a dark grumble, a bold shout. They speak now and then, not all the time.
+  bubble, and the friend answers a moment later. Every bubble is the same shape and size with one
+  clear picture in it; how it is said shows in the colour of the bubble: cream for chat, yellow
+  for excitement, lilac for a whisper, pale blue-grey for a thought, blue for a song, pink for
+  something tender, grey for a grumble, peach for a shout. They speak now and then, not all the
+  time.
 
 ### Changed
 
 - Every bubble on the desktop, including a companion's answers to you, is drawn twice as finely
   as the companions, so the pictures in them read at a glance, and each kind of answer has the
-  bubble that suits it: a heart in a pink one, a grumble in a dark one.
+  colour that suits it: a heart in a pink one, a grumble in a grey one.
 - A sleeping companion's z reads as a Z rather than an I.
 
 ## [0.68.21] - 2026-10-29

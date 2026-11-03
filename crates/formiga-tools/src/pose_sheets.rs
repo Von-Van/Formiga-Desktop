@@ -808,14 +808,15 @@ pub fn play_sheet(path: PathBuf) -> Result<()> {
 }
 
 /// Every bubble a companion says things in, over a companion, at the size the desktop shows them
-/// at 2x: a row for each style with the topics it is said about, then two companions talking —
-/// an invitation and its answer, a meal offered and thanks for it, a goodnight whispered back.
+/// at 2x: rows of styles with the topics they are said about, then two companions talking — an
+/// invitation and its answer, a meal offered and thanks for it, a goodnight whispered back — and
+/// last, every picture there is.
 pub fn talk_sheet(path: PathBuf) -> Result<()> {
     use formiga_art::{TALK_DETAIL, TALK_ICON_AT, TalkSheet};
     use formiga_core::talk::{Saying, TalkStyle as S, TalkTopic as T};
     const SCALE: u32 = 2;
     let d = TALK_DETAIL as i32;
-    let rows: Vec<Vec<(Saying, Option<Saying>)>> = vec![
+    let mut rows: Vec<Vec<(Saying, Option<Saying>)>> = vec![
         vec![
             (Saying::one(S::Chat, T::Wave), None),
             (Saying::one(S::Chat, T::Food), None),
@@ -825,8 +826,8 @@ pub fn talk_sheet(path: PathBuf) -> Result<()> {
         vec![
             (Saying::one(S::Excited, T::Ball), None),
             (Saying::one(S::Excited, T::Sparkle), None),
-            (Saying::two(S::Excited, T::Kite, T::Question), None),
-            (Saying::two(S::Excited, T::Fish, T::Exclaim), None),
+            (Saying::one(S::Excited, T::Kite), None),
+            (Saying::one(S::Excited, T::Fish), None),
         ],
         vec![
             (Saying::one(S::Whisper, T::Moon), None),
@@ -842,11 +843,11 @@ pub fn talk_sheet(path: PathBuf) -> Result<()> {
         ],
         vec![
             (
-                Saying::two(S::Excited, T::Stick, T::Question),
+                Saying::one(S::Excited, T::Stick),
                 Some(Saying::one(S::Excited, T::Exclaim)),
             ),
             (
-                Saying::two(S::Chat, T::Food, T::Question),
+                Saying::one(S::Chat, T::Food),
                 Some(Saying::one(S::Tender, T::Heart)),
             ),
         ],
@@ -861,6 +862,13 @@ pub fn talk_sheet(path: PathBuf) -> Result<()> {
             ),
         ],
     ];
+    // Every picture, said the way it most often is.
+    rows.extend(T::ALL.chunks(4).map(|topics| {
+        topics
+            .iter()
+            .map(|topic| (Saying::one(S::Chat, *topic), None))
+            .collect()
+    }));
     let sheet = TalkSheet::render();
     let subjects = gesture_subjects();
     // Each companion's place, in texture pixels: room for a double bubble over a body.
@@ -907,7 +915,7 @@ pub fn talk_sheet(path: PathBuf) -> Result<()> {
             }
         }
         let head_top = fy + top * d;
-        let rect = TalkSheet::frame(saying.style, saying.second.is_some(), BubbleGrowth::Full);
+        let rect = TalkSheet::frame(saying.style, BubbleGrowth::Full);
         let bx = x0 + cw / 2 - (rect.width as i32 / d / 2) * d;
         let by = head_top - rect.height as i32 - d;
         let mut blit = |rect: formiga_art::SpriteRect, x: i32, y: i32| {
@@ -921,22 +929,11 @@ pub fn talk_sheet(path: PathBuf) -> Result<()> {
             }
         };
         blit(rect, bx, by);
-        let spots = if saying.second.is_some() {
-            &TALK_ICON_AT[1..3]
-        } else {
-            &TALK_ICON_AT[0..1]
-        };
-        for (topic, (ix, iy)) in [Some(saying.first), saying.second]
-            .into_iter()
-            .flatten()
-            .zip(spots)
-        {
-            blit(
-                TalkSheet::icon(topic),
-                bx + *ix as i32 * d,
-                by + *iy as i32 * d,
-            );
-        }
+        blit(
+            TalkSheet::icon(saying.topic),
+            bx + TALK_ICON_AT.0 as i32 * d,
+            by + TALK_ICON_AT.1 as i32 * d,
+        );
     };
     for (row, sayings) in rows.iter().enumerate() {
         let y0 = row as i32 * ch;

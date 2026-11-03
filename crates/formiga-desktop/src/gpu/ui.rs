@@ -239,8 +239,8 @@ impl OverlayRenderer {
     }
 
     /// Every bubble this frame, from the talk sheet: a creature answering the person at the desk,
-    /// and what companions are saying to each other. Each is its frame, then its one or two
-    /// pictures once it has grown in. An answer to the person wins over talk.
+    /// and what companions are saying to each other. Each is its frame, then its picture once it
+    /// has grown in. An answer to the person wins over talk.
     pub(super) fn talk_vertices(
         &self,
         visible: &[&Creature],
@@ -278,7 +278,7 @@ impl OverlayRenderer {
             };
             let (centre_x, head_top, _) = self.creature_extent(creature, sprite, display_scale);
             let occlusion = (creature.state.action != ActionKind::Dragged) as u8 as f32;
-            let frame = TalkSheet::frame(saying.style, saying.second.is_some(), growth);
+            let frame = TalkSheet::frame(saying.style, growth);
             // In art pixels: the tail's tip, at the middle of the bottom row, sits just over the
             // crown.
             let size = (frame.width as f32 / detail, frame.height as f32 / detail);
@@ -286,25 +286,14 @@ impl OverlayRenderer {
             let (x, y) = (self.snap(x), self.snap(y));
             vertices.extend_from_slice(&talk_quad(frame, x, y, scale, occlusion, self.layout));
             if growth == BubbleGrowth::Full {
-                let spots = if saying.second.is_some() {
-                    &TALK_ICON_AT[1..3]
-                } else {
-                    &TALK_ICON_AT[0..1]
-                };
-                for (topic, (ix, iy)) in [Some(saying.first), saying.second]
-                    .into_iter()
-                    .flatten()
-                    .zip(spots)
-                {
-                    vertices.extend_from_slice(&talk_quad(
-                        TalkSheet::icon(topic),
-                        x + *ix as f32 * scale,
-                        y + *iy as f32 * scale,
-                        scale,
-                        occlusion,
-                        self.layout,
-                    ));
-                }
+                vertices.extend_from_slice(&talk_quad(
+                    TalkSheet::icon(saying.topic),
+                    x + TALK_ICON_AT.0 as f32 * scale,
+                    y + TALK_ICON_AT.1 as f32 * scale,
+                    scale,
+                    occlusion,
+                    self.layout,
+                ));
             }
         }
         vertices

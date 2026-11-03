@@ -1,6 +1,6 @@
 use super::ui::*;
 use super::*;
-use formiga_art::{TALK_DOUBLE, TALK_SINGLE};
+use formiga_art::TALK_BUBBLE;
 use formiga_core::{ApplicationKey, DisplayKey, MonitorInfo, Point, World};
 
 fn window(
@@ -949,7 +949,7 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
         "a smaller creature's crown is further down its frame ({mini_top} vs {adult_top})"
     );
     // Both bubbles sit the same distance above their own crown, so neither floats.
-    let size = (TALK_SINGLE.0 as f32, TALK_SINGLE.1 as f32);
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
     for (name, top) in [("adult", adult_top), ("mini", mini_top)] {
         let scale = 3.0;
         let head_top = 400.0 + f32::from(top) * scale;
@@ -964,36 +964,33 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
 
 #[test]
 fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
-    for double in [false, true] {
-        let frame = TalkSheet::frame(
-            formiga_core::talk::TalkStyle::Chat,
-            double,
-            formiga_core::BubbleGrowth::Full,
-        );
-        let size = (
-            (frame.width / TALK_DETAIL) as f32,
-            (frame.height / TALK_DETAIL) as f32,
-        );
-        for scale in [2.0_f32, 3.0, 4.0] {
-            let (x, y) = talk_origin(700.0, 400.0, scale, DRAWABLE, size);
-            // Centred: the tail's column is the creature's own centre column.
-            assert_eq!(x + (size.0 / 2.0).floor() * scale, 700.0);
-            // Exactly one art pixel of daylight between the tip and the crown.
-            assert_eq!(400.0 - (y + size.1 * scale), scale, "one art pixel of gap");
-            let quad = talk_quad(frame, x, y, scale, 1.0, DRAWABLE);
-            let (left, top, right, bottom) = quad_pixels(&quad);
-            close(right - left, size.0 * scale, "bubble width");
-            close(bottom - top, size.1 * scale, "bubble height");
-            close(left, x, "bubble left");
-            close(top, y, "bubble top");
-        }
+    let frame = TalkSheet::frame(
+        formiga_core::talk::TalkStyle::Chat,
+        formiga_core::BubbleGrowth::Full,
+    );
+    let size = (
+        (frame.width / TALK_DETAIL) as f32,
+        (frame.height / TALK_DETAIL) as f32,
+    );
+    for scale in [2.0_f32, 3.0, 4.0] {
+        let (x, y) = talk_origin(700.0, 400.0, scale, DRAWABLE, size);
+        // Centred: the tail's column is the creature's own centre column.
+        assert_eq!(x + (size.0 / 2.0).floor() * scale, 700.0);
+        // Exactly one art pixel of daylight between the tip and the crown.
+        assert_eq!(400.0 - (y + size.1 * scale), scale, "one art pixel of gap");
+        let quad = talk_quad(frame, x, y, scale, 1.0, DRAWABLE);
+        let (left, top, right, bottom) = quad_pixels(&quad);
+        close(right - left, size.0 * scale, "bubble width");
+        close(bottom - top, size.1 * scale, "bubble height");
+        close(left, x, "bubble left");
+        close(top, y, "bubble top");
     }
 }
 
 #[test]
 fn a_bubble_at_the_top_or_the_edge_of_a_display_stays_on_it() {
     let scale = 4.0;
-    let size = (TALK_DOUBLE.0 as f32, TALK_DOUBLE.1 as f32);
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
     let width = size.0 * scale;
     let height = size.1 * scale;
     // A creature with its head at the very top of the display.

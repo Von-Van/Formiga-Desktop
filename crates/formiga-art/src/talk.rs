@@ -4,7 +4,9 @@
 //! Bubbles are drawn twice as finely as the companions: each art pixel of a bubble is
 //! [`TALK_DETAIL`] texture pixels across, so a heart, a ball or a moon inside one has room for a
 //! curve and a highlight and reads at a glance, while the bubble still sits at the companions' own
-//! size. A bubble is put together as it is drawn: its frame, then one or two pictures on it.
+//! size. Every bubble is the same shape and size, with the same edge and the same tail; how a thing
+//! is said shows only in the colour of its paper, so the eye goes to the picture. A bubble is put
+//! together as it is drawn: its frame, then its picture on it.
 
 use crate::{Canvas, Rgba, SpriteRect};
 use formiga_core::BubbleGrowth;
@@ -12,62 +14,54 @@ use formiga_core::talk::{TalkStyle, TalkTopic};
 
 /// Texture pixels to each art pixel of a bubble.
 pub const TALK_DETAIL: u32 = 2;
-/// A bubble with one picture, in art pixels, tail included.
-pub const TALK_SINGLE: (u32, u32) = (21, 18);
-/// A bubble with two pictures side by side.
-pub const TALK_DOUBLE: (u32, u32) = (31, 18);
+/// Every bubble, in art pixels, tail included.
+pub const TALK_BUBBLE: (u32, u32) = (20, 17);
 /// A picture, in art pixels.
 pub const TALK_ICON: u32 = 10;
-/// Where a single bubble's picture goes on it, and a double's two, in art pixels from its
-/// top-left.
-pub const TALK_ICON_AT: [(u32, u32); 3] = [(5, 3), (5, 3), (16, 3)];
-const SMALL: (u32, u32) = (9, 8);
-const MEDIUM: (u32, u32) = (13, 12);
+/// Where the picture goes on a bubble, in art pixels from its top-left.
+pub const TALK_ICON_AT: (u32, u32) = (5, 2);
+/// The two steps a bubble grows in by and shrinks out by.
+const SMALL: (u32, u32) = (8, 7);
+const MEDIUM: (u32, u32) = (14, 12);
 
 const ICON_COLUMNS: u32 = 16;
-const ROW_SINGLE: u32 = 0;
-const ROW_DOUBLE: u32 = TALK_SINGLE.1 * TALK_DETAIL;
-const ROW_GROWING: u32 = ROW_DOUBLE + TALK_DOUBLE.1 * TALK_DETAIL;
+const ROW_FULL: u32 = 0;
+const ROW_GROWING: u32 = TALK_BUBBLE.1 * TALK_DETAIL;
 const ROW_ICONS: u32 = ROW_GROWING + MEDIUM.1 * TALK_DETAIL;
-pub const TALK_SHEET_WIDTH: u32 = 8 * TALK_DOUBLE.0 * TALK_DETAIL;
+pub const TALK_SHEET_WIDTH: u32 = ICON_COLUMNS * TALK_ICON * TALK_DETAIL;
 pub const TALK_SHEET_HEIGHT: u32 =
     ROW_ICONS + (TalkTopic::ALL.len() as u32).div_ceil(ICON_COLUMNS) * TALK_ICON * TALK_DETAIL;
 
+/// The one edge every bubble has.
 const PLUM: Rgba = Rgba::new(66, 53, 72, 255);
-const CREAM: Rgba = Rgba::new(255, 246, 224, 246);
-const SUN: Rgba = Rgba::new(255, 226, 120, 250);
-const SUN_EDGE: Rgba = Rgba::new(196, 120, 40, 255);
-const MIST: Rgba = Rgba::new(250, 248, 244, 190);
-const MIST_EDGE: Rgba = Rgba::new(150, 140, 156, 220);
-const CLOUD: Rgba = Rgba::new(244, 246, 252, 246);
-const SKY: Rgba = Rgba::new(208, 230, 252, 248);
-const SKY_EDGE: Rgba = Rgba::new(60, 98, 160, 255);
-const ROSE: Rgba = Rgba::new(255, 222, 230, 248);
-const ROSE_EDGE: Rgba = Rgba::new(176, 70, 104, 255);
-const SLATE: Rgba = Rgba::new(98, 100, 118, 250);
-const SLATE_EDGE: Rgba = Rgba::new(40, 40, 54, 255);
+
+/// The paper each way of saying something is written on: all light, so every picture reads on
+/// every one, and different enough in hue to tell apart.
+const fn paper(style: TalkStyle) -> Rgba {
+    match style {
+        TalkStyle::Chat => Rgba::new(255, 248, 230, 250),
+        TalkStyle::Excited => Rgba::new(255, 232, 150, 250),
+        TalkStyle::Whisper => Rgba::new(236, 228, 246, 250),
+        TalkStyle::Thought => Rgba::new(238, 242, 248, 250),
+        TalkStyle::Song => Rgba::new(212, 234, 252, 250),
+        TalkStyle::Tender => Rgba::new(255, 222, 232, 250),
+        TalkStyle::Grumble => Rgba::new(200, 204, 214, 250),
+        TalkStyle::Shout => Rgba::new(255, 210, 176, 250),
+    }
+}
 
 /// Where things are on the talk sheet, in texture pixels.
 pub struct TalkSheet;
 
 impl TalkSheet {
-    /// The frame for `style` at `growth`, wide enough for two pictures or one. Growing in and
-    /// out, every bubble is the same plain shape.
-    pub fn frame(style: TalkStyle, double: bool, growth: BubbleGrowth) -> SpriteRect {
+    /// The frame for `style` at `growth`. Growing in and out, every bubble is the same plain
+    /// cream shape, a little smaller each step.
+    pub fn frame(style: TalkStyle, growth: BubbleGrowth) -> SpriteRect {
         let column = TalkStyle::ALL.iter().position(|s| *s == style).unwrap_or(0) as u32;
         let (size, x, y) = match growth {
             BubbleGrowth::Small => (SMALL, 0, ROW_GROWING),
             BubbleGrowth::Medium => (MEDIUM, SMALL.0 * TALK_DETAIL, ROW_GROWING),
-            BubbleGrowth::Full if double => (
-                TALK_DOUBLE,
-                column * TALK_DOUBLE.0 * TALK_DETAIL,
-                ROW_DOUBLE,
-            ),
-            BubbleGrowth::Full => (
-                TALK_SINGLE,
-                column * TALK_SINGLE.0 * TALK_DETAIL,
-                ROW_SINGLE,
-            ),
+            BubbleGrowth::Full => (TALK_BUBBLE, column * TALK_BUBBLE.0 * TALK_DETAIL, ROW_FULL),
         };
         SpriteRect {
             x,
@@ -92,17 +86,15 @@ impl TalkSheet {
     pub fn render() -> Canvas {
         let mut sheet = Canvas::new(TALK_SHEET_WIDTH, TALK_SHEET_HEIGHT);
         for style in TalkStyle::ALL {
-            for double in [false, true] {
-                let rect = Self::frame(style, double, BubbleGrowth::Full);
-                let mut tile = Canvas::new(rect.width, rect.height);
-                draw_frame(&mut tile, style);
-                blit(&mut sheet, &tile, rect.x, rect.y);
-            }
+            let rect = Self::frame(style, BubbleGrowth::Full);
+            let mut tile = Canvas::new(rect.width, rect.height);
+            draw_frame(&mut tile, paper(style));
+            blit(&mut sheet, &tile, rect.x, rect.y);
         }
         for growth in [BubbleGrowth::Small, BubbleGrowth::Medium] {
-            let rect = Self::frame(TalkStyle::Chat, false, growth);
+            let rect = Self::frame(TalkStyle::Chat, growth);
             let mut tile = Canvas::new(rect.width, rect.height);
-            draw_frame(&mut tile, TalkStyle::Chat);
+            draw_frame(&mut tile, paper(TalkStyle::Chat));
             blit(&mut sheet, &tile, rect.x, rect.y);
         }
         for topic in TalkTopic::ALL {
@@ -126,156 +118,38 @@ fn blit(target: &mut Canvas, source: &Canvas, x0: u32, y0: u32) {
     }
 }
 
-/// A bubble frame filling `tile`: its body above, its tail tapering to the middle of the
-/// bottom row.
-fn draw_frame(tile: &mut Canvas, style: TalkStyle) {
+/// A bubble filling `tile`: a rounded body with one art pixel of plum edge, and a tail tapering
+/// to the middle of the bottom row.
+fn draw_frame(tile: &mut Canvas, paper: Rgba) {
     let (w, h) = (tile.width() as i32, tile.height() as i32);
     let d = TALK_DETAIL as i32;
-    // The body, and the three art rows of tail under it.
-    let (bx0, by0, bx1, by1) = (d, d, w - d - 1, h - 3 * d - 1);
-    let (cx, cy) = ((bx0 + bx1) / 2, (by0 + by1) / 2);
-    let (rx, ry) = ((bx1 - bx0) / 2, (by1 - by0) / 2);
-    let (paper, edge) = match style {
-        TalkStyle::Chat => (CREAM, PLUM),
-        TalkStyle::Excited => (SUN, SUN_EDGE),
-        TalkStyle::Whisper => (MIST, MIST_EDGE),
-        TalkStyle::Thought => (CLOUD, PLUM),
-        TalkStyle::Song => (SKY, SKY_EDGE),
-        TalkStyle::Tender => (ROSE, ROSE_EDGE),
-        TalkStyle::Grumble => (SLATE, SLATE_EDGE),
-        TalkStyle::Shout => (CREAM, PLUM),
-    };
+    let tail_rows = 3 * d;
+    let (bx0, by0, bx1, by1) = (d, d, w - d - 1, h - tail_rows - 1);
+    let corner = (3 * d).min((by1 - by0) / 2);
     let rounded = |tile: &mut Canvas, grow: i32, colour: Rgba| {
-        let corner = 3 * d;
-        tile.fill_rect(
-            bx0 - grow + corner,
-            by0 - grow,
-            bx1 - bx0 + 1 + 2 * grow - 2 * corner,
-            by1 - by0 + 1 + 2 * grow,
-            colour,
-        );
-        tile.fill_rect(
-            bx0 - grow,
-            by0 - grow + corner,
-            bx1 - bx0 + 1 + 2 * grow,
-            by1 - by0 + 1 + 2 * grow - 2 * corner,
-            colour,
-        );
+        let (x0, y0, x1, y1) = (bx0 - grow, by0 - grow, bx1 + grow, by1 + grow);
+        let r = corner + grow;
+        tile.fill_rect(x0 + r, y0, x1 - x0 + 1 - 2 * r, y1 - y0 + 1, colour);
+        tile.fill_rect(x0, y0 + r, x1 - x0 + 1, y1 - y0 + 1 - 2 * r, colour);
         for (x, y) in [
-            (bx0 + corner, by0 + corner),
-            (bx1 - corner, by0 + corner),
-            (bx0 + corner, by1 - corner),
-            (bx1 - corner, by1 - corner),
+            (x0 + r, y0 + r),
+            (x1 - r, y0 + r),
+            (x0 + r, y1 - r),
+            (x1 - r, y1 - r),
         ] {
-            tile.fill_circle(x, y, corner + grow, colour);
+            tile.fill_circle(x, y, r, colour);
         }
     };
-    let tail = |tile: &mut Canvas, colour: Rgba, grow: i32| {
-        for row in 0..3 * d + grow {
-            let half = (3 * d - row) / 2 + grow;
-            tile.fill_rect(w / 2 - half, by1 + row, half * 2 + 1, 1, colour);
+    let tail = |tile: &mut Canvas, grow: i32, colour: Rgba| {
+        for row in 0..tail_rows + grow {
+            let half = (tail_rows - row) / 2 + grow;
+            tile.fill_rect(w / 2 - half, by1 + row, half * 2, 1, colour);
         }
     };
-    match style {
-        // A cloud of overlapping puffs, and two little puffs trailing down for a tail.
-        TalkStyle::Thought => {
-            let puffs = |tile: &mut Canvas, grow: i32, colour: Rgba| {
-                let step = (rx * 2) / 4;
-                for i in 0..=4 {
-                    let x = bx0 + i * step;
-                    tile.fill_circle(
-                        x.clamp(bx0 + ry / 2, bx1 - ry / 2),
-                        by0 + ry / 2,
-                        ry / 2 + 2 + grow,
-                        colour,
-                    );
-                    tile.fill_circle(
-                        x.clamp(bx0 + ry / 2, bx1 - ry / 2),
-                        by1 - ry / 2,
-                        ry / 2 + 2 + grow,
-                        colour,
-                    );
-                }
-                tile.fill_ellipse(cx, cy, rx - 1 + grow, ry - 1 + grow, colour);
-            };
-            puffs(tile, d, edge);
-            puffs(tile, 0, paper);
-            for (dx, dy, r) in [(1, 2 * d, 2), (3, 4 * d, 1)] {
-                tile.fill_circle(w / 2 - dx * d / 2, by1 + dy - d, r * d / 2 + d, edge);
-                tile.fill_circle(w / 2 - dx * d / 2, by1 + dy - d, r * d / 2, paper);
-            }
-        }
-        // Sunny yellow with a bright rim inside its edge: lit up.
-        TalkStyle::Excited => {
-            rounded(tile, d, edge);
-            tail(tile, edge, d);
-            rounded(tile, 0, GOLD_LIGHT);
-            tail(tile, GOLD_LIGHT, 0);
-            rounded(tile, -1, paper);
-            tail(tile, paper, -1);
-        }
-        // Dotted round instead of drawn round, and pale.
-        TalkStyle::Whisper => {
-            rounded(tile, 0, paper);
-            tail(tile, paper, 0);
-            for x in (bx0..=bx1).step_by((2 * d) as usize) {
-                tile.fill_rect(x, by0 - d, d, d, edge);
-                tile.fill_rect(x, by1 + 1, d, d, edge);
-            }
-            for y in (by0..=by1).step_by((2 * d) as usize) {
-                tile.fill_rect(bx0 - d, y, d, d, edge);
-                tile.fill_rect(bx1 + 1, y, d, d, edge);
-            }
-        }
-        // A wavy edge, top and bottom.
-        TalkStyle::Song => {
-            rounded(tile, d, edge);
-            tail(tile, edge, d);
-            rounded(tile, 0, paper);
-            tail(tile, paper, 0);
-            for x in bx0 + 2 * d..bx1 - 2 * d {
-                let wave = (((x as f32) / (2.0 * d as f32)).sin() * d as f32).round() as i32;
-                tile.set(x, by0 + d + wave, SKY_EDGE);
-            }
-        }
-        // Jagged little bites out of a dark cloud.
-        TalkStyle::Grumble => {
-            rounded(tile, d, edge);
-            tail(tile, edge, d);
-            rounded(tile, 0, paper);
-            tail(tile, paper, 0);
-            for x in (bx0 + 2 * d..bx1 - d).step_by((3 * d) as usize) {
-                tile.fill_rect(x, by0 - d, d, 2 * d, Rgba::TRANSPARENT);
-                tile.set(x, by0 + d, edge);
-                tile.set(x + 1, by0 + d, edge);
-            }
-        }
-        // A bold edge, and lines flying off beside the tail.
-        TalkStyle::Shout => {
-            rounded(tile, 2 * d, edge);
-            tail(tile, edge, 2 * d);
-            rounded(tile, 0, paper);
-            tail(tile, paper, 0);
-        }
-        // Round and soft, with little hearts at its top corners.
-        TalkStyle::Tender => {
-            rounded(tile, d, edge);
-            tail(tile, edge, d);
-            rounded(tile, 0, paper);
-            tail(tile, paper, 0);
-            for x in [bx0 + d, bx1 - d] {
-                tile.fill_circle(x - 1, by0, 1, edge);
-                tile.fill_circle(x + 1, by0, 1, edge);
-                tile.set(x, by0 + 2, edge);
-            }
-        }
-        TalkStyle::Chat => {
-            rounded(tile, d, edge);
-            tail(tile, edge, d);
-            rounded(tile, 0, paper);
-            tail(tile, paper, 0);
-        }
-    }
+    rounded(tile, d, PLUM);
+    tail(tile, d, PLUM);
+    rounded(tile, 0, paper);
+    tail(tile, 0, paper);
 }
 
 const INK: Rgba = Rgba::new(58, 42, 50, 255);
@@ -343,19 +217,23 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.set(6, 6, HEART_LIGHT);
             tile.set(7, 5, HEART_LIGHT);
         }
+        // A green heart broken down the middle: jealous.
         TalkTopic::CrackedHeart => {
             heart(tile, 10, 7, 3, GREEN);
-            tile.line(10, 5, 8, 9, 1, INK);
-            tile.line(8, 9, 11, 12, 1, INK);
+            tile.line(10, 5, 8, 8, 1, INK);
+            tile.line(8, 8, 11, 11, 1, INK);
+            tile.line(11, 11, 10, 14, 1, INK);
         }
+        // A paw held up and waving: a round pad with three toes close over it, and the lines of
+        // the wave beside it.
         TalkTopic::Wave => {
-            blob(tile, 10, 11, 4, 4, SKIN);
-            for (i, x) in [6, 9, 12].into_iter().enumerate() {
-                tile.fill_rect(x - 1, 4 + i as i32 % 2, 3, 6, INK);
-                tile.fill_rect(x, 5 + i as i32 % 2, 1, 5, SKIN);
+            blob(tile, 9, 12, 5, 4, SKIN);
+            for (x, y) in [(5, 7), (9, 5), (13, 7)] {
+                blob(tile, x, y, 2, 2, SKIN);
             }
-            tile.line(15, 4, 17, 2, 1, INK);
-            tile.line(16, 7, 18, 6, 1, INK);
+            for (x, y) in [(16, 10), (17, 14)] {
+                tile.line(x, y, x + 2, y - 2, 1, INK);
+            }
         }
         TalkTopic::Hand => {
             blob(tile, 10, 11, 5, 4, SKIN);
@@ -369,24 +247,35 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.line(10, 6, 11, 3, 2, WOOD);
             blob(tile, 13, 4, 2, 1, LEAFY);
         }
+        // A blue ball with its seams curving round it and a shine on top.
         TalkTopic::Ball => {
-            blob(tile, 10, 10, 6, 6, BALL);
-            tile.line(4, 10, 16, 10, 1, INK);
-            tile.line(10, 4, 10, 16, 1, INK);
-            tile.fill_circle(7, 7, 1, BALL_LIGHT);
+            blob(tile, 10, 10, 7, 7, BALL);
+            let white = Rgba::new(255, 255, 255, 255);
+            for step in 0..14 {
+                let t = step as f32 / 13.0 * std::f32::consts::PI;
+                tile.set(5 + (t.sin() * 3.0) as i32, 4 + step, white);
+                tile.set(15 - (t.sin() * 3.0) as i32, 4 + step, white);
+            }
+            tile.fill_circle(7, 6, 1, BALL_LIGHT);
         }
+        // A twig, as found: a stick with a fork near the top and one leaf on it.
         TalkTopic::Stick => {
-            stroke(tile, (4, 16), (16, 4), WOOD);
-            tile.line(12, 3, 17, 8, 3, INK);
-            tile.line(12, 3, 17, 8, 1, GOLD);
+            stroke(tile, (4, 17), (15, 3), WOOD);
+            stroke(tile, (11, 8), (16, 8), WOOD);
+            blob(tile, 16, 4, 2, 1, LEAFY);
         }
+        // An open umbrella with its hooked handle.
         TalkTopic::Umbrella => {
-            tile.fill_ellipse(10, 8, 8, 5, INK);
-            tile.fill_ellipse(10, 8, 7, 4, RED);
-            tile.fill_rect(2, 9, 17, 6, Rgba::TRANSPARENT);
-            tile.fill_rect(2, 8, 17, 1, INK);
-            tile.line(10, 8, 10, 16, 1, INK);
-            tile.line(10, 16, 12, 16, 1, INK);
+            tile.fill_ellipse(10, 9, 8, 6, INK);
+            tile.fill_ellipse(10, 9, 7, 5, RED);
+            tile.fill_rect(1, 10, 19, 6, Rgba::TRANSPARENT);
+            tile.fill_rect(2, 9, 17, 1, INK);
+            for x in [5, 10, 15] {
+                tile.line(x, 5, x, 8, 1, Rgba::new(250, 160, 146, 255));
+            }
+            tile.line(10, 9, 10, 16, 1, INK);
+            tile.line(10, 16, 8, 17, 1, INK);
+            tile.set(7, 16, INK);
         }
         TalkTopic::Kite => {
             for row in -5..=5_i32 {
@@ -405,12 +294,17 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             }
             tile.line(10, 12, 7, 18, 1, INK);
         }
+        // A fish side on: a round body, a forked tail, an eye and a fin.
         TalkTopic::Fish => {
-            blob(tile, 9, 10, 6, 3, BALL);
-            tile.fill_rect(15, 7, 2, 7, INK);
-            tile.fill_rect(16, 6, 2, 9, INK);
-            tile.set(6, 9, INK);
-            tile.line(7, 12, 12, 12, 1, BALL_LIGHT);
+            blob(tile, 8, 10, 6, 4, BALL);
+            for row in -4..=4_i32 {
+                let reach = 2 + row.abs() / 2;
+                tile.fill_rect(14, 10 + row, reach + 1, 1, INK);
+                tile.fill_rect(14, 10 + row, reach, 1, BALL);
+            }
+            tile.fill_circle(5, 9, 1, INK);
+            tile.line(7, 13, 10, 13, 1, BALL_LIGHT);
+            tile.line(8, 6, 10, 5, 1, INK);
         }
         TalkTopic::Note => {
             blob(tile, 7, 15, 3, 2, BLUE);
@@ -468,20 +362,26 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.line(8, 15, 12, 15, 2, BOLT);
             tile.line(12, 15, 9, 18, 2, BOLT);
         }
+        // A spiral, wound in from the outside: dizzy, or something spinning.
         TalkTopic::Spiral => {
-            for (i, r) in [6, 4, 2].into_iter().enumerate() {
-                tile.fill_circle(10, 10, r + 1, INK);
-                tile.fill_circle(10, 10, r, if i % 2 == 0 { BALL_LIGHT } else { BALL });
+            let mut last = (10, 10);
+            for step in 0..60 {
+                let t = step as f32 * 0.2;
+                let r = 0.9 * t;
+                let at = (10 + (r * t.cos()) as i32, 10 + (r * t.sin()) as i32);
+                tile.line(last.0, last.1, at.0, at.1, 2, INK);
+                last = at;
             }
-            tile.fill_rect(10, 3, 7, 7, Rgba::TRANSPARENT);
         }
+        // A shy face: eyes shut in little arcs and pink cheeks.
         TalkTopic::Blush => {
-            for x in [5, 15] {
-                tile.fill_ellipse(x, 11, 3, 2, HEART_LIGHT);
+            blob(tile, 10, 10, 7, 7, SKIN);
+            for x in [6, 14] {
+                tile.fill_ellipse(x, 12, 2, 1, HEART_LIGHT);
             }
-            tile.line(4, 7, 7, 7, 1, INK);
-            tile.line(13, 7, 16, 7, 1, INK);
-            tile.line(8, 14, 12, 14, 1, INK);
+            tile.line(5, 8, 8, 8, 1, INK);
+            tile.line(12, 8, 15, 8, 1, INK);
+            tile.line(9, 14, 11, 14, 1, INK);
         }
         TalkTopic::Eye => {
             tile.fill_ellipse(10, 10, 8, 5, INK);
@@ -500,11 +400,12 @@ fn draw_icon(tile: &mut Canvas, topic: TalkTopic) {
             tile.line(5, 5, 15, 15, 2, RED);
             tile.line(15, 5, 5, 15, 2, RED);
         }
+        // Two paw prints, one ahead of the other: running about, chasing, tag.
         TalkTopic::Footprints => {
-            for (x, y) in [(6, 13), (13, 6)] {
-                blob(tile, x, y, 2, 3, WOOD);
-                for dx in [-2, 0, 2] {
-                    tile.fill_circle(x + dx, y - 4, 1, INK);
+            for (x, y) in [(6, 14), (14, 6)] {
+                blob(tile, x, y + 1, 2, 2, WOOD);
+                for dx in [-3, 0, 3] {
+                    blob(tile, x + dx, y - 3, 1, 1, WOOD);
                 }
             }
         }
@@ -562,20 +463,16 @@ mod tests {
         assert_eq!(sheet, TalkSheet::render());
         let mut rects = Vec::new();
         for style in TalkStyle::ALL {
-            for double in [false, true] {
-                rects.push(TalkSheet::frame(style, double, BubbleGrowth::Full));
-            }
+            let rect = TalkSheet::frame(style, BubbleGrowth::Full);
+            // Every bubble is the same size.
+            assert_eq!(
+                (rect.width, rect.height),
+                (TALK_BUBBLE.0 * TALK_DETAIL, TALK_BUBBLE.1 * TALK_DETAIL)
+            );
+            rects.push(rect);
         }
-        rects.push(TalkSheet::frame(
-            TalkStyle::Chat,
-            false,
-            BubbleGrowth::Small,
-        ));
-        rects.push(TalkSheet::frame(
-            TalkStyle::Chat,
-            false,
-            BubbleGrowth::Medium,
-        ));
+        rects.push(TalkSheet::frame(TalkStyle::Chat, BubbleGrowth::Small));
+        rects.push(TalkSheet::frame(TalkStyle::Chat, BubbleGrowth::Medium));
         let mut pictures = Vec::new();
         for topic in TalkTopic::ALL {
             let rect = TalkSheet::icon(topic);
@@ -595,6 +492,31 @@ mod tests {
                 assert!(!a.overlaps(b), "{a:?} and {b:?} overlap");
             }
         }
+    }
+
+    /// Every bubble is one shape: the same pixels are paper in every style and edge in every
+    /// style, so only the paper's colour tells one from another.
+    #[test]
+    fn every_bubble_is_the_same_shape_in_its_own_colour() {
+        let sheet = TalkSheet::render();
+        let shape = |style| {
+            let rect = TalkSheet::frame(style, BubbleGrowth::Full);
+            (rect.y..rect.y + rect.height)
+                .flat_map(|y| (rect.x..rect.x + rect.width).map(move |x| (x, y)))
+                .map(|(x, y)| {
+                    let pixel = sheet.get(x as i32, y as i32);
+                    (pixel.a > 0, pixel == PLUM)
+                })
+                .collect::<Vec<_>>()
+        };
+        let chat = shape(TalkStyle::Chat);
+        let mut papers = std::collections::BTreeSet::new();
+        for style in TalkStyle::ALL {
+            assert_eq!(shape(style), chat, "{style:?} is shaped differently");
+            let c = paper(style);
+            papers.insert((c.r, c.g, c.b));
+        }
+        assert_eq!(papers.len(), TalkStyle::ALL.len());
     }
 
     /// A Z for sleep reads as a Z: its stroke runs from the top bar's right end down to the
