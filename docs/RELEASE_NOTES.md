@@ -4,6 +4,22 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.68.22
+
+Companions have real meals now. Each one picks something to eat from eighteen foods, chosen by the
+time of day, what is ripe in the village's gardens, its own favourite, or a treat when you offer a
+snack, and eats it the way that food is eaten: berries popped in, an apple chomped in both paws, a
+carrot munched end to end, a walnut cracked first, soup blown on and slurped, with a crumb wiped
+off or a hiccup along the way. Play goes by what a thing is: something round is tossed, bounced and
+balanced, a stick becomes a sword, a cane or a fishing rod, an umbrella is twirled, sat in like a
+boat or ridden down off a window, a kite is flown and a paper plane thrown. Besides their own toys
+they play with the colony's belongings and finds borrowed from the scrapbook. Companions also talk
+to each other in little picture bubbles, a hello, an invitation to play, a meal offered, a
+goodnight, each answered by the friend; every bubble, yours included, is drawn twice as finely as
+before, one shape with one clear picture, its colour saying how it is said. A sleeper's z reads as a
+Z. Formiga Hill, Home and Battle stay at 0.68.1 and work with this release; for a Battle friend
+match, both of you need Desktop 0.68.22.
+
 ## New in 0.68.21
 
 Companions move more like living things. They walk only when they are going somewhere, step in
