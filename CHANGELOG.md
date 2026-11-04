@@ -2,15 +2,21 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.68.22] - 2026-11-04
+
+Meals, play by shape and talk between companions, released on Desktop alone: Formiga Hill, Home
+and Battle stay at 0.68.1 and work with it. Save version 33, travel version 6, household version 12
+and Battle contract version 5 are unchanged, and everything new is runtime only, so an older
+Formiga still opens the colony. Battle pairs friends only on the same Desktop version, so a friend
+match needs both sides on 0.68.22.
 
 ### Changed
 
 - What a companion eats, sips or plays with is drawn apart from its body, from one sheet every
   companion shares, in the paw or at the mouth where each frame holds it. Food is drawn in its own
   colours, so a berry is red and a biscuit golden whoever is eating it, and each toy comes in one
-  of three colourways. This is the groundwork for companions eating and playing with more than
-  the one snack and toy they were born with; nothing else about eating or play changes yet.
+  of three colourways. It is what lets companions eat and play with more than the one snack and
+  toy they were born with.
 
 ### Added
 
