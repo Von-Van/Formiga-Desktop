@@ -1,10 +1,10 @@
 //! Talk: the bubbles companions say things to each other in, and the ones they answer the person
 //! at the desk with, as pictures.
 //!
-//! A bubble is a style and one or two topics. The style is how it is said — chatting, excited,
-//! whispered, thought, sung, tender, grumbled, shouted — and shows in the bubble's own shape and
-//! colour; the topics are what it is about — a ball, a stick, the food, a game, the moon, a heart,
-//! a question — and show as small pictures inside. Runtime only: nothing here is saved.
+//! A bubble is a style and a topic. The style is how it is said — chatting, excited, whispered,
+//! thought, sung, tender, grumbled, shouted — and shows in the colour of the bubble's paper; the
+//! topic is what it is about — a ball, a stick, the food, a game, the moon, a heart, a question —
+//! and shows as one picture inside. Runtime only: nothing here is saved.
 
 use crate::BubbleIcon;
 
@@ -71,12 +71,11 @@ pub enum TalkTopic {
     Flag,
     Sun,
     Flower,
-    Hand,
     Blocks,
 }
 
 impl TalkTopic {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 27] = [
         Self::Heart,
         Self::Wave,
         Self::Food,
@@ -103,7 +102,6 @@ impl TalkTopic {
         Self::Flag,
         Self::Sun,
         Self::Flower,
-        Self::Hand,
         Self::Blocks,
     ];
 
@@ -128,29 +126,16 @@ impl TalkTopic {
     }
 }
 
-/// What is said: how, and about what. One topic, or two side by side.
+/// What is said: how, and about what.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Saying {
     pub style: TalkStyle,
-    pub first: TalkTopic,
-    pub second: Option<TalkTopic>,
+    pub topic: TalkTopic,
 }
 
 impl Saying {
     pub const fn one(style: TalkStyle, topic: TalkTopic) -> Self {
-        Self {
-            style,
-            first: topic,
-            second: None,
-        }
-    }
-
-    pub const fn two(style: TalkStyle, first: TalkTopic, second: TalkTopic) -> Self {
-        Self {
-            style,
-            first,
-            second: Some(second),
-        }
+        Self { style, topic }
     }
 
     /// How an answer to the person at the desk is said: the icon it has always shown, in the

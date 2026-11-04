@@ -386,8 +386,8 @@ shape played with through a session.
 
 Companions talk to each other in pictures (`formiga-core/src/talk.rs`, carried by
 `world/talk.rs`, runtime only and checked by the same wiped-every-tick test). A `Saying` is a
-`TalkStyle` — chat, excited, whisper, thought, song, tender, grumble, shout — and one or two
-`TalkTopic` pictures. At the end of each tick the pass sees what each companion has just started
+`TalkStyle` — chat, excited, whisper, thought, song, tender, grumble, shout — and one `TalkTopic`
+picture. At the end of each tick the pass sees what each companion has just started
 and, with dice of its own, has it say something to the nearest friend within 150 points: a hello
 (answered with a hello or a heart), an invitation to play about its own toy's shape (answered
 "!"), a meal offered (answered with a heart), a goodnight whispered (whispered back), a grumble at
@@ -396,8 +396,9 @@ answer waits 0.9 s; a speaker keeps quiet 9 s after it speaks; at most four are 
 answer to the person at the desk wins over talk. Those answers (`ThoughtBubble`, unchanged) are
 drawn in the same bubbles through `Saying::answering`. The overlay draws every bubble from the talk
 sheet (`TalkSheet`), which is baked at `TALK_DETAIL` = 2 texture pixels to the art pixel, so a
-bubble's frame and pictures are twice as fine as the companion under it; each bubble is its frame
-quad and, once grown, one or two picture quads, placed by `talk_origin` with the tail's tip an art
+bubble's frame and picture are twice as fine as the companion under it. Every bubble is one shape
+and size (`TALK_BUBBLE`), with the same plum edge and tail; the style shows only in the colour of
+its paper, so the eye goes to the picture. Each is its frame quad and, once grown, its picture quad, placed by `talk_origin` with the tail's tip an art
 pixel over the crown. The interface atlas keeps the menu and the notebook's icons. A sleeper's z is
 four pixels square, since three square can only join its bars with one middle pixel and reads as
 an I. `formiga-tools talk-sheet` shows every style and a few conversations.

@@ -136,7 +136,7 @@ impl World {
                 }
                 Some(ActionKind::Eat) if awake.is_some() && rng.random_bool(0.35) => {
                     said = Some((
-                        Saying::two(TalkStyle::Chat, TalkTopic::Food, TalkTopic::Question),
+                        Saying::one(TalkStyle::Chat, TalkTopic::Food),
                         awake.map(|friend| {
                             (friend.id, Saying::one(TalkStyle::Tender, TalkTopic::Heart))
                         }),
@@ -153,7 +153,7 @@ impl World {
                         Saying::one(TalkStyle::Thought, TalkTopic::Dots)
                     };
                     said = Some((
-                        Saying::two(TalkStyle::Excited, topic, TalkTopic::Question),
+                        Saying::one(TalkStyle::Excited, topic),
                         awake.map(|friend| (friend.id, answer)),
                     ));
                 }
@@ -182,7 +182,7 @@ impl World {
             match speaker.started.play {
                 Some(PlayMove::Catch) => {
                     said = Some((
-                        Saying::two(TalkStyle::Excited, TalkTopic::Fish, TalkTopic::Exclaim),
+                        Saying::one(TalkStyle::Excited, TalkTopic::Fish),
                         awake.map(|friend| {
                             (
                                 friend.id,
