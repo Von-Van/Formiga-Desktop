@@ -177,6 +177,15 @@ _SOUVENIR_ID = re.compile(
 _FIND_NUMBER = re.compile(r'"find\.(\d+)"|\bPin\((\d+)\)|DesktopFind\s*\{\s*variant:\s*(\d+)')
 
 
+def _a_test(path: str) -> bool:
+    """A test file of an expansion: a `tests.rs` or `*_tests.rs` beside the code, or anything
+    under a `tests` folder. Tests name souvenirs and finds no colony has on purpose, to check
+    what the app does with one, so what they name is not held to Desktop's catalogue."""
+    parts = path.split("/")
+    name = parts[-1]
+    return "tests" in parts[:-1] or name == "tests.rs" or name.endswith(("_tests.rs", "_test.rs"))
+
+
 def hill_givers(source: catalog.Source) -> Optional[Dict[str, Dict]]:
     """Hill's souvenir catalogue: each id, who gives it, and the packages that name it."""
     if "hill" not in source.roots:
@@ -231,7 +240,7 @@ def expansions(data: dict, source: catalog.Source) -> Step:
     # Matched in each file's whole text: rustfmt spreads a `{ id }` or `{ variant: N }` over
     # several lines.
     for hit, match in source.search(_SOUVENIR_ID, {".rs", ".toml", ".json"}):
-        if hit.repo == "desktop":
+        if hit.repo == "desktop" or _a_test(hit.path):
             continue
         souvenir_id = next(group for group in match.groups() if group)
         if souvenir_id not in souvenirs:
@@ -240,7 +249,7 @@ def expansions(data: dict, source: catalog.Source) -> Step:
                 system=hit.repo, file=f"Formiga-{hit.repo.title()}/{hit.path}",
                 line=hit.line, object=f"souvenir:{souvenir_id}"))
     for hit, match in source.search(_FIND_NUMBER, {".rs", ".toml", ".json"}):
-        if hit.repo == "desktop":
+        if hit.repo == "desktop" or _a_test(hit.path):
             continue
         number = int(next(group for group in match.groups() if group))
         if number >= finds:

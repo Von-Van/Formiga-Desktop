@@ -19,8 +19,8 @@ failed or skipped with its reason:
               elsewhere on half the cores. --full-speed gives it every core at normal priority.
   hill, home, farm, battle
               (with --expansions) the expansion's own tests, built on this checkout's Desktop
-              crates instead of the release they are tied to. Battle has no CI, so this is the
-              only place its tests meet a Desktop change.
+              crates instead of the release they are tied to. Desktop's companion-apps workflow
+              runs the same on every pull request; this is how to run it before pushing.
 
 --quick runs format, lint and fixtures: seconds once things are built.
 """
@@ -220,7 +220,7 @@ def step_expansion(key: str) -> Step:
     passed = sum(_count(line, "passed") for line in done.output.splitlines())
     tied = f"tied to Desktop {', '.join(pins)}" if pins else "tied to no Desktop release"
     if not expansion.has_ci():
-        tied += "; no CI, checked only here"
+        tied += "; no CI of its own, checked by Desktop's companion-apps workflow"
     summary = (f"{passed} tests pass on this Desktop ({desktop_version()}); {tied}"
                if not failed else f"fails on this Desktop ({desktop_version()}); {tied}")
     return Step(key, "failed" if failed else "passed", summary, done.seconds, problems)

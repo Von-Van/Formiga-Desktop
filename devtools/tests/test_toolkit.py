@@ -482,6 +482,13 @@ pub const FAIR_TICKET: &str = "fair_ticket";
                 'let find = DesktopFind {\n    variant: 7,\n};\n',
             ("farm", "crates/formiga-farm/src/shelf.rs"):
                 'let worn = "souvenir.paper_crown";\nlet pin = Pin(1);\n',
+            # Tests name what no colony has on purpose; they are not held to the catalogue.
+            ("home", "crates/formiga-home/src/designs/tests.rs"):
+                'DisplayId::souvenir("not_a_souvenir_anyone_has")\nlet pin = Pin(9);\n',
+            ("home", "crates/formiga-home/tests/visits.rs"):
+                'DisplayId::souvenir("lantern_from_far_away")\n',
+            ("farm", "crates/formiga-farm/src/shelf_tests.rs"):
+                'let worn = "souvenir.made_up";\n',
         })
         found = problems(audit.expansions(data, source))
         self.assertEqual(sorted(found), sorted([

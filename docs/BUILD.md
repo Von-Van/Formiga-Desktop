@@ -54,19 +54,21 @@ Alongside those tests, on the same pushes and pull requests:
   `scripts/public-api.sh --update` (it needs `cargo-public-api` 0.52.0 and a pinned nightly
   toolchain, both named in the script) and commit what it writes; the job also uploads what it found when it fails.
   `formiga-core` and `formiga-art` change with most work, so their API is not kept; building and
-  testing Hill, Home and Farm against them (the companion-apps workflow) catches a change to
+  testing Hill, Home, Farm and Battle against them (the companion-apps workflow) catches a change to
   anything those apps use.
 - The installers (`package-macos`, `package-windows`) are built on every push to `main`, and on a
   pull request only when it changes packaging, scripts, a `Cargo.toml` or `Cargo.lock`, the
   toolchain, the licence or the workflows.
-- The `companion-apps` workflow checks out Formiga Hill, Home and Farm beside this checkout and runs
+- The `companion-apps` workflow checks out Formiga Hill, Home, Farm and Battle beside this checkout and runs
   each one's tests on this checkout's crates, as `devtools/formiga validate --step hill` does on a
   desk, so a change that would break one shows before that app repins. An app whose `main` still
   builds its own draft of its contract (a `path` dependency) has nothing of this checkout's to break
-  and is passed over with a notice until it takes Desktop's. Formiga Battle has no CI by choice and
-  is checked with `formiga validate --expansions`.
+  and is passed over with a notice until it takes Desktop's. Formiga Battle runs no Actions of its
+  own, by choice, so this is where its tests meet a Desktop change on GitHub.
+- The `test` job on the Mac also runs `devtools/formiga audit content`, so a village piece whose
+  name no longer fits its tile, or anything a colony can never come by, fails the pull request.
 - The `advisories` workflow runs `cargo audit` against the RustSec database every Monday and on any
-  pull request that changes `Cargo.lock`.
+  pull request that changes `Cargo.lock`. The Monday run scans Formiga Battle's `main` too.
 
 ## Trying a trip to Formiga Hill
 
