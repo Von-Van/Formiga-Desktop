@@ -21,7 +21,7 @@ jobs:
       matrix:
         app: [Hill, Home, Farm]
     name: Formiga ${{ matrix.app }} on this Desktop
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       # Side by side, as the toolkit looks for them: Formiga-Hill beside Formiga-Desktop.
       - uses: actions/checkout@v4
