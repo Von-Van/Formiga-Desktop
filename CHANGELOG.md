@@ -117,6 +117,28 @@ All notable changes are documented here.
   instead of pressed against the top edge over its face.
 - The overlay no longer crashes placing a bubble when a lost window surface comes back with no
   size.
+- A companion turning over in a long nap is seen to turn — a stir, its weight gathered up in a
+  crouch, and down the other way — instead of changing shape in one frame. With Reduce motion on
+  a nap still never turns.
+- A companion that walks to the drum stump plays it: a paw down on it twice, and a moment's
+  listen, round after round, instead of turning to some other toy once it gets there. A walk to a
+  spot that runs out of time no longer sits on, or plays, a spot it never reached.
+- The open action strip stays put while its companion fidgets, washes or stretches, so Snack no
+  longer slides out from under the pointer; it still follows a companion that walks, hops or is
+  carried off.
+- A companion strolling between the front of the village and the middle path changes to its
+  smaller back-row drawing on a planted step, not mid-stride, and can be grabbed by the size you
+  see throughout.
+- At Small on a high-density display the action strip is drawn big enough to read and hit, at
+  least one and a half points an art pixel, while the companion keeps its size.
+- Today's Right now names the meal a companion is eating, such as "Eating soup", even up on a
+  window ledge.
+
+### Added
+
+- Offer a snack and Offer a toy on each companion's profile in the notebook: the same offers as
+  the strip over it on the desktop, reachable with Tab and Enter, with what came of the offer
+  written underneath.
 
 ## [0.68.22] - 2026-11-04
 
