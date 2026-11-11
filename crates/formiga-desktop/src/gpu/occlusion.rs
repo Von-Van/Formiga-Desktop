@@ -121,8 +121,9 @@ pub(super) fn subtract_rect(source: DesktopRect, cut: DesktopRect) -> Vec<Deskto
 /// Who this monitor draws right now: its own colony members, and the guest while it is out.
 ///
 /// The one list decides three things at once, which is why it is a function rather than a filter
-/// written twice: which sprites are baked, which the overlay keeps — anyone not here is evicted —
-/// and which creatures a bubble or a menu may be drawn against.
+/// written twice: which sprites are baked, which the overlay keeps — anyone not on the display at
+/// all, `fully_occluded` or not, is evicted — and which creatures a bubble or a menu may be drawn
+/// against.
 pub(super) fn drawn_on_monitor(
     save: &SaveFile,
     monitor_id: formiga_core::MonitorId,
@@ -139,6 +140,19 @@ pub(super) fn drawn_on_monitor(
                 && (!fully_occluded || creature.state.action == ActionKind::Dragged)
         })
         .collect()
+}
+
+/// The habitat editor's green regions and red excluded areas, in as many whole rectangles as the
+/// zone buffer holds. The red ones are drawn over the green, and are kept first: a desktop cut
+/// into many green regions loses some of its green, never a red area the user drew.
+pub(super) fn keep_excluded_zones(
+    mut accessible: Vec<ZoneVertex>,
+    mut excluded: Vec<ZoneVertex>,
+) -> Vec<ZoneVertex> {
+    excluded.truncate(MAX_ZONE_VERTICES / 6 * 6);
+    accessible.truncate((MAX_ZONE_VERTICES - excluded.len()) / 6 * 6);
+    accessible.extend(excluded);
+    accessible
 }
 
 impl OverlayRenderer {
@@ -168,6 +182,7 @@ impl OverlayRenderer {
         for region in accessible_regions(policy, &self.monitor) {
             vertices.extend_from_slice(&self.zone_rect_vertices(region, [0.18, 0.72, 0.45, 0.20]));
         }
+        let mut excluded = Vec::new();
         for zone in policy.zones.iter().filter(|zone| {
             zone.enabled
                 && zone.display == self.monitor.display_key
@@ -181,12 +196,11 @@ impl OverlayRenderer {
                 height: zone.normalized_bounds.height.clamp(0.0, 1.0) * bounds.height,
             };
             if let Some(rect) = rect.intersection(bounds) {
-                vertices
+                excluded
                     .extend_from_slice(&self.zone_rect_vertices(rect, [0.88, 0.30, 0.25, 0.28]));
             }
         }
-        vertices.truncate(768);
-        vertices
+        keep_excluded_zones(vertices, excluded)
     }
 
     pub(super) fn occlusion_uniform(&self, rects: &[DesktopRect]) -> OcclusionUniform {

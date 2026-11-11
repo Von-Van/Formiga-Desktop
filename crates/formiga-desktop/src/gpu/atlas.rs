@@ -30,6 +30,39 @@ pub(super) struct AtlasPixels {
     pub(super) silhouette: Vec<(u8, u8)>,
 }
 
+impl AtlasPixels {
+    /// Whether a graphics card whose textures are at most `largest` pixels across and down can
+    /// hold both of these atlases.
+    pub(super) fn fits(&self, largest: u32) -> bool {
+        [
+            self.body_width,
+            self.body_height,
+            self.face_width,
+            self.face_height,
+        ]
+        .iter()
+        .all(|side| *side <= largest)
+    }
+}
+
+/// `bake` at `detail`, or at the finest detail under it whose atlases a graphics card with
+/// textures at most `largest` pixels across and down can hold. At one pixel to the unit every
+/// atlas fits any card wgpu runs on.
+pub(super) fn bake_fitting(
+    largest: u32,
+    detail: u32,
+    bake: impl Fn(u32) -> AtlasPixels,
+) -> AtlasPixels {
+    let mut detail = detail.max(1);
+    loop {
+        let atlas = bake(detail);
+        if detail == 1 || atlas.fits(largest) {
+            return atlas;
+        }
+        detail -= 1;
+    }
+}
+
 /// Lays frames of `frame_size` pixels square into a texture `columns` cells wide, each distinct
 /// frame once, in the order they first appear. Returns the texture's width, height and pixels, and
 /// the cell each frame landed in.

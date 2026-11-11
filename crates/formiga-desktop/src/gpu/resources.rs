@@ -42,14 +42,17 @@ impl OverlayRenderer {
             self.render_divisor,
         );
         // What it is wearing is baked into every frame, so choosing something else, or taking it
-        // off, bakes the atlas again. Nothing else about the choice is looked at frame to frame.
+        // off, bakes the atlas again. So does a change in the colony's colours, which the find it
+        // wears is inked against, as the trees' sheet is, so the two keep matching.
+        let dress_colours = creature.accessory.map(|_| TrinketAtlasKey::of(save));
         let requires_bake = current.is_none_or(|sprite| {
             sprite.reduce_motion != reduce_motion
                 || sprite.outline != outline
                 || sprite.dress.map(|dress| dress.accessory) != creature.accessory
+                || sprite.dress_colours != dress_colours
                 || sprite.appearance != creature.appearance
                 || sprite.logical_size != logical_size
-                || sprite.detail != detail
+                || sprite.wanted_detail != detail
         });
         if !requires_bake {
             return None;
@@ -72,7 +75,13 @@ impl OverlayRenderer {
                 .collect();
             AccessoryArt::resolve(accessory, save.colony_seed, &members)
         });
-        let atlas = build_atlas_pixels(drawn, reduce_motion, outline, dress, detail);
+        // A graphics card that cannot hold a texture as large as the finest bake gets the finest
+        // one it can hold: drawn a little coarser, never not drawn.
+        let atlas = bake_fitting(
+            self.device.limits().max_texture_dimension_2d,
+            detail,
+            |detail| build_atlas_pixels(drawn, reduce_motion, outline, dress, detail),
+        );
         let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("procedural creature body atlas"),
             size: wgpu::Extent3d {
@@ -188,7 +197,9 @@ impl OverlayRenderer {
             silhouette: atlas.silhouette,
             resting_baseline: CreatureRenderer::resting_baseline(&drawn.appearance, reduce_motion),
             dress,
+            dress_colours,
             logical_size,
+            wanted_detail: detail,
             appearance: creature.appearance.clone(),
         })
     }
