@@ -589,6 +589,8 @@ pub(super) struct HomeMoment {
     /// What a walk to a hangout spot is for: done where the walk ends, instead of a poke at a
     /// belonging and a walk back.
     visit: Option<HangoutVisit>,
+    /// Held out by the person at the desk: a snack taken on the doorstep is still a treat.
+    offered: bool,
 }
 
 impl HomeMoment {
@@ -917,6 +919,7 @@ fn choose_home_moment(
                     facing_right,
                     seat: seated_at(hangout.kind).then_some(hangout.kind),
                 }),
+                offered: false,
             },
             None,
         );
@@ -954,6 +957,7 @@ fn choose_home_moment(
             seat: None,
             held: 0.0,
             visit: None,
+            offered: false,
         },
         answering,
     )
@@ -2299,6 +2303,7 @@ impl World {
                     seat: None,
                     held: 0.0,
                     visit: None,
+                    offered: false,
                 },
             );
         }
@@ -2542,11 +2547,21 @@ impl World {
                 seat: None,
                 held: 0.0,
                 visit: None,
+                offered: true,
             },
         );
         let wait = seconds.max(0.0) + self.home_moment_rng.random_range(NEXT_MOMENT_SECS);
         self.home_moment_timers.insert(creature_id, wait);
         true
+    }
+
+    /// The clip a resident is having at home because the person at the desk held it out, if it
+    /// is in the middle of one.
+    pub(super) fn offered_home_moment(&self, creature_id: CreatureId) -> Option<ActionKind> {
+        self.home_moments
+            .get(&creature_id)
+            .filter(|moment| moment.offered)
+            .map(|moment| moment.action)
     }
 
     /// Ends every quiet moment and settles whoever was in one back into the calm resting pose.

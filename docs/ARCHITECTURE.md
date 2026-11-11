@@ -355,15 +355,24 @@ the companion and the clock, so it changes nothing the colony does (a test runs 
 meals wiped every tick and compares). Paused, a meal holds where it is along with its action, so
 the bite on screen when the colony carries on is the bite from before the pause. The food is one of 18 in six sizes — tiny, in the hand, big,
 long, in a shell, in a bowl — chosen from the hour by the desk's clock, the village's ripe gardens,
-the companion's favourite (read from its looks) or, for a snack the person offered, a treat. The
-meal is laid out to fill the Eat action's time: a look it over, a crack or a blow for a nut or a
-hot bowl, bites and chews in the food's own manner, one moment that makes the meal its own (a crumb
-wiped off, cheeks stuffed, a hiccup, nodding off when sleepy, or nothing), and a finish (paws
-licked, a pat of the tummy). `renderer/meals.rs` shows each step: four eating gestures (Nibble,
-Chomp, Chew, Gulp), the drink's tip for a bowl, and Gasp, Loaf, Groom and Worry between bites, with
-a face per step; `held_now` swaps the meal's food, eaten down by `Meal::bite`, into whatever hold
-the frame baked, and a pose borrowed for a meal shows nothing in its paws outside one. Foods are
-drawn in `renderer/foods.rs` at four stages each, on the held sheet after the cups.
+the companion's favourite (read from its looks) or, for a snack the person offered, a treat — an
+offer taken on the doorstep while the village is out included, which the resident's `HomeMoment`
+remembers as `offered`. The guest on stage gets a meal the same way. The meal is laid out to fill
+the Eat action's time: a look it over, a crack or a blow for a nut or a hot bowl, bites and chews in
+the food's own manner, one moment that makes the meal its own (a crumb wiped off, cheeks stuffed, a
+hiccup, nodding off when sleepy, or nothing), and a finish (a bowl set down empty, then paws licked
+or a pat of the tummy). A meal too long for its sixteen steps keeps its whole finish, and the steps
+kept fill the time. The look-it-over habit is the meal's own opening look, stretched to the habit's
+length by `Meal::look_over_until` rather than drawn over the meal, and Reduce Motion turns tosses
+into bites (`Meal::without_tosses`). `renderer/meals.rs` shows each step: four eating gestures
+(Nibble, Chomp, Chew, Gulp), the drink's tip for a bowl, Watch while something tiny is tossed up,
+Pluck to set a bowl down, and Gasp, Loaf, Groom and Worry between bites, with a face per step;
+`held_now` swaps the meal's food, eaten down by `Meal::bite`, into whatever hold the frame baked,
+moved by `meal_offset` (held low through a cheek wipe, tossed up and caught, lowered to the ground),
+and a pose borrowed for a meal shows nothing in its paws outside one. A nut is whole until the knock
+of its crack, open from then, and nibbled from the first bite. Foods are drawn in `renderer/foods.rs`
+at four stages each, on the held sheet after the cups; the empty bowl has a cell of its own at the
+end of the sheet.
 `formiga-tools meal-sheet` shows every food eaten through a meal.
 
 Play works the same way (`formiga-core/src/play.rs`, carried by `world/play.rs`, runtime only and
@@ -371,15 +380,26 @@ checked by the same wiped-every-tick test). Every plaything has a `PlayShape` �
 umbrella, flying, spinning, noisy, soft, stacking, floating — read from a toy's kind, a belonging's
 kind, or a find's name (`trinket_shape`; a stamp or a key has none). A companion settling down to
 SoloPlay picks its own toy, one of the colony's belongings, or a find borrowed from the scrapbook,
-and plays two or three of its shape's moves between picking it up and putting it down: a round
+and plays one to three rounds of its shape's moves between picking it up and putting it down,
+each round whole (a tower built up and knocked down, a line cast and reeled in) or left out, and the
+rounds kept filling the time: a round
 thing kept up, tossed high, bounced or balanced on the head; a stick swished like a sword, leaned
 on like a cane, fished with (and sometimes a fish comes up) or conducted with; an umbrella twirled
 overhead or sat in like a boat; a kite flown, a plane thrown to glide away; a top spun on the
 ground; a drum drummed; a plush hugged; a tower of blocks stacked and knocked down; a paper boat
-sailed. A hop down off a ledge, when the colony has an umbrella, is ridden down under it half the
-time. `renderer/play.rs` gives each move a pose from the existing gestures and moves the thing from
-where the frame holds things (every gesture and the landing bake a hold), so it can leave the
-frame: a ball goes above the head, a plane across the desktop. Props a game needs (a stick at four
+sailed. Something flown may be thrown at the end of its game, and a paper plane always is, landing
+on the ground ahead (`PlayMove::Landed`) rather than coming back to the paws. A tower's height is
+counted from its last topple. A belonging played with is borrowed by its id (`Play::borrowed`) and
+the village leaves it out of the yard until it is put back; the guest on stage plays with its own
+toy only. A play bow comes before the toy is picked up (`Play::pick_up_until`). The start of a hop
+down off a window at least 60 points, when the colony has an umbrella that nobody has borrowed, is
+ridden down under it half the time. `renderer/play.rs` gives each move a pose from the existing
+gestures and moves the thing from where the frame holds things (every gesture and the landing bake
+a hold), so it can leave the frame: a ball goes above the head, a plane across the desktop. A toss
+or a bounce is as many whole arcs as fit its move, so the ball is back in the paw when the move
+ends. A flown kite has a string (`held_tether`), drawn by the overlay as a thin quad of the held
+sheet's string colour just before the kite, and `prop_in_motion` keeps the colony on its 20 Hz
+moving rate while a thing is in the air. Props a game needs (a stick at four
 angles, a rod and a fish, the umbrella open, closed and upturned, a kite, a plane, a tower, a drum,
 a paper boat) are on the held sheet; a borrowed find is drawn from the colony's own sheet of finds,
 so `CreatureDraw` notes which sheet its carried quad uses. `formiga-tools play-sheet` shows each

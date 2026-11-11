@@ -9,6 +9,10 @@ use formiga_core::meals::{FoodSize, Meal, MealStep};
 
 /// How much faster cheeks being stuffed go than an ordinary bite.
 const STUFFING_RATE: f32 = 1.6;
+/// How much of a toss-and-catch is the toss: the rest is the catch, at the mouth.
+const TOSSED_FOR: f32 = 0.7;
+/// How high something tiny is tossed above where it is held, in frame pixels.
+const TOSS_HEIGHT: f32 = 12.0;
 
 /// The meal a creature is having, if it is eating and not doing something bigger over the top.
 pub(super) fn meal_shown(creature: &Creature) -> Option<&Meal> {
@@ -43,6 +47,8 @@ pub fn meal_pose(meal: &Meal) -> MealPose {
             FoodSize::Big => gesture(Gesture::Chomp, into),
             _ => gesture(Gesture::Nibble, into),
         },
+        // Looking up after it as it goes up, and a gulp as it comes down into the mouth.
+        MealStep::TossCatch if meal.step().2 < TOSSED_FOR => gesture(Gesture::Watch, into),
         MealStep::TossCatch => gesture(Gesture::Gulp, into),
         MealStep::Chew if bowl => MealPose::Held(BodyClip::Action(ActionKind::Drink), 3),
         MealStep::Chew => gesture(Gesture::Chew, into),
@@ -51,6 +57,8 @@ pub fn meal_pose(meal: &Meal) -> MealPose {
         MealStep::Doze => gesture(Gesture::Loaf, into),
         MealStep::WipeCheek | MealStep::LickPaws => gesture(Gesture::Groom, into),
         MealStep::PatTummy => gesture(Gesture::Worry, into),
+        // Bent to put the empty bowl down on the ground.
+        MealStep::SetDown => gesture(Gesture::Pluck, into),
     }
 }
 
@@ -87,7 +95,7 @@ pub fn meal_face(meal: &Meal, picky: bool, loves: bool) -> ExpressionKind {
         MealStep::Doze if progress > 0.85 => ExpressionKind::Startled,
         MealStep::Doze => ExpressionKind::Sleepy,
         MealStep::WipeCheek => ExpressionKind::Focused,
-        MealStep::LickPaws | MealStep::PatTummy => ExpressionKind::Content,
+        MealStep::LickPaws | MealStep::PatTummy | MealStep::SetDown => ExpressionKind::Content,
     }
 }
 
@@ -110,6 +118,7 @@ pub(super) fn meal_gaze(creature: &Creature, meal: &Meal) -> Option<GazeDirectio
             Some(GazeDirection::new(forward, 1))
         }
         MealStep::TossCatch => Some(GazeDirection::new(0, -1)),
+        MealStep::SetDown => Some(GazeDirection::new(forward, 1)),
         _ => None,
     }
 }
@@ -124,12 +133,36 @@ pub fn shows_held_by_default(clip: BodyClip) -> bool {
     )
 }
 
-/// What a meal has in its paws just now, if anything: its food, eaten down as far as it has got.
+/// What a meal has in its paws just now, if anything: its food, eaten down as far as it has got,
+/// or the empty bowl on its way down to the ground.
 pub fn meal_held(meal: &Meal) -> Option<HeldThing> {
+    if meal.step().0 == MealStep::SetDown {
+        return Some(HeldThing::EmptyBowl);
+    }
     meal.bite().map(|bite| HeldThing::Food {
         food: meal.food,
         bite,
     })
+}
+
+/// How far from where the frame holds things the food is in this step, in frame pixels with the
+/// frame facing right: up is negative. Most steps hold it where the frame does; a crumb is wiped
+/// off with what is left held low in the other paw, something tiny is tossed up and caught in the
+/// mouth, and an empty bowl goes down to the ground.
+pub fn meal_offset(meal: &Meal) -> (i32, i32) {
+    let (step, _, progress) = meal.step();
+    match step {
+        MealStep::WipeCheek => (1, 3),
+        MealStep::TossCatch if progress < TOSSED_FOR => (
+            0,
+            -((progress / TOSSED_FOR * std::f32::consts::PI).sin() * TOSS_HEIGHT).round() as i32,
+        ),
+        MealStep::SetDown => (
+            (progress * 3.0).round() as i32,
+            (progress * 9.0).round() as i32,
+        ),
+        _ => (0, 0),
+    }
 }
 
 /// What a creature has in its paws in a frame of `clip`, given the hold that frame baked: the
@@ -141,7 +174,8 @@ pub fn held_now(
 ) -> Option<HeldPlacement> {
     let baked = baked?;
     if let Some(meal) = meal_shown(creature) {
-        return Some(baked.holding(meal_held(meal)?));
+        let (dx, dy) = meal_offset(meal);
+        return Some(baked.holding(meal_held(meal)?).translated(dx, dy));
     }
     if let Some(play) = super::play::play_shown(creature) {
         return Some(super::play::play_placement(creature, play, clip, baked));
@@ -236,5 +270,128 @@ mod tests {
             held_now(&creature, eat, baked).map(|held| held.thing),
             Some(HeldThing::Snack { .. })
         ));
+    }
+
+    fn step_at(meal: &mut Meal, wanted: MealStep, progress: f32) -> bool {
+        let steps = meal.steps().to_vec();
+        let Some(index) = steps.iter().position(|(step, _)| *step == wanted) else {
+            return false;
+        };
+        let end = steps.get(index + 1).map_or(meal.length, |(_, next)| *next);
+        meal.elapsed = steps[index].1 + (end - steps[index].1) * progress;
+        true
+    }
+
+    /// A crumb is wiped off with what is left of the food still in the other paw: the same bite
+    /// as before the wipe, held lower.
+    #[test]
+    fn a_snack_stays_in_the_paw_through_a_cheek_wipe() {
+        let mut wiped = 0;
+        for seed in 0..80_u64 {
+            let mut creature = eater(Food::Biscuit);
+            let mut rng = ChaCha12Rng::seed_from_u64(seed);
+            creature.state.meal = Some(Meal::plan(
+                Food::Biscuit,
+                9.0,
+                Appetite::default(),
+                &mut rng,
+            ));
+            let meal = creature.state.meal.as_mut().unwrap();
+            if !step_at(meal, MealStep::WipeCheek, 0.0) {
+                continue;
+            }
+            meal.elapsed -= 0.02;
+            let before = meal.bite();
+            step_at(meal, MealStep::WipeCheek, 0.5);
+            assert_eq!(meal.bite(), before, "the wipe keeps the same bite");
+            let body = BodyPresentation::for_creature(&creature);
+            let baked = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                false,
+            )
+            .held;
+            let held = held_now(&creature, body.clip, baked).expect("the food is still held");
+            assert!(matches!(
+                held.thing,
+                HeldThing::Food {
+                    food: Food::Biscuit,
+                    ..
+                }
+            ));
+            assert!(
+                held.at.y > baked.unwrap().at.y,
+                "held low, out of the way of the wipe"
+            );
+            wiped += 1;
+        }
+        assert!(wiped > 0, "no meal had a wipe");
+    }
+
+    /// The empty bowl goes down to the ground before the paws are licked or a tummy patted, and
+    /// it is empty on its way down.
+    #[test]
+    fn an_empty_bowl_is_set_down_before_the_paws_are_free() {
+        let mut creature = eater(Food::Soup);
+        let meal = creature.state.meal.as_mut().unwrap();
+        assert!(step_at(meal, MealStep::SetDown, 0.05));
+        assert_eq!(meal_held(meal), Some(HeldThing::EmptyBowl));
+        let early = meal_offset(meal);
+        assert!(step_at(meal, MealStep::SetDown, 0.98));
+        let late = meal_offset(meal);
+        assert!(
+            late.1 > early.1 + 6,
+            "the bowl goes down: {early:?} to {late:?}"
+        );
+        assert!(matches!(
+            meal_pose(meal),
+            MealPose::Playing(BodyClip::Gesture(Gesture::Pluck), _)
+        ));
+        let next = meal
+            .steps()
+            .iter()
+            .position(|(step, _)| *step == MealStep::SetDown)
+            .unwrap()
+            + 1;
+        meal.elapsed = meal.steps()[next].1 + 0.01;
+        assert_eq!(meal_held(meal), None, "the paws are free once it is down");
+    }
+
+    /// Something tiny tossed up rises above the paws, is watched on the way, and is caught in the
+    /// mouth with a gulp; an ordinary bite of it is a gulp from start to end, held where it is.
+    #[test]
+    fn a_berry_tossed_up_reads_apart_from_one_gulped() {
+        let mut tossed = None;
+        for seed in 0..40_u64 {
+            let mut rng = ChaCha12Rng::seed_from_u64(seed);
+            let mut meal = Meal::plan(Food::Berries, 9.0, Appetite::default(), &mut rng);
+            if step_at(&mut meal, MealStep::TossCatch, 0.0) {
+                tossed = Some(meal);
+                break;
+            }
+        }
+        let mut meal = tossed.expect("some meal of berries has a toss");
+        step_at(&mut meal, MealStep::TossCatch, 0.35);
+        assert!(meal_offset(&meal).1 < -8, "tossed up above the paws");
+        assert!(matches!(
+            meal_pose(&meal),
+            MealPose::Playing(BodyClip::Gesture(Gesture::Watch), _)
+        ));
+        step_at(&mut meal, MealStep::TossCatch, 0.9);
+        assert_eq!(meal_offset(&meal), (0, 0));
+        assert!(matches!(
+            meal_pose(&meal),
+            MealPose::Playing(BodyClip::Gesture(Gesture::Gulp), _)
+        ));
+        step_at(&mut meal, MealStep::Bite, 0.35);
+        assert_eq!(meal_offset(&meal), (0, 0));
+        // The calm way has no tosses at all.
+        meal.without_tosses();
+        assert!(
+            meal.steps()
+                .iter()
+                .all(|(step, _)| *step != MealStep::TossCatch)
+        );
     }
 }

@@ -66,6 +66,31 @@ All notable changes are documented here.
   that app; the part still showing can be picked up as before.
 - On Windows, the spot a companion has walked away from no longer swallows clicks meant for the
   app now underneath it.
+- A snack offered while the village is out and eaten on the doorstep is a treat, the same as one
+  offered anywhere else, rather than an ordinary meal of the hour.
+- The umbrella is opened only at the start of a real hop down off a window, never for a companion
+  set down on the floor, a step down or the end of a toss.
+- A yarn ball or another belonging borrowed from the yard to play with is left out of the yard
+  until it is put back, so it is only ever in one place; two companions never borrow the same one.
+- A second tower of blocks goes up one, two, three from the ground again instead of asking for a
+  fourth block and drawing a yarn ball. Every build-and-topple and every cast-and-catch in a game
+  is played whole or left out, and what is kept fills the game, so the put-down is a moment again.
+- A companion that looks its food over as a habit holds the meal's own look for as long as the
+  habit takes, and the crack, the bites and the finish follow it instead of passing unseen under it.
+  A play bow likewise comes before the toy is picked up.
+- A walnut or an acorn opens on the knock that cracks it, and the first bite leaves the first mark.
+- A paper plane is thrown once at the end of its game and glides down to the ground ahead, where it
+  stays; nothing flown or thrown jumps back into the paw at the next move.
+- A ball tossed or bounced is back in the paw when its move ends, however long the move came out.
+- A toy in the air is drawn twenty times a second while its owner stands still watching it.
+- A visiting companion that eats or plays has a meal or a game laid out like a resident's, with its
+  own toy rather than the colony's things.
+- A snack stays in the paw, held a little lower, while a crumb is wiped off a cheek.
+- A bowl of soup or porridge is set down on the ground, empty, before the paws are licked or a
+  tummy patted.
+- Berries tossed up rise above the paws and are watched on the way up before they are caught with a
+  gulp; with Reduce Motion they are eaten a bite at a time instead.
+- A flown kite has a string from the paw to the kite.
 
 ## [0.68.22] - 2026-11-04
 

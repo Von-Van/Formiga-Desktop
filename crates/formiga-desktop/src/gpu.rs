@@ -129,6 +129,8 @@ struct CreatureDraw {
     /// What it is eating, sipping or playing with, after its held things: from the held sheet,
     /// or for a find borrowed to play with, from the colony's sheet of finds.
     carried: Option<CarriedSheet>,
+    /// A kite's string, drawn from the held sheet just before the kite, behind it and the paw.
+    tether: bool,
     among_houses: Option<usize>,
     depth: f32,
 }
@@ -885,7 +887,7 @@ impl OverlayRenderer {
                 save.settings.reduce_motion,
             );
             let start = vertices.len();
-            let (body, face, trinket, held, carried) =
+            let (body, face, trinket, held, carried, tether) =
                 self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
             vertices.extend_from_slice(&body);
             vertices.extend_from_slice(&face);
@@ -906,7 +908,10 @@ impl OverlayRenderer {
                 }
             }
             // What it is eating or playing with is drawn with it wherever it stands, so nobody
-            // else's snack is ever drawn over it.
+            // else's snack is ever drawn over it, a kite's string first so the kite covers its end.
+            if let Some(quad) = tether {
+                vertices.extend_from_slice(&quad);
+            }
             if let Some((quad, _)) = carried {
                 vertices.extend_from_slice(&quad);
             }
@@ -916,6 +921,7 @@ impl OverlayRenderer {
                 trinket: trinket.is_some(),
                 held: held_count,
                 carried: carried.map(|(_, sheet)| sheet),
+                tether: tether.is_some(),
                 among_houses,
                 depth: creature.state.depth,
             });
@@ -934,7 +940,7 @@ impl OverlayRenderer {
         }
         if creature_draws
             .iter()
-            .any(|draw| draw.carried == Some(CarriedSheet::Held))
+            .any(|draw| draw.carried == Some(CarriedSheet::Held) || draw.tether)
         {
             self.ensure_held_sheet();
         }
@@ -1094,6 +1100,12 @@ impl OverlayRenderer {
                         draw(pass, &objects.bind_group, next, creature.held);
                     }
                     next += creature.held;
+                    if creature.tether {
+                        if let Some(sheet) = &self.held_sheet {
+                            draw(pass, &sheet.bind_group, next, 6);
+                        }
+                        next += 6;
+                    }
                     match creature.carried {
                         Some(CarriedSheet::Held) => {
                             if let Some(sheet) = &self.held_sheet {
@@ -1313,6 +1325,7 @@ impl OverlayRenderer {
         Option<[Vertex; 6]>,
         [Option<[Vertex; 6]>; 2],
         Option<([Vertex; 6], CarriedSheet)>,
+        Option<[Vertex; 6]>,
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
@@ -1500,6 +1513,30 @@ impl OverlayRenderer {
         // held where a keepsake is held, and the water running out of the can while it waters.
         let mut held = [None, None];
         // What it is eating, sipping or playing with, where this frame holds it.
+        // Where a frame pixel lands on the overlay, with the frame facing the way it is drawn.
+        let on_overlay = |at: PixelPoint| {
+            let across = if facing_right {
+                at.x
+            } else {
+                FRAME_SIZE as i32 - at.x
+            } as f32;
+            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+            (
+                local_x + (unscaled_x - local_x) * horizontal_scale,
+                frame_top + at.y as f32 * display_scale as f32,
+            )
+        };
+        // A kite's string, from the paw holding it up to the kite.
+        let tether = formiga_art::held_tether(creature, clip, sprite.held[slot as usize]).map(
+            |(paw, kite)| {
+                self.line_quad(
+                    on_overlay(paw),
+                    on_overlay(kite),
+                    f32::from(display_scale),
+                    occlusion_enabled,
+                )
+            },
+        );
         let carried = formiga_art::held_now(creature, clip, sprite.held[slot as usize]).map(
             |HeldPlacement { thing, at }| {
                 let across = if facing_right {
@@ -1553,7 +1590,44 @@ impl OverlayRenderer {
                 ));
             }
         }
-        (body, face, trinket, held, carried)
+        (body, face, trinket, held, carried, tether)
+    }
+
+    /// A straight line `width` overlay pixels wide from `from` to `to`, in the string colour the
+    /// held sheet keeps for a kite's string.
+    fn line_quad(
+        &self,
+        from: (f32, f32),
+        to: (f32, f32),
+        width: f32,
+        occlusion_enabled: f32,
+    ) -> [Vertex; 6] {
+        let (ax, ay) = (self.snap(from.0), self.snap(from.1));
+        let (bx, by) = (self.snap(to.0), self.snap(to.1));
+        let length = (bx - ax).hypot(by - ay).max(0.001);
+        let (nx, ny) = (
+            -(by - ay) / length * width * 0.5,
+            (bx - ax) / length * width * 0.5,
+        );
+        let (left, top, right, bottom) = HeldThing::String.uv();
+        let uv = [(left + right) * 0.5, (top + bottom) * 0.5];
+        let vertex = |x: f32, y: f32| Vertex {
+            position: [
+                x / self.layout.width as f32 * 2.0 - 1.0,
+                1.0 - y / self.layout.height as f32 * 2.0,
+            ],
+            uv,
+            occlusion_enabled,
+        };
+        let corners = [
+            vertex(ax + nx, ay + ny),
+            vertex(bx + nx, by + ny),
+            vertex(bx - nx, by - ny),
+            vertex(ax - nx, ay - ny),
+        ];
+        [
+            corners[0], corners[1], corners[2], corners[0], corners[2], corners[3],
+        ]
     }
 
     /// One held thing's quad from the held sheet, its cell's middle at `centre`.
