@@ -887,7 +887,11 @@ The save stores one deterministic `RitualState`: next UTC timestamp, last kind, 
 local year of the last acknowledged hatch day. When that time is overdue, an existing action
 boundary may create one runtime-only `ColonyPlan` if every revealed creature has a safe shared floor
 region. Missed rituals are not counted or replayed; the next timestamp is scheduled from the actual
-start time.
+start time. The colony's birthday does not wait for that timestamp: on the local anniversary of the
+day it began, in any later year it has not yet been kept, the same boundary may start a hatch day
+whether or not an ordinary ritual is due (`World::hatch_day_due`). A colony begun on 29 February
+keeps it on 28 February outside leap years; `hatch_day_in` is the one anniversary both the ritual
+and the birthday finds use.
 
 The plan has only approach and ceremony phases, at most four participants, habitat-safe points, and
 existing action kinds. It coordinates picnics, group naps, floor races, shelter gatherings,
@@ -2258,6 +2262,11 @@ remain minis.
   seconds regardless.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
+`SaveStore::save` reads the new bytes back with `decode`, as a launch would, before touching the
+disk, and refuses a colony that would not read back with an error, leaving the file and the backup
+as they were. The file it replaces becomes the backup when it is exactly the bytes that store last
+wrote and checked (a fingerprint, so an everyday save parses the colony once, not twice) or when it
+reads; anything else is preserved under a recovery name and the backup is left alone.
 Version 18 adds a house kind chosen by hand for any house, absent until one is chosen, and migrates
 nothing. Version 17 adds the classic parts inside recipes, favorite visitors, each companion's
 roaming leaning, and the habits each has picked up, and migrates nothing; version 16 added no field
@@ -2283,7 +2292,11 @@ Additional minis are earned after one hour and one week; a full-size adult is ea
 calendar month when an adult slot exists. End-of-month dates clamp in UTC, overdue reveals remain 15
 seconds apart, and the colony remains capped at six. Interrupted ambient, interaction, and toss
 actions reload as idle. Home and birth timestamps survive relaunches, and clock rollback uses the
-maximum-seen UTC guard. There is
+maximum-seen UTC guard: `maximum_seen_utc` is the colony's timeline, which never runs backwards.
+While the machine's clock reads earlier than it (a clock that ran ahead and was put right), the
+timeline moves on by however far the clock moved since the previous tick instead of standing
+still, so the houses, offers and rituals timed on it keep real time; the jump back itself moves it
+on by nothing (`World::advance_timeline`). There is
 deliberately no history database or telemetry layer. Update preferences live in a separate
 `updates.json` file so network policy and check timing cannot alter a colony save.
 
@@ -2443,8 +2456,11 @@ the clock is past it and applies exactly once; and a timezone change is simply a
 time read from the same instant. The world applies it inside the existing tick, adding no timer,
 thread, or wakeup of its own. A routine that has never been saved, or one whose custom habitat no
 longer leaves anywhere to stand, is skipped without reporting a change. A manual choice holds
-until the next transition crosses, which is also what ends it; handing the routine back applies it
-at once. Visibility, pause, and the separate quiet expiry are never a schedule's business.
+until the next transition crosses, which is also what ends it: a transition puts its routine in
+place even when it is the one already applied, and one that came round while the app was closed
+counts once it opens (`RoutineSchedule::latest` gives the moment it came round, compared with the
+clock at the previous tick, or the saved timeline after a launch); handing the routine back applies
+it at once. Visibility, pause, and the separate quiet expiry are never a schedule's business.
 
 Decoration visibility is six bits on the home. The village texture is rebuilt only when
 its visible decoration set changes. Object order is the existing object vector: changing its order

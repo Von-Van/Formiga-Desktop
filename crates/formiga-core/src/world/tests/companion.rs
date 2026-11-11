@@ -116,3 +116,64 @@ fn an_opt_in_schedule_applies_a_routine_once_and_yields_to_a_manual_choice() {
     assert_eq!(world.save.companion.schedule.applied, None);
     assert!(!world.save.settings.reduce_motion);
 }
+
+/// A change made by hand lasts until the next scheduled transition, even when that transition
+/// goes to the routine that was already in place, and a transition that came round while the app
+/// was closed counts too.
+#[test]
+fn a_transition_back_to_the_same_routine_still_ends_a_change_made_by_hand() {
+    let created = datetime!(2026-09-14 0:00 UTC);
+    let desktop = desktop();
+    let mut world = two_creature_world([31; 32], created);
+    let work = BehaviorPreset {
+        habitat: HabitatPolicy::default(),
+        window_ledges: false,
+        cursor_reactions: false,
+        reduce_motion: true,
+    };
+    let relax = BehaviorPreset {
+        habitat: HabitatPolicy::default(),
+        window_ledges: true,
+        cursor_reactions: true,
+        reduce_motion: false,
+    };
+    world.save.companion.modes = [Some(work), Some(relax.clone())];
+    world.save.companion.schedule = RoutineSchedule {
+        enabled: true,
+        transitions: vec![ScheduledTransition {
+            days: 0b1111111,
+            minute: 9 * 60,
+            preset: 0,
+        }],
+        ..RoutineSchedule::default()
+    };
+    world.tick(datetime!(2026-09-16 10:00 UTC), 0.05, &desktop);
+    assert!(world.save.settings.reduce_motion);
+
+    relax.apply(&mut world.save.settings);
+    world.override_routine();
+    world.tick(datetime!(2026-09-16 20:00 UTC), 0.05, &desktop);
+    assert!(
+        !world.save.settings.reduce_motion,
+        "a change by hand holds until the next transition"
+    );
+    world.tick(datetime!(2026-09-17 9:00:30 UTC), 0.05, &desktop);
+    assert!(
+        world.save.settings.reduce_motion,
+        "the next transition put the same routine back"
+    );
+    assert!(!world.save.companion.schedule.overridden);
+
+    // A change by hand outlasts a relaunch with no transition in between...
+    relax.apply(&mut world.save.settings);
+    world.override_routine();
+    world.tick(datetime!(2026-09-17 15:00 UTC), 0.05, &desktop);
+    let mut reopened = World::from_save(world.save.clone());
+    reopened.tick(datetime!(2026-09-17 16:00 UTC), 0.05, &desktop);
+    assert!(!reopened.save.settings.reduce_motion);
+    // ...but not a transition that came round while the app was closed.
+    let mut next_day = World::from_save(world.save);
+    next_day.tick(datetime!(2026-09-18 10:00 UTC), 0.05, &desktop);
+    assert!(next_day.save.settings.reduce_motion);
+    assert!(!next_day.save.companion.schedule.overridden);
+}

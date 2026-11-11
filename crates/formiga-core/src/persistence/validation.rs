@@ -28,7 +28,7 @@ const FARTHEST_PLACE: f32 = 1_000_000.0;
 /// Later than any colony's clock has stood. Arrivals, rituals and finds are scheduled by adding
 /// days and months to the colony's own times, and a time near the end of the calendar leaves
 /// nothing to add to, so one past this is a damaged file, brought back to it.
-const LATEST_MOMENT: OffsetDateTime = time::macros::datetime!(2200-01-01 0:00 UTC);
+pub(crate) const LATEST_MOMENT: OffsetDateTime = time::macros::datetime!(2200-01-01 0:00 UTC);
 
 /// A colony brought inside every limit and made to agree with itself. Made only by validation;
 /// read through `Deref`, and taken apart with [`ValidatedSave::into_inner`].
