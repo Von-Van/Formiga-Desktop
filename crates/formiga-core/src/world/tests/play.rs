@@ -105,3 +105,39 @@ fn play_starts_with_playing_and_an_umbrella_is_ridden_down() {
 fn formiga_core_play_ride() -> crate::play::PlayMove {
     crate::play::PlayMove::Ride
 }
+
+/// Paused, a game and a meal hold where they are along with the action they belong to, so the
+/// first frame after carrying on is the frame from just before the pause, not a skip ahead.
+#[test]
+fn a_pause_holds_a_game_and_a_meal_where_they_are() {
+    let created = datetime!(2026-01-01 12:00 UTC);
+    let desktop = desktop();
+    let now = created + Duration::hours(1);
+    for action in [ActionKind::SoloPlay, ActionKind::Eat] {
+        let mut world = World::new([65; 32], created, &desktop);
+        let state = &mut world.save.creatures[0].state;
+        state.action = action;
+        state.action_elapsed = 0.0;
+        state.action_duration = 20.0;
+        let clocks = |world: &World| {
+            let state = &world.save.creatures[0].state;
+            (
+                state.action,
+                state.action_elapsed,
+                state.play.map(|play| play.elapsed),
+                state.meal.as_ref().map(|meal| meal.elapsed),
+            )
+        };
+        for tick in 0..6 {
+            world.tick(now + Duration::milliseconds(50 * tick), TICK, &desktop);
+        }
+        let before = clocks(&world);
+        assert_eq!(before.0, action);
+        assert!(before.2.is_some() || before.3.is_some(), "{before:?}");
+        world.save.settings.paused = true;
+        for tick in 6..106 {
+            world.tick(now + Duration::milliseconds(50 * tick), TICK, &desktop);
+        }
+        assert_eq!(clocks(&world), before, "five seconds paused moved a clock");
+    }
+}

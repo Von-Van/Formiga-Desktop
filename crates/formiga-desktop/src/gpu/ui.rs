@@ -58,11 +58,22 @@ pub(super) fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec
             drawable,
         ));
     }
-    if let Some(hovered) = menu.hovered
-        && let (Some(tab), Some(icon)) = (menu.layout.label_tab(hovered), menu.layout.item(hovered))
-    {
+    // "Not now" under an item that could not be done, in place of its label; otherwise the
+    // label of whichever item is hovered.
+    let tab = match menu.unavailable {
+        Some(index) => menu
+            .layout
+            .unavailable_tab(index)
+            .map(|tab| (tab, UiAtlasRenderer::menu_unavailable_label())),
+        None => menu.hovered.and_then(|hovered| {
+            menu.layout
+                .label_tab(hovered)
+                .zip(menu.layout.item(hovered).map(UiAtlasRenderer::menu_label))
+        }),
+    };
+    if let Some((tab, sprite)) = tab {
         vertices.extend_from_slice(&ui_atlas_quad(
-            UiAtlasRenderer::menu_label(icon),
+            sprite,
             placement.x + tab.x as f32 * art,
             placement.y + tab.y as f32 * art,
             art,

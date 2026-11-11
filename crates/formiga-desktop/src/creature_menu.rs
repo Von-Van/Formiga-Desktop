@@ -48,6 +48,10 @@ pub const UNTOUCHED_SECS: f32 = 8.0;
 /// Art pixels between the menu and a strip opened beside it.
 pub const SIDE_STRIP_GAP: i32 = 2;
 
+/// How long the "not now" tab hangs under an item that could not be done, in seconds: long
+/// enough to read, short enough to be gone before the owner tries again.
+pub const UNAVAILABLE_SECS: f32 = 1.6;
+
 /// Whose menu this is. A colony member can be sent home; a guest can be asked to stay instead; a
 /// house can be looked inside, in Formiga Home.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -422,6 +426,9 @@ pub struct CreatureMenu {
     side: Option<SideStrip>,
     /// The usable area the menu was last placed in, which a strip beside it keeps inside too.
     usable: Option<LocalRect>,
+    /// An item that was chosen but could not be done just now, and how much longer its "not now"
+    /// tab hangs under it.
+    unavailable: Option<(usize, f32)>,
 }
 
 impl CreatureMenu {
@@ -446,6 +453,7 @@ impl CreatureMenu {
             settings_focused,
             side: None,
             usable: None,
+            unavailable: None,
         }
     }
 
@@ -471,6 +479,7 @@ impl CreatureMenu {
             settings_focused,
             side: None,
             usable: None,
+            unavailable: None,
         }
     }
 
@@ -558,6 +567,24 @@ impl CreatureMenu {
         self.placement
     }
 
+    /// The item whose "not now" tab is showing, if any.
+    pub fn unavailable(&self) -> Option<usize> {
+        self.unavailable.map(|(index, _)| index)
+    }
+
+    /// Say under `icon` that it cannot be done just now, for [`UNAVAILABLE_SECS`]: the menu
+    /// stays open, so the owner can see their click was heard and try again or choose another.
+    /// Says whether the menu has that item.
+    pub fn mark_unavailable(&mut self, icon: MenuIcon) -> bool {
+        let Some(index) = self.items.iter().position(|item| *item == icon) else {
+            return false;
+        };
+        self.unavailable = Some((index, UNAVAILABLE_SECS));
+        // The owner has just used the menu: it is not untouched.
+        self.untouched_for = 0.0;
+        true
+    }
+
     /// Re-attach the strip to the creature. Called every frame the creature can be drawn; called
     /// with `None` when it cannot, which parks the menu until it can be placed again.
     pub fn attach(&mut self, anchor: Option<MenuAnchor>) {
@@ -639,6 +666,16 @@ impl CreatureMenu {
         });
         let mut redraw = hovered != self.hovered;
         self.hovered = hovered;
+        if let Some((index, left)) = self.unavailable {
+            let left = left - dt;
+            // Pointing at another item asks about that one instead.
+            if left <= 0.0 || hovered.is_some_and(|hovered| hovered != index) {
+                self.unavailable = None;
+                redraw = true;
+            } else {
+                self.unavailable = Some((index, left));
+            }
+        }
         let mut side_hovered = None;
         if let Some(side) = &mut self.side {
             side_hovered = cursor.and_then(|cursor| {
@@ -975,6 +1012,35 @@ mod tests {
         assert!(menu.track(0.05, Some(away), creature).redraw);
         assert_eq!(menu.hovered(), Some(0));
         assert_eq!(menu.item_at(away), Some(MenuIcon::Snack));
+    }
+
+    /// A snack that cannot be held out just now says "not now" under itself while the strip
+    /// stays open, for a moment, or until another item is pointed at.
+    #[test]
+    fn an_item_that_cannot_be_done_says_not_now_for_a_moment() {
+        let mut menu = open();
+        let creature = Point { x: 900.0, y: 648.0 };
+        let snack = cell_centre(&menu, 0);
+        menu.track(0.05, Some(snack), creature);
+        assert!(menu.mark_unavailable(MenuIcon::Snack));
+        assert_eq!(menu.unavailable(), Some(0));
+        assert!(
+            !menu.mark_unavailable(MenuIcon::Stay),
+            "not on a member's menu"
+        );
+        let mut elapsed = 0.0;
+        while menu.unavailable().is_some() {
+            let tick = menu.track(0.1, Some(snack), creature);
+            assert!(tick.dismissal.is_none(), "the menu stays open");
+            elapsed += 0.1;
+            assert!(elapsed < UNAVAILABLE_SECS + 0.5, "the tab never went");
+        }
+        assert!(elapsed >= UNAVAILABLE_SECS - 0.1);
+        // Pointing at another item lets the tab go at once.
+        menu.mark_unavailable(MenuIcon::Snack);
+        let tick = menu.track(0.05, Some(cell_centre(&menu, 1)), creature);
+        assert!(tick.redraw);
+        assert_eq!(menu.unavailable(), None);
     }
 
     #[test]

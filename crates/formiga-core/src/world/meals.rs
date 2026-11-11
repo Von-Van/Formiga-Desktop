@@ -12,6 +12,9 @@ use crate::meals::{Appetite, Food, Meal, MealSetting};
 impl World {
     /// Start, carry on or clear everyone's meal. Called once, at the end of every tick.
     pub(super) fn carry_meals(&mut self, now: OffsetDateTime, dt: f32) {
+        // Paused, the colony holds still, and so does every meal: the bite it is on now is the
+        // bite it takes up again when it carries on.
+        let dt = if self.save.settings.paused { 0.0 } else { dt };
         let hour = local_time_or_utc(now).hour();
         let timeline = self.save.maximum_seen_utc;
         let ripe: Vec<GardenKind> = self

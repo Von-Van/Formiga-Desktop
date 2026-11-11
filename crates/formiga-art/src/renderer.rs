@@ -710,8 +710,10 @@ impl BodyPresentation {
                 return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
             }
             let body = Self::footing(creature, motion);
-            // At play: each move of the game in its own pose.
+            // At play: each move of the game in its own pose. With motion reduced it keeps the
+            // calm hold play has always had, and the thing stays in its paws (see `play`).
             if body.clip == BodyClip::Action(ActionKind::SoloPlay)
+                && !state.presence.reduced
                 && let Some(pose) = play::play_shown(creature).and_then(play::play_pose)
             {
                 return match pose {

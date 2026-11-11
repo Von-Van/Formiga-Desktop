@@ -35,9 +35,10 @@ mod resources;
 mod train;
 mod ui;
 mod village;
+pub(crate) use atlas::creature_horizontal_scale;
 use atlas::*;
-pub(crate) use occlusion::monitor_has_fullscreen_window;
 use occlusion::*;
+pub(crate) use occlusion::{monitor_has_fullscreen_window, visible_occlusion_rects};
 pub use train::TrainView;
 use village::*;
 
@@ -203,6 +204,9 @@ pub struct MenuView<'a> {
     pub layout: &'a MenuLayout,
     pub placement: MenuPlacement,
     pub hovered: Option<usize>,
+    /// An item chosen that could not be done just now, which shows "not now" under it in place
+    /// of its label.
+    pub unavailable: Option<usize>,
     /// A strip opened beside the menu, if any.
     pub side: Option<SideView<'a>>,
 }
@@ -680,7 +684,8 @@ impl OverlayRenderer {
     }
 
     fn sprite_at(&self, id: CreatureId, depth: f32) -> Option<&SpriteGpu> {
-        if depth >= formiga_core::SET_BACK_DEPTH
+        // Set-back atlases are only kept while the village is out on this display.
+        if drawn_set_back(depth, true)
             && let Some(sprite) = self.set_back_sprites.get(&id)
         {
             return Some(sprite);
@@ -916,12 +921,9 @@ impl OverlayRenderer {
             });
         }
         // Among the houses, back to front; everybody at the front after them, in colony order.
-        creature_draws.sort_by(|a, b| {
-            a.among_houses
-                .unwrap_or(usize::MAX)
-                .cmp(&b.among_houses.unwrap_or(usize::MAX))
-                .then(b.depth.total_cmp(&a.depth))
-        });
+        // How many houses are drawn behind somebody only grows as it comes forward, so ordering
+        // by depth alone is that order, and clicks resolve with the same one (`back_to_front`).
+        creature_draws.sort_by(|a, b| drawn_before(a.depth, b.depth));
         // Everything small the village holds or has loose, over the colony, from the same sheet
         // as its belongings.
         let prop_start = vertices.len();
@@ -1663,6 +1665,30 @@ fn drawable_size(layout: PhysicalSize<u32>, divisor: u32) -> (u32, u32) {
         layout.width.div_ceil(divisor).max(1),
         layout.height.div_ceil(divisor).max(1),
     )
+}
+
+/// How two companions standing `a` and `b` deep in the village are ordered when drawn: further
+/// back first. The sort it is used in is stable, so companions as deep as each other keep colony
+/// order, the visitor last, and whoever is drawn later is in front.
+pub(crate) fn drawn_before(a: f32, b: f32) -> std::cmp::Ordering {
+    b.total_cmp(&a)
+}
+
+/// Companions in the order the overlay draws them, back to front (see [`drawn_before`]): where
+/// two overlap, the later one is the one the user can see, and is the one a click is for.
+pub(crate) fn back_to_front<'a>(
+    creatures: impl IntoIterator<Item = &'a Creature>,
+) -> Vec<&'a Creature> {
+    let mut order: Vec<&Creature> = creatures.into_iter().collect();
+    order.sort_by(|a, b| drawn_before(a.state.depth, b.state.depth));
+    order
+}
+
+/// Whether a companion is drawn from its set-back atlas, smaller: standing far enough back in the
+/// village while the village is out. Its grab mask is read at the same size (see
+/// `interaction::ProxyRuntimeState::set_back`), so the two always agree on where its body is.
+pub(crate) fn drawn_set_back(depth: f32, village_out: bool) -> bool {
+    village_out && depth >= formiga_core::SET_BACK_DEPTH
 }
 
 #[cfg(test)]
