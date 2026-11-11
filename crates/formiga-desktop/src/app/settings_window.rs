@@ -118,6 +118,9 @@ impl FormigaApp {
     ) {
         self.handle_backup_requests(&outcome);
         self.open_requested_companion_apps(&outcome);
+        if let Some((creature_id, kind)) = outcome.offer {
+            self.offer_from_profile(creature_id, kind);
+        }
         self.apply_colony_edits(&outcome);
         self.export_requested_pictures(&outcome);
         if let Some((creature_id, kept)) = outcome.set_creature_kept {
@@ -223,6 +226,77 @@ impl FormigaApp {
                 Err(error) => tracing::warn!(%error, "colony save still failing"),
             }
         }
+    }
+
+    /// A snack or a toy held out from a companion's profile: the same offer the strip over it on
+    /// the desktop makes, with its outcome written on the profile — held out, or not just now —
+    /// and the answer, yes or no thanks, added when the companion gives it (`note_offer_answer`).
+    fn offer_from_profile(&mut self, creature_id: CreatureId, kind: OfferKind) {
+        let desktop = self.snapshot();
+        let command = match kind {
+            OfferKind::Snack => WorldCommand::OfferSnack { creature_id },
+            OfferKind::Toy => WorldCommand::OfferToy { creature_id },
+        };
+        let Some(world) = self.world.as_mut() else {
+            return;
+        };
+        let offered = world.handle_command(command, &desktop);
+        let name = world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == creature_id)
+            .map_or_else(|| "They".to_owned(), |creature| creature.name.clone());
+        let thing = match kind {
+            OfferKind::Snack => "snack",
+            OfferKind::Toy => "toy",
+        };
+        let note = if offered {
+            format!("Held out a {thing} to {name}. Watch for their answer on the desktop.")
+        } else {
+            format!(
+                "{name} can't take a {thing} just now: they're busy, away, or the colony is \
+                 paused or hidden. Try again in a moment."
+            )
+        };
+        if offered {
+            let _ = self.save();
+        }
+        if let Some(window) = &mut self.settings_window {
+            window.note_offer(creature_id, note);
+        }
+    }
+
+    /// A companion's answer to an offer, written on its profile if the offer was made from there.
+    pub(super) fn note_offer_answer(
+        &mut self,
+        creature_id: CreatureId,
+        kind: OfferKind,
+        accepted: bool,
+    ) {
+        let Some(window) = &mut self.settings_window else {
+            return;
+        };
+        if window.offer_note_for() != Some(creature_id) {
+            return;
+        }
+        let Some(name) = self.world.as_ref().and_then(|world| {
+            world
+                .save
+                .creatures
+                .iter()
+                .find(|creature| creature.id == creature_id)
+                .map(|creature| creature.name.clone())
+        }) else {
+            return;
+        };
+        let note = match (kind, accepted) {
+            (OfferKind::Snack, true) => format!("{name} took the snack."),
+            (OfferKind::Toy, true) => format!("{name} took the toy and is playing with it."),
+            (OfferKind::Snack, false) => format!("{name} said no thanks to the snack this time."),
+            (OfferKind::Toy, false) => format!("{name} said no thanks to the toy this time."),
+        };
+        window.note_offer(creature_id, note);
     }
 
     /// A visit to a companion app the notebook asked for: a house in Formiga Home, the household

@@ -340,3 +340,78 @@ fn a_bench_and_a_swing_are_sat_on() {
         assert!(sat > 0, "nobody ever sat on the {kind:?}");
     }
 }
+
+/// At the drum stump a companion plays the stump itself — a paw reached down onto it, again,
+/// and a listen — rather than settling into an ordinary game with some toy of its own, and only
+/// once it is standing at the stump.
+#[test]
+fn the_drum_stump_is_played_as_a_drum() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut tapped = 0;
+    for seed in 74..=86 {
+        let mut world = settled_colony([seed; 32], 3, created, &desktop);
+        for creature in &mut world.save.creatures {
+            creature.personality.playfulness = 1.0;
+        }
+        world
+            .save
+            .home
+            .unlocks
+            .hangouts
+            .push(HangoutKind::DrumStump);
+        assert!(
+            world
+                .save
+                .home
+                .set_hangout(HangoutKind::DrumStump, Some(0.5))
+        );
+        let cottages = colony_cottage_list(&world.save.creatures);
+        let (_, _, stump) = home_hangout_positions(
+            &world.save.home,
+            cottages.as_slice(),
+            &desktop.monitors,
+            &world.save.settings.habitat,
+            world.save.settings.display_scale,
+        )[0];
+        world.wonders.hold_off();
+        for _ in 0..80_000 {
+            world.tick(created, 0.05, &desktop);
+            world.save.home.active_since_utc = Some(created);
+            for creature in &world.save.creatures {
+                let drumming = world
+                    .home_moments
+                    .get(&creature.id)
+                    .is_some_and(|moment| moment.seat() == Some(HangoutKind::DrumStump));
+                if !drumming {
+                    continue;
+                }
+                let beside = (creature.state.position.x - stump.x).abs();
+                assert!(beside > 1.0 && beside < 40.0, "at the stump, beside it");
+                assert_eq!(
+                    creature.state.facing_right,
+                    creature.state.position.x < stump.x,
+                    "turned to the stump"
+                );
+                assert!(
+                    creature.state.play.is_none(),
+                    "no game with something else in its paws"
+                );
+                if creature
+                    .state
+                    .attention
+                    .is_some_and(|pose| pose.gesture == Some(Gesture::Pluck))
+                {
+                    tapped += 1;
+                }
+            }
+            if tapped >= 200 {
+                break;
+            }
+        }
+        if tapped > 0 {
+            break;
+        }
+    }
+    assert!(tapped > 0, "nobody ever played the drum stump");
+}

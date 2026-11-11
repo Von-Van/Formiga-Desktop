@@ -80,6 +80,17 @@ fn overlaps(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
     a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
 }
 
+/// The fewest logical points one art pixel of a menu's strip is drawn at: a fourteen-pixel cell
+/// is then at least twenty-one points across, whatever size the companions are drawn at.
+pub(super) const MENU_MIN_POINTS: f32 = 1.5;
+
+/// See [`OverlayRenderer::menu_scale`]: `grid` is the drawable's pixel size in physical pixels.
+pub(crate) fn menu_scale(display_scale: u8, scale_factor: f32, grid: f32) -> f32 {
+    let grid = grid.max(1.0);
+    let least = (MENU_MIN_POINTS * scale_factor / grid).ceil() * grid;
+    f32::from(display_scale).max(least)
+}
+
 /// The open menu, drawn: its frame, one quad per cell, and the label tab under whichever cell is
 /// hovered. Below the creature the frame sprite is drawn upside down, which puts the notch on top
 /// pointing up; the frame is symmetric about its body, so only the notch actually moves, and the
@@ -441,6 +452,16 @@ impl OverlayRenderer {
         let sprite = self.sprite_for(creature)?;
         let (centre_x, head_top, foot_bottom) =
             self.creature_extent(creature, sprite, display_scale);
+        let (_, ground) = self.drawn_contact(creature, display_scale);
+        // The crown of its head in the plain settle, drawn where it stands now.
+        let scale = f32::from(display_scale);
+        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
+        let settled_top = sprite
+            .silhouette
+            .get(atlas_slot(BodyClip::Action(ActionKind::Idle), 0) as usize)
+            .map_or(0, |(top, _)| *top);
+        let settled_head_top =
+            ground + placement.origin_y as f32 * scale + f32::from(settled_top) * scale;
         let bounds = self.monitor.bounds;
         let usable = self.monitor.usable_bounds;
         let factor = self.monitor.scale_factor;
@@ -448,7 +469,9 @@ impl OverlayRenderer {
             centre_x,
             head_top,
             foot_bottom,
-            art_scale: f32::from(display_scale),
+            ground,
+            settled_head_top,
+            art_scale: self.menu_scale(display_scale),
             grid: self.render_divisor as f32,
             usable: LocalRect {
                 x: (usable.x - bounds.x) * factor,
@@ -464,6 +487,18 @@ impl OverlayRenderer {
         })
     }
 
+    /// Physical pixels per art pixel for a menu's strip on this display: the companion's own
+    /// scale, but never less than [`MENU_MIN_POINTS`] logical points an art pixel, so a Small
+    /// companion on a high-density display still gets cells and labels big enough to read and
+    /// hit. Always a whole number of the drawable's pixels, so the strip stays crisp.
+    pub(super) fn menu_scale(&self, display_scale: u8) -> f32 {
+        menu_scale(
+            display_scale,
+            self.monitor.scale_factor,
+            self.render_divisor as f32,
+        )
+    }
+
     /// Where a menu for a house goes: over its roof, as a creature's goes over its head.
     pub fn house_menu_anchor(
         &self,
@@ -475,11 +510,14 @@ impl OverlayRenderer {
         let usable = self.monitor.usable_bounds;
         let factor = self.monitor.scale_factor;
         let foot = self.snap((house.foot.y - bounds.y) * factor);
+        let roof = foot - (formiga_art::SHELTER_SIZE - house.roof) as f32 * unit;
         MenuAnchor {
             centre_x: self.snap((house.foot.x - bounds.x) * factor),
-            head_top: foot - (formiga_art::SHELTER_SIZE - house.roof) as f32 * unit,
+            head_top: roof,
             foot_bottom: foot,
-            art_scale: unit,
+            ground: foot,
+            settled_head_top: roof,
+            art_scale: self.menu_scale(display_scale),
             grid: self.render_divisor as f32,
             usable: LocalRect {
                 x: (usable.x - bounds.x) * factor,

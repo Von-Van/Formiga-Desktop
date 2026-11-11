@@ -139,6 +139,8 @@ pub struct FormigaApp {
     current_cursor: CursorSnapshot,
     settings_window: Option<SettingsWindow>,
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
+    /// Which size each companion is shown at, after the last tick (see `carry_set_back`).
+    set_back_shown: BTreeMap<CreatureId, bool>,
     /// Each house of the village as it can be clicked, while Formiga Home is installed, and the
     /// native window over each.
     house_shapes: crate::houses::HouseShapes,
@@ -213,6 +215,7 @@ impl FormigaApp {
             current_cursor: CursorSnapshot::default(),
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
+            set_back_shown: BTreeMap::new(),
             house_shapes: Default::default(),
             house_proxies: BTreeMap::new(),
             creature_menu: None,
@@ -487,6 +490,7 @@ impl FormigaApp {
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
+        let mut offer_answers = Vec::new();
         if let Some(world) = &mut self.world {
             if world.is_interacting() {
                 if !desktop.cursor.available {
@@ -534,6 +538,14 @@ impl FormigaApp {
                 {
                     milestone = Some(creature_id);
                 }
+                if let WorldEvent::OfferAnswered {
+                    creature_id,
+                    kind,
+                    accepted,
+                } = event
+                {
+                    offer_answers.push((creature_id, kind, accepted));
+                }
                 tracing::debug!(event = world_event_category(&event), "world event");
             }
             if let Some(creature_id) = milestone {
@@ -557,6 +569,9 @@ impl FormigaApp {
                     });
                 }
             }
+        }
+        for (creature_id, kind, accepted) in offer_answers {
+            self.note_offer_answer(creature_id, kind, accepted);
         }
         // Arrivals and the houses are written at once; everyday movement waits for the next
         // routine checkpoint; and a colony with nothing waiting is still written periodically.
@@ -694,6 +709,35 @@ impl FormigaApp {
         }
     }
 
+    /// Work out which size each companion is shown at after a tick — standing back in the village
+    /// it is drawn smaller, and a walker changes size only on a planted step — and tell every
+    /// overlay, so the picture and the grab mask are always the same size.
+    fn carry_set_back(&mut self) {
+        let Some(world) = &self.world else {
+            self.set_back_shown.clear();
+            return;
+        };
+        let village_out = world.save.home.is_active();
+        let was = std::mem::take(&mut self.set_back_shown);
+        self.set_back_shown = world
+            .save
+            .creatures
+            .iter()
+            .chain(world.save.visitors.on_stage())
+            .map(|creature| {
+                let shown = formiga_art::shown_set_back(
+                    creature,
+                    village_out,
+                    was.get(&creature.id).copied(),
+                );
+                (creature.id, shown)
+            })
+            .collect();
+        for overlay in self.overlays.values_mut() {
+            overlay.show_set_back(&self.set_back_shown);
+        }
+    }
+
     fn sync_interaction_proxies(&mut self, event_loop: &ActiveEventLoop) {
         if self.habitat_editor.is_some() {
             for proxy in self.interaction_proxies.values_mut() {
@@ -794,10 +838,16 @@ impl FormigaApp {
                 ProxyRuntimeState {
                     dragging: dragging_this,
                     occluded: fullscreen_hidden || behind_a_house,
-                    set_back: crate::gpu::drawn_set_back(
-                        creature.state.depth,
-                        world.save.home.is_active(),
-                    ),
+                    set_back: self
+                        .set_back_shown
+                        .get(&creature.id)
+                        .copied()
+                        .unwrap_or_else(|| {
+                            crate::gpu::drawn_set_back(
+                                creature.state.depth,
+                                world.save.home.is_active(),
+                            )
+                        }),
                 },
             );
         }
@@ -1288,6 +1338,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             tray.sync_news(world.save.companion.unread().next().is_some());
         }
         if ticked {
+            self.carry_set_back();
             self.sync_interaction_proxies(event_loop);
             self.sync_house_proxies(event_loop);
         }

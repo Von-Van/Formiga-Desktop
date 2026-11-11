@@ -619,7 +619,7 @@ struct HangoutVisit {
     /// Which way to face once there: out over the desktop at a lookout, and otherwise however
     /// the walk left it.
     facing_right: Option<bool>,
-    /// The spot itself, for the ones that are sat on or lain in.
+    /// The spot itself, for the ones that are sat on, lain in or played (see [`posed_at`]).
     seat: Option<HangoutKind>,
 }
 
@@ -666,8 +666,11 @@ fn advance_home_moment(
                 && (creature.state.position == goal || moment.remaining <= 0.0)
             {
                 // At the hangout spot, or as near as the walk got: its thing, done right here.
+                // Only a spot it actually reached is sat on or played, though: a bench short of
+                // its bench sits on nothing, and a drummer short of the stump drums the air.
+                let reached = creature.state.position == goal;
                 moment.phase = MomentPhase::Hold;
-                moment.seat = visit.seat;
+                moment.seat = visit.seat.filter(|_| reached);
                 moment.held = 0.0;
                 moment.action = visit.action;
                 moment.remaining = visit.seconds;
@@ -719,7 +722,9 @@ fn hangout_moment(kind: HangoutKind, creature: &Creature) -> (bool, ActionKind, 
         HangoutKind::Swing | HangoutKind::Sandbox | HangoutKind::Puddle => {
             (playful, ActionKind::SoloPlay, 8.0, 16.0)
         }
-        HangoutKind::DrumStump => (playful, ActionKind::SoloPlay, 6.0, 12.0),
+        // Played with the paws, as a drum (see `drum_stance`), not as a place to play with a
+        // toy: an ordinary game here would put something else in its paws on arrival.
+        HangoutKind::DrumStump => (playful, ActionKind::Idle, 6.0, 12.0),
         HangoutKind::Campfire | HangoutKind::Bench => (
             personality.sociability > 0.6 || drives.energy < 0.5,
             ActionKind::Idle,
@@ -735,6 +740,30 @@ const fn seated_at(kind: HangoutKind) -> bool {
         kind,
         HangoutKind::Bench | HangoutKind::Swing | HangoutKind::Hammock | HangoutKind::BookNook
     )
+}
+
+/// Whether a spot is used in a stance of its own once reached: sat on, lain in, sat beside, or
+/// played like the drum stump.
+const fn posed_at(kind: HangoutKind) -> bool {
+    seated_at(kind) || matches!(kind, HangoutKind::DrumStump)
+}
+
+/// One round at the drum stump: two taps on it — a paw reached down onto its skin, and again,
+/// as a garden is picked — then a moment with the paws still, listening, before the next two.
+const DRUM_TAPS_SECS: f32 = 2.0;
+const DRUM_ROUND_SECS: f32 = 3.0;
+
+/// How a companion at the drum stump stands, `held` seconds into its time there: beside it and
+/// turned to it (see `hangout_stand`), tapping and listening with its eyes on it, round after
+/// round, pleased with the sound.
+fn drum_stance(held: f32) -> wonders::Stance {
+    use wonders::Stance;
+    let stance = Stance::at(0.0, 0.0, true).looking(22.0, 6.0);
+    if held % DRUM_ROUND_SECS < DRUM_TAPS_SECS {
+        stance.pose(Gesture::Pluck)
+    } else {
+        stance
+    }
 }
 
 /// How high the seat of a spot is above the ground, in art pixels, as the village's object
@@ -753,6 +782,9 @@ const fn seat_height(kind: HangoutKind) -> f32 {
 /// down again at the end, all as offsets in art pixels from where it stands to use the spot.
 fn seated_stance(kind: HangoutKind, held: f32, remaining: f32) -> wonders::Stance {
     use wonders::{HOP_SECS, Stance, hop};
+    if kind == HangoutKind::DrumStump {
+        return drum_stance(held);
+    }
     let lift = seat_height(kind);
     let seat = (0.0, -lift);
     let settled = if kind == HangoutKind::Hammock {
@@ -917,7 +949,7 @@ fn choose_home_moment(
                     action,
                     seconds,
                     facing_right,
-                    seat: seated_at(hangout.kind).then_some(hangout.kind),
+                    seat: posed_at(hangout.kind).then_some(hangout.kind),
                 }),
                 offered: false,
             },

@@ -178,6 +178,9 @@ pub(crate) struct ColonyState {
     /// Whether the sticker export draws at the smaller of the two offered scales. The default,
     /// `false`, is the large one, which is what most places want to post.
     pub small_sticker: bool,
+    /// What became of the last snack or toy offered from a companion's profile, and whose:
+    /// written in words, since the answer itself is given out on the desktop.
+    pub offer_note: Option<(formiga_core::CreatureId, String)>,
 }
 
 impl ColonyState {

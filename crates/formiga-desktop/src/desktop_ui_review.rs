@@ -355,3 +355,282 @@ fn bubbles_and_menus_sit_on_real_creatures_at_every_display_scale() {
         "the review sheet is mostly empty"
     );
 }
+
+/// One strip drawn where `placement` puts it — frame, cells and the hovered cell's label — at its
+/// own scale, which need not be the creature's.
+fn draw_strip(
+    sheet: &mut Canvas,
+    atlas: &Canvas,
+    items: &[formiga_art::MenuIcon],
+    placement: crate::creature_menu::MenuPlacement,
+    hovered: usize,
+) {
+    let layout = MenuLayout::new(items);
+    let scale = placement.art_scale as i32;
+    let (left, top) = (placement.x as i32, placement.y as i32);
+    let frame = UiAtlasRenderer::menu_frame(items.len() as u8).expect("a frame");
+    blit(sheet, atlas, frame, left, top, scale, placement.below);
+    let body = placement.body_rect();
+    for (index, icon) in items.iter().enumerate() {
+        let cell = layout.cell(index).expect("a cell");
+        blit(
+            sheet,
+            atlas,
+            UiAtlasRenderer::menu_icon(*icon, index == hovered),
+            body.x as i32 + cell.x * scale,
+            body.y as i32 + cell.y * scale,
+            scale,
+            false,
+        );
+    }
+    let tab = layout.label_tab(hovered).expect("a tab");
+    blit(
+        sheet,
+        atlas,
+        UiAtlasRenderer::menu_label(items[hovered]),
+        left + tab.x * scale,
+        top + tab.y * scale,
+        scale,
+        false,
+    );
+}
+
+/// Where a menu goes over a creature drawn in `clip` and `frame` at `scale`, standing with its
+/// centre at `centre_x` and its feet on `ground`, in the sheet's own physical pixels.
+fn anchor_over(
+    creature: &Creature,
+    clip: BodyClip,
+    frame: u8,
+    (centre_x, ground): (i32, i32),
+    scale: i32,
+    menu_scale: f32,
+    usable: crate::creature_menu::LocalRect,
+) -> crate::creature_menu::MenuAnchor {
+    let bounds = |clip: BodyClip, frame: u8| {
+        let body = CreatureRenderer::render_body_frame(&creature.appearance, clip, frame, false);
+        let (_, top, _, bottom) = body.canvas.alpha_bounds().expect("drawn");
+        (top as i32, bottom as i32 + 1)
+    };
+    let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
+    let frame_top =
+        ground + FramePlacement::for_action(ActionKind::Idle, baseline).origin_y * scale;
+    let (top, bottom) = bounds(clip, frame);
+    let (settled, _) = bounds(BodyClip::from(ActionKind::Idle), 0);
+    crate::creature_menu::MenuAnchor {
+        centre_x: centre_x as f32,
+        head_top: (frame_top + top * scale) as f32,
+        foot_bottom: (frame_top + bottom * scale) as f32,
+        ground: ground as f32,
+        settled_head_top: (frame_top + settled * scale) as f32,
+        art_scale: menu_scale,
+        grid: 1.0,
+        usable,
+        monitor_origin: formiga_core::Point { x: 0.0, y: 0.0 },
+        scale_factor: 1.0,
+    }
+}
+
+/// Two pictures of the open strip, drawn with the desktop's own placement code:
+///
+/// - `menu-fidgets.png`: one companion through six moments of standing about — the settle, two
+///   beats of its rest, a wash, a stretch and a shake — with Snack hovered. The top row places
+///   the strip from each frame's own crown, as it used to be placed, and the bottom row as an
+///   open menu now does, from the feet. The red ticks are where the strip's top sat when it
+///   opened.
+/// - `menu-small.png`: a Small companion on a high-density display at its real size in physical
+///   pixels, with its strip at the companion's own scale on the left and at the size it is drawn
+///   at now on the right, beside a Medium companion's for comparison.
+#[test]
+fn a_menu_holds_still_over_fidgets_and_is_big_enough_at_small() {
+    use crate::creature_menu::{CreatureMenu, LocalRect, place};
+    let atlas = UiAtlasRenderer::render();
+    let creature = adult(29);
+    let items = menu_items(MenuTarget::Member, false);
+    let layout = MenuLayout::new(&items);
+    let picture = |clip: BodyClip, frame: u8| {
+        CreatureRenderer::render_composited_frame(
+            &creature.appearance,
+            clip,
+            frame,
+            true,
+            false,
+            face(),
+        )
+    };
+    let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
+    let origin_y = FramePlacement::for_action(ActionKind::Idle, baseline).origin_y;
+
+    let poses = [
+        (BodyClip::from(ActionKind::Idle), 0),
+        (BodyClip::from(ActionKind::Idle), 2),
+        (BodyClip::from(ActionKind::Idle), 4),
+        (BodyClip::Gesture(formiga_core::Gesture::Groom), 1),
+        (BodyClip::Gesture(formiga_core::Gesture::Stretch), 2),
+        (BodyClip::Gesture(formiga_core::Gesture::Shake), 1),
+    ];
+    let scale = 3;
+    let (scene_w, scene_h) = (80 * scale, 100 * scale);
+    let ground = 90 * scale;
+    let width = scene_w * poses.len() as i32;
+    let mut sheet = Canvas::new(width as u32, (scene_h * 2) as u32);
+    sheet.fill_rect(0, 0, width, scene_h * 2, DESK);
+    let usable = LocalRect {
+        x: 0.0,
+        y: 0.0,
+        width: width as f32,
+        height: (scene_h * 2) as f32,
+    };
+    let mut menu = CreatureMenu::new(7, MenuTarget::Member, false, 1, false);
+    let mut opened = [None, None];
+    for (index, (clip, frame)) in poses.into_iter().enumerate() {
+        for row in 0..2 {
+            let left = index as i32 * scene_w;
+            let top = row * scene_h;
+            let centre = (left + scene_w / 2, top + ground);
+            let anchor = anchor_over(&creature, clip, frame, centre, scale, scale as f32, usable);
+            let placement = if row == 0 {
+                place(&layout, anchor)
+            } else {
+                menu.attach(Some(anchor));
+                menu.placement().expect("placed")
+            };
+            let opened = *opened[row as usize].get_or_insert(placement.y as i32 - top);
+            let body = picture(clip, frame);
+            blit(
+                &mut sheet,
+                &body,
+                whole(&body),
+                centre.0 - FRAME_SIZE as i32 / 2 * scale,
+                centre.1 + origin_y * scale,
+                scale,
+                false,
+            );
+            draw_strip(&mut sheet, &atlas, &items, placement, 0);
+            // Ticks in the margins at the strip's top when it opened.
+            for x in [left, left + scene_w - 4 * scale] {
+                sheet.fill_rect(x, top + opened, 4 * scale, scale, GUIDE);
+            }
+            if row == 1 {
+                assert_eq!(
+                    placement.y as i32 - top,
+                    opened,
+                    "the open strip holds still"
+                );
+            }
+        }
+    }
+    save_review("menu-fidgets.png", &sheet);
+
+    // Small on a Retina display: two physical pixels an art pixel, and half-resolution drawing.
+    let factor = 2.0;
+    let (scene_w, scene_h) = (260, 220);
+    let mut small = Canvas::new((scene_w * 3) as u32, scene_h as u32);
+    small.fill_rect(0, 0, scene_w * 3, scene_h, DESK);
+    let usable = LocalRect {
+        x: 0.0,
+        y: 0.0,
+        width: (scene_w * 3) as f32,
+        height: scene_h as f32,
+    };
+    let scenes = [
+        (2, 2.0),
+        (2, crate::gpu::ui_menu_scale(2, factor, 2.0)),
+        (3, crate::gpu::ui_menu_scale(3, factor, 1.0)),
+    ];
+    for (index, (scale, strip)) in scenes.into_iter().enumerate() {
+        let left = index as i32 * scene_w;
+        let centre = (left + scene_w / 2, scene_h - 8);
+        let clip = BodyClip::from(ActionKind::Idle);
+        let anchor = anchor_over(&creature, clip, 0, centre, scale, strip, usable);
+        let body = picture(clip, 0);
+        blit(
+            &mut small,
+            &body,
+            whole(&body),
+            centre.0 - FRAME_SIZE as i32 / 2 * scale,
+            centre.1 + origin_y * scale,
+            scale,
+            false,
+        );
+        draw_strip(&mut small, &atlas, &items, place(&layout, anchor), 0);
+    }
+    save_review("menu-small.png", &small);
+}
+
+/// `village-stroll.png`: a companion strolling from the front of the village up the path to the
+/// middle of it, a walking frame a column, at its real footing. The top row changes to its
+/// smaller set-back drawing the moment it crosses the line, as it used to, whatever its feet are
+/// doing; the bottom row as it does now, on the next planted step. A red tick marks the column
+/// it crosses the line in, and a grey dot each frame with a foot just down.
+#[test]
+fn the_village_size_changes_on_a_planted_step_in_a_stroll() {
+    let mut creature = adult(29);
+    creature.state.action = ActionKind::Traverse;
+    creature.state.facing_right = true;
+    creature.state.presence = formiga_core::Presence {
+        stepping: true,
+        last: Some(formiga_core::PresenceMark {
+            x: 0.0,
+            depth: 0.0,
+            window: None,
+        }),
+        ..Default::default()
+    };
+    let scale = 4;
+    let columns = 8;
+    let (cell_w, cell_h) = (50 * scale, 56 * scale);
+    let mut sheet = Canvas::new((cell_w * columns) as u32, (cell_h * 2) as u32);
+    sheet.fill_rect(0, 0, cell_w * columns, cell_h * 2, PAPER);
+    let line = formiga_core::SET_BACK_DEPTH;
+    let mut shown = None;
+    let mut crossed = false;
+    for column in 0..columns {
+        creature.state.depth = line - 0.5 + column as f32 * 0.2;
+        creature.state.presence.stride = column as f32;
+        let now = formiga_art::shown_set_back(&creature, true, shown);
+        shown = Some(now);
+        let body = formiga_art::BodyPresentation::for_creature(&creature);
+        for (row, set_back) in [creature.state.set_back(), now].into_iter().enumerate() {
+            let mut appearance = creature.appearance.clone();
+            if set_back {
+                appearance.logical_size = formiga_core::set_back_size(appearance.logical_size);
+            }
+            let picture = CreatureRenderer::render_composited_frame(
+                &appearance,
+                body.clip,
+                body.frame,
+                true,
+                false,
+                face(),
+            );
+            let baseline = CreatureRenderer::resting_baseline(&appearance, false);
+            let origin_y = FramePlacement::for_action(ActionKind::Traverse, baseline).origin_y;
+            let (left, top) = (column * cell_w, row as i32 * cell_h);
+            let ground = top + 50 * scale;
+            blit(
+                &mut sheet,
+                &picture,
+                whole(&picture),
+                left + cell_w / 2 - FRAME_SIZE as i32 / 2 * scale,
+                ground + origin_y * scale,
+                scale,
+                false,
+            );
+            sheet.fill_rect(left, ground, cell_w, scale, MARK);
+            if !crossed && creature.state.set_back() {
+                sheet.fill_rect(left, top, scale, cell_h, GUIDE);
+            }
+            if formiga_art::footfall_frame(&creature.appearance, body.frame) {
+                sheet.fill_rect(
+                    left + cell_w / 2 - scale,
+                    ground + 2 * scale,
+                    2 * scale,
+                    2 * scale,
+                    MARK,
+                );
+            }
+        }
+        crossed |= creature.state.set_back();
+    }
+    save_review("village-stroll.png", &sheet);
+}

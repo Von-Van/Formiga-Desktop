@@ -151,6 +151,12 @@ pub struct MenuAnchor {
     pub head_top: f32,
     /// The creature's lowest drawn pixel, in monitor-local physical pixels.
     pub foot_bottom: f32,
+    /// Where its feet meet what it stands on, in monitor-local physical pixels: moved by real
+    /// travel — a step, a hop up onto a bench, a ride on a window — and by no fidget.
+    pub ground: f32,
+    /// The crown of its head standing at rest, the plain settle, in monitor-local physical
+    /// pixels: how tall it is when it is not doing anything in particular.
+    pub settled_head_top: f32,
     /// Physical pixels per art pixel: the display scale.
     pub art_scale: f32,
     /// The drawable's own pixel grid, so the strip lands where the sprites do.
@@ -429,6 +435,21 @@ pub struct CreatureMenu {
     /// An item that was chosen but could not be done just now, and how much longer its "not now"
     /// tab hangs under it.
     unavailable: Option<(usize, f32)>,
+    /// How far above and below its feet the strip measures the creature while it is open (see
+    /// [`CreatureMenu::attach`]).
+    steady: Option<SteadyExtent>,
+}
+
+/// How tall a creature is taken to be while its menu is open, measured from its feet once, when
+/// the strip is first placed: the taller of its plain settle and the pose it was in then, so the
+/// strip neither covers its head nor rides up and down with every fidget, shift of weight and
+/// wash under the owner's pointer. Measured again only if the settle itself changes height — a
+/// smaller drawing further back in the village, a new size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SteadyExtent {
+    settled_rise: f32,
+    rise: f32,
+    drop: f32,
 }
 
 impl CreatureMenu {
@@ -454,6 +475,7 @@ impl CreatureMenu {
             side: None,
             usable: None,
             unavailable: None,
+            steady: None,
         }
     }
 
@@ -480,6 +502,7 @@ impl CreatureMenu {
             side: None,
             usable: None,
             unavailable: None,
+            steady: None,
         }
     }
 
@@ -567,6 +590,25 @@ impl CreatureMenu {
         self.placement
     }
 
+    /// `anchor` with the creature's height measured as [`SteadyExtent`] says.
+    fn steadied(&mut self, anchor: MenuAnchor) -> MenuAnchor {
+        let settled_rise = anchor.ground - anchor.settled_head_top;
+        let steady = match self.steady {
+            Some(steady) if (steady.settled_rise - settled_rise).abs() < 0.5 => steady,
+            _ => SteadyExtent {
+                settled_rise,
+                rise: (anchor.ground - anchor.head_top).max(settled_rise),
+                drop: (anchor.foot_bottom - anchor.ground).max(0.0),
+            },
+        };
+        self.steady = Some(steady);
+        MenuAnchor {
+            head_top: anchor.ground - steady.rise,
+            foot_bottom: anchor.ground + steady.drop,
+            ..anchor
+        }
+    }
+
     /// The item whose "not now" tab is showing, if any.
     pub fn unavailable(&self) -> Option<usize> {
         self.unavailable.map(|(index, _)| index)
@@ -587,7 +629,12 @@ impl CreatureMenu {
 
     /// Re-attach the strip to the creature. Called every frame the creature can be drawn; called
     /// with `None` when it cannot, which parks the menu until it can be placed again.
+    ///
+    /// The strip follows the creature's feet, not the top of whatever pose it is in this frame:
+    /// a creature that stands where it is and fidgets keeps its strip still under the pointer,
+    /// and one that walks, hops or rides off takes the strip with it.
     pub fn attach(&mut self, anchor: Option<MenuAnchor>) {
+        let anchor = anchor.map(|anchor| self.steadied(anchor));
         self.placement = anchor.map(|anchor| place(&self.layout, anchor));
         self.usable = anchor.map(|anchor| anchor.usable);
         if let Some(side) = &mut self.side {
@@ -751,6 +798,8 @@ mod tests {
             centre_x,
             head_top,
             foot_bottom: head_top + 36.0 * display_scale,
+            ground: head_top + 36.0 * display_scale,
+            settled_head_top: head_top,
             art_scale: display_scale,
             grid: 1.0,
             usable: LocalRect {
@@ -978,6 +1027,66 @@ mod tests {
                 assert_eq!(placement.hover(&layout, outside), None);
             }
         }
+    }
+
+    /// A companion that stands where it is and fidgets — a shift of weight, a wash, a stretch
+    /// up — keeps its strip where it was under the pointer; one that walks or hops off takes it
+    /// along; and one that changes height for real, drawn smaller further back, is measured again.
+    #[test]
+    fn the_strip_follows_the_feet_not_each_fidget() {
+        let scale = 3.0;
+        let layout_menu = || CreatureMenu::new(7, MenuTarget::Member, false, 1, false);
+        let standing = anchor(900.0, 600.0, scale, 1.0);
+        let mut menu = layout_menu();
+        menu.attach(Some(standing));
+        let opened = menu.placement().expect("placed");
+        for top in [-6.0, -2.0, 3.0, 8.0] {
+            menu.attach(Some(MenuAnchor {
+                head_top: standing.head_top + top * scale,
+                foot_bottom: standing.foot_bottom - 2.0 * scale,
+                ..standing
+            }));
+            assert_eq!(
+                menu.placement(),
+                Some(opened),
+                "a fidget {top} art pixels tall"
+            );
+        }
+        // Opened mid-stretch, the strip is placed over the stretch, and stays there.
+        let mut stretched = layout_menu();
+        stretched.attach(Some(MenuAnchor {
+            head_top: standing.head_top - 6.0 * scale,
+            ..standing
+        }));
+        let high = stretched.placement().expect("placed");
+        assert!(high.y < opened.y, "clear of the stretch");
+        stretched.attach(Some(standing));
+        assert_eq!(stretched.placement(), Some(high));
+        // A step along, or a hop up onto a bench, moves it with the feet.
+        let along = MenuAnchor {
+            centre_x: standing.centre_x + 30.0,
+            head_top: standing.head_top - 5.0 * scale,
+            foot_bottom: standing.foot_bottom - 5.0 * scale,
+            ground: standing.ground - 5.0 * scale,
+            settled_head_top: standing.settled_head_top - 5.0 * scale,
+            ..standing
+        };
+        menu.attach(Some(along));
+        let moved = menu.placement().expect("placed");
+        assert_eq!(moved.y, opened.y - 5.0 * scale);
+        assert!(moved.x > opened.x);
+        // Drawn smaller, further back: a settle 8 art pixels shorter is a new height.
+        let smaller = MenuAnchor {
+            head_top: standing.head_top + 8.0 * scale,
+            settled_head_top: standing.settled_head_top + 8.0 * scale,
+            ..standing
+        };
+        menu.attach(Some(smaller));
+        assert_eq!(
+            menu.placement().expect("placed").y,
+            opened.y + 8.0 * scale,
+            "measured again"
+        );
     }
 
     fn open() -> CreatureMenu {

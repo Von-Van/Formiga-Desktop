@@ -565,7 +565,10 @@ the curious sniff. A resident at home does the same between spells of its usual 
 common pose in the village is no longer held still. A nap is taken curled, sprawled out on its side
 with a paw flopped ahead, or loafed sitting up (`nap_pose`): a trusting companion sprawls more, a
 wary one dozes sitting up, and a long nap now and then turns over into another way partway
-through. A walk can carry a mood (`walk_mood`): a trudge, head and tail low on half-size steps, when
+through (`nap_turn`). The turn is shown rather than swapped in a frame: half a second stirring
+where it lies, its breaths quickened, six tenths of a second gathered up in a crouch, and half a
+second stirring in the new way before it settles (`NAP_TURN_SECS`), with the settled ways either
+side as they were; `formiga-tools rest-sheet` ends with a row a body of one. A walk can carry a mood (`walk_mood`): a trudge, head and tail low on half-size steps, when
 it is tired or on its way to bed, and on some of a contented companion's walks — more of a playful
 one's, and more when it is walking over to say hello — a skip, bouncing up off its legs with its
 ears and tail high. Up from a nap a calm companion stretches and a lively one shakes itself, and
@@ -835,6 +838,20 @@ notch, the label tab, and everything around them stay click-through. macOS hit-t
 the shape call is a no-op exactly as it is for creature proxies; Windows clips the window with one
 `CreateRectRgn`/`SetWindowRgn` region.
 
+An open strip is placed from the creature's feet rather than from the crown of each frame
+(`CreatureMenu::attach`). `MenuAnchor` carries where its feet meet the ground and the crown of its
+plain settle besides this frame's crown; the first time the strip is placed it measures the
+creature from its feet as the taller of the settle and the pose it is in then, and keeps that
+height while it is open, so a shift of weight, a wash or a stretch leaves the strip where it is
+under the pointer, while a step, a hop or a ride moves the ground and the strip with it. It is
+measured again only if the settle itself changes height, as when the creature is shown at its
+set-back size. The strip's art pixels are the companion's own scale with a floor of
+`MENU_MIN_POINTS`, one and a half logical points, rounded up to whole drawable pixels
+(`gpu::ui::menu_scale`): a Small companion on a high-density display, drawn at half resolution,
+gets a strip at scale 4, as a Large one does, rather than fourteen-point cells, while the companion
+itself keeps its size. Two review pictures from `desktop_ui_review.rs` show both:
+`menu-fidgets.png` and `menu-small.png`.
+
 `MENU_RISE` is 35 art pixels above the crown of the head — the 21-pixel strip, a 1-pixel gap, the
 9-pixel label tab, and 4 pixels of clearance — and is fixed whether or not an item is hovered, so
 the strip never jumps as the cursor crosses it. With no room above, the strip flips below the feet
@@ -847,7 +864,11 @@ farther than 120 logical points from both the strip and the creature for 0.8 sec
 seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, gone inside
 its house, or gone (a guest that left), when its monitor changes, and when the settings window *gains* focus — the
 transition, not the standing state. There is no global click capture, and Escape is deliberately
-unavailable, because a proxy never takes keyboard focus.
+unavailable, because a proxy never takes keyboard focus. The keyboard way to the strip's two
+offers is the companion's profile in the notebook, which has Offer a snack and Offer a toy as plain
+buttons: `SettingsOutcome::offer` issues the same `OfferSnack` or `OfferToy`, and the profile says
+in words what came of it — held out, or not just now when the command returns false — and then,
+from `WorldEvent::OfferAnswered`, whether the companion took it or said no thanks.
 
 ## Offers
 
@@ -1458,9 +1479,15 @@ does, and its feet stay on the same ground (`resting_baseline` comes from the dr
 overlay bakes a second atlas for a resident (`OverlayRenderer::set_back_sprites`, about 1.5 MB)
 as soon as it starts up a path, keeps it while the village is out and lets it go when the
 village goes, and draws from it, with its face anchors, silhouette and baseline, whenever the
-companion stands that far back (`sprite_for`); bubbles, the menu anchor and the grab mask follow
-it, all through `gpu::drawn_set_back`, so the click target is read from the same size, pose and
-footing as the body the user sees. The
+companion is shown that far back (`sprite_for`); bubbles, the menu anchor and the grab mask follow
+it, so the click target is read from the same size, pose and footing as the body the user sees.
+Which size a companion is shown at is worked out once a tick by the app
+(`FormigaApp::carry_set_back`, from `formiga_art::shown_set_back`) and handed to every overlay and
+to the interaction proxies alike: it changes as soon as the companion crosses `SET_BACK_DEPTH`
+while it stands, but while it walks only on a footfall, a frame of its stride with a foot just
+down (which frames those are depends on the body), so a stroll up or down a path changes size on
+a planted step rather than mid-stride. Anyone the app has said nothing about falls back to
+`gpu::drawn_set_back` on its depth. The
 smallest minis, already drawn at the art's smallest size, stay that size. Houses set back are
 not drawn smaller; the drawing's height up the display, the houses in front of it and the front
 grass over its feet carry their depth.
@@ -2077,7 +2104,13 @@ placed exactly as the simulation places them.
 The village's bench, swing, hammock and book nook use the same stances: a companion that walks to
 one hops up onto the plank or the board, or into the hammock at the cloth's own height, and sits or
 dozes there, hopping down at the end; at the book nook it sits on the ground with its eyes on its
-lap. The sprites themselves stay still.
+lap. The drum stump is played the same way (`drum_stance`): standing beside it and turned to it,
+the companion reaches a paw down onto it, as a garden is picked, for two seconds — two taps — and
+then listens a second with its eyes on it, round after round, rather than starting an ordinary
+game with a toy of its own (its moment is an Idle one, not SoloPlay). A spot is sat on or played
+only if the walk there reached it; one cut short by the thirty-second limit is a plain stand
+wherever it got to. `formiga-tools village-life-sheet` shows the drum played from both sides. The
+sprites themselves stay still.
 
 ## Exact offline seed sharing
 
@@ -2814,7 +2847,9 @@ retains stationary looks and expressions. No game writes a journal entry.
 ## Colony history and the Today page (save v23)
 
 The notebook opens on Today, `clubhouse/today.rs`, page one of nine, written as the researcher's
-own notes on the day: what each companion is doing right now, standing on a strip of ground with
+own notes on the day: what each companion is doing right now (the meal by name while it eats,
+"Eating soup", on a window ledge as anywhere; otherwise up on a window, or what it is about),
+standing on a strip of ground with
 the bubble of the last thing it did today over its head; the day's highlight, pasted in with tape
 (the newest unread landmark, then the newest unread noteworthy moment, then the newest of each,
 stamped NEW while unread, with what the day book counted about the same companions beneath it);

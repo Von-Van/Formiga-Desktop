@@ -330,6 +330,46 @@ fn garden_subject(kind: GardenKind) -> (String, bool) {
     (format!("the {}", kind.label().to_lowercase()), plural)
 }
 
+/// What Right now says a companion is doing: the meal by name while it eats — on a window
+/// ledge as much as anywhere, the food being the thing worth knowing — then up on a window, and
+/// otherwise what it is about.
+fn doing_now(creature: &Creature) -> String {
+    if creature.state.action == ActionKind::Eat
+        && let Some(meal) = &creature.state.meal
+    {
+        return format!("Eating {}", dish(meal.food));
+    }
+    if creature.state.surface.window_key.is_some() {
+        return "Up on a window".to_owned();
+    }
+    capitalised(&crate::settings::activity_label(creature.state.action))
+}
+
+/// A food as Right now names it: short enough for a column, "soup" rather than "a bowl of soup".
+fn dish(food: formiga_core::meals::Food) -> &'static str {
+    use formiga_core::meals::Food;
+    match food {
+        Food::Berries => "berries",
+        Food::Seeds => "seeds",
+        Food::Peas => "peas",
+        Food::Strawberry => "a strawberry",
+        Food::Biscuit => "a biscuit",
+        Food::Cherries => "cherries",
+        Food::MushroomCap => "a mushroom",
+        Food::Apple => "an apple",
+        Food::PumpkinSlice => "pumpkin",
+        Food::MelonWedge => "melon",
+        Food::CakeSlice => "cake",
+        Food::Carrot => "a carrot",
+        Food::PeaPod => "a pea pod",
+        Food::Breadstick => "a breadstick",
+        Food::Walnut => "a walnut",
+        Food::Acorn => "an acorn",
+        Food::Soup => "soup",
+        Food::Porridge => "porridge",
+    }
+}
+
 fn capitalised(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| {
@@ -640,11 +680,7 @@ impl TodayState {
             .creatures
             .iter()
             .map(|creature| {
-                let doing = if creature.state.surface.window_key.is_some() {
-                    "Up on a window".to_owned()
-                } else {
-                    capitalised(&crate::settings::activity_label(creature.state.action))
-                };
+                let doing = doing_now(creature);
                 let mut job = egui::text::LayoutJob::simple(
                     doing.clone(),
                     doing_font.clone(),
@@ -1523,6 +1559,44 @@ fn today_tally(moments: &[&JournalEntry]) -> Vec<(formiga_core::BubbleIcon, usiz
 mod tests {
     use super::*;
     use time::macros::datetime;
+
+    /// Right now names the meal a companion is eating, short, even up on a window; anything else
+    /// up on a window is said to be there, and on the ground what it is about.
+    #[test]
+    fn right_now_names_the_meal() {
+        let mut creature = World::preview_adult(
+            [5; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &formiga_core::DesktopSnapshot::default(),
+        );
+        let appetite = formiga_core::meals::Appetite {
+            picky: false,
+            greedy: false,
+            sleepy: false,
+            favourite: formiga_core::meals::Food::Apple,
+        };
+        creature.state.action = ActionKind::Eat;
+        creature.state.meal = Some(formiga_core::meals::Meal::plan_seeded(
+            formiga_core::meals::Food::Soup,
+            8.0,
+            appetite,
+            1,
+        ));
+        creature.state.surface.window_key = Some(3);
+        assert_eq!(doing_now(&creature), "Eating soup");
+        creature.state.surface.window_key = None;
+        assert_eq!(doing_now(&creature), "Eating soup");
+        creature.state.action = ActionKind::Idle;
+        assert_eq!(doing_now(&creature), "Taking a quiet moment");
+        creature.state.surface.window_key = Some(3);
+        assert_eq!(doing_now(&creature), "Up on a window");
+        for food in formiga_core::meals::Food::ALL {
+            assert!(
+                dish(food).len() <= 14,
+                "{food:?} is short enough for a column"
+            );
+        }
+    }
 
     #[test]
     fn durations_and_ages_read_the_way_a_note_would() {

@@ -301,7 +301,9 @@ pub fn doings_sheet(path: PathBuf) -> Result<()> {
 /// action alone draws it, the six-beat rest going round and a blink on the beat; the second as it
 /// carries itself on the desktop, coming to rest with a settle, holding still, shifting its weight
 /// or looking off when it does, glancing about and blinking at its own pace. The two rows are what
-/// a rest looked like and what it looks like now, side by side.
+/// a rest looked like and what it looks like now, side by side. Under them, one row a body of a
+/// long nap turning over, a frame every tenth of a second from just before the turn: the stir,
+/// the crouch it gathers itself up in, and the way it settles into.
 pub fn rest_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 2;
     const COLUMNS: u32 = 30;
@@ -324,7 +326,9 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
     }
     let cell = FRAME_SIZE * SCALE;
     let width = COLUMNS * cell;
-    let height = subjects.len() as u32 * (2 * cell + GAP);
+    let rests = subjects.len() as u32 * (2 * cell + GAP);
+    // Under the rests, one row each of a long nap turning over, a tenth of a second a column.
+    let height = rests + subjects.len() as u32 * (cell + GAP);
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for chunk in pixels.chunks_exact_mut(4) {
         chunk.copy_from_slice(&[236, 234, 228, 255]);
@@ -380,6 +384,66 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
                     SCALE,
                 );
             }
+        }
+    }
+    for (index, subject) in subjects.iter().enumerate() {
+        let mut creature = subject.clone();
+        creature.state.attention = None;
+        creature.state.beat = None;
+        creature.state.flourish = None;
+        creature.state.facing_right = true;
+        creature.state.drives = Drives::default();
+        creature.state.action = ActionKind::Sleep;
+        creature.state.action_duration = 40.0;
+        creature.state.nudge = None;
+        let motion = formiga_art::MotionSignature::for_creature(&creature);
+        // The first long nap of this companion's that turns over, and when.
+        let Some((began, turn_at)) = (0..400).map(|nap| nap as f32 * 37.0).find_map(|began| {
+            let first = motion.nap_pose(began, 0.0, 40.0, true);
+            (0..400)
+                .map(|tenth| tenth as f32 / 10.0)
+                .find(|&into| motion.nap_pose(began, into, 40.0, true) != first)
+                .map(|at| (began, at))
+        }) else {
+            continue;
+        };
+        for column in 0..COLUMNS {
+            let into = turn_at - 0.6 + column as f32 / 10.0;
+            creature.state.action_elapsed = into;
+            creature.state.presence = Presence {
+                clock: began + into,
+                since: into,
+                last: Some(PresenceMark {
+                    x: creature.state.position.x,
+                    depth: 0.0,
+                    window: None,
+                }),
+                ..Presence::default()
+            };
+            let body = formiga_art::BodyPresentation::for_creature(&creature);
+            let face = CreatureRenderer::resolve_face_state_among(
+                &creature,
+                &[],
+                CursorSnapshot::default(),
+                false,
+                false,
+            );
+            let rendered = CreatureRenderer::render_composited_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                body.facing_right,
+                false,
+                face,
+            );
+            blit_scaled(
+                &mut pixels,
+                width,
+                column * cell,
+                rests + index as u32 * (cell + GAP),
+                &rendered.rgba_bytes(),
+                SCALE,
+            );
         }
     }
     write_png(&path, width, height, &pixels)?;
