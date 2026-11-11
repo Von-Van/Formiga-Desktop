@@ -484,6 +484,18 @@ impl CreatureState {
         *play = None;
     }
 
+    /// The game it is playing, where the game is what is drawn: at play, or riding down under an
+    /// umbrella, with nothing bigger in front of it — no moment of attention and no small beat of
+    /// its own. The art draws the thing in its paws from this, and talk only remarks on a catch
+    /// or a topple it can see, so a bubble never describes a moment that was never shown.
+    pub fn play_shown(&self) -> Option<&crate::play::Play> {
+        (matches!(self.action, ActionKind::SoloPlay | ActionKind::Landing)
+            && self.attention.is_none()
+            && self.beat.is_none())
+        .then_some(self.play.as_ref())
+        .flatten()
+    }
+
     /// Still on its way to where it is going to sleep. A nap begins with the walk to the pillow, a
     /// friend, or the spot the colony gathers at, and until it gets there the companion is walking
     /// to bed, drowsy, not already asleep and gliding across the floor.

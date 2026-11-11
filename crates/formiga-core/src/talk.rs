@@ -180,6 +180,11 @@ pub struct TalkBubble {
     pub saying: Saying,
     /// Seconds since it appeared; below zero, it is still waiting to be said, as an answer does.
     pub age: f32,
+    /// Whom an answer answers. It is said only if they are still there to hear it.
+    pub(crate) answering: Option<crate::CreatureId>,
+    /// Seconds an answer has waited past its time, for room beside a companion answering the
+    /// person at the desk.
+    pub(crate) held: f32,
 }
 
 impl TalkBubble {
@@ -223,6 +228,8 @@ mod tests {
             creature_id: 1,
             saying: Saying::one(TalkStyle::Chat, TalkTopic::Wave),
             age: -0.5,
+            answering: None,
+            held: 0.0,
         };
         assert_eq!(bubble.growth(false), None);
         bubble.age = 0.05;

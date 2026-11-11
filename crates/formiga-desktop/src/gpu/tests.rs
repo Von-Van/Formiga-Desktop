@@ -953,7 +953,7 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
     for (name, top) in [("adult", adult_top), ("mini", mini_top)] {
         let scale = 3.0;
         let head_top = 400.0 + f32::from(top) * scale;
-        let (_, y) = talk_origin(700.0, head_top, scale, DRAWABLE, size);
+        let y = talk_origin(700.0, (head_top, head_top + 120.0), scale, DRAWABLE, size).y;
         assert_eq!(
             y + size.1 * scale,
             head_top - scale,
@@ -973,12 +973,14 @@ fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
         (frame.height / TALK_DETAIL) as f32,
     );
     for scale in [2.0_f32, 3.0, 4.0] {
-        let (x, y) = talk_origin(700.0, 400.0, scale, DRAWABLE, size);
+        let TalkPlacement { x, y, below } =
+            talk_origin(700.0, (400.0, 520.0), scale, DRAWABLE, size);
+        assert!(!below);
         // Centred: the tail's column is the creature's own centre column.
         assert_eq!(x + (size.0 / 2.0).floor() * scale, 700.0);
         // Exactly one art pixel of daylight between the tip and the crown.
         assert_eq!(400.0 - (y + size.1 * scale), scale, "one art pixel of gap");
-        let quad = talk_quad(frame, x, y, scale, 1.0, DRAWABLE);
+        let quad = talk_quad(frame, x, y, scale, false, 1.0, DRAWABLE);
         let (left, top, right, bottom) = quad_pixels(&quad);
         close(right - left, size.0 * scale, "bubble width");
         close(bottom - top, size.1 * scale, "bubble height");
@@ -988,19 +990,71 @@ fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
 }
 
 #[test]
-fn a_bubble_at_the_top_or_the_edge_of_a_display_stays_on_it() {
+fn a_bubble_at_the_top_of_a_display_hangs_under_its_creature_tail_up() {
+    let scale = 4.0;
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
+    let height = size.1 * scale;
+    // A creature with its head at the very top of the display: no room above, so the bubble
+    // goes one art pixel under its lowest drawn row, turned over so the tail points up at it,
+    // rather than pressed against the top edge over its face.
+    let (head_top, foot_bottom) = (6.0, 6.0 + 40.0 * scale);
+    let placement = talk_origin(700.0, (head_top, foot_bottom), scale, DRAWABLE, size);
+    assert!(placement.below);
+    assert_eq!(placement.y, foot_bottom + scale, "one art pixel of gap");
+    assert!(placement.y + height <= DRAWABLE.height as f32);
+    // Its picture goes on the body under the tail, as far from the tail as it sits upright.
+    let upright = TalkPlacement {
+        below: false,
+        ..placement
+    };
+    let (_, up) = upright.icon_at();
+    let (_, down) = placement.icon_at();
+    assert_eq!(up, TALK_ICON_AT.1 as f32);
+    assert_eq!(down + TALK_ICON as f32, size.1 - up);
+    // Drawn upside down: the same rows of the sheet, with the top and bottom swapped.
+    let frame = TalkSheet::frame(
+        formiga_core::talk::TalkStyle::Chat,
+        formiga_core::BubbleGrowth::Full,
+    );
+    let flipped = talk_quad(frame, placement.x, placement.y, scale, true, 1.0, DRAWABLE);
+    let straight = talk_quad(frame, placement.x, placement.y, scale, false, 1.0, DRAWABLE);
+    assert_eq!(flipped[0].uv[1], straight[5].uv[1]);
+    assert_eq!(flipped[5].uv[1], straight[0].uv[1]);
+    // With room above, the same creature lower down keeps its bubble over its head.
+    let lower = talk_origin(700.0, (400.0, 560.0), scale, DRAWABLE, size);
+    assert!(!lower.below);
+    // A display with no room either way keeps the bubble on it, against the top.
+    let tiny = PhysicalSize::new(1200, 100);
+    let cramped = talk_origin(700.0, (6.0, 90.0), scale, tiny, size);
+    assert!(!cramped.below);
+    assert_eq!(cramped.y, 0.0);
+}
+
+#[test]
+fn a_milestone_bubble_on_a_drawable_narrower_than_itself_does_not_panic() {
+    assert_eq!(milestone_centre_x(700.0, 120.0, 1440.0), 700.0);
+    assert_eq!(milestone_centre_x(10.0, 120.0, 1440.0), 60.0);
+    assert_eq!(milestone_centre_x(1435.0, 120.0, 1440.0), 1380.0);
+    // A surface recovered with no size, or one narrower than the bubble.
+    assert_eq!(milestone_centre_x(0.0, 120.0, 0.0), 60.0);
+    assert_eq!(milestone_centre_x(50.0, 120.0, 100.0), 60.0);
+}
+
+#[test]
+fn a_bubble_at_the_edge_of_a_display_stays_on_it() {
     let scale = 4.0;
     let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
     let width = size.0 * scale;
-    let height = size.1 * scale;
-    // A creature with its head at the very top of the display.
-    let (_, y) = talk_origin(700.0, 6.0, scale, DRAWABLE, size);
-    assert_eq!(y, 0.0);
-    assert!(y + height <= DRAWABLE.height as f32);
-    // And one pressed against either side.
-    let (left, _) = talk_origin(2.0, 400.0, scale, DRAWABLE, size);
+    let left = talk_origin(2.0, (400.0, 560.0), scale, DRAWABLE, size).x;
     assert_eq!(left, 0.0);
-    let (right, _) = talk_origin(DRAWABLE.width as f32 - 2.0, 400.0, scale, DRAWABLE, size);
+    let right = talk_origin(
+        DRAWABLE.width as f32 - 2.0,
+        (400.0, 560.0),
+        scale,
+        DRAWABLE,
+        size,
+    )
+    .x;
     assert_eq!(right, DRAWABLE.width as f32 - width);
 }
 

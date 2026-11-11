@@ -10,14 +10,10 @@ use formiga_core::ColonyObjectKind;
 use formiga_core::play::{Play, PlayMove, Plaything as Thing};
 use std::f32::consts::PI;
 
-/// The game a creature is playing, if it is playing and not doing something bigger.
+/// The game a creature is playing, if it is playing and not doing something bigger. Talk reads
+/// the same [`formiga_core::CreatureState::play_shown`], so it remarks only on what is drawn.
 pub(super) fn play_shown(creature: &Creature) -> Option<&Play> {
-    let state = &creature.state;
-    (matches!(state.action, ActionKind::SoloPlay | ActionKind::Landing)
-        && state.attention.is_none()
-        && state.beat.is_none())
-    .then_some(state.play.as_ref())
-    .flatten()
+    creature.state.play_shown()
 }
 
 /// The pose a move strikes. The ride down under an umbrella keeps the landing's own clip.
