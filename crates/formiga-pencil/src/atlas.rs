@@ -75,6 +75,9 @@ pub(crate) struct Atlas {
     /// What has changed since the texture was last sent: the rows, or all of it after growing.
     pub(crate) dirty: Option<(usize, usize)>,
     pub(crate) grown: bool,
+    /// Set when a glyph found no room even at the atlas's tallest; the plugin then starts the
+    /// atlas again on the next frame.
+    pub(crate) full: bool,
 }
 
 impl Atlas {
@@ -87,6 +90,7 @@ impl Atlas {
             shelf: (0, 0, 0),
             dirty: None,
             grown: true,
+            full: false,
         }
     }
 
@@ -109,7 +113,7 @@ impl Atlas {
 
     /// `glyph` of `face`, at `em` texels to the em, with every texel at least `threshold` covered
     /// drawn solid and the rest left out. `None` for a glyph with nothing to draw (a space), or
-    /// once the atlas is full.
+    /// once the atlas is full, which is not remembered: the glyph is drawn once there is room.
     pub(crate) fn glyph(
         &mut self,
         faces: &[Face],
@@ -129,7 +133,9 @@ impl Atlas {
         }
         let placed = raster(&faces[face], glyph, key.em as f32 / 16.0, threshold)
             .and_then(|(mask, size, offset)| self.pack(&mask, size, offset));
-        self.placed.insert(key, placed);
+        if placed.is_some() || !self.full {
+            self.placed.insert(key, placed);
+        }
         placed
     }
 
@@ -145,6 +151,7 @@ impl Atlas {
         }
         while top + h + 2 * PAD > self.height {
             if self.height >= MOST_HEIGHT {
+                self.full = true;
                 return None;
             }
             self.height *= 2;
@@ -237,5 +244,32 @@ impl skrifa::outline::OutlinePen for Pen<'_> {
 
     fn close(&mut self) {
         self.0.close_path();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_glyph_turned_away_by_a_full_atlas_is_not_remembered_as_blank() {
+        let faces = [Face::new(crate::REGULAR), Face::new(crate::BOLD)];
+        let mut atlas = Atlas::new();
+        let letters: Vec<_> = ('a'..='z').filter_map(|chr| faces[0].glyph(chr)).collect();
+        let mut em = 40.0;
+        while !atlas.full {
+            for id in &letters {
+                atlas.glyph(&faces, 0, *id, em, 84);
+            }
+            em += 1.0;
+        }
+        let key = Key {
+            face: 0,
+            glyph: letters[0].to_u32(),
+            em: (em * 16.0).round() as u32,
+            threshold: 84,
+        };
+        assert!(atlas.glyph(&faces, 0, letters[0], em, 84).is_none());
+        assert!(!atlas.placed.contains_key(&key));
     }
 }
