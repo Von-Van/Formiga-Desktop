@@ -1076,6 +1076,8 @@ fn placed_menu(below: bool) -> (MenuLayout, [MenuIcon; 4], MenuPlacement) {
             centre_x: 700.0,
             head_top,
             foot_bottom: head_top + 36.0 * scale,
+            ground: head_top + 36.0 * scale,
+            settled_head_top: head_top,
             art_scale: scale,
             grid: 1.0,
             usable,
@@ -1541,4 +1543,33 @@ fn clicks_share_the_overlays_order_and_size() {
     assert!(drawn_set_back(formiga_core::SET_BACK_DEPTH, true));
     assert!(!drawn_set_back(formiga_core::SET_BACK_DEPTH, false));
     assert!(!drawn_set_back(formiga_core::SET_BACK_DEPTH - 0.01, true));
+}
+
+/// A menu's strip keeps the companion's own scale where that is big enough, and is never drawn
+/// smaller than one and a half points an art pixel: a Small companion on a high-density display
+/// gets a strip as big as a Large one's rather than one too small to hit, on whole drawable
+/// pixels so it stays crisp. The companion itself is drawn at its own size regardless.
+#[test]
+fn a_small_companions_menu_is_still_big_enough_to_use() {
+    // Small, Medium and Large on a plain display: the companion's own scale.
+    for scale in [2, 3, 4] {
+        assert_eq!(menu_scale(scale, 1.0, 1.0), f32::from(scale));
+    }
+    // On a Retina display Small is drawn at half resolution, so the strip goes up to a whole
+    // number of drawable pixels: 4, two points an art pixel.
+    assert_eq!(menu_scale(2, 2.0, 2.0), 4.0);
+    assert_eq!(menu_scale(3, 2.0, 1.0), 3.0);
+    assert_eq!(menu_scale(4, 2.0, 2.0), 4.0);
+    for (display_scale, factor, grid) in
+        [(2, 2.0, 2.0), (2, 1.5, 1.0), (3, 2.0, 1.0), (2, 1.25, 1.0)]
+    {
+        let scale = menu_scale(display_scale, factor, grid);
+        assert!(
+            scale / factor >= MENU_MIN_POINTS,
+            "{display_scale} at {factor}x"
+        );
+        assert_eq!(scale % grid, 0.0, "on the drawable's grid");
+        let cell_points = formiga_art::MENU_CELL as f32 * scale / factor;
+        assert!(cell_points >= 21.0, "{cell_points} points a cell");
+    }
 }

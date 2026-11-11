@@ -41,6 +41,8 @@ use atlas::*;
 use occlusion::*;
 pub(crate) use occlusion::{monitor_has_fullscreen_window, visible_occlusion_rects};
 pub use train::TrainView;
+#[cfg(test)]
+pub(crate) use ui::menu_scale as ui_menu_scale;
 use village::*;
 
 #[repr(C)]
