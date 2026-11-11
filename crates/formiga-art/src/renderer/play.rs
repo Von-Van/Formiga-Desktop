@@ -47,6 +47,13 @@ pub fn play_pose(play: &Play) -> Option<MealPose> {
     }
 }
 
+/// Whether a game is drawn calm: with motion reduced, the thing is held still in the paws
+/// whatever the move, rather than tossed, bounced, swung or flown. The ride down under an umbrella
+/// is the exception, being held still overhead already.
+pub(super) fn calm(creature: &Creature, play: &Play) -> bool {
+    creature.state.presence.reduced && play.now().0 != PlayMove::Ride
+}
+
 /// The face each move wears.
 pub fn play_face(play: &Play) -> ExpressionKind {
     let (step, _, progress) = play.now();
@@ -65,6 +72,9 @@ pub fn play_face(play: &Play) -> ExpressionKind {
 /// Where the eyes go: up after something thrown high or flown, down at something set going on
 /// the ground, after a plane as it goes.
 pub(super) fn play_gaze(creature: &Creature, play: &Play) -> Option<GazeDirection> {
+    if calm(creature, play) {
+        return None;
+    }
     let forward = if creature.state.facing_right { 1 } else { -1 };
     let (step, _, progress) = play.now();
     match step {
@@ -138,6 +148,24 @@ pub fn play_held(play: &Play, own_colourway: u8) -> HeldThing {
     }
 }
 
+/// What a game is played with, held still: the thing itself, not turning, and an umbrella or a
+/// stick folded or upright rather than in whatever picture the move calls for.
+fn calm_held(play: &Play, own_colourway: u8) -> HeldThing {
+    let mut still = *play;
+    // The first move of every game picks the thing up, and pictures it as itself.
+    still.elapsed = 0.0;
+    match play_held(&still, own_colourway) {
+        HeldThing::Toy {
+            kind, colourway, ..
+        } => HeldThing::Toy {
+            kind,
+            colourway,
+            spin: 0,
+        },
+        held => held,
+    }
+}
+
 /// How far from where the frame holds things the thing is in this move, in frame pixels with the
 /// frame facing right: up is negative.
 pub fn play_offset(play: &Play) -> (i32, i32) {
@@ -184,6 +212,11 @@ pub(super) fn play_placement(
     clip: BodyClip,
     baked: HeldPlacement,
 ) -> HeldPlacement {
+    // With motion reduced the thing itself stays still in the paws, the hold the clip bakes,
+    // and whatever the move would have done with it is left out.
+    if calm(creature, play) {
+        return baked.holding(calm_held(play, toy_colourway(&creature.appearance)));
+    }
     let thing = play_held(play, toy_colourway(&creature.appearance));
     // Keeping it up off the paw follows the paw itself.
     if clip == BodyClip::Action(ActionKind::SoloPlay) {
@@ -250,6 +283,45 @@ mod tests {
                 t += 0.25;
             }
             assert!(places.len() >= 4, "{thing:?} is held still");
+        }
+    }
+
+    /// With motion reduced, switched on in the middle of a toss, the ball comes back to the paws
+    /// and stays there, and the body keeps play's own calm hold, for the rest of the game.
+    #[test]
+    fn reduced_motion_holds_the_thing_still_in_the_paws() {
+        let mut creature = player(Thing::Toy(0));
+        let toss = (0..64)
+            .map(|seed| Play::plan(Thing::Toy(0), 8.0, &mut ChaCha12Rng::seed_from_u64(seed)))
+            .find_map(|play| {
+                let start = play
+                    .moves()
+                    .iter()
+                    .find(|(step, _)| *step == PlayMove::TossHigh)?
+                    .1;
+                Some((play, start))
+            });
+        let (play, start) = toss.expect("some game tosses a ball high");
+        creature.state.play = Some(play);
+        creature.state.presence.reduced = true;
+        let mut t = start + 0.6;
+        while t < play.length {
+            creature.state.play.as_mut().unwrap().elapsed = t;
+            let body = BodyPresentation::for_creature(&creature);
+            assert_eq!(body.clip, BodyClip::Action(ActionKind::SoloPlay), "at {t}");
+            let baked =
+                CreatureRenderer::render_body_frame(&creature.appearance, body.clip, 0, true).held;
+            let held = held_now(&creature, body.clip, baked).expect("held");
+            assert_eq!(
+                held,
+                baked.unwrap().holding(HeldThing::Toy {
+                    kind: 0,
+                    colourway: toy_colourway(&creature.appearance),
+                    spin: 0,
+                }),
+                "at {t}"
+            );
+            t += 0.2;
         }
     }
 

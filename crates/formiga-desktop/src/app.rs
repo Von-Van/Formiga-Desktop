@@ -738,6 +738,8 @@ impl FormigaApp {
             }
         }
         let dragging = world.is_dragging();
+        // Where each display's chosen applications hide the colony, as the overlay works it out.
+        let mut covered_by_monitor: BTreeMap<u64, Vec<DesktopRect>> = BTreeMap::new();
         for proxy in self.interaction_proxies.values_mut() {
             let Some(creature) = world
                 .save
@@ -768,6 +770,21 @@ impl FormigaApp {
                 && monitor_has_fullscreen_window(monitor.bounds, &self.cached_windows);
             // Out of sight behind a house in the village: a click there is the house's.
             let behind_a_house = !dragging_this && world.behind_a_house(creature.id);
+            // Behind a chosen application's window, the part of it the overlay leaves undrawn is
+            // the application's to click. Held in the hand, it is drawn over everything.
+            if dragging_this {
+                proxy.set_covered(&[]);
+            } else {
+                let covered = covered_by_monitor.entry(monitor.id).or_insert_with(|| {
+                    crate::gpu::visible_occlusion_rects(
+                        monitor.bounds,
+                        &self.cached_windows,
+                        &world.save.settings.application_occlusion_rules,
+                        false,
+                    )
+                });
+                proxy.set_covered(covered);
+            }
             proxy.sync(
                 creature,
                 &world.save.settings,
@@ -777,6 +794,10 @@ impl FormigaApp {
                 ProxyRuntimeState {
                     dragging: dragging_this,
                     occluded: fullscreen_hidden || behind_a_house,
+                    set_back: crate::gpu::drawn_set_back(
+                        creature.state.depth,
+                        world.save.home.is_active(),
+                    ),
                 },
             );
         }
@@ -812,14 +833,14 @@ impl FormigaApp {
                 button: MouseButton::Right,
                 ..
             } => {
-                self.toggle_creature_menu(event_loop, window_id);
+                self.toggle_creature_menu(event_loop);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
                 ..
             } if platform::secondary_click_modifier() => {
-                self.toggle_creature_menu(event_loop, window_id);
+                self.toggle_creature_menu(event_loop);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -848,7 +869,7 @@ impl FormigaApp {
                     .collect();
                 let draw_order = self.draw_order();
                 if let Some((target_window, target_creature)) =
-                    resolve_press_target(window_id, &hits, &draw_order)
+                    resolve_press_target(&hits, &draw_order)
                 {
                     let started = self.world.as_mut().is_some_and(|world| {
                         world.handle_command(
@@ -895,17 +916,22 @@ impl FormigaApp {
     }
 
     /// Back to front, so a press lands on whoever is drawn on top. The guest is drawn last.
+    /// Every companion on stage in the order the overlay draws them, back to front, so where two
+    /// overlap a click goes to the one drawn in front.
     fn draw_order(&self) -> Vec<CreatureId> {
         self.world
             .as_ref()
             .map(|world| {
-                world
-                    .save
-                    .creatures
-                    .iter()
-                    .chain(world.save.visitors.on_stage())
-                    .map(|creature| creature.id)
-                    .collect()
+                crate::gpu::back_to_front(
+                    world
+                        .save
+                        .creatures
+                        .iter()
+                        .chain(world.save.visitors.on_stage()),
+                )
+                .into_iter()
+                .map(|creature| creature.id)
+                .collect()
             })
             .unwrap_or_default()
     }
@@ -1139,6 +1165,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             layout: menu.layout(),
                             placement,
                             hovered: menu.hovered(),
+                            unavailable: menu.unavailable(),
                             side: menu.side().and_then(|side| {
                                 side.placement().map(|placement| SideView {
                                     layout: side.layout(),
@@ -1335,20 +1362,17 @@ fn colony_bounds(bounds: DesktopRect, insets: Option<platform::Insets>) -> Deskt
     }
 }
 
-/// Chooses which interaction proxy owns a left-press.
+/// Chooses which interaction proxy owns a press.
 ///
-/// The window that receives the press wins whenever its own alpha mask covers the cursor. When it
-/// does not — a transparent part of an overlapping proxy swallowed the click — the press goes to
-/// the mask that does cover the cursor, preferring the creature drawn last, because that is the
-/// one the user can actually see on top.
+/// Of the masks that cover the cursor, the creature drawn last wins, because that is the one the
+/// user can actually see on top: whatever window the press arrived at, whether a transparent part
+/// of an overlapping proxy or the opaque body of one drawn behind.
 fn resolve_press_target<I: Copy + PartialEq>(
-    pressed: I,
     hits: &[(I, CreatureId)],
     draw_order: &[CreatureId],
 ) -> Option<(I, CreatureId)> {
-    if let Some(entry) = hits.iter().find(|(id, _)| *id == pressed) {
-        return Some(*entry);
-    }
+    // Whichever window the press arrived at, it goes to the companion drawn in front: native
+    // proxies are stacked in no particular order, and one behind can be handed the press.
     hits.iter()
         .max_by_key(|(_, creature)| draw_order.iter().position(|id| id == creature))
         .copied()

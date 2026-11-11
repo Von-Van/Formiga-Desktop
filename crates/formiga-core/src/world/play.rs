@@ -11,6 +11,8 @@ use crate::play::{Play, own_toy};
 impl World {
     /// Start, carry on or clear everyone's play. Called once, at the end of every tick.
     pub(super) fn carry_play(&mut self, now: OffsetDateTime, dt: f32) {
+        // Paused, a game holds where it is, like everything else the colony is doing.
+        let dt = if self.save.settings.paused { 0.0 } else { dt };
         let belongings: Vec<ColonyObjectKind> = self
             .save
             .objects

@@ -1042,10 +1042,24 @@ fn an_open_menu_draws_one_frame_one_quad_per_cell_and_one_label_tab() {
         layout: &layout,
         placement,
         hovered,
+        unavailable: None,
         side: None,
     };
     // Nothing hovered: the frame and its four cells, and no tab.
     assert_eq!(menu_quads(view(None), DRAWABLE).len(), 6 * 5);
+    // An item that could not be done: "not now" under it, in place of any hovered label.
+    let not_now = menu_quads(
+        MenuView {
+            unavailable: Some(0),
+            ..view(Some(2))
+        },
+        DRAWABLE,
+    );
+    assert_eq!(not_now.len(), 6 * 6);
+    let tab = UiAtlasRenderer::menu_unavailable_label();
+    let sprite = quad_sprite(&not_now[not_now.len() - 6..]);
+    close(sprite.0, tab.x as f32, "not-now sprite x");
+    close(sprite.2, tab.width as f32, "not-now sprite width");
     let hovered = menu_quads(view(Some(2)), DRAWABLE);
     assert_eq!(hovered.len(), 6 * 6);
 
@@ -1108,6 +1122,7 @@ fn the_label_tab_hangs_under_the_hovered_cell_and_inside_the_strip() {
                 layout: &layout,
                 placement,
                 hovered: Some(hovered),
+                unavailable: None,
                 side: None,
             },
             DRAWABLE,
@@ -1161,6 +1176,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
             layout: &layout,
             placement,
             hovered: None,
+            unavailable: None,
             side: None,
         },
         DRAWABLE,
@@ -1172,6 +1188,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
             layout: &layout,
             placement,
             hovered: None,
+            unavailable: None,
             side: Some(SideView {
                 layout: &side_layout,
                 placement: side,
@@ -1215,6 +1232,7 @@ fn a_menu_under_a_creature_flips_only_its_frame() {
             layout: &layout,
             placement,
             hovered: Some(0),
+            unavailable: None,
             side: None,
         },
         DRAWABLE,
@@ -1442,4 +1460,31 @@ fn the_habitat_editor_keeps_red_areas_when_green_ones_fill_its_buffer() {
     );
     // Nothing is cut when it all fits.
     assert_eq!(keep_excluded_zones(vec![green; 12], vec![red; 6]).len(), 18);
+}
+
+/// Clicks resolve against the order the overlay draws in: further back in the village first,
+/// everyone as deep as each other in colony order, so swapping two residents' depths swaps which
+/// one is in front. And whoever is far enough back to be drawn smaller has its mask read smaller.
+#[test]
+fn clicks_share_the_overlays_order_and_size() {
+    let created = time::macros::datetime!(2026-01-01 12:00 UTC);
+    let world = World::new([71; 32], created, &formiga_core::DesktopSnapshot::default());
+    let mut first = world.save.creatures[0].clone();
+    let mut second = first.clone();
+    second.id = first.id + 1;
+    let order = |a: &Creature, b: &Creature| {
+        back_to_front([a, b])
+            .into_iter()
+            .map(|creature| creature.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(order(&first, &second), [first.id, second.id]);
+    first.state.depth = 0.0;
+    second.state.depth = 0.5;
+    assert_eq!(order(&first, &second), [second.id, first.id]);
+    (first.state.depth, second.state.depth) = (second.state.depth, first.state.depth);
+    assert_eq!(order(&first, &second), [first.id, second.id]);
+    assert!(drawn_set_back(formiga_core::SET_BACK_DEPTH, true));
+    assert!(!drawn_set_back(formiga_core::SET_BACK_DEPTH, false));
+    assert!(!drawn_set_back(formiga_core::SET_BACK_DEPTH - 0.01, true));
 }
