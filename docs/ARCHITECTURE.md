@@ -2132,8 +2132,11 @@ body plans in turn, and one in four exploratory — are rendered and scored. `ta
 the closest shaped candidate, the most coherent of the 24 closest, the closest on another body plan,
 and the closest exploratory one. Each preview contains its generated creature, seed, recipe, and
 display-only affinity score; image bytes, analysis pixels, and feature vectors leave scope after
-matching. The Studio keeps only the file path, in memory and only while the takes are on show, so
-"Four more takes" can search again with a new seed. This is not semantic recognition.
+matching. The search runs on a thread of its own and comes back as `UserEvent::ReferenceMatched`,
+numbered so that only the newest search is shown; meanwhile the Studio says it is reading the
+picture and offers no second search. The Studio keeps only the file path, in memory and only while
+the takes are on show, so "Four more takes" can search again with a new seed. This is not semantic
+recognition.
 
 Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
 generation uses an independent `modular-design-v1` stream, leaving legacy gene streams intact.
@@ -2342,7 +2345,8 @@ back one after another walks the colony back through them in order. For a compan
 removed, replaced, started over, or welcomed from the studio, the membership is rebuilt from the
 old list: everyone still here keeps their current self, with the role they had, so a mini has its
 own big version back; anyone gone comes back exactly as saved, with its id, memories, bonds and shared history with those
-still here, standing where it or its stand-in last stood — and the next tick looks at the displays
+still here, and with nothing of the moment it left in (`CreatureState::forget_runtime`: outside its
+house, at the front of the village ground, in no scene, meal or game, as a colony opens), standing where it or its stand-in last stood — and the next tick looks at the displays
 afresh, as a colony just opened does, in case that was on a display unplugged since; whoever the change brought in
 goes, runtime and all; anyone who arrived on their own since stays; and the cottage order goes back
 with them. A colony with no room to bring everyone back refuses and keeps the change to try again.
@@ -2863,7 +2867,14 @@ ledges and come down", "everyone holds still until you resume"), a companion's n
 ("Moss will now wander farther from home"), a weekly routine saved ("Relax begins at 22:00 today"),
 or resumed, or a routine kept from the current preferences, a quiet while ("until 22:05"), a spot or
 a garden put out or put away, and the village moved. Before preferences are applied the footer
-names what is waiting. Every sentence is a pure function of what changed, and each is tested. The behaviour checkboxes, routines and
+names what is waiting.
+
+**One set of preferences.** The colony's preferences are the ones kept; the notebook holds only
+what it has changed on top of them. Each frame, and whenever the notebook is brought forward while
+open, `rebase_preferences` carries the notebook's unapplied changes over onto the colony's current
+preferences, field by field, so a pause or a launch-at-login change made from the tray, or a
+habitat applied in the editor, shows at once and is never put back by the notebook's Apply. Only a
+notebook opened afresh, or a colony restored from a backup, starts again from the colony's own. Every sentence is a pure function of what changed, and each is tested. The behaviour checkboxes, routines and
 updates explain themselves on hover.
 
 ### The pencil hand
@@ -3449,9 +3460,13 @@ same `trip::TripState` a trip to Hill is, holding Battle's open session instead 
 train, and when the app is started, are the same for both; see [The train](#the-train). A session's
 files are under `battle/` in the data directory (`battle/session.rs`, kept by `expansion::files`):
 a fresh `battle/<session>/` with the snapshot, where Battle answers, and `battle/session.json`, the
-marker that says a session is open, holding the session and its snapshot's checksum. If Desktop
-stops while Battle is open, the next start keeps what the result says so far, clears the files and
-brings the colony home by train; a match Battle finishes after that is not kept.
+marker that says a session is open, holding the session, its snapshot's checksum and, once Battle
+is started, the process it was started as (`companion_app::Started`: its number and program, which
+on macOS is LaunchServices' `open -W`, alive as long as Battle is). If Desktop stops while Battle is
+open, the next start keeps what the result says so far. If that process is still running the same
+program, the colony stays away (`SessionState::Away`) and `Expansion::watch_again` looks every two
+seconds until it has ended, then the session finishes as if Desktop had never stopped, keeping every
+later match by its id. Otherwise the files are cleared and the train brings the colony home.
 
 `formiga-battle-stub` stands in for Battle (see `docs/BUILD.md`), reading and answering through the
 contract's own `open_session` and winning the Backyard Cup, and `formiga-tools`'s `battle_session`

@@ -76,6 +76,17 @@ pub enum UserEvent {
     Farm(crate::farm::FarmEvent),
     /// Formiga Battle has exited.
     Battle(crate::battle::BattleEvent),
+    /// The search for companions like a reference picture has finished, on its own thread.
+    ReferenceMatched(ReferenceSearch),
+}
+
+/// What a search for companions like a reference picture found: the takes, or why there are none.
+#[derive(Debug)]
+pub struct ReferenceSearch {
+    /// Which search this is, so one overtaken by a newer search is not shown.
+    pub search: u64,
+    pub path: PathBuf,
+    pub takes: Result<Vec<crate::reference_match::ReferenceMatch>>,
 }
 
 impl From<egui_winit::accesskit_winit::Event> for UserEvent {
@@ -170,6 +181,10 @@ pub struct FormigaApp {
     companion_releases: BTreeMap<&'static str, CompanionRelease>,
     /// When the companion apps were last looked for because the pointer came over the tray icon.
     tray_looked: Option<Instant>,
+    /// How many searches for companions like a reference picture have been started, and the
+    /// number of the one running now, if one is. Only that one's takes are shown.
+    reference_searches: u64,
+    reference_search: Option<u64>,
 }
 
 impl FormigaApp {
@@ -219,6 +234,8 @@ impl FormigaApp {
             save_trouble: None,
             companion_releases: BTreeMap::new(),
             tray_looked: None,
+            reference_searches: 0,
+            reference_search: None,
         })
     }
 
@@ -995,6 +1012,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             UserEvent::House(event) => self.handle_house_event(event),
             UserEvent::Farm(event) => self.handle_farm_event(event_loop, event),
             UserEvent::Battle(event) => self.handle_battle_event(event),
+            UserEvent::ReferenceMatched(found) => self.show_reference_matches(found),
             UserEvent::AccessKit(event) => {
                 if let Some(window) = &mut self.settings_window
                     && window.id() == event.window_id

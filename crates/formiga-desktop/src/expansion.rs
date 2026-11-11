@@ -14,7 +14,7 @@
 pub mod files;
 
 use crate::app::UserEvent;
-use crate::platform::companion_app::{self, AppInstall, AppNames};
+use crate::platform::companion_app::{self, AppInstall, AppNames, Started};
 use formiga_core::CreatureId;
 use formiga_expansion_rulebook::AckRefusal;
 use std::path::Path;
@@ -190,16 +190,41 @@ impl Expansion {
     }
 
     /// Start the app for the visit whose session directory is `session`, with a thread that sleeps
-    /// until it exits and then sends `exited` through the event loop.
+    /// until it exits and then sends `exited` through the event loop. What is returned is enough
+    /// to find the app again after a restart, with [`Expansion::watch_again`].
     pub fn start(
         &self,
         install: &AppInstall,
         session: &Path,
         exited: UserEvent,
         proxy: EventLoopProxy<UserEvent>,
+    ) -> std::io::Result<Started> {
+        let (child, started) = companion_app::launch(&install.path, self.launch_argument, session)?;
+        self.watch(child, exited, proxy)?;
+        Ok(started)
+    }
+
+    /// Wait again for an app a previous run of Desktop started, which is no child of this one to
+    /// sleep on: a thread looks every two seconds whether it is still running, and sends `exited`
+    /// through the event loop once it is not.
+    pub fn watch_again(
+        &self,
+        started: Started,
+        exited: UserEvent,
+        proxy: EventLoopProxy<UserEvent>,
     ) -> std::io::Result<()> {
-        let child = companion_app::launch(&install.path, self.launch_argument, session)?;
-        self.watch(child, exited, proxy)
+        std::thread::Builder::new()
+            .name(format!(
+                "{}-watch-again",
+                self.name.to_lowercase().replace(' ', "-")
+            ))
+            .spawn(move || {
+                while started.still_running() {
+                    std::thread::sleep(Duration::from_secs(2));
+                }
+                let _ = proxy.send_event(exited);
+            })?;
+        Ok(())
     }
 
     /// Wait for the app to exit on a thread of its own, which sleeps until then, and say so

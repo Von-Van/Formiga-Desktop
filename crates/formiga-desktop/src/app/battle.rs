@@ -179,9 +179,10 @@ impl FormigaApp {
         let exited = UserEvent::Battle(BattleEvent::Exited {
             session: open.session_id.clone(),
         });
-        BATTLE
+        let started = BATTLE
             .start(install, &open.dir, exited, self.event_proxy.clone())
             .map_err(|error| format!("Formiga Battle could not be opened: {error}"))?;
+        self.battle.files.remember_start(open, &started);
         tracing::info!("Formiga Battle is open");
         Ok(())
     }
@@ -260,9 +261,10 @@ impl FormigaApp {
             .cloned()
     }
 
-    /// Clear a session Desktop stopped in the middle of, and bring the colony home by train.
-    /// Battle, if it is still open, keeps the roster it already read; nothing it might say now is
-    /// waited for.
+    /// Pick up a session Desktop stopped in the middle of. What its matches earned so far is kept
+    /// at once. If Battle is still open, the colony stays away with it and Desktop waits for it to
+    /// close as if it had never stopped, so every match it goes on to play is kept too. Otherwise
+    /// the session is cleared and the colony comes home by train.
     pub(super) fn resume_battle_session(&mut self) {
         // Whatever earlier sessions left behind goes first; the open one, if any, is kept.
         self.battle.files.sweep();
@@ -271,10 +273,36 @@ impl FormigaApp {
         };
         tracing::info!("keeping what a session in Formiga Battle earned, after a restart");
         self.keep_battle_result(&open);
+        if !self.recovery_pending && self.wait_for_battle_again(&open) {
+            return;
+        }
         self.battle.files.close(&open);
         if !self.recovery_pending && !self.colony_away() {
             self.battle_trip_home(None);
         }
+    }
+
+    /// After a restart, wait again for the Battle this session was started in, if it is still
+    /// open: the colony is away with it, as it was before Desktop stopped. Whether it is.
+    fn wait_for_battle_again(&mut self, open: &OpenSession) -> bool {
+        let Some(started) = open
+            .started
+            .clone()
+            .filter(|started| started.still_running())
+        else {
+            return false;
+        };
+        let exited = UserEvent::Battle(BattleEvent::Exited {
+            session: open.session_id.clone(),
+        });
+        if let Err(error) = BATTLE.watch_again(started, exited, self.event_proxy.clone()) {
+            tracing::warn!(%error, "could not wait for Formiga Battle again after a restart");
+            return false;
+        }
+        tracing::info!("Formiga Battle is still open after a restart; the colony stays with it");
+        self.battle.session = SessionState::Away { open: open.clone() };
+        self.enter_trip();
+        true
     }
 
     /// The colony is about to be replaced: whatever Battle goes on to say belongs to the colony
