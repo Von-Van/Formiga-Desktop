@@ -33,6 +33,44 @@ fn home_appears_for_fifteen_minutes_then_observes_its_cooldown() {
     assert!(world.save.home.is_active());
 }
 
+/// A clock that ran ahead and was then put right does not hold the houses out until real time
+/// catches up: the colony's timeline never goes back, but it carries on by the time that really
+/// passes, so the houses still go in after fifteen minutes.
+#[test]
+fn a_clock_put_right_after_running_ahead_still_brings_the_houses_in_on_time() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([52; 32], created, &desktop);
+    world.tick(created, 0.05, &desktop);
+    // The clock runs six hours fast, and the houses come out on that clock.
+    let ahead = created + time::Duration::hours(6);
+    world.tick(ahead, 0.05, &desktop);
+    world.tick(ahead + time::Duration::minutes(15), 0.05, &desktop);
+    assert!(world.save.home.is_active());
+    let out_since = ahead + time::Duration::minutes(15);
+    assert_eq!(world.save.home.active_since_utc, Some(out_since));
+
+    // The clock is put right. Setting it back takes nothing off the timeline.
+    let corrected = created + time::Duration::hours(1);
+    world.tick(corrected, 0.05, &desktop);
+    assert_eq!(world.save.maximum_seen_utc, out_since);
+    world.tick(
+        corrected + time::Duration::minutes(14) + time::Duration::seconds(59),
+        0.05,
+        &desktop,
+    );
+    assert!(world.save.home.is_active());
+    world.tick(corrected + time::Duration::minutes(15), 0.05, &desktop);
+    assert!(
+        !world.save.home.is_active(),
+        "the houses waited for the clock to catch up"
+    );
+    assert_eq!(
+        world.save.home.last_disappeared_utc,
+        Some(out_since + time::Duration::minutes(15))
+    );
+}
+
 #[test]
 fn house_spawn_preserves_position_then_walks_and_settles_at_both_corners() {
     let created = datetime!(2026-01-01 0:00 UTC);

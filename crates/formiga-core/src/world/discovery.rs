@@ -140,13 +140,7 @@ pub(super) fn colony_birthday(local: OffsetDateTime, created_utc: OffsetDateTime
     [today.year() - 1, today.year(), today.year() + 1]
         .into_iter()
         .filter(|year| *year > created.year())
-        .filter_map(|year| {
-            // A colony begun on the 29th of February keeps its birthday on the 28th in other
-            // years, as people do.
-            time::Date::from_calendar_date(year, created.month(), created.day())
-                .or_else(|_| time::Date::from_calendar_date(year, created.month(), 28))
-                .ok()
-        })
+        .filter_map(|year| super::rituals::hatch_day_in(year, created))
         .any(|birthday| (today - birthday).whole_days().abs() <= FINDS.birthday_days)
 }
 

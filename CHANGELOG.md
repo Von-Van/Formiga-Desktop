@@ -6,6 +6,20 @@ All notable changes are documented here.
 
 ### Fixed
 
+- A computer clock that ran ahead and was then put right no longer holds the colony's houses out
+  (or keeps them away), or its offers, rituals and journal moments back, until real time catches
+  up. The colony's own timeline still never runs backwards, but while the clock reads earlier than
+  it, it carries on by the time that really passes.
+- A colony is checked before it is written: a save that would not read back is refused and shown
+  as save trouble, leaving the colony file and its backup as they were, instead of being written
+  and reported as fine. An everyday save also reads the colony once rather than twice.
+- Hatch day is kept on the colony's birthday every year. It used to come only when an ordinary
+  ritual happened to fall due that day, so about one birthday in four went by unkept.
+- A colony begun on 29 February keeps its hatch day on 28 February outside leap years, the same day
+  its birthday finds already used.
+- A change made by hand while a weekly routine is on now lasts only until the next scheduled
+  switch, even when that switch goes to the routine already in place, and a switch that came round
+  while Formiga was closed counts too.
 - Pausing the colony, or switching launch at login, from the tray while the notebook is open is
   no longer undone by pressing Apply on some other change in the notebook, and a habitat applied
   in the editor no longer leaves the footer saying it is not applied yet.

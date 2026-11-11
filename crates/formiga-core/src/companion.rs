@@ -243,12 +243,15 @@ impl RoutineSchedule {
     /// looking back one week. Only the current intended state matters, so a machine that was
     /// asleep through three transitions wakes into the right one rather than replaying them.
     pub fn intended(&self, local: OffsetDateTime) -> Option<u8> {
+        self.latest(local).map(|(_, preset)| preset)
+    }
+
+    /// The most recent transition at or before `local`, looking back one week: when it came
+    /// round, in `local`'s offset, and the preset it moved to.
+    pub fn latest(&self, local: OffsetDateTime) -> Option<(OffsetDateTime, u8)> {
         let minutes = i64::from(local.hour()) * 60 + i64::from(local.minute());
         (0..8).find_map(|back| {
-            let date = local
-                .date()
-                .checked_sub(time::Duration::days(back))
-                .unwrap_or(local.date());
+            let date = local.date().checked_sub(time::Duration::days(back))?;
             self.transitions
                 .iter()
                 .enumerate()
@@ -257,7 +260,12 @@ impl RoutineSchedule {
                 // Two transitions at the same minute are settled by their order in the list, so
                 // the answer never depends on when the question is asked.
                 .max_by_key(|(index, t)| (t.minute, *index))
-                .map(|(_, t)| t.preset)
+                .map(|(_, t)| {
+                    let at = date
+                        .with_hms((t.minute / 60) as u8, (t.minute % 60) as u8, 0)
+                        .unwrap_or(date.midnight());
+                    (at.assume_offset(local.offset()), t.preset)
+                })
         })
     }
 

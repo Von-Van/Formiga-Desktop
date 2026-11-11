@@ -15,13 +15,14 @@
 //!    thing a [`World`](crate::World) is ever built from.
 //!
 //! Writing goes the other way and needs none of this. The current shape is written as it stands
-//! to a temporary file, which is synced to disk and then moved over the old one once the old one
-//! has been kept as the backup.
+//! to a temporary file, once those bytes have been read back the way a launch reads them, which is
+//! synced to disk and then moved over the old one once the old one has been kept as the backup.
 
 use crate::SaveFile;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 mod damage;
@@ -29,6 +30,7 @@ mod migrations;
 mod validation;
 
 pub use damage::damage;
+pub(crate) use validation::LATEST_MOMENT;
 pub use validation::{ImportRefusal, ValidatedSave, violations};
 
 /// The largest colony file read. A full colony of six with a full journal is well under half of
@@ -129,11 +131,18 @@ fn parse_raw(bytes: &[u8]) -> Result<serde_json::Value, PersistenceError> {
 
 pub struct SaveStore {
     path: PathBuf,
+    /// A fingerprint of the bytes this store last wrote and checked, so the next save can tell
+    /// the file is still those bytes, and keep it as the backup, without reading the colony out
+    /// of it all over again. Zero until the first save.
+    written: AtomicU64,
 }
 
 impl SaveStore {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+        Self {
+            path: path.into(),
+            written: AtomicU64::new(0),
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -162,11 +171,17 @@ impl SaveStore {
         }
     }
 
+    /// Writes the colony. The new bytes are read back the way the next launch will read them
+    /// before anything on disk is touched, and a colony that would not read back is refused with
+    /// an error, leaving the file and its backup as they were. The file being replaced becomes
+    /// the backup when it is a colony this store wrote and checked, or one that reads; anything
+    /// else is kept aside under a recovery name instead, and the backup is left alone.
     pub fn save(&self, save: &SaveFile) -> Result<(), PersistenceError> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
         let bytes = serde_json::to_vec_pretty(save)?;
+        decode(&bytes)?;
         let temporary = self.temporary_path();
         let backup = self.backup_path();
         {
@@ -174,15 +189,23 @@ impl SaveStore {
             file.write_all(&bytes)?;
             file.sync_all()?;
         }
-        if self.path.exists() {
-            if self.load_path(&self.path).is_ok() {
-                fs::copy(&self.path, &backup)?;
-            } else {
+        match read_bounded(&self.path) {
+            Ok(old) if self.wrote(&old) || decode(&old).is_ok() => fs::write(&backup, &old)?,
+            Ok(_) | Err(PersistenceError::TooLarge(_)) => {
                 self.preserve_recovery_files()?;
             }
+            Err(PersistenceError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
         }
         atomic_replace(&temporary, &self.path)?;
+        self.written.store(fingerprint(&bytes), Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Whether `bytes` are exactly what this store last wrote, which it checked before writing.
+    fn wrote(&self, bytes: &[u8]) -> bool {
+        let written = self.written.load(Ordering::Relaxed);
+        written != 0 && written == fingerprint(bytes)
     }
 
     /// A user-selected full-colony snapshot, bounded before parsing and never changed on import.
@@ -233,6 +256,14 @@ impl SaveStore {
     fn backup_path(&self) -> PathBuf {
         self.path.with_extension("json.bak")
     }
+}
+
+/// A fingerprint of a colony file's bytes, never zero.
+fn fingerprint(bytes: &[u8]) -> u64 {
+    use std::hash::{DefaultHasher, Hasher};
+    let mut hasher = DefaultHasher::new();
+    hasher.write(bytes);
+    hasher.finish().max(1)
 }
 
 /// The bytes of a file, refusing one larger than any colony file without reading the rest of it.

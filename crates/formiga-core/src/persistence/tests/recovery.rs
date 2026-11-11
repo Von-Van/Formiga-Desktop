@@ -85,3 +85,74 @@ fn a_damaged_file_is_refused_or_repaired_never_half_read() {
         "the damage reaches both outcomes"
     );
 }
+
+/// A colony that would not read back is never written: the save is refused with an error, and
+/// the file and its backup stay exactly as they were, with nothing set aside.
+#[test]
+fn a_colony_that_would_not_read_back_is_refused_and_touches_nothing() {
+    let directory =
+        std::env::temp_dir().join(format!("formiga-refused-save-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    let store = SaveStore::new(directory.join("colony.json"));
+    let original = example_save();
+    store.save(&original).unwrap();
+    store.save(&original).unwrap();
+    let file = fs::read(store.path()).unwrap();
+    let backup = fs::read(store.backup_path()).unwrap();
+
+    let mut unreadable = original.clone();
+    unreadable.save_version = 9_999;
+    assert!(matches!(
+        store.save(&unreadable),
+        Err(PersistenceError::UnsupportedVersion(9_999))
+    ));
+    assert_eq!(fs::read(store.path()).unwrap(), file);
+    assert_eq!(fs::read(store.backup_path()).unwrap(), backup);
+    assert!(
+        !fs::read_dir(&directory)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains("recovery-")),
+        "a refused save set recovery files aside"
+    );
+    // The next good save carries on as before, keeping the last good colony as the backup.
+    let mut replacement = original.clone();
+    replacement.settings.reduce_motion = true;
+    store.save(&replacement).unwrap();
+    assert_eq!(store.load_path(&store.backup_path()).unwrap(), original);
+    assert_eq!(
+        store.load().unwrap(),
+        Some(ValidatedSave::from(replacement))
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
+/// A file this store wrote is kept as the backup on the next save, and a fresh store that never
+/// wrote it still checks it before keeping it.
+#[test]
+fn the_file_a_store_wrote_becomes_the_backup_and_an_unknown_one_is_checked() {
+    let directory = std::env::temp_dir().join(format!("formiga-known-save-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    let path = directory.join("colony.json");
+    let original = example_save();
+    SaveStore::new(&path).save(&original).unwrap();
+    let mut replacement = original.clone();
+    replacement.settings.reduce_motion = true;
+    let store = SaveStore::new(&path);
+    store.save(&replacement).unwrap();
+    assert_eq!(store.load_path(&store.backup_path()).unwrap(), original);
+    store.save(&original).unwrap();
+    assert_eq!(store.load_path(&store.backup_path()).unwrap(), replacement);
+
+    // Damaged behind the store's back, the file is set aside rather than kept as the backup.
+    fs::write(&path, b"{\"save_version\": 33, \"creatures\": 7}").unwrap();
+    store.save(&replacement).unwrap();
+    assert_eq!(store.load_path(&store.backup_path()).unwrap(), replacement);
+    assert!(
+        fs::read_dir(&directory)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains("recovery-"))
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
