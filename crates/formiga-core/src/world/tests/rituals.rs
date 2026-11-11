@@ -133,6 +133,63 @@ fn hatch_day_is_local_deduplicated_and_reduced_motion_safe() {
     );
 }
 
+/// The birthday is kept on the day itself, whether or not an ordinary ritual happens to fall
+/// due that day.
+#[test]
+fn hatch_day_comes_on_the_day_even_with_no_ritual_due() {
+    let created = datetime!(2025-06-15 16:00 UTC);
+    let now = datetime!(2026-06-15 16:00 UTC);
+    let desktop = desktop();
+    let mut world = two_creature_world([96; 32], created);
+    world.save.home.last_disappeared_utc = Some(now);
+    world.save.ritual.next_at_utc = now + Duration::hours(30);
+    for creature in &mut world.save.creatures {
+        creature.state.action_duration = 0.0;
+    }
+    world.tick(now, 0.05, &desktop);
+    assert_eq!(
+        world.colony_plan.as_ref().map(|plan| plan.kind),
+        Some(RitualKind::HatchDay)
+    );
+    assert_eq!(world.save.ritual.hatch_day_acknowledged_year, Some(2026));
+    // Once kept, it is not kept again that day, and the ordinary rituals carry on from now.
+    world.interrupt_colony_plan(now);
+    for creature in &mut world.save.creatures {
+        creature.state.action_duration = 0.0;
+    }
+    let ordinal = world.save.ritual.ordinal;
+    world.tick(now + Duration::minutes(1), 0.05, &desktop);
+    assert_eq!(world.save.ritual.ordinal, ordinal);
+}
+
+/// A colony begun on the 29th of February keeps its birthday on the 28th in other years, the
+/// same day its birthday finds are about, and on the 29th in a leap year.
+#[test]
+fn a_colony_begun_on_the_twenty_ninth_of_february_has_a_birthday_every_year() {
+    let created = datetime!(2024-02-29 12:00 UTC);
+    let desktop = desktop();
+    for (day, due) in [
+        (datetime!(2025-02-28 12:00 UTC), true),
+        (datetime!(2025-03-01 12:00 UTC), false),
+        (datetime!(2027-02-28 12:00 UTC), true),
+        (datetime!(2028-02-28 12:00 UTC), false),
+        (datetime!(2028-02-29 12:00 UTC), true),
+    ] {
+        let world = two_creature_world([97; 32], created);
+        assert_eq!(world.hatch_day_due(day), due, "{day}");
+        assert_eq!(
+            world
+                .eligible_ritual_kinds(day, &desktop, true)
+                .contains(&RitualKind::HatchDay),
+            due,
+            "{day}"
+        );
+        if due {
+            assert!(super::super::discovery::colony_birthday(day, created));
+        }
+    }
+}
+
 #[test]
 fn rituals_cancel_safely_when_hidden_paused_dragged_or_geometry_changes() {
     let created = datetime!(2026-01-01 12:00 UTC);

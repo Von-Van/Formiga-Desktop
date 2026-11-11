@@ -133,6 +133,9 @@ pub struct World {
     /// book was last written to. Runtime only.
     day_clock: Option<OffsetDateTime>,
     home_seconds_pending: f32,
+    /// The machine's clock at the last tick, so the colony's timeline can be carried forward by
+    /// the time that really passed while the clock reads earlier than the timeline. Runtime only.
+    wall_clock: Option<OffsetDateTime>,
     /// Sleepers being towed out of somebody's way by a friend on a little rope.
     tows: tows::TowTable,
     /// When the colony next yawns, and the yawns and looks still waiting to start.
@@ -450,6 +453,7 @@ impl World {
             undo_history: VecDeque::new(),
             day_clock: None,
             home_seconds_pending: 0.0,
+            wall_clock: None,
             tows: tows::TowTable::default(),
             beats: beats::Beats::new(&streams),
             antics: antics::Antics::new(&streams),
@@ -489,10 +493,30 @@ impl World {
         self.carry_talk(now, dt);
     }
 
+    /// Carries the colony's timeline to `now` and returns the machine's clock at the tick before.
+    ///
+    /// The timeline never runs backwards, so winding the clock back can neither undo an arrival
+    /// nor lengthen a stay. Nor does it stand still while the clock reads earlier than it: a clock
+    /// that ran ahead and was then put right would otherwise hold the colony's houses out, and its
+    /// offers and rituals back, until real time caught up, hours or days later. While the clock
+    /// is behind, the timeline moves on by however much the clock moved since the last tick, so
+    /// fifteen minutes with the houses out is still fifteen minutes; a jump back moves it on by
+    /// nothing at all. Carried, it never passes the latest moment a colony file may hold.
+    fn advance_timeline(&mut self, now: OffsetDateTime) -> Option<OffsetDateTime> {
+        let previous = self.wall_clock.replace(now);
+        let timeline = self.save.maximum_seen_utc;
+        let carried = previous
+            .filter(|previous| now > *previous)
+            .and_then(|previous| timeline.checked_add(now - previous))
+            .unwrap_or(timeline)
+            .min(crate::persistence::LATEST_MOMENT.max(timeline));
+        self.save.maximum_seen_utc = carried.max(now);
+        previous
+    }
+
     fn tick_colony(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {
-        if now > self.save.maximum_seen_utc {
-            self.save.maximum_seen_utc = now;
-        }
+        let saved_timeline = self.save.maximum_seen_utc;
+        let previous_wall = self.advance_timeline(now);
         let timeline_now = self.save.maximum_seen_utc;
         self.keep_echo_fox();
         // Where this tick's own events start, so the pass at the end of it can tell what happened
@@ -507,7 +531,7 @@ impl World {
             self.save.companion.quiet_until = None;
             self.dismiss_home(timeline_now, false);
         }
-        self.apply_routine_schedule(now);
+        self.apply_routine_schedule(now, previous_wall.unwrap_or(saved_timeline));
         self.count_home_time(now);
         self.process_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
@@ -683,10 +707,11 @@ impl World {
                 && creature.state.action_elapsed + dt >= creature.state.action_duration
         });
         if self.colony_plan.is_none()
-            && self.save.ritual.next_at_utc <= timeline_now
             && at_selection_boundary
             // Nobody is called away from something they were just given.
             && !self.offer_response_active()
+            // A birthday does not wait for the next ordinary ritual to fall due.
+            && (self.save.ritual.next_at_utc <= timeline_now || self.hatch_day_due(timeline_now))
         {
             self.try_start_colony_plan(timeline_now, desktop);
         }
