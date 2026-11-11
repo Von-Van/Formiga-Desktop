@@ -199,6 +199,19 @@ def step_expansion(key: str) -> Step:
                  "`formiga-… = { git = \"…\", … }` lines the toolkit reads, so it cannot be "
                  "built on this Desktop", system=expansion.package)])
     with lockfile_kept(expansion.path):
+        # Cargo uses a patch only at the version the lockfile holds: an expansion locked to
+        # Desktop 0.68.1's crates would quietly keep building those from GitHub against this
+        # checkout's 0.68.22. Moving the lockfile onto the patched crates first makes the patch
+        # take, whatever release the expansion is tied to; `lockfile_kept` puts it back after.
+        crates = sorted(crate for crate in expansion.desktop_crates()
+                        if (DESKTOP / "crates" / crate).is_dir())
+        if crates:
+            updated = run(["cargo", "update", *crates, *patched(expansion)],
+                          cwd=expansion.path, quiet=True)
+            if updated.code != 0:
+                return Step(key, "failed", "could not move its lockfile onto this Desktop's crates",
+                            updated.seconds, [Problem(key, cargo.last_error(updated.output),
+                                                      system=expansion.package)])
         done = run(["cargo", "test", "--workspace", "--no-fail-fast", "--message-format=json",
                     *patched(expansion)],
                    cwd=expansion.path, env={"CARGO_TARGET_DIR": str(patched_target(expansion))})
