@@ -38,6 +38,24 @@ fn fixture() -> (SaveFile, Vec<MonitorInfo>) {
         | ProfileDescriptor::Playful.flag()
         | ProfileDescriptor::LovesHighPlaces.flag();
     world.save.companion.onboarding_complete = true;
+    // Mallow eating up on a window and a friend munching on the ground, so Right now is
+    // reviewed naming a meal wherever it is eaten, the longest of them wrapping.
+    let appetite = meals::Appetite {
+        picky: false,
+        greedy: false,
+        sleepy: false,
+        favourite: meals::Food::Apple,
+    };
+    for (index, food, window) in [
+        (0, meals::Food::Soup, Some(7)),
+        (1, meals::Food::Breadstick, None),
+    ] {
+        if let Some(creature) = world.save.creatures.get_mut(index) {
+            creature.state.action = ActionKind::Eat;
+            creature.state.meal = Some(meals::Meal::plan_seeded(food, 8.0, appetite, 3));
+            creature.state.surface.window_key = window;
+        }
+    }
     // Someone at the door and a full guest book, so the Journal page is reviewed with both.
     let friend = SharedCreatureSeed {
         source_colony_seed: [70; 32],
@@ -3035,4 +3053,79 @@ fn a_change_made_in_the_notebook_wins_over_the_same_one_made_elsewhere() {
     assert!(rebased.paused && rebased.reduce_motion);
     // Unchanged in both: the colony's value, which is the same.
     assert_eq!(rebased.visible, current.visible);
+
+/// A companion's profile offers a snack and a toy as plain buttons, the same two offers the
+/// strip over it on the desktop makes, so they can be reached from the keyboard: Tab to one and
+/// press Enter. What came of it is written on the profile, for that companion only.
+#[test]
+fn snacks_and_toys_can_be_offered_from_the_profile_by_keyboard() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    let mallow = h.save.creatures[0].id;
+    assert_eq!(
+        h.click("Offer a snack").offer,
+        Some((mallow, OfferKind::Snack))
+    );
+    assert_eq!(h.click("Offer a toy").offer, Some((mallow, OfferKind::Toy)));
+    // From the keyboard: Tab along until the snack button has focus, then Enter.
+    let target = h.text_top("Offer a snack");
+    let key = |key: egui::Key, pressed: bool| egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Default::default(),
+    };
+    let mut reached = false;
+    for _ in 0..200 {
+        h.frame(vec![key(egui::Key::Tab, true), key(egui::Key::Tab, false)]);
+        let focused = h
+            .context
+            .memory(|memory| memory.focused())
+            .and_then(|id| h.context.read_response(id))
+            .map(|response| response.rect);
+        if focused.is_some_and(|rect| {
+            rect.top() <= target
+                && target <= rect.bottom()
+                && h.labels
+                    .iter()
+                    .any(|(text, at)| text == "Offer a snack" && rect.contains(at.center()))
+        }) {
+            reached = true;
+            break;
+        }
+    }
+    assert!(reached, "Tab never reached Offer a snack");
+    let outcome = h.frame(vec![
+        key(egui::Key::Enter, true),
+        key(egui::Key::Enter, false),
+    ]);
+    assert_eq!(
+        outcome.offer,
+        Some((mallow, OfferKind::Snack)),
+        "Enter offers it"
+    );
+    // The answer, in words, on this companion's profile and nobody else's.
+    h.clubhouse.colony.offer_note = Some((mallow, "Mallow took the snack.".into()));
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text == "Mallow took the snack.")
+    );
+    if let Some(directory) = std::env::var_os("FORMIGA_UI_REVIEW_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        h.picture()
+            .save(directory.join("profile-offers.png"))
+            .unwrap();
+    }
+    h.selected = Some(h.save.creatures[1].id);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        !h.labels
+            .iter()
+            .any(|(text, _)| text == "Mallow took the snack.")
+    );
 }

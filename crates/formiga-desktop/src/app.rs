@@ -490,6 +490,7 @@ impl FormigaApp {
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
+        let mut offer_answers = Vec::new();
         if let Some(world) = &mut self.world {
             if world.is_interacting() {
                 if !desktop.cursor.available {
@@ -537,6 +538,14 @@ impl FormigaApp {
                 {
                     milestone = Some(creature_id);
                 }
+                if let WorldEvent::OfferAnswered {
+                    creature_id,
+                    kind,
+                    accepted,
+                } = event
+                {
+                    offer_answers.push((creature_id, kind, accepted));
+                }
                 tracing::debug!(event = world_event_category(&event), "world event");
             }
             if let Some(creature_id) = milestone {
@@ -560,6 +569,9 @@ impl FormigaApp {
                     });
                 }
             }
+        }
+        for (creature_id, kind, accepted) in offer_answers {
+            self.note_offer_answer(creature_id, kind, accepted);
         }
         // Arrivals and the houses are written at once; everyday movement waits for the next
         // routine checkpoint; and a colony with nothing waiting is still written periodically.

@@ -101,6 +101,8 @@ pub struct SettingsOutcome {
     pub install_update: bool,
     pub rename_creature: Option<(CreatureId, String)>,
     pub viewed_profile: Option<CreatureId>,
+    /// A snack or a toy held out to a companion from its profile, as the desktop strip does.
+    pub offer: Option<(CreatureId, formiga_core::OfferKind)>,
     pub export_creature_card: Option<CreatureId>,
     pub export_creature_sticker: Option<(CreatureId, formiga_art::StickerClip, u32)>,
     pub export_colony_card: bool,
@@ -518,6 +520,17 @@ impl SettingsWindow {
         self.clubhouse.home.arrange.picked = Some(crate::clubhouse::arrange::Picked::House(keeper));
         self.tab = SettingsTab::Home;
         self.window.request_redraw();
+    }
+
+    /// Say on a companion's profile what became of a snack or a toy offered from it.
+    pub fn note_offer(&mut self, creature_id: CreatureId, note: String) {
+        self.clubhouse.colony.offer_note = Some((creature_id, note));
+        self.window.request_redraw();
+    }
+
+    /// The companion a note on its profile is waiting to hear from, if any.
+    pub fn offer_note_for(&self) -> Option<CreatureId> {
+        self.clubhouse.colony.offer_note.as_ref().map(|(id, _)| *id)
     }
 
     /// Open the Journal page, which is where a visit is written down.
@@ -1767,6 +1780,37 @@ fn colony_tab(
                     );
                 }
                 clubhouse::journal::write(ui, habits);
+                // The two things the strip over a companion offers, here as plain buttons so
+                // they can be reached from the keyboard, with what came of them in words.
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for (label, kind, help) in [
+                        (
+                            "Offer a snack",
+                            formiga_core::OfferKind::Snack,
+                            "Hold out a snack, as the strip over them on the desktop does.",
+                        ),
+                        (
+                            "Offer a toy",
+                            formiga_core::OfferKind::Toy,
+                            "Hold out a toy, as the strip over them on the desktop does.",
+                        ),
+                    ] {
+                        if ui.button(label).on_hover_text(help).clicked() {
+                            outcome.offer = Some((creature.id, kind));
+                        }
+                    }
+                });
+                if let Some((_, note)) = page
+                    .offer_note
+                    .as_ref()
+                    .filter(|(id, _)| *id == creature.id)
+                {
+                    clubhouse::journal::write(
+                        ui,
+                        egui::RichText::new(note).small().color(clubhouse::muted()),
+                    );
+                }
             });
         });
         ui.add_space(18.0);
