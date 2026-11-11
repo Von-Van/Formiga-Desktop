@@ -204,11 +204,11 @@ impl FormigaApp {
             redraw_due: Instant::now(),
             last_frame: None,
             cached_windows: Vec::new(),
-            last_window_scan: Instant::now() - Duration::from_secs(2),
+            last_window_scan: two_seconds_ago(),
             observation_epoch: Instant::now(),
             window_sample: None,
             window_scan_initialized: false,
-            last_display_scan: Instant::now() - Duration::from_secs(2),
+            last_display_scan: two_seconds_ago(),
             log_dir,
             current_cursor: CursorSnapshot::default(),
             settings_window: None,
@@ -1000,6 +1000,14 @@ impl FormigaApp {
 }
 
 /// What went wrong writing the colony, said so that it can be acted on.
+/// Two seconds before now, so the first window and display scans run straight away. An
+/// `Instant` can't go back past the system's start-up, so in the first two seconds after boot it
+/// is now instead, and those scans wait their two seconds.
+fn two_seconds_ago() -> Instant {
+    let now = Instant::now();
+    now.checked_sub(Duration::from_secs(2)).unwrap_or(now)
+}
+
 fn save_trouble_text(error: &formiga_core::PersistenceError) -> String {
     let detail = error.to_string();
     let lower = detail.to_lowercase();

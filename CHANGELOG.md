@@ -91,6 +91,13 @@ All notable changes are documented here.
 - Berries tossed up rise above the paws and are watched on the way up before they are caught with a
   gulp; with Reduce Motion they are eaten a bite at a time instead.
 - A flown kite has a string from the paw to the kite.
+- On the Village page, a two-word name such as Picnic blanket, Vegetable patch or Strawberry
+  planter took two lines and ran into the picture above it at normal text size. The tiles are
+  taller now, so every name sits whole under its picture.
+- Formiga no longer stops at once if it opens within two seconds of the computer starting up.
+- The checks every change goes through now include the content audit (names that fit, everything
+  a colony can come by), and test Formiga Battle on the Desktop being changed, as Hill, Home and
+  Farm already were. Battle's crates are scanned for security advisories every week too.
 
 ## [0.68.22] - 2026-11-04
 

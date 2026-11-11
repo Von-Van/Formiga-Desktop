@@ -3,6 +3,10 @@ name: advisories
 # Security advisories for the crates Formiga is built from (the RustSec database), once a week and
 # whenever the lockfile changes. The updater downloads over HTTPS with ureq and rustls, so an
 # advisory against one of those is worth hearing about without waiting for someone to look.
+#
+# Formiga Battle runs no Actions of its own, by choice, but it reaches the friend-match relay over
+# HTTPS with its own lockfile, so its main is scanned here too, on the same schedule. A pull request
+# here only changes Desktop's lockfile, so it scans Desktop alone.
 
 on:
   schedule:
@@ -21,6 +25,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.97.1
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  battle:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Von-Van/Formiga-Battle
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: 1.97.1

@@ -48,7 +48,7 @@ colony. Failures also carry a rerun or replay command.
 | `content` | `formiga audit content` below. Its errors fail the step; its warnings are counted, and listed by the audit itself |
 | `tests` | `cargo test` on every crate |
 | `soak` | the nightly soak, short: 120 randomized colonies living a simulated day, their files damaged and repaired. On a Mac it runs on two threads at background priority (`taskpolicy -b`) so the computer stays usable, and elsewhere on half the cores; `--full-speed` gives it every core |
-| `hill`, `home`, `farm`, `battle` | with `--expansions`: Formiga Hill's, Home's, Farm's and Battle's own tests, built on *this* checkout's Desktop crates rather than the release (or commit, or branch) they're tied to; a run that leaves any of those crates on GitHub fails rather than passing on the old Desktop. This is how a Desktop change that breaks an expansion shows up before release. Battle has no CI by choice, so this step, run on your machine, is the only place its tests meet a Desktop change. |
+| `hill`, `home`, `farm`, `battle` | with `--expansions`: Formiga Hill's, Home's, Farm's and Battle's own tests, built on *this* checkout's Desktop crates rather than the release (or commit, or branch) they're tied to; a run that leaves any of those crates on GitHub fails rather than passing on the old Desktop. This is how a Desktop change that breaks an expansion shows up before release. Battle runs no Actions of its own, by choice; Desktop's `companion-apps` workflow runs this step for each of them on every pull request, and this is how to run it on your machine first. |
 
 `--quick` runs `format`, `lint` and `fixtures`. `--step` runs only the steps named. The exit code
 is 0 only when nothing failed.
@@ -203,7 +203,7 @@ The first command for a person or agent starting work: Desktop's version, save v
 commit and uncommitted files; the last `validate`, `audit content` and `art check` (when, on
 which commit, and what they found, kept in `.dev/last/`); how many of each kind of thing there
 are; Hill's, Home's, Farm's and Battle's checkouts, the Desktop release each builds on, and
-whether each has CI (Battle has none, so `validate --expansions` is where it is checked); the
+whether each has CI of its own (Battle has none; Desktop's `companion-apps` workflow and `validate --expansions` check it); the
 scenarios and which are prepared; and the newest captures.
 
 ### `formiga content add KIND NAME --about TEXT --like ITEM [--id VARIANT] [--write] [--json]`

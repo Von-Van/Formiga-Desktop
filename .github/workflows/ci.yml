@@ -33,6 +33,12 @@ jobs:
         with:
           python-version: "3.9"
       - run: python -m unittest discover devtools/tests
+      # Formiga's content (`devtools/formiga audit content`): every name unique and fitting its
+      # tile on the Village page, everything reachable in a colony lived day by day. Nothing it
+      # checks differs between systems, so it runs once, on the Mac, on the build the tests left.
+      # Hill, Home, Farm and Battle aren't checked out here, so their part of it is skipped.
+      - if: runner.os == 'macOS'
+        run: python devtools/formiga.py audit content
 
   # The public API of the contract crates Formiga Hill, Home, Farm and Battle build on by tag,
   # against the copy kept beside each crate: see scripts/public-api.sh.
