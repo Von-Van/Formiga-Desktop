@@ -20,6 +20,21 @@ All notable changes are documented here.
 - A change made by hand while a weekly routine is on now lasts only until the next scheduled
   switch, even when that switch goes to the routine already in place, and a switch that came round
   while Formiga was closed counts too.
+- Pausing the colony, or switching launch at login, from the tray while the notebook is open is
+  no longer undone by pressing Apply on some other change in the notebook, and a habitat applied
+  in the editor no longer leaves the footer saying it is not applied yet.
+- Half-made changes in the notebook are kept when something brings it forward while it is open: a
+  finished update download, a design coming back from Formiga Farm, or the tray's Settings item.
+- If Formiga restarts while Formiga Battle is open, the colony now stays away with Battle and every
+  match won after the restart is kept, rather than the session being closed under Battle and the
+  colony reappearing on the desktop while Battle still showed it.
+- Undoing the removal or replacement of a companion that was indoors at the time brings it back
+  outside, where it can be seen and picked up, instead of invisible until a restart.
+- Restoring a backup while a house is open in Formiga Home no longer writes the old colony back
+  over the restored one for a moment.
+- Creating a companion from a picture no longer freezes the notebook and the companions while the
+  picture is read; the Studio says it is reading the picture until the takes appear.
+- On Windows, opening the log folder no longer logs an error each time it works.
 
 ## [0.68.22] - 2026-11-04
 

@@ -2990,3 +2990,49 @@ fn a_long_activity_in_right_now_stays_below_the_ground_line() {
     }
     assert!(raised.is_empty(), "every name sits on one line: {raised:?}");
 }
+
+#[test]
+fn applying_a_notebook_change_keeps_a_pause_made_from_the_tray() {
+    // The notebook opened on the colony's preferences and its size was changed, not applied.
+    let saved = Settings::default();
+    let mut draft = saved.clone();
+    draft.display_scale = 4;
+    // Meanwhile the tray paused the colony and switched launch at login on.
+    let mut current = saved.clone();
+    current.paused = true;
+    current.launch_at_login = true;
+    let rebased = rebase_preferences(&saved, &draft, &current);
+    assert!(rebased.paused, "Apply would have un-paused the colony");
+    assert!(rebased.launch_at_login);
+    assert_eq!(
+        rebased.display_scale, 4,
+        "the notebook's own change is kept"
+    );
+    assert_eq!(pending_changes(&current, &rebased), vec!["size"]);
+}
+
+#[test]
+fn a_habitat_applied_from_the_editor_is_not_left_waiting_to_apply() {
+    let saved = Settings::default();
+    let mut current = saved.clone();
+    current.habitat.preset = HabitatPreset::Custom;
+    // The editor hands its result to the notebook's draft as it finishes.
+    let mut draft = saved.clone();
+    draft.habitat = current.habitat.clone();
+    let rebased = rebase_preferences(&saved, &draft, &current);
+    assert_eq!(rebased, current);
+    assert!(pending_changes(&current, &rebased).is_empty());
+}
+
+#[test]
+fn a_change_made_in_the_notebook_wins_over_the_same_one_made_elsewhere() {
+    let saved = Settings::default();
+    let mut draft = saved.clone();
+    draft.paused = true;
+    let mut current = saved.clone();
+    current.reduce_motion = true;
+    let rebased = rebase_preferences(&saved, &draft, &current);
+    assert!(rebased.paused && rebased.reduce_motion);
+    // Unchanged in both: the colony's value, which is the same.
+    assert_eq!(rebased.visible, current.visible);
+}

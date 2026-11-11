@@ -237,12 +237,14 @@ impl World {
                 back.state.position = stand_in.state.position;
                 back.state.surface = stand_in.state.surface.clone();
             }
+            // It left in the middle of whatever it was doing, maybe indoors or set back on the
+            // village ground; it comes back as a colony opens, outside and at the front, so the
+            // world can see it and it can be picked up.
+            back.state.forget_runtime();
             back.state.action = ActionKind::Idle;
             back.state.action_elapsed = 0.0;
             back.state.action_duration = 1.0;
             back.state.velocity = Point::default();
-            back.state.attention = None;
-            back.state.flourish = None;
             restored.push(back.id);
             creatures.push(back);
         }

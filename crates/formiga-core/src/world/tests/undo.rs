@@ -506,3 +506,51 @@ fn a_companion_brought_back_after_its_display_shrank_lands_on_the_display() {
         width / 2.0
     );
 }
+
+/// A companion removed or replaced while it was indoors, or set back on the village ground, comes
+/// back outside and at the front, as it would if the colony were opened again: visible, and able
+/// to be picked up, rather than drawn nowhere until a restart.
+#[test]
+fn a_companion_taken_away_from_indoors_comes_back_outside() {
+    for replace in [false, true] {
+        let (mut world, desktop, now) = colony();
+        let target = adults(&world)[1];
+        let inside = world
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == target)
+            .unwrap();
+        inside.state.indoors = true;
+        inside.state.depth = 12.0;
+        if replace {
+            world
+                .edit(
+                    ColonyEdit::Replaced {
+                        name: "Poppy".into(),
+                    },
+                    |world| world.replace_creature_with_adult(target, [77; 32], now, &desktop),
+                )
+                .unwrap();
+        } else {
+            world
+                .edit(
+                    ColonyEdit::Removed {
+                        name: "Biscuit".into(),
+                    },
+                    |world| world.remove_colony_creature(target),
+                )
+                .unwrap();
+        }
+        world.undo_last_edit().unwrap();
+        let back = world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == target)
+            .unwrap();
+        assert!(!back.state.indoors, "replace: {replace}");
+        assert_eq!(back.state.depth, 0.0, "replace: {replace}");
+        world.tick(now + Duration::minutes(1), 0.05, &desktop);
+    }
+}

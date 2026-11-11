@@ -3,9 +3,10 @@
 //! Everything lives under `battle/` in the data directory, beside the colony and never inside it:
 //!
 //! - `battle/session.json`, while a session is open: which session it is, and the checksum of the
-//!   snapshot Desktop wrote for it, which every result must name. It holds nothing else about the
-//!   colony, and it is what lets the next start keep what a session Desktop stopped in the middle
-//!   of earned.
+//!   snapshot Desktop wrote for it, which every result must name, and once Battle has been
+//!   started, its process and program. It holds nothing else about the colony, and it is what
+//!   lets the next start keep what a session Desktop stopped in the middle of earned, and find
+//!   Battle again if it is still open.
 //! - `battle/<session>/`, the session directory Battle is given: the roster Desktop wrote, and
 //!   Battle's acknowledgement and result.
 //!
@@ -15,6 +16,7 @@
 
 pub use crate::expansion::Refusal;
 use crate::expansion::files::VisitFiles;
+use crate::platform::companion_app::Started;
 use formiga_battle_contract::result::result_limits::MAX_RESULT_BYTES;
 use formiga_battle_contract::{
     ACK_FILE, BattleAck, BattleError, BattleResult, BattleSnapshot, RESULT_FILE, SNAPSHOT_FILE,
@@ -32,6 +34,9 @@ pub const MARKER_FORMAT: &str = "formiga.desktop.battle-session";
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct Marker {
     snapshot_sha256: String,
+    /// Battle's process, once it has been started for the session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    started: Option<Started>,
 }
 
 /// A session that has been written and not yet closed.
@@ -41,6 +46,8 @@ pub struct OpenSession {
     /// The checksum of the snapshot Desktop wrote, which a result must name to be applied.
     pub snapshot_sha256: String,
     pub dir: PathBuf,
+    /// Battle's process, once it has been started for the session.
+    pub started: Option<Started>,
 }
 
 /// The sessions' directory.
@@ -65,9 +72,11 @@ impl BattleFiles {
                 session_id: snapshot.session_id.clone(),
                 snapshot_sha256: sha256_hex(&bytes),
                 dir: dir.to_owned(),
+                started: None,
             };
             let marker = Marker {
                 snapshot_sha256: open.snapshot_sha256.clone(),
+                started: None,
             };
             Ok((open, marker))
         })
@@ -81,7 +90,20 @@ impl BattleFiles {
             dir: self.sessions.session_dir(&session_id),
             session_id,
             snapshot_sha256: marker.snapshot_sha256,
+            started: marker.started,
         })
+    }
+
+    /// Remember the process Battle was started as for the open session, so a Desktop restarted
+    /// while it is still open can wait for it again rather than close the session under it.
+    pub fn remember_start(&self, open: &OpenSession, started: &Started) {
+        let marker = Marker {
+            snapshot_sha256: open.snapshot_sha256.clone(),
+            started: Some(started.clone()),
+        };
+        if let Err(error) = self.sessions.remember(&open.session_id, marker) {
+            tracing::warn!(%error, "could not remember Formiga Battle's process");
+        }
     }
 
     /// What Battle says the session's matches earned, if it has said anything yet. A result that
@@ -168,6 +190,65 @@ mod tests {
         files.close(&open);
         assert_eq!(files.open_session(), None);
         assert!(!open.dir.exists());
+    }
+
+    /// Battle's process, once remembered, is found again after a restart with the session, and a
+    /// marker written before there was one to remember still reads.
+    #[test]
+    fn battles_process_is_remembered_with_its_session() {
+        let scratch = Scratch::new("battle-session", "started");
+        let files = BattleFiles::new(&scratch.0);
+        let open = files.open(&roster()).unwrap();
+        assert_eq!(files.open_session().unwrap().started, None);
+        let started = Started {
+            process: 4242,
+            program: PathBuf::from("/usr/bin/open"),
+        };
+        files.remember_start(&open, &started);
+        let found = BattleFiles::new(&scratch.0).open_session().unwrap();
+        assert_eq!(found.started, Some(started.clone()));
+        assert_eq!(found.snapshot_sha256, open.snapshot_sha256);
+        // Once the session is closed, nothing is written for it again.
+        files.close(&open);
+        files.remember_start(&open, &started);
+        assert_eq!(files.open_session(), None);
+    }
+
+    /// A process that has ended, or one now running another program under the same number, is
+    /// not Battle still open.
+    #[test]
+    fn only_the_process_battle_was_started_as_counts_as_still_open() {
+        let mut child = std::process::Command::new(if cfg!(windows) { "cmd" } else { "sleep" })
+            .args(if cfg!(windows) {
+                &["/C", "ping -n 30 127.0.0.1 >NUL"][..]
+            } else {
+                &["30"][..]
+            })
+            .spawn()
+            .unwrap();
+        let program = which(if cfg!(windows) { "cmd.exe" } else { "sleep" });
+        let started = Started {
+            process: child.id(),
+            program: program.clone(),
+        };
+        assert!(started.still_running(), "{program:?}");
+        let impostor = Started {
+            process: child.id(),
+            program: PathBuf::from("/somewhere/else"),
+        };
+        assert!(!impostor.still_running());
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(!started.still_running());
+    }
+
+    /// Where a program on the search path is, as the system names a running process.
+    fn which(name: &str) -> PathBuf {
+        std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|dir| dir.join(name))
+            .find(|path| path.is_file())
+            .map(|path| std::fs::canonicalize(&path).unwrap_or(path))
+            .unwrap()
     }
 
     #[test]

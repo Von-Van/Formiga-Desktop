@@ -367,9 +367,15 @@ impl SettingsWindow {
         creatures: &[Creature],
         relationships: &[CreatureRelationship],
     ) {
-        self.draft = settings.clone();
-        self.saved = settings.clone();
-        self.error = None;
+        // A notebook already open keeps what was being changed in it: the frame rebases those
+        // changes onto the colony's preferences. Only one opened afresh starts from them.
+        if !self.ui_visible {
+            self.draft = settings.clone();
+            self.saved = settings.clone();
+            self.error = None;
+        } else {
+            self.follow_preferences(settings);
+        }
         self.creatures = creatures.to_vec();
         self.relationships = relationships.to_vec();
         self.creature_names = creatures
@@ -421,6 +427,16 @@ impl SettingsWindow {
         self.window.request_redraw();
     }
 
+    /// Follow the colony's preferences after something else changed them, the tray or the habitat
+    /// editor: the colony's are the ones kept, and the notebook holds only what it changed on
+    /// top, so its Apply never puts back a preference it did not touch.
+    fn follow_preferences(&mut self, current: &Settings) {
+        if *current != self.saved {
+            self.draft = rebase_preferences(&self.saved, &self.draft, current);
+            self.saved = current.clone();
+        }
+    }
+
     pub fn acknowledge_preferences(&mut self, settings: &Settings) {
         self.saved = settings.clone();
         self.draft = settings.clone();
@@ -434,6 +450,12 @@ impl SettingsWindow {
 
     pub fn set_error(&mut self, message: impl Into<String>) {
         self.error = Some(message.into());
+        self.window.request_redraw();
+    }
+
+    /// Say in the studio whether a picture is being read for takes, so it is not asked twice.
+    pub fn set_reference_search(&mut self, reading: bool) {
+        self.clubhouse.studio.reading_picture = reading;
         self.window.request_redraw();
     }
 
@@ -570,6 +592,7 @@ impl SettingsWindow {
             self.applied_appearance = Some(appearance);
             self.applied_system_theme = self.context.system_theme();
         }
+        self.follow_preferences(&colony.save.settings);
         self.creatures = colony.creatures.to_vec();
         self.relationships = colony.relationships.to_vec();
         self.creature_names
@@ -1187,6 +1210,70 @@ pub(crate) fn undo_hint(earlier: usize) -> String {
         0 => "The only change kept. Changes are kept until Formiga quits.".to_owned(),
         1 => "One earlier change can be undone after this one.".to_owned(),
         n => format!("{n} earlier changes can be undone after this one, newest first."),
+    }
+}
+
+/// The notebook's changes carried over onto the colony's `current` preferences: each preference
+/// the notebook changed (`draft` differs from the `saved` copy it started from) keeps the
+/// notebook's value, and every other one takes the colony's. Listing every field means a new
+/// preference cannot be left out.
+pub(crate) fn rebase_preferences(
+    saved: &Settings,
+    draft: &Settings,
+    current: &Settings,
+) -> Settings {
+    fn pick<T: PartialEq + Clone>(saved: &T, draft: &T, current: &T) -> T {
+        if draft == saved {
+            current.clone()
+        } else {
+            draft.clone()
+        }
+    }
+    let Settings {
+        visible,
+        paused,
+        display_scale,
+        window_ledges,
+        cursor_reactions,
+        reduce_motion,
+        launch_at_login,
+        direct_manipulation,
+        fullscreen_app_occlusion,
+        habitat,
+        application_occlusion_rules,
+    } = draft;
+    Settings {
+        visible: pick(&saved.visible, visible, &current.visible),
+        paused: pick(&saved.paused, paused, &current.paused),
+        display_scale: pick(&saved.display_scale, display_scale, &current.display_scale),
+        window_ledges: pick(&saved.window_ledges, window_ledges, &current.window_ledges),
+        cursor_reactions: pick(
+            &saved.cursor_reactions,
+            cursor_reactions,
+            &current.cursor_reactions,
+        ),
+        reduce_motion: pick(&saved.reduce_motion, reduce_motion, &current.reduce_motion),
+        launch_at_login: pick(
+            &saved.launch_at_login,
+            launch_at_login,
+            &current.launch_at_login,
+        ),
+        direct_manipulation: pick(
+            &saved.direct_manipulation,
+            direct_manipulation,
+            &current.direct_manipulation,
+        ),
+        fullscreen_app_occlusion: pick(
+            &saved.fullscreen_app_occlusion,
+            fullscreen_app_occlusion,
+            &current.fullscreen_app_occlusion,
+        ),
+        habitat: pick(&saved.habitat, habitat, &current.habitat),
+        application_occlusion_rules: pick(
+            &saved.application_occlusion_rules,
+            application_occlusion_rules,
+            &current.application_occlusion_rules,
+        ),
     }
 }
 

@@ -756,42 +756,85 @@ impl FormigaApp {
         }
     }
 
-    /// Fill the studio with the takes that come closest to a reference image, and remember the
-    /// image so the search can be run again.
+    /// Look for the takes that come closest to a reference image, on a thread of its own: reading
+    /// the picture and drawing hundreds of candidates takes long enough to freeze the notebook
+    /// and every overlay if it ran here. The studio says it is looking until the takes come back.
     fn preview_reference_matches(&mut self, path: PathBuf) {
-        match new_colony_seed() {
-            Ok(search_seed) => {
-                let desktop = self.snapshot();
-                match match_reference_file(&path, search_seed, OffsetDateTime::now_utc(), &desktop)
-                {
-                    Ok(takes) => {
-                        if let Some(window) = &mut self.settings_window {
-                            window.clear_generation_preview();
-                            for take in takes {
-                                window.set_generation_preview(GenerationPreview {
-                                    shared: None,
-                                    creature: take.creature,
-                                    source_seed: take.source_seed,
-                                    similarity: Some(take.similarity),
-                                    summary: take.summary.to_owned(),
-                                    drawn: None,
-                                });
-                            }
-                            window.clubhouse.studio.reference = Some(path);
-                        }
-                    }
-                    Err(error) => {
-                        if let Some(window) = &mut self.settings_window {
-                            window.set_error(crate::explain::reference_image(&error));
-                        }
-                    }
-                }
-            }
+        if self.reference_search.is_some() {
+            return;
+        }
+        let search_seed = match new_colony_seed() {
+            Ok(seed) => seed,
             Err(error) => {
                 if let Some(window) = &mut self.settings_window {
                     window.set_error(format!("Could not generate a secure seed: {error}"));
                 }
+                return;
             }
+        };
+        self.reference_searches += 1;
+        let search = self.reference_searches;
+        let desktop = self.snapshot();
+        let proxy = self.event_proxy.clone();
+        let picture = path.clone();
+        let started = std::thread::Builder::new()
+            .name("formiga-reference-match".into())
+            .spawn(move || {
+                let takes = match_reference_file(
+                    &picture,
+                    search_seed,
+                    OffsetDateTime::now_utc(),
+                    &desktop,
+                );
+                let _ = proxy.send_event(UserEvent::ReferenceMatched(ReferenceSearch {
+                    search,
+                    path: picture,
+                    takes,
+                }));
+            });
+        match started {
+            Ok(_) => {
+                self.reference_search = Some(search);
+                if let Some(window) = &mut self.settings_window {
+                    window.set_reference_search(true);
+                }
+            }
+            Err(error) => {
+                if let Some(window) = &mut self.settings_window {
+                    window.set_error(format!("Could not start reading the picture: {error}"));
+                }
+            }
+        }
+    }
+
+    /// Fill the studio with the takes a search found, and remember the image so the search can
+    /// be run again. A search overtaken by another, or finished after the notebook let go of
+    /// it, shows nothing.
+    pub(super) fn show_reference_matches(&mut self, found: ReferenceSearch) {
+        if self.reference_search != Some(found.search) {
+            return;
+        }
+        self.reference_search = None;
+        let Some(window) = &mut self.settings_window else {
+            return;
+        };
+        window.set_reference_search(false);
+        match found.takes {
+            Ok(takes) => {
+                window.clear_generation_preview();
+                for take in takes {
+                    window.set_generation_preview(GenerationPreview {
+                        shared: None,
+                        creature: take.creature,
+                        source_seed: take.source_seed,
+                        similarity: Some(take.similarity),
+                        summary: take.summary.to_owned(),
+                        drawn: None,
+                    });
+                }
+                window.clubhouse.studio.reference = Some(found.path);
+            }
+            Err(error) => window.set_error(crate::explain::reference_image(&error)),
         }
     }
 
@@ -1231,6 +1274,15 @@ impl FormigaApp {
             save.settings.habitat = HabitatPolicy::default();
         }
         let imported = World::from_save(save);
+        let previous_launch = self
+            .world
+            .as_ref()
+            .is_some_and(|w| w.save.settings.launch_at_login);
+        // A house open in Home, and a companion open in Farm, belong to the colony being
+        // replaced. They are ended first, because ending them saves the colony they belong to:
+        // done after the restored colony is written, that save would put the old colony back
+        // over it until the next one, and a crash in between would keep the old colony.
+        self.abandon_visits();
         let result = self
             .save_store
             .preserve_recovery_files()
@@ -1239,13 +1291,6 @@ impl FormigaApp {
             self.settings_error(format!("Restore stopped; could not safely save: {error}"));
             return;
         }
-        let previous_launch = self
-            .world
-            .as_ref()
-            .is_some_and(|w| w.save.settings.launch_at_login);
-        // A house open in Home, and a companion open in Farm, belong to the colony being
-        // replaced.
-        self.abandon_visits();
         self.world = Some(imported);
         self.recovery_pending = false;
         self.milestone_notice = None;
@@ -1258,6 +1303,8 @@ impl FormigaApp {
                 &world.save.creatures,
                 &world.save.relationships,
             );
+            // Preferences half-changed for the colony that was replaced are not carried over.
+            window.acknowledge_preferences(&world.save.settings);
         }
         if let Err(error) = self.finish_settings_change(previous_launch) {
             self.settings_error(format!(
