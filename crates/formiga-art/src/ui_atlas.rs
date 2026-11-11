@@ -209,6 +209,11 @@ impl MenuIcon {
     }
 }
 
+/// The tab hung under a cell whose item was chosen but cannot be done just now: the companion has
+/// started a climb, set off on a journey, or is otherwise somewhere an offer cannot reach it. A
+/// companion that simply turns an offer down answers in its own bubble instead.
+pub const MENU_UNAVAILABLE_TEXT: &str = "not now";
+
 /// The label under a hovered cell. Always lowercase, always a word the owner would say.
 pub fn menu_label_text(icon: MenuIcon) -> &'static str {
     match icon {
@@ -319,8 +324,21 @@ impl MenuLayout {
     /// Where the label tab for `index` goes: under the notch, centred on that cell, and nudged
     /// so it never hangs off the end of the strip while it still fits within it.
     pub fn label_tab(&self, index: usize) -> Option<MenuRect> {
+        self.tab_under(
+            index,
+            UiAtlasRenderer::menu_label(*self.items.get(index)?).width,
+        )
+    }
+
+    /// Where the "not now" tab hangs under a cell (see [`MENU_UNAVAILABLE_TEXT`]): where its
+    /// label would, in its place. Draw [`UiAtlasRenderer::menu_unavailable_label`] into it.
+    pub fn unavailable_tab(&self, index: usize) -> Option<MenuRect> {
+        self.tab_under(index, UiAtlasRenderer::menu_unavailable_label().width)
+    }
+
+    /// A tab `width` art pixels wide, centred under a cell and kept within the strip.
+    fn tab_under(&self, index: usize, width: u32) -> Option<MenuRect> {
         let cell = self.cell(index)?;
-        let width = UiAtlasRenderer::menu_label(self.items[index]).width;
         let centre = cell.x + cell.width as i32 / 2;
         let limit = self.size.0 as i32 - width as i32;
         let x = if limit >= 0 {
@@ -399,7 +417,7 @@ impl UiAtlasRenderer {
             draw_menu_body(&mut canvas, plain.x as i32, plain.y as i32, cells as u32);
         }
 
-        // Label tabs.
+        // Label tabs, and the one that says an item cannot be done just now.
         for icon in MenuIcon::ALL {
             let rect = Self::menu_label(icon);
             draw_label_tab(
@@ -409,6 +427,13 @@ impl UiAtlasRenderer {
                 menu_label_text(icon),
             );
         }
+        let rect = Self::menu_unavailable_label();
+        draw_label_tab(
+            &mut canvas,
+            rect.x as i32,
+            rect.y as i32,
+            MENU_UNAVAILABLE_TEXT,
+        );
 
         canvas
     }
@@ -465,24 +490,12 @@ impl UiAtlasRenderer {
     /// The paper tab carrying an item's label. Draw it into `MenuLayout::label_tab`. Tabs are
     /// laid along a row until the next would not fit, then along the next row down.
     pub fn menu_label(icon: MenuIcon) -> SpriteRect {
-        let (mut x, mut y) = (0, MENU_LABEL_ROW_Y);
-        for candidate in MenuIcon::ALL {
-            let width = label_tab_width(menu_label_text(candidate));
-            if x + width > UI_ATLAS_WIDTH {
-                x = 0;
-                y += LABEL_TAB_HEIGHT;
-            }
-            if candidate == icon {
-                return SpriteRect {
-                    x,
-                    y,
-                    width,
-                    height: LABEL_TAB_HEIGHT,
-                };
-            }
-            x += width;
-        }
-        unreachable!("every MenuIcon is in ALL")
+        label_slot(icon.index() as usize)
+    }
+
+    /// The paper tab saying "not now", packed after every item's label.
+    pub fn menu_unavailable_label() -> SpriteRect {
+        label_slot(MenuIcon::ALL.len())
     }
 }
 
@@ -509,6 +522,33 @@ fn text_width(text: &str) -> u32 {
     } else {
         letters * GLYPH_ADVANCE - 1
     }
+}
+
+/// The `index`th tab along the label rows: each item's label in [`MenuIcon::ALL`] order, then
+/// [`MENU_UNAVAILABLE_TEXT`].
+fn label_slot(index: usize) -> SpriteRect {
+    let texts = MenuIcon::ALL
+        .iter()
+        .map(|icon| menu_label_text(*icon))
+        .chain([MENU_UNAVAILABLE_TEXT]);
+    let (mut x, mut y) = (0, MENU_LABEL_ROW_Y);
+    for (slot, text) in texts.enumerate() {
+        let width = label_tab_width(text);
+        if x + width > UI_ATLAS_WIDTH {
+            x = 0;
+            y += LABEL_TAB_HEIGHT;
+        }
+        if slot == index {
+            return SpriteRect {
+                x,
+                y,
+                width,
+                height: LABEL_TAB_HEIGHT,
+            };
+        }
+        x += width;
+    }
+    unreachable!("a label slot past the last tab")
 }
 
 fn label_tab_width(text: &str) -> u32 {
@@ -1276,6 +1316,7 @@ fn glyph(letter: char) -> [&'static str; GLYPH_HEIGHT as usize] {
         'r' => ["##.", "#.#", "##.", "#.#", "#.#"],
         's' => [".##", "#..", ".#.", "..#", "##."],
         't' => ["###", ".#.", ".#.", ".#.", ".#."],
+        'w' => ["#.#", "#.#", "###", "###", "#.#"],
         'y' => ["#.#", "#.#", ".#.", ".#.", ".#."],
         _ => ["...", "...", "...", "...", "..."],
     }
@@ -1301,6 +1342,7 @@ mod tests {
             rects.push(UiAtlasRenderer::menu_icon(icon, true));
             rects.push(UiAtlasRenderer::menu_label(icon));
         }
+        rects.push(UiAtlasRenderer::menu_unavailable_label());
         for cells in 2..=4 {
             rects.push(UiAtlasRenderer::menu_frame(cells).expect("2..=4 have frames"));
             rects.push(UiAtlasRenderer::menu_frame_plain(cells).expect("2..=4 have frames"));

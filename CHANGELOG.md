@@ -49,6 +49,23 @@ All notable changes are documented here.
   than failing on a card that cannot hold its finest sheet.
 - The habitat editor always draws your red excluded areas, however many green regions the desktop
   is cut into; it is the green that gives way when there are too many to draw.
+- Pausing holds a meal or a game where it is. Before, both kept going underneath, so carrying on
+  jumped several bites or moves ahead.
+- With Reduce motion on, a companion at play holds its toy still in its paws instead of tossing,
+  bouncing or flying it, even when the setting is switched on mid-toss.
+- A companion standing back in the village is grabbed by the smaller body you see there: a near
+  miss no longer picks it up, and its edge no longer misses.
+- Where two companions overlap, a click or a right-click goes to the one drawn in front.
+- The snack or toy a companion holds no longer takes clicks meant for the desktop behind it; only
+  its body and face do.
+- A companion's menu closes as it goes inside its house, and its click area goes with it rather
+  than staying over an empty strip of desktop.
+- Snack or Toy chosen for a companion that has just started a climb or a journey says "not now"
+  under the item and keeps the menu open, instead of closing as if nothing happened.
+- The part of a companion hidden behind an app you chose to hide it behind lets clicks through to
+  that app; the part still showing can be picked up as before.
+- On Windows, the spot a companion has walked away from no longer swallows clicks meant for the
+  app now underneath it.
 
 ## [0.68.22] - 2026-11-04
 

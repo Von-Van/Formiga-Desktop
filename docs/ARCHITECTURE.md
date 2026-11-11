@@ -352,7 +352,8 @@ A companion eating has a `Meal` (`formiga-core/src/meals.rs`), runtime only like
 `world/meals.rs` gives one to anyone whose action has just become Eat, carries it while they eat,
 and clears it when they stop, at the end of every tick, with dice of its own from the colony seed,
 the companion and the clock, so it changes nothing the colony does (a test runs a colony with its
-meals wiped every tick and compares). The food is one of 18 in six sizes — tiny, in the hand, big,
+meals wiped every tick and compares). Paused, a meal holds where it is along with its action, so
+the bite on screen when the colony carries on is the bite from before the pause. The food is one of 18 in six sizes — tiny, in the hand, big,
 long, in a shell, in a bowl — chosen from the hour by the desk's clock, the village's ripe gardens,
 the companion's favourite (read from its looks) or, for a snack the person offered, a treat. The
 meal is laid out to fill the Eat action's time: a look it over, a crack or a blow for a nut or a
@@ -382,7 +383,11 @@ frame: a ball goes above the head, a plane across the desktop. Props a game need
 angles, a rod and a fish, the umbrella open, closed and upturned, a kite, a plane, a tower, a drum,
 a paper boat) are on the held sheet; a borrowed find is drawn from the colony's own sheet of finds,
 so `CreatureDraw` notes which sheet its carried quad uses. `formiga-tools play-sheet` shows each
-shape played with through a session.
+shape played with through a session. Paused, a game holds where it is, as a meal does. With motion
+reduced, solo play keeps SoloPlay's own calm hold and the thing stays still in the paws, as itself
+and not turning, whatever the move: nothing is tossed, bounced, swung or flown, and the eyes do not
+follow a thing that is not going anywhere. The ride down under an umbrella is held still overhead
+already, and keeps its hold.
 
 Companions talk to each other in pictures (`formiga-core/src/talk.rs`, carried by
 `world/talk.rs`, runtime only and checked by the same wiped-every-tick test). A `Saying` is a
@@ -696,7 +701,14 @@ click-through during normal use. Coordinates remain virtual-desktop logical poin
 renderer conversion to physical pixels.
 
 Direct manipulation uses one small proxy per visible creature. A pre-baked one-bit frame mask shapes
-the Windows proxy and controls near-creature hit testing on macOS. The proxy preserves the grab
+the Windows proxy and controls near-creature hit testing on macOS. The mask is the body and the face
+only (`interaction::body_mask`): what the paws hold is drawn apart and is often not the clip's own
+snack or toy, so it stays click-through. Where a chosen application hides part of a creature, that
+part is cut out of the mask too (`InteractionProxy::set_covered`, from the same
+`visible_occlusion_rects` the shader is given), so the application keeps its clicks and the part
+still drawn keeps the creature's. A proxy follows its creature only while the cursor is near; one
+left behind is given an empty shape until it is back in place, so on Windows, where the shape is
+what takes a press, the creature's old spot does not swallow clicks meant for what is there now. The proxy preserves the grab
 offset, captures through release, and sends normalized cursor position and velocity to the
 simulation. Three fixed-capacity velocity samples cover roughly the final 150 ms without allocation.
 The interaction session tracks maximum excursion from the press point: at most six logical points is
@@ -767,7 +779,11 @@ book is. Stay calls `ask_visitor_to_stay`, logging a category and closing the me
 code routes through the application's only clipboard path — egui's, inside the settings window — so
 the window appears on the Journal page with a "Visitor code copied" toast rather than a second
 clipboard owner existing. The menu closes after any choice but Moment; the simulation answers with
-bubbles.
+bubbles. A Snack or Toy the companion can no longer be offered — `OfferSnack` or `OfferToy`
+returning false because it has started a climb, set off on a journey, gone to a wonder — keeps the
+menu open and hangs a "not now" tab (`MENU_UNAVAILABLE_TEXT`, baked after the labels on the
+interface atlas) under that cell for 1.6 seconds or until another cell is hovered; a companion that
+can take it and declines still answers in its own bubble.
 
 Moment opens a second strip beside the first, on its row and level with its body: to the right
 where the usable area has room and to the left where it does not, clamped inside it, and never
@@ -794,8 +810,8 @@ snapped to the sprite pixel grid, at every creature size and both integer scale 
 
 A menu closes on a choice, on a second secondary click on the same creature, when the cursor stays
 farther than 120 logical points from both the strip and the creature for 0.8 seconds, after 8
-seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, or gone (a
-guest that left), when its monitor changes, and when the settings window *gains* focus — the
+seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, gone inside
+its house, or gone (a guest that left), when its monitor changes, and when the settings window *gains* focus — the
 transition, not the standing state. There is no global click capture, and Escape is deliberately
 unavailable, because a proxy never takes keyboard focus.
 
@@ -870,7 +886,8 @@ occluded and hidden exactly as their creature is.
 One 256×120 RGBA texture (122,880 bytes) carries every bubble sprite in a 17×16 cell whose anchor
 pixel (8, 15) sits just above the head, the menu frames for strips of two to four cells (16n + 2 art
 pixels wide, 21 tall including the notch), six menu icons — Snack, Toy, Home, Profile, Stay, Copy
-code — in normal and hovered states, and the pixel-font label tabs. It is built on first use,
+code — in normal and hovered states, and the pixel-font label tabs, with the "not now" tab packed
+after them. It is built on first use,
 released after 240 renders with neither a bubble nor a menu up, and released immediately when the
 colony is hidden or the overlay is torn down. It costs one extra bind group and one extra draw call
 inside the existing pass while something is up, and nothing at all otherwise.
@@ -1393,7 +1410,10 @@ the grass along the front; everybody at the front is drawn as before. Each compa
 back splits the village's one draw in two, so a frame with three of them costs at most three
 more draw calls. A companion mostly out of sight behind a house nearer the front
 (`World::behind_a_house`, refreshed each village tick) has its hit proxy treated as occluded, so a
-click there is the house's.
+click there is the house's. Where two companions overlap, a press goes to the one drawn in front:
+the overlay draws further back first and everybody as deep in colony order (`gpu::drawn_before`),
+and grabs and secondary clicks resolve against that same order (`gpu::back_to_front`), whichever
+proxy window the press happened to arrive at.
 
 Further back, companions are drawn smaller, cleanly. From `SET_BACK_DEPTH` = 3.5 back — the
 middle path and anything beyond it — a companion is drawn at `set_back_size`, 90% of its logical
@@ -1404,7 +1424,9 @@ does, and its feet stay on the same ground (`resting_baseline` comes from the dr
 overlay bakes a second atlas for a resident (`OverlayRenderer::set_back_sprites`, about 1.5 MB)
 as soon as it starts up a path, keeps it while the village is out and lets it go when the
 village goes, and draws from it, with its face anchors, silhouette and baseline, whenever the
-companion stands that far back (`sprite_for`); bubbles and the menu anchor follow it. The
+companion stands that far back (`sprite_for`); bubbles, the menu anchor and the grab mask follow
+it, all through `gpu::drawn_set_back`, so the click target is read from the same size, pose and
+footing as the body the user sees. The
 smallest minis, already drawn at the art's smallest size, stay that size. Houses set back are
 not drawn smaller; the drawing's height up the display, the houses in front of it and the front
 grass over its feet carry their depth.
