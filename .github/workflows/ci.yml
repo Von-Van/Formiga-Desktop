@@ -37,7 +37,7 @@ jobs:
       # tile on the Village page, everything reachable in a colony lived day by day. Nothing it
       # checks differs between systems, so it runs once, on the Mac, on the build the tests left.
       # Hill, Home, Farm and Battle aren't checked out here, so their part of it is skipped.
-      - if: matrix.os == 'macos-14'
+      - if: runner.os == 'macOS'
         run: python devtools/formiga.py audit content
 
   # The public API of the contract crates Formiga Hill, Home, Farm and Battle build on by tag,
