@@ -331,6 +331,56 @@ fn naps_are_taken_different_ways() {
 /// The three ways of sleeping and the three ways of walking are each drawn differently, on every
 /// body: a sprawl lies lower and wider than a curl, a loaf sits taller, and a skip bounces up
 /// where a trudge hangs low.
+/// Turning over in a long nap is shown as a turn — a stir, its weight gathered up in a crouch,
+/// and down the other way — not as one way of lying swapped for another between two frames. It
+/// begins and ends on the same settled ways as before, and with motion reduced there is none.
+#[test]
+fn a_nap_turns_over_rather_than_swapping() {
+    let mut creature = measured(71);
+    let motion = MotionSignature::for_creature(&creature);
+    let length = 40.0;
+    let (began, turn) = (0..400)
+        .map(|nap| nap as f32 * 37.0)
+        .find_map(|began| Some((began, motion.nap_turn(began, length, true)?)))
+        .expect("some long nap turns over");
+    creature.state.action = ActionKind::Sleep;
+    creature.state.action_duration = length;
+    let shown_at = |creature: &mut Creature, into: f32| {
+        creature.state.action_elapsed = into;
+        creature.state.presence.clock = began + into;
+        BodyPresentation::for_creature(creature).clip
+    };
+    let lying =
+        |way: Option<Gesture>| way.map_or(BodyClip::Action(ActionKind::Sleep), BodyClip::Gesture);
+    assert_eq!(shown_at(&mut creature, turn.at - 0.1), lying(turn.from));
+    assert_eq!(
+        shown_at(&mut creature, turn.at + 0.2),
+        lying(turn.from),
+        "a stir first"
+    );
+    assert_eq!(
+        shown_at(&mut creature, turn.at + 0.8),
+        BodyClip::Gesture(Gesture::Crouch),
+        "its weight gathered up"
+    );
+    assert_eq!(
+        shown_at(&mut creature, turn.at + NAP_TURN_SECS - 0.1),
+        lying(turn.to)
+    );
+    assert_eq!(
+        shown_at(&mut creature, turn.at + NAP_TURN_SECS + 0.1),
+        lying(turn.to)
+    );
+    creature.state.presence.reduced = true;
+    for tenth in 0..=((NAP_TURN_SECS + 1.0) * 10.0) as u32 {
+        assert_eq!(
+            shown_at(&mut creature, turn.at - 0.5 + tenth as f32 / 10.0),
+            lying(turn.from),
+            "no turn with motion reduced"
+        );
+    }
+}
+
 #[test]
 fn every_body_sleeps_and_walks_in_more_than_one_way() {
     let creature = measured(73);

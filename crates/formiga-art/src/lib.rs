@@ -39,6 +39,7 @@ pub use renderer::{
     DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
     FramePlacement, GazeDirection, HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT,
     HELD_SHEET_WIDTH, HeldPlacement, HeldThing, Holding, KITE_STRING, MealPose, MotionSignature,
+    NAP_TURN_SECS, NapTurn,
     PixelPoint, PlayPicture, PlaybackMode, PropAnchor, RenderedBodyFrame, SNACK_KINDS,
     TOY_COLOURWAYS, TOY_KINDS, held_now, held_tether, meal_eyelids, meal_face, meal_held,
     meal_offset, meal_pose, play_face, play_held, play_offset, play_pose, prop_in_motion,

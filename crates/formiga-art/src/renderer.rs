@@ -587,34 +587,53 @@ impl MotionSignature {
     /// How it lies `into` seconds into a nap that began at `began` on its clock and lasts
     /// `length`: curled up, sprawled out, or loafed sitting up — a trusting companion sprawls
     /// more and a wary one dozes sitting up — and, in a long nap, now and then turned over into
-    /// another way partway through.
+    /// another way partway through (see [`MotionSignature::nap_turn`]).
     pub fn nap_pose(self, began: f32, into: f32, length: f32, turns: bool) -> Option<Gesture> {
-        let nap = (began * 4.0).max(0.0) as u64;
-        let way = |pick: f32| {
-            let sprawl = 0.15 + 0.35 * self.trusting;
-            let loaf = 0.1 + 0.3 * (1.0 - self.trusting);
-            if pick < sprawl {
-                Some(Gesture::Sprawl)
-            } else if pick < sprawl + loaf {
-                Some(Gesture::Loaf)
-            } else {
-                None
-            }
-        };
-        let first = way(self.roll(0x6e61_7031, nap));
-        let turn_at = length * (0.4 + 0.25 * self.roll(0x6e61_7032, nap));
-        if turns && length > 25.0 && self.roll(0x6e61_7033, nap) < 0.45 && into >= turn_at {
-            let mut pick = self.roll(0x6e61_7034, nap);
-            // Over into a different way, not the same one again.
-            for _ in 0..4 {
-                let then = way(pick);
-                if then != first {
-                    return then;
-                }
-                pick = (pick + 0.37) % 1.0;
-            }
+        match self.nap_turn(began, length, turns) {
+            Some(turn) if into >= turn.at => turn.to,
+            _ => self.nap_way(began),
         }
-        first
+    }
+
+    /// The way a nap that began at `began` is first lain in: `None` for curled up.
+    fn nap_way(self, began: f32) -> Option<Gesture> {
+        self.nap_way_from(self.roll(0x6e61_7031, (began * 4.0).max(0.0) as u64))
+    }
+
+    fn nap_way_from(self, pick: f32) -> Option<Gesture> {
+        let sprawl = 0.15 + 0.35 * self.trusting;
+        let loaf = 0.1 + 0.3 * (1.0 - self.trusting);
+        if pick < sprawl {
+            Some(Gesture::Sprawl)
+        } else if pick < sprawl + loaf {
+            Some(Gesture::Loaf)
+        } else {
+            None
+        }
+    }
+
+    /// Whether a nap that began at `began` and lasts `length` turns over partway through, and if
+    /// so when, from which way and into which. Only a long nap does, never with motion reduced
+    /// (`turns` false), and always into a different way from the one it began in.
+    pub fn nap_turn(self, began: f32, length: f32, turns: bool) -> Option<NapTurn> {
+        let nap = (began * 4.0).max(0.0) as u64;
+        if !turns || length <= 25.0 || self.roll(0x6e61_7033, nap) >= 0.45 {
+            return None;
+        }
+        let from = self.nap_way(began);
+        let mut pick = self.roll(0x6e61_7034, nap);
+        for _ in 0..4 {
+            let to = self.nap_way_from(pick);
+            if to != from {
+                return Some(NapTurn {
+                    at: length * (0.4 + 0.25 * self.roll(0x6e61_7032, nap)),
+                    from,
+                    to,
+                });
+            }
+            pick = (pick + 0.37) % 1.0;
+        }
+        None
     }
 
     /// The mood a walk is taken in, if it has one: a trudge when the companion is tired or on
@@ -846,6 +865,27 @@ impl BodyPresentation {
         }
         if action == ActionKind::Sleep && state.nudge.is_none() {
             let into = state.action_elapsed;
+            let began = presence.clock - into;
+            // Turning over: a stir, a crouch, and down the other way, the stir's breaths quick.
+            if let Some(turn) = motion.nap_turn(began, state.action_duration, !presence.reduced)
+                && (turn.at..turn.at + NAP_TURN_SECS).contains(&into)
+            {
+                let since = into - turn.at;
+                let lying = |way: Option<Gesture>, clock: f32| {
+                    let clip = way.map_or(BodyClip::Action(ActionKind::Sleep), BodyClip::Gesture);
+                    body(clip, motion.frame(clip, clock * WRIGGLE_RATE))
+                };
+                return if since < TURN_STIR_SECS {
+                    lying(turn.from, since)
+                } else if since < TURN_STIR_SECS + TURN_GATHER_SECS {
+                    body(
+                        BodyClip::Gesture(Gesture::Crouch),
+                        motion.frame(Gesture::Crouch, since - TURN_STIR_SECS),
+                    )
+                } else {
+                    lying(turn.to, since)
+                };
+            }
             if let Some(way) = motion.nap_pose(
                 presence.clock - into,
                 into,
@@ -909,6 +949,23 @@ const LIE_DOWN_SECS: f32 = 0.45;
 
 /// How many times faster a sleeper's breaths come while it wriggles over in its sleep.
 const WRIGGLE_RATE: f32 = 4.0;
+
+/// A long nap turned over partway through: when, `at` seconds in, and from which way into which
+/// (`None` for curled up).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NapTurn {
+    pub at: f32,
+    pub from: Option<Gesture>,
+    pub to: Option<Gesture>,
+}
+
+/// How a turn over in a nap is shown, rather than one way of lying swapped for another in a
+/// frame: a stir where it lies, its breaths quickening, then its weight gathered up in a crouch,
+/// and then down into the new way, still stirring a moment before it settles.
+const TURN_STIR_SECS: f32 = 0.5;
+const TURN_GATHER_SECS: f32 = 0.6;
+const TURN_SETTLE_SECS: f32 = 0.5;
+pub const NAP_TURN_SECS: f32 = TURN_STIR_SECS + TURN_GATHER_SECS + TURN_SETTLE_SECS;
 
 /// The habit a creature is doing right now, the action it opens and how far into it the creature
 /// is. Anything its attention is on comes first, so a flourish never shows under a scene.
