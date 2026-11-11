@@ -566,3 +566,57 @@ fn a_friend_coming_over_is_watched() {
         .count();
     assert!(watched > 540, "watching its friend come: {watched} of 600");
 }
+
+/// Walking up or down a village path, a companion changes to its set-back size and back on a
+/// planted step — a frame where a foot is just down — never mid-stride; standing, it changes as
+/// soon as it is far enough back; and it is never set back with the village in.
+#[test]
+fn the_village_size_changes_on_a_planted_step() {
+    let mut bodies = vec![measured(41)];
+    for family in [BodyFamily::Blob, BodyFamily::SoftQuadruped] {
+        let mut creature = measured(43);
+        creature.appearance = genome(family);
+        bodies.push(creature);
+    }
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut creature = measured(47);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        creature.appearance.design = Some(design);
+        bodies.push(creature);
+    }
+    for mut creature in bodies {
+        creature.state.action = ActionKind::Traverse;
+        creature.state.presence.stepping = true;
+        for (from, to) in [(0.0, formiga_core::SET_BACK_DEPTH + 0.5), (6.0, 1.0)] {
+            creature.state.depth = from;
+            let mut shown = shown_set_back(&creature, true, None);
+            assert_eq!(shown, creature.state.set_back());
+            creature.state.depth = to;
+            let mut changed_on = None;
+            for step in 0..24 {
+                creature.state.presence.stride = step as f32 * 0.5;
+                let now = shown_set_back(&creature, true, Some(shown));
+                if now != shown {
+                    let frame = BodyPresentation::for_creature(&creature).frame;
+                    changed_on = Some(frame);
+                    assert!(
+                        pose::footfall(&creature.appearance, usize::from(frame % 6)),
+                        "changed size on frame {frame}, mid-stride"
+                    );
+                    shown = now;
+                }
+            }
+            assert!(
+                changed_on.is_some(),
+                "never changed size walking {from} to {to}"
+            );
+            assert_eq!(shown, creature.state.set_back());
+        }
+        // Standing, at once; and never with the village in.
+        creature.state.presence.stepping = false;
+        creature.state.depth = formiga_core::SET_BACK_DEPTH + 1.0;
+        assert!(shown_set_back(&creature, true, Some(false)));
+        assert!(!shown_set_back(&creature, false, Some(true)));
+    }
+}

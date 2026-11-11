@@ -928,6 +928,38 @@ impl BodyPresentation {
     }
 }
 
+/// Whether a companion is drawn at its smaller set-back size, standing back in the village with
+/// the village out, given whether it was drawn that way last time it was asked (`None` the
+/// first time). It changes as soon as it crosses [`formiga_core::SET_BACK_DEPTH`] while it is
+/// standing, set down or carried, but while it walks only on a footfall, a foot just down: a
+/// companion strolling up or down a path changes size on a planted step, never mid-stride. The
+/// overlay draws this size and the grab mask is read at it, so the two always agree.
+pub fn shown_set_back(creature: &Creature, village_out: bool, was: Option<bool>) -> bool {
+    let wanted = village_out && creature.state.set_back();
+    let Some(was) = was.filter(|was| *was != wanted) else {
+        return wanted;
+    };
+    if !creature.state.presence.stepping {
+        return wanted;
+    }
+    let body = BodyPresentation::for_creature(creature);
+    let striding = matches!(
+        body.clip,
+        BodyClip::Action(ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint)
+            | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+    );
+    if !striding || footfall_frame(&creature.appearance, body.frame) {
+        wanted
+    } else {
+        was
+    }
+}
+
+/// Whether `frame` of a walk is a footfall for this body (see [`shown_set_back`]).
+pub fn footfall_frame(genome: &AppearanceGenome, frame: u8) -> bool {
+    pose::footfall(genome, usize::from(frame % 6))
+}
+
 impl MotionSignature {
     /// What a companion does on stopping `was`, and for how long: up from a nap with a stretch
     /// if it is calm and a shake if it is lively, and a shake on being set down from a hand or

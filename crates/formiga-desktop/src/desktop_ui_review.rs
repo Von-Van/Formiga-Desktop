@@ -556,3 +556,81 @@ fn a_menu_holds_still_over_fidgets_and_is_big_enough_at_small() {
     }
     save_review("menu-small.png", &small);
 }
+
+/// `village-stroll.png`: a companion strolling from the front of the village up the path to the
+/// middle of it, a walking frame a column, at its real footing. The top row changes to its
+/// smaller set-back drawing the moment it crosses the line, as it used to, whatever its feet are
+/// doing; the bottom row as it does now, on the next planted step. A red tick marks the column
+/// it crosses the line in, and a grey dot each frame with a foot just down.
+#[test]
+fn the_village_size_changes_on_a_planted_step_in_a_stroll() {
+    let mut creature = adult(29);
+    creature.state.action = ActionKind::Traverse;
+    creature.state.facing_right = true;
+    creature.state.presence = formiga_core::Presence {
+        stepping: true,
+        last: Some(formiga_core::PresenceMark {
+            x: 0.0,
+            depth: 0.0,
+            window: None,
+        }),
+        ..Default::default()
+    };
+    let scale = 4;
+    let columns = 8;
+    let (cell_w, cell_h) = (50 * scale, 56 * scale);
+    let mut sheet = Canvas::new((cell_w * columns) as u32, (cell_h * 2) as u32);
+    sheet.fill_rect(0, 0, cell_w * columns, cell_h * 2, PAPER);
+    let line = formiga_core::SET_BACK_DEPTH;
+    let mut shown = None;
+    let mut crossed = false;
+    for column in 0..columns {
+        creature.state.depth = line - 0.5 + column as f32 * 0.2;
+        creature.state.presence.stride = column as f32;
+        let now = formiga_art::shown_set_back(&creature, true, shown);
+        shown = Some(now);
+        let body = formiga_art::BodyPresentation::for_creature(&creature);
+        for (row, set_back) in [creature.state.set_back(), now].into_iter().enumerate() {
+            let mut appearance = creature.appearance.clone();
+            if set_back {
+                appearance.logical_size = formiga_core::set_back_size(appearance.logical_size);
+            }
+            let picture = CreatureRenderer::render_composited_frame(
+                &appearance,
+                body.clip,
+                body.frame,
+                true,
+                false,
+                face(),
+            );
+            let baseline = CreatureRenderer::resting_baseline(&appearance, false);
+            let origin_y = FramePlacement::for_action(ActionKind::Traverse, baseline).origin_y;
+            let (left, top) = (column * cell_w, row as i32 * cell_h);
+            let ground = top + 50 * scale;
+            blit(
+                &mut sheet,
+                &picture,
+                whole(&picture),
+                left + cell_w / 2 - FRAME_SIZE as i32 / 2 * scale,
+                ground + origin_y * scale,
+                scale,
+                false,
+            );
+            sheet.fill_rect(left, ground, cell_w, scale, MARK);
+            if !crossed && creature.state.set_back() {
+                sheet.fill_rect(left, top, scale, cell_h, GUIDE);
+            }
+            if formiga_art::footfall_frame(&creature.appearance, body.frame) {
+                sheet.fill_rect(
+                    left + cell_w / 2 - scale,
+                    ground + 2 * scale,
+                    2 * scale,
+                    2 * scale,
+                    MARK,
+                );
+            }
+        }
+        crossed |= creature.state.set_back();
+    }
+    save_review("village-stroll.png", &sheet);
+}

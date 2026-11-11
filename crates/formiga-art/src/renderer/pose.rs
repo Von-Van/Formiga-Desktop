@@ -954,6 +954,20 @@ pub(super) fn resting_manner(genome: &AppearanceGenome) -> (i32, bool) {
 
 /// Whether a creature stretches on all fours rather than standing up to do it: the original
 /// soft quadrupeds, and the long body plan among the modular ones.
+/// Whether frame `phase` of six of this body's walk or run is a footfall, a foot just down —
+/// where [`Pose::stride`] dips the body: either end of the swing side on, all four down for a
+/// long body, a foot landed for one facing the screen.
+pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {
+    let down = if genome.design.is_none() {
+        0
+    } else if stretches_long(genome) {
+        1
+    } else {
+        2
+    };
+    phase % 3 == down
+}
+
 pub(super) fn stretches_long(genome: &AppearanceGenome) -> bool {
     genome
         .design

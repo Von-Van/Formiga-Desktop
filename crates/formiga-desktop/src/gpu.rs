@@ -136,6 +136,8 @@ struct CreatureDraw {
     tether: bool,
     among_houses: Option<usize>,
     depth: f32,
+    /// Drawn at its set-back size (see [`OverlayRenderer::shows_set_back`]).
+    set_back: bool,
 }
 
 /// The ground the village stands on, both layers by day and after dark, for the way the village
@@ -292,6 +294,9 @@ pub struct OverlayRenderer {
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     /// Each resident drawn at its set-back size, for while it stands back in the village.
     set_back_sprites: BTreeMap<CreatureId, SpriteGpu>,
+    /// Which size each companion is shown at just now, as the app last worked it out from its
+    /// footing (`formiga_art::shown_set_back`), so the overlay and the grab mask agree on it.
+    set_back_shown: BTreeMap<CreatureId, bool>,
     shelter: Option<ShelterGpu>,
     ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
@@ -571,6 +576,7 @@ impl OverlayRenderer {
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             set_back_sprites: BTreeMap::new(),
+            set_back_shown: BTreeMap::new(),
             shelter: None,
             ground: None,
             bubble: None,
@@ -685,14 +691,27 @@ impl OverlayRenderer {
     /// The atlas a companion is drawn from: its set-back one while it stands back in the village,
     /// once that is baked, and its own otherwise.
     fn sprite_for(&self, creature: &Creature) -> Option<&SpriteGpu> {
-        self.sprite_at(creature.id, creature.state.depth)
+        self.sprite_at(creature.id, self.shows_set_back(creature))
     }
 
-    fn sprite_at(&self, id: CreatureId, depth: f32) -> Option<&SpriteGpu> {
+    /// Which sizes the companions are shown at, from the app, once a tick.
+    pub fn show_set_back(&mut self, shown: &BTreeMap<CreatureId, bool>) {
+        self.set_back_shown.clone_from(shown);
+    }
+
+    /// Whether a companion is drawn at its set-back size: as the app last said, which waits for
+    /// a planted step to change, or for one it has not said anything about — someone on a trip's
+    /// platform — straight from how far back it stands.
+    fn shows_set_back(&self, creature: &Creature) -> bool {
+        self.set_back_shown
+            .get(&creature.id)
+            .copied()
+            .unwrap_or_else(|| drawn_set_back(creature.state.depth, true))
+    }
+
+    fn sprite_at(&self, id: CreatureId, set_back: bool) -> Option<&SpriteGpu> {
         // Set-back atlases are only kept while the village is out on this display.
-        if drawn_set_back(depth, true)
-            && let Some(sprite) = self.set_back_sprites.get(&id)
-        {
+        if set_back && let Some(sprite) = self.set_back_sprites.get(&id) {
             return Some(sprite);
         }
         self.sprites.get(&id)
@@ -927,6 +946,7 @@ impl OverlayRenderer {
                 tether: tether.is_some(),
                 among_houses,
                 depth: creature.state.depth,
+                set_back: self.shows_set_back(creature),
             });
         }
         // Among the houses, back to front; everybody at the front after them, in colony order.
@@ -1087,7 +1107,7 @@ impl OverlayRenderer {
             // The houses and trees from the back of the ground to the front, with whoever is
             // standing back among them drawn between the ones behind it and the ones in front.
             let draw_creature = |pass: &mut wgpu::RenderPass<'_>, creature: &CreatureDraw| {
-                if let Some(sprite) = self.sprite_at(creature.id, creature.depth) {
+                if let Some(sprite) = self.sprite_at(creature.id, creature.set_back) {
                     draw(pass, &sprite.body_bind_group, creature.start, 6);
                     draw(pass, &sprite.face_bind_group, creature.start + 6, 6);
                     let mut next = creature.start + 12;
