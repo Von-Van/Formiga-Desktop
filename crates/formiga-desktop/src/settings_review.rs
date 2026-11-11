@@ -3053,6 +3053,7 @@ fn a_change_made_in_the_notebook_wins_over_the_same_one_made_elsewhere() {
     assert!(rebased.paused && rebased.reduce_motion);
     // Unchanged in both: the colony's value, which is the same.
     assert_eq!(rebased.visible, current.visible);
+}
 
 /// A companion's profile offers a snack and a toy as plain buttons, the same two offers the
 /// strip over it on the desktop makes, so they can be reached from the keyboard: Tab to one and
