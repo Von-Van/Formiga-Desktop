@@ -46,6 +46,17 @@ pub enum Plaything {
 }
 
 impl Plaything {
+    /// Whether this is a paper plane, which is thrown once and lands, never flown on a string.
+    pub fn is_plane(self) -> bool {
+        match self {
+            Self::Belonging(kind) => kind == ColonyObjectKind::Paper,
+            Self::Trinket(variant) => {
+                trinket_info(variant).is_some_and(|info| info.name == "Paper plane")
+            }
+            Self::Toy(_) => false,
+        }
+    }
+
     /// Its shape, if it is something to play with at all.
     pub fn shape(self) -> Option<PlayShape> {
         use PlayShape::*;
@@ -146,6 +157,9 @@ pub enum PlayMove {
     PutDown,
     /// Holding an open umbrella overhead on the way down from a ledge, floating.
     Ride,
+    /// Where something thrown came down, watched for a moment from where it was thrown: how a
+    /// paper plane's flight ends, rather than with it back in the paws.
+    Landed,
 }
 
 /// The moves each shape is played with: one or two of the middle ones make each session.
@@ -164,7 +178,13 @@ fn moves_of(shape: PlayShape) -> &'static [PlayMove] {
     }
 }
 
-const MAX_MOVES: usize = 8;
+/// The most moves a session can hold: a pick-up, two towers built and knocked down, and a
+/// put-down, with room to spare.
+const MAX_MOVES: usize = 12;
+
+/// How much longer than its time a session may be at its natural pace before a whole round of it
+/// is left out, rather than everything in it hurried.
+const MOST_HURRIED: f32 = 1.3;
 
 /// A session of play under way.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -174,6 +194,9 @@ pub struct Play {
     /// Seconds since it began.
     pub elapsed: f32,
     pub length: f32,
+    /// The colony belonging this is, by its id, while it is borrowed from the yard: the yard
+    /// leaves it out until it is put back, so it is only ever in one place.
+    pub borrowed: Option<u64>,
     moves: [(PlayMove, f32); MAX_MOVES],
     count: u8,
 }
@@ -207,57 +230,89 @@ impl Play {
         Plaything::Toy(own_toy)
     }
 
-    /// Lays out a session with `thing` that fills `length` seconds: picked up, one to three of
-    /// its shape's moves, and put down.
+    /// Lays out a session with `thing` that fills `length` seconds: picked up, one to three rounds
+    /// of its shape's moves, and put down. Every round is played whole — a tower is built up and
+    /// knocked down, a line cast and reeled in — and a round that does not fit is left out rather
+    /// than cut short. Something thrown is thrown last and watched where it lands.
     pub fn plan<R: Rng + ?Sized>(thing: Plaything, length: f32, rng: &mut R) -> Self {
         let shape = thing.shape().unwrap_or(PlayShape::Round);
-        let mut moves: Vec<(PlayMove, f32)> = vec![(PlayMove::PickUp, 0.8)];
-        let choices = moves_of(shape);
+        let opening = (PlayMove::PickUp, 0.8);
+        let mut rounds: Vec<Vec<(PlayMove, f32)>> = Vec::new();
         let wanted = if length > 6.0 { 3 } else { 2 };
+        // A paper plane is only ever thrown, and anything else flown may be thrown at the end.
+        let thrown = shape == PlayShape::Flying && (thing.is_plane() || rng.random_bool(0.5));
+        let choices: &[PlayMove] = if shape == PlayShape::Flying {
+            &[PlayMove::Fly]
+        } else {
+            moves_of(shape)
+        };
+        let middle = if thing.is_plane() {
+            0
+        } else {
+            wanted - usize::from(thrown)
+        };
         let mut last = None;
-        for _ in 0..wanted {
+        for _ in 0..middle {
             let mut pick = choices[rng.random_range(0..choices.len())];
             if Some(pick) == last && choices.len() > 1 {
                 pick = choices
                     [(choices.iter().position(|m| *m == pick).unwrap_or(0) + 1) % choices.len()];
             }
             last = Some(pick);
-            match pick {
+            rounds.push(match pick {
                 // A line is cast and waited on, and a bite comes, or does not.
                 PlayMove::Fish => {
-                    moves.push((PlayMove::Fish, rng.random_range(1.8..2.8)));
+                    let mut round = vec![(PlayMove::Fish, rng.random_range(1.8..2.8))];
                     if rng.random_bool(0.6) {
-                        moves.push((PlayMove::Catch, 1.2));
+                        round.push((PlayMove::Catch, 1.2));
                     }
+                    round
                 }
                 // A tower goes up a block at a time, and comes down.
-                PlayMove::Stack => {
-                    for _ in 0..3 {
-                        moves.push((PlayMove::Stack, 0.8));
-                    }
-                    moves.push((PlayMove::Topple, 1.0));
-                }
+                PlayMove::Stack => vec![
+                    (PlayMove::Stack, 0.8),
+                    (PlayMove::Stack, 0.8),
+                    (PlayMove::Stack, 0.8),
+                    (PlayMove::Topple, 1.0),
+                ],
                 // Something set spinning, or a kite up, is watched a while.
                 PlayMove::Spin | PlayMove::Fly | PlayMove::Sail => {
-                    moves.push((pick, rng.random_range(2.0..3.0)))
+                    vec![(pick, rng.random_range(2.0..3.0))]
                 }
-                _ => moves.push((pick, rng.random_range(1.4..2.2))),
-            }
+                _ => vec![(pick, rng.random_range(1.4..2.2))],
+            });
         }
-        moves.push((PlayMove::PutDown, 0.8));
-        let total: f32 = moves.iter().map(|(_, secs)| secs).sum();
+        let ending = if thrown {
+            vec![
+                (PlayMove::Throw, rng.random_range(1.6..2.2)),
+                (PlayMove::Landed, 1.0),
+            ]
+        } else {
+            vec![(PlayMove::PutDown, 0.8)]
+        };
+        // Whole rounds come off the end until what is left fits the table and, at its own pace,
+        // nearly fits the time; the pace then takes up the rest.
+        let size = |rounds: &[Vec<(PlayMove, f32)>]| {
+            1 + rounds.iter().map(Vec::len).sum::<usize>() + ending.len()
+        };
+        let natural = |rounds: &[Vec<(PlayMove, f32)>]| {
+            opening.1
+                + rounds.iter().flatten().map(|(_, secs)| secs).sum::<f32>()
+                + ending.iter().map(|(_, secs)| secs).sum::<f32>()
+        };
+        while rounds.len() > 1
+            && (size(&rounds) > MAX_MOVES || natural(&rounds) > length * MOST_HURRIED)
+        {
+            rounds.pop();
+        }
+        let kept: Vec<(PlayMove, f32)> = std::iter::once(opening)
+            .chain(rounds.into_iter().flatten())
+            .chain(ending)
+            .take(MAX_MOVES)
+            .collect();
+        let total: f32 = kept.iter().map(|(_, secs)| secs).sum();
         let scale = length.max(0.5) / total.max(0.01);
         let mut laid = [(PlayMove::PickUp, 0.0); MAX_MOVES];
-        let kept: Vec<(PlayMove, f32)> = if moves.len() > MAX_MOVES {
-            let last = moves[moves.len() - 1];
-            moves[..MAX_MOVES - 1]
-                .iter()
-                .copied()
-                .chain([last])
-                .collect()
-        } else {
-            moves
-        };
         let mut start = 0.0;
         for (slot, (step, secs)) in laid.iter_mut().zip(&kept) {
             *slot = (*step, start);
@@ -268,8 +323,28 @@ impl Play {
             shape,
             elapsed: 0.0,
             length: length.max(0.5),
+            borrowed: None,
             moves: laid,
             count: kept.len() as u8,
+        }
+    }
+
+    /// Keeps the picking up going until `until` seconds in, fitting the rest of the game into the
+    /// time left: for a companion that bows before a game, so the bow comes first and the game
+    /// after it, rather than over the top of its opening.
+    pub fn pick_up_until(&mut self, until: f32) {
+        let count = usize::from(self.count);
+        if count < 2 || self.moves[0].0 != PlayMove::PickUp {
+            return;
+        }
+        let old = self.moves[1].1;
+        let until = until.min(self.length * 0.5);
+        if until <= old || self.elapsed >= old {
+            return;
+        }
+        let scale = (self.length - until) / (self.length - old).max(0.01);
+        for (_, start) in &mut self.moves[1..count] {
+            *start = until + (*start - old) * scale;
         }
     }
 
@@ -282,6 +357,7 @@ impl Play {
             shape: PlayShape::Umbrella,
             elapsed: 0.0,
             length: length.max(0.1),
+            borrowed: None,
             moves,
             count: 1,
         }
@@ -313,12 +389,33 @@ impl Play {
         (step, into, (into / (end - start).max(0.01)).clamp(0.0, 1.0))
     }
 
-    /// How many blocks are up, while a tower is being built.
-    pub fn tower(&self) -> u8 {
-        self.moves()
+    /// How long the move under way lasts, in seconds.
+    pub fn move_length(&self) -> f32 {
+        let moves = self.moves();
+        let index = moves
             .iter()
-            .filter(|(step, start)| *step == PlayMove::Stack && *start <= self.elapsed)
-            .count() as u8
+            .rposition(|(_, start)| *start <= self.elapsed)
+            .unwrap_or(0);
+        let end = moves.get(index + 1).map_or(self.length, |(_, next)| *next);
+        (end - moves[index].1).max(0.01)
+    }
+
+    /// How many blocks are up, while a tower is being built: counted from the last time it came
+    /// down, so a second tower goes up from one again.
+    pub fn tower(&self) -> u8 {
+        let mut blocks = 0_u8;
+        for (step, _) in self
+            .moves()
+            .iter()
+            .filter(|(_, start)| *start <= self.elapsed)
+        {
+            match step {
+                PlayMove::Stack => blocks = blocks.saturating_add(1),
+                PlayMove::Topple => blocks = 0,
+                _ => {}
+            }
+        }
+        blocks.min(3)
     }
 
     pub fn moves(&self) -> &[(PlayMove, f32)] {
@@ -369,7 +466,12 @@ mod tests {
             let play = Play::plan(thing, length, &mut rng);
             let moves = play.moves();
             assert_eq!(moves[0].0, PlayMove::PickUp);
-            assert_eq!(moves.last().unwrap().0, PlayMove::PutDown);
+            let last = moves.last().unwrap().0;
+            if thing.shape() == Some(PlayShape::Flying) {
+                assert!(matches!(last, PlayMove::PutDown | PlayMove::Landed));
+            } else {
+                assert_eq!(last, PlayMove::PutDown);
+            }
             assert!(moves.windows(2).all(|pair| pair[0].1 < pair[1].1));
             assert!(moves.last().unwrap().1 < length);
             let shape = thing.shape().unwrap();
@@ -380,6 +482,69 @@ mod tests {
                     "{shape:?} played with by {step:?}"
                 );
             }
+        }
+    }
+
+    /// A tower is built up whole and knocked down whole, and a second one goes up from one block
+    /// again: never a tower of four, and never one left standing half-built at the put-down.
+    #[test]
+    fn every_tower_goes_up_one_two_three_and_comes_down() {
+        let mut seconds = 0;
+        for seed in 0..80_u64 {
+            let length = 4.0 + (seed % 9) as f32;
+            let mut play = Play::plan(
+                Plaything::Toy(3),
+                length,
+                &mut ChaCha12Rng::seed_from_u64(seed),
+            );
+            let moves: Vec<PlayMove> = play.moves().iter().map(|(step, _)| *step).collect();
+            let middle = &moves[1..moves.len() - 1];
+            assert_eq!(middle.len() % 4, 0, "{moves:?}");
+            for round in middle.chunks(4) {
+                assert_eq!(
+                    round,
+                    [
+                        PlayMove::Stack,
+                        PlayMove::Stack,
+                        PlayMove::Stack,
+                        PlayMove::Topple
+                    ]
+                );
+            }
+            if middle.len() == 8 {
+                seconds += 1;
+            }
+            let mut heights = Vec::new();
+            while play.elapsed < play.length {
+                if play.now().0 == PlayMove::Stack {
+                    heights.push(play.tower());
+                }
+                play.elapsed += 0.05;
+            }
+            assert!(heights.iter().all(|h| (1..=3).contains(h)), "{heights:?}");
+            // The put-down is a moment, not most of the game.
+            let (_, put_down) = *play.moves().last().unwrap();
+            assert!(play.length - put_down < length * 0.25, "{:?}", play.moves());
+        }
+        assert!(seconds > 0, "no session ever built a second tower");
+    }
+
+    /// A paper plane is picked up, thrown once and watched where it lands; it never comes back to
+    /// the paws.
+    #[test]
+    fn a_paper_plane_is_thrown_once_and_lands() {
+        for seed in 0..40_u64 {
+            let play = Play::plan(
+                Plaything::Belonging(ColonyObjectKind::Paper),
+                3.0 + (seed % 8) as f32,
+                &mut ChaCha12Rng::seed_from_u64(seed),
+            );
+            let moves: Vec<PlayMove> = play.moves().iter().map(|(step, _)| *step).collect();
+            assert_eq!(
+                moves,
+                [PlayMove::PickUp, PlayMove::Throw, PlayMove::Landed],
+                "seed {seed}"
+            );
         }
     }
 

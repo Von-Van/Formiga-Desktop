@@ -37,6 +37,17 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     if world.wonder().is_some() {
         return true;
     }
+    // Something tossed, bounced, thrown or flown moves through the air while its owner may be
+    // standing quite still, and is drawn as often as anything walking until it is back in hand.
+    if world
+        .save
+        .creatures
+        .iter()
+        .chain(world.save.visitors.on_stage())
+        .any(formiga_art::prop_in_motion)
+    {
+        return true;
+    }
     world.save.creatures.iter().any(|creature| {
         creature.state.velocity.x.abs() > 0.1
             || creature.state.velocity.y.abs() > 0.1

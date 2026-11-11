@@ -172,7 +172,7 @@ impl Food {
     }
 
     /// What is offered as a treat.
-    const TREATS: [Self; 5] = [
+    pub const TREATS: [Self; 5] = [
         Self::CakeSlice,
         Self::Strawberry,
         Self::Cherries,
@@ -208,14 +208,20 @@ pub enum MealStep {
     LickPaws,
     /// A pat of a full tummy.
     PatTummy,
+    /// The empty bowl lowered to the ground, before the paws are free for anything else.
+    SetDown,
 }
 
 impl MealStep {
-    /// Whether the food is in its paws through this step.
+    /// Whether the food is in its paws through this step. A crumb is wiped off with one paw while
+    /// the other keeps hold of what is left.
     pub const fn holds_food(self) -> bool {
-        !matches!(self, Self::WipeCheek | Self::LickPaws | Self::PatTummy)
+        !matches!(self, Self::LickPaws | Self::PatTummy)
     }
 }
+
+/// How far through the crack the shell gives: the knock that opens it.
+const CRACKED_AT: f32 = 0.5;
 
 /// What the companion itself brings to the table.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -328,13 +334,18 @@ impl Meal {
         if appetite.picky {
             bites += 1;
         }
-        let finish = if rng.random_bool(0.5) {
+        let mut finish = if rng.random_bool(0.5) {
             vec![(MealStep::LickPaws, 1.0), (MealStep::PatTummy, 0.8)]
         } else if rng.random_bool(0.5) {
             vec![(MealStep::LickPaws, 1.1)]
         } else {
             vec![(MealStep::PatTummy, 1.0)]
         };
+        // A bowl is set down on the ground once it is empty, and only then are the paws free.
+        if size == FoodSize::Bowl {
+            finish.insert(0, (MealStep::SetDown, 0.8));
+        }
+        let finishing = finish.len();
         let moment = Self::moment(size, appetite, rng);
         // Fewer bites until the meal at its natural pace fits; then the pace takes up the rest.
         let natural = |bites: u32| {
@@ -362,15 +373,13 @@ impl Meal {
             }
         }
         steps.extend(finish);
-        let total: f32 = steps.iter().map(|(_, secs)| secs).sum();
-        let scale = length.max(0.5) / total.max(0.01);
         let mut laid = [(MealStep::LookOver, 0.0); MAX_STEPS];
         let mut start = 0.0;
         let count = steps.len().min(MAX_STEPS);
         // A meal too long for the table keeps its finish rather than its last bites.
         let kept: Vec<(MealStep, f32)> = if steps.len() > MAX_STEPS {
-            let tail = steps.len() - 2;
-            steps[..MAX_STEPS - 2]
+            let tail = steps.len() - finishing;
+            steps[..MAX_STEPS - finishing]
                 .iter()
                 .chain(&steps[tail..])
                 .copied()
@@ -378,6 +387,9 @@ impl Meal {
         } else {
             steps
         };
+        // What is kept fills the meal, so nothing left out leaves a long pause at the end.
+        let total: f32 = kept.iter().map(|(_, secs)| secs).sum();
+        let scale = length.max(0.5) / total.max(0.01);
         for (slot, (step, secs)) in laid.iter_mut().zip(kept) {
             *slot = (step, start);
             start += secs * scale;
@@ -426,15 +438,56 @@ impl Meal {
 
     /// The step under way, how many seconds into it, and how far through it from 0 to 1.
     pub fn step(&self) -> (MealStep, f32, f32) {
+        let (index, into, progress) = self.position();
+        (self.steps[index].0, into, progress)
+    }
+
+    /// Which step is under way, by its place in the meal, how many seconds into it, and how far
+    /// through it from 0 to 1.
+    fn position(&self) -> (usize, f32, f32) {
         let steps = &self.steps[..usize::from(self.count.max(1))];
         let index = steps
             .iter()
             .rposition(|(_, start)| *start <= self.elapsed)
             .unwrap_or(0);
-        let (step, start) = steps[index];
+        let start = steps[index].1;
         let end = steps.get(index + 1).map_or(self.length, |(_, next)| *next);
         let into = (self.elapsed - start).max(0.0);
-        (step, into, (into / (end - start).max(0.01)).clamp(0.0, 1.0))
+        (
+            index,
+            into,
+            (into / (end - start).max(0.01)).clamp(0.0, 1.0),
+        )
+    }
+
+    /// Keeps the food held up and looked over until `until` seconds in, fitting the rest of the
+    /// meal into the time left: for a companion that looks its food over as a habit of its own,
+    /// so the habit is the meal's opening rather than a pose held over whatever comes next. A
+    /// meal already past its look is left as it is, and the look never takes more than half of it.
+    pub fn look_over_until(&mut self, until: f32) {
+        let count = usize::from(self.count);
+        if count < 2 || self.steps[0].0 != MealStep::LookOver {
+            return;
+        }
+        let old = self.steps[1].1;
+        let until = until.min(self.length * 0.5);
+        if until <= old || self.elapsed >= old {
+            return;
+        }
+        let scale = (self.length - until) / (self.length - old).max(0.01);
+        for (_, start) in &mut self.steps[1..count] {
+            *start = until + (*start - old) * scale;
+        }
+    }
+
+    /// Eats something tiny one bite at a time instead of tossing it up and catching it: the calm
+    /// way, for reduced motion. Nothing else about the meal changes.
+    pub fn without_tosses(&mut self) {
+        for (step, _) in &mut self.steps[..usize::from(self.count)] {
+            if *step == MealStep::TossCatch {
+                *step = MealStep::Bite;
+            }
+        }
     }
 
     /// Every step, in order, with the second it starts.
@@ -443,9 +496,11 @@ impl Meal {
     }
 
     /// How much has been eaten, from 0 (none) to 3 (down to the last of it), or `None` once
-    /// it is all gone or put down.
+    /// it is all gone or put down. A nut or an acorn is whole until the knock that cracks it,
+    /// open (1) from that moment, and eaten down from there a mouthful at a time.
     pub fn bite(&self) -> Option<u8> {
-        let (step, _, progress) = self.step();
+        let (index, _, progress) = self.position();
+        let step = self.steps[index].0;
         if !step.holds_food() {
             return None;
         }
@@ -464,6 +519,16 @@ impl Meal {
         // A bite is not out of it until the mouth has closed on it.
         if eats(&step) && progress < 0.5 {
             taken = taken.saturating_sub(1);
+        }
+        if self.food.size() == FoodSize::Shelled {
+            let cracked = steps
+                .iter()
+                .position(|(step, _)| *step == MealStep::Crack)
+                .is_none_or(|crack| index > crack || (index == crack && progress >= CRACKED_AT));
+            if !cracked {
+                return Some(0);
+            }
+            return Some((1 + (taken * 2).div_ceil(total)).min(3) as u8);
         }
         Some(((taken * 3).div_ceil(total)).min(3) as u8)
     }
@@ -560,5 +625,103 @@ mod tests {
         for _ in 0..20 {
             assert!(Food::TREATS.contains(&Meal::choose_food(appetite, offered, &mut rng)));
         }
+    }
+
+    /// A walnut is whole until the knock that cracks it, open from that knock, and its kernel
+    /// is first nibbled on the first bite: closed shell, the break and the first nibble come one
+    /// after another, never the break midway through a bite.
+    #[test]
+    fn a_nut_opens_on_the_crack_and_is_nibbled_from_the_first_bite() {
+        for seed in 0..60_u64 {
+            for food in [Food::Walnut, Food::Acorn] {
+                let mut meal = Meal::plan(
+                    food,
+                    6.0 + (seed % 4) as f32,
+                    Appetite::default(),
+                    &mut ChaCha12Rng::seed_from_u64(seed),
+                );
+                let steps = meal.steps().to_vec();
+                let (crack, crack_end) = (steps[1].1, steps[2].1);
+                assert_eq!(steps[1].0, MealStep::Crack);
+                meal.elapsed = crack + (crack_end - crack) * 0.25;
+                assert_eq!(meal.bite(), Some(0), "the shell gives before the knock");
+                meal.elapsed = crack_end - 0.01;
+                assert_eq!(
+                    meal.bite(),
+                    Some(1),
+                    "the shell is still shut after the crack"
+                );
+                let first_bite = steps
+                    .iter()
+                    .position(|(step, _)| *step == MealStep::Bite)
+                    .unwrap();
+                let (start, end) = (steps[first_bite].1, steps[first_bite + 1].1);
+                meal.elapsed = start + (end - start) * 0.25;
+                assert_eq!(meal.bite(), Some(1));
+                meal.elapsed = start + (end - start) * 0.75;
+                assert!(meal.bite() >= Some(2), "the first bite leaves no mark");
+            }
+        }
+    }
+
+    /// A bowl is set down once it is empty, before a paw is licked or a tummy patted, and nothing
+    /// a meal left out leaves a long pause at its end.
+    #[test]
+    fn a_bowl_is_set_down_before_the_paws_are_free() {
+        for seed in 0..60_u64 {
+            for food in [Food::Soup, Food::Porridge] {
+                let length = 4.0 + (seed % 7) as f32;
+                let meal = Meal::plan(
+                    food,
+                    length,
+                    Appetite {
+                        picky: seed % 2 == 0,
+                        ..Appetite::default()
+                    },
+                    &mut ChaCha12Rng::seed_from_u64(seed),
+                );
+                let steps = meal.steps();
+                let set_down = steps
+                    .iter()
+                    .position(|(step, _)| *step == MealStep::SetDown)
+                    .unwrap_or_else(|| panic!("{steps:?} never sets the bowl down"));
+                assert!(
+                    steps[set_down + 1..]
+                        .iter()
+                        .all(|(step, _)| matches!(step, MealStep::LickPaws | MealStep::PatTummy))
+                );
+                let last_bite = steps
+                    .iter()
+                    .rposition(|(step, _)| *step == MealStep::Bite)
+                    .unwrap();
+                assert!(last_bite < set_down);
+                let (_, last) = steps[steps.len() - 1];
+                assert!(length - last < length * 0.3, "{steps:?}");
+            }
+        }
+    }
+
+    /// A companion that looks its food over first holds the look the whole time it takes, and
+    /// still has its bites and its finish in the meal's time.
+    #[test]
+    fn a_long_look_over_keeps_the_rest_of_the_meal_after_it() {
+        let mut meal = Meal::plan(
+            Food::Walnut,
+            7.0,
+            Appetite::default(),
+            &mut ChaCha12Rng::seed_from_u64(2),
+        );
+        let before: Vec<MealStep> = meal.steps().iter().map(|(step, _)| *step).collect();
+        meal.look_over_until(2.4);
+        assert_eq!(meal.steps()[1].1, 2.4);
+        let after: Vec<MealStep> = meal.steps().iter().map(|(step, _)| *step).collect();
+        assert_eq!(before, after);
+        assert!(meal.steps().windows(2).all(|pair| pair[0].1 < pair[1].1));
+        assert!(meal.steps().last().unwrap().1 < 7.0);
+        // Once the meal is past its look, it is not wound back.
+        meal.elapsed = 3.0;
+        let laid = meal.steps().to_vec();
+        meal.look_over_until(4.0);
+        assert_eq!(meal.steps(), laid.as_slice());
     }
 }

@@ -44,8 +44,9 @@ fn play_changes_nothing_the_colony_does() {
 }
 
 /// A companion that settles down to play picks something up at once, plays with it while it
-/// plays, and puts it down when it stops; with an umbrella in the colony, a drop off a ledge is
-/// sometimes ridden down under it.
+/// plays, and puts it down when it stops; with an umbrella in the colony, a real drop off a window
+/// is sometimes ridden down under it, and nothing else is: not a step down, not a landing with no
+/// hop at all.
 #[test]
 fn play_starts_with_playing_and_an_umbrella_is_ridden_down() {
     let created = datetime!(2026-01-01 12:00 UTC);
@@ -70,7 +71,24 @@ fn play_starts_with_playing_and_an_umbrella_is_ridden_down() {
     world.save.creatures[0].state.action = ActionKind::Idle;
     world.carry_play(now, TICK);
     assert!(world.save.creatures[0].state.play.is_none());
+    let id = world.save.creatures[0].id;
+    let start = world.save.creatures[0].state.position;
+    let hop = |drop: f32| {
+        WindowJourney::Hop(HopJourney {
+            start,
+            target: Point {
+                x: start.x + 30.0,
+                y: start.y + drop,
+            },
+            surface: world_surface(),
+            elapsed: 0.0,
+            duration: 1.2,
+            lift: 0.0,
+            ballistic: false,
+        })
+    };
     // No umbrella, no ride.
+    world.window_journeys.insert(id, hop(200.0));
     begin(&mut world, ActionKind::Landing);
     world.carry_play(now, TICK);
     assert!(world.save.creatures[0].state.play.is_none());
@@ -88,18 +106,115 @@ fn play_starts_with_playing_and_an_umbrella_is_ridden_down() {
             role: ColonyObjectRole::default(),
         });
     umbrella.kind = ColonyObjectKind::Umbrella;
+    let umbrella_id = umbrella.id;
     world.save.objects.objects.push(umbrella);
     let mut rides = 0;
     for _ in 0..20 {
         now += Duration::seconds(13);
+        world.window_journeys.insert(id, hop(200.0));
         begin(&mut world, ActionKind::Landing);
         world.carry_play(now, TICK);
         if let Some(play) = world.save.creatures[0].state.play {
             assert_eq!(play.now().0, formiga_core_play_ride());
+            assert_eq!(play.borrowed, Some(umbrella_id));
+            assert!(play.length <= 1.2);
             rides += 1;
         }
     }
     assert!((3..20).contains(&rides), "{rides} of 20 drops were ridden");
+    // A step down, a landing with no hop, and a hop already under way are never ridden.
+    for setup in 0..3 {
+        for _ in 0..20 {
+            now += Duration::seconds(13);
+            world.window_journeys.remove(&id);
+            match setup {
+                0 => {
+                    world.window_journeys.insert(id, hop(20.0));
+                }
+                1 => {}
+                _ => {
+                    let mut late = hop(200.0);
+                    if let WindowJourney::Hop(journey) = &mut late {
+                        journey.elapsed = 0.6;
+                    }
+                    world.window_journeys.insert(id, late);
+                }
+            }
+            begin(&mut world, ActionKind::Landing);
+            world.carry_play(now, TICK);
+            assert!(
+                world.save.creatures[0].state.play.is_none(),
+                "setup {setup} rode an umbrella"
+            );
+        }
+    }
+}
+
+/// While a companion plays with one of the colony's belongings, that belonging is borrowed by
+/// its id, so the yard can leave it out; nobody else picks up the same one at the same time.
+#[test]
+fn a_belonging_played_with_is_borrowed_by_one_companion_at_a_time() {
+    let created = datetime!(2026-01-01 12:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([65; 32], created, &desktop);
+    world.save.objects.objects.clear();
+    world.save.objects.objects.push(ColonyObject {
+        id: 41,
+        kind: ColonyObjectKind::YarnBall,
+        display: desktop.monitors[0].display_key,
+        normalized_position: Point { x: 0.5, y: 0.5 },
+        role: ColonyObjectRole::default(),
+    });
+    let mut now = created;
+    let mut borrowed = 0;
+    for _ in 0..40 {
+        now += Duration::seconds(7);
+        for creature in &mut world.save.creatures {
+            creature.state.action = ActionKind::SoloPlay;
+            creature.state.action_elapsed = 0.0;
+            creature.state.action_duration = 6.0;
+            creature.state.play = None;
+        }
+        world.carry_play(now, TICK);
+        let holders: Vec<_> = world
+            .save
+            .creatures
+            .iter()
+            .filter_map(|creature| creature.state.play)
+            .filter(|play| play.borrowed.is_some())
+            .collect();
+        assert!(holders.len() <= 1, "the yarn ball is in two places");
+        for play in holders {
+            assert_eq!(play.borrowed, Some(41));
+            assert_eq!(
+                play.thing,
+                crate::play::Plaything::Belonging(ColonyObjectKind::YarnBall)
+            );
+            borrowed += 1;
+        }
+    }
+    assert!(borrowed > 0, "the yarn ball was never played with");
+    // Put back when the game is over.
+    for creature in &mut world.save.creatures {
+        creature.state.action = ActionKind::Idle;
+    }
+    world.carry_play(now, TICK);
+    assert!(
+        world
+            .save
+            .creatures
+            .iter()
+            .all(|creature| creature.state.play.is_none())
+    );
+}
+
+fn world_surface() -> SurfaceAttachment {
+    SurfaceAttachment {
+        kind: SurfaceKind::ScreenFloor,
+        monitor_id: 1,
+        window_key: None,
+        relative_x: 0.5,
+    }
 }
 
 fn formiga_core_play_ride() -> crate::play::PlayMove {

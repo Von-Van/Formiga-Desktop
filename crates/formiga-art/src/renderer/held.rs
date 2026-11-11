@@ -10,7 +10,7 @@
 //! toy keeps its colour whoever picks it up. The shared dark edge keeps each one readable against
 //! any coat.
 
-use super::foods::{draw_food, food_offset};
+use super::foods::{draw_empty_bowl, draw_food, food_offset};
 use super::playthings::{Plaything, draw_plaything};
 use super::*;
 use formiga_core::meals::Food;
@@ -40,6 +40,10 @@ pub enum HeldThing {
     /// Something the colony has found, borrowed from the scrapbook to play with. Drawn from the
     /// colony's own sheet of finds in its own colours, not from the held sheet.
     Trinket(u8),
+    /// A soup or porridge bowl with nothing left in it, on its way down to the ground.
+    EmptyBowl,
+    /// A plain patch of string colour: stretched along a kite's string, never held itself.
+    String,
 }
 
 const SNACK_CELLS: u32 = SNACK_KINDS as u32 * 4;
@@ -47,9 +51,13 @@ const TOY_CELLS: u32 = TOY_KINDS as u32 * TOY_COLOURWAYS as u32 * 4;
 const CUP_CELLS: u32 = DRINK_KINDS as u32 * 4;
 const FOOD_CELLS: u32 = Food::ALL.len() as u32 * 4;
 const PLAY_CELLS: u32 = Plaything::ALL.len() as u32;
+/// The empty bowl and the string colour, on cells of their own after everything else so nothing
+/// before them moves.
+const LATER_CELLS: u32 = 2;
 
 /// Every held picture, one cell each.
-pub const HELD_CELLS: u32 = SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + PLAY_CELLS;
+pub const HELD_CELLS: u32 =
+    SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + PLAY_CELLS + LATER_CELLS;
 pub const HELD_SHEET_WIDTH: u32 = HELD_CELL * HELD_SHEET_COLUMNS;
 pub const HELD_SHEET_HEIGHT: u32 = HELD_CELL * HELD_CELLS.div_ceil(HELD_SHEET_COLUMNS);
 
@@ -76,7 +84,12 @@ impl HeldThing {
             .into_iter()
             .flat_map(|food| (0..4).map(move |bite| Self::Food { food, bite }));
         let play = Plaything::ALL.into_iter().map(Self::Play);
-        snacks.chain(toys).chain(cups).chain(foods).chain(play)
+        snacks
+            .chain(toys)
+            .chain(cups)
+            .chain(foods)
+            .chain(play)
+            .chain([Self::EmptyBowl, Self::String])
     }
 
     /// Which of the held cells this picture is, from 0.
@@ -111,6 +124,8 @@ impl HeldThing {
                     + u32::from(bite.min(3))
             }
             Self::Play(thing) => SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + thing.index(),
+            Self::EmptyBowl => SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + PLAY_CELLS,
+            Self::String => SNACK_CELLS + TOY_CELLS + CUP_CELLS + FOOD_CELLS + PLAY_CELLS + 1,
             // Not on the held sheet at all.
             Self::Trinket(_) => 0,
         }
@@ -136,7 +151,8 @@ impl HeldThing {
             },
             Self::Cup { .. } => 3,
             Self::Food { food, .. } => food_offset(food),
-            Self::Snack { .. } | Self::Play(_) | Self::Trinket(_) => 0,
+            Self::EmptyBowl => food_offset(Food::Soup),
+            Self::Snack { .. } | Self::Play(_) | Self::Trinket(_) | Self::String => 0,
         };
         PixelPoint { x: 0, y: dy }
     }
@@ -165,6 +181,12 @@ impl HeldThing {
             }
             Self::Food { food, bite } => draw_food(canvas, food, x, y, bite),
             Self::Play(thing) => draw_plaything(canvas, thing, x, y),
+            Self::EmptyBowl => draw_empty_bowl(canvas, x, y),
+            Self::String => {
+                let half = HELD_CELL as i32 / 2;
+                let side = HELD_CELL as i32;
+                canvas.fill_rect(x - half, y - half, side, side, KITE_STRING);
+            }
             Self::Trinket(variant) => {
                 let ink = crate::trinkets::ink_against(crate::PALETTES[0], u64::from(variant));
                 let half = crate::TRINKET_CELL as i32 / 2;
@@ -272,6 +294,9 @@ impl HeldPlacement {
         blit_transparent(canvas, &cell, origin_x, self.at.y - half);
     }
 }
+
+/// The colour of a kite's string, the same as the string on the kite's own tail.
+pub const KITE_STRING: Rgba = Rgba::new(120, 110, 104, 255);
 
 /// The shared dark edge every held thing carries.
 const HELD_OUTLINE: Rgba = Rgba::new(58, 42, 50, 255);
@@ -396,6 +421,7 @@ mod tests {
                 HeldThing::Snack { bite: 0, .. }
                     | HeldThing::Food { bite: 0, .. }
                     | HeldThing::Play(_)
+                    | HeldThing::EmptyBowl
                     | HeldThing::Toy { spin: 0, .. }
                     | HeldThing::Cup {
                         tipped: false,

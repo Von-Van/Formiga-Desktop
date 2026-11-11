@@ -654,11 +654,9 @@ pub fn meal_sheet(path: PathBuf) -> Result<()> {
                 false,
             )
             .held;
-            let holding = formiga_art::held_now(&creature, body.clip, baked)
-                .map_or(formiga_art::Holding::Nothing, |held| {
-                    formiga_art::Holding::Thing(held.thing)
-                });
-            let rendered = CreatureRenderer::render_composited_frame_holding(
+            // Painted where the meal puts it, as the overlay draws it: lifted, lowered or set
+            // down by the step, not only where the frame holds things.
+            let mut rendered = CreatureRenderer::render_composited_frame_holding(
                 &creature.appearance,
                 None,
                 body.clip,
@@ -666,8 +664,11 @@ pub fn meal_sheet(path: PathBuf) -> Result<()> {
                 true,
                 false,
                 face,
-                holding,
+                formiga_art::Holding::Nothing,
             );
+            if let Some(held) = formiga_art::held_now(&creature, body.clip, baked) {
+                held.paint(&mut rendered, true);
+            }
             blit_scaled(
                 &mut pixels,
                 width,
@@ -772,21 +773,32 @@ pub fn play_sheet(path: PathBuf) -> Result<()> {
                 false,
             )
             .held;
+            let mut thing = formiga_art::Canvas::new(cw as u32, ch as u32);
+            // A kite's string, behind the kite.
+            if let Some((paw, kite)) = formiga_art::held_tether(&creature, body.clip, baked) {
+                thing.line(
+                    paw.x + PAD,
+                    paw.y + PAD,
+                    kite.x + PAD,
+                    kite.y + PAD,
+                    1,
+                    formiga_art::KITE_STRING,
+                );
+            }
             if let Some(held) = formiga_art::held_now(&creature, body.clip, baked) {
                 let offset = held.thing.offset();
-                let mut thing = formiga_art::Canvas::new(cw as u32, ch as u32);
                 formiga_art::HeldPlacement::centred(
                     held.thing,
                     held.at.x + offset.x + PAD,
                     held.at.y + offset.y + PAD,
                 )
                 .paint(&mut thing, true);
-                for y in 0..ch {
-                    for x in 0..cw {
-                        let pixel = thing.get(x, y);
-                        if pixel.a > 0 {
-                            cell.set(x, y, pixel);
-                        }
+            }
+            for y in 0..ch {
+                for x in 0..cw {
+                    let pixel = thing.get(x, y);
+                    if pixel.a > 0 {
+                        cell.set(x, y, pixel);
                     }
                 }
             }

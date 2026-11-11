@@ -334,3 +334,19 @@ pub(super) fn draw_food(canvas: &mut Canvas, food: Food, x: i32, y: i32, bites: 
     }
     blit_transparent(canvas, &tile, 0, 0);
 }
+
+/// The bowl soup and porridge come in, with nothing left in it: the same blue bowl, its inside
+/// showing where the food was, and no steam.
+pub(super) fn draw_empty_bowl(canvas: &mut Canvas, x: i32, y: i32) {
+    let mut tile = Canvas::new(canvas.width(), canvas.height());
+    let t = &mut tile;
+    t.fill_ellipse(x, y, 7, 4, EDGE);
+    t.fill_rect(x - 7, y - 4, 15, 4, Rgba::TRANSPARENT);
+    t.fill_ellipse(x, y, 6, 3, BOWL);
+    t.fill_rect(x - 6, y - 3, 13, 3, Rgba::TRANSPARENT);
+    t.fill_rect(x - 7, y - 1, 15, 1, EDGE);
+    // The inside of the far rim, scraped clean.
+    t.fill_rect(x - 5, y, 11, 1, BOWL_LIGHT);
+    t.fill_rect(x - 5, y + 1, 4, 1, BOWL_LIGHT);
+    blit_transparent(canvas, &tile, 0, 0);
+}

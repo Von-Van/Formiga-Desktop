@@ -29,12 +29,13 @@ use face::*;
 use held::toy_colourway;
 pub use held::{
     HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,
-    HeldThing, TOY_COLOURWAYS, render_held_sheet,
+    HeldThing, KITE_STRING, TOY_COLOURWAYS, render_held_sheet,
 };
 pub use meals::{
-    MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_pose, shows_held_by_default,
+    MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose,
+    shows_held_by_default,
 };
-pub use play::{play_face, play_held, play_offset, play_pose};
+pub use play::{held_tether, play_face, play_held, play_offset, play_pose, prop_in_motion};
 pub use playthings::Plaything as PlayPicture;
 use pose::*;
 use props::*;
@@ -692,7 +693,12 @@ impl BodyPresentation {
         {
             return shown(clip, into);
         }
-        let Some((habit, action, into)) = flourish_shown(creature) else {
+        // Looking food over as a habit is the meal's own opening look, held as long as the habit
+        // takes (see `Meal::look_over_until`), so a meal under way draws itself.
+        let flourish = flourish_shown(creature).filter(|(habit, _, _)| {
+            *habit != Habit::LooksFoodOver || meals::meal_shown(creature).is_none()
+        });
+        let Some((habit, action, into)) = flourish else {
             // Wriggling over in its sleep: the breaths come quicker, a squirm rather than a slide.
             if state.action == ActionKind::Sleep
                 && state.nudge == Some(formiga_core::SleepNudge::Wriggling)
