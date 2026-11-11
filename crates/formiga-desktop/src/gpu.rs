@@ -7,11 +7,12 @@ use formiga_art::{
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT,
     HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
     PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect,
-    TALK_DETAIL, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT,
-    TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TalkSheet,
-    TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
-    VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT,
-    WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
+    TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
+    TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
+    TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
+    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
+    VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
+    WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
     GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
@@ -1258,7 +1259,12 @@ impl OverlayRenderer {
     }
 
     fn recover_surface(&mut self) {
-        self.layout = self.window.inner_size();
+        // A window being torn down or minimised can report no size at all; keep drawing for the
+        // size it last had, as `resize` does, rather than lay bubbles out across zero pixels.
+        let size = self.window.inner_size();
+        if size.width > 0 && size.height > 0 {
+            self.layout = size;
+        }
         (self.config.width, self.config.height) = drawable_size(self.layout, self.render_divisor);
         self.surface.configure(&self.device, &self.config);
         self.last_occlusion = None;

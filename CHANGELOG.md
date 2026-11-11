@@ -98,6 +98,25 @@ All notable changes are documented here.
 - The checks every change goes through now include the content audit (names that fit, everything
   a colony can come by), and test Formiga Battle on the Desktop being changed, as Hill, Home and
   Farm already were. Battle's crates are scanned for security advisories every week too.
+- A companion's hello is answered by the friend it walked over to greet, not by a bystander
+  nearer to it or a companion up on another window, and an answer is dropped if by then the
+  friend has wandered off, gone out of sight or fallen asleep.
+- A companion asked something while it is still answering somebody else finishes what it is saying
+  first, and answers once that bubble has gone.
+- Goodnight is said once a companion has lain down, not as it sets off for bed, and a friend still
+  walking to bed answers a hello.
+- A companion behind a house in the village keeps quiet, and its bubble no longer floats over the
+  house as if a neighbour had said it.
+- A fish caught, a tower toppled or an umbrella ride is remarked on only when it is what is drawn,
+  not while another moment hides the game.
+- An invitation to play shows pawprints, since a pair at play is a chase or tag, rather than a toy
+  that never appears.
+- A companion's answer to you keeps the space over it: a neighbour's chatter waits rather than
+  covering it.
+- A companion at the very top of a display has its bubble under its feet, tail pointing up,
+  instead of pressed against the top edge over its face.
+- The overlay no longer crashes placing a bubble when a lost window surface comes back with no
+  size.
 
 ## [0.68.22] - 2026-11-04
 

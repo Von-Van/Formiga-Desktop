@@ -413,18 +413,32 @@ Companions talk to each other in pictures (`formiga-core/src/talk.rs`, carried b
 `world/talk.rs`, runtime only and checked by the same wiped-every-tick test). A `Saying` is a
 `TalkStyle` — chat, excited, whisper, thought, song, tender, grumble, shout — and one `TalkTopic`
 picture. At the end of each tick the pass sees what each companion has just started
-and, with dice of its own, has it say something to the nearest friend within 150 points: a hello
-(answered with a hello or a heart), an invitation to play about its own toy's shape (answered
-"!"), a meal offered (answered with a heart), a goodnight whispered (whispered back), a grumble at
-being pounced on, a "!" at a fish caught or a tower down, a note while drumming or dancing. An
-answer waits 0.9 s; a speaker keeps quiet 9 s after it speaks; at most four are up at once, and an
-answer to the person at the desk wins over talk. Those answers (`ThoughtBubble`, unchanged) are
+and, with dice of its own, has it say something to a friend: the one its action is aimed at (the
+`target_creature` of its current `ActionChoice`, the friend it walked over to greet or play with)
+and nobody else, or else the nearest within 150 points. Only a friend in sight on the same ground
+— the floor, or the same window — hears it. It says a hello (answered with a hello or a heart), an
+invitation to play with pawprints, a pair at play being a chase or tag with no thing in it
+(answered "!"), a meal offered (answered with a heart), a goodnight whispered once it has lain
+down, not while it walks to bed (whispered back), a grumble at being pounced on, a "!" at a fish
+caught or a tower down, a note while drumming or dancing. Play moments are read from
+`CreatureState::play_shown`, the same test the art draws the game by, so nothing is said of a catch
+hidden behind a beat. An answer waits 0.9 s, and is dropped rather than said if by then the one it
+answers is out of earshot or out of sight or the one answering has fallen asleep; it never cuts off
+what the one answering is still saying, but waits for that to finish, and a companion has at most
+one answer waiting. A speaker keeps quiet 9 s after it speaks; at most four are up at once. A
+companion behind a house in the village, or indoors, says nothing and has its bubble hidden until
+it comes out. An answer to the person at the desk wins over talk: nobody within 64 points of a
+companion answering it starts saying something, an answer due there waits (for at most a bubble's
+length) until the person's answer has gone, and the overlay leaves out any companion's bubble that
+would overlap the room the person's answer takes. Those answers (`ThoughtBubble`, unchanged) are
 drawn in the same bubbles through `Saying::answering`. The overlay draws every bubble from the talk
 sheet (`TalkSheet`), which is baked at `TALK_DETAIL` = 2 texture pixels to the art pixel, so a
 bubble's frame and picture are twice as fine as the companion under it. Every bubble is one shape
 and size (`TALK_BUBBLE`), with the same plum edge and tail; the style shows only in the colour of
 its paper, so the eye goes to the picture. Each is its frame quad and, once grown, its picture quad, placed by `talk_origin` with the tail's tip an art
-pixel over the crown. The interface atlas keeps the menu and the notebook's icons. A sleeper's z is
+pixel over the crown. A creature too near the top of its display for that has its bubble hung an
+art pixel under its lowest drawn row instead, drawn upside down so the tail points up at it, with
+the picture moved down onto the body (`TalkPlacement::icon_at`). The interface atlas keeps the menu and the notebook's icons. A sleeper's z is
 four pixels square, since three square can only join its bars with one middle pixel and reads as
 an I. `formiga-tools talk-sheet` shows every style and a few conversations.
 
