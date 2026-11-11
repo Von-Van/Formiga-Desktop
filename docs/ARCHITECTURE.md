@@ -2877,7 +2877,11 @@ there invisible, and draws its glyphs from an atlas of its own, rasterised once 
 threshold (a third of a texel covered for writing, half for a heading) and sampled nearest-neighbour,
 each glyph's pen snapped to the screen's texel grid. Writing is a point to a texel; anything at or
 above 20 points (scaled with the text, through `set_heading_size`) two. Glyphs Kalam lacks, other
-fonts in the same text, and highlights behind it are drawn exactly as egui drew them. Body text is
+fonts in the same text, and highlights behind it are drawn exactly as egui drew them, and so is a
+link's hover underline, which the hidden text no longer draws. The atlas grows taller as it fills,
+so the pencilled meshes keep texel coordinates until the whole frame is drawn and only then are
+divided by the atlas's final size; one that fills up at its tallest starts again empty on the next
+frame, which it asks for at once, and the glyphs it turned away are not remembered as blank. Body text is
 16 points, small print 15, and the hand is never set smaller; `journal::write` gives each line as
 many rules as its size needs rather than the font's own tall line, so a line of writing still takes
 one rule. Kickers are the hand's bold capitals (`kicker_job`), and `paper.rs` holds what is pasted
@@ -3285,7 +3289,9 @@ that pixel over the finer body; `render_face_frame_in_detail` redraws the face l
 corners rounded (Scale2x, Scale3x, or Scale2x twice), and `outline_frame_in_detail` rings it at the
 same weight. A finer atlas keeps the same layout at more pixels: the same cells, face anchors and
 silhouettes in art pixels, and each frame at the same texture coordinates (`atlas::cell_uv`), so it
-fills the same quad on the screen; only the texture grows, by the square of the detail. The click
+fills the same quad on the screen; only the texture grows, by the square of the detail. A graphics
+card whose largest texture is smaller than the atlas would be gets the finest detail it can hold
+(`atlas::bake_fitting`), down to one. The click
 shape is still read from the one-to-one frame, which the finer painting covers whole and passes by
 at most two of its pixels, for a tuft or a curl of fur.
 

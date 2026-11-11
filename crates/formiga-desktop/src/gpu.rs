@@ -57,6 +57,8 @@ struct ZoneVertex {
 }
 
 const MAX_OCCLUSION_RECTS: usize = 64;
+/// How many vertices of the habitat editor's zones the overlay holds: 128 rectangles.
+const MAX_ZONE_VERTICES: usize = 768;
 // Four creatures, a village of four dwellings and the two trees that bookend them, sixteen
 // keepsakes hung between the pair, one bubble, and eight belongings.
 const INITIAL_VERTEX_CAPACITY: usize = 258;
@@ -96,8 +98,13 @@ struct SpriteGpu {
     resting_baseline: u32,
     /// What it was baked wearing, in the inks it was baked in.
     dress: Option<AccessoryArt>,
+    /// The colony's colours those inks were chosen against, while it wears anything.
+    dress_colours: Option<TrinketAtlasKey>,
     /// The size it was drawn at: its own, or its set-back size for standing back in the village.
     logical_size: u8,
+    /// The detail it was asked to be baked at, which `detail` is unless the graphics card could
+    /// not hold an atlas that fine.
+    wanted_detail: u32,
     /// The look it was baked in. A companion given a new look in Formiga Farm keeps its id, so
     /// its atlas is baked again when this changes.
     appearance: AppearanceGenome,
@@ -532,7 +539,7 @@ impl OverlayRenderer {
         });
         let zone_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("habitat editor vertices"),
-            contents: bytemuck::cast_slice(&[ZoneVertex::zeroed(); 768]),
+            contents: bytemuck::cast_slice(&[ZoneVertex::zeroed(); MAX_ZONE_VERTICES]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         Ok(Self {
@@ -710,8 +717,10 @@ impl OverlayRenderer {
         for creature in &visible {
             self.ensure_sprite(creature, save);
         }
-        let shelter_visible = !monitor_fully_occluded
-            && save.home.is_active()
+        // Whoever is on this display, drawn or not: a full-screen app hiding them keeps their
+        // atlases, so nobody is baked again, all in one frame, the moment it closes.
+        let here = drawn_on_monitor(save, self.monitor.id, false);
+        let shelter_here = save.home.is_active()
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
@@ -721,6 +730,7 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
+        let shelter_visible = !monitor_fully_occluded && shelter_here;
         // The ground the village stands on, laid out where the village stands on this display.
         let ground_plan = if shelter_visible {
             let look = VillageLook::of(&save.home, &save.creatures);
@@ -741,11 +751,11 @@ impl OverlayRenderer {
             None
         };
         self.sprites
-            .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
+            .retain(|id, _| here.iter().any(|creature| creature.id == *id));
         // Baked as a resident starts up a path, before it is far enough back to be drawn smaller,
-        // and kept while the village is out for whenever it goes back in again.
+        // and kept while the village is out for whenever it goes back in again, hidden or not.
         self.set_back_sprites
-            .retain(|id, _| shelter_visible && visible.iter().any(|creature| creature.id == *id));
+            .retain(|id, _| shelter_here && here.iter().any(|creature| creature.id == *id));
         if shelter_visible {
             for creature in &visible {
                 if creature.state.depth > 0.0 {

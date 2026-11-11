@@ -2,6 +2,25 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Notebook writing no longer shows garbled for a frame when new letters make the pencil's atlas
+  grow, as on opening a page, changing the text size or moving the window to another screen: the
+  writing earlier in the same frame read from the wrong part of the grown atlas.
+- Links written in the pencil hand show their underline again when hovered or focused.
+- Once the pencil's atlas fills up it starts again on the next frame, instead of leaving new
+  letters out for the rest of the session.
+- A full-screen app no longer makes the overlay throw away its companions' sprite sheets, only to
+  bake them all again in one frame, with a visible hitch, when it closes.
+- A worn find is baked again when the colony's colours change, so it keeps matching the same find
+  hung in the tree without a relaunch.
+- A sculpted companion is baked as finely as the graphics card's largest texture allows, rather
+  than failing on a card that cannot hold its finest sheet.
+- The habitat editor always draws your red excluded areas, however many green regions the desktop
+  is cut into; it is the green that gives way when there are too many to draw.
+
 ## [0.68.22] - 2026-11-04
 
 Meals, play by shape and talk between companions, released on Desktop alone: Formiga Hill, Home

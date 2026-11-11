@@ -1393,3 +1393,53 @@ fn a_companion_back_in_the_village_is_drawn_between_the_houses() {
     assert_eq!(quads_behind(&quads, 8.0), 1, "on the furthest doorstep");
     assert_eq!(quads_behind(&quads, 0.5), 5, "a step up from the front");
 }
+
+/// A sculpted companion baked finely is a tall atlas. On a graphics card whose textures stop
+/// short of it, it is baked as finely as the card can hold instead, and the cells, faces and
+/// silhouettes it is drawn by stay the same.
+#[test]
+fn a_fine_atlas_too_big_for_the_graphics_card_is_baked_as_finely_as_it_holds() {
+    use formiga_core::forms::{Plan, Sculpt};
+    let world = World::new(
+        [19; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut creature = world.save.creatures[0].clone();
+    creature.appearance.sculpt = Some(Sculpt::starter(Plan::CompactQuadruped));
+    let bake = |detail| build_atlas_pixels(&creature, false, true, None, detail);
+    let finest = bake_fitting(u32::MAX, 3, bake);
+    assert_eq!(finest.detail, 3);
+    // A card that holds a little less than the finest bake.
+    let largest = finest.body_height.max(finest.body_width) - 1;
+    let fitted = bake_fitting(largest, 3, bake);
+    assert!(fitted.detail < 3);
+    assert!(fitted.fits(largest));
+    assert_eq!(fitted.face_cells, finest.face_cells);
+    assert_eq!(fitted.silhouette, finest.silhouette);
+}
+
+/// The habitat editor draws every red excluded area however many green regions the desktop is
+/// cut into; it is the green that gives way when the buffer is full.
+#[test]
+fn the_habitat_editor_keeps_red_areas_when_green_ones_fill_its_buffer() {
+    let green = ZoneVertex {
+        position: [0.0, 0.0],
+        color: [0.18, 0.72, 0.45, 0.20],
+    };
+    let red = ZoneVertex {
+        position: [0.0, 0.0],
+        color: [0.88, 0.30, 0.25, 0.28],
+    };
+    let kept = keep_excluded_zones(vec![green; 6 * 200], vec![red; 6 * 32]);
+    assert_eq!(kept.len(), MAX_ZONE_VERTICES);
+    assert_eq!(kept.iter().filter(|v| v.color == red.color).count(), 6 * 32);
+    // Red is drawn last, over the green.
+    assert!(
+        kept[MAX_ZONE_VERTICES - 6 * 32..]
+            .iter()
+            .all(|v| v.color == red.color)
+    );
+    // Nothing is cut when it all fits.
+    assert_eq!(keep_excluded_zones(vec![green; 12], vec![red; 6]).len(), 18);
+}
