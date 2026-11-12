@@ -5,7 +5,10 @@
 use super::*;
 use crate::battle::BATTLE;
 use crate::expansion::Expansion;
-use crate::hill::{HILL, scene::TrainScene};
+use crate::hill::{
+    HILL,
+    scene::{TrainScene, off_the_desktop},
+};
 
 impl FormigaApp {
     /// The app the whole colony is in, or leaving for or coming home from, if any.
@@ -83,7 +86,8 @@ impl FormigaApp {
     }
 
     /// The colony as the overlay draws it this frame, while a trip has it: the platform's copy
-    /// during a scene, or nobody while it is away.
+    /// during a scene, or nobody on the desktop while it is away. Either way the copy is the whole
+    /// colony, so a village that is out still has everyone's house.
     pub(super) fn trip_stage(&self, save: &SaveFile) -> Option<(SaveFile, Option<TrainView>)> {
         if !self.colony_away() {
             return None;
@@ -97,9 +101,9 @@ impl FormigaApp {
                 }),
             ),
             None => {
-                let mut empty = save.clone();
-                empty.creatures.clear();
-                (empty, None)
+                let mut away = save.clone();
+                away.creatures.iter_mut().for_each(off_the_desktop);
+                (away, None)
             }
         })
     }

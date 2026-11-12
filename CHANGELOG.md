@@ -6,6 +6,8 @@ All notable changes are documented here.
 
 ### Fixed
 
+- The village no longer loses a house each time a companion gets on the train for Formiga Hill or
+  Formiga Battle, or gains one back as each gets off, when the colony sets off during a visit home.
 - A computer clock that ran ahead and was then put right no longer holds the colony's houses out
   (or keeps them away), or its offers, rituals and journal moments back, until real time catches
   up. The colony's own timeline still never runs backwards, but while the clock reads earlier than
