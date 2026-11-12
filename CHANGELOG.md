@@ -2,7 +2,14 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.68.23] - 2026-11-12
+
+The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released
+together with Formiga Hill, Home and Battle 0.68.23. The colony file moves to save version 34 for
+the village staying out and the wonders put out, so once 0.68.23 has opened a colony an older
+Formiga can no longer open it; travel version 6, household version 12 and Battle contract version 5
+are unchanged. Battle pairs friends only on the same Desktop version, so a friend match needs both
+sides on 0.68.23.
 
 ### Changed
 

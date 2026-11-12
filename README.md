@@ -1,4 +1,4 @@
-# Formiga · v0.68.22
+# Formiga · v0.68.23
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.68.22-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.68.23-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,21 +107,18 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.68.22
+## New in 0.68.23
 
-Companions have real meals now. Each one picks something to eat from eighteen foods, chosen by the
-time of day, what is ripe in the village's gardens, its own favourite, or a treat when you offer a
-snack, and eats it the way that food is eaten: berries popped in, an apple chomped in both paws, a
-carrot munched end to end, a walnut cracked first, soup blown on and slurped, with a crumb wiped
-off or a hiccup along the way. Play goes by what a thing is: something round is tossed, bounced and
-balanced, a stick becomes a sword, a cane or a fishing rod, an umbrella is twirled, sat in like a
-boat or ridden down off a window, a kite is flown and a paper plane thrown. Besides their own toys
-they play with the colony's belongings and finds borrowed from the scrapbook. Companions also talk
-to each other in little picture bubbles, a hello, an invitation to play, a meal offered, a
-goodnight, each answered by the friend; every bubble, yours included, is drawn twice as finely as
-before, one shape with one clear picture, its colour saying how it is said. A sleeper's z reads as a
-Z. Formiga Hill, Home and Battle stay at 0.68.1 and work with this release; for a Battle friend
-match, both of you need Desktop 0.68.22.
+The village can stay on the desktop: choose it under Where the village lives, and the houses stay
+out among your windows instead of coming and going. Wonders the colony has found can be put out
+from the journal and moved about or put away again. Visitors no longer wait at the edge of the
+village: after hello they wander in, nap on the cushion, snack on the blanket, sit on the bench and
+stop on doorsteps like the residents do. A grump you pet now huffs at your hand instead of leaning
+into it, and a burst of clicks counts as one pet. Houses no longer vanish one by one as companions
+board the train for Hill or Battle. Meals and games play out whole, Pause holds everything still,
+talk bubbles reach the right friend and stay readable, and clicks go to the companion you see in
+front. Formiga Hill, Home and Battle 0.68.23 come out alongside; for a Battle friend match, both of
+you need Desktop 0.68.23. Once this release has opened your colony, an older Formiga can't open it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
