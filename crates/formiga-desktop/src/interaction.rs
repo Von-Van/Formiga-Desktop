@@ -1,6 +1,8 @@
 use crate::platform;
 use anyhow::{Context, Result};
-use formiga_art::{BodyClip, BodyPresentation, CreatureRenderer, FRAME_SIZE, FramePlacement};
+use formiga_art::{
+    BodyClip, BodyPresentation, CreatureRenderer, FRAME_SIZE, FramePlacement, Holding,
+};
 use formiga_core::{
     AppearanceGenome, Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings,
 };
@@ -16,6 +18,7 @@ struct MaskSignature {
     frame: u8,
     facing_right: bool,
     reduce_motion: bool,
+    logical_size: u8,
     scale: u8,
 }
 
@@ -25,6 +28,8 @@ struct MaskArtworkSignature {
     frame: u8,
     facing_right: bool,
     reduce_motion: bool,
+    /// The size the art draws the body at: its own, or smaller standing back in the village.
+    logical_size: u8,
 }
 
 pub struct InteractionProxy {
@@ -38,15 +43,27 @@ pub struct InteractionProxy {
     mask: Arc<[bool]>,
     mask_cache: HashMap<MaskArtworkSignature, Arc<[bool]>>,
     signature: Option<MaskSignature>,
+    /// Parts of the desktop where the overlay hides this creature behind a chosen application's
+    /// window, in logical points (see `set_covered`).
+    covered: Vec<DesktopRect>,
+    /// The mask less whatever of it is `covered`: what takes a press, in-process and natively.
+    /// The same allocation as `mask` while nothing covers the creature.
+    shape: Arc<[bool]>,
     /// The mask the native window was last given. The in-process mask stays current every tick
     /// for hit-testing; pushing it to the window only matters while the cursor is close.
     applied_signature: Option<MaskSignature>,
+    /// The shape the native window was last given, alongside `applied_signature`.
+    applied_shape: Option<Arc<[bool]>>,
+    /// The native window has been left behind where its creature used to be and given an empty
+    /// shape, so the old spot takes no clicks (see `sync`).
+    parked: bool,
     hit_enabled: bool,
     physical_position: Option<PhysicalPosition<i32>>,
     physical_size: Option<u32>,
     visible: bool,
     interactive: bool,
-    resting_baseline: Option<(bool, u32)>,
+    /// Read for reduced motion or not, at the size the body is drawn: `(reduced, size, rows)`.
+    resting_baseline: Option<(bool, u8, u32)>,
     /// The look the mask and the baseline were read from. A companion given a new look in
     /// Formiga Farm keeps its id, so both are read again when this changes.
     appearance: Option<AppearanceGenome>,
@@ -56,6 +73,9 @@ pub struct InteractionProxy {
 pub struct ProxyRuntimeState {
     pub dragging: bool,
     pub occluded: bool,
+    /// Drawn from its set-back atlas, smaller, standing back in the village
+    /// (`gpu::drawn_set_back`): the mask and its footing are read from that size too.
+    pub set_back: bool,
 }
 
 impl InteractionProxy {
@@ -85,7 +105,11 @@ impl InteractionProxy {
             mask: vec![false; (FRAME_SIZE * FRAME_SIZE) as usize].into(),
             mask_cache: HashMap::new(),
             signature: None,
+            covered: Vec::new(),
+            shape: vec![false; (FRAME_SIZE * FRAME_SIZE) as usize].into(),
             applied_signature: None,
+            applied_shape: None,
+            parked: false,
             hit_enabled: false,
             physical_position: None,
             physical_size: None,
@@ -98,6 +122,14 @@ impl InteractionProxy {
 
     pub fn id(&self) -> WindowId {
         self.window.id()
+    }
+
+    /// Where the overlay hides this creature behind a chosen application's window just now, in
+    /// logical points, for the next `sync`: a press there is the application's, not the creature's,
+    /// while the part of the body still drawn keeps taking them.
+    pub fn set_covered(&mut self, rects: &[DesktopRect]) {
+        self.covered.clear();
+        self.covered.extend_from_slice(rects);
     }
 
     pub fn sync(
@@ -120,17 +152,32 @@ impl InteractionProxy {
         let scale = settings.display_scale;
         let physical_size = FRAME_SIZE * u32::from(scale);
         let logical_size = physical_size as f32 / monitor.scale_factor;
+        // The size the overlay draws the body at, which is what the mask is read from: standing
+        // back in the village it is drawn afresh smaller, and a mask read at its own size would
+        // reach past the body it can see, or miss its edge.
+        let drawn_size = if runtime.set_back {
+            formiga_core::set_back_size(creature.appearance.logical_size)
+        } else {
+            creature.appearance.logical_size
+        };
+        let drawn_appearance = || {
+            let mut appearance = creature.appearance.clone();
+            appearance.logical_size = drawn_size;
+            appearance
+        };
         // The overlay seats the sprite by the creature's authored under-body clearance so its feet
         // meet the contact point. The grab mask has to move with it, or the clickable silhouette
         // drifts above the creature the user can see.
         let baseline = match self.resting_baseline {
-            Some((cached_motion, value)) if cached_motion == settings.reduce_motion => value,
+            Some((cached_motion, cached_size, value))
+                if cached_motion == settings.reduce_motion && cached_size == drawn_size =>
+            {
+                value
+            }
             _ => {
-                let value = CreatureRenderer::resting_baseline(
-                    &creature.appearance,
-                    settings.reduce_motion,
-                );
-                self.resting_baseline = Some((settings.reduce_motion, value));
+                let value =
+                    CreatureRenderer::resting_baseline(&drawn_appearance(), settings.reduce_motion);
+                self.resting_baseline = Some((settings.reduce_motion, drawn_size, value));
                 value
             }
         };
@@ -140,10 +187,13 @@ impl InteractionProxy {
         let drawn = creature
             .state
             .drawn_position(f32::from(scale) / monitor.scale_factor.max(1.0));
+        // Squeezing through a gap, the overlay draws the frame narrower about its middle.
+        let logical_width =
+            logical_size * crate::gpu::creature_horizontal_scale(creature.state.action);
         self.logical_bounds = DesktopRect {
-            x: drawn.x - logical_size * 0.5,
+            x: drawn.x - logical_width * 0.5,
             y: drawn.y + origin_y / monitor.scale_factor,
-            width: logical_size,
+            width: logical_width,
             height: logical_size,
         };
         let local_anchor_x = (drawn.x - monitor.bounds.x) * monitor.scale_factor;
@@ -187,6 +237,16 @@ impl InteractionProxy {
         if near && self.physical_position != Some(position) {
             self.window.set_outer_position(position);
             self.physical_position = Some(position);
+        } else if !near && self.physical_position != Some(position) && !self.parked {
+            // Left behind where its creature was. Where the window's own shape is what takes a
+            // press (Windows), that shape would go on taking clicks meant for whatever is there
+            // now, so it is emptied until the window is back over its creature, which puts it in
+            // place first and shapes it again after.
+            let empty = vec![false; (FRAME_SIZE * FRAME_SIZE) as usize];
+            platform::set_interaction_shape(&self.window, &empty, FRAME_SIZE, scale);
+            self.parked = true;
+            self.applied_signature = None;
+            self.applied_shape = None;
         }
 
         // The hit proxy must show the same frame the overlay draws: gestures, celebrations and
@@ -203,6 +263,7 @@ impl InteractionProxy {
             frame,
             facing_right,
             reduce_motion: settings.reduce_motion,
+            logical_size: drawn_size,
             scale,
         };
         if self.signature != Some(signature) {
@@ -211,32 +272,40 @@ impl InteractionProxy {
                 frame,
                 facing_right,
                 reduce_motion: settings.reduce_motion,
+                logical_size: drawn_size,
             };
             self.mask = self
                 .mask_cache
                 .entry(artwork)
                 .or_insert_with(|| {
-                    let canvas = CreatureRenderer::render_composited_frame(
-                        &creature.appearance,
+                    body_mask(
+                        &drawn_appearance(),
                         clip,
                         frame,
                         facing_right,
                         settings.reduce_motion,
                         face_state,
-                    );
-                    canvas
-                        .pixels()
-                        .iter()
-                        .map(|pixel| pixel.a > 16)
-                        .collect::<Vec<_>>()
-                        .into()
+                    )
                 })
                 .clone();
             self.signature = Some(signature);
         }
-        if near && self.applied_signature != self.signature {
-            platform::set_interaction_shape(&self.window, &self.mask, FRAME_SIZE, scale);
+        // Whatever of the body a chosen application's window hides takes no press, as it is not
+        // drawn. The shape keeps its old allocation while it has not changed, so it is not pushed
+        // to the window again for nothing.
+        let shape = clip_mask(&self.mask, self.logical_bounds, &self.covered);
+        if *shape != *self.shape {
+            self.shape = shape;
+        }
+        let shape_applied = self
+            .applied_shape
+            .as_ref()
+            .is_some_and(|applied| Arc::ptr_eq(applied, &self.shape));
+        if near && (self.applied_signature != self.signature || !shape_applied) {
+            platform::set_interaction_shape(&self.window, &self.shape, FRAME_SIZE, scale);
             self.applied_signature = self.signature;
+            self.applied_shape = Some(self.shape.clone());
+            self.parked = false;
         }
 
         self.interactive = !runtime.occluded;
@@ -259,6 +328,7 @@ impl InteractionProxy {
             if visible {
                 self.physical_position = None;
                 self.applied_signature = None;
+                self.applied_shape = None;
             }
         }
     }
@@ -279,7 +349,7 @@ impl InteractionProxy {
     }
 
     pub fn hit_test(&self, desktop_x: f32, desktop_y: f32) -> bool {
-        self.interactive && hit_mask(&self.mask, self.logical_bounds, desktop_x, desktop_y)
+        self.interactive && hit_mask(&self.shape, self.logical_bounds, desktop_x, desktop_y)
     }
 
     pub fn begin_capture(&self) {
@@ -395,6 +465,59 @@ impl MenuProxy {
     }
 }
 
+/// Which pixels of a frame take a press: the body and the face only, as the overlay draws them.
+/// What the paws hold is drawn apart from the body, and is often not what the clip holds by
+/// default (a meal's own food, a game's own thing, flung out of the paws), so it is left
+/// click-through rather than claiming pixels that may not be there.
+fn body_mask(
+    appearance: &AppearanceGenome,
+    clip: BodyClip,
+    frame: u8,
+    facing_right: bool,
+    reduce_motion: bool,
+    face_state: formiga_art::FaceRenderState,
+) -> Arc<[bool]> {
+    CreatureRenderer::render_composited_frame_holding(
+        appearance,
+        None,
+        clip,
+        frame,
+        facing_right,
+        reduce_motion,
+        face_state,
+        Holding::Nothing,
+    )
+    .pixels()
+    .iter()
+    .map(|pixel| pixel.a > 16)
+    .collect::<Vec<_>>()
+    .into()
+}
+
+/// `mask` less every pixel whose middle lies in one of `covered`, for a frame drawn over `bounds`.
+/// The same allocation when nothing covered reaches the frame.
+fn clip_mask(mask: &Arc<[bool]>, bounds: DesktopRect, covered: &[DesktopRect]) -> Arc<[bool]> {
+    let reaching: Vec<DesktopRect> = covered
+        .iter()
+        .filter_map(|rect| rect.intersection(bounds))
+        .collect();
+    if reaching.is_empty() {
+        return mask.clone();
+    }
+    let side = FRAME_SIZE as usize;
+    mask.iter()
+        .enumerate()
+        .map(|(index, opaque)| {
+            let middle = formiga_core::Point {
+                x: bounds.x + ((index % side) as f32 + 0.5) / side as f32 * bounds.width,
+                y: bounds.y + ((index / side) as f32 + 0.5) / side as f32 * bounds.height,
+            };
+            *opaque && !reaching.iter().any(|rect| rect.contains(middle))
+        })
+        .collect::<Vec<_>>()
+        .into()
+}
+
 fn hit_mask(mask: &[bool], bounds: DesktopRect, desktop_x: f32, desktop_y: f32) -> bool {
     if !bounds.contains(formiga_core::Point {
         x: desktop_x,
@@ -428,5 +551,101 @@ mod tests {
         assert!(hit_mask(&mask, bounds, 124.5, 124.5));
         assert!(!hit_mask(&mask, bounds, 101.0, 101.0));
         assert!(!hit_mask(&mask, bounds, 10.0, 10.0));
+    }
+
+    /// A companion half behind a chosen application's window takes presses on the half still
+    /// drawn and none on the half the window hides; with nothing over it, its mask is untouched.
+    #[test]
+    fn a_covered_part_of_the_body_passes_presses_through() {
+        let bounds = DesktopRect {
+            x: 100.0,
+            y: 100.0,
+            width: 48.0,
+            height: 48.0,
+        };
+        let mask: Arc<[bool]> = vec![true; (FRAME_SIZE * FRAME_SIZE) as usize].into();
+        assert!(Arc::ptr_eq(&clip_mask(&mask, bounds, &[]), &mask));
+        let elsewhere = DesktopRect {
+            x: 400.0,
+            y: 100.0,
+            width: 200.0,
+            height: 200.0,
+        };
+        assert!(Arc::ptr_eq(&clip_mask(&mask, bounds, &[elsewhere]), &mask));
+        let window = DesktopRect {
+            x: 124.0,
+            y: 0.0,
+            width: 300.0,
+            height: 300.0,
+        };
+        let shape = clip_mask(&mask, bounds, &[window]);
+        assert!(hit_mask(&shape, bounds, 110.5, 120.5), "the drawn half");
+        assert!(!hit_mask(&shape, bounds, 130.5, 120.5), "the hidden half");
+    }
+
+    fn face() -> formiga_art::FaceRenderState {
+        formiga_art::FaceRenderState {
+            expression: formiga_art::ExpressionKind::Content,
+            eyelids: formiga_art::EyelidPose::Open,
+            gaze: formiga_art::GazeDirection::new(0, 0),
+        }
+    }
+
+    fn companion() -> AppearanceGenome {
+        formiga_core::World::preview_adult(
+            [41; 32],
+            time::OffsetDateTime::UNIX_EPOCH,
+            &formiga_core::DesktopSnapshot::default(),
+        )
+        .appearance
+    }
+
+    /// Whatever a companion is eating, its grab mask claims no pixel the overlay leaves clear:
+    /// the clip's own default snack is not in it, and the body under any food still is.
+    #[test]
+    fn the_grab_mask_is_the_body_whatever_is_in_the_paws() {
+        let appearance = companion();
+        let clip = BodyClip::Action(formiga_core::ActionKind::Eat);
+        for frame in 0..4 {
+            let mask = body_mask(&appearance, clip, frame, true, false, face());
+            assert!(mask.iter().any(|opaque| *opaque));
+            for food in formiga_core::meals::Food::ALL {
+                let drawn = CreatureRenderer::render_composited_frame_holding(
+                    &appearance,
+                    None,
+                    clip,
+                    frame,
+                    true,
+                    false,
+                    face(),
+                    Holding::Thing(formiga_art::HeldThing::Food { food, bite: 1 }),
+                );
+                let stray = mask
+                    .iter()
+                    .zip(drawn.pixels())
+                    .filter(|(opaque, pixel)| **opaque && pixel.a <= 16)
+                    .count();
+                assert_eq!(stray, 0, "frame {frame} with {food:?}");
+            }
+        }
+    }
+
+    /// Standing back in the village, the mask is read from the smaller body the overlay draws
+    /// there, not the companion's own size.
+    #[test]
+    fn a_set_back_companion_is_grabbed_by_its_smaller_body() {
+        let appearance = companion();
+        let mut set_back = appearance.clone();
+        set_back.logical_size = formiga_core::set_back_size(appearance.logical_size);
+        let clip = BodyClip::Action(formiga_core::ActionKind::Idle);
+        let own = body_mask(&appearance, clip, 0, true, false, face());
+        let small = body_mask(&set_back, clip, 0, true, false, face());
+        let count = |mask: &[bool]| mask.iter().filter(|opaque| **opaque).count();
+        assert!(
+            count(&small) < count(&own),
+            "{} vs {}",
+            count(&small),
+            count(&own)
+        );
     }
 }

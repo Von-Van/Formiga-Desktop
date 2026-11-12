@@ -378,6 +378,8 @@ fn generate_creature(
             indoors: false,
             depth: 0.0,
             presence: Presence::default(),
+            meal: None,
+            play: None,
         },
     }
 }

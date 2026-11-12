@@ -8,7 +8,7 @@
 #
 # formiga-core and formiga-art are taken by tag too, but they are the game itself and change
 # with most work, so their API is not kept here: the companion-apps workflow builds and tests
-# Hill, Home and Farm against them instead, which catches a change to anything those apps use.
+# Hill, Home, Farm and Battle against them instead, which catches a change to anything those apps use.
 # After an intended change to one of the crates below:
 #
 #   scripts/public-api.sh --update

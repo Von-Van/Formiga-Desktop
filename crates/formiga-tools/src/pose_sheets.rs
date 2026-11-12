@@ -45,6 +45,9 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Pluck => (ExpressionKind::Determined, EyelidPose::Open),
         // Eyes shut on a smile under the hand.
         Gesture::Bask => (ExpressionKind::Affectionate, EyelidPose::Closed),
+        Gesture::Nibble | Gesture::Chomp => (ExpressionKind::Content, EyelidPose::Open),
+        Gesture::Chew => (ExpressionKind::Content, EyelidPose::Half),
+        Gesture::Gulp => (ExpressionKind::Joy, EyelidPose::Open),
     };
     FaceRenderState {
         expression,
@@ -298,7 +301,9 @@ pub fn doings_sheet(path: PathBuf) -> Result<()> {
 /// action alone draws it, the six-beat rest going round and a blink on the beat; the second as it
 /// carries itself on the desktop, coming to rest with a settle, holding still, shifting its weight
 /// or looking off when it does, glancing about and blinking at its own pace. The two rows are what
-/// a rest looked like and what it looks like now, side by side.
+/// a rest looked like and what it looks like now, side by side. Under them, one row a body of a
+/// long nap turning over, a frame every tenth of a second from just before the turn: the stir,
+/// the crouch it gathers itself up in, and the way it settles into.
 pub fn rest_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 2;
     const COLUMNS: u32 = 30;
@@ -321,7 +326,9 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
     }
     let cell = FRAME_SIZE * SCALE;
     let width = COLUMNS * cell;
-    let height = subjects.len() as u32 * (2 * cell + GAP);
+    let rests = subjects.len() as u32 * (2 * cell + GAP);
+    // Under the rests, one row each of a long nap turning over, a tenth of a second a column.
+    let height = rests + subjects.len() as u32 * (cell + GAP);
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for chunk in pixels.chunks_exact_mut(4) {
         chunk.copy_from_slice(&[236, 234, 228, 255]);
@@ -377,6 +384,66 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
                     SCALE,
                 );
             }
+        }
+    }
+    for (index, subject) in subjects.iter().enumerate() {
+        let mut creature = subject.clone();
+        creature.state.attention = None;
+        creature.state.beat = None;
+        creature.state.flourish = None;
+        creature.state.facing_right = true;
+        creature.state.drives = Drives::default();
+        creature.state.action = ActionKind::Sleep;
+        creature.state.action_duration = 40.0;
+        creature.state.nudge = None;
+        let motion = formiga_art::MotionSignature::for_creature(&creature);
+        // The first long nap of this companion's that turns over, and when.
+        let Some((began, turn_at)) = (0..400).map(|nap| nap as f32 * 37.0).find_map(|began| {
+            let first = motion.nap_pose(began, 0.0, 40.0, true);
+            (0..400)
+                .map(|tenth| tenth as f32 / 10.0)
+                .find(|&into| motion.nap_pose(began, into, 40.0, true) != first)
+                .map(|at| (began, at))
+        }) else {
+            continue;
+        };
+        for column in 0..COLUMNS {
+            let into = turn_at - 0.6 + column as f32 / 10.0;
+            creature.state.action_elapsed = into;
+            creature.state.presence = Presence {
+                clock: began + into,
+                since: into,
+                last: Some(PresenceMark {
+                    x: creature.state.position.x,
+                    depth: 0.0,
+                    window: None,
+                }),
+                ..Presence::default()
+            };
+            let body = formiga_art::BodyPresentation::for_creature(&creature);
+            let face = CreatureRenderer::resolve_face_state_among(
+                &creature,
+                &[],
+                CursorSnapshot::default(),
+                false,
+                false,
+            );
+            let rendered = CreatureRenderer::render_composited_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                body.facing_right,
+                false,
+                face,
+            );
+            blit_scaled(
+                &mut pixels,
+                width,
+                column * cell,
+                rests + index as u32 * (cell + GAP),
+                &rendered.rgba_bytes(),
+                SCALE,
+            );
         }
     }
     write_png(&path, width, height, &pixels)?;
@@ -603,6 +670,375 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
     }
 
     write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Every food, eaten through a whole meal: a row for each, twelve moments from the first look to
+/// the finish, on a different body each row, with its face and what is in its paws as the
+/// overlay draws them. The meals are laid out from a fixed seed, so the sheet is the same every
+/// time.
+pub fn meal_sheet(path: PathBuf) -> Result<()> {
+    use formiga_core::meals::{Appetite, Food, Meal};
+    use rand::SeedableRng;
+    const SCALE: u32 = 2;
+    const MOMENTS: u32 = 12;
+    const LENGTH: f32 = 9.0;
+    let subjects = gesture_subjects();
+    let cell = FRAME_SIZE * SCALE;
+    let width = MOMENTS * cell;
+    let height = Food::ALL.len() as u32 * cell;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    let mut creature = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    creature.state.facing_right = true;
+    creature.state.action = ActionKind::Eat;
+    creature.state.action_duration = LENGTH;
+    for (row, food) in Food::ALL.into_iter().enumerate() {
+        creature.appearance = subjects[row % subjects.len()].clone();
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(row as u64);
+        let mut meal = Meal::plan(food, LENGTH, Appetite::default(), &mut rng);
+        for moment in 0..MOMENTS {
+            meal.elapsed = (moment as f32 + 0.5) * LENGTH / MOMENTS as f32;
+            creature.state.action_elapsed = meal.elapsed;
+            creature.state.meal = Some(meal);
+            let body = formiga_art::BodyPresentation::for_creature(&creature);
+            let face =
+                CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+            let baked = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                false,
+            )
+            .held;
+            // Painted where the meal puts it, as the overlay draws it: lifted, lowered or set
+            // down by the step, not only where the frame holds things.
+            let mut rendered = CreatureRenderer::render_composited_frame_holding(
+                &creature.appearance,
+                None,
+                body.clip,
+                body.frame,
+                true,
+                false,
+                face,
+                formiga_art::Holding::Nothing,
+            );
+            if let Some(held) = formiga_art::held_now(&creature, body.clip, baked) {
+                held.paint(&mut rendered, true);
+            }
+            blit_scaled(
+                &mut pixels,
+                width,
+                moment * cell,
+                row as u32 * cell,
+                &rendered.rgba_bytes(),
+                SCALE,
+            );
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Every shape of plaything played with through a session: a row each, twelve moments from
+/// picking it up to putting it down, and a last row riding an umbrella down off a ledge. Each
+/// moment has room round the body, so a ball thrown high or a plane gliding away stays in view.
+pub fn play_sheet(path: PathBuf) -> Result<()> {
+    use formiga_core::play::{Play, Plaything};
+    use rand::SeedableRng;
+    const SCALE: u32 = 2;
+    const MOMENTS: u32 = 12;
+    const LENGTH: f32 = 8.0;
+    // The body's frame sits this far in from each moment's left and top.
+    const PAD: i32 = 24;
+    let find = |name: &str| {
+        formiga_core::all_trinkets()
+            .find(|info| info.name == name)
+            .map(|info| info.variant)
+            .expect("a find of that name")
+    };
+    let things = [
+        Plaything::Toy(0),
+        Plaything::Toy(1),
+        Plaything::Toy(2),
+        Plaything::Toy(3),
+        Plaything::Toy(5),
+        Plaything::Belonging(ColonyObjectKind::Umbrella),
+        Plaything::Belonging(ColonyObjectKind::Kite),
+        Plaything::Belonging(ColonyObjectKind::Paper),
+        Plaything::Belonging(ColonyObjectKind::Drum),
+        Plaything::Trinket(find("Twig")),
+        Plaything::Trinket(find("Walking stick")),
+        Plaything::Trinket(find("Paper boat")),
+        Plaything::Trinket(find("Marble")),
+    ];
+    let subjects = gesture_subjects();
+    let (cw, ch) = (FRAME_SIZE as i32 + PAD * 3, FRAME_SIZE as i32 + PAD);
+    let width = MOMENTS * cw as u32 * SCALE;
+    let rows = things.len() as u32 + 1;
+    let height = rows * ch as u32 * SCALE;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    let mut creature = World::preview_adult(
+        [29; 32],
+        OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    creature.state.facing_right = true;
+    for row in 0..rows as usize {
+        creature.appearance = subjects[row % subjects.len()].clone();
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(row as u64 + 3);
+        let (mut play, action) = match things.get(row) {
+            Some(thing) => (Play::plan(*thing, LENGTH, &mut rng), ActionKind::SoloPlay),
+            None => (Play::umbrella_ride(LENGTH), ActionKind::Landing),
+        };
+        creature.state.action = action;
+        creature.state.action_duration = LENGTH;
+        for moment in 0..MOMENTS {
+            play.elapsed = (moment as f32 + 0.5) * LENGTH / MOMENTS as f32;
+            creature.state.action_elapsed = play.elapsed;
+            creature.state.play = Some(play);
+            let body = formiga_art::BodyPresentation::for_creature(&creature);
+            let face =
+                CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
+            let frame = CreatureRenderer::render_composited_frame_holding(
+                &creature.appearance,
+                None,
+                body.clip,
+                body.frame,
+                true,
+                false,
+                face,
+                formiga_art::Holding::Nothing,
+            );
+            let mut cell = formiga_art::Canvas::new(cw as u32, ch as u32);
+            for y in 0..FRAME_SIZE as i32 {
+                for x in 0..FRAME_SIZE as i32 {
+                    let pixel = frame.get(x, y);
+                    if pixel.a > 0 {
+                        cell.set(x + PAD, y + PAD, pixel);
+                    }
+                }
+            }
+            let baked = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                body.clip,
+                body.frame,
+                false,
+            )
+            .held;
+            let mut thing = formiga_art::Canvas::new(cw as u32, ch as u32);
+            // A kite's string, behind the kite.
+            if let Some((paw, kite)) = formiga_art::held_tether(&creature, body.clip, baked) {
+                thing.line(
+                    paw.x + PAD,
+                    paw.y + PAD,
+                    kite.x + PAD,
+                    kite.y + PAD,
+                    1,
+                    formiga_art::KITE_STRING,
+                );
+            }
+            if let Some(held) = formiga_art::held_now(&creature, body.clip, baked) {
+                let offset = held.thing.offset();
+                formiga_art::HeldPlacement::centred(
+                    held.thing,
+                    held.at.x + offset.x + PAD,
+                    held.at.y + offset.y + PAD,
+                )
+                .paint(&mut thing, true);
+            }
+            for y in 0..ch {
+                for x in 0..cw {
+                    let pixel = thing.get(x, y);
+                    if pixel.a > 0 {
+                        cell.set(x, y, pixel);
+                    }
+                }
+            }
+            let (left, top) = (moment * cw as u32 * SCALE, row as u32 * ch as u32 * SCALE);
+            for y in 0..ch as u32 * SCALE {
+                for x in 0..cw as u32 * SCALE {
+                    let pixel = cell.get((x / SCALE) as i32, (y / SCALE) as i32);
+                    if pixel.a > 0 {
+                        let at = (((top + y) * width + left + x) * 4) as usize;
+                        pixels[at..at + 4].copy_from_slice(&[pixel.r, pixel.g, pixel.b, 255]);
+                    }
+                }
+            }
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Every bubble a companion says things in, over a companion, at the size the desktop shows them
+/// at 2x: rows of styles with the topics they are said about, then two companions talking — an
+/// invitation and its answer, a meal offered and thanks for it, a goodnight whispered back — and
+/// last, every picture there is.
+pub fn talk_sheet(path: PathBuf) -> Result<()> {
+    use formiga_art::{TALK_DETAIL, TALK_ICON_AT, TalkSheet};
+    use formiga_core::talk::{Saying, TalkStyle as S, TalkTopic as T};
+    const SCALE: u32 = 2;
+    let d = TALK_DETAIL as i32;
+    let mut rows: Vec<Vec<(Saying, Option<Saying>)>> = vec![
+        vec![
+            (Saying::one(S::Chat, T::Wave), None),
+            (Saying::one(S::Chat, T::Food), None),
+            (Saying::one(S::Chat, T::Home), None),
+            (Saying::one(S::Chat, T::No), None),
+        ],
+        vec![
+            (Saying::one(S::Excited, T::Ball), None),
+            (Saying::one(S::Excited, T::Sparkle), None),
+            (Saying::one(S::Excited, T::Kite), None),
+            (Saying::one(S::Excited, T::Fish), None),
+        ],
+        vec![
+            (Saying::one(S::Whisper, T::Moon), None),
+            (Saying::one(S::Whisper, T::Blush), None),
+            (Saying::one(S::Thought, T::Sleep), None),
+            (Saying::one(S::Thought, T::Question), None),
+        ],
+        vec![
+            (Saying::one(S::Song, T::Note), None),
+            (Saying::one(S::Tender, T::Heart), None),
+            (Saying::one(S::Grumble, T::Storm), None),
+            (Saying::one(S::Shout, T::Exclaim), None),
+        ],
+        vec![
+            (
+                Saying::one(S::Excited, T::Stick),
+                Some(Saying::one(S::Excited, T::Exclaim)),
+            ),
+            (
+                Saying::one(S::Chat, T::Food),
+                Some(Saying::one(S::Tender, T::Heart)),
+            ),
+        ],
+        vec![
+            (
+                Saying::one(S::Whisper, T::Moon),
+                Some(Saying::one(S::Whisper, T::Heart)),
+            ),
+            (
+                Saying::one(S::Chat, T::Wave),
+                Some(Saying::one(S::Chat, T::Wave)),
+            ),
+        ],
+    ];
+    // Every picture, said the way it most often is.
+    rows.extend(T::ALL.chunks(4).map(|topics| {
+        topics
+            .iter()
+            .map(|topic| (Saying::one(S::Chat, *topic), None))
+            .collect()
+    }));
+    let sheet = TalkSheet::render();
+    let subjects = gesture_subjects();
+    // Each companion's place, in texture pixels: room for a double bubble over a body.
+    let (cw, ch) = (40 * d, 72 * d);
+    let width = (4 * cw) as u32;
+    let height = (rows.len() as i32 * ch) as u32;
+    let mut canvas = formiga_art::Canvas::new(width, height);
+    canvas.fill_rect(
+        0,
+        0,
+        width as i32,
+        height as i32,
+        formiga_art::Rgba::new(236, 234, 228, 255),
+    );
+    let put = |canvas: &mut formiga_art::Canvas,
+               x0: i32,
+               y0: i32,
+               subject: usize,
+               facing_right: bool,
+               saying: Saying| {
+        let genome = &subjects[subject % subjects.len()];
+        let face = FaceRenderState {
+            expression: ExpressionKind::Joy,
+            eyelids: EyelidPose::Open,
+            gaze: GazeDirection::default(),
+        };
+        let frame = CreatureRenderer::render_composited_frame(
+            genome,
+            ActionKind::Idle,
+            0,
+            facing_right,
+            false,
+            face,
+        );
+        let top = frame.alpha_bounds().map_or(0, |(_, t, _, _)| t as i32);
+        let fx = x0 + cw / 2 - FRAME_SIZE as i32 / 2 * d;
+        let fy = y0 + ch - FRAME_SIZE as i32 * d;
+        for y in 0..FRAME_SIZE as i32 {
+            for x in 0..FRAME_SIZE as i32 {
+                let pixel = frame.get(x, y);
+                if pixel.a > 0 {
+                    canvas.fill_rect(fx + x * d, fy + y * d, d, d, pixel);
+                }
+            }
+        }
+        let head_top = fy + top * d;
+        let rect = TalkSheet::frame(saying.style, BubbleGrowth::Full);
+        let bx = x0 + cw / 2 - (rect.width as i32 / d / 2) * d;
+        let by = head_top - rect.height as i32 - d;
+        let mut blit = |rect: formiga_art::SpriteRect, x: i32, y: i32| {
+            for sy in 0..rect.height as i32 {
+                for sx in 0..rect.width as i32 {
+                    let pixel = sheet.get(rect.x as i32 + sx, rect.y as i32 + sy);
+                    if pixel.a > 0 {
+                        canvas.set(x + sx, y + sy, pixel);
+                    }
+                }
+            }
+        };
+        blit(rect, bx, by);
+        blit(
+            TalkSheet::icon(saying.topic),
+            bx + TALK_ICON_AT.0 as i32 * d,
+            by + TALK_ICON_AT.1 as i32 * d,
+        );
+    };
+    for (row, sayings) in rows.iter().enumerate() {
+        let y0 = row as i32 * ch;
+        let mut column = 0;
+        for (saying, answer) in sayings {
+            put(
+                &mut canvas,
+                column * cw,
+                y0,
+                row + column as usize,
+                true,
+                *saying,
+            );
+            column += 1;
+            if let Some(answer) = answer {
+                put(&mut canvas, column * cw, y0, row + 3, false, *answer);
+                column += 1;
+            }
+        }
+    }
+    let mut pixels = vec![0_u8; (width * SCALE * height * SCALE * 4) as usize];
+    for y in 0..height * SCALE {
+        for x in 0..width * SCALE {
+            let pixel = canvas.get((x / SCALE) as i32, (y / SCALE) as i32);
+            let at = ((y * width * SCALE + x) * 4) as usize;
+            pixels[at..at + 4].copy_from_slice(&[pixel.r, pixel.g, pixel.b, 255]);
+        }
+    }
+    write_png(&path, width * SCALE, height * SCALE, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
 }

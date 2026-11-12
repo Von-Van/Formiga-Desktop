@@ -2,25 +2,28 @@ use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement, SidePlacement};
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
-    AccessoryArt, AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, BodyPresentation,
-    COLONY_OBJECT_ATLAS_HEIGHT, COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE,
-    ColonyObjectRenderer, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, MenuIcon, MenuLayout, MilestoneBubbleRenderer, PixelPoint, PropAnchor,
-    PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TRINKET_ATLAS_HEIGHT,
-    TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TrinketAnchor,
-    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT,
-    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH,
-    WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
+    AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT,
+    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
+    PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect,
+    TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
+    TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
+    TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
+    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
+    VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
+    WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
     GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
     VillageGroundRenderer,
 };
 use formiga_core::{
-    ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, ColonyObject, Creature,
-    CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy, HabitatZoneKind,
-    HouseMotion, HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge, ThoughtBubble,
-    VillageProp, WonderKind, WonderView, accessible_regions, resolved_home_anchor,
+    ActionKind, AppearanceGenome, ApplicationOcclusionRule, BeatKind, BubbleGrowth, ColonyObject,
+    Creature, CreatureId, CursorSnapshot, DesktopRect, DesktopWindow, HabitatPolicy,
+    HabitatZoneKind, HouseMotion, HouseOccupancy, MonitorInfo, Point, SaveFile, SleepNudge,
+    ThoughtBubble, VillageProp, WonderKind, WonderView, accessible_regions, resolved_home_anchor,
+    talk::{Saying, TalkBubble},
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -33,10 +36,13 @@ mod resources;
 mod train;
 mod ui;
 mod village;
+pub(crate) use atlas::creature_horizontal_scale;
 use atlas::*;
-pub(crate) use occlusion::monitor_has_fullscreen_window;
 use occlusion::*;
+pub(crate) use occlusion::{monitor_has_fullscreen_window, visible_occlusion_rects};
 pub use train::TrainView;
+#[cfg(test)]
+pub(crate) use ui::menu_scale as ui_menu_scale;
 use village::*;
 
 #[repr(C)]
@@ -55,6 +61,8 @@ struct ZoneVertex {
 }
 
 const MAX_OCCLUSION_RECTS: usize = 64;
+/// How many vertices of the habitat editor's zones the overlay holds: 128 rectangles.
+const MAX_ZONE_VERTICES: usize = 768;
 // Four creatures, a village of four dwellings and the two trees that bookend them, sixteen
 // keepsakes hung between the pair, one bubble, and eight belongings.
 const INITIAL_VERTEX_CAPACITY: usize = 258;
@@ -85,6 +93,8 @@ struct SpriteGpu {
     /// Which cell of the face texture each face is drawn from, by face slot.
     face_cells: Vec<u16>,
     face_anchors: Vec<PixelPoint>,
+    /// What each baked frame holds and where, by slot.
+    held: Vec<Option<HeldPlacement>>,
     /// The topmost and just-past-the-lowest drawn rows of each baked body frame, in art pixels
     /// from the frame's top edge. A bubble hangs off the crown rather than off the frame, so a
     /// mini keeps its bubble as close to its head as an adult does.
@@ -92,8 +102,13 @@ struct SpriteGpu {
     resting_baseline: u32,
     /// What it was baked wearing, in the inks it was baked in.
     dress: Option<AccessoryArt>,
+    /// The colony's colours those inks were chosen against, while it wears anything.
+    dress_colours: Option<TrinketAtlasKey>,
     /// The size it was drawn at: its own, or its set-back size for standing back in the village.
     logical_size: u8,
+    /// The detail it was asked to be baked at, which `detail` is unless the graphics card could
+    /// not hold an atlas that fine.
+    wanted_detail: u32,
     /// The look it was baked in. A companion given a new look in Formiga Farm keeps its id, so
     /// its atlas is baked again when this changes.
     appearance: AppearanceGenome,
@@ -114,8 +129,15 @@ struct CreatureDraw {
     start: usize,
     trinket: bool,
     held: usize,
+    /// What it is eating, sipping or playing with, after its held things: from the held sheet,
+    /// or for a find borrowed to play with, from the colony's sheet of finds.
+    carried: Option<CarriedSheet>,
+    /// A kite's string, drawn from the held sheet just before the kite, behind it and the paw.
+    tether: bool,
     among_houses: Option<usize>,
     depth: f32,
+    /// Drawn at its set-back size (see [`OverlayRenderer::shows_set_back`]).
+    set_back: bool,
 }
 
 /// The ground the village stands on, both layers by day and after dark, for the way the village
@@ -152,6 +174,8 @@ const UI_ATLAS_IDLE_FRAMES: u32 = 240;
 pub struct OverlayUi<'a> {
     /// The simulation's answers, one per creature at most.
     pub bubbles: &'a [ThoughtBubble],
+    /// What companions are saying to each other just now.
+    pub talk: &'a [TalkBubble],
     pub reduce_motion: bool,
     /// Whether it is dark out where the owner is, so the houses glow from inside.
     pub night: bool,
@@ -159,8 +183,9 @@ pub struct OverlayUi<'a> {
     pub menu: Option<MenuView<'a>>,
     /// What the village is up to this frame.
     pub village: VillageScene<'a>,
-    /// A wonder out somewhere for somebody to play on.
-    pub wonder: Option<WonderView>,
+    /// Every wonder out: those put out by the person at the desk, and one that turned up by
+    /// itself for somebody to play on.
+    pub wonders: &'a [WonderView],
     /// The train, while the colony is getting on or off it.
     pub train: Option<TrainView>,
 }
@@ -187,6 +212,9 @@ pub struct MenuView<'a> {
     pub layout: &'a MenuLayout,
     pub placement: MenuPlacement,
     pub hovered: Option<usize>,
+    /// An item chosen that could not be done just now, which shows "not now" under it in place
+    /// of its label.
+    pub unavailable: Option<usize>,
     /// A strip opened beside the menu, if any.
     pub side: Option<SideView<'a>>,
 }
@@ -197,6 +225,19 @@ pub struct SideView<'a> {
     pub layout: &'a MenuLayout,
     pub placement: SidePlacement,
     pub hovered: Option<usize>,
+}
+
+/// Which sheet what a companion is eating or playing with is drawn from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CarriedSheet {
+    Held,
+    Finds,
+}
+
+/// Everything a companion can eat, sip or play with, one sheet for every companion.
+struct HeldSheetGpu {
+    _texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
 }
 
 struct ColonyObjectsGpu {
@@ -214,8 +255,8 @@ struct TrinketAtlasGpu {
     key: TrinketAtlasKey,
 }
 
-/// The wonder out now: its frames, baked when it appears and dropped once it has gone, so an
-/// overlay with no wonder out holds nothing for one.
+/// One wonder out: its frames, baked when it appears and dropped once it has gone, so an overlay
+/// with no wonder out holds nothing for one.
 struct WonderGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
@@ -254,15 +295,22 @@ pub struct OverlayRenderer {
     sprites: BTreeMap<CreatureId, SpriteGpu>,
     /// Each resident drawn at its set-back size, for while it stands back in the village.
     set_back_sprites: BTreeMap<CreatureId, SpriteGpu>,
+    /// Which size each companion is shown at just now, as the app last worked it out from its
+    /// footing (`formiga_art::shown_set_back`), so the overlay and the grab mask agree on it.
+    set_back_shown: BTreeMap<CreatureId, bool>,
     shelter: Option<ShelterGpu>,
     ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
     ui_atlas: Option<UiAtlasGpu>,
     ui_atlas_idle: u32,
     colony_objects: Option<ColonyObjectsGpu>,
+    held_sheet: Option<HeldSheetGpu>,
+    /// Every bubble companions say things in, to each other and to the person at the desk.
+    talk_sheet: Option<HeldSheetGpu>,
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
-    wonder: Option<WonderGpu>,
+    /// Each kind of wonder out on this display, at most one of each.
+    wonders: Vec<WonderGpu>,
     /// The train's frames, while a trip is on this display.
     train: Option<train::TrainGpu>,
     tree_vertex_cache_key: Option<TreeVertexCacheKey>,
@@ -507,7 +555,7 @@ impl OverlayRenderer {
         });
         let zone_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("habitat editor vertices"),
-            contents: bytemuck::cast_slice(&[ZoneVertex::zeroed(); 768]),
+            contents: bytemuck::cast_slice(&[ZoneVertex::zeroed(); MAX_ZONE_VERTICES]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         Ok(Self {
@@ -530,15 +578,18 @@ impl OverlayRenderer {
             zone_vertex_buffer,
             sprites: BTreeMap::new(),
             set_back_sprites: BTreeMap::new(),
+            set_back_shown: BTreeMap::new(),
             shelter: None,
             ground: None,
             bubble: None,
             ui_atlas: None,
             ui_atlas_idle: 0,
             colony_objects: None,
+            held_sheet: None,
+            talk_sheet: None,
             trinkets: None,
             rope: None,
-            wonder: None,
+            wonders: Vec::new(),
             train: None,
             tree_vertex_cache_key: None,
             tree_vertices: Vec::new(),
@@ -642,13 +693,27 @@ impl OverlayRenderer {
     /// The atlas a companion is drawn from: its set-back one while it stands back in the village,
     /// once that is baked, and its own otherwise.
     fn sprite_for(&self, creature: &Creature) -> Option<&SpriteGpu> {
-        self.sprite_at(creature.id, creature.state.depth)
+        self.sprite_at(creature.id, self.shows_set_back(creature))
     }
 
-    fn sprite_at(&self, id: CreatureId, depth: f32) -> Option<&SpriteGpu> {
-        if depth >= formiga_core::SET_BACK_DEPTH
-            && let Some(sprite) = self.set_back_sprites.get(&id)
-        {
+    /// Which sizes the companions are shown at, from the app, once a tick.
+    pub fn show_set_back(&mut self, shown: &BTreeMap<CreatureId, bool>) {
+        self.set_back_shown.clone_from(shown);
+    }
+
+    /// Whether a companion is drawn at its set-back size: as the app last said, which waits for
+    /// a planted step to change, or for one it has not said anything about — someone on a trip's
+    /// platform — straight from how far back it stands.
+    fn shows_set_back(&self, creature: &Creature) -> bool {
+        self.set_back_shown
+            .get(&creature.id)
+            .copied()
+            .unwrap_or_else(|| drawn_set_back(creature.state.depth, true))
+    }
+
+    fn sprite_at(&self, id: CreatureId, set_back: bool) -> Option<&SpriteGpu> {
+        // Set-back atlases are only kept while the village is out on this display.
+        if set_back && let Some(sprite) = self.set_back_sprites.get(&id) {
             return Some(sprite);
         }
         self.sprites.get(&id)
@@ -683,8 +748,10 @@ impl OverlayRenderer {
         for creature in &visible {
             self.ensure_sprite(creature, save);
         }
-        let shelter_visible = !monitor_fully_occluded
-            && save.home.is_active()
+        // Whoever is on this display, drawn or not: a full-screen app hiding them keeps their
+        // atlases, so nobody is baked again, all in one frame, the moment it closes.
+        let here = drawn_on_monitor(save, self.monitor.id, false);
+        let shelter_here = save.home.shown()
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
@@ -694,6 +761,7 @@ impl OverlayRenderer {
                 &save.settings.habitat,
             )
             .is_some();
+        let shelter_visible = !monitor_fully_occluded && shelter_here;
         // The ground the village stands on, laid out where the village stands on this display.
         let ground_plan = if shelter_visible {
             let look = VillageLook::of(&save.home, &save.creatures);
@@ -714,11 +782,11 @@ impl OverlayRenderer {
             None
         };
         self.sprites
-            .retain(|id, _| visible.iter().any(|creature| creature.id == *id));
+            .retain(|id, _| here.iter().any(|creature| creature.id == *id));
         // Baked as a resident starts up a path, before it is far enough back to be drawn smaller,
-        // and kept while the village is out for whenever it goes back in again.
+        // and kept while the village is out for whenever it goes back in again, hidden or not.
         self.set_back_sprites
-            .retain(|id, _| shelter_visible && visible.iter().any(|creature| creature.id == *id));
+            .retain(|id, _| shelter_here && here.iter().any(|creature| creature.id == *id));
         if shelter_visible {
             for creature in &visible {
                 if creature.state.depth > 0.0 {
@@ -820,19 +888,19 @@ impl OverlayRenderer {
             self.ensure_rope();
         }
         // A wonder stands behind whoever is playing on it.
-        let wonder_start = vertices.len();
-        match ui
-            .wonder
+        let wonders_here: Vec<WonderView> = ui
+            .wonders
+            .iter()
+            .copied()
             .filter(|wonder| wonder.monitor_id == self.monitor.id && !monitor_fully_occluded)
-        {
-            Some(wonder) => {
-                self.ensure_wonder(wonder.kind, save.colony_seed);
-                vertices
-                    .extend_from_slice(&self.wonder_vertices(wonder, save.settings.display_scale));
-            }
-            None => self.wonder = None,
+            .collect();
+        self.wonders
+            .retain(|kept| wonders_here.iter().any(|wonder| wonder.kind == kept.kind));
+        let wonder_start = vertices.len();
+        for wonder in &wonders_here {
+            self.ensure_wonder(wonder.kind, save.colony_seed);
+            vertices.extend_from_slice(&self.wonder_vertices(*wonder, save.settings.display_scale));
         }
-        let wonder_vertex_count = vertices.len() - wonder_start;
         for creature in &visible {
             let sprite = self.sprite_for(creature).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state_among(
@@ -843,7 +911,7 @@ impl OverlayRenderer {
                 save.settings.reduce_motion,
             );
             let start = vertices.len();
-            let (body, face, trinket, held) =
+            let (body, face, trinket, held, carried, tether) =
                 self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
             vertices.extend_from_slice(&body);
             vertices.extend_from_slice(&face);
@@ -863,29 +931,49 @@ impl OverlayRenderer {
                     prop_vertices.extend_from_slice(&quad);
                 }
             }
+            // What it is eating or playing with is drawn with it wherever it stands, so nobody
+            // else's snack is ever drawn over it, a kite's string first so the kite covers its end.
+            if let Some(quad) = tether {
+                vertices.extend_from_slice(&quad);
+            }
+            if let Some((quad, _)) = carried {
+                vertices.extend_from_slice(&quad);
+            }
             creature_draws.push(CreatureDraw {
                 id: creature.id,
                 start,
                 trinket: trinket.is_some(),
                 held: held_count,
+                carried: carried.map(|(_, sheet)| sheet),
+                tether: tether.is_some(),
                 among_houses,
                 depth: creature.state.depth,
+                set_back: self.shows_set_back(creature),
             });
         }
         // Among the houses, back to front; everybody at the front after them, in colony order.
-        creature_draws.sort_by(|a, b| {
-            a.among_houses
-                .unwrap_or(usize::MAX)
-                .cmp(&b.among_houses.unwrap_or(usize::MAX))
-                .then(b.depth.total_cmp(&a.depth))
-        });
+        // How many houses are drawn behind somebody only grows as it comes forward, so ordering
+        // by depth alone is that order, and clicks resolve with the same one (`back_to_front`).
+        creature_draws.sort_by(|a, b| drawn_before(a.depth, b.depth));
         // Everything small the village holds or has loose, over the colony, from the same sheet
         // as its belongings.
         let prop_start = vertices.len();
         vertices.extend_from_slice(&prop_vertices);
         let prop_vertex_count = prop_vertices.len();
-        if prop_vertex_count > 0 {
+        if prop_vertex_count > 0 || creature_draws.iter().any(|draw| draw.held > 0) {
             self.ensure_colony_object_atlas(save.colony_seed);
+        }
+        if creature_draws
+            .iter()
+            .any(|draw| draw.carried == Some(CarriedSheet::Held) || draw.tether)
+        {
+            self.ensure_held_sheet();
+        }
+        if creature_draws
+            .iter()
+            .any(|draw| draw.carried == Some(CarriedSheet::Finds))
+        {
+            self.ensure_trinket_atlas(save);
         }
         // The train, in front of everyone: a companion walking up to its door goes behind it.
         let train_start = vertices.len();
@@ -910,7 +998,14 @@ impl OverlayRenderer {
             vertices.extend_from_slice(&bubble_vertices);
         }
         let bubble_vertex_count = vertices.len() - bubble_start;
-        let ui_vertices = self.ui_vertices(&visible, save.settings.display_scale, ui);
+        let talk_vertices = self.talk_vertices(&visible, save.settings.display_scale, ui);
+        if !talk_vertices.is_empty() {
+            self.ensure_talk_sheet();
+        }
+        let talk_start = vertices.len();
+        vertices.extend_from_slice(&talk_vertices);
+        let talk_vertex_count = talk_vertices.len();
+        let ui_vertices = self.ui_vertices(&visible, ui);
         self.sync_ui_atlas(!ui_vertices.is_empty());
         let ui_start = vertices.len();
         vertices.extend_from_slice(&ui_vertices);
@@ -1014,7 +1109,7 @@ impl OverlayRenderer {
             // The houses and trees from the back of the ground to the front, with whoever is
             // standing back among them drawn between the ones behind it and the ones in front.
             let draw_creature = |pass: &mut wgpu::RenderPass<'_>, creature: &CreatureDraw| {
-                if let Some(sprite) = self.sprite_at(creature.id, creature.depth) {
+                if let Some(sprite) = self.sprite_at(creature.id, creature.set_back) {
                     draw(pass, &sprite.body_bind_group, creature.start, 6);
                     draw(pass, &sprite.face_bind_group, creature.start + 6, 6);
                     let mut next = creature.start + 12;
@@ -1028,6 +1123,26 @@ impl OverlayRenderer {
                         && let Some(objects) = &self.colony_objects
                     {
                         draw(pass, &objects.bind_group, next, creature.held);
+                    }
+                    next += creature.held;
+                    if creature.tether {
+                        if let Some(sheet) = &self.held_sheet {
+                            draw(pass, &sheet.bind_group, next, 6);
+                        }
+                        next += 6;
+                    }
+                    match creature.carried {
+                        Some(CarriedSheet::Held) => {
+                            if let Some(sheet) = &self.held_sheet {
+                                draw(pass, &sheet.bind_group, next, 6);
+                            }
+                        }
+                        Some(CarriedSheet::Finds) => {
+                            if let Some(trinkets) = &self.trinkets {
+                                draw(pass, &trinkets.bind_group, next, 6);
+                            }
+                        }
+                        None => {}
                     }
                 }
             };
@@ -1090,15 +1205,10 @@ impl OverlayRenderer {
             {
                 draw(&mut pass, &rope.bind_group, rope_start, rope_vertex_count);
             }
-            if wonder_vertex_count > 0
-                && let Some(wonder) = &self.wonder
-            {
-                draw(
-                    &mut pass,
-                    &wonder.bind_group,
-                    wonder_start,
-                    wonder_vertex_count,
-                );
+            for (index, wonder) in wonders_here.iter().enumerate() {
+                if let Some(frames) = self.wonders.iter().find(|kept| kept.kind == wonder.kind) {
+                    draw(&mut pass, &frames.bind_group, wonder_start + index * 6, 6);
+                }
             }
             for creature in in_front {
                 draw_creature(&mut pass, creature);
@@ -1133,6 +1243,12 @@ impl OverlayRenderer {
                     bubble_vertex_count,
                 );
             }
+            // Every bubble, on top of the colony it is talking about and under an open menu.
+            if talk_vertex_count > 0
+                && let Some(sheet) = &self.talk_sheet
+            {
+                draw(&mut pass, &sheet.bind_group, talk_start, talk_vertex_count);
+            }
             // Every icon bubble and every part of the open menu comes out of one texture, so the
             // whole on-desktop UI is a single extra bind group and a single extra draw, last and
             // therefore on top of the colony it is talking about.
@@ -1162,7 +1278,12 @@ impl OverlayRenderer {
     }
 
     fn recover_surface(&mut self) {
-        self.layout = self.window.inner_size();
+        // A window being torn down or minimised can report no size at all; keep drawing for the
+        // size it last had, as `resize` does, rather than lay bubbles out across zero pixels.
+        let size = self.window.inner_size();
+        if size.width > 0 && size.height > 0 {
+            self.layout = size;
+        }
         (self.config.width, self.config.height) = drawable_size(self.layout, self.render_divisor);
         self.surface.configure(&self.device, &self.config);
         self.last_occlusion = None;
@@ -1177,6 +1298,7 @@ impl OverlayRenderer {
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
         ui_active: bool,
+        wonder_here: bool,
     ) -> bool {
         if self.has_visual_content || habitat_editor.is_some() || ui_active {
             return true;
@@ -1190,7 +1312,7 @@ impl OverlayRenderer {
         let fully_occluded = rects_cover(self.monitor.bounds, &occlusion_rects);
         let creature_visible = !drawn_on_monitor(save, self.monitor.id, fully_occluded).is_empty();
         let shelter_visible = !fully_occluded
-            && save.home.is_active()
+            && save.home.shown()
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
@@ -1213,7 +1335,7 @@ impl OverlayRenderer {
                 .iter()
                 .any(Option::is_some))
                 || save.home.has_ground_items());
-        creature_visible || shelter_visible || object_visible
+        creature_visible || shelter_visible || object_visible || wonder_here
     }
 
     #[allow(clippy::type_complexity)]
@@ -1228,6 +1350,8 @@ impl OverlayRenderer {
         [Vertex; 6],
         Option<[Vertex; 6]>,
         [Option<[Vertex; 6]>; 2],
+        Option<([Vertex; 6], CarriedSheet)>,
+        Option<[Vertex; 6]>,
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
@@ -1414,6 +1538,57 @@ impl OverlayRenderer {
         // Something the village has put in its hands — a watering can, something just picked —
         // held where a keepsake is held, and the water running out of the can while it waters.
         let mut held = [None, None];
+        // What it is eating, sipping or playing with, where this frame holds it.
+        // Where a frame pixel lands on the overlay, with the frame facing the way it is drawn.
+        let on_overlay = |at: PixelPoint| {
+            let across = if facing_right {
+                at.x
+            } else {
+                FRAME_SIZE as i32 - at.x
+            } as f32;
+            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+            (
+                local_x + (unscaled_x - local_x) * horizontal_scale,
+                frame_top + at.y as f32 * display_scale as f32,
+            )
+        };
+        // A kite's string, from the paw holding it up to the kite.
+        let tether = formiga_art::held_tether(creature, clip, sprite.held[slot as usize]).map(
+            |(paw, kite)| {
+                self.line_quad(
+                    on_overlay(paw),
+                    on_overlay(kite),
+                    f32::from(display_scale),
+                    occlusion_enabled,
+                )
+            },
+        );
+        let carried = formiga_art::held_now(creature, clip, sprite.held[slot as usize]).map(
+            |HeldPlacement { thing, at }| {
+                let across = if facing_right {
+                    at.x
+                } else {
+                    FRAME_SIZE as i32 - at.x
+                } as f32;
+                let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+                let sheet = if thing.find().is_some() {
+                    CarriedSheet::Finds
+                } else {
+                    CarriedSheet::Held
+                };
+                let quad = self.held_quad_at(
+                    thing,
+                    (
+                        local_x + (unscaled_x - local_x) * horizontal_scale,
+                        frame_top + at.y as f32 * display_scale as f32,
+                    ),
+                    !facing_right,
+                    display_scale,
+                    occlusion_enabled,
+                );
+                (quad, sheet)
+            },
+        );
         if let Some(beat) = creature.state.beat
             && let Some(prop) = beat.held
         {
@@ -1441,7 +1616,92 @@ impl OverlayRenderer {
                 ));
             }
         }
-        (body, face, trinket, held)
+        (body, face, trinket, held, carried, tether)
+    }
+
+    /// A straight line `width` overlay pixels wide from `from` to `to`, in the string colour the
+    /// held sheet keeps for a kite's string.
+    fn line_quad(
+        &self,
+        from: (f32, f32),
+        to: (f32, f32),
+        width: f32,
+        occlusion_enabled: f32,
+    ) -> [Vertex; 6] {
+        let (ax, ay) = (self.snap(from.0), self.snap(from.1));
+        let (bx, by) = (self.snap(to.0), self.snap(to.1));
+        let length = (bx - ax).hypot(by - ay).max(0.001);
+        let (nx, ny) = (
+            -(by - ay) / length * width * 0.5,
+            (bx - ax) / length * width * 0.5,
+        );
+        let (left, top, right, bottom) = HeldThing::String.uv();
+        let uv = [(left + right) * 0.5, (top + bottom) * 0.5];
+        let vertex = |x: f32, y: f32| Vertex {
+            position: [
+                x / self.layout.width as f32 * 2.0 - 1.0,
+                1.0 - y / self.layout.height as f32 * 2.0,
+            ],
+            uv,
+            occlusion_enabled,
+        };
+        let corners = [
+            vertex(ax + nx, ay + ny),
+            vertex(bx + nx, by + ny),
+            vertex(bx - nx, by - ny),
+            vertex(ax - nx, ay - ny),
+        ];
+        [
+            corners[0], corners[1], corners[2], corners[0], corners[2], corners[3],
+        ]
+    }
+
+    /// One held thing's quad from the held sheet, its cell's middle at `centre`.
+    fn held_quad_at(
+        &self,
+        thing: HeldThing,
+        (centre_x, centre_y): (f32, f32),
+        mirrored: bool,
+        display_scale: u8,
+        occlusion_enabled: f32,
+    ) -> [Vertex; 6] {
+        let size = HELD_CELL as f32 * f32::from(display_scale);
+        let centre_x = self.snap(centre_x);
+        let centre_y = self.snap(centre_y);
+        let left = (centre_x - size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let right = (centre_x + size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
+        let top = 1.0 - (centre_y - size * 0.5) / self.layout.height as f32 * 2.0;
+        let bottom = 1.0 - (centre_y + size * 0.5) / self.layout.height as f32 * 2.0;
+        let (mut u_left, v_top, mut u_right, v_bottom) = match thing.find() {
+            // A find is the colony's own, from its sheet of finds.
+            Some(variant) => {
+                let (x, y, _, _) = TrinketAtlasRenderer::cell_rect(variant, TRINKET_FRAME_REST);
+                let (w, h) = (TRINKET_ATLAS_WIDTH as f32, TRINKET_ATLAS_HEIGHT as f32);
+                (
+                    x as f32 / w,
+                    y as f32 / h,
+                    (x + TRINKET_CELL) as f32 / w,
+                    (y + TRINKET_CELL) as f32 / h,
+                )
+            }
+            None => thing.uv(),
+        };
+        if mirrored {
+            std::mem::swap(&mut u_left, &mut u_right);
+        }
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled,
+        };
+        [
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, top], [u_right, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, bottom], [u_left, v_bottom]),
+        ]
     }
 }
 
@@ -1505,6 +1765,30 @@ fn drawable_size(layout: PhysicalSize<u32>, divisor: u32) -> (u32, u32) {
         layout.width.div_ceil(divisor).max(1),
         layout.height.div_ceil(divisor).max(1),
     )
+}
+
+/// How two companions standing `a` and `b` deep in the village are ordered when drawn: further
+/// back first. The sort it is used in is stable, so companions as deep as each other keep colony
+/// order, the visitor last, and whoever is drawn later is in front.
+pub(crate) fn drawn_before(a: f32, b: f32) -> std::cmp::Ordering {
+    b.total_cmp(&a)
+}
+
+/// Companions in the order the overlay draws them, back to front (see [`drawn_before`]): where
+/// two overlap, the later one is the one the user can see, and is the one a click is for.
+pub(crate) fn back_to_front<'a>(
+    creatures: impl IntoIterator<Item = &'a Creature>,
+) -> Vec<&'a Creature> {
+    let mut order: Vec<&Creature> = creatures.into_iter().collect();
+    order.sort_by(|a, b| drawn_before(a.state.depth, b.state.depth));
+    order
+}
+
+/// Whether a companion is drawn from its set-back atlas, smaller: standing far enough back in the
+/// village while the village is out. Its grab mask is read at the same size (see
+/// `interaction::ProxyRuntimeState::set_back`), so the two always agree on where its body is.
+pub(crate) fn drawn_set_back(depth: f32, village_out: bool) -> bool {
+    village_out && depth >= formiga_core::SET_BACK_DEPTH
 }
 
 #[cfg(test)]

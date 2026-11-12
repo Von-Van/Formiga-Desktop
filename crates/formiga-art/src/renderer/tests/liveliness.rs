@@ -331,6 +331,56 @@ fn naps_are_taken_different_ways() {
 /// The three ways of sleeping and the three ways of walking are each drawn differently, on every
 /// body: a sprawl lies lower and wider than a curl, a loaf sits taller, and a skip bounces up
 /// where a trudge hangs low.
+/// Turning over in a long nap is shown as a turn — a stir, its weight gathered up in a crouch,
+/// and down the other way — not as one way of lying swapped for another between two frames. It
+/// begins and ends on the same settled ways as before, and with motion reduced there is none.
+#[test]
+fn a_nap_turns_over_rather_than_swapping() {
+    let mut creature = measured(71);
+    let motion = MotionSignature::for_creature(&creature);
+    let length = 40.0;
+    let (began, turn) = (0..400)
+        .map(|nap| nap as f32 * 37.0)
+        .find_map(|began| Some((began, motion.nap_turn(began, length, true)?)))
+        .expect("some long nap turns over");
+    creature.state.action = ActionKind::Sleep;
+    creature.state.action_duration = length;
+    let shown_at = |creature: &mut Creature, into: f32| {
+        creature.state.action_elapsed = into;
+        creature.state.presence.clock = began + into;
+        BodyPresentation::for_creature(creature).clip
+    };
+    let lying =
+        |way: Option<Gesture>| way.map_or(BodyClip::Action(ActionKind::Sleep), BodyClip::Gesture);
+    assert_eq!(shown_at(&mut creature, turn.at - 0.1), lying(turn.from));
+    assert_eq!(
+        shown_at(&mut creature, turn.at + 0.2),
+        lying(turn.from),
+        "a stir first"
+    );
+    assert_eq!(
+        shown_at(&mut creature, turn.at + 0.8),
+        BodyClip::Gesture(Gesture::Crouch),
+        "its weight gathered up"
+    );
+    assert_eq!(
+        shown_at(&mut creature, turn.at + NAP_TURN_SECS - 0.1),
+        lying(turn.to)
+    );
+    assert_eq!(
+        shown_at(&mut creature, turn.at + NAP_TURN_SECS + 0.1),
+        lying(turn.to)
+    );
+    creature.state.presence.reduced = true;
+    for tenth in 0..=((NAP_TURN_SECS + 1.0) * 10.0) as u32 {
+        assert_eq!(
+            shown_at(&mut creature, turn.at - 0.5 + tenth as f32 / 10.0),
+            lying(turn.from),
+            "no turn with motion reduced"
+        );
+    }
+}
+
 #[test]
 fn every_body_sleeps_and_walks_in_more_than_one_way() {
     let creature = measured(73);
@@ -515,4 +565,58 @@ fn a_friend_coming_over_is_watched() {
         })
         .count();
     assert!(watched > 540, "watching its friend come: {watched} of 600");
+}
+
+/// Walking up or down a village path, a companion changes to its set-back size and back on a
+/// planted step — a frame where a foot is just down — never mid-stride; standing, it changes as
+/// soon as it is far enough back; and it is never set back with the village in.
+#[test]
+fn the_village_size_changes_on_a_planted_step() {
+    let mut bodies = vec![measured(41)];
+    for family in [BodyFamily::Blob, BodyFamily::SoftQuadruped] {
+        let mut creature = measured(43);
+        creature.appearance = genome(family);
+        bodies.push(creature);
+    }
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut creature = measured(47);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        creature.appearance.design = Some(design);
+        bodies.push(creature);
+    }
+    for mut creature in bodies {
+        creature.state.action = ActionKind::Traverse;
+        creature.state.presence.stepping = true;
+        for (from, to) in [(0.0, formiga_core::SET_BACK_DEPTH + 0.5), (6.0, 1.0)] {
+            creature.state.depth = from;
+            let mut shown = shown_set_back(&creature, true, None);
+            assert_eq!(shown, creature.state.set_back());
+            creature.state.depth = to;
+            let mut changed_on = None;
+            for step in 0..24 {
+                creature.state.presence.stride = step as f32 * 0.5;
+                let now = shown_set_back(&creature, true, Some(shown));
+                if now != shown {
+                    let frame = BodyPresentation::for_creature(&creature).frame;
+                    changed_on = Some(frame);
+                    assert!(
+                        pose::footfall(&creature.appearance, usize::from(frame % 6)),
+                        "changed size on frame {frame}, mid-stride"
+                    );
+                    shown = now;
+                }
+            }
+            assert!(
+                changed_on.is_some(),
+                "never changed size walking {from} to {to}"
+            );
+            assert_eq!(shown, creature.state.set_back());
+        }
+        // Standing, at once; and never with the village in.
+        creature.state.presence.stepping = false;
+        creature.state.depth = formiga_core::SET_BACK_DEPTH + 1.0;
+        assert!(shown_set_back(&creature, true, Some(false)));
+        assert!(!shown_set_back(&creature, false, Some(true)));
+    }
 }

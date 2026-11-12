@@ -24,11 +24,13 @@ mod home;
 mod house_visits;
 mod interaction;
 mod journeys;
+mod meals;
 mod moments;
 mod movement;
 mod new_looks;
 mod objects;
 mod offers;
+mod play;
 mod presence;
 mod rides;
 mod rituals;
@@ -36,6 +38,7 @@ mod routine;
 mod spacing;
 mod step;
 mod surfaces;
+mod talk;
 mod tows;
 mod trips;
 mod undo;
@@ -130,6 +133,9 @@ pub struct World {
     /// book was last written to. Runtime only.
     day_clock: Option<OffsetDateTime>,
     home_seconds_pending: f32,
+    /// The machine's clock at the last tick, so the colony's timeline can be carried forward by
+    /// the time that really passed while the clock reads earlier than the timeline. Runtime only.
+    wall_clock: Option<OffsetDateTime>,
     /// Sleepers being towed out of somebody's way by a friend on a little rope.
     tows: tows::TowTable,
     /// When the colony next yawns, and the yawns and looks still waiting to start.
@@ -148,6 +154,9 @@ pub struct World {
     /// A wonder out somewhere for a companion or two to play on, and when the next is due.
     /// Runtime only: the notebook's page of them is all a save keeps.
     wonders: wonders::Wonders,
+    /// Whether it is dark by the wall clock, for tests that cannot depend on the local time zone.
+    #[cfg(test)]
+    dark_at_home_for_tests: Option<bool>,
     /// Who is away in a house open in Formiga Home: indoors, out of every plan, and left alone
     /// until the house closes. Runtime only: a visit never outlives the app.
     house_visit: BTreeSet<CreatureId>,
@@ -159,6 +168,10 @@ pub struct World {
     surface_memory: SurfaceMemory,
     ride_memory: rides::RideMemory,
     bubbles: Vec<ThoughtBubble>,
+    /// What companions are saying to each other, and when each may speak again. Runtime only.
+    talk: Vec<crate::talk::TalkBubble>,
+    talk_quiet: BTreeMap<CreatureId, f32>,
+    talk_seen: BTreeMap<CreatureId, talk::Seen>,
     /// What each creature carries between offers: recent answers, a beat it is taking, and the
     /// clip it is still enjoying. Runtime-only, and never wider than whoever is actually here.
     offers: BTreeMap<CreatureId, offers::OfferMemory>,
@@ -411,6 +424,9 @@ impl World {
             surface_memory: SurfaceMemory::default(),
             ride_memory: rides::RideMemory::default(),
             bubbles: Vec::new(),
+            talk: Vec::new(),
+            talk_quiet: BTreeMap::new(),
+            talk_seen: BTreeMap::new(),
             offers: BTreeMap::new(),
             overlaps: spacing::OverlapWatch::default(),
             window_routes: BTreeMap::new(),
@@ -440,6 +456,7 @@ impl World {
             undo_history: VecDeque::new(),
             day_clock: None,
             home_seconds_pending: 0.0,
+            wall_clock: None,
             tows: tows::TowTable::default(),
             beats: beats::Beats::new(&streams),
             antics: antics::Antics::new(&streams),
@@ -448,6 +465,8 @@ impl World {
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             wonders: wonders::Wonders::new(&streams),
+            #[cfg(test)]
+            dark_at_home_for_tests: None,
             house_visit: BTreeSet::new(),
             creature_views: Vec::new(),
             relationship_views: Vec::new(),
@@ -474,12 +493,35 @@ impl World {
         }
         // Last, once everyone has got wherever this tick takes them.
         self.carry_presence(dt, desktop);
+        self.carry_meals(now, dt);
+        self.carry_play(now, dt);
+        self.carry_talk(now, dt);
+    }
+
+    /// Carries the colony's timeline to `now` and returns the machine's clock at the tick before.
+    ///
+    /// The timeline never runs backwards, so winding the clock back can neither undo an arrival
+    /// nor lengthen a stay. Nor does it stand still while the clock reads earlier than it: a clock
+    /// that ran ahead and was then put right would otherwise hold the colony's houses out, and its
+    /// offers and rituals back, until real time caught up, hours or days later. While the clock
+    /// is behind, the timeline moves on by however much the clock moved since the last tick, so
+    /// fifteen minutes with the houses out is still fifteen minutes; a jump back moves it on by
+    /// nothing at all. Carried, it never passes the latest moment a colony file may hold.
+    fn advance_timeline(&mut self, now: OffsetDateTime) -> Option<OffsetDateTime> {
+        let previous = self.wall_clock.replace(now);
+        let timeline = self.save.maximum_seen_utc;
+        let carried = previous
+            .filter(|previous| now > *previous)
+            .and_then(|previous| timeline.checked_add(now - previous))
+            .unwrap_or(timeline)
+            .min(crate::persistence::LATEST_MOMENT.max(timeline));
+        self.save.maximum_seen_utc = carried.max(now);
+        previous
     }
 
     fn tick_colony(&mut self, now: OffsetDateTime, dt: f32, desktop: &DesktopSnapshot) {
-        if now > self.save.maximum_seen_utc {
-            self.save.maximum_seen_utc = now;
-        }
+        let saved_timeline = self.save.maximum_seen_utc;
+        let previous_wall = self.advance_timeline(now);
         let timeline_now = self.save.maximum_seen_utc;
         self.keep_echo_fox();
         // Where this tick's own events start, so the pass at the end of it can tell what happened
@@ -494,7 +536,7 @@ impl World {
             self.save.companion.quiet_until = None;
             self.dismiss_home(timeline_now, false);
         }
-        self.apply_routine_schedule(now);
+        self.apply_routine_schedule(now, previous_wall.unwrap_or(saved_timeline));
         self.count_home_time(now);
         self.process_arrivals(timeline_now, desktop);
         self.process_colony_objects(timeline_now, desktop);
@@ -670,10 +712,11 @@ impl World {
                 && creature.state.action_elapsed + dt >= creature.state.action_duration
         });
         if self.colony_plan.is_none()
-            && self.save.ritual.next_at_utc <= timeline_now
             && at_selection_boundary
             // Nobody is called away from something they were just given.
             && !self.offer_response_active()
+            // A birthday does not wait for the next ordinary ritual to fall due.
+            && (self.save.ritual.next_at_utc <= timeline_now || self.hatch_day_due(timeline_now))
         {
             self.try_start_colony_plan(timeline_now, desktop);
         }

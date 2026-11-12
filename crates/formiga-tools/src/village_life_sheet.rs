@@ -1,6 +1,6 @@
 //! The village getting on with things, one moment to a cell: the gardens tended, every kind of
-//! house seen to, somebody napping indoors and somebody up on a roof, the three mishaps, and a yawn
-//! going round — each drawn the way the overlay draws it.
+//! house seen to, somebody napping indoors and somebody up on a roof, the three mishaps, a yawn
+//! going round, the drum stump played — each drawn the way the overlay draws it.
 //!
 //!   cargo run -p formiga-tools -- village-life-sheet [--output docs/assets/village-life-sheet.png]
 //!
@@ -73,6 +73,29 @@ fn posed(
         beat.elapsed = progress * 4.0;
         beat.held = held;
         beat
+    });
+    creature
+}
+
+/// A companion at the drum stump, `tapping` this far into two taps on it or between rounds,
+/// listening, turned to face it as the village turns it.
+fn drumming(subject: &Creature, tapping: Option<f32>, right: bool) -> Creature {
+    let mut creature = posed(
+        subject,
+        ActionKind::Idle,
+        tapping.unwrap_or(0.0),
+        right,
+        None,
+    );
+    let state = &mut creature.state;
+    state.attention = Some(AttentionPose {
+        target: Point {
+            x: state.position.x + if right { 22.0 } else { -22.0 },
+            y: state.position.y + 6.0,
+        },
+        emotion: AttentionEmotion::Enjoying,
+        hanging: 0.0,
+        gesture: tapping.map(|_| Gesture::Pluck),
     });
     creature
 }
@@ -325,6 +348,36 @@ fn moments(a: &Creature, b: &Creature) -> Vec<Vec<Piece>> {
                 ),
                 98,
             ),
+        ],
+        // At the drum stump: a paw down on it, tap, and again, a moment's listen with the paws
+        // still, and the same from the stump's other side.
+        vec![
+            Piece::Spot {
+                kind: HangoutKind::DrumStump,
+                x: 70,
+            },
+            companion(drumming(a, Some(0.5), true), 48),
+        ],
+        vec![
+            Piece::Spot {
+                kind: HangoutKind::DrumStump,
+                x: 70,
+            },
+            companion(drumming(a, Some(1.5), true), 48),
+        ],
+        vec![
+            Piece::Spot {
+                kind: HangoutKind::DrumStump,
+                x: 70,
+            },
+            companion(drumming(a, None, true), 48),
+        ],
+        vec![
+            Piece::Spot {
+                kind: HangoutKind::DrumStump,
+                x: 50,
+            },
+            companion(drumming(b, Some(0.6), false), 72),
         ],
         // Carrying something grown over to a friend, walking.
         vec![

@@ -63,11 +63,98 @@ pub fn find(names: &AppNames) -> Option<AppInstall> {
     installed(names)
 }
 
+/// A companion app's process as Desktop started it, remembered so that a Desktop restarted while
+/// the app is still open can find it again: the process's number, and the program it was started
+/// as (on macOS, LaunchServices' `open`, which lives as long as the app). The program is checked
+/// as well as the number, because a number can be given to another process once the first ends.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Started {
+    pub process: u32,
+    pub program: PathBuf,
+}
+
+impl Started {
+    /// Whether the process is still running the program it was started as.
+    pub fn still_running(&self) -> bool {
+        running_program(self.process).is_some_and(|running| same_program(&running, &self.program))
+    }
+}
+
 /// Start the app at `path` for the visit whose session directory is `session`.
-pub fn launch(path: &Path, argument: &str, session: &Path) -> std::io::Result<Child> {
+pub fn launch(path: &Path, argument: &str, session: &Path) -> std::io::Result<(Child, Started)> {
     let mut command = launcher(path);
     command.arg(argument).arg(session).stdin(Stdio::null());
-    command.spawn()
+    let program = PathBuf::from(command.get_program());
+    let child = command.spawn()?;
+    let started = Started {
+        process: child.id(),
+        program: std::fs::canonicalize(&program).unwrap_or(program),
+    };
+    Ok((child, started))
+}
+
+/// The program the process numbered `process` is running, while one is.
+#[cfg(target_os = "macos")]
+fn running_program(process: u32) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+
+    let pid = libc::pid_t::try_from(process).ok().filter(|pid| *pid > 0)?;
+    let mut buffer = vec![0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: the buffer is exactly as long as the size passed with it.
+    let length =
+        unsafe { libc::proc_pidpath(pid, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+    let length = usize::try_from(length).ok().filter(|length| *length > 0)?;
+    buffer.truncate(length);
+    Some(PathBuf::from(std::ffi::OsString::from_vec(buffer)))
+}
+
+/// The program the process numbered `process` is running, while one is and has not exited.
+#[cfg(target_os = "windows")]
+fn running_program(process: u32) -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
+    };
+    use windows::core::PWSTR;
+
+    // SAFETY: the handle is checked before use and closed once; the buffer is as long as said.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process).ok()?;
+        let mut code = 0_u32;
+        let alive = GetExitCodeProcess(handle, &mut code).is_ok() && code == STILL_ACTIVE.0 as u32;
+        let mut buffer = vec![0_u16; 32_768];
+        let mut length = buffer.len() as u32;
+        let named = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+        .is_ok();
+        let _ = CloseHandle(handle);
+        let length = (length as usize).min(buffer.len());
+        (alive && named).then(|| PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length])))
+    }
+}
+
+/// Whether two paths name the same program: exactly on macOS, and on Windows without regard to
+/// case, as its file system has it.
+/// A path Windows gives in its long form (`\\?\C:\...`, as a canonical path is) is compared
+/// in the ordinary form a running process is named by.
+fn same_program(running: &Path, started: &Path) -> bool {
+    if cfg!(target_os = "windows") {
+        let plain = |path: &Path| {
+            let text = path.to_string_lossy().to_lowercase();
+            text.strip_prefix(r"\\?\")
+                .map(str::to_owned)
+                .unwrap_or(text)
+        };
+        plain(running) == plain(started)
+    } else {
+        running == started
+    }
 }
 
 #[cfg(target_os = "macos")]

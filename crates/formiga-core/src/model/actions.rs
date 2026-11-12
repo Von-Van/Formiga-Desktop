@@ -238,6 +238,14 @@ pub struct CreatureState {
     /// only, like `attention`.
     #[serde(skip)]
     pub presence: Presence,
+    /// What it is eating and how far through the meal it is, while it eats. Runtime only, like
+    /// `presence`, and read by nothing but the art.
+    #[serde(skip)]
+    pub meal: Option<crate::meals::Meal>,
+    /// What it is playing with and how far through the game it is, while it plays, and an
+    /// umbrella it is riding down from a ledge. Runtime only, like `meal`.
+    #[serde(skip)]
+    pub play: Option<crate::play::Play>,
 }
 
 /// How a creature has been carrying itself lately: whether its feet are actually taking it
@@ -439,6 +447,55 @@ pub enum SleepNudge {
 }
 
 impl CreatureState {
+    /// Forget everything kept only while the app runs, as a colony opened from its save starts:
+    /// outside its house, at the front of the village ground, and in no scene, habit, nudge, beat,
+    /// meal or game. Naming every field means a new runtime-only one cannot be left out.
+    pub fn forget_runtime(&mut self) {
+        let Self {
+            attention,
+            flourish,
+            nudge,
+            beat,
+            indoors,
+            depth,
+            presence,
+            meal,
+            play,
+            position: _,
+            velocity: _,
+            facing_right: _,
+            action: _,
+            action_elapsed: _,
+            action_duration: _,
+            drives: _,
+            surface: _,
+            cursor_cooldown: _,
+            activity_variant: _,
+            arrival_delay_secs: _,
+        } = self;
+        *attention = None;
+        *flourish = None;
+        *nudge = None;
+        *beat = None;
+        *indoors = false;
+        *depth = 0.0;
+        *presence = Presence::default();
+        *meal = None;
+        *play = None;
+    }
+
+    /// The game it is playing, where the game is what is drawn: at play, or riding down under an
+    /// umbrella, with nothing bigger in front of it — no moment of attention and no small beat of
+    /// its own. The art draws the thing in its paws from this, and talk only remarks on a catch
+    /// or a topple it can see, so a bubble never describes a moment that was never shown.
+    pub fn play_shown(&self) -> Option<&crate::play::Play> {
+        (matches!(self.action, ActionKind::SoloPlay | ActionKind::Landing)
+            && self.attention.is_none()
+            && self.beat.is_none())
+        .then_some(self.play.as_ref())
+        .flatten()
+    }
+
     /// Still on its way to where it is going to sleep. A nap begins with the walk to the pillow, a
     /// friend, or the spot the colony gathers at, and until it gets there the companion is walking
     /// to bed, drowsy, not already asleep and gliding across the floor.

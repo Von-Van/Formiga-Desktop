@@ -139,12 +139,17 @@ impl HomeState {
                 "where",
                 "Where the village lives",
                 format!(
-                    "{}, in {} colours",
+                    "{}, in {} colours{}",
                     match save.home.corner {
                         HomeCorner::BottomLeft => "Bottom left",
                         HomeCorner::BottomRight => "Bottom right",
                     },
-                    village_palette_name(save)
+                    village_palette_name(save),
+                    if save.home.stays_out {
+                        ", always out"
+                    } else {
+                        ""
+                    }
                 ),
             )
             .marked(tour::TourMark::HomeCorner),
@@ -199,6 +204,26 @@ impl HomeState {
                     });
                 });
                 shell.tour_mark(ui, tour::TourMark::HomeCorner, corner.response.rect);
+                ui.add_space(10.0);
+                card(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong("The houses");
+                        let mut stays_out = save.home.stays_out;
+                        ui.selectable_value(&mut stays_out, false, "Come and go");
+                        ui.selectable_value(&mut stays_out, true, "Always on the desktop");
+                        if stays_out != save.home.stays_out {
+                            outcome.village_stays_out = Some(stays_out);
+                        }
+                    });
+                    ui.small(if save.home.stays_out {
+                        "The village stays in its corner. Everyone still comes home for a while \
+                         and goes out to roam again; they stay in longer at night, and while \
+                         you're away from the computer."
+                    } else {
+                        "The houses come out when everyone comes home, and go when they set off \
+                         again."
+                    });
+                });
                 ui.add_space(10.0);
                 self.village_colours(ui, save, outcome);
             }

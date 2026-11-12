@@ -173,7 +173,7 @@ def report() -> Result:
         expansions[key] = entry
         on = ", ".join(tags) or "no Desktop release"
         behind = "" if tags == [f"v{version}"] else f" (this Desktop is {version})"
-        local = "" if entry["ci"] else "; no CI, checked here by `validate --expansions`"
+        local = "" if entry["ci"] else "; no CI of its own, checked by Desktop's companion-apps workflow"
         notes.append(f"  {expansion.title:<14} {entry['branch']} at {entry['commit'][:7]}, "
                      f"builds on Desktop {on}{behind}{local}")
 

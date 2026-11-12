@@ -1,5 +1,6 @@
 use super::ui::*;
 use super::*;
+use formiga_art::TALK_BUBBLE;
 use formiga_core::{ApplicationKey, DisplayKey, MonitorInfo, Point, World};
 
 fn window(
@@ -732,23 +733,25 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 107 gesture frames — eight of them the seat and the sled wonders
+    // 92 action frames and 121 gesture frames — eight of them the seat and the sled wonders
     // brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
-    // more ways to sleep and two more ways to walk), and sixteen the chores and a pet leaned into —
+    // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into, and
+    // fourteen the nibble, chomp, chew and gulp of a meal —
     // and fifteen expressions' faces in every eyelid pose
     // and gaze. Until 0.62.0 every one had a cell of its own, ten columns of 48px bodies and
     // twenty-seven of 16px faces to a row, and the face texture ended in eight trinket cells
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 199);
+    assert_eq!(total_animation_frames(), 213);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
     // frames where pedalling a bike repeated none, which brings it back under that row; and
-    // 1,520,640 with the repertoire, three rows more, and 1,612,800 with the chores and the pet.
-    assert_eq!(total_bytes, 1_612_800);
-    assert_eq!(full_layout_bytes(), 2_257_920);
+    // 1,520,640 with the repertoire, three rows more, 1,612,800 with the chores and the pet, and
+    // 1,704,960 with the four ways a meal is eaten (fourteen frames).
+    assert_eq!(total_bytes, 1_704_960);
+    assert_eq!(full_layout_bytes(), 2_442_240);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);
@@ -946,78 +949,113 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
         "a smaller creature's crown is further down its frame ({mini_top} vs {adult_top})"
     );
     // Both bubbles sit the same distance above their own crown, so neither floats.
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
     for (name, top) in [("adult", adult_top), ("mini", mini_top)] {
         let scale = 3.0;
         let head_top = 400.0 + f32::from(top) * scale;
-        let (_, y) = bubble_origin(700.0, head_top, scale, DRAWABLE);
+        let y = talk_origin(700.0, (head_top, head_top + 120.0), scale, DRAWABLE, size).y;
         assert_eq!(
-            y + BUBBLE_ANCHOR.1 as f32 * scale,
+            y + size.1 * scale,
             head_top - scale,
-            "{name}: the anchor pixel belongs one art pixel above the crown"
+            "{name}: the tail's tip belongs one art pixel above the crown"
         );
     }
 }
 
 #[test]
 fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
+    let frame = TalkSheet::frame(
+        formiga_core::talk::TalkStyle::Chat,
+        formiga_core::BubbleGrowth::Full,
+    );
+    let size = (
+        (frame.width / TALK_DETAIL) as f32,
+        (frame.height / TALK_DETAIL) as f32,
+    );
     for scale in [2.0_f32, 3.0, 4.0] {
-        let (x, y) = bubble_origin(700.0, 400.0, scale, DRAWABLE);
-        // Centred: the tail column is the creature's own centre column.
-        assert_eq!(x + BUBBLE_ANCHOR.0 as f32 * scale, 700.0);
-        // The tail's tip is the cell's row 14, so exactly one art pixel of daylight is left
-        // between the tip and the crown.
-        let tip_bottom = y + 15.0 * scale;
-        assert_eq!(
-            400.0 - tip_bottom,
-            scale,
-            "one art pixel of gap at {scale}x"
-        );
-        let quad = ui_atlas_quad(
-            UiAtlasRenderer::bubble(
-                formiga_core::BubbleIcon::Heart,
-                formiga_core::BubbleGrowth::Full,
-            ),
-            x,
-            y,
-            scale,
-            false,
-            1.0,
-            DRAWABLE,
-        );
+        let TalkPlacement { x, y, below } =
+            talk_origin(700.0, (400.0, 520.0), scale, DRAWABLE, size);
+        assert!(!below);
+        // Centred: the tail's column is the creature's own centre column.
+        assert_eq!(x + (size.0 / 2.0).floor() * scale, 700.0);
+        // Exactly one art pixel of daylight between the tip and the crown.
+        assert_eq!(400.0 - (y + size.1 * scale), scale, "one art pixel of gap");
+        let quad = talk_quad(frame, x, y, scale, false, 1.0, DRAWABLE);
         let (left, top, right, bottom) = quad_pixels(&quad);
-        close(right - left, BUBBLE_CELL.0 as f32 * scale, "bubble width");
-        close(bottom - top, BUBBLE_CELL.1 as f32 * scale, "bubble height");
+        close(right - left, size.0 * scale, "bubble width");
+        close(bottom - top, size.1 * scale, "bubble height");
         close(left, x, "bubble left");
         close(top, y, "bubble top");
-        let sprite = quad_sprite(&quad);
-        close(sprite.2, BUBBLE_CELL.0 as f32, "bubble sprite width");
-        close(sprite.3, BUBBLE_CELL.1 as f32, "bubble sprite height");
     }
 }
 
 #[test]
-fn a_bubble_at_the_top_or_the_edge_of_a_display_stays_on_it() {
+fn a_bubble_at_the_top_of_a_display_hangs_under_its_creature_tail_up() {
     let scale = 4.0;
-    let width = BUBBLE_CELL.0 as f32 * scale;
-    let height = BUBBLE_CELL.1 as f32 * scale;
-    // A creature with its head at the very top of the display.
-    let (_, y) = bubble_origin(700.0, 6.0, scale, DRAWABLE);
-    assert_eq!(y, 0.0);
-    assert!(y + height <= DRAWABLE.height as f32);
-    // And one pressed against either side.
-    let (left, _) = bubble_origin(2.0, 400.0, scale, DRAWABLE);
-    assert_eq!(left, 0.0);
-    let (right, _) = bubble_origin(DRAWABLE.width as f32 - 2.0, 400.0, scale, DRAWABLE);
-    assert_eq!(right, DRAWABLE.width as f32 - width);
-    // Every growth step is the same cell, so growing never pushes a clamped bubble off.
-    for growth in [
-        formiga_core::BubbleGrowth::Small,
-        formiga_core::BubbleGrowth::Medium,
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
+    let height = size.1 * scale;
+    // A creature with its head at the very top of the display: no room above, so the bubble
+    // goes one art pixel under its lowest drawn row, turned over so the tail points up at it,
+    // rather than pressed against the top edge over its face.
+    let (head_top, foot_bottom) = (6.0, 6.0 + 40.0 * scale);
+    let placement = talk_origin(700.0, (head_top, foot_bottom), scale, DRAWABLE, size);
+    assert!(placement.below);
+    assert_eq!(placement.y, foot_bottom + scale, "one art pixel of gap");
+    assert!(placement.y + height <= DRAWABLE.height as f32);
+    // Its picture goes on the body under the tail, as far from the tail as it sits upright.
+    let upright = TalkPlacement {
+        below: false,
+        ..placement
+    };
+    let (_, up) = upright.icon_at();
+    let (_, down) = placement.icon_at();
+    assert_eq!(up, TALK_ICON_AT.1 as f32);
+    assert_eq!(down + TALK_ICON as f32, size.1 - up);
+    // Drawn upside down: the same rows of the sheet, with the top and bottom swapped.
+    let frame = TalkSheet::frame(
+        formiga_core::talk::TalkStyle::Chat,
         formiga_core::BubbleGrowth::Full,
-    ] {
-        let rect = UiAtlasRenderer::bubble(formiga_core::BubbleIcon::Snack, growth);
-        assert_eq!((rect.width, rect.height), BUBBLE_CELL);
-    }
+    );
+    let flipped = talk_quad(frame, placement.x, placement.y, scale, true, 1.0, DRAWABLE);
+    let straight = talk_quad(frame, placement.x, placement.y, scale, false, 1.0, DRAWABLE);
+    assert_eq!(flipped[0].uv[1], straight[5].uv[1]);
+    assert_eq!(flipped[5].uv[1], straight[0].uv[1]);
+    // With room above, the same creature lower down keeps its bubble over its head.
+    let lower = talk_origin(700.0, (400.0, 560.0), scale, DRAWABLE, size);
+    assert!(!lower.below);
+    // A display with no room either way keeps the bubble on it, against the top.
+    let tiny = PhysicalSize::new(1200, 100);
+    let cramped = talk_origin(700.0, (6.0, 90.0), scale, tiny, size);
+    assert!(!cramped.below);
+    assert_eq!(cramped.y, 0.0);
+}
+
+#[test]
+fn a_milestone_bubble_on_a_drawable_narrower_than_itself_does_not_panic() {
+    assert_eq!(milestone_centre_x(700.0, 120.0, 1440.0), 700.0);
+    assert_eq!(milestone_centre_x(10.0, 120.0, 1440.0), 60.0);
+    assert_eq!(milestone_centre_x(1435.0, 120.0, 1440.0), 1380.0);
+    // A surface recovered with no size, or one narrower than the bubble.
+    assert_eq!(milestone_centre_x(0.0, 120.0, 0.0), 60.0);
+    assert_eq!(milestone_centre_x(50.0, 120.0, 100.0), 60.0);
+}
+
+#[test]
+fn a_bubble_at_the_edge_of_a_display_stays_on_it() {
+    let scale = 4.0;
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
+    let width = size.0 * scale;
+    let left = talk_origin(2.0, (400.0, 560.0), scale, DRAWABLE, size).x;
+    assert_eq!(left, 0.0);
+    let right = talk_origin(
+        DRAWABLE.width as f32 - 2.0,
+        (400.0, 560.0),
+        scale,
+        DRAWABLE,
+        size,
+    )
+    .x;
+    assert_eq!(right, DRAWABLE.width as f32 - width);
 }
 
 fn placed_menu(below: bool) -> (MenuLayout, [MenuIcon; 4], MenuPlacement) {
@@ -1038,6 +1076,8 @@ fn placed_menu(below: bool) -> (MenuLayout, [MenuIcon; 4], MenuPlacement) {
             centre_x: 700.0,
             head_top,
             foot_bottom: head_top + 36.0 * scale,
+            ground: head_top + 36.0 * scale,
+            settled_head_top: head_top,
             art_scale: scale,
             grid: 1.0,
             usable,
@@ -1058,10 +1098,24 @@ fn an_open_menu_draws_one_frame_one_quad_per_cell_and_one_label_tab() {
         layout: &layout,
         placement,
         hovered,
+        unavailable: None,
         side: None,
     };
     // Nothing hovered: the frame and its four cells, and no tab.
     assert_eq!(menu_quads(view(None), DRAWABLE).len(), 6 * 5);
+    // An item that could not be done: "not now" under it, in place of any hovered label.
+    let not_now = menu_quads(
+        MenuView {
+            unavailable: Some(0),
+            ..view(Some(2))
+        },
+        DRAWABLE,
+    );
+    assert_eq!(not_now.len(), 6 * 6);
+    let tab = UiAtlasRenderer::menu_unavailable_label();
+    let sprite = quad_sprite(&not_now[not_now.len() - 6..]);
+    close(sprite.0, tab.x as f32, "not-now sprite x");
+    close(sprite.2, tab.width as f32, "not-now sprite width");
     let hovered = menu_quads(view(Some(2)), DRAWABLE);
     assert_eq!(hovered.len(), 6 * 6);
 
@@ -1124,6 +1178,7 @@ fn the_label_tab_hangs_under_the_hovered_cell_and_inside_the_strip() {
                 layout: &layout,
                 placement,
                 hovered: Some(hovered),
+                unavailable: None,
                 side: None,
             },
             DRAWABLE,
@@ -1177,6 +1232,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
             layout: &layout,
             placement,
             hovered: None,
+            unavailable: None,
             side: None,
         },
         DRAWABLE,
@@ -1188,6 +1244,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
             layout: &layout,
             placement,
             hovered: None,
+            unavailable: None,
             side: Some(SideView {
                 layout: &side_layout,
                 placement: side,
@@ -1231,6 +1288,7 @@ fn a_menu_under_a_creature_flips_only_its_frame() {
             layout: &layout,
             placement,
             hovered: Some(0),
+            unavailable: None,
             side: None,
         },
         DRAWABLE,
@@ -1408,4 +1466,110 @@ fn a_companion_back_in_the_village_is_drawn_between_the_houses() {
     );
     assert_eq!(quads_behind(&quads, 8.0), 1, "on the furthest doorstep");
     assert_eq!(quads_behind(&quads, 0.5), 5, "a step up from the front");
+}
+
+/// A sculpted companion baked finely is a tall atlas. On a graphics card whose textures stop
+/// short of it, it is baked as finely as the card can hold instead, and the cells, faces and
+/// silhouettes it is drawn by stay the same.
+#[test]
+fn a_fine_atlas_too_big_for_the_graphics_card_is_baked_as_finely_as_it_holds() {
+    use formiga_core::forms::{Plan, Sculpt};
+    let world = World::new(
+        [19; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut creature = world.save.creatures[0].clone();
+    creature.appearance.sculpt = Some(Sculpt::starter(Plan::CompactQuadruped));
+    let bake = |detail| build_atlas_pixels(&creature, false, true, None, detail);
+    let finest = bake_fitting(u32::MAX, 3, bake);
+    assert_eq!(finest.detail, 3);
+    // A card that holds a little less than the finest bake.
+    let largest = finest.body_height.max(finest.body_width) - 1;
+    let fitted = bake_fitting(largest, 3, bake);
+    assert!(fitted.detail < 3);
+    assert!(fitted.fits(largest));
+    assert_eq!(fitted.face_cells, finest.face_cells);
+    assert_eq!(fitted.silhouette, finest.silhouette);
+}
+
+/// The habitat editor draws every red excluded area however many green regions the desktop is
+/// cut into; it is the green that gives way when the buffer is full.
+#[test]
+fn the_habitat_editor_keeps_red_areas_when_green_ones_fill_its_buffer() {
+    let green = ZoneVertex {
+        position: [0.0, 0.0],
+        color: [0.18, 0.72, 0.45, 0.20],
+    };
+    let red = ZoneVertex {
+        position: [0.0, 0.0],
+        color: [0.88, 0.30, 0.25, 0.28],
+    };
+    let kept = keep_excluded_zones(vec![green; 6 * 200], vec![red; 6 * 32]);
+    assert_eq!(kept.len(), MAX_ZONE_VERTICES);
+    assert_eq!(kept.iter().filter(|v| v.color == red.color).count(), 6 * 32);
+    // Red is drawn last, over the green.
+    assert!(
+        kept[MAX_ZONE_VERTICES - 6 * 32..]
+            .iter()
+            .all(|v| v.color == red.color)
+    );
+    // Nothing is cut when it all fits.
+    assert_eq!(keep_excluded_zones(vec![green; 12], vec![red; 6]).len(), 18);
+}
+
+/// Clicks resolve against the order the overlay draws in: further back in the village first,
+/// everyone as deep as each other in colony order, so swapping two residents' depths swaps which
+/// one is in front. And whoever is far enough back to be drawn smaller has its mask read smaller.
+#[test]
+fn clicks_share_the_overlays_order_and_size() {
+    let created = time::macros::datetime!(2026-01-01 12:00 UTC);
+    let world = World::new([71; 32], created, &formiga_core::DesktopSnapshot::default());
+    let mut first = world.save.creatures[0].clone();
+    let mut second = first.clone();
+    second.id = first.id + 1;
+    let order = |a: &Creature, b: &Creature| {
+        back_to_front([a, b])
+            .into_iter()
+            .map(|creature| creature.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(order(&first, &second), [first.id, second.id]);
+    first.state.depth = 0.0;
+    second.state.depth = 0.5;
+    assert_eq!(order(&first, &second), [second.id, first.id]);
+    (first.state.depth, second.state.depth) = (second.state.depth, first.state.depth);
+    assert_eq!(order(&first, &second), [first.id, second.id]);
+    assert!(drawn_set_back(formiga_core::SET_BACK_DEPTH, true));
+    assert!(!drawn_set_back(formiga_core::SET_BACK_DEPTH, false));
+    assert!(!drawn_set_back(formiga_core::SET_BACK_DEPTH - 0.01, true));
+}
+
+/// A menu's strip keeps the companion's own scale where that is big enough, and is never drawn
+/// smaller than one and a half points an art pixel: a Small companion on a high-density display
+/// gets a strip as big as a Large one's rather than one too small to hit, on whole drawable
+/// pixels so it stays crisp. The companion itself is drawn at its own size regardless.
+#[test]
+fn a_small_companions_menu_is_still_big_enough_to_use() {
+    // Small, Medium and Large on a plain display: the companion's own scale.
+    for scale in [2, 3, 4] {
+        assert_eq!(menu_scale(scale, 1.0, 1.0), f32::from(scale));
+    }
+    // On a Retina display Small is drawn at half resolution, so the strip goes up to a whole
+    // number of drawable pixels: 4, two points an art pixel.
+    assert_eq!(menu_scale(2, 2.0, 2.0), 4.0);
+    assert_eq!(menu_scale(3, 2.0, 1.0), 3.0);
+    assert_eq!(menu_scale(4, 2.0, 2.0), 4.0);
+    for (display_scale, factor, grid) in
+        [(2, 2.0, 2.0), (2, 1.5, 1.0), (3, 2.0, 1.0), (2, 1.25, 1.0)]
+    {
+        let scale = menu_scale(display_scale, factor, grid);
+        assert!(
+            scale / factor >= MENU_MIN_POINTS,
+            "{display_scale} at {factor}x"
+        );
+        assert_eq!(scale % grid, 0.0, "on the drawable's grid");
+        let cell_points = formiga_art::MENU_CELL as f32 * scale / factor;
+        assert!(cell_points >= 21.0, "{cell_points} points a cell");
+    }
 }

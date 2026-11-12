@@ -87,22 +87,42 @@ fn ritual_ceremony_duration(kind: RitualKind) -> f32 {
     }
 }
 
+/// The day a colony begun on `created` keeps its birthday in `year`: the same month and day, or
+/// the 28th of February in a year with no 29th for a colony begun on one, as people do. The
+/// hatch-day ritual and the birthday finds both keep this one anniversary.
+pub(super) fn hatch_day_in(year: i32, created: time::Date) -> Option<time::Date> {
+    time::Date::from_calendar_date(year, created.month(), created.day())
+        .or_else(|_| time::Date::from_calendar_date(year, created.month(), 28))
+        .ok()
+}
+
 impl World {
+    /// Whether today is the colony's birthday, in a year after the one it began in, and the
+    /// birthday has not been kept yet this year. It is looked at on its own rather than only
+    /// when an ordinary ritual happens to fall due that day, which they do only about three days
+    /// in four, so that no birthday goes by unkept.
+    pub(super) fn hatch_day_due(&self, now: OffsetDateTime) -> bool {
+        let local_now = local_time_or_utc(now);
+        let created = self
+            .save
+            .created_at_utc
+            .to_offset(local_now.offset())
+            .date();
+        local_now.year() > created.year()
+            && hatch_day_in(local_now.year(), created) == Some(local_now.date())
+            && self.save.ritual.hatch_day_acknowledged_year != Some(local_now.year())
+    }
+
     pub(super) fn eligible_ritual_kinds(
         &self,
         now: OffsetDateTime,
         desktop: &DesktopSnapshot,
         shelter_available: bool,
     ) -> Vec<RitualKind> {
-        let local_now = local_time_or_utc(now);
-        let local_created = self.save.created_at_utc.to_offset(local_now.offset());
-        let hatch_day_due = local_now.year() > local_created.year()
-            && local_now.month() == local_created.month()
-            && local_now.day() == local_created.day()
-            && self.save.ritual.hatch_day_acknowledged_year != Some(local_now.year());
-        if hatch_day_due {
+        if self.hatch_day_due(now) {
             return vec![RitualKind::HatchDay];
         }
+        let local_now = local_time_or_utc(now);
 
         let late_night = local_now.hour() >= 22 || local_now.hour() < 5;
         let current_windows: BTreeMap<_, _> = desktop

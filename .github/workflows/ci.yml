@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-2022]
+        os: [macos-15, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +33,12 @@ jobs:
         with:
           python-version: "3.9"
       - run: python -m unittest discover devtools/tests
+      # Formiga's content (`devtools/formiga audit content`): every name unique and fitting its
+      # tile on the Village page, everything reachable in a colony lived day by day. Nothing it
+      # checks differs between systems, so it runs once, on the Mac, on the build the tests left.
+      # Hill, Home, Farm and Battle aren't checked out here, so their part of it is skipped.
+      - if: runner.os == 'macOS'
+        run: python devtools/formiga.py audit content
 
   # The public API of the contract crates Formiga Hill, Home, Farm and Battle build on by tag,
   # against the copy kept beside each crate: see scripts/public-api.sh.
@@ -79,7 +85,7 @@ jobs:
   package-macos:
     needs: changes
     if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.package == 'true') }}
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master

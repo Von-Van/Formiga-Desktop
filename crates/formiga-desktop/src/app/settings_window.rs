@@ -118,6 +118,9 @@ impl FormigaApp {
     ) {
         self.handle_backup_requests(&outcome);
         self.open_requested_companion_apps(&outcome);
+        if let Some((creature_id, kind)) = outcome.offer {
+            self.offer_from_profile(creature_id, kind);
+        }
         self.apply_colony_edits(&outcome);
         self.export_requested_pictures(&outcome);
         if let Some((creature_id, kept)) = outcome.set_creature_kept {
@@ -225,6 +228,77 @@ impl FormigaApp {
         }
     }
 
+    /// A snack or a toy held out from a companion's profile: the same offer the strip over it on
+    /// the desktop makes, with its outcome written on the profile — held out, or not just now —
+    /// and the answer, yes or no thanks, added when the companion gives it (`note_offer_answer`).
+    fn offer_from_profile(&mut self, creature_id: CreatureId, kind: OfferKind) {
+        let desktop = self.snapshot();
+        let command = match kind {
+            OfferKind::Snack => WorldCommand::OfferSnack { creature_id },
+            OfferKind::Toy => WorldCommand::OfferToy { creature_id },
+        };
+        let Some(world) = self.world.as_mut() else {
+            return;
+        };
+        let offered = world.handle_command(command, &desktop);
+        let name = world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == creature_id)
+            .map_or_else(|| "They".to_owned(), |creature| creature.name.clone());
+        let thing = match kind {
+            OfferKind::Snack => "snack",
+            OfferKind::Toy => "toy",
+        };
+        let note = if offered {
+            format!("Held out a {thing} to {name}. Watch for their answer on the desktop.")
+        } else {
+            format!(
+                "{name} can't take a {thing} just now: they're busy, away, or the colony is \
+                 paused or hidden. Try again in a moment."
+            )
+        };
+        if offered {
+            let _ = self.save();
+        }
+        if let Some(window) = &mut self.settings_window {
+            window.note_offer(creature_id, note);
+        }
+    }
+
+    /// A companion's answer to an offer, written on its profile if the offer was made from there.
+    pub(super) fn note_offer_answer(
+        &mut self,
+        creature_id: CreatureId,
+        kind: OfferKind,
+        accepted: bool,
+    ) {
+        let Some(window) = &mut self.settings_window else {
+            return;
+        };
+        if window.offer_note_for() != Some(creature_id) {
+            return;
+        }
+        let Some(name) = self.world.as_ref().and_then(|world| {
+            world
+                .save
+                .creatures
+                .iter()
+                .find(|creature| creature.id == creature_id)
+                .map(|creature| creature.name.clone())
+        }) else {
+            return;
+        };
+        let note = match (kind, accepted) {
+            (OfferKind::Snack, true) => format!("{name} took the snack."),
+            (OfferKind::Toy, true) => format!("{name} took the toy and is playing with it."),
+            (OfferKind::Snack, false) => format!("{name} said no thanks to the snack this time."),
+            (OfferKind::Toy, false) => format!("{name} said no thanks to the toy this time."),
+        };
+        window.note_offer(creature_id, note);
+    }
+
     /// A visit to a companion app the notebook asked for: a house in Formiga Home, the household
     /// coming back, a session in Formiga Farm, or the train to Formiga Hill or Formiga Battle.
     fn open_requested_companion_apps(&mut self, outcome: &SettingsOutcome) {
@@ -261,6 +335,7 @@ impl FormigaApp {
             &mut specific_notice,
         );
         self.move_home(outcome, &mut companion_changed, &mut specific_notice);
+        self.put_out_wonders(outcome, &mut companion_changed);
         self.edit_village_decorations(outcome, &mut companion_changed);
         self.edit_hangouts_and_houses(outcome, &mut companion_changed, &mut specific_notice);
         self.edit_gardens_and_layout(outcome, &mut companion_changed, &mut specific_notice);
@@ -329,6 +404,34 @@ impl FormigaApp {
             let label = crate::settings::display_label(display, &self.monitors);
             *notice = Some(crate::notices::home_moved(None, Some(&label)));
         }
+        if let Some(stays_out) = outcome.village_stays_out {
+            *changed |= world.edit(ColonyEdit::VillageStaysOut, |world| {
+                let was = world.save.home.stays_out;
+                world.save.home.stays_out = stays_out;
+                was != stays_out
+            });
+        }
+    }
+
+    /// A wonder put out on the desktop from the journal, or put away again.
+    fn put_out_wonders(&mut self, outcome: &SettingsOutcome, changed: &mut bool) {
+        if outcome.put_out_wonder.is_none() && outcome.put_away_wonder.is_none() {
+            return;
+        }
+        let desktop = self.snapshot();
+        let Some(world) = &mut self.world else {
+            return;
+        };
+        if let Some(kind) = outcome.put_out_wonder {
+            *changed |= world.handle_command(WorldCommand::PutOutWonder { kind }, &desktop);
+        }
+        if let Some(kind) = outcome.put_away_wonder {
+            if self.moving_wonder == Some(kind) {
+                self.moving_wonder = None;
+            }
+            *changed |= world.handle_command(WorldCommand::PutAwayWonder { kind }, &desktop);
+        }
+        self.request_overlay_redraw();
     }
 
     /// Decorations on a house, an ornament, the keepsakes on the tree, and what a companion wears:
@@ -756,42 +859,85 @@ impl FormigaApp {
         }
     }
 
-    /// Fill the studio with the takes that come closest to a reference image, and remember the
-    /// image so the search can be run again.
+    /// Look for the takes that come closest to a reference image, on a thread of its own: reading
+    /// the picture and drawing hundreds of candidates takes long enough to freeze the notebook
+    /// and every overlay if it ran here. The studio says it is looking until the takes come back.
     fn preview_reference_matches(&mut self, path: PathBuf) {
-        match new_colony_seed() {
-            Ok(search_seed) => {
-                let desktop = self.snapshot();
-                match match_reference_file(&path, search_seed, OffsetDateTime::now_utc(), &desktop)
-                {
-                    Ok(takes) => {
-                        if let Some(window) = &mut self.settings_window {
-                            window.clear_generation_preview();
-                            for take in takes {
-                                window.set_generation_preview(GenerationPreview {
-                                    shared: None,
-                                    creature: take.creature,
-                                    source_seed: take.source_seed,
-                                    similarity: Some(take.similarity),
-                                    summary: take.summary.to_owned(),
-                                    drawn: None,
-                                });
-                            }
-                            window.clubhouse.studio.reference = Some(path);
-                        }
-                    }
-                    Err(error) => {
-                        if let Some(window) = &mut self.settings_window {
-                            window.set_error(crate::explain::reference_image(&error));
-                        }
-                    }
-                }
-            }
+        if self.reference_search.is_some() {
+            return;
+        }
+        let search_seed = match new_colony_seed() {
+            Ok(seed) => seed,
             Err(error) => {
                 if let Some(window) = &mut self.settings_window {
                     window.set_error(format!("Could not generate a secure seed: {error}"));
                 }
+                return;
             }
+        };
+        self.reference_searches += 1;
+        let search = self.reference_searches;
+        let desktop = self.snapshot();
+        let proxy = self.event_proxy.clone();
+        let picture = path.clone();
+        let started = std::thread::Builder::new()
+            .name("formiga-reference-match".into())
+            .spawn(move || {
+                let takes = match_reference_file(
+                    &picture,
+                    search_seed,
+                    OffsetDateTime::now_utc(),
+                    &desktop,
+                );
+                let _ = proxy.send_event(UserEvent::ReferenceMatched(ReferenceSearch {
+                    search,
+                    path: picture,
+                    takes,
+                }));
+            });
+        match started {
+            Ok(_) => {
+                self.reference_search = Some(search);
+                if let Some(window) = &mut self.settings_window {
+                    window.set_reference_search(true);
+                }
+            }
+            Err(error) => {
+                if let Some(window) = &mut self.settings_window {
+                    window.set_error(format!("Could not start reading the picture: {error}"));
+                }
+            }
+        }
+    }
+
+    /// Fill the studio with the takes a search found, and remember the image so the search can
+    /// be run again. A search overtaken by another, or finished after the notebook let go of
+    /// it, shows nothing.
+    pub(super) fn show_reference_matches(&mut self, found: ReferenceSearch) {
+        if self.reference_search != Some(found.search) {
+            return;
+        }
+        self.reference_search = None;
+        let Some(window) = &mut self.settings_window else {
+            return;
+        };
+        window.set_reference_search(false);
+        match found.takes {
+            Ok(takes) => {
+                window.clear_generation_preview();
+                for take in takes {
+                    window.set_generation_preview(GenerationPreview {
+                        shared: None,
+                        creature: take.creature,
+                        source_seed: take.source_seed,
+                        similarity: Some(take.similarity),
+                        summary: take.summary.to_owned(),
+                        drawn: None,
+                    });
+                }
+                window.clubhouse.studio.reference = Some(found.path);
+            }
+            Err(error) => window.set_error(crate::explain::reference_image(&error)),
         }
     }
 
@@ -1231,6 +1377,15 @@ impl FormigaApp {
             save.settings.habitat = HabitatPolicy::default();
         }
         let imported = World::from_save(save);
+        let previous_launch = self
+            .world
+            .as_ref()
+            .is_some_and(|w| w.save.settings.launch_at_login);
+        // A house open in Home, and a companion open in Farm, belong to the colony being
+        // replaced. They are ended first, because ending them saves the colony they belong to:
+        // done after the restored colony is written, that save would put the old colony back
+        // over it until the next one, and a crash in between would keep the old colony.
+        self.abandon_visits();
         let result = self
             .save_store
             .preserve_recovery_files()
@@ -1239,13 +1394,6 @@ impl FormigaApp {
             self.settings_error(format!("Restore stopped; could not safely save: {error}"));
             return;
         }
-        let previous_launch = self
-            .world
-            .as_ref()
-            .is_some_and(|w| w.save.settings.launch_at_login);
-        // A house open in Home, and a companion open in Farm, belong to the colony being
-        // replaced.
-        self.abandon_visits();
         self.world = Some(imported);
         self.recovery_pending = false;
         self.milestone_notice = None;
@@ -1258,6 +1406,8 @@ impl FormigaApp {
                 &world.save.creatures,
                 &world.save.relationships,
             );
+            // Preferences half-changed for the colony that was replaced are not carried over.
+            window.acknowledge_preferences(&world.save.settings);
         }
         if let Err(error) = self.finish_settings_change(previous_launch) {
             self.settings_error(format!(

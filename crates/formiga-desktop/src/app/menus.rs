@@ -5,11 +5,7 @@ use super::*;
 impl FormigaApp {
     /// A secondary click on a creature: open its menu, or close the one it already has. Only one
     /// menu is ever open, so asking for another creature's simply replaces it.
-    pub(super) fn toggle_creature_menu(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        window_id: WindowId,
-    ) {
+    pub(super) fn toggle_creature_menu(&mut self, event_loop: &ActiveEventLoop) {
         let cursor = self.current_cursor.position;
         let hits: Vec<_> = self
             .interaction_proxies
@@ -18,7 +14,7 @@ impl FormigaApp {
             .map(|(id, proxy)| (*id, proxy.creature_id))
             .collect();
         let draw_order = self.draw_order();
-        let Some((_, creature_id)) = resolve_press_target(window_id, &hits, &draw_order) else {
+        let Some((_, creature_id)) = resolve_press_target(&hits, &draw_order) else {
             return;
         };
         if self
@@ -56,6 +52,10 @@ impl FormigaApp {
         if matches!(
             creature.state.action,
             ActionKind::Dragged | ActionKind::Tossed
+        ) || menu_hidden(
+            creature,
+            &world.save.settings,
+            self.habitat_editor.is_some(),
         ) {
             return;
         }
@@ -80,6 +80,8 @@ impl FormigaApp {
             CreatureMenu::new(creature_id, target, can_stay, monitor_id, settings_focused);
         if offer_moments {
             menu = menu.offering_moments();
+        } else if !guest && sends_out(world) {
+            menu = menu.offering_out();
         }
         if !self.ensure_menu_proxy(event_loop) {
             return;
@@ -161,6 +163,9 @@ impl FormigaApp {
         if menu.target() == MenuTarget::House {
             return self.advance_house_menu(menu, dt, settings_focused);
         }
+        if menu.target() == MenuTarget::Wonder {
+            return self.advance_wonder_menu(menu, dt, settings_focused);
+        }
         let (anchor, position) = {
             let world = self.world.as_ref().ok_or(MenuDismissal::Gone)?;
             let settings = &world.save.settings;
@@ -187,10 +192,7 @@ impl FormigaApp {
                     creature.state.action,
                     ActionKind::Dragged | ActionKind::Tossed
                 ),
-                hidden: !settings.visible
-                    || !settings.direct_manipulation
-                    || self.habitat_editor.is_some()
-                    || creature.state.arrival_delay_secs > 0.0,
+                hidden: menu_hidden(creature, settings, self.habitat_editor.is_some()),
                 occluded,
                 settings_focused,
             }) {
@@ -270,8 +272,9 @@ impl FormigaApp {
     }
 
     /// Act on a menu choice. Choosing Moment opens or closes the strip of moments beside the menu,
-    /// and the menu stays. Anything else closes it: the simulation answers with its own thought
-    /// bubbles, including when a creature is busy and politely declines.
+    /// and the menu stays. So does a snack or a toy the companion cannot take just now, which
+    /// says "not now" under it. Anything else closes it: the simulation answers with its own
+    /// thought bubbles, including when a creature is busy and politely declines.
     pub(super) fn choose_menu_item(&mut self, event_loop: &ActiveEventLoop, icon: MenuIcon) {
         if icon == MenuIcon::Moment {
             let items = self.moment_items();
@@ -288,6 +291,36 @@ impl FormigaApp {
         };
         let creature_id = menu.creature_id();
         let target = menu.target();
+        // A snack or a toy held out to a companion that can no longer take it (it has started a
+        // climb, set off on a journey, gone up to a wonder) is not an answer: the strip stays and
+        // says so, rather than closing on a click that seemed to do nothing. A companion that
+        // can take it, and turns it down, answers in its own bubble as ever.
+        if target == MenuTarget::Wonder {
+            if let Some(kind) = crate::creature_menu::wonder_of_menu(creature_id) {
+                self.choose_wonder_item(event_loop, kind, icon);
+            }
+            return;
+        }
+        if target != MenuTarget::House && matches!(icon, MenuIcon::Snack | MenuIcon::Toy) {
+            let desktop = self.snapshot();
+            let command = if icon == MenuIcon::Snack {
+                WorldCommand::OfferSnack { creature_id }
+            } else {
+                WorldCommand::OfferToy { creature_id }
+            };
+            let offered = self
+                .world
+                .as_mut()
+                .is_some_and(|world| world.handle_command(command, &desktop));
+            if offered {
+                self.close_creature_menu(MenuDismissal::Answered);
+                let _ = self.save();
+            } else if let Some(menu) = &mut self.creature_menu {
+                menu.mark_unavailable(icon);
+                self.request_overlay_redraw();
+            }
+            return;
+        }
         self.close_creature_menu(MenuDismissal::Answered);
         if target == MenuTarget::House {
             self.choose_house_item(event_loop, creature_id, icon);
@@ -295,16 +328,12 @@ impl FormigaApp {
         }
         let desktop = self.snapshot();
         match icon {
-            MenuIcon::Snack
-            | MenuIcon::Toy
-            | MenuIcon::Home
+            MenuIcon::Home
             | MenuIcon::Picnic
             | MenuIcon::Dance
             | MenuIcon::Nap
             | MenuIcon::Stop => {
                 let command = match icon {
-                    MenuIcon::Snack => WorldCommand::OfferSnack { creature_id },
-                    MenuIcon::Toy => WorldCommand::OfferToy { creature_id },
                     MenuIcon::Picnic => WorldCommand::InviteVillageMoment {
                         creature_id,
                         moment: VillageMoment::Picnic,
@@ -324,8 +353,20 @@ impl FormigaApp {
                     world.handle_command(command, &desktop);
                 }
             }
-            // Opens the strip of moments instead, above; and only a house is looked inside.
-            MenuIcon::Moment | MenuIcon::Inside => {}
+            MenuIcon::Out => {
+                if let Some(world) = &mut self.world {
+                    world.handle_command(WorldCommand::SendOut, &desktop);
+                }
+            }
+            // Opens the strip of moments instead, and snacks and toys are held out above; only a
+            // house is looked inside, and only a wonder is played on, moved or put away.
+            MenuIcon::Moment
+            | MenuIcon::Inside
+            | MenuIcon::Snack
+            | MenuIcon::Toy
+            | MenuIcon::Play
+            | MenuIcon::Move
+            | MenuIcon::PutAway => {}
             MenuIcon::Profile => {
                 self.show_settings(event_loop);
                 if let Some(window) = &mut self.settings_window {
@@ -335,6 +376,7 @@ impl FormigaApp {
                         // where its visit is written down.
                         MenuTarget::Guest => window.select_journal(),
                         MenuTarget::House => window.select_house(creature_id),
+                        MenuTarget::Wonder => window.select_journal(),
                     }
                 }
             }
@@ -390,6 +432,27 @@ impl FormigaApp {
                         VillageMoment::Nap => MenuIcon::Nap,
                     }),
             )
+            // A village that stays out offers the way back out of a visit beside its moments.
+            .chain((world.village_moment().is_none() && sends_out(world)).then_some(MenuIcon::Out))
             .collect()
     }
+}
+
+/// Whether a creature's menu has nothing to be drawn over: the colony is hidden or cannot be
+/// handled, the habitat editor is open, or the creature is not out to be seen, still on its way
+/// or gone inside its house. The overlay leaves out a menu whose creature it does not draw (see
+/// `gpu::occlusion::drawn_on_monitor`), so the menu closes then too, and its click target goes
+/// with it rather than staying over an empty strip of desktop.
+pub(super) fn menu_hidden(creature: &Creature, settings: &Settings, editing_habitat: bool) -> bool {
+    !settings.visible
+        || !settings.direct_manipulation
+        || editing_habitat
+        || creature.state.arrival_delay_secs > 0.0
+        || creature.state.indoors
+}
+
+/// Whether a companion's menu offers to send everyone back out: during a visit home, while the
+/// village stays on the desktop.
+pub(super) fn sends_out(world: &World) -> bool {
+    world.save.home.stays_out && world.save.home.is_active()
 }

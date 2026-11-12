@@ -11,13 +11,16 @@ mod design;
 pub mod forms;
 mod habitat;
 mod habits;
+pub mod meals;
 mod model;
 mod observations;
 mod persistence;
+pub mod play;
 mod rng;
 mod seed_share;
 mod souvenirs;
 mod stature;
+pub mod talk;
 mod temperament;
 mod topology;
 mod trinkets;
@@ -92,10 +95,12 @@ pub use visitor::{
     MAX_TOUR_STOPS, ResidentAnswer, TourInterest, TourMoment, TourStop, VisitPhase, VisitProgress,
     Visitor, VisitorError, VisitorSource, VisitorState,
 };
-pub use wonders::{WonderKind, WonderRecord, WonderSeats, WonderView};
+pub use wonders::{
+    MAX_PLACED_WONDERS, PlacedWonder, WonderKind, WonderRecord, WonderSeats, WonderView,
+};
 pub use world::{
     BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, VILLAGE_PATH_DEPTH, WonderPose, World,
     wonder_length, wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 33;
+pub const SAVE_VERSION: u32 = 34;

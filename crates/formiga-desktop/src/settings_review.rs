@@ -38,6 +38,24 @@ fn fixture() -> (SaveFile, Vec<MonitorInfo>) {
         | ProfileDescriptor::Playful.flag()
         | ProfileDescriptor::LovesHighPlaces.flag();
     world.save.companion.onboarding_complete = true;
+    // Mallow eating up on a window and a friend munching on the ground, so Right now is
+    // reviewed naming a meal wherever it is eaten, the longest of them wrapping.
+    let appetite = meals::Appetite {
+        picky: false,
+        greedy: false,
+        sleepy: false,
+        favourite: meals::Food::Apple,
+    };
+    for (index, food, window) in [
+        (0, meals::Food::Soup, Some(7)),
+        (1, meals::Food::Breadstick, None),
+    ] {
+        if let Some(creature) = world.save.creatures.get_mut(index) {
+            creature.state.action = ActionKind::Eat;
+            creature.state.meal = Some(meals::Meal::plan_seeded(food, 8.0, appetite, 3));
+            creature.state.surface.window_key = window;
+        }
+    }
     // Someone at the door and a full guest book, so the Journal page is reviewed with both.
     let friend = SharedCreatureSeed {
         source_colony_seed: [70; 32],
@@ -717,6 +735,13 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
         h.click("Bottom left").home_corner,
         Some(HomeCorner::BottomLeft)
     );
+    assert_eq!(
+        h.click("Always on the desktop").village_stays_out,
+        Some(true)
+    );
+    h.save.home.stays_out = true;
+    assert_eq!(h.click("Come and go").village_stays_out, Some(false));
+    h.save.home.stays_out = false;
     // A house picked out in the preview, and something hung on its roof.
     let founder = house_owners(&h.save.creatures, &[]).as_slice()[0];
     let house = h.shown(crate::clubhouse::arrange::Picked::House(founder));
@@ -2989,4 +3014,168 @@ fn a_long_activity_in_right_now_stays_below_the_ground_line() {
         }
     }
     assert!(raised.is_empty(), "every name sits on one line: {raised:?}");
+}
+
+#[test]
+fn applying_a_notebook_change_keeps_a_pause_made_from_the_tray() {
+    // The notebook opened on the colony's preferences and its size was changed, not applied.
+    let saved = Settings::default();
+    let mut draft = saved.clone();
+    draft.display_scale = 4;
+    // Meanwhile the tray paused the colony and switched launch at login on.
+    let mut current = saved.clone();
+    current.paused = true;
+    current.launch_at_login = true;
+    let rebased = rebase_preferences(&saved, &draft, &current);
+    assert!(rebased.paused, "Apply would have un-paused the colony");
+    assert!(rebased.launch_at_login);
+    assert_eq!(
+        rebased.display_scale, 4,
+        "the notebook's own change is kept"
+    );
+    assert_eq!(pending_changes(&current, &rebased), vec!["size"]);
+}
+
+#[test]
+fn a_habitat_applied_from_the_editor_is_not_left_waiting_to_apply() {
+    let saved = Settings::default();
+    let mut current = saved.clone();
+    current.habitat.preset = HabitatPreset::Custom;
+    // The editor hands its result to the notebook's draft as it finishes.
+    let mut draft = saved.clone();
+    draft.habitat = current.habitat.clone();
+    let rebased = rebase_preferences(&saved, &draft, &current);
+    assert_eq!(rebased, current);
+    assert!(pending_changes(&current, &rebased).is_empty());
+}
+
+#[test]
+fn a_change_made_in_the_notebook_wins_over_the_same_one_made_elsewhere() {
+    let saved = Settings::default();
+    let mut draft = saved.clone();
+    draft.paused = true;
+    let mut current = saved.clone();
+    current.reduce_motion = true;
+    let rebased = rebase_preferences(&saved, &draft, &current);
+    assert!(rebased.paused && rebased.reduce_motion);
+    // Unchanged in both: the colony's value, which is the same.
+    assert_eq!(rebased.visible, current.visible);
+}
+
+/// A companion's profile offers a snack and a toy as plain buttons, the same two offers the
+/// strip over it on the desktop makes, so they can be reached from the keyboard: Tab to one and
+/// press Enter. What came of it is written on the profile, for that companion only.
+#[test]
+fn snacks_and_toys_can_be_offered_from_the_profile_by_keyboard() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    let mallow = h.save.creatures[0].id;
+    assert_eq!(
+        h.click("Offer a snack").offer,
+        Some((mallow, OfferKind::Snack))
+    );
+    assert_eq!(h.click("Offer a toy").offer, Some((mallow, OfferKind::Toy)));
+    // From the keyboard: Tab along until the snack button has focus, then Enter.
+    let target = h.text_top("Offer a snack");
+    let key = |key: egui::Key, pressed: bool| egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Default::default(),
+    };
+    let mut reached = false;
+    for _ in 0..200 {
+        h.frame(vec![key(egui::Key::Tab, true), key(egui::Key::Tab, false)]);
+        let focused = h
+            .context
+            .memory(|memory| memory.focused())
+            .and_then(|id| h.context.read_response(id))
+            .map(|response| response.rect);
+        if focused.is_some_and(|rect| {
+            rect.top() <= target
+                && target <= rect.bottom()
+                && h.labels
+                    .iter()
+                    .any(|(text, at)| text == "Offer a snack" && rect.contains(at.center()))
+        }) {
+            reached = true;
+            break;
+        }
+    }
+    assert!(reached, "Tab never reached Offer a snack");
+    let outcome = h.frame(vec![
+        key(egui::Key::Enter, true),
+        key(egui::Key::Enter, false),
+    ]);
+    assert_eq!(
+        outcome.offer,
+        Some((mallow, OfferKind::Snack)),
+        "Enter offers it"
+    );
+    // The answer, in words, on this companion's profile and nobody else's.
+    h.clubhouse.colony.offer_note = Some((mallow, "Mallow took the snack.".into()));
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        h.labels
+            .iter()
+            .any(|(text, _)| text == "Mallow took the snack.")
+    );
+    if let Some(directory) = std::env::var_os("FORMIGA_UI_REVIEW_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        h.picture()
+            .save(directory.join("profile-offers.png"))
+            .unwrap();
+    }
+    h.selected = Some(h.save.creatures[1].id);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(
+        !h.labels
+            .iter()
+            .any(|(text, _)| text == "Mallow took the snack.")
+    );
+}
+
+/// A wonder the colony has found is put out on the desktop from the journal and put away again,
+/// and no more than three can be out.
+#[test]
+fn wonders_are_put_out_and_put_away_from_the_journal() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    h.screen = egui::vec2(940.0, 4000.0);
+    let now = h.save.maximum_seen_utc;
+    let found = [
+        WonderKind::Chair,
+        WonderKind::Fountain,
+        WonderKind::Seesaw,
+        WonderKind::Hammock,
+    ];
+    for kind in found {
+        h.save.companion.wonders.push(formiga_core::WonderRecord {
+            kind,
+            first_at: now,
+            finder: None,
+            finder_name: "Mallow".into(),
+            goes: 1,
+        });
+    }
+    assert_eq!(
+        h.click("Put it out").put_out_wonder,
+        Some(WonderKind::Chair)
+    );
+    let out = |kind| formiga_core::PlacedWonder {
+        kind,
+        display: DisplayKey([1; 16]),
+        along: 0.5,
+    };
+    h.save.companion.placed_wonders = vec![out(WonderKind::Chair)];
+    assert_eq!(h.click("Put away").put_away_wonder, Some(WonderKind::Chair));
+    // With three out, the rest cannot be put out until one is put away.
+    h.save.companion.placed_wonders = vec![
+        out(WonderKind::Chair),
+        out(WonderKind::Fountain),
+        out(WonderKind::Seesaw),
+    ];
+    assert_eq!(h.click("Put it out").put_out_wonder, None);
 }

@@ -937,6 +937,29 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         // Both paws up in front, working in turn.
         BodyClip::Gesture(Gesture::Tend) => [to(hx + 5, hy + 3 + beat), to(hx + 8, hy + 2 - beat)],
         BodyClip::Gesture(Gesture::Bask) => [Limb::Rest; 2],
+        // A beak needs no hands: wings stay folded through a meal.
+        BodyClip::Gesture(Gesture::Nibble | Gesture::Chomp | Gesture::Chew | Gesture::Gulp)
+            if plan == BodyPlan::Winged =>
+        {
+            [Limb::Rest; 2]
+        }
+        // The near paw up at the mouth with it, dipping in quick little bites.
+        BodyClip::Gesture(Gesture::Nibble) => front(to(hx + head / 2 + 3, hy + 3 + tick)),
+        // Both paws round something big, pushed in to the mouth for the bite.
+        BodyClip::Gesture(Gesture::Chomp) => {
+            let push = i32::from(frame % 4 == 1 || frame % 4 == 2);
+            [
+                to(hx + head / 2 + 1 - push, hy + 4),
+                to(hx + head / 2 + 4 - push, hy + 3),
+            ]
+        }
+        // Lowered in front of the chest while the mouth works.
+        BodyClip::Gesture(Gesture::Chew) => [to(hx + 4, y + 3), to(hx + 6, y + 2 - tick)],
+        // Up over the face to drop it in, and down again.
+        BodyClip::Gesture(Gesture::Gulp) => {
+            let up = [1, 4, 3, 0][usize::from(frame % 4)];
+            front(to(hx + head / 2 + 3, hy + 2 - up))
+        }
         // Wings laid out flat on the ground to either side.
         BodyClip::Gesture(Gesture::Sprawl) if plan == BodyPlan::Winged => {
             both(&|side| to(x + side * (rx + 4), floor - 3))
@@ -1214,6 +1237,9 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         BodyClip::Gesture(Gesture::Pour) => [rest, lift(near, 7, 1)],
         // Head down to the ground for it, then the near forepaw up with what came away.
         BodyClip::Gesture(Gesture::Pluck) if frame % 4 == 3 => [rest, lift(near, 6, room - 1)],
+        // On four feet a meal is held in the mouth; only a nibble lifts a forepaw to steady it.
+        BodyClip::Gesture(Gesture::Nibble) => [rest, lift(near, 5, room - 1 - tick)],
+        BodyClip::Gesture(Gesture::Chomp | Gesture::Chew | Gesture::Gulp) => [rest; 2],
         // Working at it with one forepaw and then the other.
         BodyClip::Gesture(Gesture::Tend) => match frame % 4 {
             2 => [lift(far, 5, room - 1), rest],
