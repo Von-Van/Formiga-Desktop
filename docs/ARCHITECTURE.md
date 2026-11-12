@@ -1446,6 +1446,8 @@ Back among the houses is where the village mostly lives:
   display as it is (`World::loose_props`).
 - Shared village moments still gather at the front, and everybody arrives at the front of the
   grass and leaves from it.
+- A visitor walks in at the front and leaves from it, and in between tours the village by the
+  same paths: a spot, a doorstep, the middle path, a patch and a keepsake (see the village yard).
 
 Over a long afternoon with four residents
 (`residents_live_in_among_the_houses_and_go_in_only_by_its_paths`), about 58% of resident time
@@ -1499,9 +1501,9 @@ not drawn smaller; the drawing's height up the display, the houses in front of i
 grass over its feet carry their depth.
 
 `formiga-tools village-depth-sheet` shows a full village with everybody at the front, everybody
-at home at their places in staggered rows, out on the path, on doorsteps and partway
-up a path, and at home after dark, at both corners, with whoever is set back at its set-back
-size.
+at home at their places in staggered rows, out on the path, on doorsteps and partway up a path,
+at home after dark, and with a visitor up on a doorstep, at both corners, with whoever is set
+back at its set-back size.
 
 ## How high companions go
 
@@ -1720,25 +1722,45 @@ moments and plans as before. Somebody sitting on a roof is counted by the box ru
 stands below, but the art keeps them apart — checked on the owner's companions for every roof from
 28 pixels up — so the tests measure the village ground.
 
-A visit is a tour rather than a stand. `plan_tour` asks the same layout functions where everything
-is, turns each house, resting resident and belonging into a span of ground the guest may not
-stand on, merges those spans, and keeps the free gaps between them; the arrival spot is always the
-first place on the ring, and at most `MAX_TOUR_STOPS` are kept. Every candidate is then re-checked
-against the four rules it has to pass — inside the accessible region, clear of each house by the
-same arithmetic that keeps a resident off a doorway, at least the face-clear distance from every resting
-resident, and clear of every belonging the colony keeps — and dropped rather than shaved if it does
-not plainly pass. A full strip has no legal ground between the houses at all — they stand a seam
-apart — so the ring there is the arrival spot and the trees' yards; a smaller colony threads the
-gaps as well. The guest walks the
-ring repeatedly, spending a stay at each place: the first seconds are one small thing — going over
-to whichever resident it has not met yet, looking up at the house beside it, stooping to a
-belonging, or resting — and the remainder is the calm rotation a visit already had. It returns to
-the arrival spot before the departure lead, so the goodbye and the walk out happen from where it
-came in. A greeting at a stop prompts that resident to answer through the same `ResidentAnswer`
-machinery the hello uses, timed off one clock, so a resident turns, holds, and goes back to its
-afternoon without leaving its door. The tour is replanned whenever the village moves underneath it,
-and a visit still writes no bond, tendency, memory counter or journal line beyond the single visit
-moment.
+A visit is a tour of the village rather than a stand at its edge. `plan_tour` asks the same layout
+functions where everything is and gathers the places a resident would go to: the hangout spots,
+each stood at the way `hangout_stand` stands a resident there; a doorstep up the path to a house set
+back three or more pixels (`VillagePaths::doorsteps`); a place on the trodden path in the middle
+that no house stands in front of; a garden patch; and a keepsake, a belonging in a tree's yard or an
+ornament on the grass, the guest standing beside each. One of each kind is taken, in an order from
+the guest's own seed, and then a second round, until there are `MAX_TOUR_STOPS` − 1, so two guests
+see the same village differently. Every candidate is checked before it is kept — inside the
+village's accessible region, no further back than `open_depth` allows there, off every belonging
+and everything on the grass but the spot it has come to use, and a face-clear step from every other
+stop — and dropped rather than shaved if it does not plainly pass. The stops are walked in the
+order met going away from the arrival spot, which is always stop 0 and comes back into the walk
+only before the departure lead, so the goodbye and the walk out happen from where the guest came
+in. Between them the guest walks the village by `VillagePaths::walk_to`, going up and down only on
+the door paths, at its own pace, and is drawn at its depth like a resident (`TourStop::depth`,
+`CreatureState::depth`), set-back size and all; behind a house nearer the front it is out of reach
+of the pointer too.
+
+Each time it moves on, the guest takes the next stop round the ring that nobody is standing about
+at, strolling or arriving to, or busy at (`World::standing_about`, `stroll_targets`,
+`busy_spots`); with none free it stays eight seconds more and asks again. A resident resting at its
+own place does not count against a stop: the guest's stop is one of the village's busy spots
+(`World::guest_spot`), so a resident whose place is beside it waits nearby until it is free, as for
+a neighbour napping on the cushion, and the guest is in everybody's view for passing and for where
+nothing new starts. At a stop the guest spends its first seconds on one thing — going over to
+whichever resident it has not met yet, looking up at the house whose step it is on, in at a patch,
+down at a keepsake, or resting — and the rest of `tour_stay_secs` (48) on the calm rotation a visit
+has always had. A hangout spot is used for `tour_use_secs` (30) the way a resident uses it
+(`hangout_moment`), sat on through `sit_at` where it is a seat, after any hello said there. A
+greeting at a stop prompts that resident to answer through the same `ResidentAnswer` machinery the
+hello uses, timed off one clock. The tour is replanned whenever the village moves underneath it, and
+reduced motion keeps the still visit at the arrival spot.
+
+On a village of four with two spots, a flower bed and a bird bath
+(`a_guest_spends_its_visit_in_among_the_village_using_its_spots`), a 779-second visit spends 30
+seconds standing at the arrival spot and 654 out in the village, about 300 of them back among the
+houses; before, it spent 239 at the arrival spot and none back from the front. A visit still writes
+no bond, tendency, memory counter or journal line of its own beyond the single visit moment, though
+residents making room for a guest can live their own afternoon a little differently for it.
 
 While the colony is home, each member has passive doorstep moments, drawn from the seeded
 `home-moments` stream and held only in memory. The first comes 12–80 seconds into a visit and the
@@ -1830,8 +1852,10 @@ answers first where it has something to say: a guardian watches the newcomer und
 bubble, a shy one or a wallflower peeks out from behind its paws and blushes, a vain or
 attention-seeking one or a show-off struts under a Sparkle, and a grumpy or irritable one or a grump
 huffs under a Grumble; the bubble shows once, as the answer starts. Everyone resting at the village
-answers. No resident moves, and no bond, tendency, or memory counter changes; a control gathering
-with no visitor is asserted to project identically.
+answers. Nobody leaves the village to follow the guest, and no bond, tendency or memory counter
+changes for having had one: against a control gathering with no visitor, the bonds, sociability,
+trust and the pet, visit, play and sleep counters are asserted to match. Since residents make room
+for a guest out in the village, their own finds and moments can fall on other ticks.
 
 Interruptions behave like every other scene. Pause freezes the visit; hidden runs it undrawn; quiet
 mode still lets the guest leave on schedule; reduced motion drops the walk in and out, holds the

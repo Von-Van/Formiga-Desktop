@@ -244,6 +244,45 @@ impl VillagePaths {
     }
 }
 
+impl World {
+    /// The village's paths as the survey lays them for the residents, for a guest walking the
+    /// village outside the residents' turns: every house shown, with its door, its lot and how
+    /// far back it stands. No paths at all when the village has no ground to stand on.
+    pub(super) fn village_paths(&self, desktop: &DesktopSnapshot) -> VillagePaths {
+        let home = &self.save.home;
+        let policy = &self.save.settings.habitat;
+        let display_scale = self.save.settings.display_scale;
+        let cottages = colony_cottage_list(&self.save.creatures);
+        let cottages = cottages.as_slice();
+        let Some(commons) = home_commons(home, cottages, &desktop.monitors, policy, display_scale)
+        else {
+            return VillagePaths::default();
+        };
+        let depths = home.house_depth_list(&self.save.creatures);
+        let widths = home_lot_widths(home, cottages, &desktop.monitors, policy, display_scale);
+        let doors = (0..=cottages.len())
+            .filter_map(|slot| {
+                let (_, point) = home_dwelling_position(
+                    home,
+                    slot,
+                    cottages,
+                    &desktop.monitors,
+                    policy,
+                    display_scale,
+                )?;
+                let width = widths.get(slot).copied().flatten()?;
+                Some(Door {
+                    slot,
+                    x: point.x,
+                    half: width / 2.0 * commons.scale,
+                    depth: f32::from(depths[slot.min(depths.len() - 1)]),
+                })
+            })
+            .collect();
+        VillagePaths::new(doors, commons.scale)
+    }
+}
+
 /// How fast somebody no longer walking the village comes back to the front of it, in shelter
 /// pixels a second: a visit over, picked up, gone off to something else.
 const STEP_FORWARD_PACE: f32 = 14.0;

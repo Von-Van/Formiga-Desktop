@@ -2,16 +2,29 @@ use super::home::HOME_DURATION;
 use super::*;
 use crate::tuning::VISITS;
 
-/// How many spans of ground a fifth body is kept off: a doorway and a resting resident for each
-/// of the colony, and the patch each of its things is sitting on.
-const MAX_BLOCKED: usize = 2 * MAX_COLONY_CREATURES + MAX_COLONY_OBJECTS;
 /// The most answers one visit can be holding: one per resident for the hello, and one more each
 /// for the walk round, since a guest only ever goes over to somebody it has not met yet.
 const MAX_VISIT_ANSWERS: usize = 2 * MAX_COLONY_CREATURES;
 
+/// How far beside a garden patch, an ornament or a belonging a guest stands to look at it, in
+/// creature frames: the same step a resident's errand to a belonging stops short by, and a
+/// little more, since a patch is wider than a belonging.
+const BESIDE_REACH: f32 = 0.45;
+
+/// How many places along the middle path a guest considers before giving it up as all behind
+/// houses.
+const PATH_TRIES: usize = 7;
+
 /// The residents a guest can see from where it is standing. On the stack: a colony is never more
 /// than six, and this is rebuilt on every tick of a visit.
 type Residents = [Option<(CreatureId, Point)>; MAX_COLONY_CREATURES];
+
+/// Everywhere a resident is standing about, headed, or busy, which a guest choosing where to go
+/// next keeps out of: one place each for where it stands and where its stroll is taking it, and
+/// up to two more for a moment and a plan of its own. A resident resting at its own place is
+/// not in it: it makes room for a guest come to stand beside it, as for a busy neighbour. On the
+/// stack, like [`Residents`].
+type Crowd = [Option<Point>; 4 * MAX_COLONY_CREATURES];
 
 /// Where a guest stands, and where it walks in from.
 struct GuestStage {
@@ -25,6 +38,12 @@ struct GuestStage {
     /// The one accessible region the village stands in. Every stop on the tour has to be inside
     /// it, so a guest can never walk round into an excluded strip.
     region: DesktopRect,
+    /// The paths in from the front of the grass to every door, which a guest goes up and down by
+    /// exactly as a resident does.
+    paths: village_paths::VillagePaths,
+    /// How wide a creature is drawn here, in points, and how close another may come to its face.
+    frame: f32,
+    clear: f32,
 }
 
 impl World {
@@ -34,6 +53,18 @@ impl World {
             .visitors
             .on_stage()
             .is_some_and(|guest| guest.id == creature_id)
+    }
+
+    /// Where a guest out on its walk round the village is standing, or on its way to stand, so
+    /// the residents leave it room there as they do one another.
+    pub(super) fn guest_spot(&self) -> Option<(CreatureId, Point)> {
+        let guest = self.save.visitors.guest.as_ref().filter(|guest| {
+            guest.on_stage
+                && guest.visit.phase == VisitPhase::Visiting
+                && guest.visit.stops.len() > 1
+        })?;
+        let stop = guest.visit.stops.get(usize::from(guest.visit.stop))?;
+        Some((guest.creature.id, stop.at))
     }
 
     /// A colony member, or the visitor while it is out. Offers and petting treat a guest like
@@ -101,6 +132,17 @@ impl World {
                     creature.state.arrival_delay_secs <= 0.0 && !self.in_village_moment(creature.id)
                 })
                 .map(|creature| (creature.id, creature.state.position));
+        }
+        // Where the colony is, or is about to be: a guest picks somewhere out of everybody's way
+        // to go next, the way a resident picks the far end of a stroll.
+        let mut crowd: Crowd = [None; 4 * MAX_COLONY_CREATURES];
+        for (slot, point) in crowd.iter_mut().zip(
+            self.standing_about()
+                .chain(self.stroll_targets())
+                .chain(self.busy_spots())
+                .map(|(_, point)| point),
+        ) {
+            *slot = Some(point);
         }
         let seed = self.visit_seed();
         // The walk round is worked out once a visit, and again whenever the village has moved
@@ -173,6 +215,7 @@ impl World {
                     stage.monitor_id,
                     stage.relative_x,
                 );
+                guest.creature.state.depth = 0.0;
                 guest.creature.state.facing_right = stage.spot.x >= start.x;
                 guest.on_stage = true;
                 if guest.visit.doorway.is_some() {
@@ -204,10 +247,11 @@ impl World {
                     enter(guest, VisitPhase::Visiting, ActionKind::Idle);
                     guest.visit.beat = 0;
                     guest.visit.beat_remaining = VISITS.still_secs;
-                    // And off around the houses, if the village left anywhere to go.
-                    guest.visit.stop = u8::from(guest.visit.stops.len() > 1);
-                    guest.visit.moment = TourMoment::Walking;
-                    guest.visit.stay = VISITS.max_walk_secs;
+                    // And off into the village, if it left anywhere to go: the tour picks the
+                    // first place out of everybody's way on the guest's next step.
+                    guest.visit.stop = 0;
+                    guest.visit.moment = TourMoment::Resting;
+                    guest.visit.stay = 0.0;
                 }
             }
             VisitPhase::Visiting => {
@@ -215,7 +259,15 @@ impl World {
                     // A tour that has run long simply stops touring.
                     enter(guest, VisitPhase::Farewell, ActionKind::Greet);
                 } else if guest.visit.stops.len() > 1 {
-                    met = tour(guest, &stage, &residents, seed, dt, reduce_motion, roam);
+                    met = tour(
+                        guest,
+                        &stage,
+                        (&residents, &crowd),
+                        seed,
+                        dt,
+                        reduce_motion,
+                        roam,
+                    );
                 } else {
                     // Reduced motion, or a village with no ground to spare: the still visit,
                     // exactly as it was, beside the houses on the one spot.
@@ -227,7 +279,9 @@ impl World {
                 // Wherever the walk round had got to: a guest waves goodbye from where it is
                 // standing rather than stepping back to the spot it came in at to do it.
                 let here = guest.creature.state.position;
+                let depth = guest.creature.state.depth;
                 place(guest, here, &stage);
+                guest.creature.state.depth = depth;
                 act(&mut guest.creature, ActionKind::Greet);
                 guest.creature.state.attention =
                     pose(here, (!reduce_motion).then_some(Gesture::Reach));
@@ -244,7 +298,9 @@ impl World {
             VisitPhase::LeavingWalk => {
                 act(&mut guest.creature, ActionKind::Traverse);
                 let doorway = guest.visit.doorway.unwrap_or(stage.spot);
-                if step_toward(&mut guest.creature, doorway, dt)
+                // Down to the front of the grass first, by a path, if the goodbye was said
+                // somewhere back in the village.
+                if walk(&mut guest.creature, &stage.paths, doorway, 0.0, dt)
                     || guest.visit.elapsed >= VISITS.max_walk_secs
                 {
                     enter(guest, VisitPhase::Gone, ActionKind::Idle);
@@ -270,6 +326,18 @@ impl World {
         }
         let left = guest.visit.phase == VisitPhase::Gone;
         let standing = guest.creature.state.position;
+        // Out of sight behind a house nearer the front, a guest is out of reach of the pointer
+        // as a resident is.
+        if !left
+            && stage.paths.hidden(
+                standing.x,
+                guest.creature.state.depth,
+                RESTING_WIDTH / 2.0 * stage.frame / CREATURE_FRAME_WIDTH,
+            )
+            && !self.behind_houses.contains(&guest_id)
+        {
+            self.behind_houses.push(guest_id);
+        }
 
         if hello {
             self.say_hello(now, stage.spot);
@@ -650,6 +718,7 @@ impl World {
         );
         let edge = if outward { high } else { low };
         let reach = (edge - spot.x).abs().min(VISITS.max_walk);
+        let frame = spacing::frame_width(self.save.settings.display_scale, monitor.scale_factor);
         Some(GuestStage {
             monitor_id,
             spot,
@@ -659,30 +728,36 @@ impl World {
             }),
             relative_x: ((spot.x - region.x) / region.width.max(1.0)).clamp(0.0, 1.0),
             region,
+            paths: self.village_paths(desktop),
+            frame,
+            clear: frame * spacing::FACE_CLEAR_RATIO,
         })
     }
 
     /// Where a guest's walk around the village stops.
     ///
     /// Every measurement here is asked of the village's own layout rather than written down
-    /// again, so a tour follows whatever the houses, the shared ground and the trees' yards do.
-    /// The
-    /// first stop is always the spot the guest walked in to; the rest are found by walking the
-    /// ground line from there inward past the houses, taking the first place a body may
-    /// legitimately stand and then the next one a clear frame beyond it.
+    /// again, so a tour follows wherever the houses, their paths, the spots the person at the desk
+    /// put down, the garden and the trees' yards have ended up. The first stop is always the spot
+    /// the guest walked in to, at the outer end of the village, and it is only come back to for
+    /// the goodbye. The rest are places in the village a resident would go to: one of the spots,
+    /// used the way it is for; a doorstep up the path to a house set back from the front; the
+    /// trodden path along the middle; a garden patch; and a keepsake, a belonging in a tree's
+    /// yard or an ornament on the grass. Which spot, doorstep, patch and keepsake is the guest's
+    /// own choice, from its seed, so two guests see the same village differently; in the order the
+    /// walk meets them going away from the spot it came in at.
     ///
-    /// A stop has to be inside the one accessible region the village stands in, clear of every
-    /// doorway by the sliver of wall a resting frame is allowed to reach across, off the things
-    /// the colony has set down, and no closer to a resting resident than two residents may
-    /// stand to each other. A guest is a fifth body in a village laid out for four, so most of
-    /// the strip fails one of those: a stop that cannot keep its distance is dropped rather than
-    /// crowding somebody, and a short tour is what a full village gets.
+    /// A stop has to be inside the one accessible region the village stands in, no further back
+    /// than the grass goes there without a house in front of it, off the things on the ground it
+    /// has not come to use, and a face-clear step from every other stop. Who is standing where is
+    /// left until the guest sets off for one, when it picks the next one out of everybody's way.
     fn plan_tour(&self, stage: &GuestStage, desktop: &DesktopSnapshot) -> Vec<TourStop> {
         // Wherever else the guest goes, it always has the spot it walked in to to come back to.
         let mut stops = vec![TourStop {
             at: stage.spot,
             look: stage.spot,
             interest: TourInterest::Ground,
+            depth: 0.0,
         }];
         let Some(monitor) = desktop
             .monitors
@@ -693,203 +768,203 @@ impl World {
         };
         let policy = &self.save.settings.habitat;
         let display_scale = self.save.settings.display_scale;
+        let frame = stage.frame;
         // One shelter pixel in desktop points, taken from the frame the spacing rules already
         // measure a standing creature by rather than worked out over again here.
-        let scale =
-            spacing::frame_width(display_scale, monitor.scale_factor) / CREATURE_FRAME_WIDTH;
-        let cottages = colony_cottages(&self.save.creatures);
-        let half = CREATURE_FRAME_WIDTH / 2.0 * scale;
-        let clear = CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * scale;
+        let scale = frame / CREATURE_FRAME_WIDTH;
+        let clear = stage.clear;
+        let half = RESTING_WIDTH / 2.0 * scale;
         let underfoot = OBJECT_WIDTH / 2.0 * scale;
         // A display that leaves a creature no width at all leaves nowhere to walk to either.
         if !clear.is_finite() || clear <= 0.0 {
             return stops;
         }
+        let ground_y = stage.spot.y;
+        let on_ground = |x: f32| Point { x, y: ground_y };
+        // Beside something, on the side the guest comes from, `reach` frames off it.
+        let beside = |at: Point, reach: f32| {
+            let side = if stage.spot.x >= at.x { 1.0 } else { -1.0 };
+            on_ground(at.x + side * reach * frame)
+        };
 
-        let mut houses = [None; MAX_COLONY_CREATURES];
-        // Each house's own lot as the village is laid out here, snug or comfortable.
-        let widths = home_lot_widths(
-            &self.save.home,
-            &cottages,
-            &desktop.monitors,
-            policy,
-            display_scale,
-        );
-        for (slot, house) in houses.iter_mut().enumerate() {
-            let Some((_, point)) = home_dwelling_position(
-                &self.save.home,
-                slot,
-                &cottages,
-                &desktop.monitors,
-                policy,
-                display_scale,
-            ) else {
-                continue;
-            };
-            let Some(width) = widths[slot] else {
-                continue;
-            };
-            // As close to a house as a body may come without standing over its door: the
-            // outermost sliver of wall a resting frame is allowed to reach across, and no more.
-            // It is the same arithmetic that keeps a resting resident off its own door.
-            let reach = (width / 2.0 + CREATURE_FRAME_WIDTH / 2.0 - REST_WALL_SLIVER) * scale;
-            *house = Some((point, reach));
-        }
-        let mut resting = [None; MAX_COLONY_CREATURES];
-        let residents = self.save.creatures.len().max(1);
-        for (slot, spot) in resting.iter_mut().enumerate().take(residents) {
-            *spot = home_resting_position(
-                &self.save.home,
-                slot,
-                residents,
-                &cottages,
-                &desktop.monitors,
-                policy,
-                display_scale,
-            )
-            .map(|(_, point)| point);
-        }
-        let places = home_object_positions(
-            &self.save.home,
-            &cottages,
-            &desktop.monitors,
-            policy,
-            display_scale,
-        );
+        let cottages = colony_cottages(&self.save.creatures);
         let kept = self.save.objects.objects.len().min(MAX_COLONY_OBJECTS);
-        let things = &places[..kept];
-
-        // Which way the village lies from the spot the guest walked in to, taken from the lot
-        // furthest from it. The tour only ever goes that way: a guest touring the open floor on
-        // the other side would be standing to one side again, which is the thing a tour is for.
-        let Some(inward) = houses
+        let belongings: Vec<Point> = home_object_positions(
+            &self.save.home,
+            &cottages,
+            &desktop.monitors,
+            policy,
+            display_scale,
+        )[..kept]
             .iter()
             .flatten()
-            .map(|(point, _)| point.x)
-            .chain(resting.iter().flatten().map(|point| point.x))
-            .map(|x| x - stage.spot.x)
-            .max_by(|a, b| a.abs().total_cmp(&b.abs()))
-            .filter(|reach| reach.abs() >= clear)
-            .map(f32::signum)
-        else {
-            return stops;
-        };
-        // Everywhere a fifth body may not stand, as spans of the ground line: the doorway of
-        // each house and the wall either side of it, the elbow room each resting resident
-        // keeps, and the patch of ground each of the colony's things sits on.
-        let mut blocked = [(0.0, 0.0); MAX_BLOCKED];
-        let mut count = 0;
-        for (point, reach) in houses.iter().flatten() {
-            blocked[count] = (point.x - reach, point.x + reach);
-            count += 1;
-        }
-        for point in resting.iter().flatten() {
-            blocked[count] = (point.x - clear, point.x + clear);
-            count += 1;
-        }
-        for (_, point) in things.iter().flatten() {
-            blocked[count] = (point.x - underfoot, point.x + underfoot);
-            count += 1;
-        }
-        let blocked = &mut blocked[..count];
-        blocked.sort_by(|a, b| a.0.total_cmp(&b.0));
+            .filter(|(monitor_id, _)| *monitor_id == monitor.id)
+            .map(|(_, point)| *point)
+            .collect();
+        let ground_items: Vec<(GroundItem, Point)> = home_ground_positions(
+            &self.save.home,
+            &cottages,
+            &desktop.monitors,
+            policy,
+            display_scale,
+        )
+        .into_iter()
+        .filter(|(_, monitor_id, _)| *monitor_id == monitor.id)
+        .map(|(item, _, at)| (item, at))
+        .collect();
+        let middle = monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0;
 
-        // The ground the tour runs over: from a clear frame past the spot the guest walked in
-        // to, inward past the houses, as far as the village's own region reaches.
-        let start = stage.spot.x + inward * clear;
-        let far = if inward > 0.0 {
-            stage.region.right() - half
-        } else {
-            stage.region.x + half
-        };
-        let (low, high) = if inward > 0.0 {
-            (start, far)
-        } else {
-            (far, start)
-        };
-        // Where in a piece of free ground a guest comes to rest is its own: two guests tour the
-        // same village the same way every time, but not quite the same way as each other. It
-        // never leans all the way to one end, so a stop is never balanced on the very edge of
-        // the ground it was given.
-        let lean =
-            f32::from(2 + SeedStream::new(self.visit_seed()).bytes("visit-tour-v1", 0)[0] % 13)
-                / 16.0;
-        let mut found = [0.0; MAX_TOUR_STOPS];
-        let mut room = 0;
-        let mut cursor = low;
-        for (from, to) in blocked.iter().copied().chain([(high, high)]) {
-            if to <= cursor {
-                continue;
-            }
-            // A stretch of free ground: one body fits in it, and another every clear frame
-            // beyond that. They sit together inside it, leaning the way this guest leans, so
-            // nobody ends up standing on the edge of somebody else's elbow room.
-            let gap = from.min(high) - cursor;
-            if gap > 0.0 && room < MAX_TOUR_STOPS {
-                let fit = ((gap / clear).min(MAX_TOUR_STOPS as f32) as usize + 1)
-                    .min(MAX_TOUR_STOPS - room);
-                let spread = (fit - 1) as f32 * clear;
-                let first = cursor + (gap - spread).max(0.0) * lean;
-                for step in 0..fit {
-                    found[room] = first + step as f32 * clear;
-                    room += 1;
+        // Everything a guest could go to, a kind of place to each list.
+        let mut spots = Vec::new();
+        let mut gardens = Vec::new();
+        let mut keepsakes = Vec::new();
+        for (item, at) in ground_items.iter().copied() {
+            match item {
+                GroundItem::Hangout(kind) => {
+                    let open_right = middle >= at.x;
+                    let (x, facing_right) = home::hangout_stand(
+                        home::FreeHangout {
+                            kind,
+                            at,
+                            open_right,
+                        },
+                        stage.spot,
+                        frame,
+                    );
+                    // A lookout is looked out from, over the open desktop; anything stood at
+                    // is turned to; a cushion or a blanket is simply sat on.
+                    let look = match facing_right {
+                        Some(right) if kind == HangoutKind::Lookout => {
+                            on_ground(x + if right { frame } else { -frame })
+                        }
+                        Some(_) => at,
+                        None => on_ground(x),
+                    };
+                    spots.push(TourStop {
+                        at: on_ground(x),
+                        look,
+                        interest: TourInterest::Hangout(kind),
+                        depth: 0.0,
+                    });
                 }
-            }
-            cursor = cursor.max(to);
-            if cursor >= high {
-                break;
+                GroundItem::Garden(_) => gardens.push(TourStop {
+                    at: beside(at, BESIDE_REACH),
+                    look: at,
+                    interest: TourInterest::Garden,
+                    depth: 0.0,
+                }),
+                GroundItem::Ornament(_) => keepsakes.push(TourStop {
+                    at: beside(at, BESIDE_REACH),
+                    look: at,
+                    interest: TourInterest::Keepsake,
+                    depth: 0.0,
+                }),
             }
         }
-
-        // In the order the walk meets them, counting outward from the spot the guest came in at.
-        let found = &mut found[..room];
-        if inward < 0.0 {
-            found.reverse();
-        }
-        for x in found.iter().copied() {
-            if stops.len() >= MAX_TOUR_STOPS {
-                break;
-            }
-            let point = Point { x, y: stage.spot.y };
-            // Nothing the arithmetic above proposed is taken on trust. Finding the free ground
-            // is one thing; the rules a fifth body has to keep are another, and a stop that
-            // does not plainly keep them is dropped rather than shaved until it does.
-            if !stage.region.contains(point)
-                || houses
-                    .iter()
-                    .flatten()
-                    .any(|(house, reach)| (point.x - house.x).abs() < *reach)
-                || resting
-                    .iter()
-                    .flatten()
-                    .any(|spot| (point.x - spot.x).abs() < clear)
-                || things
-                    .iter()
-                    .flatten()
-                    .any(|(_, thing)| (point.x - thing.x).abs() < underfoot)
-            {
-                continue;
-            }
-            // What the guest has come over for: whichever of the colony's things or its houses
-            // is nearest the spot the free ground let it stand in.
-            let thing = nearest(things.iter().flatten().map(|(_, point)| *point), point);
-            let house = nearest(houses.iter().flatten().map(|(point, _)| *point), point);
-            let (look, interest) = match (thing, house) {
-                (Some(thing), Some(house))
-                    if (thing.x - point.x).abs() <= (house.x - point.x).abs() =>
-                {
-                    (thing, TourInterest::Keepsake)
-                }
-                (Some(thing), None) => (thing, TourInterest::Keepsake),
-                (_, Some(house)) => (house, TourInterest::House),
-                (None, None) => (point, TourInterest::Ground),
-            };
-            stops.push(TourStop {
-                at: point,
-                look,
-                interest,
+        for at in belongings.iter().copied() {
+            keepsakes.push(TourStop {
+                at: beside(at, BESIDE_REACH),
+                look: at,
+                interest: TourInterest::Keepsake,
+                depth: 0.0,
             });
         }
+        // Up the path to a door set back from the front, to stand on the step and look up.
+        let doorsteps: Vec<TourStop> = stage
+            .paths
+            .doorsteps()
+            .map(|door| TourStop {
+                at: on_ground(door.x),
+                look: on_ground(door.x),
+                interest: TourInterest::House,
+                depth: door.depth,
+            })
+            .collect();
+        // Somewhere along the trodden path in the middle that no house stands in front of,
+        // leaning the way this guest leans.
+        let lean = f32::from(SeedStream::new(self.visit_seed()).bytes("visit-tour-v2", 0)[0])
+            / f32::from(u8::MAX);
+        let path: Vec<TourStop> = stage
+            .paths
+            .path_span()
+            .into_iter()
+            .flat_map(|(low, high)| {
+                (0..PATH_TRIES).map(move |step| {
+                    let along = (lean + step as f32 / PATH_TRIES as f32).fract();
+                    low + (high - low) * along
+                })
+            })
+            .filter(|x| !stage.paths.hidden(*x, village_paths::PATH_DEPTH, half))
+            .take(1)
+            .map(|x| TourStop {
+                at: on_ground(x),
+                look: on_ground(x),
+                interest: TourInterest::Path,
+                depth: village_paths::PATH_DEPTH,
+            })
+            .collect();
+
+        // Nothing proposed above is taken on trust: a stop that does not plainly keep the rules a
+        // body standing in the village keeps is dropped rather than shaved until it does.
+        let (low, high) = (stage.region.x + half, stage.region.right() - half);
+        let fits = |stop: &TourStop| {
+            // The one spot a guest has come to use is the one thing on the ground it may stand on.
+            let using = |item: GroundItem| {
+                matches!((stop.interest, item),
+                    (TourInterest::Hangout(a), GroundItem::Hangout(b)) if a == b)
+            };
+            let off = |at: Point| (stop.at.x - at.x).abs() >= underfoot;
+            stage.region.contains(stop.at)
+                && (low..=high).contains(&stop.at.x)
+                && stop.depth <= stage.paths.open_depth(stop.at.x, half) + 0.01
+                && (stop.depth > 0.0
+                    || (belongings.iter().copied().all(off)
+                        && ground_items
+                            .iter()
+                            .all(|(item, at)| using(*item) || off(*at))))
+        };
+
+        // One of each kind of place, in the guest's own order within each kind, then a second
+        // round for whatever kinds have more, until the tour is full.
+        let mut kinds = [spots, doorsteps, path, gardens, keepsakes];
+        for (index, kind) in kinds.iter_mut().enumerate() {
+            kind.retain(fits);
+            let stream = SeedStream::new(self.visit_seed());
+            kind.sort_by_key(|stop| {
+                stream.bytes(
+                    "visit-tour-order-v1",
+                    ((index as u64) << 32) | stop.at.x.to_bits() as u64,
+                )[0]
+            });
+        }
+        let mut chosen: Vec<TourStop> = Vec::with_capacity(MAX_TOUR_STOPS - 1);
+        let deepest = kinds.iter().map(Vec::len).max().unwrap_or(0);
+        'rounds: for round in 0..deepest {
+            for kind in &kinds {
+                if chosen.len() + 1 >= MAX_TOUR_STOPS {
+                    break 'rounds;
+                }
+                let Some(stop) = kind.get(round) else {
+                    continue;
+                };
+                // Two stops a face-clear step apart at most would be one place twice.
+                if stops
+                    .iter()
+                    .chain(&chosen)
+                    .any(|other| spacing::closer_than(other.at.x - stop.at.x, clear))
+                {
+                    continue;
+                }
+                chosen.push(*stop);
+            }
+        }
+        // In the order the walk meets them, going away from the spot the guest came in at.
+        chosen.sort_by(|a, b| {
+            (a.at.x - stage.spot.x)
+                .abs()
+                .total_cmp(&(b.at.x - stage.spot.x).abs())
+        });
+        stops.extend(chosen);
         stops
     }
 
@@ -902,11 +977,6 @@ impl World {
             .as_ref()
             .map_or([0; 32], |guest| guest.creature.origin.source_colony_seed)
     }
-}
-
-/// The nearest of a handful of places to a point along the ground line.
-fn nearest(places: impl Iterator<Item = Point>, to: Point) -> Option<Point> {
-    places.min_by(|a, b| (a.x - to.x).abs().total_cmp(&(b.x - to.x).abs()))
 }
 
 /// Whether a wanderer turns up at gathering `ordinal`. Exactly one gathering in every block of
@@ -990,7 +1060,7 @@ pub(super) fn recognised(answer: ResidentAnswer, reduce_motion: bool) -> Residen
 fn tour(
     guest: &mut Visitor,
     stage: &GuestStage,
-    residents: &Residents,
+    (residents, crowd): (&Residents, &Crowd),
     seed: [u8; 32],
     dt: f32,
     reduce_motion: bool,
@@ -1008,31 +1078,64 @@ fn tour(
     guest.visit.stay -= dt;
     if guest.visit.moment == TourMoment::Walking {
         act(&mut guest.creature, ActionKind::Traverse);
-        // The same bounded step the walk in uses, and the same patience with a walk that was
-        // never going to finish.
-        if !step_toward(&mut guest.creature, stop.at, dt) && guest.visit.stay > 0.0 {
+        // Along the strip and up or down the paths to the doors, as a resident goes, with the
+        // same patience with a walk that was never going to finish.
+        if !walk(&mut guest.creature, &stage.paths, stop.at, stop.depth, dt)
+            && guest.visit.stay > 0.0
+        {
             return None;
         }
         place(guest, stop.at, stage);
+        guest.creature.state.depth = stop.depth;
         return arrive(guest, stop, residents, seed);
     }
     place(guest, stop.at, stage);
-    hold(guest, stop, residents, dt, reduce_motion);
+    guest.creature.state.depth = stop.depth;
+    hold(guest, stop, residents, stage.frame, dt, reduce_motion);
     if guest.visit.stay > 0.0 {
         return None;
     }
+    guest.creature.state.attention = None;
     if roam {
-        // On to the next: the ring runs out along the houses and back again.
-        guest.visit.stop = ((index + 1) % guest.visit.stops.len()) as u8;
-        guest.visit.moment = TourMoment::Walking;
-        guest.visit.stay = VISITS.max_walk_secs;
-        guest.creature.state.attention = None;
+        // On to the next place in the village that nobody is standing about at, busy at or
+        // headed for. With all of them spoken for just now, a little longer here, or wherever
+        // the walk in left it, and then ask again.
+        match next_stop(&guest.visit.stops, index, crowd, stage.clear) {
+            Some(next) => {
+                guest.visit.stop = next as u8;
+                guest.visit.moment = TourMoment::Walking;
+                guest.visit.stay = VISITS.max_walk_secs;
+            }
+            None => {
+                guest.visit.moment = TourMoment::Resting;
+                guest.visit.stay = VISITS.tour_beat_secs;
+            }
+        }
     } else {
         // Nowhere left to go before the goodbye: the guest settles where it walked in.
         guest.visit.moment = TourMoment::Resting;
         guest.visit.stay = VISITS.tour_stay_secs - VISITS.tour_beat_secs;
     }
     None
+}
+
+/// Which stop out in the village the guest goes on to from stop `index`: the next one round the
+/// ring that nobody is standing about at, strolling to or busy at. The spot it walked in to is not
+/// on the ring, since that is for the goodbye, and nor is the stop it is at: with nowhere else
+/// free just now it stays a little longer and asks again.
+fn next_stop(stops: &[TourStop], index: usize, crowd: &Crowd, clear: f32) -> Option<usize> {
+    let ring = stops.len().checked_sub(1).filter(|ring| *ring > 0)?;
+    let from = if index == 0 { 0 } else { index % ring };
+    (0..ring)
+        .map(|step| 1 + (from + step) % ring)
+        .filter(|candidate| *candidate != index)
+        .find(|candidate| {
+            let at = stops[*candidate].at;
+            !crowd
+                .iter()
+                .flatten()
+                .any(|point| spacing::closer_than(point.x - at.x, clear))
+        })
 }
 
 /// The guest has reached a stop. Decide the one small thing it does here.
@@ -1060,23 +1163,52 @@ fn arrive(
         guest.visit.moment = TourMoment::Greeting(creature_id);
         return Some(creature_id);
     }
-    // Otherwise, mostly a proper look at whatever it came over for; now and then a breather.
+    // Otherwise a spot is always used, since that is what it came over for; anything else is
+    // mostly a proper look, and now and then a breather.
     let roll = SeedStream::new(seed).bytes("visit-tour-beat-v1", u64::from(guest.visit.beat))[0];
-    guest.visit.moment = if stop.interest == TourInterest::Ground || roll.is_multiple_of(4) {
-        TourMoment::Resting
-    } else {
-        TourMoment::Looking
+    guest.visit.moment = match stop.interest {
+        TourInterest::Ground => TourMoment::Resting,
+        TourInterest::Hangout(_) => TourMoment::Looking,
+        _ if roll.is_multiple_of(4) => TourMoment::Resting,
+        _ => TourMoment::Looking,
     };
     None
 }
 
+/// How long the one small thing a guest came over to a stop for lasts, before the calm moments
+/// a visit has always had: a spot is used for a good while, anything else is a look.
+fn thing_secs(interest: TourInterest) -> f32 {
+    match interest {
+        TourInterest::Hangout(_) => VISITS.tour_use_secs,
+        _ => VISITS.tour_beat_secs,
+    }
+}
+
 /// Hold the guest at a stop: the one small thing it came over to do, and then the same calm
 /// moments a visit has always had until it is time to move on.
-fn hold(guest: &mut Visitor, stop: TourStop, residents: &Residents, dt: f32, reduce_motion: bool) {
-    if guest.visit.stay <= VISITS.tour_stay_secs - VISITS.tour_beat_secs {
+fn hold(
+    guest: &mut Visitor,
+    stop: TourStop,
+    residents: &Residents,
+    frame: f32,
+    dt: f32,
+    reduce_motion: bool,
+) {
+    // Hello said to whoever was here, a spot is still used: the stay starts over for it.
+    if matches!(guest.visit.moment, TourMoment::Greeting(_))
+        && matches!(stop.interest, TourInterest::Hangout(_))
+        && guest.visit.stay <= VISITS.tour_stay_secs - VISITS.tour_beat_secs
+    {
+        guest.visit.moment = TourMoment::Looking;
+        guest.visit.stay = VISITS.tour_stay_secs;
+    }
+    let thing = thing_secs(stop.interest);
+    if guest.visit.stay <= VISITS.tour_stay_secs - thing {
         calm_moment(guest, stop.at, dt, reduce_motion);
         return;
     }
+    let held = VISITS.tour_stay_secs - guest.visit.stay;
+    let remaining = guest.visit.stay - (VISITS.tour_stay_secs - thing);
     let creature = &mut guest.creature;
     match guest.visit.moment {
         TourMoment::Greeting(creature_id) => {
@@ -1090,17 +1222,47 @@ fn hold(guest: &mut Visitor, stop: TourStop, residents: &Residents, dt: f32, red
             creature.state.attention = pose(target, None);
         }
         TourMoment::Looking => {
-            creature.state.facing_right = stop.look.x >= creature.state.position.x;
-            // Up at the house it is standing beside, or down at whatever the colony has left
-            // under its tree.
-            let (action, gesture) = match stop.interest {
-                TourInterest::House => (ActionKind::InspectScreen, None),
-                TourInterest::Keepsake => (ActionKind::PresentDiscovery, Some(Gesture::Watch)),
-                TourInterest::Ground => (ActionKind::Idle, None),
-            };
-            act(creature, action);
-            creature.state.attention =
-                pose(stop.look, (!reduce_motion).then_some(gesture).flatten());
+            if stop.look.x != stop.at.x {
+                creature.state.facing_right = stop.look.x >= creature.state.position.x;
+            }
+            match stop.interest {
+                // Used the way a resident uses it: a nap on the cushion, a snack on the blanket,
+                // a look out from the lookout, a seat on the bench.
+                TourInterest::Hangout(kind) => {
+                    let (_, action, _, _) = home::hangout_moment(kind, creature);
+                    let action = if reduce_motion && action == ActionKind::SoloPlay {
+                        ActionKind::Idle
+                    } else {
+                        action
+                    };
+                    if home::seated_at(kind) {
+                        let stance =
+                            home::sit_at(creature, kind, stop.at.y, held, remaining, frame);
+                        act(creature, stance.unwrap_or(action));
+                    } else {
+                        act(creature, action);
+                        creature.state.attention = (action == ActionKind::InspectScreen)
+                            .then(|| pose(stop.look, None))
+                            .flatten();
+                    }
+                }
+                // Up at the house whose step it is standing on, in at a garden patch, or down at
+                // whatever the colony has left on the grass or under its tree.
+                interest => {
+                    let (action, gesture) = match interest {
+                        TourInterest::House | TourInterest::Garden => {
+                            (ActionKind::InspectScreen, None)
+                        }
+                        TourInterest::Keepsake => {
+                            (ActionKind::PresentDiscovery, Some(Gesture::Watch))
+                        }
+                        _ => (ActionKind::Idle, None),
+                    };
+                    act(creature, action);
+                    creature.state.attention =
+                        pose(stop.look, (!reduce_motion).then_some(gesture).flatten());
+                }
+            }
         }
         TourMoment::Resting | TourMoment::Walking => {
             act(creature, ActionKind::Perch);
@@ -1156,6 +1318,7 @@ fn stand_at(guest: &mut Visitor, stage: &GuestStage) {
         stage.monitor_id,
         stage.relative_x,
     );
+    guest.creature.state.depth = 0.0;
 }
 
 /// Stand the guest somewhere else on the village ground line, holding on to the floor exactly
@@ -1176,6 +1339,35 @@ fn stand(creature: &mut Creature, at: Point, monitor_id: MonitorId, relative_x: 
     };
 }
 
+/// How fast a guest walks, in points a second: a little brisker than a resident's stroll, since
+/// it has a whole village to see in one visit.
+fn pace(creature: &Creature) -> f32 {
+    24.0 + creature.personality.activity * 34.0
+}
+
+/// One step of a walk round the village to `goal`, `depth` back: along the strip, and up or down
+/// the paths to the doors where the depth changes, exactly as a resident goes. Returns whether
+/// the walk is finished.
+fn walk(
+    creature: &mut Creature,
+    paths: &village_paths::VillagePaths,
+    goal: Point,
+    depth: f32,
+    dt: f32,
+) -> bool {
+    let previous = creature.state.position;
+    let there = paths.walk_to(creature, goal, depth, pace(creature), dt);
+    creature.state.velocity = if dt > 0.0 && !there {
+        Point {
+            x: (creature.state.position.x - previous.x) / dt,
+            y: (creature.state.position.y - previous.y) / dt,
+        }
+    } else {
+        Point::default()
+    };
+    there
+}
+
 /// One step of a walk along the village ground line. Returns whether the walk is finished.
 fn step_toward(creature: &mut Creature, target: Point, dt: f32) -> bool {
     let previous = creature.state.position;
@@ -1185,7 +1377,7 @@ fn step_toward(creature: &mut Creature, target: Point, dt: f32) -> bool {
         return true;
     }
     creature.state.facing_right = target.x >= previous.x;
-    let speed = 24.0 + creature.personality.activity * 34.0;
+    let speed = pace(creature);
     let progress = (speed * dt / distance).clamp(0.0, 1.0);
     creature.state.position = if progress >= 1.0 {
         target

@@ -709,7 +709,10 @@ fn advance_home_moment(
 
 /// What a hangout spot is for: whether this companion feels like it just now, the clip it does
 /// there, and how long for.
-fn hangout_moment(kind: HangoutKind, creature: &Creature) -> (bool, ActionKind, f32, f32) {
+pub(super) fn hangout_moment(
+    kind: HangoutKind,
+    creature: &Creature,
+) -> (bool, ActionKind, f32, f32) {
     let drives = &creature.state.drives;
     let personality = &creature.personality;
     let sleepy = drives.sleep_pressure > 0.5;
@@ -741,7 +744,7 @@ fn hangout_moment(kind: HangoutKind, creature: &Creature) -> (bool, ActionKind, 
 }
 
 /// Whether a spot is sat on, lain in or sat beside, rather than stood at.
-const fn seated_at(kind: HangoutKind) -> bool {
+pub(super) const fn seated_at(kind: HangoutKind) -> bool {
     matches!(
         kind,
         HangoutKind::Bench | HangoutKind::Swing | HangoutKind::Hammock | HangoutKind::BookNook
@@ -818,6 +821,39 @@ fn seated_stance(kind: HangoutKind, held: f32, remaining: f32) -> wonders::Stanc
     settled
 }
 
+/// Places and poses a companion sat on a spot whose ground line is `ground_y`, `held` seconds
+/// into its time there with `remaining` to go, `frame` points wide. Returns the clip the stance
+/// asks for, if it asks for one rather than leaving the moment's own.
+pub(super) fn sit_at(
+    creature: &mut Creature,
+    kind: HangoutKind,
+    ground_y: f32,
+    held: f32,
+    remaining: f32,
+    frame: f32,
+) -> Option<ActionKind> {
+    let stance = seated_stance(kind, held, remaining);
+    let unit = frame / CREATURE_ART_WIDTH;
+    creature.state.position.y = ground_y + stance.dy * unit;
+    creature.state.attention = Some(AttentionPose {
+        target: Point {
+            x: creature.state.position.x
+                + stance.look.map_or(0.0, |look| look.0)
+                    * unit
+                    * if creature.state.facing_right {
+                        1.0
+                    } else {
+                        -1.0
+                    },
+            y: ground_y + stance.look.map_or(-16.0, |look| look.1) * unit,
+        },
+        emotion: stance.emotion,
+        hanging: 0.0,
+        gesture: stance.gesture,
+    });
+    (stance.action != ActionKind::Idle).then_some(stance.action)
+}
+
 /// Where a companion stands to use a spot: on it, or beside it and turned toward it.
 fn hangout_stands_beside(kind: HangoutKind) -> bool {
     matches!(
@@ -834,7 +870,7 @@ fn hangout_stands_beside(kind: HangoutKind) -> bool {
 /// Where along the ground a companion coming from `from` stands to use a spot, and which way it
 /// faces once there: on the cushion or the blanket; beside the lookout, looking out past it; and
 /// beside anything else that is for standing at, on the side it comes from, turned toward it.
-fn hangout_stand(hangout: FreeHangout, from: Point, frame: f32) -> (f32, Option<bool>) {
+pub(super) fn hangout_stand(hangout: FreeHangout, from: Point, frame: f32) -> (f32, Option<bool>) {
     let from_right = from.x > hangout.at.x;
     match hangout.kind {
         HangoutKind::Lookout => (
@@ -855,10 +891,10 @@ fn hangout_stand(hangout: FreeHangout, from: Point, frame: f32) -> (f32, Option<
 /// A hangout spot free for a quiet moment: what it is, where it stands, and whether the open
 /// desktop lies to its right.
 #[derive(Clone, Copy, Debug)]
-struct FreeHangout {
-    kind: HangoutKind,
-    at: Point,
-    open_right: bool,
+pub(super) struct FreeHangout {
+    pub(super) kind: HangoutKind,
+    pub(super) at: Point,
+    pub(super) open_right: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1096,6 +1132,48 @@ struct HomeHeading {
 }
 
 impl World {
+    /// Where residents are busy at home, or on the way to be: a moment held somewhere, a visit
+    /// to one of the spots the person at the desk put down, a turn in the garden.
+    pub(super) fn busy_spots(&self) -> impl Iterator<Item = (CreatureId, Point)> + '_ {
+        self.home_moments
+            .iter()
+            .filter_map(|(id, moment)| Some((*id, moment.spot()?)))
+            .chain(
+                self.village_life
+                    .iter()
+                    .filter_map(|(id, activity)| Some((*id, activity.plan.spot()?))),
+            )
+    }
+
+    /// Where residents are standing still somewhere other than their own place: at the far end
+    /// of a stroll, on a doorstep, waiting for their place to be free. A resident resting at its
+    /// own place is not among them, since it makes room there as it would for a neighbour busy
+    /// beside it, and nor is anybody walking past.
+    pub(super) fn standing_about(&self) -> impl Iterator<Item = (CreatureId, Point)> + '_ {
+        self.save
+            .creatures
+            .iter()
+            .filter(|creature| {
+                creature.state.arrival_delay_secs <= 0.0
+                    && !creature.state.indoors
+                    && creature.state.velocity.x.abs() < 1.0
+                    && !self
+                        .home_roam
+                        .get(&creature.id)
+                        .is_some_and(|step| step.leg == RoamLeg::Resting && step.reached(creature))
+            })
+            .map(|creature| (creature.id, creature.state.position))
+    }
+
+    /// Where each resident out on a stroll, or arriving at its door, is headed. Its own place is
+    /// not among them: a resident whose place is spoken for waits nearby until it is free.
+    pub(super) fn stroll_targets(&self) -> impl Iterator<Item = (CreatureId, Point)> + '_ {
+        self.home_roam
+            .iter()
+            .filter(|(_, step)| matches!(step.leg, RoamLeg::Arriving | RoamLeg::Out))
+            .map(|(id, step)| (*id, step.target))
+    }
+
     pub(super) fn update_home_cycle(&mut self, desktop: &DesktopSnapshot) -> bool {
         let timeline_now = self.save.maximum_seen_utc;
         let ritual_shelter = self
@@ -1414,11 +1492,13 @@ impl World {
         // Everybody out in the open, and how fast they were going: whose face a walk should not
         // dawdle in front of, nor keep step with.
         let face_clear = frame * spacing::FACE_CLEAR_RATIO;
+        // A guest walking round the village is somebody out in the open like anyone else.
         let in_view: Vec<(CreatureId, Point, f32)> = self
             .save
             .creatures
             .iter()
             .filter(|creature| creature.state.arrival_delay_secs <= 0.0 && !creature.state.indoors)
+            .chain(self.save.visitors.on_stage())
             .map(|creature| {
                 (
                     creature.id,
@@ -1431,16 +1511,8 @@ impl World {
         // the spots the person at the desk put down, a nap on a cushion, a turn in the garden.
         // Nobody stands about right beside such a spot until it is free, and nothing new starts
         // there.
-        let taken: Vec<(CreatureId, Point)> = self
-            .home_moments
-            .iter()
-            .filter_map(|(id, moment)| Some((*id, moment.spot()?)))
-            .chain(
-                self.village_life
-                    .iter()
-                    .filter_map(|(id, activity)| Some((*id, activity.plan.spot()?))),
-            )
-            .collect();
+        // A guest out in the village has the place it is at, or on its way to, the same way.
+        let taken: Vec<(CreatureId, Point)> = self.busy_spots().chain(self.guest_spot()).collect();
         // Where each spot the person at the desk put down stands, and which way the open desktop
         // lies from it, on the display the village is on.
         let middle = monitor.usable_bounds.x + monitor.usable_bounds.width / 2.0;
@@ -1820,33 +1892,9 @@ impl World {
         let seated = held.and_then(|(action, remaining)| {
             let moment = self.home_moments.get(&creature.id)?;
             let kind = moment.seat.filter(|_| moment.phase == MomentPhase::Hold)?;
-            let stance = seated_stance(kind, moment.held, remaining);
-            let unit = frame / CREATURE_ART_WIDTH;
-            creature.state.position.y = moment.rest.y + stance.dy * unit;
-            creature.state.attention = Some(AttentionPose {
-                target: Point {
-                    x: creature.state.position.x
-                        + stance.look.map_or(0.0, |look| look.0)
-                            * unit
-                            * if creature.state.facing_right {
-                                1.0
-                            } else {
-                                -1.0
-                            },
-                    y: moment.rest.y + stance.look.map_or(-16.0, |look| look.1) * unit,
-                },
-                emotion: stance.emotion,
-                hanging: 0.0,
-                gesture: stance.gesture,
-            });
-            Some((
-                if stance.action == ActionKind::Idle {
-                    action
-                } else {
-                    stance.action
-                },
-                remaining,
-            ))
+            let action = sit_at(creature, kind, moment.rest.y, moment.held, remaining, frame)
+                .unwrap_or(action);
+            Some((action, remaining))
         });
         if seated.is_none() && was_seated {
             creature.state.attention = None;

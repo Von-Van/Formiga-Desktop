@@ -212,6 +212,9 @@ pub struct Visits {
     /// a visit has always had, only somewhere new each time.
     pub tour_stay_secs: f32,
     pub tour_beat_secs: f32,
+    /// How much of a stay at one of the spots the person at the desk put down is spent using it:
+    /// a nap on the cushion, a snack on the blanket, a sit on the bench.
+    pub tour_use_secs: f32,
     /// How much of a gathering is kept back for the walk back to the spot the guest came in at,
     /// so the goodbye is said there and the walk out is the walk in run backwards.
     pub tour_return_secs: f32,
@@ -230,8 +233,9 @@ pub const VISITS: Visits = Visits {
     answer_hold_secs: 2.6,
     notice_distance: 420.0,
     invited_stay: time::Duration::hours(24),
-    tour_stay_secs: 72.0,
+    tour_stay_secs: 48.0,
     tour_beat_secs: 8.0,
+    tour_use_secs: 30.0,
     tour_return_secs: 45.0,
 };
 

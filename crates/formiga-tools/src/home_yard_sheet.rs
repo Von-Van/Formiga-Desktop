@@ -299,12 +299,50 @@ pub fn village_depth_sheet(path: PathBuf) -> Result<()> {
             })
             .collect()
     };
-    let rows: [(YardPanel, Option<Placing>); 5] = [
+    // A visitor walking round the village rather than standing at its edge: up on the doorstep
+    // of the cottage set furthest back, while that cottage's keeper is out at the front of the
+    // grass, with a cushion and a blanket put down and a flower bed planted.
+    let visit: Placing = |doors| {
+        let along = |a: usize, b: usize, t: f32| doors[a].0 + (doors[b].0 - doors[a].0) * t;
+        (0..doors.len())
+            .map(|resident| match resident {
+                3 => Stand {
+                    resident,
+                    x: along(2, 3, 0.55),
+                    depth: 0.0,
+                    facing_right: false,
+                },
+                _ => Stand {
+                    resident,
+                    x: doors[resident].0 + if resident % 2 == 0 { 14.0 } else { -14.0 },
+                    depth: if resident % 2 == 1 {
+                        doors[resident].1
+                    } else {
+                        (doors[resident].1 * 0.25).round()
+                    },
+                    facing_right: resident % 2 == 0,
+                },
+            })
+            .chain([Stand {
+                resident: GUEST,
+                x: doors[3].0,
+                depth: doors[3].1,
+                facing_right: true,
+            }])
+            .collect()
+    };
+    let visited = YardPanel {
+        hangouts: [Some(0.2), Some(0.85), None],
+        gardens: [Some(0.6), None, None],
+        ..panel(false)
+    };
+    let rows: [(YardPanel, Option<Placing>); 6] = [
         (panel(false), None),
         (panel(false), Some(at_home)),
         (panel(false), Some(on_path)),
         (panel(false), Some(doorsteps)),
         (panel(true), Some(at_home)),
+        (visited, Some(visit)),
     ];
     let gap = 10;
     let panel_width = YARD_STRIP * YARD_SCALE;
@@ -353,6 +391,9 @@ pub fn village_depth_sheet(path: PathBuf) -> Result<()> {
 
 /// A square to lay down on a panel: what is drawn, its size, and its top-left corner.
 type Square = (formiga_art::Canvas, u32, i32, i32);
+
+/// The `resident` a [`Stand`] gives for a visitor rather than one of the colony.
+const GUEST: usize = usize::MAX;
 
 /// A resident put somewhere on the village ground by hand, for the depth sheet: which one, where
 /// its feet are along the strip, how far back on the grass, and which way it faces.
@@ -646,8 +687,13 @@ fn draw_yard_panel(
     );
     // Far enough back, a resident is drawn afresh at its set-back size, its feet on the same
     // ground as at its own size, as the overlay draws it.
+    let guest = World::preview_adult(
+        SeedStream::new(seed).bytes("yard-guest", 0),
+        OffsetDateTime::UNIX_EPOCH,
+        &fixture_desktop(),
+    );
     let resident_square = |stand: &Stand| {
-        let own = &residents[stand.resident].appearance;
+        let own = &residents.get(stand.resident).unwrap_or(&guest).appearance;
         let mut drawn = own.clone();
         if stand.depth >= formiga_core::SET_BACK_DEPTH {
             drawn.logical_size = formiga_core::set_back_size(own.logical_size);
