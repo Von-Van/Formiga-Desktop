@@ -66,6 +66,7 @@ fn play_starts_with_playing_and_an_umbrella_is_ridden_down() {
         .state
         .play
         .expect("playing starts play");
+    world.save.creatures[0].state.action_elapsed += TICK;
     world.carry_play(now, TICK);
     assert!(world.save.creatures[0].state.play.unwrap().elapsed > play.elapsed);
     world.save.creatures[0].state.action = ActionKind::Idle;

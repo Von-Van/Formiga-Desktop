@@ -14,8 +14,12 @@ impl World {
     /// end of every tick.
     pub(super) fn carry_meals(&mut self, now: OffsetDateTime, dt: f32) {
         // Paused, the colony holds still, and so does every meal: the bite it is on now is the
-        // bite it takes up again when it carries on.
+        // bite it takes up again when it carries on. A meal under way moves on with the eating
+        // action's own clock, so it also waits through a pause, a yawn or anything else that
+        // holds that clock.
         let dt = if self.save.settings.paused { 0.0 } else { dt };
+        // A guest's calm moments run by the visit's beat, not an action length of their own.
+        let guest_beat = guest_beat_left(&self.save.visitors);
         let hour = local_time_or_utc(now).hour();
         let timeline = self.save.maximum_seen_utc;
         let ripe: Vec<GardenKind> = self
@@ -59,8 +63,17 @@ impl World {
                 state.meal = None;
                 continue;
             }
+            // Eating chosen again straight after eating starts its action clock again: that is a
+            // new meal, not the end of the last one held for the whole of it.
+            if state
+                .meal
+                .is_some_and(|meal| state.action_elapsed + 1e-3 < meal.action_mark)
+            {
+                state.meal = None;
+            }
             if let Some(meal) = &mut state.meal {
-                meal.elapsed += dt;
+                meal.elapsed += (state.action_elapsed - meal.action_mark).max(0.0);
+                meal.action_mark = state.action_elapsed;
             } else {
                 let mut rng = streams.rng(
                     "meal",
@@ -76,10 +89,10 @@ impl World {
                     },
                     &mut rng,
                 );
-                let left =
-                    (creature.state.action_duration - creature.state.action_elapsed).max(1.0);
+                let left = action_left(&creature.state, creature.id, guest_beat).max(1.0);
                 let mut meal = Meal::plan(food, left.min(30.0), appetite, &mut rng);
                 meal.elapsed = dt.min(left);
+                meal.action_mark = creature.state.action_elapsed;
                 creature.state.meal = Some(meal);
             }
             let state = &mut creature.state;
@@ -100,6 +113,28 @@ impl World {
                 meal.without_tosses();
             }
         }
+    }
+}
+
+/// The guest on stage, and how long its calm moment has left to run, if it is having one.
+pub(super) fn guest_beat_left(visitors: &VisitorState) -> Option<(CreatureId, f32)> {
+    visitors
+        .guest
+        .as_ref()
+        .filter(|guest| guest.on_stage)
+        .map(|guest| (guest.creature.id, guest.visit.beat_remaining.max(0.0)))
+}
+
+/// How long the action under way has left: its own length less how far in it is, or, for a guest
+/// whose calm moment has no length of its own, what is left of the moment.
+pub(super) fn action_left(
+    state: &CreatureState,
+    id: CreatureId,
+    guest_beat: Option<(CreatureId, f32)>,
+) -> f32 {
+    match guest_beat {
+        Some((guest, left)) if guest == id && state.action_duration == f32::MAX => left,
+        _ => state.action_duration - state.action_elapsed,
     }
 }
 
