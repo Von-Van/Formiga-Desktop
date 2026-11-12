@@ -43,7 +43,8 @@ const STRIDE_ROUND: f32 = 6.0 * 10_000.0;
 
 impl World {
     /// Measure where everyone has got to since the last tick. Called once, at the end of every
-    /// tick, paused or not.
+    /// tick, paused or not: paused, with no time passing, so its clocks hold still while where
+    /// everyone stands is still kept up to date.
     pub(super) fn carry_presence(&mut self, dt: f32, desktop: &DesktopSnapshot) {
         let display_scale = f32::from(self.save.settings.display_scale.max(1));
         let reduced = self.save.settings.reduce_motion;

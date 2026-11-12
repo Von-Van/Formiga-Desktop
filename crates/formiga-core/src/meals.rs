@@ -257,6 +257,9 @@ pub struct Meal {
     pub elapsed: f32,
     /// Seconds it lasts.
     pub length: f32,
+    /// The eating action's own clock when the meal was last carried along: the meal moves on
+    /// only as far as that clock does, and a clock that has gone back is a new meal.
+    pub(crate) action_mark: f32,
     steps: [(MealStep, f32); MAX_STEPS],
     count: u8,
 }
@@ -398,6 +401,7 @@ impl Meal {
             food,
             elapsed: 0.0,
             length: length.max(0.5),
+            action_mark: 0.0,
             steps: laid,
             count: count as u8,
         }

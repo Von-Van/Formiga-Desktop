@@ -237,10 +237,13 @@ impl FormigaApp {
             OfferKind::Snack => WorldCommand::OfferSnack { creature_id },
             OfferKind::Toy => WorldCommand::OfferToy { creature_id },
         };
+        // While the colony is away in Hill or Battle, the world here is only held for it: nobody
+        // is about to take an offer, and its answer would wait until they are home.
+        let away = self.colony_away();
         let Some(world) = self.world.as_mut() else {
             return;
         };
-        let offered = world.handle_command(command, &desktop);
+        let offered = !away && world.handle_command(command, &desktop);
         let name = world
             .save
             .creatures
@@ -745,6 +748,7 @@ impl FormigaApp {
     /// Show a shared seed code's companion in the studio as the one preview, before it is
     /// welcomed.
     fn preview_shared_creature(&mut self, shared: SharedCreatureSeed) {
+        self.forget_reference_search();
         let desktop = self.snapshot();
         let creature = World::from_shared_creature(shared, OffsetDateTime::now_utc(), &desktop)
             .save
@@ -777,6 +781,7 @@ impl FormigaApp {
         let seeds: Result<Vec<_>, _> = (0..4).map(|_| new_colony_seed()).collect();
         match seeds {
             Ok(seeds) => {
+                self.forget_reference_search();
                 if let Some(window) = &mut self.settings_window {
                     window.clear_generation_preview();
                 }
@@ -878,6 +883,16 @@ impl FormigaApp {
                     window.set_error(format!("Could not start reading the picture: {error}"));
                 }
             }
+        }
+    }
+
+    /// Let go of a picture still being read for takes: something else has filled the studio, and
+    /// takes coming back later must not clear it away while somebody is choosing from it.
+    pub(super) fn forget_reference_search(&mut self) {
+        if self.reference_search.take().is_some()
+            && let Some(window) = &mut self.settings_window
+        {
+            window.set_reference_search(false);
         }
     }
 

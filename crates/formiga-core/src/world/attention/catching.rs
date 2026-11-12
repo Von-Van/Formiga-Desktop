@@ -657,8 +657,18 @@ impl World {
             .monitors
             .iter()
             .find(|m| m.id == leap.surface.monitor_id);
+        // How far above its feet its head is, so where it is set down is open to the sky.
+        let rise = self
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == jumper)
+            .map_or(0.0, |c| {
+                head_point(c, &self.save.settings, desktop).y - c.state.position.y
+            });
         // Down on the window's side of the catcher, where it came from, or on the far side when
-        // that is not open ground.
+        // that is not open ground: inside the habitat, with its head out from under any window,
+        // or the round would end the moment it is set down instead of with its shared ending.
         let Some(down) = [-round.spot.direction, round.spot.direction]
             .into_iter()
             .map(|side| Point {
@@ -667,6 +677,14 @@ impl World {
             })
             .find(|point| {
                 monitor.is_some_and(|m| habitat_contains(&self.save.settings.habitat, m, *point))
+                    && point_exposed(
+                        Point {
+                            x: point.x,
+                            y: point.y + rise,
+                        },
+                        leap.surface.window_key,
+                        desktop,
+                    )
             })
         else {
             round.enter(Phase::Missed, s.elapsed);

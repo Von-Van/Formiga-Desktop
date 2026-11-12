@@ -67,6 +67,32 @@ pub(super) fn talk_origin(
     }
 }
 
+/// Where a bubble `size` art pixels across and down goes while it grows, on the side the whole
+/// bubble's placement `whole` chose: under the creature if the whole bubble went under it, and
+/// otherwise over it. A small first step that would fit above a creature the whole bubble has to
+/// go under is put under it too, so a growing bubble never jumps across the creature.
+pub(super) fn talk_origin_beside(
+    whole: TalkPlacement,
+    centre_x: f32,
+    (head_top, foot_bottom): (f32, f32),
+    scale: f32,
+    drawable: PhysicalSize<u32>,
+    (width, height): (f32, f32),
+) -> TalkPlacement {
+    let x = centre_x - (width / 2.0).floor() * scale;
+    let x = x.clamp(0.0, (drawable.width as f32 - width * scale).max(0.0));
+    let y = if whole.below {
+        foot_bottom + scale
+    } else {
+        (head_top - (height + 1.0) * scale).max(0.0)
+    };
+    TalkPlacement {
+        x,
+        y,
+        below: whole.below,
+    }
+}
+
 /// Where a milestone bubble `width` pixels across is centred, for a creature at `local_x` on a
 /// drawable `drawable_width` pixels across: over the creature, kept whole on the display. `min`
 /// then `max`, not `clamp`: on a drawable narrower than the bubble, or one recovered with no size
@@ -375,12 +401,12 @@ impl OverlayRenderer {
                 self.creature_extent(creature, sprite, display_scale);
             let extent = (head_top, foot_bottom);
             // The room a whole bubble takes, kept from its first growing step to its last.
-            let room = talk_origin(centre_x, extent, scale, self.layout, full);
+            let whole = talk_origin(centre_x, extent, scale, self.layout, full);
             let room = (
-                room.x,
-                room.y,
-                room.x + full.0 * scale,
-                room.y + full.1 * scale,
+                whole.x,
+                whole.y,
+                whole.x + full.0 * scale,
+                whole.y + full.1 * scale,
             );
             if answer {
                 kept.push(room);
@@ -392,7 +418,7 @@ impl OverlayRenderer {
             // In art pixels: the tail's tip, at the middle of the bottom row, sits just over the
             // crown, or just under the feet with the bubble turned over.
             let size = (frame.width as f32 / detail, frame.height as f32 / detail);
-            let placement = talk_origin(centre_x, extent, scale, self.layout, size);
+            let placement = talk_origin_beside(whole, centre_x, extent, scale, self.layout, size);
             let (x, y) = (self.snap(placement.x), self.snap(placement.y));
             vertices.extend_from_slice(&talk_quad(
                 frame,
