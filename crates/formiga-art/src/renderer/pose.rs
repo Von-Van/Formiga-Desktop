@@ -381,7 +381,7 @@ impl Pose {
         let mut pose = Self::stride(genome, phase, bob, false);
         if mood == Gesture::Skip {
             // Up off the ground between footfalls, landing squashed on each.
-            let hop = [0, 2, 1, 0, 2, 1][phase];
+            let hop = SKIP_HOP[phase];
             pose.play_lift = hop;
             pose.bob = if hop == 0 { bob } else { 0 };
             pose.squash_x = i32::from(hop == 0) - i32::from(hop == 2);
@@ -957,6 +957,15 @@ pub(super) fn resting_manner(genome: &AppearanceGenome) -> (i32, bool) {
 /// Whether frame `phase` of six of this body's walk or run is a footfall, a foot just down —
 /// where [`Pose::stride`] dips the body: either end of the swing side on, all four down for a
 /// long body, a foot landed for one facing the screen.
+/// How high a skip is off the ground on each of its six frames: down on 0 and 3, whatever the
+/// body, for its hop overrides the stride's own lift.
+const SKIP_HOP: [i32; 6] = [0, 2, 1, 0, 2, 1];
+
+/// Whether `phase` of a skip has it landed, feet on the ground.
+pub(super) fn skip_landing(phase: usize) -> bool {
+    SKIP_HOP[phase % 6] == 0
+}
+
 pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {
     let down = if genome.design.is_none() {
         0

@@ -65,6 +65,7 @@ fn a_meal_starts_with_eating_and_ends_with_it() {
             .expect("eating starts a meal");
         assert!(meal.elapsed <= TICK);
         foods.insert(meal.food.index());
+        world.save.creatures[0].state.action_elapsed += TICK;
         world.carry_meals(now, TICK);
         let carried = world.save.creatures[0].state.meal.expect("still eating");
         assert!(carried.elapsed > meal.elapsed, "the meal goes on");
@@ -187,5 +188,100 @@ fn a_guest_eats_and_plays_the_way_residents_do() {
             .expect("a guest plays a real game");
         assert!(matches!(play.thing, crate::play::Plaything::Toy(_)));
         assert_eq!(play.borrowed, None);
+    }
+}
+
+/// A guest's calm moment has no length of its own, only what is left of the visit's beat: its
+/// meal and its game are laid out to fit that, not half a minute nobody stays for. And its game
+/// is shown, with no pose of the moment's own over the top of it.
+#[test]
+fn a_guest_s_calm_meal_and_game_fit_what_is_left_of_its_moment() {
+    let now = datetime!(2026-09-18 12:00 UTC);
+    let mut world = two_creature_world([5; 32], now);
+    let mut creature = world.save.creatures[0].clone();
+    creature.id = 77;
+    let mut guest = Visitor::new(creature, VisitorSource::Wanderer, None);
+    guest.on_stage = true;
+    guest.visit.beat_remaining = 6.5;
+    world.save.visitors.guest = Some(guest);
+    let set = |world: &mut World, action: ActionKind| {
+        let guest = &mut world.save.visitors.guest.as_mut().unwrap().creature;
+        guest.state.action = action;
+        guest.state.action_elapsed = 0.0;
+        guest.state.action_duration = f32::MAX;
+        guest.state.attention = None;
+        guest.state.meal = None;
+        guest.state.play = None;
+    };
+    set(&mut world, ActionKind::Eat);
+    world.carry_meals(now, TICK);
+    let guest = world.save.visitors.on_stage().unwrap();
+    let meal = guest.state.meal.expect("a guest eats a real meal");
+    assert!(
+        (meal.length - 6.5).abs() < 0.01,
+        "the meal fits the moment: {}",
+        meal.length
+    );
+    set(&mut world, ActionKind::SoloPlay);
+    world.carry_play(now, TICK);
+    let guest = world.save.visitors.on_stage().unwrap();
+    let play = guest.state.play.expect("a guest plays a real game");
+    assert!(
+        (play.length - 6.5).abs() < 0.01,
+        "the game fits the moment: {}",
+        play.length
+    );
+    assert!(guest.state.play_shown().is_some(), "and it is shown");
+}
+
+/// A meal and a game move on with their action's own clock: not while a yawn or anything else
+/// holds it, and from the start again when the same action is chosen straight after itself.
+#[test]
+fn meals_and_games_keep_to_their_action_s_clock() {
+    let created = datetime!(2026-01-01 12:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([62; 32], created, &desktop);
+    for action in [ActionKind::Eat, ActionKind::SoloPlay] {
+        let shown = |world: &World| {
+            let state = &world.save.creatures[0].state;
+            match action {
+                ActionKind::Eat => state.meal.map(|meal| (meal.elapsed, meal.length)),
+                _ => state.play.map(|play| (play.elapsed, play.length)),
+            }
+        };
+        let carry = |world: &mut World| {
+            world.carry_meals(created, TICK);
+            world.carry_play(created, TICK);
+        };
+        let creature = &mut world.save.creatures[0];
+        creature.state.action = action;
+        creature.state.action_elapsed = TICK;
+        creature.state.action_duration = 8.0;
+        creature.state.attention = None;
+        creature.state.meal = None;
+        creature.state.play = None;
+        carry(&mut world);
+        let (began, _) = shown(&world).expect("it starts");
+        // Held by a yawn: the action's clock waits, and so does the meal or game.
+        for _ in 0..40 {
+            carry(&mut world);
+        }
+        assert_eq!(
+            shown(&world).unwrap().0,
+            began,
+            "{action:?} waits with its clock"
+        );
+        // Carried right through to its end.
+        for _ in 0..200 {
+            world.save.creatures[0].state.action_elapsed += TICK;
+            carry(&mut world);
+        }
+        let (late, length) = shown(&world).unwrap();
+        assert!(late >= length - TICK, "{action:?} has run its course");
+        // Chosen again straight after itself: the clock starts again, and so does a new one.
+        world.save.creatures[0].state.action_elapsed = TICK;
+        carry(&mut world);
+        let (again, _) = shown(&world).expect("a new one starts");
+        assert!(again <= TICK, "{action:?} starts afresh, not at {again}");
     }
 }

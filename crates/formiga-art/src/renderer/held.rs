@@ -15,8 +15,9 @@ use super::playthings::{Plaything, draw_plaything};
 use super::*;
 use formiga_core::meals::Food;
 
-/// How big a held thing's cell is, in art pixels.
-pub const HELD_CELL: u32 = 16;
+/// How big a held thing's cell is, in art pixels: room for the whole of every drawing, a rattle's
+/// handle, a cup's steam and a tower's top block included, with its middle where the hold puts it.
+pub const HELD_CELL: u32 = 24;
 /// Cells to a row of the held sheet.
 pub const HELD_SHEET_COLUMNS: u32 = 16;
 
@@ -433,6 +434,32 @@ mod tests {
                 firsts.push(cell);
             }
         }
+    }
+
+    /// Every held picture fits whole in its cell: drawn on a canvas with room to spare, nothing
+    /// of it falls outside where its cell would cut it off.
+    #[test]
+    fn every_held_picture_fits_whole_in_its_cell() {
+        let mut clipped = Vec::new();
+        for thing in HeldThing::all().filter(|thing| *thing != HeldThing::String) {
+            let room = 3 * HELD_CELL as i32;
+            let mut canvas = Canvas::new(room as u32, room as u32);
+            let middle = room / 2;
+            let offset = thing.offset();
+            thing.draw(&mut canvas, middle + offset.x, middle + offset.y);
+            let half = HELD_CELL as i32 / 2;
+            let cell = (middle - half)..(middle + half);
+            let outside = (0..room)
+                .flat_map(|y| (0..room).map(move |x| (x, y)))
+                .filter(|&(x, y)| {
+                    canvas.get(x, y).a > 0 && !(cell.contains(&x) && cell.contains(&y))
+                })
+                .count();
+            if outside > 0 {
+                clipped.push(format!("{thing:?}: {outside}"));
+            }
+        }
+        assert!(clipped.is_empty(), "cut off by their cells: {clipped:#?}");
     }
 
     /// Every food goes down mouthful by mouthful: the last of it is less than all of it.

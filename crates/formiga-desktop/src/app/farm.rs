@@ -429,6 +429,7 @@ impl FormigaApp {
         let desktop = self.snapshot();
         let mut creature = World::preview_adult(source_seed, now, &desktop);
         apply_design(&mut creature, &design);
+        self.forget_reference_search();
         self.show_settings(event_loop);
         let Some(window) = &mut self.settings_window else {
             tracing::warn!("a companion drawn in Formiga Farm could not be shown in the studio");

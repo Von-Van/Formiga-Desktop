@@ -18,6 +18,26 @@ All notable changes are documented here.
 
 ### Fixed
 
+- A talk bubble that grows in near the top of a display no longer jumps from over a companion's
+  head to under its feet as it grows: every step goes on the side the whole bubble takes.
+- On a Retina Mac at display scale 2, the overlay draws at full resolution again, so talk bubbles
+  keep the finer pictures they are drawn with.
+- Snacks and toys can't be held out from a companion's profile while the colony is away in Hill or
+  Battle.
+- A modular companion skipping up or down a village path changes size as it lands, not in the air.
+- A guest's snack and dance during a visit are laid out for what is left of the moment, and the
+  dance shows its game rather than a bop over the top of it.
+- Meals and games move on with their action's own clock: they wait through a yawn, and eating or
+  playing chosen again straight after itself starts a fresh meal or game.
+- Pausing the colony holds every companion still: no blinks, glances or settling while paused.
+- A companion caught in Jump'n'Catch is set down where its head is in the open, so the round gets
+  its shared ending.
+- A picture search still running no longer clears new studio previews (four new companions, a
+  shared code, or a Farm design) when it finishes.
+- Held things (a rattle's handle, a cup's steam, a tower's top block) are no longer cut off at the
+  edges: each held picture's cell is 24 art pixels.
+- The notebook's pencil writing stops asking for frame after frame when one frame's text is more
+  than its atlas holds.
 - A computer clock that ran ahead and was then put right no longer holds the colony's houses out
   (or keeps them away), or its offers, rituals and journal moments back, until real time catches
   up. The colony's own timeline still never runs backwards, but while the clock reads earlier than

@@ -1031,6 +1031,49 @@ fn a_bubble_at_the_top_of_a_display_hangs_under_its_creature_tail_up() {
 }
 
 #[test]
+fn half_resolution_never_throws_away_a_talk_bubbles_finer_pixels() {
+    // On a Retina display at display scale 2, an art pixel is two physical pixels and a bubble's
+    // texture pixel one: halving would merge every two of them, so the overlay stays at full.
+    assert_eq!(render_divisor(true, 2.0, 2), 1);
+    assert_eq!(render_divisor(true, 2.0, 4), 2);
+    assert_eq!(render_divisor(true, 2.0, 3), 1);
+    assert_eq!(render_divisor(true, 1.0, 4), 1);
+    assert_eq!(render_divisor(false, 2.0, 4), 1);
+}
+
+#[test]
+fn a_growing_bubble_stays_on_the_side_its_whole_bubble_takes() {
+    let scale = 4.0;
+    let full = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
+    let small = TalkSheet::frame(
+        formiga_core::talk::TalkStyle::Chat,
+        formiga_core::BubbleGrowth::Small,
+    );
+    let small = (
+        small.width as f32 / TALK_DETAIL as f32,
+        small.height as f32 / TALK_DETAIL as f32,
+    );
+    // Near the top: a small first step would fit above the head, but the whole bubble goes
+    // under the feet, so every step does.
+    let extent = (40.0, 40.0 + 40.0 * scale);
+    let whole = talk_origin(700.0, extent, scale, DRAWABLE, full);
+    assert!(whole.below);
+    assert!(
+        !talk_origin(700.0, extent, scale, DRAWABLE, small).below,
+        "on its own the small step would go above"
+    );
+    let step = talk_origin_beside(whole, 700.0, extent, scale, DRAWABLE, small);
+    assert!(step.below);
+    assert_eq!(step.y, whole.y, "hung from the same row under the feet");
+    // With room above, every step goes above, its tail on the same row as the whole bubble's.
+    let extent = (400.0, 560.0);
+    let whole = talk_origin(700.0, extent, scale, DRAWABLE, full);
+    let step = talk_origin_beside(whole, 700.0, extent, scale, DRAWABLE, small);
+    assert!(!whole.below && !step.below);
+    assert_eq!(step.y + small.1 * scale, whole.y + full.1 * scale);
+}
+
+#[test]
 fn a_milestone_bubble_on_a_drawable_narrower_than_itself_does_not_panic() {
     assert_eq!(milestone_centre_x(700.0, 120.0, 1440.0), 700.0);
     assert_eq!(milestone_centre_x(10.0, 120.0, 1440.0), 60.0);
