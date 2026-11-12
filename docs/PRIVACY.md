@@ -97,6 +97,13 @@ temperament — and nothing about the person who shared it, their computer, or t
 chose to invite again, each only a `kept_at_utc`, the `name` it went by, and the same `origin`; a
 favorite stays until it is forgotten and never grows past eight on its own.
 
+Save version 34 adds two. Whether the village stays on the desktop between visits home is one yes
+or no, written only once it is chosen. A wonder put out from the notebook, at most three of them,
+is written as its kind, the privacy-safe display key of the floor it stands on, and a fraction along
+that floor — never a screen position. A wonder set on top of a window rides that window while
+Formiga runs, but the window is never written: only the fraction of the floor beneath the wonder is,
+so after a relaunch it stands on the floor there.
+
 Save version 24 (0.66.0) adds two: a record for each kind of wonder the colony has found — the
 kind, when, which companion and its name, and how many goes it has had — and the local date with a
 count of the trinkets found on it. Neither says anything about the desktop: where a wonder stood,

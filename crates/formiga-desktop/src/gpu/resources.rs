@@ -481,12 +481,13 @@ impl OverlayRenderer {
 
     pub(super) fn ensure_wonder(&mut self, kind: WonderKind, colony_seed: [u8; 32]) {
         if self
-            .wonder
-            .as_ref()
-            .is_some_and(|wonder| wonder.kind == kind && wonder.colony_seed == colony_seed)
+            .wonders
+            .iter()
+            .any(|wonder| wonder.kind == kind && wonder.colony_seed == colony_seed)
         {
             return;
         }
+        self.wonders.retain(|wonder| wonder.kind != kind);
         let width = WONDER_CELL_WIDTH * wonder_frames(kind);
         let pixels = WonderRenderer::render(kind, colony_seed).rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -537,7 +538,7 @@ impl OverlayRenderer {
                 },
             ],
         });
-        self.wonder = Some(WonderGpu {
+        self.wonders.push(WonderGpu {
             _texture: texture,
             bind_group,
             kind,

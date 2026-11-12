@@ -533,6 +533,40 @@ impl OverlayRenderer {
         }
     }
 
+    /// Where a wonder put out hangs its menu: over the top of the wonder itself, centred on where
+    /// it stands.
+    pub fn wonder_menu_anchor(
+        &self,
+        wonder: &crate::wonder_proxies::PlacedWonderShape,
+        display_scale: u8,
+    ) -> MenuAnchor {
+        let bounds = self.monitor.bounds;
+        let usable = self.monitor.usable_bounds;
+        let factor = self.monitor.scale_factor;
+        let foot = self.snap((wonder.at.y - bounds.y) * factor);
+        let top = self.snap((wonder.top() - bounds.y) * factor);
+        MenuAnchor {
+            centre_x: self.snap((wonder.at.x - bounds.x) * factor),
+            head_top: top,
+            foot_bottom: foot,
+            ground: foot,
+            settled_head_top: top,
+            art_scale: self.menu_scale(display_scale),
+            grid: self.render_divisor as f32,
+            usable: LocalRect {
+                x: (usable.x - bounds.x) * factor,
+                y: (usable.y - bounds.y) * factor,
+                width: usable.width * factor,
+                height: usable.height * factor,
+            },
+            monitor_origin: Point {
+                x: bounds.x,
+                y: bounds.y,
+            },
+            scale_factor: factor,
+        }
+    }
+
     /// Every quad sampled from the UI atlas this frame: the open menu's frame, its four cells, and
     /// the label tab under whichever one is hovered.
     pub(super) fn ui_vertices(&self, visible: &[&Creature], ui: OverlayUi<'_>) -> Vec<Vertex> {

@@ -183,8 +183,9 @@ pub struct OverlayUi<'a> {
     pub menu: Option<MenuView<'a>>,
     /// What the village is up to this frame.
     pub village: VillageScene<'a>,
-    /// A wonder out somewhere for somebody to play on.
-    pub wonder: Option<WonderView>,
+    /// Every wonder out: those put out by the person at the desk, and one that turned up by
+    /// itself for somebody to play on.
+    pub wonders: &'a [WonderView],
     /// The train, while the colony is getting on or off it.
     pub train: Option<TrainView>,
 }
@@ -254,8 +255,8 @@ struct TrinketAtlasGpu {
     key: TrinketAtlasKey,
 }
 
-/// The wonder out now: its frames, baked when it appears and dropped once it has gone, so an
-/// overlay with no wonder out holds nothing for one.
+/// One wonder out: its frames, baked when it appears and dropped once it has gone, so an overlay
+/// with no wonder out holds nothing for one.
 struct WonderGpu {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
@@ -308,7 +309,8 @@ pub struct OverlayRenderer {
     talk_sheet: Option<HeldSheetGpu>,
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
-    wonder: Option<WonderGpu>,
+    /// Each kind of wonder out on this display, at most one of each.
+    wonders: Vec<WonderGpu>,
     /// The train's frames, while a trip is on this display.
     train: Option<train::TrainGpu>,
     tree_vertex_cache_key: Option<TreeVertexCacheKey>,
@@ -587,7 +589,7 @@ impl OverlayRenderer {
             talk_sheet: None,
             trinkets: None,
             rope: None,
-            wonder: None,
+            wonders: Vec::new(),
             train: None,
             tree_vertex_cache_key: None,
             tree_vertices: Vec::new(),
@@ -749,7 +751,7 @@ impl OverlayRenderer {
         // Whoever is on this display, drawn or not: a full-screen app hiding them keeps their
         // atlases, so nobody is baked again, all in one frame, the moment it closes.
         let here = drawn_on_monitor(save, self.monitor.id, false);
-        let shelter_here = save.home.is_active()
+        let shelter_here = save.home.shown()
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
@@ -886,19 +888,19 @@ impl OverlayRenderer {
             self.ensure_rope();
         }
         // A wonder stands behind whoever is playing on it.
-        let wonder_start = vertices.len();
-        match ui
-            .wonder
+        let wonders_here: Vec<WonderView> = ui
+            .wonders
+            .iter()
+            .copied()
             .filter(|wonder| wonder.monitor_id == self.monitor.id && !monitor_fully_occluded)
-        {
-            Some(wonder) => {
-                self.ensure_wonder(wonder.kind, save.colony_seed);
-                vertices
-                    .extend_from_slice(&self.wonder_vertices(wonder, save.settings.display_scale));
-            }
-            None => self.wonder = None,
+            .collect();
+        self.wonders
+            .retain(|kept| wonders_here.iter().any(|wonder| wonder.kind == kept.kind));
+        let wonder_start = vertices.len();
+        for wonder in &wonders_here {
+            self.ensure_wonder(wonder.kind, save.colony_seed);
+            vertices.extend_from_slice(&self.wonder_vertices(*wonder, save.settings.display_scale));
         }
-        let wonder_vertex_count = vertices.len() - wonder_start;
         for creature in &visible {
             let sprite = self.sprite_for(creature).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state_among(
@@ -1203,15 +1205,10 @@ impl OverlayRenderer {
             {
                 draw(&mut pass, &rope.bind_group, rope_start, rope_vertex_count);
             }
-            if wonder_vertex_count > 0
-                && let Some(wonder) = &self.wonder
-            {
-                draw(
-                    &mut pass,
-                    &wonder.bind_group,
-                    wonder_start,
-                    wonder_vertex_count,
-                );
+            for (index, wonder) in wonders_here.iter().enumerate() {
+                if let Some(frames) = self.wonders.iter().find(|kept| kept.kind == wonder.kind) {
+                    draw(&mut pass, &frames.bind_group, wonder_start + index * 6, 6);
+                }
             }
             for creature in in_front {
                 draw_creature(&mut pass, creature);
@@ -1301,6 +1298,7 @@ impl OverlayRenderer {
         habitat_editor: Option<&HabitatPolicy>,
         windows: &[DesktopWindow],
         ui_active: bool,
+        wonder_here: bool,
     ) -> bool {
         if self.has_visual_content || habitat_editor.is_some() || ui_active {
             return true;
@@ -1314,7 +1312,7 @@ impl OverlayRenderer {
         let fully_occluded = rects_cover(self.monitor.bounds, &occlusion_rects);
         let creature_visible = !drawn_on_monitor(save, self.monitor.id, fully_occluded).is_empty();
         let shelter_visible = !fully_occluded
-            && save.home.is_active()
+            && save.home.shown()
             && save.home.display == Some(self.monitor.display_key)
             && resolved_home_anchor(
                 &save.home,
@@ -1337,7 +1335,7 @@ impl OverlayRenderer {
                 .iter()
                 .any(Option::is_some))
                 || save.home.has_ground_items());
-        creature_visible || shelter_visible || object_visible
+        creature_visible || shelter_visible || object_visible || wonder_here
     }
 
     #[allow(clippy::type_complexity)]

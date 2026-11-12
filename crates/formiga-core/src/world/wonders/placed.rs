@@ -85,12 +85,20 @@ impl World {
                     window_key: spot.ground.window(),
                     mirrored: active.is_some_and(|active| active.mirrored),
                     presence: 1.0,
-                    elapsed: self.wonders.placed_clock,
+                    elapsed: active.map_or(0.0, |active| active.elapsed),
                     motion: motion(spot.kind, t, length, toss),
                     glint: false,
                 }
             })
             .collect()
+    }
+
+    /// Whether any wonder put out is being played on just now, or has players on their way.
+    pub fn placed_wonder_playing(&self) -> bool {
+        self.wonders
+            .active
+            .as_ref()
+            .is_some_and(|active| active.placed && !active.leaving())
     }
 
     /// Whether this wonder is being played on just now, or its players are on their way to it.

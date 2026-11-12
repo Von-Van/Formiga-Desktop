@@ -32,10 +32,20 @@ const MOMENT_SCENE: (u32, u32) = (180, 56);
 const SIDE_GAP: i32 = 2;
 
 /// The strips of moments shown open beside a menu, and which of their cells is hovered.
-const MOMENT_STRIPS: [(&[MenuIcon], usize); 3] = [
+const MOMENT_STRIPS: [(&[MenuIcon], usize); 4] = [
     (&[MenuIcon::Picnic, MenuIcon::Dance, MenuIcon::Nap], 0),
     (&[MenuIcon::Picnic, MenuIcon::Dance, MenuIcon::Nap], 2),
     (&[MenuIcon::Stop, MenuIcon::Dance, MenuIcon::Nap], 0),
+    // A village that stays out offers the way back out beside its moments.
+    (
+        &[
+            MenuIcon::Picnic,
+            MenuIcon::Dance,
+            MenuIcon::Nap,
+            MenuIcon::Out,
+        ],
+        3,
+    ),
 ];
 
 const GUTTER: u32 = 152;
@@ -45,9 +55,10 @@ const BAND_GAP: u32 = 14;
 
 const SHEET_WIDTH: u32 = GUTTER + BubbleIcon::ALL.len() as u32 * BUBBLE_SCENE.0 * SCALE;
 
-/// The menus a creature can be offered. The first two are a colony creature's, out on the desktop
-/// and at home with the houses out; the other two are the two shapes a visitor's menu takes.
-const MENUS: [(&str, [MenuIcon; 4]); 4] = [
+/// The menus a creature can be offered. The first three are a colony creature's, out on the
+/// desktop, at home with the houses out, and at home in a village that stays out with nothing to
+/// share; the next two are the two shapes a visitor's menu takes; the last is a wonder put out.
+const MENUS: [(&str, [MenuIcon; 4]); 6] = [
     (
         "colony",
         [
@@ -67,6 +78,15 @@ const MENUS: [(&str, [MenuIcon; 4]); 4] = [
         ],
     ),
     (
+        "home, stays out",
+        [
+            MenuIcon::Snack,
+            MenuIcon::Toy,
+            MenuIcon::Out,
+            MenuIcon::Profile,
+        ],
+    ),
+    (
         "visitor stay",
         [
             MenuIcon::Snack,
@@ -81,6 +101,15 @@ const MENUS: [(&str, [MenuIcon; 4]); 4] = [
             MenuIcon::Snack,
             MenuIcon::Toy,
             MenuIcon::CopyCode,
+            MenuIcon::Profile,
+        ],
+    ),
+    (
+        "wonder",
+        [
+            MenuIcon::Play,
+            MenuIcon::Move,
+            MenuIcon::PutAway,
             MenuIcon::Profile,
         ],
     ),

@@ -38,8 +38,6 @@ pub(super) struct Wonders {
     /// Put-out wonders set on top of a window, riding it: the window, and how far along its top
     /// edge the wonder's middle stands. Runtime only, as windows always are.
     on_window: Vec<(WonderKind, WindowKey, f32)>,
-    /// Seconds the ones put out have been out, for their own little loops.
-    placed_clock: f32,
     /// The kind the next one must be, for tests that need a particular wonder.
     #[cfg(test)]
     forced: Option<WonderKind>,
@@ -56,7 +54,6 @@ impl Wonders {
             grabbed: false,
             placed: Vec::new(),
             on_window: Vec::new(),
-            placed_clock: 0.0,
             #[cfg(test)]
             forced: None,
         }
@@ -948,7 +945,6 @@ impl World {
             self.send_wonder_away(Some(desktop));
         }
         self.place_wonders(desktop);
-        self.wonders.placed_clock = (self.wonders.placed_clock + dt) % 3600.0;
         if let Some(active) = self.wonders.active.as_mut() {
             active.elapsed += dt;
             if let Phase::Leaving(t) = &mut active.phase {
@@ -1178,15 +1174,24 @@ impl World {
     }
 
     /// Which kind turns up: one the colony has not had yet three times in four while there are
-    /// any, and never one for two with nobody to share it.
+    /// any, never one for two with nobody to share it, and never one already put out.
     fn choose_wonder_kind(&mut self, friend_free: bool) -> Option<WonderKind> {
         #[cfg(test)]
         if let Some(kind) = self.wonders.forced {
             return (friend_free || kind.seats() != WonderSeats::Two).then_some(kind);
         }
+        // One already put out is gone to where it stands, not turned up as a second.
         let possible: Vec<WonderKind> = WonderKind::ALL
             .into_iter()
             .filter(|kind| friend_free || kind.seats() != WonderSeats::Two)
+            .filter(|kind| {
+                !self
+                    .save
+                    .companion
+                    .placed_wonders
+                    .iter()
+                    .any(|placed| placed.kind == *kind)
+            })
             .collect();
         let new: Vec<WonderKind> = possible
             .iter()

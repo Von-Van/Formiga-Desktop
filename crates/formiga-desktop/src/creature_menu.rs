@@ -59,6 +59,24 @@ pub enum MenuTarget {
     Member,
     Guest,
     House,
+    /// A wonder the person at the desk put out. Its menu's `creature_id` is the kind's place in
+    /// [`WonderKind::ALL`]: see [`wonder_menu_id`].
+    Wonder,
+}
+
+/// The id a wonder's menu goes by in place of a creature's: the kind's place in the catalogue.
+pub fn wonder_menu_id(kind: formiga_core::WonderKind) -> CreatureId {
+    formiga_core::WonderKind::ALL
+        .iter()
+        .position(|candidate| *candidate == kind)
+        .unwrap_or(0) as CreatureId
+}
+
+/// The kind a wonder's menu belongs to, from the id it goes by.
+pub fn wonder_of_menu(id: CreatureId) -> Option<formiga_core::WonderKind> {
+    formiga_core::WonderKind::ALL
+        .get(usize::try_from(id).ok()?)
+        .copied()
 }
 
 /// Why a menu closed. Only ever used for logging and tests: the menu simply goes.
@@ -89,7 +107,7 @@ pub enum MenuDismissal {
 /// already on its way. A house's has two of its own: see [`house_items`].
 pub fn menu_items(target: MenuTarget, visitor_can_stay: bool) -> [MenuIcon; 4] {
     match target {
-        MenuTarget::Member | MenuTarget::House => [
+        MenuTarget::Member | MenuTarget::House | MenuTarget::Wonder => [
             MenuIcon::Snack,
             MenuIcon::Toy,
             MenuIcon::Home,
@@ -120,6 +138,15 @@ pub fn house_items(open_here: bool) -> [MenuIcon; 2] {
         MenuIcon::Profile,
     ]
 }
+
+/// The four items a wonder's menu offers: a go on it for whoever is free, moving it, putting it
+/// away, and its page in the notebook.
+pub const WONDER_ITEMS: [MenuIcon; 4] = [
+    MenuIcon::Play,
+    MenuIcon::Move,
+    MenuIcon::PutAway,
+    MenuIcon::Profile,
+];
 
 /// A rectangle in monitor-local physical pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -506,12 +533,49 @@ impl CreatureMenu {
         }
     }
 
+    /// The menu of a wonder put out.
+    pub fn for_wonder(
+        kind: formiga_core::WonderKind,
+        monitor_id: MonitorId,
+        settings_focused: bool,
+    ) -> Self {
+        let items = WONDER_ITEMS.to_vec();
+        Self {
+            creature_id: wonder_menu_id(kind),
+            target: MenuTarget::Wonder,
+            layout: MenuLayout::new(&items),
+            items,
+            monitor_id,
+            hovered: None,
+            placement: None,
+            strayed_for: 0.0,
+            untouched_for: 0.0,
+            settings_focused,
+            side: None,
+            usable: None,
+            unavailable: None,
+            steady: None,
+        }
+    }
+
     /// While the houses are out nobody needs sending home, so the same cell offers the moments
     /// the village could share instead, and nothing else in the strip moves.
     pub fn offering_moments(mut self) -> Self {
         for item in &mut self.items {
             if *item == MenuIcon::Home {
                 *item = MenuIcon::Moment;
+            }
+        }
+        self.layout = MenuLayout::new(&self.items);
+        self
+    }
+
+    /// During a visit home to a village that stays out, with no moment to share, the same cell
+    /// sends everyone back out to roam instead.
+    pub fn offering_out(mut self) -> Self {
+        for item in &mut self.items {
+            if *item == MenuIcon::Home {
+                *item = MenuIcon::Out;
             }
         }
         self.layout = MenuLayout::new(&self.items);
@@ -1487,5 +1551,30 @@ mod tests {
         let mini = place(&layout, anchor(900.0, mini_head, scale, 1.0));
         assert!(mini.y > adult.y, "the small creature's menu hangs lower");
         assert_eq!(mini.y - adult.y, mini_head - adult_head);
+    }
+
+    #[test]
+    fn a_wonder_has_its_own_four_items_and_goes_by_its_kind() {
+        for kind in formiga_core::WonderKind::ALL {
+            let menu = CreatureMenu::for_wonder(kind, 1, false);
+            assert_eq!(menu.target(), MenuTarget::Wonder);
+            assert_eq!(menu.items(), WONDER_ITEMS);
+            assert_eq!(wonder_of_menu(menu.creature_id()), Some(kind));
+        }
+        assert_eq!(wonder_of_menu(99), None);
+    }
+
+    #[test]
+    fn a_visit_to_a_village_that_stays_out_offers_the_way_back_out() {
+        let menu = CreatureMenu::new(7, MenuTarget::Member, false, 1, false).offering_out();
+        assert_eq!(
+            menu.items(),
+            [
+                MenuIcon::Snack,
+                MenuIcon::Toy,
+                MenuIcon::Out,
+                MenuIcon::Profile
+            ]
+        );
     }
 }
