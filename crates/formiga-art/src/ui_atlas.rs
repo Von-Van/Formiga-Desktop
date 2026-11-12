@@ -183,10 +183,13 @@ pub enum MenuIcon {
     Nap,
     Stop,
     Inside,
+    Play,
+    Move,
+    PutAway,
 }
 
 impl MenuIcon {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 15] = [
         Self::Snack,
         Self::Toy,
         Self::Home,
@@ -199,6 +202,9 @@ impl MenuIcon {
         Self::Nap,
         Self::Stop,
         Self::Inside,
+        Self::Play,
+        Self::Move,
+        Self::PutAway,
     ];
 
     fn index(self) -> u32 {
@@ -229,6 +235,9 @@ pub fn menu_label_text(icon: MenuIcon) -> &'static str {
         MenuIcon::Nap => "nap",
         MenuIcon::Stop => "stop",
         MenuIcon::Inside => "look inside",
+        MenuIcon::Play => "play",
+        MenuIcon::Move => "move",
+        MenuIcon::PutAway => "put away",
     }
 }
 
@@ -1208,6 +1217,66 @@ fn draw_menu_icon(canvas: &mut Canvas, x: i32, y: i32, icon: MenuIcon) {
             &[('#', ROSE), ('+', ROSE_DEEP), ('p', PAPER)],
         ),
         // A door standing ajar, lamplight spilling out round it onto the step.
+        MenuIcon::Play => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "........g...",
+                ".......ggg..",
+                "........g...",
+                "..........##",
+                "........##++",
+                "......##++..",
+                "....##++....",
+                "..##++......",
+                "##++........",
+                "+....pp.....",
+                "....pppp....",
+                "...pppppp...",
+            ],
+            &[('#', TAN), ('+', TAN_DEEP), ('p', BERRY_DEEP), ('g', GOLD)],
+        ),
+        MenuIcon::Move => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".....##.....",
+                "....####....",
+                "...######...",
+                "..#..##..#..",
+                ".##..##..##.",
+                "############",
+                "++++++++++++",
+                ".++..++..++.",
+                "..+..++..+..",
+                "...++++++...",
+                "....++++....",
+                ".....++.....",
+            ],
+            &[('#', PERIWINKLE), ('+', PERIWINKLE_DEEP)],
+        ),
+        MenuIcon::PutAway => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".....tt.....",
+                ".....tt.....",
+                "...tttttt...",
+                "....tttt....",
+                ".....tt.....",
+                "o..........o",
+                "oooooooooooo",
+                "o##########o",
+                "o#++++++++#o",
+                "o##########o",
+                "o##########o",
+                "oooooooooooo",
+            ],
+            &[('o', OUTLINE), ('#', TAN), ('+', TAN_DEEP), ('t', TEAL)],
+        ),
         MenuIcon::Inside => stamp(
             canvas,
             x,
@@ -1316,6 +1385,8 @@ fn glyph(letter: char) -> [&'static str; GLYPH_HEIGHT as usize] {
         'r' => ["##.", "#.#", "##.", "#.#", "#.#"],
         's' => [".##", "#..", ".#.", "..#", "##."],
         't' => ["###", ".#.", ".#.", ".#.", ".#."],
+        'u' => ["#.#", "#.#", "#.#", "#.#", "###"],
+        'v' => ["#.#", "#.#", "#.#", "#.#", ".#."],
         'w' => ["#.#", "#.#", "###", "###", "#.#"],
         'y' => ["#.#", "#.#", ".#.", ".#.", ".#."],
         _ => ["...", "...", "...", "...", "..."],

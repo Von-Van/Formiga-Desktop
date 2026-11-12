@@ -331,6 +331,10 @@ pub struct CompanionState {
     /// One record per kind of wonder: the first of each, and how many goes the colony has had.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub wonders: Vec<crate::WonderRecord>,
+    /// The wonders the person at the desk has put out, at most [`crate::MAX_PLACED_WONDERS`],
+    /// each a kind the colony has found and none twice. Absent while none is out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub placed_wonders: Vec<crate::PlacedWonder>,
     pub appearance: AppearancePreferences,
     pub schedule: RoutineSchedule,
     /// Everything written in the journal up to this moment has been read. A noteworthy moment
@@ -352,6 +356,7 @@ impl Default for CompanionState {
             pins: Vec::new(),
             scrapbook: Vec::new(),
             wonders: Vec::new(),
+            placed_wonders: Vec::new(),
             appearance: AppearancePreferences::default(),
             schedule: RoutineSchedule::default(),
             journal_seen_until: None,
@@ -506,6 +511,21 @@ impl CompanionState {
         self.scrapbook.dedup_by_key(|record| record.variant);
         self.scrapbook.truncate(usize::from(TRINKET_VARIANTS));
         self.appearance.normalize();
+        // A wonder put out stands somewhere on its floor, is one the colony has found, and is out
+        // once; no more than can be out at once are kept, the first of them.
+        let found: Vec<crate::WonderKind> = self.wonders.iter().map(|record| record.kind).collect();
+        let mut seen = Vec::new();
+        self.placed_wonders.retain(|placed| {
+            let keep = placed.along.is_finite()
+                && found.contains(&placed.kind)
+                && !seen.contains(&placed.kind);
+            seen.push(placed.kind);
+            keep
+        });
+        for placed in &mut self.placed_wonders {
+            placed.along = placed.along.clamp(0.0, 1.0);
+        }
+        self.placed_wonders.truncate(crate::MAX_PLACED_WONDERS);
         self.schedule
             .transitions
             .retain(|t| t.minute < 1440 && t.preset < 2 && t.days != 0);

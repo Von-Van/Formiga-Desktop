@@ -64,6 +64,10 @@ pub struct ColonyHome {
     /// The keepsakes chosen to hang in the two trees. Absent while the trees fill themselves.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree_keepsakes: Option<TreeKeepsakes>,
+    /// The village stays on the desktop between visits home rather than coming and going with
+    /// them. Absent while it comes and goes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stays_out: bool,
 }
 
 /// A palette the village can be painted in: a hand-made pairing of a main colour for roofs,
@@ -152,6 +156,7 @@ impl ColonyHome {
             dressing: Vec::new(),
             ornaments: Vec::new(),
             tree_keepsakes: None,
+            stays_out: false,
         }
     }
 
@@ -487,8 +492,15 @@ impl ColonyHome {
         }
     }
 
+    /// Whether the colony is home just now: a visit under way, everyone in the village.
     pub fn is_active(&self) -> bool {
         self.active_since_utc.is_some()
+    }
+
+    /// Whether the village is on the desktop just now: during a visit home, and all the time
+    /// while it stays out.
+    pub fn shown(&self) -> bool {
+        self.stays_out || self.is_active()
     }
 
     /// The spot of this kind, if one has been put down.

@@ -5,7 +5,7 @@ use super::*;
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 331] = [
+const SAVED_FIELDS: [&str; 335] = [
     "Battle",
     "Decoration",
     "Friendship",
@@ -141,6 +141,7 @@ const SAVED_FIELDS: [&str; 331] = [
     "gatherings",
     "generation",
     "gifts",
+    "goes",
     "greetings",
     "guest",
     "guest_book",
@@ -231,6 +232,7 @@ const SAVED_FIELDS: [&str; 331] = [
     "pennant",
     "personality",
     "pins",
+    "placed_wonders",
     "placements",
     "planted_at_utc",
     "play",
@@ -285,6 +287,7 @@ const SAVED_FIELDS: [&str; 331] = [
     "sprite_outline",
     "squabbles",
     "state",
+    "stays_out",
     "stays_until_utc",
     "steps",
     "strength",
@@ -334,6 +337,7 @@ const SAVED_FIELDS: [&str; 331] = [
     "wings",
     "wins",
     "won",
+    "wonders",
     "x",
     "y",
     "zones",
@@ -419,6 +423,8 @@ fn a_file_written_mid_scene_holds_no_window_cursor_or_play_in_progress() {
         "gardens",
         "house_styles",
         "house_depths",
+        "stays_out",
+        "placed_wonders",
     ] {
         assert!(
             names.contains(arranged),

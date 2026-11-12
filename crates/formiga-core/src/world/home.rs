@@ -2,6 +2,12 @@ use super::*;
 
 pub(super) const HOME_DURATION: time::Duration = time::Duration::minutes(15);
 const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
+/// While the village stays out: how long a visit home lasts after dark, when the colony is
+/// home three times as long as it is out.
+const NIGHT_HOME_DURATION: time::Duration = time::Duration::minutes(45);
+/// While the village stays out: how long the person at the desk has been away before everyone
+/// heads home, and stays there until they are back.
+const AWAY_FROM_DESK: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// The village spaces its residents with its own copy of the colony-wide spacing rule, because
 /// `habitat` is below `world` and cannot see into it. The two must never drift apart.
@@ -1096,27 +1102,50 @@ impl World {
             .colony_plan
             .as_ref()
             .is_some_and(|plan| plan.kind == RitualKind::ShelterGathering);
+        // A village that stays out keeps the same rhythm, and two reasons to be home besides:
+        // nobody at the desk to watch them roam, and the dark, when a visit lasts longer.
+        let stays_out = self.save.home.stays_out;
+        let away = stays_out && desktop.idle_duration >= AWAY_FROM_DESK;
+        let visit = if stays_out && self.dark_at_home(timeline_now) {
+            NIGHT_HOME_DURATION
+        } else {
+            HOME_DURATION
+        };
         if !ritual_shelter
+            && !away
             && self.village_moment.is_none()
             && self.save.companion.quiet_until.is_none()
             && self
                 .save
                 .home
                 .active_since_utc
-                .is_some_and(|started| timeline_now - started >= HOME_DURATION)
+                .is_some_and(|started| timeline_now - started >= visit)
         {
             self.dismiss_home(timeline_now, false);
         }
 
         let due = !self.save.home.is_active()
             && self.colony_plan.is_none()
-            && self
-                .save
-                .home
-                .last_disappeared_utc
-                .is_none_or(|ended| timeline_now - ended >= HOME_COOLDOWN);
+            && (away
+                || self
+                    .save
+                    .home
+                    .last_disappeared_utc
+                    .is_none_or(|ended| timeline_now - ended >= HOME_COOLDOWN));
         if due && self.interaction.is_none() && self.resolve_home_monitor(desktop).is_some() {
             self.begin_home_visit(timeline_now);
+        }
+        // Between visits a village that stays out still needs a display to stand on.
+        if stays_out
+            && !self.save.home.is_active()
+            && !self.save.home.display.is_some_and(|display| {
+                desktop
+                    .monitors
+                    .iter()
+                    .any(|monitor| monitor.display_key == display)
+            })
+        {
+            let _ = self.resolve_home_monitor(desktop);
         }
 
         if ritual_shelter {
@@ -1172,6 +1201,39 @@ impl World {
             self.show_bubble(creature_id, BubbleIcon::Home);
         }
         true
+    }
+
+    /// Send everyone back out from a visit home before it is over, to roam the desktop again: the
+    /// way back out of a visit the person at the desk asked for, as `send_home` is the way in.
+    /// The village stays where it is if it stays out, and goes if it comes and goes; either way
+    /// the colony is out for the usual while before the next visit.
+    pub(super) fn send_out(&mut self) -> bool {
+        if !self.save.home.is_active() {
+            return false;
+        }
+        let now = self.save.maximum_seen_utc;
+        let heading_out: Vec<_> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .map(|creature| creature.id)
+            .collect();
+        self.dismiss_home(now, true);
+        for creature_id in heading_out {
+            self.show_bubble(creature_id, BubbleIcon::Sparkle);
+        }
+        true
+    }
+
+    /// Dark outside by the clock on the wall, for how long a visit home lasts while the village
+    /// stays out.
+    fn dark_at_home(&self, now: OffsetDateTime) -> bool {
+        #[cfg(test)]
+        if let Some(dark) = self.dark_at_home_for_tests {
+            return dark;
+        }
+        discovery::after_dark(local_time_or_utc(now))
     }
 
     fn resolve_home_monitor(&mut self, desktop: &DesktopSnapshot) -> Option<MonitorInfo> {

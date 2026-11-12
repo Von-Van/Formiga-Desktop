@@ -154,6 +154,9 @@ pub struct World {
     /// A wonder out somewhere for a companion or two to play on, and when the next is due.
     /// Runtime only: the notebook's page of them is all a save keeps.
     wonders: wonders::Wonders,
+    /// Whether it is dark by the wall clock, for tests that cannot depend on the local time zone.
+    #[cfg(test)]
+    dark_at_home_for_tests: Option<bool>,
     /// Who is away in a house open in Formiga Home: indoors, out of every plan, and left alone
     /// until the house closes. Runtime only: a visit never outlives the app.
     house_visit: BTreeSet<CreatureId>,
@@ -462,6 +465,8 @@ impl World {
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             wonders: wonders::Wonders::new(&streams),
+            #[cfg(test)]
+            dark_at_home_for_tests: None,
             house_visit: BTreeSet::new(),
             creature_views: Vec::new(),
             relationship_views: Vec::new(),

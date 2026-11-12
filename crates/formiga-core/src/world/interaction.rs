@@ -130,6 +130,11 @@ impl World {
             WorldCommand::OfferSnack { creature_id } => self.offer_snack(creature_id, desktop),
             WorldCommand::OfferToy { creature_id } => self.offer_toy(creature_id, desktop),
             WorldCommand::SendHome => self.send_home(desktop),
+            WorldCommand::SendOut => self.send_out(),
+            WorldCommand::PutOutWonder { kind } => self.put_out_wonder(kind, desktop),
+            WorldCommand::PutAwayWonder { kind } => self.put_away_wonder(kind, desktop),
+            WorldCommand::MoveWonder { kind, to } => self.move_wonder(kind, to, desktop),
+            WorldCommand::PlayOnWonder { kind } => self.play_on_wonder(kind, desktop),
             WorldCommand::InviteVillageMoment {
                 creature_id,
                 moment,
