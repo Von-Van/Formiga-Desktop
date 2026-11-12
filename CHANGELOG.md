@@ -136,6 +136,22 @@ All notable changes are documented here.
 
 ### Added
 
+- The village can stay on the desktop. Home & keepsakes, Where the village lives, has a choice for
+  the houses: Come and go, as before, or Always on the desktop. With the village always out the
+  companions still come home for fifteen minutes and go out to roam for fifteen, stay home three
+  times as long after dark, and head home while nobody is at the computer, staying until somebody
+  is back. During a visit home, a companion's strip offers Out to send everyone roaming again: in
+  Home's cell, or beside the moments when there are some. A wonder that turns up between visits
+  never stands in among the houses. (Save version 34.)
+- Wonders can be put out. Each wonder the colony has found has Put it out on the journal's Wonders
+  page, up to three at a time; it stands on the floor of the village's display, or the main one,
+  clear of the village and of the others, and stays there across relaunches until it is put away.
+  Clicking one opens a strip like a house's: Play calls the nearest free companion over, with a
+  friend for a seesaw; Move lifts it to follow the pointer until the next click sets it down on the
+  floor or on top of a window, which it then rides (a right click leaves it where it was); Put away
+  takes it back; and Profile opens the journal. Companions also go over to one now and then on their
+  own, in place of a wonder turning up, and a wonder already out never turns up as a second. Three
+  new icons, Play, Move and Put away, and Out are drawn in the interface atlas.
 - Offer a snack and Offer a toy on each companion's profile in the notebook: the same offers as
   the strip over it on the desktop, reachable with Tab and Enter, with what came of the offer
   written underneath.

@@ -807,7 +807,8 @@ keyboard focus and so has no modifier state of its own. No new permission, event
 is involved. Only one menu exists at a time.
 
 A colony member's strip holds Snack, Toy, Home, and Profile, with Moment in Home's cell while the
-houses are out and the village has something it could share or is sharing one. A guest's holds
+houses are out and the village has something it could share or is sharing one, and `Out` there
+during a visit to a village that stays out with nothing to share (see "A village that stays out"). A guest's holds
 Snack, Toy, then Stay when `visitor_can_stay()` is true and Copy code otherwise, then Profile — the
 two share one cell, so the other three never move under the cursor. Snack and Toy issue `WorldCommand::OfferSnack` and
 `OfferToy`; Home issues `WorldCommand::SendHome`; a member's Profile opens the settings window on the
@@ -1514,6 +1515,33 @@ and then does not think of climbing for a while: 35–90 seconds for one that li
 in `world/tests/misc.rs` (`measure_time_on_ledges`, run with `--ignored`), four companions that
 like to be anywhere spend 40–49% of their time up high on desktops with anything to climb.
 
+## A village that stays out (save v34)
+
+`ColonyHome::stays_out`, chosen on the Home page under Where the village lives as Come and go or
+Always on the desktop, keeps the village on the desktop between visits home. `ColonyHome::shown`
+is whether the village is drawn — during a visit, and all the time while it stays out — and
+`is_active` is still whether a visit is under way, everyone in the village. The overlay, the
+ground, the belongings and the house proxies follow `shown`; everything about living in the village
+follows `is_active`, so between visits the houses stand empty with their curtains open while the
+colony roams the desktop as it always has, walking off from the village when a visit ends and back
+to it when the next begins. Changing it is one undoable change (`ColonyEdit::VillageStaysOut`).
+
+`update_home_cycle` keeps the same rhythm, fifteen minutes home and fifteen out, with two reasons
+of its own while the village stays out. After dark by the wall clock (`discovery::after_dark`) a
+visit lasts `NIGHT_HOME_DURATION`, forty-five minutes, so the colony is home three times as long as
+it is out. And once the person at the desk has been idle for `AWAY_FROM_DESK`, five minutes, a
+visit starts at once, cooldown or not, and does not end while they are away; the first tick after
+they are back ends one that has run its length. Between visits the village still needs a display,
+so one is resolved whenever the one it had is gone. A village that comes and goes takes no notice
+of either. `WorldCommand::SendOut` ends a visit early, a sparkle over everyone, and starts the usual
+while out; it is the way back out that `SendHome` is the way in. A companion's strip offers it as
+`Out` during a visit to a village that stays out: in `Home`'s cell, or at the end of the strip of
+moments when the village has some to share.
+
+Between visits a wonder that turns up on the floor of the village's display never stands among
+the houses: `village_floor_span` gives the walk from tree to tree, and `floor_beside` takes it out
+of each run of floor a wonder could stand on.
+
 ## The village yard
 
 A dwelling's ground footprint, in shelter pixels, is 84 for the colony house and 68 for a
@@ -2111,6 +2139,43 @@ game with a toy of its own (its moment is an Idle one, not SoloPlay). A spot is 
 only if the walk there reached it; one cut short by the thirty-second limit is a plain stand
 wherever it got to. `formiga-tools village-life-sheet` shows the drum played from both sides. The
 sprites themselves stay still.
+
+### Wonders put out (save v34)
+
+A wonder the colony has found can be put out from the journal's Wonders page and stays until it is
+put away: `CompanionState::placed_wonders`, at most `MAX_PLACED_WONDERS` = 3, each a kind found and
+out once, with the display key of its floor and a fraction along that floor. `world/wonders/placed.rs`
+works out where each stands every tick (`PlacedSpot`): on its floor, clear of the village while the
+village is on the desktop, or on top of a window it was set on (`Wonders::on_window`, the window
+and the distance along its top edge — runtime only, as windows always are), riding the window and
+keeping the floor fraction beneath it up to date, so a window that closes, minimises or grows too
+narrow leaves it on the floor below, and so does a relaunch. `WorldCommand::PutOutWonder` stands a
+new one on the floor of the village's display, or the main one, at the first of a few places along
+it clear of the village and of the others; `MoveWonder` sets one down where the pointer let go —
+on the frontmost window whose top edge is within 40 points, in plain view and wide enough, while
+window ledges are on, and otherwise on the floor under the pointer — and `PutAwayWonder` takes it
+back.
+
+A go on one is the same `Active` as a wonder that turned up, marked `placed`: the same legs, the
+same script, the same ownership of its players' feet. `PlayOnWonder` sends the nearest companion
+free for a wonder, and the nearest free friend for a wonder for two or, when asked, for one or two;
+whatever wonder was out before is let go. When a wonder is due and some are out, half the time a
+companion goes over to one of those instead, out on the desktop only, by the same nearest-first
+choice. A wonder already out never turns up as a second. When the go is over, or its players are
+picked up, or it is moved or put away, the players are let go where they stand and the wonder
+stays, drawn at full size; nothing new is found, and the go is counted. `World::placed_wonders`
+gives each one's `WonderView`, moving with its script while it is played on and standing on its
+first frame otherwise.
+
+The overlay draws every wonder out, each kind baked into a texture of its own on the display it
+stands on, and redraws a display with one on it. `wonder_proxies.rs` puts a window over each,
+the same kind as a house's: shaped to the wonder's standing frame grown two art pixels all round, so
+a rope can be hit, in a square as wide as its cell (`WONDER_SQUARE`). A click opens
+`CreatureMenu::for_wonder` — `Play, Move, PutAway, Profile` — over its top. A Play nobody can take
+hangs "not now" under the cell, as a snack does. Move lifts it: the overlay draws it hanging under
+the pointer, and its window follows the pointer whole, so the next click anywhere near it reaches
+it and sets it down there; a right click leaves it where it was. Profile turns the notebook to the
+journal.
 
 ## Exact offline seed sharing
 
@@ -3313,7 +3378,8 @@ own pixels: on macOS by switching hit-testing on while the cursor is over them, 
 window region of exactly those pixels. A companion standing in front of a house wins: the house's
 window does not take the click while one is under the cursor, and a press that reaches it anyway is
 handed to the companion, with the rest of a drag begun there. The proxies exist only while Home is
-installed and the houses are out on a display that is not covered by something full-screen.
+installed and the village is on the desktop (`ColonyHome::shown`) on a display that is not covered
+by something full-screen.
 
 A click on a house opens `CreatureMenu::for_house`: the same strip as a creature's, placed over
 the house's roof (`OverlayRenderer::house_menu_anchor`), with two items, `Inside` ("look inside")

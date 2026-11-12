@@ -263,6 +263,24 @@ pub(super) fn colony_in_the_middle_of_everything() -> (crate::World, u64) {
             hooks[3] = Some(2);
             world.save.home.set_tree_keepsakes(Some(hooks));
             world.save.creatures[0].accessory = Some(crate::Accessory::Pin(2));
+            // A village that stays out, and a wonder put out on the floor.
+            world.save.home.stays_out = true;
+            world.save.companion.wonders.push(crate::WonderRecord {
+                kind: crate::WonderKind::Seesaw,
+                first_at: now,
+                finder: None,
+                finder_name: "Finder".into(),
+                goes: 1,
+            });
+            world
+                .save
+                .companion
+                .placed_wonders
+                .push(crate::PlacedWonder {
+                    kind: crate::WonderKind::Seesaw,
+                    display: crate::DisplayKey([1; 16]),
+                    along: 0.3125,
+                });
             // And the colony house built as a pillow fort.
             let founder = world.save.creatures[0].id;
             world

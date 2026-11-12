@@ -80,6 +80,8 @@ impl FormigaApp {
             CreatureMenu::new(creature_id, target, can_stay, monitor_id, settings_focused);
         if offer_moments {
             menu = menu.offering_moments();
+        } else if !guest && sends_out(world) {
+            menu = menu.offering_out();
         }
         if !self.ensure_menu_proxy(event_loop) {
             return;
@@ -160,6 +162,9 @@ impl FormigaApp {
             .is_some_and(|window| window.window.has_focus());
         if menu.target() == MenuTarget::House {
             return self.advance_house_menu(menu, dt, settings_focused);
+        }
+        if menu.target() == MenuTarget::Wonder {
+            return self.advance_wonder_menu(menu, dt, settings_focused);
         }
         let (anchor, position) = {
             let world = self.world.as_ref().ok_or(MenuDismissal::Gone)?;
@@ -290,6 +295,12 @@ impl FormigaApp {
         // climb, set off on a journey, gone up to a wonder) is not an answer: the strip stays and
         // says so, rather than closing on a click that seemed to do nothing. A companion that
         // can take it, and turns it down, answers in its own bubble as ever.
+        if target == MenuTarget::Wonder {
+            if let Some(kind) = crate::creature_menu::wonder_of_menu(creature_id) {
+                self.choose_wonder_item(event_loop, kind, icon);
+            }
+            return;
+        }
         if target != MenuTarget::House && matches!(icon, MenuIcon::Snack | MenuIcon::Toy) {
             let desktop = self.snapshot();
             let command = if icon == MenuIcon::Snack {
@@ -342,9 +353,20 @@ impl FormigaApp {
                     world.handle_command(command, &desktop);
                 }
             }
-            // Opens the strip of moments instead, and snacks and toys are held out above; and
-            // only a house is looked inside.
-            MenuIcon::Moment | MenuIcon::Inside | MenuIcon::Snack | MenuIcon::Toy => {}
+            MenuIcon::Out => {
+                if let Some(world) = &mut self.world {
+                    world.handle_command(WorldCommand::SendOut, &desktop);
+                }
+            }
+            // Opens the strip of moments instead, and snacks and toys are held out above; only a
+            // house is looked inside, and only a wonder is played on, moved or put away.
+            MenuIcon::Moment
+            | MenuIcon::Inside
+            | MenuIcon::Snack
+            | MenuIcon::Toy
+            | MenuIcon::Play
+            | MenuIcon::Move
+            | MenuIcon::PutAway => {}
             MenuIcon::Profile => {
                 self.show_settings(event_loop);
                 if let Some(window) = &mut self.settings_window {
@@ -354,6 +376,7 @@ impl FormigaApp {
                         // where its visit is written down.
                         MenuTarget::Guest => window.select_journal(),
                         MenuTarget::House => window.select_house(creature_id),
+                        MenuTarget::Wonder => window.select_journal(),
                     }
                 }
             }
@@ -409,6 +432,8 @@ impl FormigaApp {
                         VillageMoment::Nap => MenuIcon::Nap,
                     }),
             )
+            // A village that stays out offers the way back out of a visit beside its moments.
+            .chain((world.village_moment().is_none() && sends_out(world)).then_some(MenuIcon::Out))
             .collect()
     }
 }
@@ -424,4 +449,10 @@ pub(super) fn menu_hidden(creature: &Creature, settings: &Settings, editing_habi
         || editing_habitat
         || creature.state.arrival_delay_secs > 0.0
         || creature.state.indoors
+}
+
+/// Whether a companion's menu offers to send everyone back out: during a visit home, while the
+/// village stays on the desktop.
+pub(super) fn sends_out(world: &World) -> bool {
+    world.save.home.stays_out && world.save.home.is_active()
 }

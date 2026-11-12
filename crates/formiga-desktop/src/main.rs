@@ -30,6 +30,7 @@ mod sticker_export;
 mod tray;
 mod trip;
 mod updater;
+mod wonder_proxies;
 
 use anyhow::Result;
 use app::{FormigaApp, UserEvent};

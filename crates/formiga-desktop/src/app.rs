@@ -52,6 +52,7 @@ mod settings_window;
 mod trips;
 mod updates;
 mod visits;
+mod wonders;
 use battle::BattleLink;
 use cadence::*;
 use farm::FarmLink;
@@ -145,6 +146,11 @@ pub struct FormigaApp {
     /// native window over each.
     house_shapes: crate::houses::HouseShapes,
     house_proxies: BTreeMap<WindowId, crate::houses::HouseProxy>,
+    /// Each wonder put out as it can be clicked, the native window over each, and the one being
+    /// moved, which follows the pointer until it is set down.
+    wonder_shapes: crate::wonder_proxies::WonderShapes,
+    wonder_proxies: BTreeMap<WindowId, crate::wonder_proxies::WonderProxy>,
+    moving_wonder: Option<WonderKind>,
     /// The one open right-click menu, and the small native window that takes clicks on it. The
     /// window outlives any single menu so that closing one never destroys the window whose own
     /// click is being handled.
@@ -218,6 +224,9 @@ impl FormigaApp {
             set_back_shown: BTreeMap::new(),
             house_shapes: Default::default(),
             house_proxies: BTreeMap::new(),
+            wonder_shapes: crate::wonder_proxies::WonderShapes::default(),
+            wonder_proxies: BTreeMap::new(),
+            moving_wonder: None,
             creature_menu: None,
             menu_proxy: None,
             menus_opened: 0,
@@ -400,7 +409,7 @@ impl FormigaApp {
         // An open menu is sampling the cursor for its hover highlight, so it needs the same
         // cadence a drag does. It is the owner who opened it and it closes itself within eight
         // seconds, so this is bounded and always something the person at the desk asked for.
-        if self.creature_menu.is_some() {
+        if self.creature_menu.is_some() || self.moving_wonder.is_some() {
             return Duration::from_millis(50);
         }
         let drawing = self.overlays.values().any(|overlay| {
@@ -593,15 +602,21 @@ impl FormigaApp {
             if let Some(world) = &self.world {
                 let habitat_editor = self.habitat_editor.as_ref().map(|editor| &editor.draft);
                 let ui_active = self.creature_menu.is_some()
+                    || self.moving_wonder.is_some()
                     || !world.thought_bubbles().is_empty()
                     || world.talk_bubbles().next().is_some();
+                let wonders = world.placed_wonders();
                 for overlay in self.overlays.values() {
+                    let wonder_here = wonders
+                        .iter()
+                        .any(|wonder| wonder.monitor_id == overlay.monitor.id);
                     if overlay.is_visible()
                         && overlay.needs_redraw(
                             &world.save,
                             habitat_editor,
                             &self.cached_windows,
                             ui_active,
+                            wonder_here,
                         )
                     {
                         overlay.window.request_redraw();
@@ -869,6 +884,10 @@ impl FormigaApp {
         }
         if self.house_proxies.contains_key(&window_id) {
             self.handle_house_proxy_event(event_loop, window_id, event);
+            return true;
+        }
+        if self.wonder_proxies.contains_key(&window_id) {
+            self.handle_wonder_proxy_event(event_loop, window_id, event);
             return true;
         }
         if !self.interaction_proxies.contains_key(&window_id) {
@@ -1217,8 +1236,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 let menu = match (&self.creature_menu, self.overlays.get(&window_id)) {
                     (Some(menu), Some(overlay)) if overlay.monitor.id == menu.monitor_id() => {
                         menu.placement().map(|placement| MenuView {
-                            creature_id: (menu.target() != MenuTarget::House)
-                                .then(|| menu.creature_id()),
+                            creature_id: matches!(
+                                menu.target(),
+                                MenuTarget::Member | MenuTarget::Guest
+                            )
+                            .then(|| menu.creature_id()),
                             items: menu.items(),
                             layout: menu.layout(),
                             placement,
@@ -1251,6 +1273,19 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     .as_ref()
                     .map(|world| world.talk_bubbles().copied().collect())
                     .unwrap_or_default();
+                // Every wonder out: those put out, and one that turned up by itself.
+                let wonders: Vec<formiga_core::WonderView> = self
+                    .world
+                    .as_ref()
+                    .map(|world| {
+                        world
+                            .placed_wonders()
+                            .into_iter()
+                            .map(|view| self.moving_wonder_view(view))
+                            .chain(world.wonder())
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 // While a trip has the colony, the overlay draws the trip's copy of it: whoever
                 // is on the platform, and the train. Nobody is indoors and nothing is said.
                 let trip = self
@@ -1279,7 +1314,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             night: self.night,
                             menu: None,
                             village,
-                            wonder: None,
+                            wonders: &[],
                             train,
                         }
                     } else {
@@ -1290,7 +1325,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             night: self.night,
                             menu,
                             village,
-                            wonder: world.wonder(),
+                            wonders: &wonders,
                             train: None,
                         }
                     };
@@ -1341,6 +1376,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             self.carry_set_back();
             self.sync_interaction_proxies(event_loop);
             self.sync_house_proxies(event_loop);
+            self.sync_wonder_proxies(event_loop);
         }
         let tick_interval = self.tick_interval();
         let mut deadline = self.last_tick + tick_interval;

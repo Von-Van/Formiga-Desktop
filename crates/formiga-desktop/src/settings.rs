@@ -38,6 +38,12 @@ pub struct SettingsOutcome {
     pub complete_onboarding: bool,
     pub home_corner: Option<formiga_core::HomeCorner>,
     pub home_display: Option<formiga_core::DisplayKey>,
+    /// The village set to stay on the desktop between visits home, or to come and go with them.
+    pub village_stays_out: Option<bool>,
+    /// Put a wonder the colony has found out on the desktop.
+    pub put_out_wonder: Option<formiga_core::WonderKind>,
+    /// Put a wonder that was put out away again.
+    pub put_away_wonder: Option<formiga_core::WonderKind>,
     pub move_object: Option<(usize, usize)>,
     /// Put a hangout spot down at a fraction along the village ground, move it, or with `None`
     /// pick it up again.

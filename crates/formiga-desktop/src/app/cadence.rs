@@ -34,7 +34,7 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     }
     // A wonder is out for half a minute at most, every ten minutes or more, and everything on it
     // moves: a seesaw tipping, a hammock swaying, its players hopping on and off.
-    if world.wonder().is_some() {
+    if world.wonder().is_some() || world.placed_wonder_playing() {
         return true;
     }
     // Something tossed, bounced, thrown or flown moves through the air while its owner may be

@@ -27,6 +27,7 @@ mod new_looks;
 mod objects_and_decorations;
 mod offers;
 mod perches;
+mod placed_wonders;
 mod play;
 mod presence;
 mod rituals;
@@ -39,6 +40,7 @@ mod undo;
 mod village;
 mod village_life;
 mod village_paths;
+mod village_stays_out;
 mod visitors;
 mod wonders;
 

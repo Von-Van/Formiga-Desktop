@@ -171,6 +171,22 @@ pub struct WonderRecord {
     pub goes: u32,
 }
 
+/// Most wonders the person at the desk can have put out at once.
+pub const MAX_PLACED_WONDERS: usize = 3;
+
+/// A wonder the person at the desk put out from the notebook, standing where they left it until
+/// they put it away. Only where it stands on a display's floor is kept: one set on top of a window
+/// rides that window while the colony runs, and is found on the floor under it after a relaunch,
+/// since a window is never written down.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlacedWonder {
+    pub kind: WonderKind,
+    /// The display whose floor it stands on.
+    pub display: crate::DisplayKey,
+    /// Where its middle stands along that floor, as a fraction of the display's usable width.
+    pub along: f32,
+}
+
 /// A wonder on the screen just now, for the overlay to draw. Runtime only.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WonderView {

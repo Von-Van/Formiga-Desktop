@@ -335,6 +335,7 @@ impl FormigaApp {
             &mut specific_notice,
         );
         self.move_home(outcome, &mut companion_changed, &mut specific_notice);
+        self.put_out_wonders(outcome, &mut companion_changed);
         self.edit_village_decorations(outcome, &mut companion_changed);
         self.edit_hangouts_and_houses(outcome, &mut companion_changed, &mut specific_notice);
         self.edit_gardens_and_layout(outcome, &mut companion_changed, &mut specific_notice);
@@ -403,6 +404,34 @@ impl FormigaApp {
             let label = crate::settings::display_label(display, &self.monitors);
             *notice = Some(crate::notices::home_moved(None, Some(&label)));
         }
+        if let Some(stays_out) = outcome.village_stays_out {
+            *changed |= world.edit(ColonyEdit::VillageStaysOut, |world| {
+                let was = world.save.home.stays_out;
+                world.save.home.stays_out = stays_out;
+                was != stays_out
+            });
+        }
+    }
+
+    /// A wonder put out on the desktop from the journal, or put away again.
+    fn put_out_wonders(&mut self, outcome: &SettingsOutcome, changed: &mut bool) {
+        if outcome.put_out_wonder.is_none() && outcome.put_away_wonder.is_none() {
+            return;
+        }
+        let desktop = self.snapshot();
+        let Some(world) = &mut self.world else {
+            return;
+        };
+        if let Some(kind) = outcome.put_out_wonder {
+            *changed |= world.handle_command(WorldCommand::PutOutWonder { kind }, &desktop);
+        }
+        if let Some(kind) = outcome.put_away_wonder {
+            if self.moving_wonder == Some(kind) {
+                self.moving_wonder = None;
+            }
+            *changed |= world.handle_command(WorldCommand::PutAwayWonder { kind }, &desktop);
+        }
+        self.request_overlay_redraw();
     }
 
     /// Decorations on a house, an ornament, the keepsakes on the tree, and what a companion wears:

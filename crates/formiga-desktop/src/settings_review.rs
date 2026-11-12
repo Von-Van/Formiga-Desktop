@@ -735,6 +735,13 @@ fn home_quiet_and_onboarding_controls_emit_the_expected_commands() {
         h.click("Bottom left").home_corner,
         Some(HomeCorner::BottomLeft)
     );
+    assert_eq!(
+        h.click("Always on the desktop").village_stays_out,
+        Some(true)
+    );
+    h.save.home.stays_out = true;
+    assert_eq!(h.click("Come and go").village_stays_out, Some(false));
+    h.save.home.stays_out = false;
     // A house picked out in the preview, and something hung on its roof.
     let founder = house_owners(&h.save.creatures, &[]).as_slice()[0];
     let house = h.shown(crate::clubhouse::arrange::Picked::House(founder));
@@ -3129,4 +3136,46 @@ fn snacks_and_toys_can_be_offered_from_the_profile_by_keyboard() {
             .iter()
             .any(|(text, _)| text == "Mallow took the snack.")
     );
+}
+
+/// A wonder the colony has found is put out on the desktop from the journal and put away again,
+/// and no more than three can be out.
+#[test]
+fn wonders_are_put_out_and_put_away_from_the_journal() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    h.screen = egui::vec2(940.0, 4000.0);
+    let now = h.save.maximum_seen_utc;
+    let found = [
+        WonderKind::Chair,
+        WonderKind::Fountain,
+        WonderKind::Seesaw,
+        WonderKind::Hammock,
+    ];
+    for kind in found {
+        h.save.companion.wonders.push(formiga_core::WonderRecord {
+            kind,
+            first_at: now,
+            finder: None,
+            finder_name: "Mallow".into(),
+            goes: 1,
+        });
+    }
+    assert_eq!(
+        h.click("Put it out").put_out_wonder,
+        Some(WonderKind::Chair)
+    );
+    let out = |kind| formiga_core::PlacedWonder {
+        kind,
+        display: DisplayKey([1; 16]),
+        along: 0.5,
+    };
+    h.save.companion.placed_wonders = vec![out(WonderKind::Chair)];
+    assert_eq!(h.click("Put away").put_away_wonder, Some(WonderKind::Chair));
+    // With three out, the rest cannot be put out until one is put away.
+    h.save.companion.placed_wonders = vec![
+        out(WonderKind::Chair),
+        out(WonderKind::Fountain),
+        out(WonderKind::Seesaw),
+    ];
+    assert_eq!(h.click("Put it out").put_out_wonder, None);
 }

@@ -36,6 +36,8 @@ pub enum ColonyEdit {
     HouseDepth,
     /// The home moved to another corner or display.
     MovedHome,
+    /// The village set to stay on the desktop, or to come and go with visits home.
+    VillageStaysOut,
     /// A house's decorations hung or taken down.
     Decorations,
     /// An ornament set out, moved or taken in.
@@ -62,6 +64,7 @@ impl ColonyEdit {
             Self::HouseType => "changing a house".to_owned(),
             Self::HouseDepth => "moving a house back or forward".to_owned(),
             Self::MovedHome => "moving the home".to_owned(),
+            Self::VillageStaysOut => "changing whether the village stays out".to_owned(),
             Self::Decorations => "changing a house's decorations".to_owned(),
             Self::Ornament(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::TreeKeepsakes => "choosing the keepsakes in the trees".to_owned(),

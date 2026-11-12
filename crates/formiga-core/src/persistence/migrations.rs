@@ -208,6 +208,9 @@ const STEPS: &[Step] = &[
     // 33: the colony's anonymous Handler key for Formiga Battle. An older colony has none yet, and
     // is given one the next time it goes to Battle.
     Step::adds_only(32),
+    // 34: whether the village stays on the desktop between visits home, and the wonders the person
+    // at the desk has put out. An older colony's village comes and goes, and it has put none out.
+    Step::adds_only(33),
 ];
 
 /// The version a raw file says it is, or 0 when it names none.
