@@ -3300,7 +3300,9 @@ behind the carriage. Whoever is aboard, not there yet or gone on home stays in t
 off the desktop (`off_the_desktop`, an endless `arrival_delay_secs`) so it is drawn nowhere and no
 face looks at it: the copy is still the whole colony, so a village out during a trip keeps every
 house and every look, rather than losing a house as each keeper gets on. While the colony is away
-the copy has everyone off the desktop. It always comes in from the left and leaves to the right, engine first, as
+the copy has everyone off the desktop. Only the display the train stops at shows anything during a
+trip, and the village's own display when the village stays out (`shown_on_trip`), its houses
+standing empty until everyone is home. It always comes in from the left and leaves to the right, engine first, as
 Formiga Hill's own train does, so the journey runs one way from the desktop to the Hill and home
 again. The train stops at the middle of the widest stretch of ground on the village's display
 (then the primary); companions there walk to the nearest door from where they

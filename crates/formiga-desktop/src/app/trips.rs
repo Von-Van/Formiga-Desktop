@@ -115,3 +115,14 @@ impl FormigaApp {
             .then(|| self.train_scene().map(TrainScene::monitor_id))
     }
 }
+
+/// Whether a display shows anything while a trip has the colony, when `station` is the one the
+/// train stops at, if it is on the desktop: that one, and the village's own display when the
+/// village stays out, which it does while everyone is away too.
+pub(super) fn shown_on_trip(
+    station: Option<formiga_core::MonitorId>,
+    monitor: &MonitorInfo,
+    home: &formiga_core::ColonyHome,
+) -> bool {
+    station == Some(monitor.id) || (home.stays_out && home.display == Some(monitor.display_key))
+}

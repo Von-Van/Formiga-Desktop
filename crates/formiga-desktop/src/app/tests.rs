@@ -1,4 +1,5 @@
 use super::menus::menu_hidden;
+use super::trips::shown_on_trip;
 use super::{
     colony_bounds, habitat_editor_claims, resolve_press_target, world_redraw_interval,
     world_tick_interval,
@@ -270,4 +271,45 @@ fn a_menu_closes_when_its_creature_goes_inside() {
     assert!(menu_hidden(&creature, &settings, false));
     creature.state.indoors = false;
     assert!(menu_hidden(&creature, &settings, true));
+}
+
+/// While the colony is away by train only the display it stops at shows anything, and the
+/// village's own display when the village stays on the desktop: it stays out for a trip too,
+/// every house standing empty until everyone is home again.
+#[test]
+fn a_village_that_stays_out_stays_out_while_everyone_is_away() {
+    let display = |id: MonitorId| MonitorInfo {
+        id,
+        display_key: DisplayKey([id as u8; 16]),
+        bounds: DesktopRect {
+            x: 1440.0 * id as f32,
+            y: 0.0,
+            width: 1440.0,
+            height: 900.0,
+        },
+        usable_bounds: DesktopRect {
+            x: 1440.0 * id as f32,
+            y: 24.0,
+            width: 1440.0,
+            height: 826.0,
+        },
+        scale_factor: 2.0,
+        primary: id == 1,
+    };
+    let (station, village) = (display(1), display(2));
+    let mut home = ColonyHome {
+        display: Some(village.display_key),
+        ..ColonyHome::default()
+    };
+    // Coming and going, the village is not out while the colony is away.
+    assert!(shown_on_trip(Some(1), &station, &home));
+    assert!(!shown_on_trip(Some(1), &village, &home));
+    assert!(!shown_on_trip(None, &station, &home));
+    assert!(!shown_on_trip(None, &village, &home));
+    // Staying out, it is, with the train in or gone.
+    home.stays_out = true;
+    assert!(shown_on_trip(Some(1), &station, &home));
+    assert!(shown_on_trip(Some(1), &village, &home));
+    assert!(!shown_on_trip(None, &station, &home));
+    assert!(shown_on_trip(None, &village, &home));
 }
