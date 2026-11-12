@@ -16,8 +16,10 @@
 //! carries the colony's Battle record, and what comes back is only that record, the journal's
 //! lines for each match and the keepsakes Desktop knows; a result counts only if it names the
 //! session and the checksum of the roster Desktop wrote. If Desktop itself stops while Battle is
-//! open, Battle keeps the roster it already read, and the next start keeps what the result says so
-//! far, clears the session's files and brings the colony home by train.
+//! open, the next start keeps what the result says so far. If Battle is still open then (Desktop
+//! remembers the process it started it as, beside the session), the colony stays away with it and
+//! Desktop waits for it to close as before, keeping every later match; if not, the session's files
+//! are cleared and the train brings the colony home.
 //!
 //! Battle is found, started and waited on through its slot ([`BATTLE`], in [`crate::expansion`]),
 //! and Desktop checks whether it is installed only when it starts and then at most every ten

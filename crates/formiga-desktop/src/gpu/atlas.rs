@@ -25,7 +25,42 @@ pub(super) struct AtlasPixels {
     /// would be looking.
     pub(super) face_cells: Vec<u16>,
     pub(super) face_anchors: Vec<PixelPoint>,
+    /// What each baked frame holds and where, by slot, drawn from the colony's object sheet.
+    pub(super) held: Vec<Option<HeldPlacement>>,
     pub(super) silhouette: Vec<(u8, u8)>,
+}
+
+impl AtlasPixels {
+    /// Whether a graphics card whose textures are at most `largest` pixels across and down can
+    /// hold both of these atlases.
+    pub(super) fn fits(&self, largest: u32) -> bool {
+        [
+            self.body_width,
+            self.body_height,
+            self.face_width,
+            self.face_height,
+        ]
+        .iter()
+        .all(|side| *side <= largest)
+    }
+}
+
+/// `bake` at `detail`, or at the finest detail under it whose atlases a graphics card with
+/// textures at most `largest` pixels across and down can hold. At one pixel to the unit every
+/// atlas fits any card wgpu runs on.
+pub(super) fn bake_fitting(
+    largest: u32,
+    detail: u32,
+    bake: impl Fn(u32) -> AtlasPixels,
+) -> AtlasPixels {
+    let mut detail = detail.max(1);
+    loop {
+        let atlas = bake(detail);
+        if detail == 1 || atlas.fits(largest) {
+            return atlas;
+        }
+        detail -= 1;
+    }
 }
 
 /// Lays frames of `frame_size` pixels square into a texture `columns` cells wide, each distinct
@@ -99,6 +134,7 @@ pub(super) fn build_atlas_pixels(
     let body_slots = total_animation_frames();
     let mut body_frames = vec![Vec::new(); body_slots as usize];
     let mut face_anchors = vec![PixelPoint::default(); body_slots as usize];
+    let mut held = vec![None; body_slots as usize];
     let mut silhouette = vec![(0_u8, FRAME_SIZE as u8); body_slots as usize];
     for clip in BodyClip::baked() {
         let spec = AnimationSpec::for_clip(clip);
@@ -133,6 +169,7 @@ pub(super) fn build_atlas_pixels(
             }
             let slot = atlas_slot(clip, frame) as usize;
             face_anchors[slot] = rendered.face_anchor;
+            held[slot] = rendered.held;
             silhouette[slot] = silhouette_rows(&rendered.canvas);
             body_frames[slot] = fine.unwrap_or(rendered.canvas).rgba_bytes();
         }
@@ -173,6 +210,7 @@ pub(super) fn build_atlas_pixels(
         face_pixels,
         face_cells,
         face_anchors,
+        held,
         silhouette,
     }
 }
@@ -218,7 +256,7 @@ pub(super) fn total_animation_frames() -> u32 {
         .sum()
 }
 
-pub(super) fn creature_horizontal_scale(action: ActionKind) -> f32 {
+pub(crate) fn creature_horizontal_scale(action: ActionKind) -> f32 {
     if action == ActionKind::SqueezeWindow {
         0.72
     } else {

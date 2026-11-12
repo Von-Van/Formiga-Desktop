@@ -1131,6 +1131,14 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     {
         return super::beats::beat_expression(beat);
     }
+    if flourish_shown(creature).is_none()
+        && let Some(meal) = super::meals::meal_shown(creature)
+    {
+        return super::meals::meal_expression(creature, meal);
+    }
+    if let Some(play) = super::play::play_shown(creature) {
+        return super::play::play_face(play);
+    }
     if let Some((habit, ..)) = flourish_shown(creature) {
         return match habit {
             Habit::LooksFoodOver => ExpressionKind::Curious,
@@ -1265,6 +1273,12 @@ pub(super) fn resolve_eyelids(creature: &Creature, at_cursor: bool) -> EyelidPos
     {
         return eyelids;
     }
+    if flourish_shown(creature).is_none()
+        && let Some(eyelids) =
+            super::meals::meal_shown(creature).and_then(super::meals::meal_eyelids)
+    {
+        return eyelids;
+    }
     if creature.state.attention.is_some_and(|pose| {
         pose.emotion == formiga_core::AttentionEmotion::Averting
             || pose.gesture == Some(Gesture::Cover)
@@ -1375,6 +1389,16 @@ fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: boo
         .state
         .beat
         .and_then(|beat| super::beats::beat_gaze(creature, beat))
+    {
+        return fixed(gaze);
+    }
+    if let Some(gaze) =
+        super::meals::meal_shown(creature).and_then(|meal| super::meals::meal_gaze(creature, meal))
+    {
+        return fixed(gaze);
+    }
+    if let Some(gaze) =
+        super::play::play_shown(creature).and_then(|play| super::play::play_gaze(creature, play))
     {
         return fixed(gaze);
     }

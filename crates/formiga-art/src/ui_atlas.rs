@@ -168,7 +168,9 @@ impl SpriteRect {
 /// `Snack, Toy, CopyCode, Profile` once it cannot. `Moment` opens a second strip beside the first,
 /// holding the moments on offer — `Picnic`, `Dance`, `Nap` — and `Stop` while one is under way.
 /// A house, while Formiga Home is installed, offers `Inside, Profile`, with `Stop` in place of
-/// `Inside` while it is the house open.
+/// `Inside` while it is the house open. A wonder put out offers `Play, Move, PutAway, Profile`.
+/// During a visit home to a village that stays out, `Out` sends everyone back out: in `Home`'s
+/// cell, or at the end of the strip of moments when there are some.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MenuIcon {
     Snack,
@@ -183,10 +185,14 @@ pub enum MenuIcon {
     Nap,
     Stop,
     Inside,
+    Play,
+    Move,
+    PutAway,
+    Out,
 }
 
 impl MenuIcon {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 16] = [
         Self::Snack,
         Self::Toy,
         Self::Home,
@@ -199,6 +205,10 @@ impl MenuIcon {
         Self::Nap,
         Self::Stop,
         Self::Inside,
+        Self::Play,
+        Self::Move,
+        Self::PutAway,
+        Self::Out,
     ];
 
     fn index(self) -> u32 {
@@ -208,6 +218,11 @@ impl MenuIcon {
             .expect("every MenuIcon is in ALL") as u32
     }
 }
+
+/// The tab hung under a cell whose item was chosen but cannot be done just now: the companion has
+/// started a climb, set off on a journey, or is otherwise somewhere an offer cannot reach it. A
+/// companion that simply turns an offer down answers in its own bubble instead.
+pub const MENU_UNAVAILABLE_TEXT: &str = "not now";
 
 /// The label under a hovered cell. Always lowercase, always a word the owner would say.
 pub fn menu_label_text(icon: MenuIcon) -> &'static str {
@@ -224,6 +239,10 @@ pub fn menu_label_text(icon: MenuIcon) -> &'static str {
         MenuIcon::Nap => "nap",
         MenuIcon::Stop => "stop",
         MenuIcon::Inside => "look inside",
+        MenuIcon::Play => "play",
+        MenuIcon::Move => "move",
+        MenuIcon::PutAway => "put away",
+        MenuIcon::Out => "out",
     }
 }
 
@@ -319,8 +338,21 @@ impl MenuLayout {
     /// Where the label tab for `index` goes: under the notch, centred on that cell, and nudged
     /// so it never hangs off the end of the strip while it still fits within it.
     pub fn label_tab(&self, index: usize) -> Option<MenuRect> {
+        self.tab_under(
+            index,
+            UiAtlasRenderer::menu_label(*self.items.get(index)?).width,
+        )
+    }
+
+    /// Where the "not now" tab hangs under a cell (see [`MENU_UNAVAILABLE_TEXT`]): where its
+    /// label would, in its place. Draw [`UiAtlasRenderer::menu_unavailable_label`] into it.
+    pub fn unavailable_tab(&self, index: usize) -> Option<MenuRect> {
+        self.tab_under(index, UiAtlasRenderer::menu_unavailable_label().width)
+    }
+
+    /// A tab `width` art pixels wide, centred under a cell and kept within the strip.
+    fn tab_under(&self, index: usize, width: u32) -> Option<MenuRect> {
         let cell = self.cell(index)?;
-        let width = UiAtlasRenderer::menu_label(self.items[index]).width;
         let centre = cell.x + cell.width as i32 / 2;
         let limit = self.size.0 as i32 - width as i32;
         let x = if limit >= 0 {
@@ -399,7 +431,7 @@ impl UiAtlasRenderer {
             draw_menu_body(&mut canvas, plain.x as i32, plain.y as i32, cells as u32);
         }
 
-        // Label tabs.
+        // Label tabs, and the one that says an item cannot be done just now.
         for icon in MenuIcon::ALL {
             let rect = Self::menu_label(icon);
             draw_label_tab(
@@ -409,6 +441,13 @@ impl UiAtlasRenderer {
                 menu_label_text(icon),
             );
         }
+        let rect = Self::menu_unavailable_label();
+        draw_label_tab(
+            &mut canvas,
+            rect.x as i32,
+            rect.y as i32,
+            MENU_UNAVAILABLE_TEXT,
+        );
 
         canvas
     }
@@ -465,24 +504,12 @@ impl UiAtlasRenderer {
     /// The paper tab carrying an item's label. Draw it into `MenuLayout::label_tab`. Tabs are
     /// laid along a row until the next would not fit, then along the next row down.
     pub fn menu_label(icon: MenuIcon) -> SpriteRect {
-        let (mut x, mut y) = (0, MENU_LABEL_ROW_Y);
-        for candidate in MenuIcon::ALL {
-            let width = label_tab_width(menu_label_text(candidate));
-            if x + width > UI_ATLAS_WIDTH {
-                x = 0;
-                y += LABEL_TAB_HEIGHT;
-            }
-            if candidate == icon {
-                return SpriteRect {
-                    x,
-                    y,
-                    width,
-                    height: LABEL_TAB_HEIGHT,
-                };
-            }
-            x += width;
-        }
-        unreachable!("every MenuIcon is in ALL")
+        label_slot(icon.index() as usize)
+    }
+
+    /// The paper tab saying "not now", packed after every item's label.
+    pub fn menu_unavailable_label() -> SpriteRect {
+        label_slot(MenuIcon::ALL.len())
     }
 }
 
@@ -509,6 +536,33 @@ fn text_width(text: &str) -> u32 {
     } else {
         letters * GLYPH_ADVANCE - 1
     }
+}
+
+/// The `index`th tab along the label rows: each item's label in [`MenuIcon::ALL`] order, then
+/// [`MENU_UNAVAILABLE_TEXT`].
+fn label_slot(index: usize) -> SpriteRect {
+    let texts = MenuIcon::ALL
+        .iter()
+        .map(|icon| menu_label_text(*icon))
+        .chain([MENU_UNAVAILABLE_TEXT]);
+    let (mut x, mut y) = (0, MENU_LABEL_ROW_Y);
+    for (slot, text) in texts.enumerate() {
+        let width = label_tab_width(text);
+        if x + width > UI_ATLAS_WIDTH {
+            x = 0;
+            y += LABEL_TAB_HEIGHT;
+        }
+        if slot == index {
+            return SpriteRect {
+                x,
+                y,
+                width,
+                height: LABEL_TAB_HEIGHT,
+            };
+        }
+        x += width;
+    }
+    unreachable!("a label slot past the last tab")
 }
 
 fn label_tab_width(text: &str) -> u32 {
@@ -1168,6 +1222,86 @@ fn draw_menu_icon(canvas: &mut Canvas, x: i32, y: i32, icon: MenuIcon) {
             &[('#', ROSE), ('+', ROSE_DEEP), ('p', PAPER)],
         ),
         // A door standing ajar, lamplight spilling out round it onto the step.
+        MenuIcon::Play => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "........g...",
+                ".......ggg..",
+                "........g...",
+                "..........##",
+                "........##++",
+                "......##++..",
+                "....##++....",
+                "..##++......",
+                "##++........",
+                "+....pp.....",
+                "....pppp....",
+                "...pppppp...",
+            ],
+            &[('#', PLUM), ('+', OUTLINE), ('p', BERRY_DEEP), ('g', GOLD)],
+        ),
+        MenuIcon::Move => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".....##.....",
+                "....####....",
+                "...######...",
+                "..#..##..#..",
+                ".##..##..##.",
+                "############",
+                "++++++++++++",
+                ".++..++..++.",
+                "..+..++..+..",
+                "...++++++...",
+                "....++++....",
+                ".....++.....",
+            ],
+            &[('#', PERIWINKLE), ('+', PERIWINKLE_DEEP)],
+        ),
+        MenuIcon::PutAway => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                ".....tt.....",
+                ".....tt.....",
+                "...tttttt...",
+                "....tttt....",
+                ".....tt.....",
+                "o..........o",
+                "oooooooooooo",
+                "o##########o",
+                "o#++++++++#o",
+                "o##########o",
+                "o##########o",
+                "oooooooooooo",
+            ],
+            &[('o', OUTLINE), ('#', TAN), ('+', TAN_DEEP), ('t', TEAL)],
+        ),
+        MenuIcon::Out => stamp(
+            canvas,
+            x,
+            y,
+            &[
+                "............",
+                "..oooo......",
+                "..o##o......",
+                "..o##o...t..",
+                "..o##o...tt.",
+                "..o#+otttttt",
+                "..o##o...tt.",
+                "..o##o...t..",
+                "..o##o......",
+                "..o##o......",
+                ".oooooo.....",
+                "............",
+            ],
+            &[('o', OUTLINE), ('#', TAN_DEEP), ('+', GOLD), ('t', TEAL)],
+        ),
         MenuIcon::Inside => stamp(
             canvas,
             x,
@@ -1276,6 +1410,9 @@ fn glyph(letter: char) -> [&'static str; GLYPH_HEIGHT as usize] {
         'r' => ["##.", "#.#", "##.", "#.#", "#.#"],
         's' => [".##", "#..", ".#.", "..#", "##."],
         't' => ["###", ".#.", ".#.", ".#.", ".#."],
+        'u' => ["#.#", "#.#", "#.#", "#.#", "###"],
+        'v' => ["#.#", "#.#", "#.#", "#.#", ".#."],
+        'w' => ["#.#", "#.#", "###", "###", "#.#"],
         'y' => ["#.#", "#.#", ".#.", ".#.", ".#."],
         _ => ["...", "...", "...", "...", "..."],
     }
@@ -1301,6 +1438,7 @@ mod tests {
             rects.push(UiAtlasRenderer::menu_icon(icon, true));
             rects.push(UiAtlasRenderer::menu_label(icon));
         }
+        rects.push(UiAtlasRenderer::menu_unavailable_label());
         for cells in 2..=4 {
             rects.push(UiAtlasRenderer::menu_frame(cells).expect("2..=4 have frames"));
             rects.push(UiAtlasRenderer::menu_frame_plain(cells).expect("2..=4 have frames"));

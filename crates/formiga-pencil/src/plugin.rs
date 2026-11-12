@@ -4,7 +4,7 @@ use crate::atlas::{Atlas, Face};
 use crate::{Everywhere, HAND, HAND_BOLD};
 use egui::emath::Rot2;
 use egui::epaint::{ClippedShape, ImageDelta, Mesh, Shape, TextShape, Vertex};
-use egui::{Color32, FontFamily, Pos2, TextureId, TextureOptions, Vec2, pos2, vec2};
+use egui::{Color32, FontFamily, Pos2, Stroke, TextureId, TextureOptions, Vec2, pos2, vec2};
 use std::sync::Arc;
 
 /// Draws the hand in pencil. Added to a context by [`crate::install`].
@@ -51,6 +51,8 @@ impl Pencil {
                 if let Some(drawn) = self.pencil(text, frame) {
                     let mut hidden = text.clone();
                     hidden.opacity_factor = 0.0;
+                    // The pencil draws its underline, if it has one.
+                    hidden.underline = Stroke::NONE;
                     let mut shapes = vec![Shape::Text(hidden)];
                     shapes.extend(drawn);
                     *shape = Shape::Vec(shapes);
@@ -216,19 +218,52 @@ impl Pencil {
         if !any {
             return None;
         }
-        // Texel coordinates become the atlas's own, now that it has grown to hold them all.
-        let [w, h] = self.atlas.size();
-        for vertex in &mut pencilled.vertices {
-            vertex.uv = pos2(vertex.uv.x / w as f32, vertex.uv.y / h as f32);
-        }
+        // The pencilled glyphs keep their texel coordinates until the whole frame is drawn: text
+        // later in the frame may grow the atlas, and coordinates made the atlas's own now would
+        // point into the wrong part of it then. [`to_atlas_uv`] turns them over at the end.
         // A mesh with nothing to draw is left out: a renderer may refuse an empty buffer.
-        Some(
-            [rest, pencilled]
-                .into_iter()
-                .filter(|mesh| !mesh.indices.is_empty())
-                .map(Shape::mesh)
-                .collect(),
-        )
+        let mut shapes: Vec<Shape> = [rest, pencilled]
+            .into_iter()
+            .filter(|mesh| !mesh.indices.is_empty())
+            .map(Shape::mesh)
+            .collect();
+        // The underline egui draws under each row of a hovered or focused link, which the hidden
+        // text no longer draws, laid where egui's tessellator lays it.
+        if text.underline != Stroke::NONE {
+            for row in &galley.rows {
+                if row.visuals.mesh.is_empty() {
+                    continue;
+                }
+                let mut bounds = row.visuals.mesh_bounds;
+                if text.angle != 0.0 {
+                    bounds = bounds.rotate_bb(turn);
+                }
+                let bounds = bounds.translate(origin + turn * row.pos.to_vec2());
+                shapes.push(Shape::line_segment(
+                    [bounds.left_bottom(), bounds.right_bottom()],
+                    text.underline,
+                ));
+            }
+        }
+        Some(shapes)
+    }
+}
+
+/// Every mesh on the pencil's `texture` in `shape`, its texel coordinates made the atlas's own
+/// now that the atlas is `size` and holds everything the frame draws.
+fn to_atlas_uv(shape: &mut Shape, texture: TextureId, [w, h]: [usize; 2]) {
+    match shape {
+        Shape::Vec(shapes) => {
+            for shape in shapes {
+                to_atlas_uv(shape, texture, [w, h]);
+            }
+        }
+        Shape::Mesh(mesh) if mesh.texture_id == texture => {
+            for vertex in &mut Arc::make_mut(mesh).vertices {
+                vertex.uv = pos2(vertex.uv.x / w as f32, vertex.uv.y / h as f32);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -265,6 +300,11 @@ impl egui::Plugin for Pencil {
         let Some(texture) = self.texture else {
             return;
         };
+        // An atlas that filled up last frame starts again empty, with only what this frame
+        // writes, and goes out whole: nothing drawn last frame reads from it any more.
+        if self.atlas.full {
+            self.atlas = Atlas::new();
+        }
         let [fw, fh] = ctx.fonts(|fonts| fonts.font_image_size());
         let frame = Frame {
             pixels_per_point: output.pixels_per_point,
@@ -273,6 +313,18 @@ impl egui::Plugin for Pencil {
         };
         for ClippedShape { shape, .. } in &mut output.shapes {
             self.redraw(shape, &frame);
+        }
+        let size = self.atlas.size();
+        for ClippedShape { shape, .. } in &mut output.shapes {
+            to_atlas_uv(shape, texture, size);
+        }
+        // Writing that found no room is missing from this frame; the next starts the atlas again
+        // and writes it, so there is a next.
+        if self.atlas.full {
+            ctx.request_repaint();
+            for viewport in output.viewport_output.values_mut() {
+                viewport.repaint_delay = std::time::Duration::ZERO;
+            }
         }
         // The atlas is sent whole when it is new or has grown, which also replaces the blank one
         // queued when it was allocated, and otherwise only the rows that gained glyphs.
@@ -378,6 +430,158 @@ mod tests {
         assert!(image.pixels.iter().any(|p| p.a() == 255));
         assert!(image.pixels.iter().all(|p| p.a() == 0 || p.a() == 255));
         output.textures_delta.clear();
+    }
+
+    /// The pencilled meshes of one frame of a fresh context drawing `lines` in the hand at the
+    /// given sizes, in order, and how big the atlas was when the frame went out.
+    fn pencilled(lines: &[(&str, f32)]) -> (Vec<Arc<Mesh>>, [usize; 2]) {
+        let ctx = egui::Context::default();
+        crate::install(&ctx, Everywhere::No);
+        let input = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(4000.0, 4000.0))),
+            ..Default::default()
+        };
+        let run = |ctx: &egui::Context| {
+            ctx.run_ui(input(), |ui| {
+                for (line, size) in lines {
+                    ui.label(egui::RichText::new(*line).font(crate::hand(*size)));
+                }
+            })
+        };
+        let mut output = run(&ctx);
+        let texture = ctx
+            .tex_manager()
+            .read()
+            .allocated()
+            .find(|(_, meta)| meta.name == "formiga-pencil")
+            .map(|(id, _)| *id)
+            .expect("the pencil has a texture");
+        fn collect(shape: &Shape, texture: TextureId, out: &mut Vec<Arc<Mesh>>) {
+            match shape {
+                Shape::Vec(shapes) => shapes.iter().for_each(|shape| collect(shape, texture, out)),
+                Shape::Mesh(mesh) if mesh.texture_id == texture => out.push(mesh.clone()),
+                _ => {}
+            }
+        }
+        let mut meshes = Vec::new();
+        for clipped in &output.shapes {
+            collect(&clipped.shape, texture, &mut meshes);
+        }
+        let size = output
+            .textures_delta
+            .set
+            .get(&texture)
+            .and_then(|deltas| deltas.iter().rev().find(|delta| delta.pos.is_none()))
+            .map(|delta| delta.image.size())
+            .expect("the atlas went out whole with its first frame");
+        output.textures_delta.clear();
+        (meshes, size)
+    }
+
+    #[test]
+    fn writing_early_in_a_frame_still_reads_its_glyphs_after_later_writing_grows_the_atlas() {
+        // Alone, a short line fits the atlas as it starts.
+        let (alone, small) = pencilled(&[("ink", 16.0)]);
+        // Huge writing after it in the same frame makes the atlas grow taller.
+        let (grown, big) = pencilled(&[("ink", 16.0), ("Wonderful big letters", 300.0)]);
+        assert!(
+            big[1] > small[1],
+            "the second frame's atlas grew: {small:?} {big:?}"
+        );
+        // The short line's glyphs are read from the same texels either way.
+        let texels = |mesh: &Mesh, [w, h]: [usize; 2]| -> Vec<(i32, i32)> {
+            mesh.vertices
+                .iter()
+                .map(|v| {
+                    (
+                        (v.uv.x * w as f32).round() as i32,
+                        (v.uv.y * h as f32).round() as i32,
+                    )
+                })
+                .collect()
+        };
+        assert_eq!(texels(&alone[0], small), texels(&grown[0], big));
+    }
+
+    #[test]
+    fn a_link_keeps_its_underline_when_written_in_the_hand() {
+        let ctx = egui::Context::default();
+        crate::install(&ctx, Everywhere::No);
+        let underline = Stroke::new(1.0, Color32::RED);
+        let run = |ctx: &egui::Context| {
+            ctx.run_ui(egui::RawInput::default(), |ui| {
+                let galley =
+                    ui.painter()
+                        .layout_no_wrap("a link".into(), crate::hand(16.0), Color32::BLUE);
+                ui.painter().add(
+                    TextShape::new(pos2(10.0, 10.0), galley, Color32::BLUE)
+                        .with_underline(underline),
+                );
+            })
+        };
+        run(&ctx).textures_delta.clear();
+        let output = run(&ctx);
+        fn lines(shape: &Shape, out: &mut Vec<egui::epaint::Stroke>) {
+            match shape {
+                Shape::Vec(shapes) => shapes.iter().for_each(|shape| lines(shape, out)),
+                Shape::LineSegment { stroke, .. } => out.push(*stroke),
+                Shape::Text(text) => assert_eq!(text.underline, Stroke::NONE),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        for clipped in &output.shapes {
+            lines(&clipped.shape, &mut found);
+        }
+        assert_eq!(found, vec![underline]);
+    }
+
+    #[test]
+    fn a_full_atlas_starts_again_on_the_next_frame_and_asks_for_it() {
+        // The plugin run by hand, so its atlas can be looked at between frames.
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        crate::add_to(&mut fonts, Everywhere::No);
+        ctx.set_fonts(fonts);
+        let mut pencil = Pencil::new(Everywhere::No);
+        egui::Plugin::setup(&mut pencil, &ctx);
+        let frame = |ctx: &egui::Context, pencil: &mut Pencil, huge: bool| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(1e5, 1e5))),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                if huge {
+                    // Every letter at size after size: far more than the tallest atlas holds.
+                    for size in (100..400).step_by(6) {
+                        ui.label(
+                            egui::RichText::new("abcdefghijklmnopqrstuvwxyz")
+                                .font(crate::hand(size as f32)),
+                        );
+                    }
+                } else {
+                    ui.label(egui::RichText::new("ink").font(crate::hand(16.0)));
+                }
+            });
+            egui::Plugin::output_hook(pencil, ctx, &mut output);
+            output.textures_delta.clear();
+            output
+        };
+        // Fonts come into use from the next pass.
+        frame(&ctx, &mut pencil, false);
+        let output = frame(&ctx, &mut pencil, true);
+        // The frame that filled it keeps the atlas it drew from, and asks for another at once.
+        assert!(pencil.atlas.full);
+        assert!(
+            output
+                .viewport_output
+                .values()
+                .all(|viewport| viewport.repaint_delay.is_zero())
+        );
+        // The next starts again with room for what it writes.
+        frame(&ctx, &mut pencil, false);
+        assert!(!pencil.atlas.full);
+        assert_eq!(pencil.atlas.size(), [1024, 256]);
     }
 
     #[test]

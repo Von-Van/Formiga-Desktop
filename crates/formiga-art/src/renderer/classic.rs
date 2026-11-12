@@ -894,6 +894,29 @@ pub(super) fn gesture_limb_targets(
             };
             (resting_left, at(middle + 3, right.y - length - 2 + rub))
         }
+        // The near paw up at the mouth with it, the other steadying, in quick little dips.
+        Gesture::Nibble => {
+            offset_pair(left, right, ((length + 1, -2 + tick), (-length, -1 - tick)))
+        }
+        // Both paws up round something big, pushed in to the mouth for the bite.
+        Gesture::Chomp => {
+            let push = [0, 1, 2, 1][usize::from(frame % 4)];
+            offset_pair(
+                left,
+                right,
+                (
+                    (length + push, -2),
+                    (-length + push, -2 - i32::from(push == 2)),
+                ),
+            )
+        }
+        // Lowered to the chest while the mouth works.
+        Gesture::Chew => offset_pair(left, right, ((length - 1, 1), (-length + 1, 1 + tick))),
+        // Up over the face to drop it in, and down again.
+        Gesture::Gulp => {
+            let up = [1, 3, 2, 0][usize::from(frame % 4)];
+            offset_pair(left, right, ((length, -up), (-length + 1, -1 - up)))
+        }
         // Flat out: both paws laid out on the ground to either side.
         Gesture::Sprawl => offset_pair(left, right, ((-length - 1, 2), (length + 1, 2))),
         // Tucked in under the chest.

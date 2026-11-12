@@ -1,3 +1,4 @@
+use super::menus::menu_hidden;
 use super::{
     colony_bounds, habitat_editor_claims, resolve_press_target, world_redraw_interval,
     world_tick_interval,
@@ -223,12 +224,18 @@ fn a_stroll_at_home_ticks_at_twenty_like_every_walk() {
 }
 
 #[test]
-fn press_stays_on_the_window_whose_own_mask_covers_the_cursor() {
+fn press_goes_to_the_creature_drawn_in_front_whichever_window_it_reached() {
+    // Creature 1 is drawn behind creature 2 and their bodies overlap under the cursor. The press
+    // reaching 1's own window does not make it 1's: 2 is the one the user can see.
     let hits = [(10u32, 1u64), (20u32, 2u64)];
-    let order = [1u64, 2u64];
     assert_eq!(
-        resolve_press_target(20u32, &hits, &order),
+        resolve_press_target(&hits, &[1u64, 2u64]),
         Some((20u32, 2u64))
+    );
+    // Swap which is drawn in front, and the press goes with it.
+    assert_eq!(
+        resolve_press_target(&hits, &[2u64, 1u64]),
+        Some((10u32, 1u64))
     );
 }
 
@@ -239,7 +246,7 @@ fn press_on_a_transparent_overlap_reaches_the_creature_underneath() {
     let hits = [(10u32, 1u64), (20u32, 2u64)];
     let order = [1u64, 2u64, 3u64];
     assert_eq!(
-        resolve_press_target(30u32, &hits, &order),
+        resolve_press_target(&hits, &order),
         Some((20u32, 2u64)),
         "should pick the creature drawn last, which is the visible one on top"
     );
@@ -247,5 +254,20 @@ fn press_on_a_transparent_overlap_reaches_the_creature_underneath() {
 
 #[test]
 fn press_over_no_creature_starts_no_drag() {
-    assert_eq!(resolve_press_target(30u32, &[], &[1u64]), None);
+    assert_eq!(resolve_press_target::<u32>(&[], &[1u64]), None);
+}
+
+/// A menu goes when its creature goes inside, as the overlay stops drawing it, so its click
+/// target is not left behind over a strip nobody can see.
+#[test]
+fn a_menu_closes_when_its_creature_goes_inside() {
+    let created = time::macros::datetime!(2026-01-01 12:00 UTC);
+    let world = World::new([72; 32], created, &DesktopSnapshot::default());
+    let mut creature = world.save.creatures[0].clone();
+    let settings = world.save.settings.clone();
+    assert!(!menu_hidden(&creature, &settings, false));
+    creature.state.indoors = true;
+    assert!(menu_hidden(&creature, &settings, false));
+    creature.state.indoors = false;
+    assert!(menu_hidden(&creature, &settings, true));
 }

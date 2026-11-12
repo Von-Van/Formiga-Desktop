@@ -29,18 +29,19 @@ const REACH_START: OffsetDateTime = time::macros::datetime!(2026-01-05 09:00 UTC
 
 /// Where the village's ground pieces are named on screen: the tiles of the Village page's
 /// "Put something down" catalogue (formiga-desktop/src/clubhouse/arrange.rs, `ground_catalogue`).
-/// Each tile is 96 by 78 at 100% text, and grows with the text; the name is laid out in the Small
+/// Each tile is 96 by 90 at 100% text, and grows with the text; the name is laid out in the Small
 /// text style, wrapped to the tile less four points either side, and sits with its foot four
 /// points above the tile's bottom edge. The picture above it is 40 high and centred 26 below the
-/// tile's top, so its foot is 46 down. The name has the 28 points between the two at 100%.
+/// tile's top, so its foot is 46 down. The name has the 40 points between the two at 100%:
+/// room for two lines of a two-word name.
 pub(crate) const GROUND_TILE_WRAP: f32 = 96.0 - 8.0;
-pub(crate) const GROUND_TILE_NAME_ROOM: f32 = 78.0 - 4.0 - (26.0 + 20.0);
+pub(crate) const GROUND_TILE_NAME_ROOM: f32 = 90.0 - 4.0 - (26.0 + 20.0);
 
 /// How wide a ground tile's name may run, and how much height it has, with text at `scale`
 /// percent.
 fn ground_tile_room(scale: u8) -> (f32, f32) {
     let grow = f32::from(scale) / 100.0;
-    (96.0 * grow - 8.0, 78.0 * grow - 4.0 - (26.0 + 20.0))
+    (96.0 * grow - 8.0, 90.0 * grow - 4.0 - (26.0 + 20.0))
 }
 /// The Small text style, and the largest text size the settings offer
 /// (formiga-desktop/src/settings.rs, the style set up for every window).
@@ -693,7 +694,7 @@ mod tests {
     fn the_ground_tile_is_measured_as_the_app_draws_it() {
         let arrange = include_str!("../../formiga-desktop/src/clubhouse/arrange.rs");
         assert!(
-            arrange.contains("egui::vec2(96.0, 78.0) * grow"),
+            arrange.contains("egui::vec2(96.0, 90.0) * grow"),
             "tile size"
         );
         assert!(

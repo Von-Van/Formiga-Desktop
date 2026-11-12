@@ -48,6 +48,10 @@ pub const UNTOUCHED_SECS: f32 = 8.0;
 /// Art pixels between the menu and a strip opened beside it.
 pub const SIDE_STRIP_GAP: i32 = 2;
 
+/// How long the "not now" tab hangs under an item that could not be done, in seconds: long
+/// enough to read, short enough to be gone before the owner tries again.
+pub const UNAVAILABLE_SECS: f32 = 1.6;
+
 /// Whose menu this is. A colony member can be sent home; a guest can be asked to stay instead; a
 /// house can be looked inside, in Formiga Home.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +59,24 @@ pub enum MenuTarget {
     Member,
     Guest,
     House,
+    /// A wonder the person at the desk put out. Its menu's `creature_id` is the kind's place in
+    /// [`WonderKind::ALL`]: see [`wonder_menu_id`].
+    Wonder,
+}
+
+/// The id a wonder's menu goes by in place of a creature's: the kind's place in the catalogue.
+pub fn wonder_menu_id(kind: formiga_core::WonderKind) -> CreatureId {
+    formiga_core::WonderKind::ALL
+        .iter()
+        .position(|candidate| *candidate == kind)
+        .unwrap_or(0) as CreatureId
+}
+
+/// The kind a wonder's menu belongs to, from the id it goes by.
+pub fn wonder_of_menu(id: CreatureId) -> Option<formiga_core::WonderKind> {
+    formiga_core::WonderKind::ALL
+        .get(usize::try_from(id).ok()?)
+        .copied()
 }
 
 /// Why a menu closed. Only ever used for logging and tests: the menu simply goes.
@@ -85,7 +107,7 @@ pub enum MenuDismissal {
 /// already on its way. A house's has two of its own: see [`house_items`].
 pub fn menu_items(target: MenuTarget, visitor_can_stay: bool) -> [MenuIcon; 4] {
     match target {
-        MenuTarget::Member | MenuTarget::House => [
+        MenuTarget::Member | MenuTarget::House | MenuTarget::Wonder => [
             MenuIcon::Snack,
             MenuIcon::Toy,
             MenuIcon::Home,
@@ -117,6 +139,15 @@ pub fn house_items(open_here: bool) -> [MenuIcon; 2] {
     ]
 }
 
+/// The four items a wonder's menu offers: a go on it for whoever is free, moving it, putting it
+/// away, and its page in the notebook.
+pub const WONDER_ITEMS: [MenuIcon; 4] = [
+    MenuIcon::Play,
+    MenuIcon::Move,
+    MenuIcon::PutAway,
+    MenuIcon::Profile,
+];
+
 /// A rectangle in monitor-local physical pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LocalRect {
@@ -147,6 +178,12 @@ pub struct MenuAnchor {
     pub head_top: f32,
     /// The creature's lowest drawn pixel, in monitor-local physical pixels.
     pub foot_bottom: f32,
+    /// Where its feet meet what it stands on, in monitor-local physical pixels: moved by real
+    /// travel — a step, a hop up onto a bench, a ride on a window — and by no fidget.
+    pub ground: f32,
+    /// The crown of its head standing at rest, the plain settle, in monitor-local physical
+    /// pixels: how tall it is when it is not doing anything in particular.
+    pub settled_head_top: f32,
     /// Physical pixels per art pixel: the display scale.
     pub art_scale: f32,
     /// The drawable's own pixel grid, so the strip lands where the sprites do.
@@ -422,6 +459,24 @@ pub struct CreatureMenu {
     side: Option<SideStrip>,
     /// The usable area the menu was last placed in, which a strip beside it keeps inside too.
     usable: Option<LocalRect>,
+    /// An item that was chosen but could not be done just now, and how much longer its "not now"
+    /// tab hangs under it.
+    unavailable: Option<(usize, f32)>,
+    /// How far above and below its feet the strip measures the creature while it is open (see
+    /// [`CreatureMenu::attach`]).
+    steady: Option<SteadyExtent>,
+}
+
+/// How tall a creature is taken to be while its menu is open, measured from its feet once, when
+/// the strip is first placed: the taller of its plain settle and the pose it was in then, so the
+/// strip neither covers its head nor rides up and down with every fidget, shift of weight and
+/// wash under the owner's pointer. Measured again only if the settle itself changes height — a
+/// smaller drawing further back in the village, a new size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SteadyExtent {
+    settled_rise: f32,
+    rise: f32,
+    drop: f32,
 }
 
 impl CreatureMenu {
@@ -446,6 +501,8 @@ impl CreatureMenu {
             settings_focused,
             side: None,
             usable: None,
+            unavailable: None,
+            steady: None,
         }
     }
 
@@ -471,6 +528,33 @@ impl CreatureMenu {
             settings_focused,
             side: None,
             usable: None,
+            unavailable: None,
+            steady: None,
+        }
+    }
+
+    /// The menu of a wonder put out.
+    pub fn for_wonder(
+        kind: formiga_core::WonderKind,
+        monitor_id: MonitorId,
+        settings_focused: bool,
+    ) -> Self {
+        let items = WONDER_ITEMS.to_vec();
+        Self {
+            creature_id: wonder_menu_id(kind),
+            target: MenuTarget::Wonder,
+            layout: MenuLayout::new(&items),
+            items,
+            monitor_id,
+            hovered: None,
+            placement: None,
+            strayed_for: 0.0,
+            untouched_for: 0.0,
+            settings_focused,
+            side: None,
+            usable: None,
+            unavailable: None,
+            steady: None,
         }
     }
 
@@ -480,6 +564,18 @@ impl CreatureMenu {
         for item in &mut self.items {
             if *item == MenuIcon::Home {
                 *item = MenuIcon::Moment;
+            }
+        }
+        self.layout = MenuLayout::new(&self.items);
+        self
+    }
+
+    /// During a visit home to a village that stays out, with no moment to share, the same cell
+    /// sends everyone back out to roam instead.
+    pub fn offering_out(mut self) -> Self {
+        for item in &mut self.items {
+            if *item == MenuIcon::Home {
+                *item = MenuIcon::Out;
             }
         }
         self.layout = MenuLayout::new(&self.items);
@@ -558,9 +654,51 @@ impl CreatureMenu {
         self.placement
     }
 
+    /// `anchor` with the creature's height measured as [`SteadyExtent`] says.
+    fn steadied(&mut self, anchor: MenuAnchor) -> MenuAnchor {
+        let settled_rise = anchor.ground - anchor.settled_head_top;
+        let steady = match self.steady {
+            Some(steady) if (steady.settled_rise - settled_rise).abs() < 0.5 => steady,
+            _ => SteadyExtent {
+                settled_rise,
+                rise: (anchor.ground - anchor.head_top).max(settled_rise),
+                drop: (anchor.foot_bottom - anchor.ground).max(0.0),
+            },
+        };
+        self.steady = Some(steady);
+        MenuAnchor {
+            head_top: anchor.ground - steady.rise,
+            foot_bottom: anchor.ground + steady.drop,
+            ..anchor
+        }
+    }
+
+    /// The item whose "not now" tab is showing, if any.
+    pub fn unavailable(&self) -> Option<usize> {
+        self.unavailable.map(|(index, _)| index)
+    }
+
+    /// Say under `icon` that it cannot be done just now, for [`UNAVAILABLE_SECS`]: the menu
+    /// stays open, so the owner can see their click was heard and try again or choose another.
+    /// Says whether the menu has that item.
+    pub fn mark_unavailable(&mut self, icon: MenuIcon) -> bool {
+        let Some(index) = self.items.iter().position(|item| *item == icon) else {
+            return false;
+        };
+        self.unavailable = Some((index, UNAVAILABLE_SECS));
+        // The owner has just used the menu: it is not untouched.
+        self.untouched_for = 0.0;
+        true
+    }
+
     /// Re-attach the strip to the creature. Called every frame the creature can be drawn; called
     /// with `None` when it cannot, which parks the menu until it can be placed again.
+    ///
+    /// The strip follows the creature's feet, not the top of whatever pose it is in this frame:
+    /// a creature that stands where it is and fidgets keeps its strip still under the pointer,
+    /// and one that walks, hops or rides off takes the strip with it.
     pub fn attach(&mut self, anchor: Option<MenuAnchor>) {
+        let anchor = anchor.map(|anchor| self.steadied(anchor));
         self.placement = anchor.map(|anchor| place(&self.layout, anchor));
         self.usable = anchor.map(|anchor| anchor.usable);
         if let Some(side) = &mut self.side {
@@ -639,6 +777,16 @@ impl CreatureMenu {
         });
         let mut redraw = hovered != self.hovered;
         self.hovered = hovered;
+        if let Some((index, left)) = self.unavailable {
+            let left = left - dt;
+            // Pointing at another item asks about that one instead.
+            if left <= 0.0 || hovered.is_some_and(|hovered| hovered != index) {
+                self.unavailable = None;
+                redraw = true;
+            } else {
+                self.unavailable = Some((index, left));
+            }
+        }
         let mut side_hovered = None;
         if let Some(side) = &mut self.side {
             side_hovered = cursor.and_then(|cursor| {
@@ -714,6 +862,8 @@ mod tests {
             centre_x,
             head_top,
             foot_bottom: head_top + 36.0 * display_scale,
+            ground: head_top + 36.0 * display_scale,
+            settled_head_top: head_top,
             art_scale: display_scale,
             grid: 1.0,
             usable: LocalRect {
@@ -943,6 +1093,66 @@ mod tests {
         }
     }
 
+    /// A companion that stands where it is and fidgets — a shift of weight, a wash, a stretch
+    /// up — keeps its strip where it was under the pointer; one that walks or hops off takes it
+    /// along; and one that changes height for real, drawn smaller further back, is measured again.
+    #[test]
+    fn the_strip_follows_the_feet_not_each_fidget() {
+        let scale = 3.0;
+        let layout_menu = || CreatureMenu::new(7, MenuTarget::Member, false, 1, false);
+        let standing = anchor(900.0, 600.0, scale, 1.0);
+        let mut menu = layout_menu();
+        menu.attach(Some(standing));
+        let opened = menu.placement().expect("placed");
+        for top in [-6.0, -2.0, 3.0, 8.0] {
+            menu.attach(Some(MenuAnchor {
+                head_top: standing.head_top + top * scale,
+                foot_bottom: standing.foot_bottom - 2.0 * scale,
+                ..standing
+            }));
+            assert_eq!(
+                menu.placement(),
+                Some(opened),
+                "a fidget {top} art pixels tall"
+            );
+        }
+        // Opened mid-stretch, the strip is placed over the stretch, and stays there.
+        let mut stretched = layout_menu();
+        stretched.attach(Some(MenuAnchor {
+            head_top: standing.head_top - 6.0 * scale,
+            ..standing
+        }));
+        let high = stretched.placement().expect("placed");
+        assert!(high.y < opened.y, "clear of the stretch");
+        stretched.attach(Some(standing));
+        assert_eq!(stretched.placement(), Some(high));
+        // A step along, or a hop up onto a bench, moves it with the feet.
+        let along = MenuAnchor {
+            centre_x: standing.centre_x + 30.0,
+            head_top: standing.head_top - 5.0 * scale,
+            foot_bottom: standing.foot_bottom - 5.0 * scale,
+            ground: standing.ground - 5.0 * scale,
+            settled_head_top: standing.settled_head_top - 5.0 * scale,
+            ..standing
+        };
+        menu.attach(Some(along));
+        let moved = menu.placement().expect("placed");
+        assert_eq!(moved.y, opened.y - 5.0 * scale);
+        assert!(moved.x > opened.x);
+        // Drawn smaller, further back: a settle 8 art pixels shorter is a new height.
+        let smaller = MenuAnchor {
+            head_top: standing.head_top + 8.0 * scale,
+            settled_head_top: standing.settled_head_top + 8.0 * scale,
+            ..standing
+        };
+        menu.attach(Some(smaller));
+        assert_eq!(
+            menu.placement().expect("placed").y,
+            opened.y + 8.0 * scale,
+            "measured again"
+        );
+    }
+
     fn open() -> CreatureMenu {
         let mut menu = CreatureMenu::new(7, MenuTarget::Member, false, 1, false);
         menu.attach(Some(anchor(900.0, 600.0, 3.0, 1.0)));
@@ -975,6 +1185,35 @@ mod tests {
         assert!(menu.track(0.05, Some(away), creature).redraw);
         assert_eq!(menu.hovered(), Some(0));
         assert_eq!(menu.item_at(away), Some(MenuIcon::Snack));
+    }
+
+    /// A snack that cannot be held out just now says "not now" under itself while the strip
+    /// stays open, for a moment, or until another item is pointed at.
+    #[test]
+    fn an_item_that_cannot_be_done_says_not_now_for_a_moment() {
+        let mut menu = open();
+        let creature = Point { x: 900.0, y: 648.0 };
+        let snack = cell_centre(&menu, 0);
+        menu.track(0.05, Some(snack), creature);
+        assert!(menu.mark_unavailable(MenuIcon::Snack));
+        assert_eq!(menu.unavailable(), Some(0));
+        assert!(
+            !menu.mark_unavailable(MenuIcon::Stay),
+            "not on a member's menu"
+        );
+        let mut elapsed = 0.0;
+        while menu.unavailable().is_some() {
+            let tick = menu.track(0.1, Some(snack), creature);
+            assert!(tick.dismissal.is_none(), "the menu stays open");
+            elapsed += 0.1;
+            assert!(elapsed < UNAVAILABLE_SECS + 0.5, "the tab never went");
+        }
+        assert!(elapsed >= UNAVAILABLE_SECS - 0.1);
+        // Pointing at another item lets the tab go at once.
+        menu.mark_unavailable(MenuIcon::Snack);
+        let tick = menu.track(0.05, Some(cell_centre(&menu, 1)), creature);
+        assert!(tick.redraw);
+        assert_eq!(menu.unavailable(), None);
     }
 
     #[test]
@@ -1312,5 +1551,30 @@ mod tests {
         let mini = place(&layout, anchor(900.0, mini_head, scale, 1.0));
         assert!(mini.y > adult.y, "the small creature's menu hangs lower");
         assert_eq!(mini.y - adult.y, mini_head - adult_head);
+    }
+
+    #[test]
+    fn a_wonder_has_its_own_four_items_and_goes_by_its_kind() {
+        for kind in formiga_core::WonderKind::ALL {
+            let menu = CreatureMenu::for_wonder(kind, 1, false);
+            assert_eq!(menu.target(), MenuTarget::Wonder);
+            assert_eq!(menu.items(), WONDER_ITEMS);
+            assert_eq!(wonder_of_menu(menu.creature_id()), Some(kind));
+        }
+        assert_eq!(wonder_of_menu(99), None);
+    }
+
+    #[test]
+    fn a_visit_to_a_village_that_stays_out_offers_the_way_back_out() {
+        let menu = CreatureMenu::new(7, MenuTarget::Member, false, 1, false).offering_out();
+        assert_eq!(
+            menu.items(),
+            [
+                MenuIcon::Snack,
+                MenuIcon::Toy,
+                MenuIcon::Out,
+                MenuIcon::Profile
+            ]
+        );
     }
 }

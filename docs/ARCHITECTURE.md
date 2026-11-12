@@ -335,9 +335,112 @@ is held below the mouth, so a body that sits low holds it below its feet, becaus
 of the ground would put it across the face.
 
 Passive toys, snacks, and drinkware are deterministically derived from genes already stored in the
-appearance genome. Their colors, shape variants, motion phases, and hand targets are baked into the
-same action atlas as the creature. Eating and drinking therefore add no runtime asset lookup or
-procedural work; sprinting reuses the existing movement tick with a distinct six-frame gait.
+appearance genome. What is held is drawn apart from the body (`renderer/held.rs`): each body frame
+returns a `HeldPlacement` saying which `HeldThing` it holds and where the middle of its 16-pixel
+cell lands in the frame, and the thing itself is a cell of the held sheet (`render_held_sheet`,
+one texture every companion and colony shares), drawn in its own colours — food as food, each toy in one of
+three colourways — with the shared dark edge. The overlay keeps each slot's placement with the atlas
+and draws the cell as one quad right after the body and face, mirrored with the frame, so a
+companion standing in front of another is never drawn under the other's snack; whole-frame renders
+(`render_dressed_composited_frame` and everything built on it: stickers, postcards, review sheets,
+Formiga Home) paint it in the same place. The marks a creature makes while it plays or eats — the
+dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A body holding
+something else needs no new frames; sprinting reuses the existing movement tick with a distinct
+six-frame gait.
+
+A companion eating has a `Meal` (`formiga-core/src/meals.rs`), runtime only like `Presence`:
+`world/meals.rs` gives one to anyone whose action has just become Eat, carries it while they eat,
+and clears it when they stop, at the end of every tick, with dice of its own from the colony seed,
+the companion and the clock, so it changes nothing the colony does (a test runs a colony with its
+meals wiped every tick and compares). Paused, a meal holds where it is along with its action, so
+the bite on screen when the colony carries on is the bite from before the pause. The food is one of 18 in six sizes — tiny, in the hand, big,
+long, in a shell, in a bowl — chosen from the hour by the desk's clock, the village's ripe gardens,
+the companion's favourite (read from its looks) or, for a snack the person offered, a treat — an
+offer taken on the doorstep while the village is out included, which the resident's `HomeMoment`
+remembers as `offered`. The guest on stage gets a meal the same way. The meal is laid out to fill
+the Eat action's time: a look it over, a crack or a blow for a nut or a hot bowl, bites and chews in
+the food's own manner, one moment that makes the meal its own (a crumb wiped off, cheeks stuffed, a
+hiccup, nodding off when sleepy, or nothing), and a finish (a bowl set down empty, then paws licked
+or a pat of the tummy). A meal too long for its sixteen steps keeps its whole finish, and the steps
+kept fill the time. The look-it-over habit is the meal's own opening look, stretched to the habit's
+length by `Meal::look_over_until` rather than drawn over the meal, and Reduce Motion turns tosses
+into bites (`Meal::without_tosses`). `renderer/meals.rs` shows each step: four eating gestures
+(Nibble, Chomp, Chew, Gulp), the drink's tip for a bowl, Watch while something tiny is tossed up,
+Pluck to set a bowl down, and Gasp, Loaf, Groom and Worry between bites, with a face per step;
+`held_now` swaps the meal's food, eaten down by `Meal::bite`, into whatever hold the frame baked,
+moved by `meal_offset` (held low through a cheek wipe, tossed up and caught, lowered to the ground),
+and a pose borrowed for a meal shows nothing in its paws outside one. A nut is whole until the knock
+of its crack, open from then, and nibbled from the first bite. Foods are drawn in `renderer/foods.rs`
+at four stages each, on the held sheet after the cups; the empty bowl has a cell of its own at the
+end of the sheet.
+`formiga-tools meal-sheet` shows every food eaten through a meal.
+
+Play works the same way (`formiga-core/src/play.rs`, carried by `world/play.rs`, runtime only and
+checked by the same wiped-every-tick test). Every plaything has a `PlayShape` — round, stick,
+umbrella, flying, spinning, noisy, soft, stacking, floating — read from a toy's kind, a belonging's
+kind, or a find's name (`trinket_shape`; a stamp or a key has none). A companion settling down to
+SoloPlay picks its own toy, one of the colony's belongings, or a find borrowed from the scrapbook,
+and plays one to three rounds of its shape's moves between picking it up and putting it down,
+each round whole (a tower built up and knocked down, a line cast and reeled in) or left out, and the
+rounds kept filling the time: a round
+thing kept up, tossed high, bounced or balanced on the head; a stick swished like a sword, leaned
+on like a cane, fished with (and sometimes a fish comes up) or conducted with; an umbrella twirled
+overhead or sat in like a boat; a kite flown, a plane thrown to glide away; a top spun on the
+ground; a drum drummed; a plush hugged; a tower of blocks stacked and knocked down; a paper boat
+sailed. Something flown may be thrown at the end of its game, and a paper plane always is, landing
+on the ground ahead (`PlayMove::Landed`) rather than coming back to the paws. A tower's height is
+counted from its last topple. A belonging played with is borrowed by its id (`Play::borrowed`) and
+the village leaves it out of the yard until it is put back; the guest on stage plays with its own
+toy only. A play bow comes before the toy is picked up (`Play::pick_up_until`). The start of a hop
+down off a window at least 60 points, when the colony has an umbrella that nobody has borrowed, is
+ridden down under it half the time. `renderer/play.rs` gives each move a pose from the existing
+gestures and moves the thing from where the frame holds things (every gesture and the landing bake
+a hold), so it can leave the frame: a ball goes above the head, a plane across the desktop. A toss
+or a bounce is as many whole arcs as fit its move, so the ball is back in the paw when the move
+ends. A flown kite has a string (`held_tether`), drawn by the overlay as a thin quad of the held
+sheet's string colour just before the kite, and `prop_in_motion` keeps the colony on its 20 Hz
+moving rate while a thing is in the air. Props a game needs (a stick at four
+angles, a rod and a fish, the umbrella open, closed and upturned, a kite, a plane, a tower, a drum,
+a paper boat) are on the held sheet; a borrowed find is drawn from the colony's own sheet of finds,
+so `CreatureDraw` notes which sheet its carried quad uses. `formiga-tools play-sheet` shows each
+shape played with through a session. Paused, a game holds where it is, as a meal does. With motion
+reduced, solo play keeps SoloPlay's own calm hold and the thing stays still in the paws, as itself
+and not turning, whatever the move: nothing is tossed, bounced, swung or flown, and the eyes do not
+follow a thing that is not going anywhere. The ride down under an umbrella is held still overhead
+already, and keeps its hold.
+
+Companions talk to each other in pictures (`formiga-core/src/talk.rs`, carried by
+`world/talk.rs`, runtime only and checked by the same wiped-every-tick test). A `Saying` is a
+`TalkStyle` — chat, excited, whisper, thought, song, tender, grumble, shout — and one `TalkTopic`
+picture. At the end of each tick the pass sees what each companion has just started
+and, with dice of its own, has it say something to a friend: the one its action is aimed at (the
+`target_creature` of its current `ActionChoice`, the friend it walked over to greet or play with)
+and nobody else, or else the nearest within 150 points. Only a friend in sight on the same ground
+— the floor, or the same window — hears it. It says a hello (answered with a hello or a heart), an
+invitation to play with pawprints, a pair at play being a chase or tag with no thing in it
+(answered "!"), a meal offered (answered with a heart), a goodnight whispered once it has lain
+down, not while it walks to bed (whispered back), a grumble at being pounced on, a "!" at a fish
+caught or a tower down, a note while drumming or dancing. Play moments are read from
+`CreatureState::play_shown`, the same test the art draws the game by, so nothing is said of a catch
+hidden behind a beat. An answer waits 0.9 s, and is dropped rather than said if by then the one it
+answers is out of earshot or out of sight or the one answering has fallen asleep; it never cuts off
+what the one answering is still saying, but waits for that to finish, and a companion has at most
+one answer waiting. A speaker keeps quiet 9 s after it speaks; at most four are up at once. A
+companion behind a house in the village, or indoors, says nothing and has its bubble hidden until
+it comes out. An answer to the person at the desk wins over talk: nobody within 64 points of a
+companion answering it starts saying something, an answer due there waits (for at most a bubble's
+length) until the person's answer has gone, and the overlay leaves out any companion's bubble that
+would overlap the room the person's answer takes. Those answers (`ThoughtBubble`, unchanged) are
+drawn in the same bubbles through `Saying::answering`. The overlay draws every bubble from the talk
+sheet (`TalkSheet`), which is baked at `TALK_DETAIL` = 2 texture pixels to the art pixel, so a
+bubble's frame and picture are twice as fine as the companion under it. Every bubble is one shape
+and size (`TALK_BUBBLE`), with the same plum edge and tail; the style shows only in the colour of
+its paper, so the eye goes to the picture. Each is its frame quad and, once grown, its picture quad, placed by `talk_origin` with the tail's tip an art
+pixel over the crown. A creature too near the top of its display for that has its bubble hung an
+art pixel under its lowest drawn row instead, drawn upside down so the tail points up at it, with
+the picture moved down onto the body (`TalkPlacement::icon_at`). The interface atlas keeps the menu and the notebook's icons. A sleeper's z is
+four pixels square, since three square can only join its bars with one middle pixel and reads as
+an I. `formiga-tools talk-sheet` shows every style and a few conversations.
 
 Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
 window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
@@ -356,8 +459,8 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 199 frames: 92 for actions, because
-`Tossed` reuses the dragged body clip, and 107 for thirty-one gesture poses. Since 0.62.0 a frame or a
+directions and three eyelid states. The body atlas holds 213 frames: 92 for actions, because
+`Tossed` reuses the dragged body clip, and 121 for thirty-five gesture poses. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -366,11 +469,12 @@ trinket atlas, are gone. Cells are laid ten bodies and twenty-seven faces to a r
 companion wears is drawn onto every body frame as the atlas is baked, so it costs no quad and no
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
-adds one or two from the object sheet. A new companion's textures come to about 1.61 MB — 1.24 MB
+adds one or two from the object sheet, and what it eats or plays with one from the held sheet. A
+new companion's textures come to about 1.70 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
-its chores and its pet added four rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
+its chores, its pet and the four ways it eats a meal added five rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,257,920 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.
@@ -463,7 +567,10 @@ the curious sniff. A resident at home does the same between spells of its usual 
 common pose in the village is no longer held still. A nap is taken curled, sprawled out on its side
 with a paw flopped ahead, or loafed sitting up (`nap_pose`): a trusting companion sprawls more, a
 wary one dozes sitting up, and a long nap now and then turns over into another way partway
-through. A walk can carry a mood (`walk_mood`): a trudge, head and tail low on half-size steps, when
+through (`nap_turn`). The turn is shown rather than swapped in a frame: half a second stirring
+where it lies, its breaths quickened, six tenths of a second gathered up in a crouch, and half a
+second stirring in the new way before it settles (`NAP_TURN_SECS`), with the settled ways either
+side as they were; `formiga-tools rest-sheet` ends with a row a body of one. A walk can carry a mood (`walk_mood`): a trudge, head and tail low on half-size steps, when
 it is tired or on its way to bed, and on some of a contented companion's walks — more of a playful
 one's, and more when it is walking over to say hello — a skip, bouncing up off its legs with its
 ears and tail high. Up from a nap a calm companion stretches and a lively one shakes itself, and
@@ -633,7 +740,14 @@ click-through during normal use. Coordinates remain virtual-desktop logical poin
 renderer conversion to physical pixels.
 
 Direct manipulation uses one small proxy per visible creature. A pre-baked one-bit frame mask shapes
-the Windows proxy and controls near-creature hit testing on macOS. The proxy preserves the grab
+the Windows proxy and controls near-creature hit testing on macOS. The mask is the body and the face
+only (`interaction::body_mask`): what the paws hold is drawn apart and is often not the clip's own
+snack or toy, so it stays click-through. Where a chosen application hides part of a creature, that
+part is cut out of the mask too (`InteractionProxy::set_covered`, from the same
+`visible_occlusion_rects` the shader is given), so the application keeps its clicks and the part
+still drawn keeps the creature's. A proxy follows its creature only while the cursor is near; one
+left behind is given an empty shape until it is back in place, so on Windows, where the shape is
+what takes a press, the creature's old spot does not swallow clicks meant for what is there now. The proxy preserves the grab
 offset, captures through release, and sends normalized cursor position and velocity to the
 simulation. Three fixed-capacity velocity samples cover roughly the final 150 ms without allocation.
 The interaction session tracks maximum excursion from the press point: at most six logical points is
@@ -697,7 +811,8 @@ keyboard focus and so has no modifier state of its own. No new permission, event
 is involved. Only one menu exists at a time.
 
 A colony member's strip holds Snack, Toy, Home, and Profile, with Moment in Home's cell while the
-houses are out and the village has something it could share or is sharing one. A guest's holds
+houses are out and the village has something it could share or is sharing one, and `Out` there
+during a visit to a village that stays out with nothing to share (see "A village that stays out"). A guest's holds
 Snack, Toy, then Stay when `visitor_can_stay()` is true and Copy code otherwise, then Profile — the
 two share one cell, so the other three never move under the cursor. Snack and Toy issue `WorldCommand::OfferSnack` and
 `OfferToy`; Home issues `WorldCommand::SendHome`; a member's Profile opens the settings window on the
@@ -706,7 +821,11 @@ book is. Stay calls `ask_visitor_to_stay`, logging a category and closing the me
 code routes through the application's only clipboard path — egui's, inside the settings window — so
 the window appears on the Journal page with a "Visitor code copied" toast rather than a second
 clipboard owner existing. The menu closes after any choice but Moment; the simulation answers with
-bubbles.
+bubbles. A Snack or Toy the companion can no longer be offered — `OfferSnack` or `OfferToy`
+returning false because it has started a climb, set off on a journey, gone to a wonder — keeps the
+menu open and hangs a "not now" tab (`MENU_UNAVAILABLE_TEXT`, baked after the labels on the
+interface atlas) under that cell for 1.6 seconds or until another cell is hovered; a companion that
+can take it and declines still answers in its own bubble.
 
 Moment opens a second strip beside the first, on its row and level with its body: to the right
 where the usable area has room and to the left where it does not, clamped inside it, and never
@@ -724,6 +843,20 @@ notch, the label tab, and everything around them stay click-through. macOS hit-t
 the shape call is a no-op exactly as it is for creature proxies; Windows clips the window with one
 `CreateRectRgn`/`SetWindowRgn` region.
 
+An open strip is placed from the creature's feet rather than from the crown of each frame
+(`CreatureMenu::attach`). `MenuAnchor` carries where its feet meet the ground and the crown of its
+plain settle besides this frame's crown; the first time the strip is placed it measures the
+creature from its feet as the taller of the settle and the pose it is in then, and keeps that
+height while it is open, so a shift of weight, a wash or a stretch leaves the strip where it is
+under the pointer, while a step, a hop or a ride moves the ground and the strip with it. It is
+measured again only if the settle itself changes height, as when the creature is shown at its
+set-back size. The strip's art pixels are the companion's own scale with a floor of
+`MENU_MIN_POINTS`, one and a half logical points, rounded up to whole drawable pixels
+(`gpu::ui::menu_scale`): a Small companion on a high-density display, drawn at half resolution,
+gets a strip at scale 4, as a Large one does, rather than fourteen-point cells, while the companion
+itself keeps its size. Two review pictures from `desktop_ui_review.rs` show both:
+`menu-fidgets.png` and `menu-small.png`.
+
 `MENU_RISE` is 35 art pixels above the crown of the head — the 21-pixel strip, a 1-pixel gap, the
 9-pixel label tab, and 4 pixels of clearance — and is fixed whether or not an item is hovered, so
 the strip never jumps as the cursor crosses it. With no room above, the strip flips below the feet
@@ -733,10 +866,14 @@ snapped to the sprite pixel grid, at every creature size and both integer scale 
 
 A menu closes on a choice, on a second secondary click on the same creature, when the cursor stays
 farther than 120 logical points from both the strip and the creature for 0.8 seconds, after 8
-seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, or gone (a
-guest that left), when its monitor changes, and when the settings window *gains* focus — the
+seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, gone inside
+its house, or gone (a guest that left), when its monitor changes, and when the settings window *gains* focus — the
 transition, not the standing state. There is no global click capture, and Escape is deliberately
-unavailable, because a proxy never takes keyboard focus.
+unavailable, because a proxy never takes keyboard focus. The keyboard way to the strip's two
+offers is the companion's profile in the notebook, which has Offer a snack and Offer a toy as plain
+buttons: `SettingsOutcome::offer` issues the same `OfferSnack` or `OfferToy`, and the profile says
+in words what came of it — held out, or not just now when the command returns false — and then,
+from `WorldEvent::OfferAnswered`, whether the companion took it or said no thanks.
 
 ## Offers
 
@@ -809,7 +946,8 @@ occluded and hidden exactly as their creature is.
 One 256×120 RGBA texture (122,880 bytes) carries every bubble sprite in a 17×16 cell whose anchor
 pixel (8, 15) sits just above the head, the menu frames for strips of two to four cells (16n + 2 art
 pixels wide, 21 tall including the notch), six menu icons — Snack, Toy, Home, Profile, Stay, Copy
-code — in normal and hovered states, and the pixel-font label tabs. It is built on first use,
+code — in normal and hovered states, and the pixel-font label tabs, with the "not now" tab packed
+after them. It is built on first use,
 released after 240 renders with neither a bubble nor a menu up, and released immediately when the
 colony is hidden or the overlay is torn down. It costs one extra bind group and one extra draw call
 inside the existing pass while something is up, and nothing at all otherwise.
@@ -826,7 +964,11 @@ The save stores one deterministic `RitualState`: next UTC timestamp, last kind, 
 local year of the last acknowledged hatch day. When that time is overdue, an existing action
 boundary may create one runtime-only `ColonyPlan` if every revealed creature has a safe shared floor
 region. Missed rituals are not counted or replayed; the next timestamp is scheduled from the actual
-start time.
+start time. The colony's birthday does not wait for that timestamp: on the local anniversary of the
+day it began, in any later year it has not yet been kept, the same boundary may start a hatch day
+whether or not an ordinary ritual is due (`World::hatch_day_due`). A colony begun on 29 February
+keeps it on 28 February outside leap years; `hatch_day_in` is the one anniversary both the ritual
+and the birthday finds use.
 
 The plan has only approach and ceremony phases, at most four participants, habitat-safe points, and
 existing action kinds. It coordinates picnics, group naps, floor races, shelter gatherings,
@@ -1329,7 +1471,10 @@ the grass along the front; everybody at the front is drawn as before. Each compa
 back splits the village's one draw in two, so a frame with three of them costs at most three
 more draw calls. A companion mostly out of sight behind a house nearer the front
 (`World::behind_a_house`, refreshed each village tick) has its hit proxy treated as occluded, so a
-click there is the house's.
+click there is the house's. Where two companions overlap, a press goes to the one drawn in front:
+the overlay draws further back first and everybody as deep in colony order (`gpu::drawn_before`),
+and grabs and secondary clicks resolve against that same order (`gpu::back_to_front`), whichever
+proxy window the press happened to arrive at.
 
 Further back, companions are drawn smaller, cleanly. From `SET_BACK_DEPTH` = 3.5 back — the
 middle path and anything beyond it — a companion is drawn at `set_back_size`, 90% of its logical
@@ -1340,7 +1485,15 @@ does, and its feet stay on the same ground (`resting_baseline` comes from the dr
 overlay bakes a second atlas for a resident (`OverlayRenderer::set_back_sprites`, about 1.5 MB)
 as soon as it starts up a path, keeps it while the village is out and lets it go when the
 village goes, and draws from it, with its face anchors, silhouette and baseline, whenever the
-companion stands that far back (`sprite_for`); bubbles and the menu anchor follow it. The
+companion is shown that far back (`sprite_for`); bubbles, the menu anchor and the grab mask follow
+it, so the click target is read from the same size, pose and footing as the body the user sees.
+Which size a companion is shown at is worked out once a tick by the app
+(`FormigaApp::carry_set_back`, from `formiga_art::shown_set_back`) and handed to every overlay and
+to the interaction proxies alike: it changes as soon as the companion crosses `SET_BACK_DEPTH`
+while it stands, but while it walks only on a footfall, a frame of its stride with a foot just
+down (which frames those are depends on the body), so a stroll up or down a path changes size on
+a planted step rather than mid-stride. Anyone the app has said nothing about falls back to
+`gpu::drawn_set_back` on its depth. The
 smallest minis, already drawn at the art's smallest size, stay that size. Houses set back are
 not drawn smaller; the drawing's height up the display, the houses in front of it and the front
 grass over its feet carry their depth.
@@ -1366,6 +1519,33 @@ and then does not think of climbing for a while: 35–90 seconds for one that li
 15–40 for a climber, 60–150 for a homebody, 90–200 for a floor-dweller. On the measurement harness
 in `world/tests/misc.rs` (`measure_time_on_ledges`, run with `--ignored`), four companions that
 like to be anywhere spend 40–49% of their time up high on desktops with anything to climb.
+
+## A village that stays out (save v34)
+
+`ColonyHome::stays_out`, chosen on the Home page under Where the village lives as Come and go or
+Always on the desktop, keeps the village on the desktop between visits home. `ColonyHome::shown`
+is whether the village is drawn — during a visit, and all the time while it stays out — and
+`is_active` is still whether a visit is under way, everyone in the village. The overlay, the
+ground, the belongings and the house proxies follow `shown`; everything about living in the village
+follows `is_active`, so between visits the houses stand empty with their curtains open while the
+colony roams the desktop as it always has, walking off from the village when a visit ends and back
+to it when the next begins. Changing it is one undoable change (`ColonyEdit::VillageStaysOut`).
+
+`update_home_cycle` keeps the same rhythm, fifteen minutes home and fifteen out, with two reasons
+of its own while the village stays out. After dark by the wall clock (`discovery::after_dark`) a
+visit lasts `NIGHT_HOME_DURATION`, forty-five minutes, so the colony is home three times as long as
+it is out. And once the person at the desk has been idle for `AWAY_FROM_DESK`, five minutes, a
+visit starts at once, cooldown or not, and does not end while they are away; the first tick after
+they are back ends one that has run its length. Between visits the village still needs a display,
+so one is resolved whenever the one it had is gone. A village that comes and goes takes no notice
+of either. `WorldCommand::SendOut` ends a visit early, a sparkle over everyone, and starts the usual
+while out; it is the way back out that `SendHome` is the way in. A companion's strip offers it as
+`Out` during a visit to a village that stays out: in `Home`'s cell, or at the end of the strip of
+moments when the village has some to share.
+
+Between visits a wonder that turns up on the floor of the village's display never stands among
+the houses: `village_floor_span` gives the walk from tree to tree, and `floor_beside` takes it out
+of each run of floor a wonder could stand on.
 
 ## The village yard
 
@@ -1957,7 +2137,50 @@ placed exactly as the simulation places them.
 The village's bench, swing, hammock and book nook use the same stances: a companion that walks to
 one hops up onto the plank or the board, or into the hammock at the cloth's own height, and sits or
 dozes there, hopping down at the end; at the book nook it sits on the ground with its eyes on its
-lap. The sprites themselves stay still.
+lap. The drum stump is played the same way (`drum_stance`): standing beside it and turned to it,
+the companion reaches a paw down onto it, as a garden is picked, for two seconds — two taps — and
+then listens a second with its eyes on it, round after round, rather than starting an ordinary
+game with a toy of its own (its moment is an Idle one, not SoloPlay). A spot is sat on or played
+only if the walk there reached it; one cut short by the thirty-second limit is a plain stand
+wherever it got to. `formiga-tools village-life-sheet` shows the drum played from both sides. The
+sprites themselves stay still.
+
+### Wonders put out (save v34)
+
+A wonder the colony has found can be put out from the journal's Wonders page and stays until it is
+put away: `CompanionState::placed_wonders`, at most `MAX_PLACED_WONDERS` = 3, each a kind found and
+out once, with the display key of its floor and a fraction along that floor. `world/wonders/placed.rs`
+works out where each stands every tick (`PlacedSpot`): on its floor, clear of the village while the
+village is on the desktop, or on top of a window it was set on (`Wonders::on_window`, the window
+and the distance along its top edge — runtime only, as windows always are), riding the window and
+keeping the floor fraction beneath it up to date, so a window that closes, minimises or grows too
+narrow leaves it on the floor below, and so does a relaunch. `WorldCommand::PutOutWonder` stands a
+new one on the floor of the village's display, or the main one, at the first of a few places along
+it clear of the village and of the others; `MoveWonder` sets one down where the pointer let go —
+on the frontmost window whose top edge is within 40 points, in plain view and wide enough, while
+window ledges are on, and otherwise on the floor under the pointer — and `PutAwayWonder` takes it
+back.
+
+A go on one is the same `Active` as a wonder that turned up, marked `placed`: the same legs, the
+same script, the same ownership of its players' feet. `PlayOnWonder` sends the nearest companion
+free for a wonder, and the nearest free friend for a wonder for two or, when asked, for one or two;
+whatever wonder was out before is let go. When a wonder is due and some are out, half the time a
+companion goes over to one of those instead, out on the desktop only, by the same nearest-first
+choice. A wonder already out never turns up as a second. When the go is over, or its players are
+picked up, or it is moved or put away, the players are let go where they stand and the wonder
+stays, drawn at full size; nothing new is found, and the go is counted. `World::placed_wonders`
+gives each one's `WonderView`, moving with its script while it is played on and standing on its
+first frame otherwise.
+
+The overlay draws every wonder out, each kind baked into a texture of its own on the display it
+stands on, and redraws a display with one on it. `wonder_proxies.rs` puts a window over each,
+the same kind as a house's: shaped to the wonder's standing frame grown two art pixels all round, so
+a rope can be hit, in a square as wide as its cell (`WONDER_SQUARE`). A click opens
+`CreatureMenu::for_wonder` — `Play, Move, PutAway, Profile` — over its top. A Play nobody can take
+hangs "not now" under the cell, as a snack does. Move lifts it: the overlay draws it hanging under
+the pointer, and its window follows the pointer whole, so the next click anywhere near it reaches
+it and sets it down there; a right click leaves it where it was. Profile turns the notebook to the
+journal.
 
 ## Exact offline seed sharing
 
@@ -2072,8 +2295,11 @@ body plans in turn, and one in four exploratory — are rendered and scored. `ta
 the closest shaped candidate, the most coherent of the 24 closest, the closest on another body plan,
 and the closest exploratory one. Each preview contains its generated creature, seed, recipe, and
 display-only affinity score; image bytes, analysis pixels, and feature vectors leave scope after
-matching. The Studio keeps only the file path, in memory and only while the takes are on show, so
-"Four more takes" can search again with a new seed. This is not semantic recognition.
+matching. The search runs on a thread of its own and comes back as `UserEvent::ReferenceMatched`,
+numbered so that only the newest search is shown; meanwhile the Studio says it is reading the
+picture and offers no second search. The Studio keeps only the file path, in memory and only while
+the takes are on show, so "Four more takes" can search again with a new seed. This is not semantic
+recognition.
 
 Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
 generation uses an independent `modular-design-v1` stream, leaving legacy gene streams intact.
@@ -2198,6 +2424,11 @@ remain minis.
   seconds regardless.
 
 State uses a versioned JSON file written by temporary-file, flush, atomic replace, and one backup.
+`SaveStore::save` reads the new bytes back with `decode`, as a launch would, before touching the
+disk, and refuses a colony that would not read back with an error, leaving the file and the backup
+as they were. The file it replaces becomes the backup when it is exactly the bytes that store last
+wrote and checked (a fingerprint, so an everyday save parses the colony once, not twice) or when it
+reads; anything else is preserved under a recovery name and the backup is left alone.
 Version 18 adds a house kind chosen by hand for any house, absent until one is chosen, and migrates
 nothing. Version 17 adds the classic parts inside recipes, favorite visitors, each companion's
 roaming leaning, and the habits each has picked up, and migrates nothing; version 16 added no field
@@ -2223,7 +2454,11 @@ Additional minis are earned after one hour and one week; a full-size adult is ea
 calendar month when an adult slot exists. End-of-month dates clamp in UTC, overdue reveals remain 15
 seconds apart, and the colony remains capped at six. Interrupted ambient, interaction, and toss
 actions reload as idle. Home and birth timestamps survive relaunches, and clock rollback uses the
-maximum-seen UTC guard. There is
+maximum-seen UTC guard: `maximum_seen_utc` is the colony's timeline, which never runs backwards.
+While the machine's clock reads earlier than it (a clock that ran ahead and was put right), the
+timeline moves on by however far the clock moved since the previous tick instead of standing
+still, so the houses, offers and rituals timed on it keep real time; the jump back itself moves it
+on by nothing (`World::advance_timeline`). There is
 deliberately no history database or telemetry layer. Update preferences live in a separate
 `updates.json` file so network policy and check timing cannot alter a colony save.
 
@@ -2282,7 +2517,8 @@ back one after another walks the colony back through them in order. For a compan
 removed, replaced, started over, or welcomed from the studio, the membership is rebuilt from the
 old list: everyone still here keeps their current self, with the role they had, so a mini has its
 own big version back; anyone gone comes back exactly as saved, with its id, memories, bonds and shared history with those
-still here, standing where it or its stand-in last stood — and the next tick looks at the displays
+still here, and with nothing of the moment it left in (`CreatureState::forget_runtime`: outside its
+house, at the front of the village ground, in no scene, meal or game, as a colony opens), standing where it or its stand-in last stood — and the next tick looks at the displays
 afresh, as a colony just opened does, in case that was on a display unplugged since; whoever the change brought in
 goes, runtime and all; anyone who arrived on their own since stays; and the cottage order goes back
 with them. A colony with no room to bring everyone back refuses and keeps the change to try again.
@@ -2383,8 +2619,11 @@ the clock is past it and applies exactly once; and a timezone change is simply a
 time read from the same instant. The world applies it inside the existing tick, adding no timer,
 thread, or wakeup of its own. A routine that has never been saved, or one whose custom habitat no
 longer leaves anywhere to stand, is skipped without reporting a change. A manual choice holds
-until the next transition crosses, which is also what ends it; handing the routine back applies it
-at once. Visibility, pause, and the separate quiet expiry are never a schedule's business.
+until the next transition crosses, which is also what ends it: a transition puts its routine in
+place even when it is the one already applied, and one that came round while the app was closed
+counts once it opens (`RoutineSchedule::latest` gives the moment it came round, compared with the
+clock at the previous tick, or the saved timeline after a launch); handing the routine back applies
+it at once. Visibility, pause, and the separate quiet expiry are never a schedule's business.
 
 Decoration visibility is six bits on the home. The village texture is rebuilt only when
 its visible decoration set changes. Object order is the existing object vector: changing its order
@@ -2678,7 +2917,9 @@ retains stationary looks and expressions. No game writes a journal entry.
 ## Colony history and the Today page (save v23)
 
 The notebook opens on Today, `clubhouse/today.rs`, page one of nine, written as the researcher's
-own notes on the day: what each companion is doing right now, standing on a strip of ground with
+own notes on the day: what each companion is doing right now (the meal by name while it eats,
+"Eating soup", on a window ledge as anywhere; otherwise up on a window, or what it is about),
+standing on a strip of ground with
 the bubble of the last thing it did today over its head; the day's highlight, pasted in with tape
 (the newest unread landmark, then the newest unread noteworthy moment, then the newest of each,
 stamped NEW while unread, with what the day book counted about the same companions beneath it);
@@ -2803,7 +3044,14 @@ ledges and come down", "everyone holds still until you resume"), a companion's n
 ("Moss will now wander farther from home"), a weekly routine saved ("Relax begins at 22:00 today"),
 or resumed, or a routine kept from the current preferences, a quiet while ("until 22:05"), a spot or
 a garden put out or put away, and the village moved. Before preferences are applied the footer
-names what is waiting. Every sentence is a pure function of what changed, and each is tested. The behaviour checkboxes, routines and
+names what is waiting.
+
+**One set of preferences.** The colony's preferences are the ones kept; the notebook holds only
+what it has changed on top of them. Each frame, and whenever the notebook is brought forward while
+open, `rebase_preferences` carries the notebook's unapplied changes over onto the colony's current
+preferences, field by field, so a pause or a launch-at-login change made from the tray, or a
+habitat applied in the editor, shows at once and is never put back by the notebook's Apply. Only a
+notebook opened afresh, or a colony restored from a backup, starts again from the colony's own. Every sentence is a pure function of what changed, and each is tested. The behaviour checkboxes, routines and
 updates explain themselves on hover.
 
 ### The pencil hand
@@ -2817,7 +3065,11 @@ there invisible, and draws its glyphs from an atlas of its own, rasterised once 
 threshold (a third of a texel covered for writing, half for a heading) and sampled nearest-neighbour,
 each glyph's pen snapped to the screen's texel grid. Writing is a point to a texel; anything at or
 above 20 points (scaled with the text, through `set_heading_size`) two. Glyphs Kalam lacks, other
-fonts in the same text, and highlights behind it are drawn exactly as egui drew them. Body text is
+fonts in the same text, and highlights behind it are drawn exactly as egui drew them, and so is a
+link's hover underline, which the hidden text no longer draws. The atlas grows taller as it fills,
+so the pencilled meshes keep texel coordinates until the whole frame is drawn and only then are
+divided by the atlas's final size; one that fills up at its tallest starts again empty on the next
+frame, which it asks for at once, and the glyphs it turned away are not remembered as blank. Body text is
 16 points, small print 15, and the hand is never set smaller; `journal::write` gives each line as
 many rules as its size needs rather than the font's own tall line, so a line of writing still takes
 one rule. Kickers are the hand's bold capitals (`kicker_job`), and `paper.rs` holds what is pasted
@@ -3131,7 +3383,8 @@ own pixels: on macOS by switching hit-testing on while the cursor is over them, 
 window region of exactly those pixels. A companion standing in front of a house wins: the house's
 window does not take the click while one is under the cursor, and a press that reaches it anyway is
 handed to the companion, with the rest of a drag begun there. The proxies exist only while Home is
-installed and the houses are out on a display that is not covered by something full-screen.
+installed and the village is on the desktop (`ColonyHome::shown`) on a display that is not covered
+by something full-screen.
 
 A click on a house opens `CreatureMenu::for_house`: the same strip as a creature's, placed over
 the house's roof (`OverlayRenderer::house_menu_anchor`), with two items, `Inside` ("look inside")
@@ -3225,7 +3478,9 @@ that pixel over the finer body; `render_face_frame_in_detail` redraws the face l
 corners rounded (Scale2x, Scale3x, or Scale2x twice), and `outline_frame_in_detail` rings it at the
 same weight. A finer atlas keeps the same layout at more pixels: the same cells, face anchors and
 silhouettes in art pixels, and each frame at the same texture coordinates (`atlas::cell_uv`), so it
-fills the same quad on the screen; only the texture grows, by the square of the detail. The click
+fills the same quad on the screen; only the texture grows, by the square of the detail. A graphics
+card whose largest texture is smaller than the atlas would be gets the finest detail it can hold
+(`atlas::bake_fitting`), down to one. The click
 shape is still read from the one-to-one frame, which the finer painting covers whole and passes by
 at most two of its pixels, for a tuft or a curl of fur.
 
@@ -3389,9 +3644,13 @@ same `trip::TripState` a trip to Hill is, holding Battle's open session instead 
 train, and when the app is started, are the same for both; see [The train](#the-train). A session's
 files are under `battle/` in the data directory (`battle/session.rs`, kept by `expansion::files`):
 a fresh `battle/<session>/` with the snapshot, where Battle answers, and `battle/session.json`, the
-marker that says a session is open, holding the session and its snapshot's checksum. If Desktop
-stops while Battle is open, the next start keeps what the result says so far, clears the files and
-brings the colony home by train; a match Battle finishes after that is not kept.
+marker that says a session is open, holding the session, its snapshot's checksum and, once Battle
+is started, the process it was started as (`companion_app::Started`: its number and program, which
+on macOS is LaunchServices' `open -W`, alive as long as Battle is). If Desktop stops while Battle is
+open, the next start keeps what the result says so far. If that process is still running the same
+program, the colony stays away (`SessionState::Away`) and `Expansion::watch_again` looks every two
+seconds until it has ended, then the session finishes as if Desktop had never stopped, keeping every
+later match by its id. Otherwise the files are cleared and the train brings the colony home.
 
 `formiga-battle-stub` stands in for Battle (see `docs/BUILD.md`), reading and answering through the
 contract's own `open_session` and winning the Backyard Cup, and `formiga-tools`'s `battle_session`

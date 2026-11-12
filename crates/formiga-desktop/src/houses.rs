@@ -84,7 +84,7 @@ pub struct HouseShapes {
 impl HouseShapes {
     /// Every house of the village where it stands now, or none while the houses are not out.
     pub fn placed(&mut self, save: &SaveFile, monitors: &[MonitorInfo]) -> Vec<PlacedHouse> {
-        if !save.home.is_active() {
+        if !save.home.shown() {
             return Vec::new();
         }
         let look = VillageLook::of(&save.home, &save.creatures);

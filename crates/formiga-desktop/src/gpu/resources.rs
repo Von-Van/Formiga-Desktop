@@ -42,14 +42,17 @@ impl OverlayRenderer {
             self.render_divisor,
         );
         // What it is wearing is baked into every frame, so choosing something else, or taking it
-        // off, bakes the atlas again. Nothing else about the choice is looked at frame to frame.
+        // off, bakes the atlas again. So does a change in the colony's colours, which the find it
+        // wears is inked against, as the trees' sheet is, so the two keep matching.
+        let dress_colours = creature.accessory.map(|_| TrinketAtlasKey::of(save));
         let requires_bake = current.is_none_or(|sprite| {
             sprite.reduce_motion != reduce_motion
                 || sprite.outline != outline
                 || sprite.dress.map(|dress| dress.accessory) != creature.accessory
+                || sprite.dress_colours != dress_colours
                 || sprite.appearance != creature.appearance
                 || sprite.logical_size != logical_size
-                || sprite.detail != detail
+                || sprite.wanted_detail != detail
         });
         if !requires_bake {
             return None;
@@ -72,7 +75,13 @@ impl OverlayRenderer {
                 .collect();
             AccessoryArt::resolve(accessory, save.colony_seed, &members)
         });
-        let atlas = build_atlas_pixels(drawn, reduce_motion, outline, dress, detail);
+        // A graphics card that cannot hold a texture as large as the finest bake gets the finest
+        // one it can hold: drawn a little coarser, never not drawn.
+        let atlas = bake_fitting(
+            self.device.limits().max_texture_dimension_2d,
+            detail,
+            |detail| build_atlas_pixels(drawn, reduce_motion, outline, dress, detail),
+        );
         let body_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("procedural creature body atlas"),
             size: wgpu::Extent3d {
@@ -184,10 +193,13 @@ impl OverlayRenderer {
             face_atlas_height: atlas.face_height,
             face_cells: atlas.face_cells,
             face_anchors: atlas.face_anchors,
+            held: atlas.held,
             silhouette: atlas.silhouette,
             resting_baseline: CreatureRenderer::resting_baseline(&drawn.appearance, reduce_motion),
             dress,
+            dress_colours,
             logical_size,
+            wanted_detail: detail,
             appearance: creature.appearance.clone(),
         })
     }
@@ -384,14 +396,98 @@ impl OverlayRenderer {
         });
     }
 
+    /// A texture drawn once and kept: what every companion holds, or every bubble they say
+    /// things in.
+    fn static_texture(
+        &self,
+        label: &str,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> (wgpu::Texture, wgpu::BindGroup) {
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            size,
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        (texture, bind_group)
+    }
+
+    pub(super) fn ensure_held_sheet(&mut self) {
+        if self.held_sheet.is_some() {
+            return;
+        }
+        let pixels = formiga_art::render_held_sheet().rgba_bytes();
+        let (texture, bind_group) =
+            self.static_texture("held things", HELD_SHEET_WIDTH, HELD_SHEET_HEIGHT, &pixels);
+        self.held_sheet = Some(HeldSheetGpu {
+            _texture: texture,
+            bind_group,
+        });
+    }
+
+    pub(super) fn ensure_talk_sheet(&mut self) {
+        if self.talk_sheet.is_some() {
+            return;
+        }
+        let pixels = TalkSheet::render().rgba_bytes();
+        let (texture, bind_group) =
+            self.static_texture("talk bubbles", TALK_SHEET_WIDTH, TALK_SHEET_HEIGHT, &pixels);
+        self.talk_sheet = Some(HeldSheetGpu {
+            _texture: texture,
+            bind_group,
+        });
+    }
+
     pub(super) fn ensure_wonder(&mut self, kind: WonderKind, colony_seed: [u8; 32]) {
         if self
-            .wonder
-            .as_ref()
-            .is_some_and(|wonder| wonder.kind == kind && wonder.colony_seed == colony_seed)
+            .wonders
+            .iter()
+            .any(|wonder| wonder.kind == kind && wonder.colony_seed == colony_seed)
         {
             return;
         }
+        self.wonders.retain(|wonder| wonder.kind != kind);
         let width = WONDER_CELL_WIDTH * wonder_frames(kind);
         let pixels = WonderRenderer::render(kind, colony_seed).rgba_bytes();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -442,7 +538,7 @@ impl OverlayRenderer {
                 },
             ],
         });
-        self.wonder = Some(WonderGpu {
+        self.wonders.push(WonderGpu {
             _texture: texture,
             bind_group,
             kind,

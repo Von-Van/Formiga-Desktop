@@ -184,6 +184,25 @@ pub enum WorldCommand {
     },
     /// Call the whole colony home now, exactly as the ordinary home visit would.
     SendHome,
+    /// Send the colony back out from a visit home before it is over.
+    SendOut,
+    /// Put a wonder the colony has found out on the desktop.
+    PutOutWonder {
+        kind: crate::WonderKind,
+    },
+    /// Put a wonder that was put out away again.
+    PutAwayWonder {
+        kind: crate::WonderKind,
+    },
+    /// Set a wonder that was put out down where the pointer let go of it.
+    MoveWonder {
+        kind: crate::WonderKind,
+        to: Point,
+    },
+    /// Ask for a go on a wonder that was put out.
+    PlayOnWonder {
+        kind: crate::WonderKind,
+    },
     /// Ask the village to share a moment while the houses are out. The companion the menu was
     /// opened on is the one asking; everyone who is home decides for themselves.
     InviteVillageMoment {

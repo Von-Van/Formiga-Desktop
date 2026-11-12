@@ -12,6 +12,7 @@ mod renderer;
 mod shelter;
 mod souvenirs;
 mod sticker;
+mod talk;
 mod train;
 mod tree;
 mod trinkets;
@@ -36,8 +37,12 @@ pub use postcard::{
 pub use renderer::{
     AccessoryArt, AlphaMask, AnimationSpec, BodyClip, BodyPresentation, CreatureRenderer,
     DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, GazeDirection, MotionSignature, PixelPoint, PlaybackMode, PropAnchor,
-    RenderedBodyFrame, SNACK_KINDS, TOY_KINDS, prop_variants,
+    FramePlacement, GazeDirection, HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT,
+    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, Holding, KITE_STRING, MealPose, MotionSignature,
+    NAP_TURN_SECS, NapTurn, PixelPoint, PlayPicture, PlaybackMode, PropAnchor, RenderedBodyFrame,
+    SNACK_KINDS, TOY_COLOURWAYS, TOY_KINDS, footfall_frame, held_now, held_tether, meal_eyelids,
+    meal_face, meal_held, meal_offset, meal_pose, play_face, play_held, play_offset, play_pose,
+    prop_in_motion, prop_variants, render_held_sheet, shown_set_back, shows_held_by_default,
 };
 pub use shelter::{
     ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,
@@ -46,6 +51,10 @@ pub use shelter::{
 pub use souvenirs::{SOUVENIR_ICON, SOUVENIR_TILE, draw_souvenir, souvenir_strip};
 pub use sticker::{
     DEFAULT_STICKER_SCALE, STICKER_SCALES, Sticker, StickerClip, StickerFrame, StickerRenderer,
+};
+pub use talk::{
+    TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
+    TalkSheet,
 };
 pub use train::{
     RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND, TRAIN_HEIGHT, TRAIN_WIDTH, TrainLook,
@@ -63,8 +72,9 @@ pub use trinkets::{
 };
 pub use ui_atlas::{
     BUBBLE_ANCHOR, BUBBLE_CELL, LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT, MENU_CELL,
-    MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MenuIcon, MenuLayout,
-    MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, menu_label_text,
+    MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MENU_UNAVAILABLE_TEXT,
+    MenuIcon, MenuLayout, MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
+    menu_label_text,
 };
 pub use village_ground::{
     GROUND_ATLAS_HEIGHT, GROUND_BAND, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundHouse,

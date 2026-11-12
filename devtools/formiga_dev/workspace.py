@@ -92,7 +92,8 @@ class Expansion:
 
     def has_ci(self) -> bool:
         """Whether its repository runs its checks on GitHub Actions. Battle's does not, by choice:
-        the toolkit's `validate --expansions` is where its tests meet Desktop."""
+        Desktop's companion-apps workflow and the toolkit's `validate --expansions` are where its
+        tests meet Desktop."""
         if not self.path:
             return False
         workflows = self.path / ".github" / "workflows"

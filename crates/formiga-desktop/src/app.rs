@@ -52,6 +52,7 @@ mod settings_window;
 mod trips;
 mod updates;
 mod visits;
+mod wonders;
 use battle::BattleLink;
 use cadence::*;
 use farm::FarmLink;
@@ -76,6 +77,17 @@ pub enum UserEvent {
     Farm(crate::farm::FarmEvent),
     /// Formiga Battle has exited.
     Battle(crate::battle::BattleEvent),
+    /// The search for companions like a reference picture has finished, on its own thread.
+    ReferenceMatched(ReferenceSearch),
+}
+
+/// What a search for companions like a reference picture found: the takes, or why there are none.
+#[derive(Debug)]
+pub struct ReferenceSearch {
+    /// Which search this is, so one overtaken by a newer search is not shown.
+    pub search: u64,
+    pub path: PathBuf,
+    pub takes: Result<Vec<crate::reference_match::ReferenceMatch>>,
 }
 
 impl From<egui_winit::accesskit_winit::Event> for UserEvent {
@@ -128,10 +140,17 @@ pub struct FormigaApp {
     current_cursor: CursorSnapshot,
     settings_window: Option<SettingsWindow>,
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
+    /// Which size each companion is shown at, after the last tick (see `carry_set_back`).
+    set_back_shown: BTreeMap<CreatureId, bool>,
     /// Each house of the village as it can be clicked, while Formiga Home is installed, and the
     /// native window over each.
     house_shapes: crate::houses::HouseShapes,
     house_proxies: BTreeMap<WindowId, crate::houses::HouseProxy>,
+    /// Each wonder put out as it can be clicked, the native window over each, and the one being
+    /// moved, which follows the pointer until it is set down.
+    wonder_shapes: crate::wonder_proxies::WonderShapes,
+    wonder_proxies: BTreeMap<WindowId, crate::wonder_proxies::WonderProxy>,
+    moving_wonder: Option<WonderKind>,
     /// The one open right-click menu, and the small native window that takes clicks on it. The
     /// window outlives any single menu so that closing one never destroys the window whose own
     /// click is being handled.
@@ -170,6 +189,10 @@ pub struct FormigaApp {
     companion_releases: BTreeMap<&'static str, CompanionRelease>,
     /// When the companion apps were last looked for because the pointer came over the tray icon.
     tray_looked: Option<Instant>,
+    /// How many searches for companions like a reference picture have been started, and the
+    /// number of the one running now, if one is. Only that one's takes are shown.
+    reference_searches: u64,
+    reference_search: Option<u64>,
 }
 
 impl FormigaApp {
@@ -189,17 +212,21 @@ impl FormigaApp {
             redraw_due: Instant::now(),
             last_frame: None,
             cached_windows: Vec::new(),
-            last_window_scan: Instant::now() - Duration::from_secs(2),
+            last_window_scan: two_seconds_ago(),
             observation_epoch: Instant::now(),
             window_sample: None,
             window_scan_initialized: false,
-            last_display_scan: Instant::now() - Duration::from_secs(2),
+            last_display_scan: two_seconds_ago(),
             log_dir,
             current_cursor: CursorSnapshot::default(),
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
+            set_back_shown: BTreeMap::new(),
             house_shapes: Default::default(),
             house_proxies: BTreeMap::new(),
+            wonder_shapes: crate::wonder_proxies::WonderShapes::default(),
+            wonder_proxies: BTreeMap::new(),
+            moving_wonder: None,
             creature_menu: None,
             menu_proxy: None,
             menus_opened: 0,
@@ -219,6 +246,8 @@ impl FormigaApp {
             save_trouble: None,
             companion_releases: BTreeMap::new(),
             tray_looked: None,
+            reference_searches: 0,
+            reference_search: None,
         })
     }
 
@@ -380,7 +409,7 @@ impl FormigaApp {
         // An open menu is sampling the cursor for its hover highlight, so it needs the same
         // cadence a drag does. It is the owner who opened it and it closes itself within eight
         // seconds, so this is bounded and always something the person at the desk asked for.
-        if self.creature_menu.is_some() {
+        if self.creature_menu.is_some() || self.moving_wonder.is_some() {
             return Duration::from_millis(50);
         }
         let drawing = self.overlays.values().any(|overlay| {
@@ -470,6 +499,7 @@ impl FormigaApp {
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
+        let mut offer_answers = Vec::new();
         if let Some(world) = &mut self.world {
             if world.is_interacting() {
                 if !desktop.cursor.available {
@@ -517,6 +547,14 @@ impl FormigaApp {
                 {
                     milestone = Some(creature_id);
                 }
+                if let WorldEvent::OfferAnswered {
+                    creature_id,
+                    kind,
+                    accepted,
+                } = event
+                {
+                    offer_answers.push((creature_id, kind, accepted));
+                }
                 tracing::debug!(event = world_event_category(&event), "world event");
             }
             if let Some(creature_id) = milestone {
@@ -541,6 +579,9 @@ impl FormigaApp {
                 }
             }
         }
+        for (creature_id, kind, accepted) in offer_answers {
+            self.note_offer_answer(creature_id, kind, accepted);
+        }
         // Arrivals and the houses are written at once; everyday movement waits for the next
         // routine checkpoint; and a colony with nothing waiting is still written periodically.
         if save_due(self.save_waiting, self.last_save.elapsed())
@@ -560,14 +601,22 @@ impl FormigaApp {
             self.last_frame = Some(now);
             if let Some(world) = &self.world {
                 let habitat_editor = self.habitat_editor.as_ref().map(|editor| &editor.draft);
-                let ui_active = self.creature_menu.is_some() || !world.thought_bubbles().is_empty();
+                let ui_active = self.creature_menu.is_some()
+                    || self.moving_wonder.is_some()
+                    || !world.thought_bubbles().is_empty()
+                    || world.talk_bubbles().next().is_some();
+                let wonders = world.placed_wonders();
                 for overlay in self.overlays.values() {
+                    let wonder_here = wonders
+                        .iter()
+                        .any(|wonder| wonder.monitor_id == overlay.monitor.id);
                     if overlay.is_visible()
                         && overlay.needs_redraw(
                             &world.save,
                             habitat_editor,
                             &self.cached_windows,
                             ui_active,
+                            wonder_here,
                         )
                     {
                         overlay.window.request_redraw();
@@ -675,6 +724,35 @@ impl FormigaApp {
         }
     }
 
+    /// Work out which size each companion is shown at after a tick — standing back in the village
+    /// it is drawn smaller, and a walker changes size only on a planted step — and tell every
+    /// overlay, so the picture and the grab mask are always the same size.
+    fn carry_set_back(&mut self) {
+        let Some(world) = &self.world else {
+            self.set_back_shown.clear();
+            return;
+        };
+        let village_out = world.save.home.is_active();
+        let was = std::mem::take(&mut self.set_back_shown);
+        self.set_back_shown = world
+            .save
+            .creatures
+            .iter()
+            .chain(world.save.visitors.on_stage())
+            .map(|creature| {
+                let shown = formiga_art::shown_set_back(
+                    creature,
+                    village_out,
+                    was.get(&creature.id).copied(),
+                );
+                (creature.id, shown)
+            })
+            .collect();
+        for overlay in self.overlays.values_mut() {
+            overlay.show_set_back(&self.set_back_shown);
+        }
+    }
+
     fn sync_interaction_proxies(&mut self, event_loop: &ActiveEventLoop) {
         if self.habitat_editor.is_some() {
             for proxy in self.interaction_proxies.values_mut() {
@@ -719,6 +797,8 @@ impl FormigaApp {
             }
         }
         let dragging = world.is_dragging();
+        // Where each display's chosen applications hide the colony, as the overlay works it out.
+        let mut covered_by_monitor: BTreeMap<u64, Vec<DesktopRect>> = BTreeMap::new();
         for proxy in self.interaction_proxies.values_mut() {
             let Some(creature) = world
                 .save
@@ -749,6 +829,21 @@ impl FormigaApp {
                 && monitor_has_fullscreen_window(monitor.bounds, &self.cached_windows);
             // Out of sight behind a house in the village: a click there is the house's.
             let behind_a_house = !dragging_this && world.behind_a_house(creature.id);
+            // Behind a chosen application's window, the part of it the overlay leaves undrawn is
+            // the application's to click. Held in the hand, it is drawn over everything.
+            if dragging_this {
+                proxy.set_covered(&[]);
+            } else {
+                let covered = covered_by_monitor.entry(monitor.id).or_insert_with(|| {
+                    crate::gpu::visible_occlusion_rects(
+                        monitor.bounds,
+                        &self.cached_windows,
+                        &world.save.settings.application_occlusion_rules,
+                        false,
+                    )
+                });
+                proxy.set_covered(covered);
+            }
             proxy.sync(
                 creature,
                 &world.save.settings,
@@ -758,6 +853,16 @@ impl FormigaApp {
                 ProxyRuntimeState {
                     dragging: dragging_this,
                     occluded: fullscreen_hidden || behind_a_house,
+                    set_back: self
+                        .set_back_shown
+                        .get(&creature.id)
+                        .copied()
+                        .unwrap_or_else(|| {
+                            crate::gpu::drawn_set_back(
+                                creature.state.depth,
+                                world.save.home.is_active(),
+                            )
+                        }),
                 },
             );
         }
@@ -781,6 +886,10 @@ impl FormigaApp {
             self.handle_house_proxy_event(event_loop, window_id, event);
             return true;
         }
+        if self.wonder_proxies.contains_key(&window_id) {
+            self.handle_wonder_proxy_event(event_loop, window_id, event);
+            return true;
+        }
         if !self.interaction_proxies.contains_key(&window_id) {
             return false;
         }
@@ -793,14 +902,14 @@ impl FormigaApp {
                 button: MouseButton::Right,
                 ..
             } => {
-                self.toggle_creature_menu(event_loop, window_id);
+                self.toggle_creature_menu(event_loop);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
                 ..
             } if platform::secondary_click_modifier() => {
-                self.toggle_creature_menu(event_loop, window_id);
+                self.toggle_creature_menu(event_loop);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -829,7 +938,7 @@ impl FormigaApp {
                     .collect();
                 let draw_order = self.draw_order();
                 if let Some((target_window, target_creature)) =
-                    resolve_press_target(window_id, &hits, &draw_order)
+                    resolve_press_target(&hits, &draw_order)
                 {
                     let started = self.world.as_mut().is_some_and(|world| {
                         world.handle_command(
@@ -876,17 +985,22 @@ impl FormigaApp {
     }
 
     /// Back to front, so a press lands on whoever is drawn on top. The guest is drawn last.
+    /// Every companion on stage in the order the overlay draws them, back to front, so where two
+    /// overlap a click goes to the one drawn in front.
     fn draw_order(&self) -> Vec<CreatureId> {
         self.world
             .as_ref()
             .map(|world| {
-                world
-                    .save
-                    .creatures
-                    .iter()
-                    .chain(world.save.visitors.on_stage())
-                    .map(|creature| creature.id)
-                    .collect()
+                crate::gpu::back_to_front(
+                    world
+                        .save
+                        .creatures
+                        .iter()
+                        .chain(world.save.visitors.on_stage()),
+                )
+                .into_iter()
+                .map(|creature| creature.id)
+                .collect()
             })
             .unwrap_or_default()
     }
@@ -955,6 +1069,14 @@ impl FormigaApp {
 }
 
 /// What went wrong writing the colony, said so that it can be acted on.
+/// Two seconds before now, so the first window and display scans run straight away. An
+/// `Instant` can't go back past the system's start-up, so in the first two seconds after boot it
+/// is now instead, and those scans wait their two seconds.
+fn two_seconds_ago() -> Instant {
+    let now = Instant::now();
+    now.checked_sub(Duration::from_secs(2)).unwrap_or(now)
+}
+
 fn save_trouble_text(error: &formiga_core::PersistenceError) -> String {
     let detail = error.to_string();
     let lower = detail.to_lowercase();
@@ -993,6 +1115,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             UserEvent::House(event) => self.handle_house_event(event),
             UserEvent::Farm(event) => self.handle_farm_event(event_loop, event),
             UserEvent::Battle(event) => self.handle_battle_event(event),
+            UserEvent::ReferenceMatched(found) => self.show_reference_matches(found),
             UserEvent::AccessKit(event) => {
                 if let Some(window) = &mut self.settings_window
                     && window.id() == event.window_id
@@ -1113,12 +1236,16 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                 let menu = match (&self.creature_menu, self.overlays.get(&window_id)) {
                     (Some(menu), Some(overlay)) if overlay.monitor.id == menu.monitor_id() => {
                         menu.placement().map(|placement| MenuView {
-                            creature_id: (menu.target() != MenuTarget::House)
-                                .then(|| menu.creature_id()),
+                            creature_id: matches!(
+                                menu.target(),
+                                MenuTarget::Member | MenuTarget::Guest
+                            )
+                            .then(|| menu.creature_id()),
                             items: menu.items(),
                             layout: menu.layout(),
                             placement,
                             hovered: menu.hovered(),
+                            unavailable: menu.unavailable(),
                             side: menu.side().and_then(|side| {
                                 side.placement().map(|placement| SideView {
                                     layout: side.layout(),
@@ -1140,6 +1267,25 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             world.loose_props(&self.monitors),
                         )
                     });
+                // What companions are saying to each other.
+                let talk: Vec<formiga_core::talk::TalkBubble> = self
+                    .world
+                    .as_ref()
+                    .map(|world| world.talk_bubbles().copied().collect())
+                    .unwrap_or_default();
+                // Every wonder out: those put out, and one that turned up by itself.
+                let wonders: Vec<formiga_core::WonderView> = self
+                    .world
+                    .as_ref()
+                    .map(|world| {
+                        world
+                            .placed_wonders()
+                            .into_iter()
+                            .map(|view| self.moving_wonder_view(view))
+                            .chain(world.wonder())
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 // While a trip has the colony, the overlay draws the trip's copy of it: whoever
                 // is on the platform, and the train. Nobody is indoors and nothing is said.
                 let trip = self
@@ -1163,21 +1309,23 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                     let ui = if on_trip {
                         OverlayUi {
                             bubbles: &[],
+                            talk: &[],
                             reduce_motion: world.save.settings.reduce_motion,
                             night: self.night,
                             menu: None,
                             village,
-                            wonder: None,
+                            wonders: &[],
                             train,
                         }
                     } else {
                         OverlayUi {
                             bubbles: world.thought_bubbles(),
+                            talk: &talk,
                             reduce_motion: world.save.settings.reduce_motion,
                             night: self.night,
                             menu,
                             village,
-                            wonder: world.wonder(),
+                            wonders: &wonders,
                             train: None,
                         }
                     };
@@ -1225,8 +1373,10 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
             tray.sync_news(world.save.companion.unread().next().is_some());
         }
         if ticked {
+            self.carry_set_back();
             self.sync_interaction_proxies(event_loop);
             self.sync_house_proxies(event_loop);
+            self.sync_wonder_proxies(event_loop);
         }
         let tick_interval = self.tick_interval();
         let mut deadline = self.last_tick + tick_interval;
@@ -1307,20 +1457,17 @@ fn colony_bounds(bounds: DesktopRect, insets: Option<platform::Insets>) -> Deskt
     }
 }
 
-/// Chooses which interaction proxy owns a left-press.
+/// Chooses which interaction proxy owns a press.
 ///
-/// The window that receives the press wins whenever its own alpha mask covers the cursor. When it
-/// does not — a transparent part of an overlapping proxy swallowed the click — the press goes to
-/// the mask that does cover the cursor, preferring the creature drawn last, because that is the
-/// one the user can actually see on top.
+/// Of the masks that cover the cursor, the creature drawn last wins, because that is the one the
+/// user can actually see on top: whatever window the press arrived at, whether a transparent part
+/// of an overlapping proxy or the opaque body of one drawn behind.
 fn resolve_press_target<I: Copy + PartialEq>(
-    pressed: I,
     hits: &[(I, CreatureId)],
     draw_order: &[CreatureId],
 ) -> Option<(I, CreatureId)> {
-    if let Some(entry) = hits.iter().find(|(id, _)| *id == pressed) {
-        return Some(*entry);
-    }
+    // Whichever window the press arrived at, it goes to the companion drawn in front: native
+    // proxies are stacked in no particular order, and one behind can be handed the press.
     hits.iter()
         .max_by_key(|(_, creature)| draw_order.iter().position(|id| id == creature))
         .copied()

@@ -17,6 +17,8 @@
 //! the colony's ordinary choices pass them by, and every other scene, beat and antic leaves them
 //! be. All of it runs on a stream of its own, so a wonder never shifts any other choice.
 
+mod placed;
+
 use super::attention::point_exposed;
 use super::*;
 use crate::tuning::WONDERS;
@@ -30,6 +32,12 @@ pub(super) struct Wonders {
     /// One of its players was picked up: the rest are let go on the next tick, when there is a
     /// desktop to put them down on.
     grabbed: bool,
+    /// Where each wonder the person at the desk has put out stands just now, worked out again
+    /// every tick from the save and the desktop.
+    placed: Vec<PlacedSpot>,
+    /// Put-out wonders set on top of a window, riding it: the window, and how far along its top
+    /// edge the wonder's middle stands. Runtime only, as windows always are.
+    on_window: Vec<(WonderKind, WindowKey, f32)>,
     /// The kind the next one must be, for tests that need a particular wonder.
     #[cfg(test)]
     forced: Option<WonderKind>,
@@ -44,6 +52,8 @@ impl Wonders {
             rng,
             active: None,
             grabbed: false,
+            placed: Vec::new(),
+            on_window: Vec::new(),
             #[cfg(test)]
             forced: None,
         }
@@ -180,6 +190,17 @@ impl Ground {
     }
 }
 
+/// Where a put-out wonder stands this tick.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PlacedSpot {
+    kind: WonderKind,
+    ground: Ground,
+    /// The middle of where it stands, on the ground.
+    at: Point,
+    /// Art pixels to points here.
+    unit: f32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Role {
     Lead,
@@ -234,6 +255,9 @@ struct Active {
     toss: bool,
     /// Whether this is the colony's first of the kind.
     first: bool,
+    /// One the person at the desk put out, which stays where it is when its players are done
+    /// rather than going.
+    placed: bool,
 }
 
 impl Active {
@@ -242,6 +266,9 @@ impl Active {
     }
 
     fn presence(&self) -> f32 {
+        if self.placed {
+            return 1.0;
+        }
         match self.phase {
             Phase::Leaving(t) => (1.0 - t / WONDERS.vanish_secs).clamp(0.0, 1.0),
             _ => (self.elapsed / WONDERS.appear_secs).clamp(0.0, 1.0),
@@ -842,7 +869,11 @@ impl World {
 
     /// The wonder out now, for the overlay to draw.
     pub fn wonder(&self) -> Option<WonderView> {
-        let active = self.wonders.active.as_ref()?;
+        let active = self
+            .wonders
+            .active
+            .as_ref()
+            .filter(|active| !active.placed)?;
         let t = active.script_time();
         let ride = carried(active.kind, t, active.length);
         let mut at = active.place(ride, 0.0);
@@ -913,17 +944,23 @@ impl World {
         if !lively || std::mem::take(&mut self.wonders.grabbed) {
             self.send_wonder_away(Some(desktop));
         }
+        self.place_wonders(desktop);
         if let Some(active) = self.wonders.active.as_mut() {
             active.elapsed += dt;
             if let Phase::Leaving(t) = &mut active.phase {
                 *t += dt;
-                if *t >= WONDERS.vanish_secs {
+                // One put out stays where it is: only its players go.
+                if *t >= WONDERS.vanish_secs || active.placed {
                     self.wonders.active = None;
                 }
                 return;
             }
             let at_home = matches!(active.ground, Ground::Village { .. });
-            if at_home != home || !self.wonder_ground_holds(desktop) {
+            let moved = active.placed
+                && !self.wonders.placed.iter().any(|spot| {
+                    spot.kind == active.kind && spot.ground == active.ground && spot.at == active.at
+                });
+            if (!active.placed && at_home != home) || moved || !self.wonder_ground_holds(desktop) {
                 self.send_wonder_away(Some(desktop));
                 return;
             }
@@ -937,7 +974,18 @@ impl World {
         if self.wonders.next_in > 0.0 {
             return;
         }
-        self.wonders.next_in = if self.start_wonder(desktop, home) {
+        // Now and then, out on the desktop, somebody goes over to one that was put out instead.
+        let to_placed = !home
+            && !self.wonders.placed.is_empty()
+            && self.wonders.rng.random_bool(placed::PUT_OUT_SHARE);
+        let started = if to_placed {
+            let spot =
+                self.wonders.placed[self.wonders.rng.random_range(0..self.wonders.placed.len())];
+            self.start_placed_wonder(spot, desktop, false) || self.start_wonder(desktop, home)
+        } else {
+            self.start_wonder(desktop, home)
+        };
+        self.wonders.next_in = if started {
             self.wonders.rng.random_range(WONDERS.interval_secs)
         } else {
             self.wonders.rng.random_range(WONDERS.retry_secs)
@@ -1011,25 +1059,47 @@ impl World {
         };
         // Turned so the lead's side faces it, so the lead never walks past it to begin.
         let mirrored = lead_creature.state.position.x > at.x;
-        let mut active = Active {
-            kind,
-            ground,
-            at,
-            unit,
-            mirrored,
-            players: Vec::new(),
-            phase: Phase::Gathering,
-            elapsed: 0.0,
-            waited: 0.0,
-            length: script_length(kind),
-            toss: self.wonders.rng.random_bool(0.5),
-            first: !self
-                .save
-                .companion
-                .wonders
-                .iter()
-                .any(|record| record.kind == kind),
-        };
+        let toss = self.wonders.rng.random_bool(0.5);
+        let first = !self
+            .save
+            .companion
+            .wonders
+            .iter()
+            .any(|record| record.kind == kind);
+        self.begin_wonder(
+            Active {
+                kind,
+                ground,
+                at,
+                unit,
+                mirrored,
+                players: Vec::new(),
+                phase: Phase::Gathering,
+                elapsed: 0.0,
+                waited: 0.0,
+                length: script_length(kind),
+                toss,
+                first,
+                placed: false,
+            },
+            lead,
+            &partners,
+            pair,
+            desktop,
+        )
+    }
+
+    /// Sets the lead, and a partner if it is to be a pair, off toward a wonder about to be out,
+    /// and puts it out. False when they cannot get there.
+    fn begin_wonder(
+        &mut self,
+        mut active: Active,
+        lead: CreatureId,
+        partners: &[CreatureId],
+        pair: bool,
+        desktop: &DesktopSnapshot,
+    ) -> bool {
+        let (kind, ground, at) = (active.kind, active.ground, active.at);
         let mut chosen = vec![(lead, Role::Lead)];
         if pair {
             // The nearest free friend that can get there.
@@ -1104,15 +1174,24 @@ impl World {
     }
 
     /// Which kind turns up: one the colony has not had yet three times in four while there are
-    /// any, and never one for two with nobody to share it.
+    /// any, never one for two with nobody to share it, and never one already put out.
     fn choose_wonder_kind(&mut self, friend_free: bool) -> Option<WonderKind> {
         #[cfg(test)]
         if let Some(kind) = self.wonders.forced {
             return (friend_free || kind.seats() != WonderSeats::Two).then_some(kind);
         }
+        // One already put out is gone to where it stands, not turned up as a second.
         let possible: Vec<WonderKind> = WonderKind::ALL
             .into_iter()
             .filter(|kind| friend_free || kind.seats() != WonderSeats::Two)
+            .filter(|kind| {
+                !self
+                    .save
+                    .companion
+                    .placed_wonders
+                    .iter()
+                    .any(|placed| placed.kind == *kind)
+            })
             .collect();
         let new: Vec<WonderKind> = possible
             .iter()
@@ -1175,18 +1254,21 @@ impl World {
             ));
         } else {
             let on_ledge = lead.state.surface.window_key;
+            let village = self.village_floor_span(monitor.id, desktop);
             for region in accessible_regions(policy, monitor) {
                 // The floor's ends are walls half a body in, as everywhere else.
                 let (low, high) = standing_span(region.x, region.right(), frame / 2.0);
-                runs.push((
-                    Ground::Floor {
-                        monitor: monitor.id,
-                    },
-                    low,
-                    high,
-                    region.bottom() - 4.0,
-                    if on_ledge.is_none() { 3.0 } else { 2.0 },
-                ));
+                for (low, high) in floor_beside(low, high, village) {
+                    runs.push((
+                        Ground::Floor {
+                            monitor: monitor.id,
+                        },
+                        low,
+                        high,
+                        region.bottom() - 4.0,
+                        if on_ledge.is_none() { 3.0 } else { 2.0 },
+                    ));
+                }
             }
             if self.save.settings.window_ledges {
                 let floor_y = monitor.usable_bounds.bottom() - 4.0;
@@ -1274,6 +1356,26 @@ impl World {
         }
         .clamp(low, high);
         Some((ground, Point { x, y }, unit))
+    }
+
+    /// The stretch of floor the village stands on along this display, while it stays out between
+    /// visits: a wonder never stands in among the houses.
+    pub(super) fn village_floor_span(
+        &self,
+        monitor: MonitorId,
+        desktop: &DesktopSnapshot,
+    ) -> Option<(f32, f32)> {
+        if !self.save.home.stays_out || self.save.home.is_active() {
+            return None;
+        }
+        let commons = home_commons(
+            &self.save.home,
+            colony_cottage_list(&self.save.creatures).as_slice(),
+            &desktop.monitors,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        )?;
+        (commons.monitor_id == monitor).then_some((commons.low_x, commons.high_x))
     }
 
     /// Walks, hops and climbs every player on toward the wonder, marvels, plays the script, and
@@ -1466,6 +1568,21 @@ impl World {
 }
 
 /// Puts a player where its stance says, striking its pose.
+/// A run of floor from `low` to `high` with the village's stretch taken out of it: the run
+/// itself, the pieces either side, or nothing.
+fn floor_beside(low: f32, high: f32, village: Option<(f32, f32)>) -> Vec<(f32, f32)> {
+    let Some((v_low, v_high)) = village else {
+        return vec![(low, high)];
+    };
+    if v_high <= low || v_low >= high {
+        return vec![(low, high)];
+    }
+    [(low, v_low.min(high)), (v_high.max(low), high)]
+        .into_iter()
+        .filter(|(a, b)| b > a)
+        .collect()
+}
+
 fn show_stance(creature: &mut Creature, active: &Active, stance: Stance) {
     creature.state.position = active.place(stance.dx, stance.dy);
     creature.state.facing_right = stance.facing_right != active.mirrored;

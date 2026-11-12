@@ -69,6 +69,8 @@ impl TrinketAtlasKey {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ObjectVertexCacheKey {
     pub(super) objects: Vec<ColonyObject>,
+    /// The belongings somebody has borrowed to play with, left out of the yard until put back.
+    pub(super) borrowed: Vec<u64>,
     /// How far along each garden patch has grown, which changes by itself every few hours.
     pub(super) stages: Vec<formiga_core::GardenStage>,
     pub(super) cottages: Vec<formiga_core::DwellingKind>,
@@ -243,8 +245,15 @@ impl OverlayRenderer {
     pub(super) fn cached_colony_object_vertices(&mut self, save: &SaveFile) -> &[Vertex] {
         let cottages = formiga_core::colony_cottages(&save.creatures);
         let now = save.maximum_seen_utc;
+        // A belonging borrowed to play with is in its player's paws, not in the yard as well.
+        let borrowed: Vec<u64> = save
+            .creatures
+            .iter()
+            .filter_map(|creature| creature.state.play.and_then(|play| play.borrowed))
+            .collect();
         let key = ObjectVertexCacheKey {
             objects: save.objects.objects.clone(),
+            borrowed: borrowed.clone(),
             stages: save
                 .home
                 .gardens
@@ -280,7 +289,8 @@ impl OverlayRenderer {
             .enumerate()
             .filter_map(|(slot, object)| {
                 let (monitor_id, point) = places[slot]?;
-                (monitor_id == self.monitor.id).then_some((object, point))
+                (monitor_id == self.monitor.id && !borrowed.contains(&object.id))
+                    .then_some((object, point))
             })
             .collect();
         yard.sort_by(|a, b| a.1.y.total_cmp(&b.1.y));

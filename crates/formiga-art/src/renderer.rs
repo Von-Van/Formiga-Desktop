@@ -13,14 +13,30 @@ mod beats;
 mod classic;
 mod effects;
 mod face;
+mod foods;
 mod fox;
+mod held;
+mod meals;
 mod modular;
+mod play;
+mod playthings;
 mod pose;
 mod props;
 pub use accessories::AccessoryArt;
 use classic::*;
 use effects::*;
 use face::*;
+use held::toy_colourway;
+pub use held::{
+    HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,
+    HeldThing, KITE_STRING, TOY_COLOURWAYS, render_held_sheet,
+};
+pub use meals::{
+    MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose,
+    shows_held_by_default,
+};
+pub use play::{held_tether, play_face, play_held, play_offset, play_pose, prop_in_motion};
+pub use playthings::Plaything as PlayPicture;
 use pose::*;
 use props::*;
 pub use props::{DRINK_KINDS, SNACK_KINDS, TOY_KINDS, prop_variants};
@@ -167,6 +183,9 @@ pub struct RenderedBodyFrame {
     pub canvas: Canvas,
     pub face_anchor: PixelPoint,
     pub alpha_mask: AlphaMask,
+    /// What the body is holding in this frame and where, drawn apart from it over the body and
+    /// face. Not in `canvas` or `alpha_mask`.
+    pub held: Option<HeldPlacement>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -319,6 +338,14 @@ impl AnimationSpec {
             Gesture::Tend => (4, 5),
             // Pressed down and pushing up, twice a second.
             Gesture::Bask => (4, 4),
+            // Quick little bites, two a second.
+            Gesture::Nibble => (4, 8),
+            // In, a big bite, and back.
+            Gesture::Chomp => (4, 5),
+            // Munch, munch.
+            Gesture::Chew => (2, 4),
+            // Head back, mouth open, and down it goes.
+            Gesture::Gulp => (4, 6),
         };
         Self {
             frames,
@@ -560,34 +587,53 @@ impl MotionSignature {
     /// How it lies `into` seconds into a nap that began at `began` on its clock and lasts
     /// `length`: curled up, sprawled out, or loafed sitting up — a trusting companion sprawls
     /// more and a wary one dozes sitting up — and, in a long nap, now and then turned over into
-    /// another way partway through.
+    /// another way partway through (see [`MotionSignature::nap_turn`]).
     pub fn nap_pose(self, began: f32, into: f32, length: f32, turns: bool) -> Option<Gesture> {
-        let nap = (began * 4.0).max(0.0) as u64;
-        let way = |pick: f32| {
-            let sprawl = 0.15 + 0.35 * self.trusting;
-            let loaf = 0.1 + 0.3 * (1.0 - self.trusting);
-            if pick < sprawl {
-                Some(Gesture::Sprawl)
-            } else if pick < sprawl + loaf {
-                Some(Gesture::Loaf)
-            } else {
-                None
-            }
-        };
-        let first = way(self.roll(0x6e61_7031, nap));
-        let turn_at = length * (0.4 + 0.25 * self.roll(0x6e61_7032, nap));
-        if turns && length > 25.0 && self.roll(0x6e61_7033, nap) < 0.45 && into >= turn_at {
-            let mut pick = self.roll(0x6e61_7034, nap);
-            // Over into a different way, not the same one again.
-            for _ in 0..4 {
-                let then = way(pick);
-                if then != first {
-                    return then;
-                }
-                pick = (pick + 0.37) % 1.0;
-            }
+        match self.nap_turn(began, length, turns) {
+            Some(turn) if into >= turn.at => turn.to,
+            _ => self.nap_way(began),
         }
-        first
+    }
+
+    /// The way a nap that began at `began` is first lain in: `None` for curled up.
+    fn nap_way(self, began: f32) -> Option<Gesture> {
+        self.nap_way_from(self.roll(0x6e61_7031, (began * 4.0).max(0.0) as u64))
+    }
+
+    fn nap_way_from(self, pick: f32) -> Option<Gesture> {
+        let sprawl = 0.15 + 0.35 * self.trusting;
+        let loaf = 0.1 + 0.3 * (1.0 - self.trusting);
+        if pick < sprawl {
+            Some(Gesture::Sprawl)
+        } else if pick < sprawl + loaf {
+            Some(Gesture::Loaf)
+        } else {
+            None
+        }
+    }
+
+    /// Whether a nap that began at `began` and lasts `length` turns over partway through, and if
+    /// so when, from which way and into which. Only a long nap does, never with motion reduced
+    /// (`turns` false), and always into a different way from the one it began in.
+    pub fn nap_turn(self, began: f32, length: f32, turns: bool) -> Option<NapTurn> {
+        let nap = (began * 4.0).max(0.0) as u64;
+        if !turns || length <= 25.0 || self.roll(0x6e61_7033, nap) >= 0.45 {
+            return None;
+        }
+        let from = self.nap_way(began);
+        let mut pick = self.roll(0x6e61_7034, nap);
+        for _ in 0..4 {
+            let to = self.nap_way_from(pick);
+            if to != from {
+                return Some(NapTurn {
+                    at: length * (0.4 + 0.25 * self.roll(0x6e61_7032, nap)),
+                    from,
+                    to,
+                });
+            }
+            pick = (pick + 0.37) % 1.0;
+        }
+        None
     }
 
     /// The mood a walk is taken in, if it has one: a trudge when the companion is tired or on
@@ -666,7 +712,12 @@ impl BodyPresentation {
         {
             return shown(clip, into);
         }
-        let Some((habit, action, into)) = flourish_shown(creature) else {
+        // Looking food over as a habit is the meal's own opening look, held as long as the habit
+        // takes (see `Meal::look_over_until`), so a meal under way draws itself.
+        let flourish = flourish_shown(creature).filter(|(habit, _, _)| {
+            *habit != Habit::LooksFoodOver || meals::meal_shown(creature).is_none()
+        });
+        let Some((habit, action, into)) = flourish else {
             // Wriggling over in its sleep: the breaths come quicker, a squirm rather than a slide.
             if state.action == ActionKind::Sleep
                 && state.nudge == Some(formiga_core::SleepNudge::Wriggling)
@@ -683,7 +734,36 @@ impl BodyPresentation {
             {
                 return shown(BodyClip::Gesture(Gesture::Crouch), state.action_elapsed);
             }
-            return Self::footing(creature, motion);
+            let body = Self::footing(creature, motion);
+            // At play: each move of the game in its own pose. With motion reduced it keeps the
+            // calm hold play has always had, and the thing stays in its paws (see `play`).
+            if body.clip == BodyClip::Action(ActionKind::SoloPlay)
+                && !state.presence.reduced
+                && let Some(pose) = play::play_shown(creature).and_then(play::play_pose)
+            {
+                return match pose {
+                    meals::MealPose::Playing(clip, into) => shown(clip, into),
+                    meals::MealPose::Held(clip, frame) => Self {
+                        clip,
+                        frame,
+                        facing_right: state.facing_right,
+                    },
+                };
+            }
+            // Settled down to a meal: each step of it in its own pose.
+            if body.clip == BodyClip::Action(ActionKind::Eat)
+                && let Some(meal) = meals::meal_shown(creature)
+            {
+                return match meals::meal_pose(meal) {
+                    meals::MealPose::Playing(clip, into) => shown(clip, into),
+                    meals::MealPose::Held(clip, frame) => Self {
+                        clip,
+                        frame,
+                        facing_right: state.facing_right,
+                    },
+                };
+            }
+            return body;
         };
         match habit {
             // The snack or the drink held up in front before the first bite or sip: the opening
@@ -785,6 +865,27 @@ impl BodyPresentation {
         }
         if action == ActionKind::Sleep && state.nudge.is_none() {
             let into = state.action_elapsed;
+            let began = presence.clock - into;
+            // Turning over: a stir, a crouch, and down the other way, the stir's breaths quick.
+            if let Some(turn) = motion.nap_turn(began, state.action_duration, !presence.reduced)
+                && (turn.at..turn.at + NAP_TURN_SECS).contains(&into)
+            {
+                let since = into - turn.at;
+                let lying = |way: Option<Gesture>, clock: f32| {
+                    let clip = way.map_or(BodyClip::Action(ActionKind::Sleep), BodyClip::Gesture);
+                    body(clip, motion.frame(clip, clock * WRIGGLE_RATE))
+                };
+                return if since < TURN_STIR_SECS {
+                    lying(turn.from, since)
+                } else if since < TURN_STIR_SECS + TURN_GATHER_SECS {
+                    body(
+                        BodyClip::Gesture(Gesture::Crouch),
+                        motion.frame(Gesture::Crouch, since - TURN_STIR_SECS),
+                    )
+                } else {
+                    lying(turn.to, since)
+                };
+            }
             if let Some(way) = motion.nap_pose(
                 presence.clock - into,
                 into,
@@ -833,6 +934,38 @@ impl BodyPresentation {
     }
 }
 
+/// Whether a companion is drawn at its smaller set-back size, standing back in the village with
+/// the village out, given whether it was drawn that way last time it was asked (`None` the
+/// first time). It changes as soon as it crosses [`formiga_core::SET_BACK_DEPTH`] while it is
+/// standing, set down or carried, but while it walks only on a footfall, a foot just down: a
+/// companion strolling up or down a path changes size on a planted step, never mid-stride. The
+/// overlay draws this size and the grab mask is read at it, so the two always agree.
+pub fn shown_set_back(creature: &Creature, village_out: bool, was: Option<bool>) -> bool {
+    let wanted = village_out && creature.state.set_back();
+    let Some(was) = was.filter(|was| *was != wanted) else {
+        return wanted;
+    };
+    if !creature.state.presence.stepping {
+        return wanted;
+    }
+    let body = BodyPresentation::for_creature(creature);
+    let striding = matches!(
+        body.clip,
+        BodyClip::Action(ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint)
+            | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+    );
+    if !striding || footfall_frame(&creature.appearance, body.frame) {
+        wanted
+    } else {
+        was
+    }
+}
+
+/// Whether `frame` of a walk is a footfall for this body (see [`shown_set_back`]).
+pub fn footfall_frame(genome: &AppearanceGenome, frame: u8) -> bool {
+    pose::footfall(genome, usize::from(frame % 6))
+}
+
 impl MotionSignature {
     /// What a companion does on stopping `was`, and for how long: up from a nap with a stretch
     /// if it is calm and a shake if it is lively, and a shake on being set down from a hand or
@@ -854,6 +987,23 @@ const LIE_DOWN_SECS: f32 = 0.45;
 
 /// How many times faster a sleeper's breaths come while it wriggles over in its sleep.
 const WRIGGLE_RATE: f32 = 4.0;
+
+/// A long nap turned over partway through: when, `at` seconds in, and from which way into which
+/// (`None` for curled up).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NapTurn {
+    pub at: f32,
+    pub from: Option<Gesture>,
+    pub to: Option<Gesture>,
+}
+
+/// How a turn over in a nap is shown, rather than one way of lying swapped for another in a
+/// frame: a stir where it lies, its breaths quickening, then its weight gathered up in a crouch,
+/// and then down into the new way, still stirring a moment before it settles.
+const TURN_STIR_SECS: f32 = 0.5;
+const TURN_GATHER_SECS: f32 = 0.6;
+const TURN_SETTLE_SECS: f32 = 0.5;
+pub const NAP_TURN_SECS: f32 = TURN_STIR_SECS + TURN_GATHER_SECS + TURN_SETTLE_SECS;
 
 /// The habit a creature is doing right now, the action it opens and how far into it the creature
 /// is. Anything its attention is on comes first, so a flourish never shows under a scene.
@@ -942,6 +1092,17 @@ impl FramePlacement {
 }
 
 pub struct CreatureRenderer;
+
+/// What a whole-frame render puts in the paws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Holding {
+    /// Whatever the clip holds by default (see [`shows_held_by_default`]).
+    AsClip,
+    /// This, where the clip holds things.
+    Thing(HeldThing),
+    /// Nothing.
+    Nothing,
+}
 
 impl CreatureRenderer {
     pub fn render_frame(
@@ -1127,9 +1288,10 @@ impl CreatureRenderer {
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
+        let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
         match clip {
             BodyClip::Action(action) => {
-                draw_activity_prop(
+                draw_activity_marks(
                     &mut canvas,
                     genome,
                     palette,
@@ -1172,6 +1334,7 @@ impl CreatureRenderer {
             canvas,
             face_anchor,
             alpha_mask,
+            held: held.map(|held| held.translated(dx, dy)),
         };
         (rendered, fine)
     }
@@ -1351,6 +1514,33 @@ impl CreatureRenderer {
         reduce_motion: bool,
         face_state: FaceRenderState,
     ) -> Canvas {
+        Self::render_composited_frame_holding(
+            genome,
+            dress,
+            clip,
+            frame,
+            facing_right,
+            reduce_motion,
+            face_state,
+            Holding::AsClip,
+        )
+    }
+
+    /// [`Self::render_dressed_composited_frame`] with something chosen in its paws: a meal's
+    /// food, say, in place of the snack the clip holds by default, or nothing at all, for a page
+    /// that draws its own thing at [`Self::held_point`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_composited_frame_holding(
+        genome: &AppearanceGenome,
+        dress: Option<AccessoryArt>,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+        face_state: FaceRenderState,
+        holding: Holding,
+    ) -> Canvas {
+        let clip = clip.into();
         let mut body = Self::render_dressed_body_frame(genome, dress, clip, frame, reduce_motion);
         if !facing_right {
             body.canvas.mirror_horizontal();
@@ -1372,7 +1562,38 @@ impl CreatureRenderer {
             body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2,
             body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
         );
+        // What it holds goes over the face, as the overlay draws it.
+        let held = match holding {
+            Holding::AsClip => body.held.filter(|_| shows_held_by_default(clip)),
+            Holding::Thing(thing) => body.held.map(|held| held.holding(thing)),
+            Holding::Nothing => None,
+        };
+        if let Some(held) = held {
+            held.paint(&mut body.canvas, facing_right);
+        }
         body.canvas
+    }
+
+    /// Where the middle of what a frame of `clip` holds sits, in frame pixels facing the way
+    /// asked, if the frame holds anything: for a page that draws its own thing in the paws.
+    pub fn held_point(
+        genome: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+    ) -> Option<PixelPoint> {
+        let held = Self::render_body_frame(genome, clip, frame, reduce_motion).held?;
+        let offset = held.thing.offset();
+        let x = held.at.x + offset.x;
+        Some(PixelPoint {
+            x: if facing_right {
+                x
+            } else {
+                FRAME_SIZE as i32 - 1 - x
+            },
+            y: held.at.y + offset.y,
+        })
     }
 
     /// Empty rows beneath the creature's feet in its resting poses, in art pixels.

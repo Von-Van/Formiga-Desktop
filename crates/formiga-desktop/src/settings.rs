@@ -38,6 +38,12 @@ pub struct SettingsOutcome {
     pub complete_onboarding: bool,
     pub home_corner: Option<formiga_core::HomeCorner>,
     pub home_display: Option<formiga_core::DisplayKey>,
+    /// The village set to stay on the desktop between visits home, or to come and go with them.
+    pub village_stays_out: Option<bool>,
+    /// Put a wonder the colony has found out on the desktop.
+    pub put_out_wonder: Option<formiga_core::WonderKind>,
+    /// Put a wonder that was put out away again.
+    pub put_away_wonder: Option<formiga_core::WonderKind>,
     pub move_object: Option<(usize, usize)>,
     /// Put a hangout spot down at a fraction along the village ground, move it, or with `None`
     /// pick it up again.
@@ -101,6 +107,8 @@ pub struct SettingsOutcome {
     pub install_update: bool,
     pub rename_creature: Option<(CreatureId, String)>,
     pub viewed_profile: Option<CreatureId>,
+    /// A snack or a toy held out to a companion from its profile, as the desktop strip does.
+    pub offer: Option<(CreatureId, formiga_core::OfferKind)>,
     pub export_creature_card: Option<CreatureId>,
     pub export_creature_sticker: Option<(CreatureId, formiga_art::StickerClip, u32)>,
     pub export_colony_card: bool,
@@ -367,9 +375,15 @@ impl SettingsWindow {
         creatures: &[Creature],
         relationships: &[CreatureRelationship],
     ) {
-        self.draft = settings.clone();
-        self.saved = settings.clone();
-        self.error = None;
+        // A notebook already open keeps what was being changed in it: the frame rebases those
+        // changes onto the colony's preferences. Only one opened afresh starts from them.
+        if !self.ui_visible {
+            self.draft = settings.clone();
+            self.saved = settings.clone();
+            self.error = None;
+        } else {
+            self.follow_preferences(settings);
+        }
         self.creatures = creatures.to_vec();
         self.relationships = relationships.to_vec();
         self.creature_names = creatures
@@ -421,6 +435,16 @@ impl SettingsWindow {
         self.window.request_redraw();
     }
 
+    /// Follow the colony's preferences after something else changed them, the tray or the habitat
+    /// editor: the colony's are the ones kept, and the notebook holds only what it changed on
+    /// top, so its Apply never puts back a preference it did not touch.
+    fn follow_preferences(&mut self, current: &Settings) {
+        if *current != self.saved {
+            self.draft = rebase_preferences(&self.saved, &self.draft, current);
+            self.saved = current.clone();
+        }
+    }
+
     pub fn acknowledge_preferences(&mut self, settings: &Settings) {
         self.saved = settings.clone();
         self.draft = settings.clone();
@@ -434,6 +458,12 @@ impl SettingsWindow {
 
     pub fn set_error(&mut self, message: impl Into<String>) {
         self.error = Some(message.into());
+        self.window.request_redraw();
+    }
+
+    /// Say in the studio whether a picture is being read for takes, so it is not asked twice.
+    pub fn set_reference_search(&mut self, reading: bool) {
+        self.clubhouse.studio.reading_picture = reading;
         self.window.request_redraw();
     }
 
@@ -496,6 +526,17 @@ impl SettingsWindow {
         self.clubhouse.home.arrange.picked = Some(crate::clubhouse::arrange::Picked::House(keeper));
         self.tab = SettingsTab::Home;
         self.window.request_redraw();
+    }
+
+    /// Say on a companion's profile what became of a snack or a toy offered from it.
+    pub fn note_offer(&mut self, creature_id: CreatureId, note: String) {
+        self.clubhouse.colony.offer_note = Some((creature_id, note));
+        self.window.request_redraw();
+    }
+
+    /// The companion a note on its profile is waiting to hear from, if any.
+    pub fn offer_note_for(&self) -> Option<CreatureId> {
+        self.clubhouse.colony.offer_note.as_ref().map(|(id, _)| *id)
     }
 
     /// Open the Journal page, which is where a visit is written down.
@@ -570,6 +611,7 @@ impl SettingsWindow {
             self.applied_appearance = Some(appearance);
             self.applied_system_theme = self.context.system_theme();
         }
+        self.follow_preferences(&colony.save.settings);
         self.creatures = colony.creatures.to_vec();
         self.relationships = colony.relationships.to_vec();
         self.creature_names
@@ -1190,6 +1232,70 @@ pub(crate) fn undo_hint(earlier: usize) -> String {
     }
 }
 
+/// The notebook's changes carried over onto the colony's `current` preferences: each preference
+/// the notebook changed (`draft` differs from the `saved` copy it started from) keeps the
+/// notebook's value, and every other one takes the colony's. Listing every field means a new
+/// preference cannot be left out.
+pub(crate) fn rebase_preferences(
+    saved: &Settings,
+    draft: &Settings,
+    current: &Settings,
+) -> Settings {
+    fn pick<T: PartialEq + Clone>(saved: &T, draft: &T, current: &T) -> T {
+        if draft == saved {
+            current.clone()
+        } else {
+            draft.clone()
+        }
+    }
+    let Settings {
+        visible,
+        paused,
+        display_scale,
+        window_ledges,
+        cursor_reactions,
+        reduce_motion,
+        launch_at_login,
+        direct_manipulation,
+        fullscreen_app_occlusion,
+        habitat,
+        application_occlusion_rules,
+    } = draft;
+    Settings {
+        visible: pick(&saved.visible, visible, &current.visible),
+        paused: pick(&saved.paused, paused, &current.paused),
+        display_scale: pick(&saved.display_scale, display_scale, &current.display_scale),
+        window_ledges: pick(&saved.window_ledges, window_ledges, &current.window_ledges),
+        cursor_reactions: pick(
+            &saved.cursor_reactions,
+            cursor_reactions,
+            &current.cursor_reactions,
+        ),
+        reduce_motion: pick(&saved.reduce_motion, reduce_motion, &current.reduce_motion),
+        launch_at_login: pick(
+            &saved.launch_at_login,
+            launch_at_login,
+            &current.launch_at_login,
+        ),
+        direct_manipulation: pick(
+            &saved.direct_manipulation,
+            direct_manipulation,
+            &current.direct_manipulation,
+        ),
+        fullscreen_app_occlusion: pick(
+            &saved.fullscreen_app_occlusion,
+            fullscreen_app_occlusion,
+            &current.fullscreen_app_occlusion,
+        ),
+        habitat: pick(&saved.habitat, habitat, &current.habitat),
+        application_occlusion_rules: pick(
+            &saved.application_occlusion_rules,
+            application_occlusion_rules,
+            &current.application_occlusion_rules,
+        ),
+    }
+}
+
 /// The preferences changed but not yet applied, by the names their controls go by.
 pub(crate) fn pending_changes(saved: &Settings, draft: &Settings) -> Vec<&'static str> {
     let mut pending = Vec::new();
@@ -1680,6 +1786,37 @@ fn colony_tab(
                     );
                 }
                 clubhouse::journal::write(ui, habits);
+                // The two things the strip over a companion offers, here as plain buttons so
+                // they can be reached from the keyboard, with what came of them in words.
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for (label, kind, help) in [
+                        (
+                            "Offer a snack",
+                            formiga_core::OfferKind::Snack,
+                            "Hold out a snack, as the strip over them on the desktop does.",
+                        ),
+                        (
+                            "Offer a toy",
+                            formiga_core::OfferKind::Toy,
+                            "Hold out a toy, as the strip over them on the desktop does.",
+                        ),
+                    ] {
+                        if ui.button(label).on_hover_text(help).clicked() {
+                            outcome.offer = Some((creature.id, kind));
+                        }
+                    }
+                });
+                if let Some((_, note)) = page
+                    .offer_note
+                    .as_ref()
+                    .filter(|(id, _)| *id == creature.id)
+                {
+                    clubhouse::journal::write(
+                        ui,
+                        egui::RichText::new(note).small().color(clubhouse::muted()),
+                    );
+                }
             });
         });
         ui.add_space(18.0);

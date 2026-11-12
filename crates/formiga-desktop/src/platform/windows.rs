@@ -687,9 +687,16 @@ pub fn set_launch_at_login(enabled: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Open `path` in File Explorer. Explorer exits with code 1 even when the window opened, so its
+/// exit code says nothing; only a folder that is not there, or Explorer not starting, is a
+/// failure.
 pub fn open_directory(path: &std::path::Path) -> anyhow::Result<()> {
-    let status = Command::new("explorer.exe").arg(path).status()?;
-    anyhow::ensure!(status.success(), "Windows could not open the directory");
+    anyhow::ensure!(
+        path.is_dir(),
+        "the directory {} is not there",
+        path.display()
+    );
+    Command::new("explorer.exe").arg(path).status()?;
     Ok(())
 }
 

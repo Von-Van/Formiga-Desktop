@@ -1,19 +1,22 @@
 use super::*;
 
 impl World {
-    /// Move to the routine the schedule intends, if that is not already where we are. Only the
-    /// current intended state is applied: a machine that slept through a week of transitions
-    /// wakes into today's routine, not through every one it missed. Visibility, pause, and the
-    /// separate quiet expiry are never touched.
-    pub(super) fn apply_routine_schedule(&mut self, now: OffsetDateTime) {
+    /// Move to the routine the schedule intends whenever a scheduled transition has come round
+    /// since `since` (the machine's clock at the last look), or the schedule intends a routine
+    /// other than the one it last put in place. Only the current intended state is applied: a
+    /// machine that slept through a week of transitions wakes into today's routine, not through
+    /// every one it missed. A transition puts its routine back in place even when it is the one
+    /// already there, so a change made by hand in between lasts only until the next transition.
+    /// Visibility, pause, and the separate quiet expiry are never touched.
+    pub(super) fn apply_routine_schedule(&mut self, now: OffsetDateTime, since: OffsetDateTime) {
         if !self.save.companion.schedule.enabled {
             return;
         }
         let local = local_time_or_utc(now);
-        let Some(intended) = self.save.companion.schedule.intended(local) else {
+        let Some((came_round, intended)) = self.save.companion.schedule.latest(local) else {
             return;
         };
-        if self.save.companion.schedule.applied == Some(intended) {
+        if self.save.companion.schedule.applied == Some(intended) && came_round <= since {
             return;
         }
         let Some(preset) = self
@@ -46,7 +49,7 @@ impl World {
     pub fn resume_routine(&mut self, now: OffsetDateTime) {
         self.save.companion.schedule.overridden = false;
         self.save.companion.schedule.applied = None;
-        self.apply_routine_schedule(now);
+        self.apply_routine_schedule(now, now);
     }
 
     /// Uses the existing home path and tick; never alters the user's behavior settings.

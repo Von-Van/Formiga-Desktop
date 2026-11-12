@@ -71,16 +71,9 @@ fn generated_activity_props_are_deterministic_distinct_and_opaque() {
 fn prop_only(genome: &AppearanceGenome, action: ActionKind, frame: u8) -> (Canvas, PixelPoint) {
     let body = CreatureRenderer::render_body_frame(genome, action, frame, false);
     let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-    draw_activity_prop(
-        &mut canvas,
-        genome,
-        crate::palette_for(genome),
-        body.face_anchor,
-        Pose::new(genome, BodyClip::Action(action), frame, false),
-        action,
-        frame,
-        false,
-    );
+    if let Some(held) = body.held {
+        held.paint(&mut canvas, true);
+    }
     (canvas, body.face_anchor)
 }
 

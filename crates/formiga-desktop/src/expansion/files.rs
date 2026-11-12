@@ -116,6 +116,23 @@ impl<M: Serialize + DeserializeOwned> VisitFiles<M> {
         (marker.format == self.folder.marker_format).then_some((marker.session_id, marker.visit))
     }
 
+    /// Write what the marker remembers of the open visit again, if `session` is still the one
+    /// open: nothing is written once it has been closed or another has opened.
+    pub fn remember(&self, session: &SessionId, visit: M) -> io::Result<()> {
+        if self.open_visit().is_none_or(|(open, _)| open != *session) {
+            return Ok(());
+        }
+        let marker = Marker {
+            format: self.folder.marker_format.to_owned(),
+            session_id: session.clone(),
+            visit,
+        };
+        let mut bytes = serde_json::to_vec_pretty(&marker).map_err(io::Error::from)?;
+        bytes.push(b'\n');
+        write_atomically(&self.marker_path(), &bytes)?;
+        Ok(())
+    }
+
     /// Forget the open visit, leaving its session directory where it is.
     pub fn forget(&self) {
         if let Err(error) = fs::remove_file(self.marker_path())

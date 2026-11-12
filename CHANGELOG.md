@@ -13,6 +13,205 @@ All notable changes are documented here.
 - A companion takes one pet a second. Clicking it again within a second of the last pet no
   longer starts the pet over with a fresh bubble or counts as another pet, so a burst of clicks
   is one pet rather than a string of them.
+- A computer clock that ran ahead and was then put right no longer holds the colony's houses out
+  (or keeps them away), or its offers, rituals and journal moments back, until real time catches
+  up. The colony's own timeline still never runs backwards, but while the clock reads earlier than
+  it, it carries on by the time that really passes.
+- A colony is checked before it is written: a save that would not read back is refused and shown
+  as save trouble, leaving the colony file and its backup as they were, instead of being written
+  and reported as fine. An everyday save also reads the colony once rather than twice.
+- Hatch day is kept on the colony's birthday every year. It used to come only when an ordinary
+  ritual happened to fall due that day, so about one birthday in four went by unkept.
+- A colony begun on 29 February keeps its hatch day on 28 February outside leap years, the same day
+  its birthday finds already used.
+- A change made by hand while a weekly routine is on now lasts only until the next scheduled
+  switch, even when that switch goes to the routine already in place, and a switch that came round
+  while Formiga was closed counts too.
+- Pausing the colony, or switching launch at login, from the tray while the notebook is open is
+  no longer undone by pressing Apply on some other change in the notebook, and a habitat applied
+  in the editor no longer leaves the footer saying it is not applied yet.
+- Half-made changes in the notebook are kept when something brings it forward while it is open: a
+  finished update download, a design coming back from Formiga Farm, or the tray's Settings item.
+- If Formiga restarts while Formiga Battle is open, the colony now stays away with Battle and every
+  match won after the restart is kept, rather than the session being closed under Battle and the
+  colony reappearing on the desktop while Battle still showed it.
+- Undoing the removal or replacement of a companion that was indoors at the time brings it back
+  outside, where it can be seen and picked up, instead of invisible until a restart.
+- Restoring a backup while a house is open in Formiga Home no longer writes the old colony back
+  over the restored one for a moment.
+- Creating a companion from a picture no longer freezes the notebook and the companions while the
+  picture is read; the Studio says it is reading the picture until the takes appear.
+- On Windows, opening the log folder no longer logs an error each time it works.
+- Notebook writing no longer shows garbled for a frame when new letters make the pencil's atlas
+  grow, as on opening a page, changing the text size or moving the window to another screen: the
+  writing earlier in the same frame read from the wrong part of the grown atlas.
+- Links written in the pencil hand show their underline again when hovered or focused.
+- Once the pencil's atlas fills up it starts again on the next frame, instead of leaving new
+  letters out for the rest of the session.
+- A full-screen app no longer makes the overlay throw away its companions' sprite sheets, only to
+  bake them all again in one frame, with a visible hitch, when it closes.
+- A worn find is baked again when the colony's colours change, so it keeps matching the same find
+  hung in the tree without a relaunch.
+- A sculpted companion is baked as finely as the graphics card's largest texture allows, rather
+  than failing on a card that cannot hold its finest sheet.
+- The habitat editor always draws your red excluded areas, however many green regions the desktop
+  is cut into; it is the green that gives way when there are too many to draw.
+- Pausing holds a meal or a game where it is. Before, both kept going underneath, so carrying on
+  jumped several bites or moves ahead.
+- With Reduce motion on, a companion at play holds its toy still in its paws instead of tossing,
+  bouncing or flying it, even when the setting is switched on mid-toss.
+- A companion standing back in the village is grabbed by the smaller body you see there: a near
+  miss no longer picks it up, and its edge no longer misses.
+- Where two companions overlap, a click or a right-click goes to the one drawn in front.
+- The snack or toy a companion holds no longer takes clicks meant for the desktop behind it; only
+  its body and face do.
+- A companion's menu closes as it goes inside its house, and its click area goes with it rather
+  than staying over an empty strip of desktop.
+- Snack or Toy chosen for a companion that has just started a climb or a journey says "not now"
+  under the item and keeps the menu open, instead of closing as if nothing happened.
+- The part of a companion hidden behind an app you chose to hide it behind lets clicks through to
+  that app; the part still showing can be picked up as before.
+- On Windows, the spot a companion has walked away from no longer swallows clicks meant for the
+  app now underneath it.
+- A snack offered while the village is out and eaten on the doorstep is a treat, the same as one
+  offered anywhere else, rather than an ordinary meal of the hour.
+- The umbrella is opened only at the start of a real hop down off a window, never for a companion
+  set down on the floor, a step down or the end of a toss.
+- A yarn ball or another belonging borrowed from the yard to play with is left out of the yard
+  until it is put back, so it is only ever in one place; two companions never borrow the same one.
+- A second tower of blocks goes up one, two, three from the ground again instead of asking for a
+  fourth block and drawing a yarn ball. Every build-and-topple and every cast-and-catch in a game
+  is played whole or left out, and what is kept fills the game, so the put-down is a moment again.
+- A companion that looks its food over as a habit holds the meal's own look for as long as the
+  habit takes, and the crack, the bites and the finish follow it instead of passing unseen under it.
+  A play bow likewise comes before the toy is picked up.
+- A walnut or an acorn opens on the knock that cracks it, and the first bite leaves the first mark.
+- A paper plane is thrown once at the end of its game and glides down to the ground ahead, where it
+  stays; nothing flown or thrown jumps back into the paw at the next move.
+- A ball tossed or bounced is back in the paw when its move ends, however long the move came out.
+- A toy in the air is drawn twenty times a second while its owner stands still watching it.
+- A visiting companion that eats or plays has a meal or a game laid out like a resident's, with its
+  own toy rather than the colony's things.
+- A snack stays in the paw, held a little lower, while a crumb is wiped off a cheek.
+- A bowl of soup or porridge is set down on the ground, empty, before the paws are licked or a
+  tummy patted.
+- Berries tossed up rise above the paws and are watched on the way up before they are caught with a
+  gulp; with Reduce Motion they are eaten a bite at a time instead.
+- A flown kite has a string from the paw to the kite.
+- On the Village page, a two-word name such as Picnic blanket, Vegetable patch or Strawberry
+  planter took two lines and ran into the picture above it at normal text size. The tiles are
+  taller now, so every name sits whole under its picture.
+- Formiga no longer stops at once if it opens within two seconds of the computer starting up.
+- The checks every change goes through now include the content audit (names that fit, everything
+  a colony can come by), and test Formiga Battle on the Desktop being changed, as Hill, Home and
+  Farm already were. Battle's crates are scanned for security advisories every week too.
+- A companion's hello is answered by the friend it walked over to greet, not by a bystander
+  nearer to it or a companion up on another window, and an answer is dropped if by then the
+  friend has wandered off, gone out of sight or fallen asleep.
+- A companion asked something while it is still answering somebody else finishes what it is saying
+  first, and answers once that bubble has gone.
+- Goodnight is said once a companion has lain down, not as it sets off for bed, and a friend still
+  walking to bed answers a hello.
+- A companion behind a house in the village keeps quiet, and its bubble no longer floats over the
+  house as if a neighbour had said it.
+- A fish caught, a tower toppled or an umbrella ride is remarked on only when it is what is drawn,
+  not while another moment hides the game.
+- An invitation to play shows pawprints, since a pair at play is a chase or tag, rather than a toy
+  that never appears.
+- A companion's answer to you keeps the space over it: a neighbour's chatter waits rather than
+  covering it.
+- A companion at the very top of a display has its bubble under its feet, tail pointing up,
+  instead of pressed against the top edge over its face.
+- The overlay no longer crashes placing a bubble when a lost window surface comes back with no
+  size.
+- A companion turning over in a long nap is seen to turn — a stir, its weight gathered up in a
+  crouch, and down the other way — instead of changing shape in one frame. With Reduce motion on
+  a nap still never turns.
+- A companion that walks to the drum stump plays it: a paw down on it twice, and a moment's
+  listen, round after round, instead of turning to some other toy once it gets there. A walk to a
+  spot that runs out of time no longer sits on, or plays, a spot it never reached.
+- The open action strip stays put while its companion fidgets, washes or stretches, so Snack no
+  longer slides out from under the pointer; it still follows a companion that walks, hops or is
+  carried off.
+- A companion strolling between the front of the village and the middle path changes to its
+  smaller back-row drawing on a planted step, not mid-stride, and can be grabbed by the size you
+  see throughout.
+- At Small on a high-density display the action strip is drawn big enough to read and hit, at
+  least one and a half points an art pixel, while the companion keeps its size.
+- Today's Right now names the meal a companion is eating, such as "Eating soup", even up on a
+  window ledge.
+
+### Added
+
+- The village can stay on the desktop. Home & keepsakes, Where the village lives, has a choice for
+  the houses: Come and go, as before, or Always on the desktop. With the village always out the
+  companions still come home for fifteen minutes and go out to roam for fifteen, stay home three
+  times as long after dark, and head home while nobody is at the computer, staying until somebody
+  is back. During a visit home, a companion's strip offers Out to send everyone roaming again: in
+  Home's cell, or beside the moments when there are some. A wonder that turns up between visits
+  never stands in among the houses. (Save version 34.)
+- Wonders can be put out. Each wonder the colony has found has Put it out on the journal's Wonders
+  page, up to three at a time; it stands on the floor of the village's display, or the main one,
+  clear of the village and of the others, and stays there across relaunches until it is put away.
+  Clicking one opens a strip like a house's: Play calls the nearest free companion over, with a
+  friend for a seesaw; Move lifts it to follow the pointer until the next click sets it down on the
+  floor or on top of a window, which it then rides (a right click leaves it where it was); Put away
+  takes it back; and Profile opens the journal. Companions also go over to one now and then on their
+  own, in place of a wonder turning up, and a wonder already out never turns up as a second. Three
+  new icons, Play, Move and Put away, and Out are drawn in the interface atlas.
+- Offer a snack and Offer a toy on each companion's profile in the notebook: the same offers as
+  the strip over it on the desktop, reachable with Tab and Enter, with what came of the offer
+  written underneath.
+
+## [0.68.22] - 2026-11-04
+
+Meals, play by shape and talk between companions, released on Desktop alone: Formiga Hill, Home
+and Battle stay at 0.68.1 and work with it. Save version 33, travel version 6, household version 12
+and Battle contract version 5 are unchanged, and everything new is runtime only, so an older
+Formiga still opens the colony. Battle pairs friends only on the same Desktop version, so a friend
+match needs both sides on 0.68.22.
+
+### Changed
+
+- What a companion eats, sips or plays with is drawn apart from its body, from one sheet every
+  companion shares, in the paw or at the mouth where each frame holds it. Food is drawn in its own
+  colours, so a berry is red and a biscuit golden whoever is eating it, and each toy comes in one
+  of three colourways. It is what lets companions eat and play with more than the one snack and
+  toy they were born with.
+
+### Added
+
+- Meals. A companion that settles down to eat now has a meal rather than the same mouthful over
+  and over: one of 18 foods, from berries and peas to an apple, a slice of cake, a carrot, a walnut
+  or a bowl of soup, chosen from the time of day, what is ripe in the village's gardens, its own
+  favourite, or a treat when you offer a snack. Each is eaten its own way — tiny things gulped or
+  tossed up and caught, hand-sized ones nibbled, big ones chomped in both paws, long ones munched
+  end to end, nuts cracked first, soup blown on and slurped — and goes down bite by bite. Between
+  the first look and the last lick of a paw, most meals have a moment of their own: a crumb wiped
+  off a cheek, cheeks stuffed full, a hiccup, or nodding off over it when tired.
+- Play by shape. What a companion plays with is played with the way that thing is played with:
+  something round is kept up, tossed high and caught, bounced or balanced on the head; a stick is
+  swished like a sword, leaned on like a cane, conducted with, or fished with, and now and then a
+  fish comes up; an umbrella is twirled overhead or sat in like a boat; a kite is flown and a paper
+  plane thrown to glide away; a top is set spinning; a drum is drummed; a plush is hugged; a tower
+  of blocks goes up and comes down; a paper boat is sailed. Besides its own toy, a companion now
+  plays with the colony's belongings and borrows finds from the scrapbook — a marble, a twig, a
+  paper boat — for a while. With an umbrella in the colony, a hop down off a window is sometimes
+  ridden down under it.
+- Companions talk to each other. When one greets another, asks a friend to play, offers to share
+  its meal, says goodnight, gets pounced on or catches a fish, it says so in a little picture
+  bubble, and the friend answers a moment later. Every bubble is the same shape and size with one
+  clear picture in it; how it is said shows in the colour of the bubble: cream for chat, yellow
+  for excitement, lilac for a whisper, pale blue-grey for a thought, blue for a song, pink for
+  something tender, grey for a grumble, peach for a shout. They speak now and then, not all the
+  time.
+
+### Changed
+
+- Every bubble on the desktop, including a companion's answers to you, is drawn twice as finely
+  as the companions, so the pictures in them read at a glance, and each kind of answer has the
+  colour that suits it: a heart in a pink one, a grumble in a grey one.
+- A sleeping companion's z reads as a Z rather than an I.
 
 ## [0.68.21] - 2026-10-29
 

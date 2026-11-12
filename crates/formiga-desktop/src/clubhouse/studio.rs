@@ -26,6 +26,8 @@ pub(crate) struct StudioState {
     /// "Four more takes" can read it again. Only the path is kept, never the picture, and it is
     /// never saved.
     pub reference: Option<std::path::PathBuf>,
+    /// A picture is being read for takes, away from the notebook's own thread.
+    pub reading_picture: bool,
     /// The village tree the large preview stands a companion beside, uploaded once.
     tree: Option<TextureHandle>,
 }
@@ -157,8 +159,19 @@ impl StudioState {
                 {
                     outcome.request_random_creature = true;
                 }
-                if ui.button("Create from image…").clicked() {
+                if ui
+                    .add_enabled(
+                        !self.reading_picture,
+                        egui::Button::new("Create from image…"),
+                    )
+                    .on_disabled_hover_text("A picture is still being read.")
+                    .clicked()
+                {
                     outcome.request_reference_creature = true;
+                }
+                if self.reading_picture {
+                    ui.spinner();
+                    ui.label("Reading the picture…");
                 }
                 if formiga_farm.installed {
                     let draw = ui
@@ -230,7 +243,12 @@ impl StudioState {
             return;
         }
         ui.add_space(18.0);
-        if self.reference.is_some() && ui.button("Four more takes").clicked() {
+        if self.reference.is_some()
+            && ui
+                .add_enabled(!self.reading_picture, egui::Button::new("Four more takes"))
+                .on_disabled_hover_text("A picture is still being read.")
+                .clicked()
+        {
             outcome.request_reference_retry = true;
         }
         let takes = self.candidates.len();

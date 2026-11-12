@@ -28,7 +28,7 @@ const FARTHEST_PLACE: f32 = 1_000_000.0;
 /// Later than any colony's clock has stood. Arrivals, rituals and finds are scheduled by adding
 /// days and months to the colony's own times, and a time near the end of the calendar leaves
 /// nothing to add to, so one past this is a damaged file, brought back to it.
-const LATEST_MOMENT: OffsetDateTime = time::macros::datetime!(2200-01-01 0:00 UTC);
+pub(crate) const LATEST_MOMENT: OffsetDateTime = time::macros::datetime!(2200-01-01 0:00 UTC);
 
 /// A colony brought inside every limit and made to agree with itself. Made only by validation;
 /// read through `Deref`, and taken apart with [`ValidatedSave::into_inner`].
@@ -513,6 +513,25 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
             }),
         &|| "a house hangs decorations it cannot".to_owned(),
     );
+    let placed = &save.companion.placed_wonders;
+    check(
+        placed.len() <= crate::MAX_PLACED_WONDERS
+            && placed
+                .iter()
+                .map(|wonder| wonder.kind)
+                .collect::<BTreeSet<_>>()
+                .len()
+                == placed.len()
+            && placed.iter().all(|wonder| {
+                (0.0..=1.0).contains(&wonder.along)
+                    && save
+                        .companion
+                        .wonders
+                        .iter()
+                        .any(|record| record.kind == wonder.kind)
+            }),
+        &|| "a wonder put out that cannot be".to_owned(),
+    );
     found.extend(
         save.day_book
             .violations(&ids.iter().copied().collect::<Vec<_>>()),
@@ -572,6 +591,57 @@ mod tests {
             kind: crate::HabitatZoneKind::Excluded,
             enabled: true,
         }
+    }
+
+    /// Wonders put out in a damaged file keep only what can be: kinds the colony has found, each
+    /// once, standing somewhere on their floor, and no more than can be out at once.
+    #[test]
+    fn only_wonders_that_can_be_out_are_kept_out() {
+        let mut save = colony();
+        let now = save.maximum_seen_utc;
+        for kind in [
+            crate::WonderKind::Chair,
+            crate::WonderKind::Fountain,
+            crate::WonderKind::Seesaw,
+            crate::WonderKind::Hammock,
+        ] {
+            save.companion.wonders.push(crate::WonderRecord {
+                kind,
+                first_at: now,
+                finder: None,
+                finder_name: "Finder".into(),
+                goes: 1,
+            });
+        }
+        let out = |kind, along| crate::PlacedWonder {
+            kind,
+            display: crate::DisplayKey([1; 16]),
+            along,
+        };
+        save.companion.placed_wonders = vec![
+            out(crate::WonderKind::Tightrope, 0.5),
+            out(crate::WonderKind::Chair, 0.2),
+            out(crate::WonderKind::Chair, 0.4),
+            out(crate::WonderKind::Fountain, f32::NAN),
+            out(crate::WonderKind::Seesaw, 7.0),
+            out(crate::WonderKind::Hammock, 0.6),
+            out(crate::WonderKind::Fountain, 0.9),
+        ];
+        assert!(!violations(&save).is_empty());
+        let repaired = ValidatedSave::from(save).into_inner();
+        assert_eq!(
+            repaired.companion.placed_wonders,
+            vec![
+                out(crate::WonderKind::Chair, 0.2),
+                out(crate::WonderKind::Seesaw, 1.0),
+                out(crate::WonderKind::Hammock, 0.6),
+            ]
+        );
+        assert!(
+            violations(&repaired).is_empty(),
+            "{:?}",
+            violations(&repaired)
+        );
     }
 
     /// A colony whose times stand at the end of the calendar — a damaged file — loads and lives

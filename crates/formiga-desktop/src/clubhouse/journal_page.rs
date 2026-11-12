@@ -410,7 +410,7 @@ fn page(
         state.scrapbook(ui, shell, save);
         state.souvenirs(ui, save);
         state.cups(ui, save);
-        state.wonders(ui, save);
+        state.wonders(ui, save, outcome);
         return;
     }
     // The colony's landmarks, which the journal keeps past their turn to roll out: who arrived,
@@ -667,7 +667,7 @@ fn page(
     state.scrapbook(ui, shell, save);
     state.souvenirs(ui, save);
     state.cups(ui, save);
-    state.wonders(ui, save);
+    state.wonders(ui, save, outcome);
 }
 
 impl JournalState {
@@ -866,8 +866,9 @@ impl JournalState {
 
     /// The notebook's page of wonders: every kind there is, the ones that have turned up drawn
     /// with who first found it, when, and how many goes the colony has had since, and the rest as
-    /// a shadow with a hint. Nothing here can be placed or kept: a wonder turns up by itself.
-    pub fn wonders(&mut self, ui: &mut Ui, save: &SaveFile) {
+    /// a shadow with a hint. One that has turned up can be put out on the desktop from here, up
+    /// to three at a time, and put away again.
+    pub fn wonders(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
         let offset = local_offset();
         let sheet = self.wonder_sheet(ui, save);
         let found = &save.companion.wonders;
@@ -883,8 +884,12 @@ impl JournalState {
         );
         ui.small(
             "Now and then something to play on turns up for a little while — a chair, a leaf sled, a \
-             fountain — and whoever it turned up for goes straight over to have a go.",
+             fountain — and whoever it turned up for goes straight over to have a go. Put one you \
+             have found out on the desktop and it stays: click it there to call somebody over, move \
+             it, or put it away.",
         );
+        let out = &save.companion.placed_wonders;
+        let room = out.len() < formiga_core::MAX_PLACED_WONDERS;
         ui.add_space(6.0);
         let kinds = WonderKind::ALL.len() as f32;
         for (index, kind) in WonderKind::ALL.into_iter().enumerate() {
@@ -923,6 +928,22 @@ impl JournalState {
                                 record.goes,
                                 if record.goes == 1 { "go" } else { "goes" }
                             ));
+                            ui.horizontal_wrapped(|ui| {
+                                if out.iter().any(|placed| placed.kind == kind) {
+                                    if ui.button("Put away").clicked() {
+                                        outcome.put_away_wonder = Some(kind);
+                                    }
+                                    ui.small("Out on the desktop");
+                                } else if ui
+                                    .add_enabled(room, egui::Button::new("Put it out"))
+                                    .on_disabled_hover_text(
+                                        "Three are out already. Put one away first.",
+                                    )
+                                    .clicked()
+                                {
+                                    outcome.put_out_wonder = Some(kind);
+                                }
+                            });
                         }
                         None => {
                             ui.strong("Still to find");

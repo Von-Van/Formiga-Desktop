@@ -34,7 +34,18 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     }
     // A wonder is out for half a minute at most, every ten minutes or more, and everything on it
     // moves: a seesaw tipping, a hammock swaying, its players hopping on and off.
-    if world.wonder().is_some() {
+    if world.wonder().is_some() || world.placed_wonder_playing() {
+        return true;
+    }
+    // Something tossed, bounced, thrown or flown moves through the air while its owner may be
+    // standing quite still, and is drawn as often as anything walking until it is back in hand.
+    if world
+        .save
+        .creatures
+        .iter()
+        .chain(world.save.visitors.on_stage())
+        .any(formiga_art::prop_in_motion)
+    {
         return true;
     }
     world.save.creatures.iter().any(|creature| {

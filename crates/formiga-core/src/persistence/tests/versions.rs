@@ -1147,3 +1147,43 @@ fn v33_keeps_the_handler_key_and_older_colonies_are_given_one_at_battle() {
     assert_eq!(loaded.battle.record.handler_key, Some(key));
     let _ = fs::remove_dir_all(directory);
 }
+
+#[test]
+fn v34_keeps_a_village_that_stays_out_and_wonders_put_out_and_older_colonies_have_neither() {
+    let desktop = crate::DesktopSnapshot::default();
+    let now = datetime!(2026-11-12 12:00 UTC);
+    let world = crate::World::new([34; 32], now, &desktop);
+    let save = world.save.clone();
+    let mut value = serde_json::to_value(&save).unwrap();
+    assert!(value["home"].get("stays_out").is_none());
+    assert!(value["companion"].get("placed_wonders").is_none());
+    value["save_version"] = 33.into();
+    let migrated = migrate(value, 33).unwrap();
+    assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+    assert!(!migrated.home.stays_out);
+    assert!(migrated.companion.placed_wonders.is_empty());
+
+    let mut save = migrated;
+    save.home.stays_out = true;
+    save.companion.wonders.push(crate::WonderRecord {
+        kind: crate::WonderKind::Fountain,
+        first_at: now,
+        finder: None,
+        finder_name: "Finder".into(),
+        goes: 2,
+    });
+    let placed = crate::PlacedWonder {
+        kind: crate::WonderKind::Fountain,
+        display: crate::DisplayKey([1; 16]),
+        along: 0.25,
+    };
+    save.companion.placed_wonders.push(placed);
+    let directory =
+        std::env::temp_dir().join(format!("formiga-placed-wonders-{}", std::process::id()));
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&save).unwrap();
+    let loaded = store.load().unwrap().unwrap();
+    assert!(loaded.home.stays_out);
+    assert_eq!(loaded.companion.placed_wonders, vec![placed]);
+    let _ = fs::remove_dir_all(directory);
+}

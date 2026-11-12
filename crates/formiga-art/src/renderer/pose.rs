@@ -714,6 +714,57 @@ impl Pose {
                     ..Self::default()
                 }
             }
+            // Hunched over it with the head dipping in little bites, an ear twitching.
+            Gesture::Nibble => Self {
+                bob: tick,
+                squash_x: 1,
+                squash_y: -1,
+                appendage_lift: 1,
+                tail_sway: tick,
+                lean: [1, 2, 1, 2][usize::from(frame % 4)],
+                ear_perk: tick,
+                ..Self::default()
+            },
+            // Leaning right in for a big bite, squashed with the effort, and sitting back.
+            Gesture::Chomp => {
+                let bite = frame % 4 == 1 || frame % 4 == 2;
+                Self {
+                    bob: i32::from(frame % 4 == 3),
+                    squash_x: 1 + i32::from(bite),
+                    squash_y: -1 - i32::from(bite),
+                    appendage_lift: 2,
+                    tail_sway: if frame % 4 == 3 { 2 } else { 0 },
+                    lean: [2, 3, 3, 0][usize::from(frame % 4)],
+                    ear_perk: i32::from(frame % 4 == 2),
+                    // Gathered low for it, then up out of the crouch once it is bitten.
+                    crouch: 1 + i32::from(bite) - i32::from(frame % 4 == 3),
+                    ..Self::default()
+                }
+            }
+            // Sat back, cheeks working, the tail swishing contentedly.
+            Gesture::Chew => Self {
+                bob: tick,
+                squash_x: 1 + tick,
+                squash_y: -1 - tick,
+                appendage_lift: 1,
+                tail_sway: 1 + tick,
+                crouch: 1,
+                ..Self::default()
+            },
+            // Drawn up tall with the head tipped back to catch it, and settling as it goes down.
+            Gesture::Gulp => {
+                let up = [0, 2, 2, 0][usize::from(frame % 4)];
+                Self {
+                    squash_x: -i32::from(up > 0),
+                    squash_y: i32::from(up > 0),
+                    play_lift: up / 2,
+                    appendage_lift: 1 + up / 2,
+                    tail_sway: up,
+                    lean: -up,
+                    ear_perk: i32::from(up > 0),
+                    ..Self::default()
+                }
+            }
             // Drawn up with the nose out, ears forward, the head bobbing in little sniffs.
             Gesture::Sniff => Self {
                 bob: 0,
@@ -903,6 +954,20 @@ pub(super) fn resting_manner(genome: &AppearanceGenome) -> (i32, bool) {
 
 /// Whether a creature stretches on all fours rather than standing up to do it: the original
 /// soft quadrupeds, and the long body plan among the modular ones.
+/// Whether frame `phase` of six of this body's walk or run is a footfall, a foot just down —
+/// where [`Pose::stride`] dips the body: either end of the swing side on, all four down for a
+/// long body, a foot landed for one facing the screen.
+pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {
+    let down = if genome.design.is_none() {
+        0
+    } else if stretches_long(genome) {
+        1
+    } else {
+        2
+    };
+    phase % 3 == down
+}
+
 pub(super) fn stretches_long(genome: &AppearanceGenome) -> bool {
     genome
         .design

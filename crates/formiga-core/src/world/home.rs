@@ -2,6 +2,12 @@ use super::*;
 
 pub(super) const HOME_DURATION: time::Duration = time::Duration::minutes(15);
 const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
+/// While the village stays out: how long a visit home lasts after dark, when the colony is
+/// home three times as long as it is out.
+const NIGHT_HOME_DURATION: time::Duration = time::Duration::minutes(45);
+/// While the village stays out: how long the person at the desk has been away before everyone
+/// heads home, and stays there until they are back.
+const AWAY_FROM_DESK: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// The village spaces its residents with its own copy of the colony-wide spacing rule, because
 /// `habitat` is below `world` and cannot see into it. The two must never drift apart.
@@ -589,6 +595,8 @@ pub(super) struct HomeMoment {
     /// What a walk to a hangout spot is for: done where the walk ends, instead of a poke at a
     /// belonging and a walk back.
     visit: Option<HangoutVisit>,
+    /// Held out by the person at the desk: a snack taken on the doorstep is still a treat.
+    offered: bool,
 }
 
 impl HomeMoment {
@@ -617,7 +625,7 @@ struct HangoutVisit {
     /// Which way to face once there: out over the desktop at a lookout, and otherwise however
     /// the walk left it.
     facing_right: Option<bool>,
-    /// The spot itself, for the ones that are sat on or lain in.
+    /// The spot itself, for the ones that are sat on, lain in or played (see [`posed_at`]).
     seat: Option<HangoutKind>,
 }
 
@@ -664,8 +672,11 @@ fn advance_home_moment(
                 && (creature.state.position == goal || moment.remaining <= 0.0)
             {
                 // At the hangout spot, or as near as the walk got: its thing, done right here.
+                // Only a spot it actually reached is sat on or played, though: a bench short of
+                // its bench sits on nothing, and a drummer short of the stump drums the air.
+                let reached = creature.state.position == goal;
                 moment.phase = MomentPhase::Hold;
-                moment.seat = visit.seat;
+                moment.seat = visit.seat.filter(|_| reached);
                 moment.held = 0.0;
                 moment.action = visit.action;
                 moment.remaining = visit.seconds;
@@ -717,7 +728,9 @@ fn hangout_moment(kind: HangoutKind, creature: &Creature) -> (bool, ActionKind, 
         HangoutKind::Swing | HangoutKind::Sandbox | HangoutKind::Puddle => {
             (playful, ActionKind::SoloPlay, 8.0, 16.0)
         }
-        HangoutKind::DrumStump => (playful, ActionKind::SoloPlay, 6.0, 12.0),
+        // Played with the paws, as a drum (see `drum_stance`), not as a place to play with a
+        // toy: an ordinary game here would put something else in its paws on arrival.
+        HangoutKind::DrumStump => (playful, ActionKind::Idle, 6.0, 12.0),
         HangoutKind::Campfire | HangoutKind::Bench => (
             personality.sociability > 0.6 || drives.energy < 0.5,
             ActionKind::Idle,
@@ -733,6 +746,30 @@ const fn seated_at(kind: HangoutKind) -> bool {
         kind,
         HangoutKind::Bench | HangoutKind::Swing | HangoutKind::Hammock | HangoutKind::BookNook
     )
+}
+
+/// Whether a spot is used in a stance of its own once reached: sat on, lain in, sat beside, or
+/// played like the drum stump.
+const fn posed_at(kind: HangoutKind) -> bool {
+    seated_at(kind) || matches!(kind, HangoutKind::DrumStump)
+}
+
+/// One round at the drum stump: two taps on it — a paw reached down onto its skin, and again,
+/// as a garden is picked — then a moment with the paws still, listening, before the next two.
+const DRUM_TAPS_SECS: f32 = 2.0;
+const DRUM_ROUND_SECS: f32 = 3.0;
+
+/// How a companion at the drum stump stands, `held` seconds into its time there: beside it and
+/// turned to it (see `hangout_stand`), tapping and listening with its eyes on it, round after
+/// round, pleased with the sound.
+fn drum_stance(held: f32) -> wonders::Stance {
+    use wonders::Stance;
+    let stance = Stance::at(0.0, 0.0, true).looking(22.0, 6.0);
+    if held % DRUM_ROUND_SECS < DRUM_TAPS_SECS {
+        stance.pose(Gesture::Pluck)
+    } else {
+        stance
+    }
 }
 
 /// How high the seat of a spot is above the ground, in art pixels, as the village's object
@@ -751,6 +788,9 @@ const fn seat_height(kind: HangoutKind) -> f32 {
 /// down again at the end, all as offsets in art pixels from where it stands to use the spot.
 fn seated_stance(kind: HangoutKind, held: f32, remaining: f32) -> wonders::Stance {
     use wonders::{HOP_SECS, Stance, hop};
+    if kind == HangoutKind::DrumStump {
+        return drum_stance(held);
+    }
     let lift = seat_height(kind);
     let seat = (0.0, -lift);
     let settled = if kind == HangoutKind::Hammock {
@@ -915,8 +955,9 @@ fn choose_home_moment(
                     action,
                     seconds,
                     facing_right,
-                    seat: seated_at(hangout.kind).then_some(hangout.kind),
+                    seat: posed_at(hangout.kind).then_some(hangout.kind),
                 }),
+                offered: false,
             },
             None,
         );
@@ -954,6 +995,7 @@ fn choose_home_moment(
             seat: None,
             held: 0.0,
             visit: None,
+            offered: false,
         },
         answering,
     )
@@ -1060,27 +1102,50 @@ impl World {
             .colony_plan
             .as_ref()
             .is_some_and(|plan| plan.kind == RitualKind::ShelterGathering);
+        // A village that stays out keeps the same rhythm, and two reasons to be home besides:
+        // nobody at the desk to watch them roam, and the dark, when a visit lasts longer.
+        let stays_out = self.save.home.stays_out;
+        let away = stays_out && desktop.idle_duration >= AWAY_FROM_DESK;
+        let visit = if stays_out && self.dark_at_home(timeline_now) {
+            NIGHT_HOME_DURATION
+        } else {
+            HOME_DURATION
+        };
         if !ritual_shelter
+            && !away
             && self.village_moment.is_none()
             && self.save.companion.quiet_until.is_none()
             && self
                 .save
                 .home
                 .active_since_utc
-                .is_some_and(|started| timeline_now - started >= HOME_DURATION)
+                .is_some_and(|started| timeline_now - started >= visit)
         {
             self.dismiss_home(timeline_now, false);
         }
 
         let due = !self.save.home.is_active()
             && self.colony_plan.is_none()
-            && self
-                .save
-                .home
-                .last_disappeared_utc
-                .is_none_or(|ended| timeline_now - ended >= HOME_COOLDOWN);
+            && (away
+                || self
+                    .save
+                    .home
+                    .last_disappeared_utc
+                    .is_none_or(|ended| timeline_now - ended >= HOME_COOLDOWN));
         if due && self.interaction.is_none() && self.resolve_home_monitor(desktop).is_some() {
             self.begin_home_visit(timeline_now);
+        }
+        // Between visits a village that stays out still needs a display to stand on.
+        if stays_out
+            && !self.save.home.is_active()
+            && !self.save.home.display.is_some_and(|display| {
+                desktop
+                    .monitors
+                    .iter()
+                    .any(|monitor| monitor.display_key == display)
+            })
+        {
+            let _ = self.resolve_home_monitor(desktop);
         }
 
         if ritual_shelter {
@@ -1136,6 +1201,39 @@ impl World {
             self.show_bubble(creature_id, BubbleIcon::Home);
         }
         true
+    }
+
+    /// Send everyone back out from a visit home before it is over, to roam the desktop again: the
+    /// way back out of a visit the person at the desk asked for, as `send_home` is the way in.
+    /// The village stays where it is if it stays out, and goes if it comes and goes; either way
+    /// the colony is out for the usual while before the next visit.
+    pub(super) fn send_out(&mut self) -> bool {
+        if !self.save.home.is_active() {
+            return false;
+        }
+        let now = self.save.maximum_seen_utc;
+        let heading_out: Vec<_> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .map(|creature| creature.id)
+            .collect();
+        self.dismiss_home(now, true);
+        for creature_id in heading_out {
+            self.show_bubble(creature_id, BubbleIcon::Sparkle);
+        }
+        true
+    }
+
+    /// Dark outside by the clock on the wall, for how long a visit home lasts while the village
+    /// stays out.
+    fn dark_at_home(&self, now: OffsetDateTime) -> bool {
+        #[cfg(test)]
+        if let Some(dark) = self.dark_at_home_for_tests {
+            return dark;
+        }
+        discovery::after_dark(local_time_or_utc(now))
     }
 
     fn resolve_home_monitor(&mut self, desktop: &DesktopSnapshot) -> Option<MonitorInfo> {
@@ -2299,6 +2397,7 @@ impl World {
                     seat: None,
                     held: 0.0,
                     visit: None,
+                    offered: false,
                 },
             );
         }
@@ -2542,11 +2641,21 @@ impl World {
                 seat: None,
                 held: 0.0,
                 visit: None,
+                offered: true,
             },
         );
         let wait = seconds.max(0.0) + self.home_moment_rng.random_range(NEXT_MOMENT_SECS);
         self.home_moment_timers.insert(creature_id, wait);
         true
+    }
+
+    /// The clip a resident is having at home because the person at the desk held it out, if it
+    /// is in the middle of one.
+    pub(super) fn offered_home_moment(&self, creature_id: CreatureId) -> Option<ActionKind> {
+        self.home_moments
+            .get(&creature_id)
+            .filter(|moment| moment.offered)
+            .map(|moment| moment.action)
     }
 
     /// Ends every quiet moment and settles whoever was in one back into the calm resting pose.

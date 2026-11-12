@@ -18,11 +18,9 @@ pub(super) fn draw_effects(
     };
     match action {
         ActionKind::Sleep => {
-            let x = (face.x + 7).min(44);
-            let y = (face.y - 7 - pulse).max(3);
-            canvas.line(x, y + 2, x + 2, y + 2, 1, palette.accent);
-            canvas.line(x + 2, y + 2, x, y, 1, palette.accent);
-            canvas.line(x, y, x + 2, y, 1, palette.accent);
+            let x = (face.x + 7).min(43);
+            let y = (face.y - 8 - pulse).max(3);
+            draw_z(canvas, x, y, palette.accent);
         }
         ActionKind::InvestigateCursor => {
             let x = (face.x + 7).min(44);
@@ -123,11 +121,9 @@ pub(super) fn draw_gesture_effects(
         Gesture::Sit | Gesture::Scoot => {}
         // Asleep however it lies, the same little z as a curled sleeper's.
         Gesture::Sprawl | Gesture::Loaf => {
-            let x = (face.x + 7).min(44);
-            let y = (face.y - 7 - pulse).max(3);
-            canvas.line(x, y + 2, x + 2, y + 2, 1, palette.accent);
-            canvas.line(x + 2, y + 2, x, y, 1, palette.accent);
-            canvas.line(x, y, x + 2, y, 1, palette.accent);
+            let x = (face.x + 7).min(43);
+            let y = (face.y - 8 - pulse).max(3);
+            draw_z(canvas, x, y, palette.accent);
         }
         // Flecks thrown off either side, on the side it has just shaken toward.
         Gesture::Shake => {
@@ -149,7 +145,15 @@ pub(super) fn draw_gesture_effects(
                 canvas.set((x + 2).min(45), y - 1, palette.highlight);
             }
         }
-        Gesture::Groom | Gesture::Skip | Gesture::Trudge | Gesture::Pour | Gesture::Tend => {}
+        Gesture::Groom
+        | Gesture::Skip
+        | Gesture::Trudge
+        | Gesture::Pour
+        | Gesture::Tend
+        | Gesture::Nibble
+        | Gesture::Chomp
+        | Gesture::Chew
+        | Gesture::Gulp => {}
         // A puff of earth where the tug comes away.
         Gesture::Pluck => {
             if frame % 4 == 2 && !reduce_motion {
@@ -303,4 +307,14 @@ pub(super) fn draw_motif(canvas: &mut Canvas, motif: EffectMotif, x: i32, y: i32
             canvas.set(x, y - 1, color);
         }
     }
+}
+
+/// A sleeper's z, four pixels square so it reads as a Z: a bar across the top, a stroke from its
+/// right end down to the left, and a bar across the bottom. Three square has only the one middle
+/// pixel to join its bars, and reads as an I.
+fn draw_z(canvas: &mut Canvas, x: i32, y: i32, colour: Rgba) {
+    canvas.line(x, y, x + 3, y, 1, colour);
+    canvas.set(x + 2, y + 1, colour);
+    canvas.set(x + 1, y + 2, colour);
+    canvas.line(x, y + 3, x + 3, y + 3, 1, colour);
 }

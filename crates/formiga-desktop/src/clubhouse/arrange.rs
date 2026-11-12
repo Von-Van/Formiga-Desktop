@@ -1026,6 +1026,7 @@ impl HomeState {
             });
             ui.small(blurb);
             // Tiles grow with the text, so a name in larger text still fits under its picture.
+            // They are tall enough for a name on two lines at 100% text ("Strawberry planter").
             let grow = journal::text_scale(ui);
             ui.horizontal_wrapped(|ui| {
                 for (item, description) in items {
@@ -1033,7 +1034,7 @@ impl HomeState {
                     let full = !placed && down >= most;
                     let (tile, rect) = tile(
                         ui,
-                        egui::vec2(96.0, 78.0) * grow,
+                        egui::vec2(96.0, 90.0) * grow,
                         if placed { mint() } else { card_fill() },
                         gold(),
                         item.label(),
