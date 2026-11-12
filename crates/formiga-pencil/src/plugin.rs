@@ -302,7 +302,8 @@ impl egui::Plugin for Pencil {
         };
         // An atlas that filled up last frame starts again empty, with only what this frame
         // writes, and goes out whole: nothing drawn last frame reads from it any more.
-        if self.atlas.full {
+        let started_again = self.atlas.full;
+        if started_again {
             self.atlas = Atlas::new();
         }
         let [fw, fh] = ctx.fonts(|fonts| fonts.font_image_size());
@@ -319,8 +320,11 @@ impl egui::Plugin for Pencil {
             to_atlas_uv(shape, texture, size);
         }
         // Writing that found no room is missing from this frame; the next starts the atlas again
-        // and writes it, so there is a next.
-        if self.atlas.full {
+        // and writes it, so there is a next. Unless this frame already started again empty and
+        // still ran out: then one frame's writing is more than the atlas holds, and asking again
+        // at once would only fill it the same way, frame after frame. What is missing waits for
+        // the next frame that comes anyway.
+        if self.atlas.full && !started_again {
             ctx.request_repaint();
             for viewport in output.viewport_output.values_mut() {
                 viewport.repaint_delay = std::time::Duration::ZERO;
@@ -582,6 +586,47 @@ mod tests {
         frame(&ctx, &mut pencil, false);
         assert!(!pencil.atlas.full);
         assert_eq!(pencil.atlas.size(), [1024, 256]);
+    }
+
+    #[test]
+    fn writing_more_than_a_fresh_atlas_holds_does_not_ask_again_and_again() {
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        crate::add_to(&mut fonts, Everywhere::No);
+        ctx.set_fonts(fonts);
+        let mut pencil = Pencil::new(Everywhere::No);
+        egui::Plugin::setup(&mut pencil, &ctx);
+        let frame = |ctx: &egui::Context, pencil: &mut Pencil, huge: bool| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(1e5, 1e5))),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                let sizes = if huge { 100..400 } else { 16..17 };
+                for size in sizes.step_by(6) {
+                    ui.label(
+                        egui::RichText::new("abcdefghijklmnopqrstuvwxyz")
+                            .font(crate::hand(size as f32)),
+                    );
+                }
+            });
+            egui::Plugin::output_hook(pencil, ctx, &mut output);
+            output.textures_delta.clear();
+            output
+        };
+        let asked_at_once = |output: &egui::FullOutput| {
+            output
+                .viewport_output
+                .values()
+                .any(|viewport| viewport.repaint_delay.is_zero())
+        };
+        frame(&ctx, &mut pencil, false);
+        // The first frame to fill it asks for another at once, to start again empty.
+        assert!(asked_at_once(&frame(&ctx, &mut pencil, true)));
+        // That one fills a fresh atlas all the same: it does not ask again.
+        frame(&ctx, &mut pencil, true);
+        assert!(pencil.atlas.full);
+        assert!(!asked_at_once(&frame(&ctx, &mut pencil, true)));
     }
 
     #[test]

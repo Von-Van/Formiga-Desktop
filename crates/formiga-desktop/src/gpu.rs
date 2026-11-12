@@ -660,14 +660,11 @@ impl OverlayRenderer {
     /// the memory for every full-screen drawable in the pool and a quarter of the pixels to fill.
     /// At an odd size, or on a display that is not Retina, the overlay keeps full resolution.
     fn apply_render_divisor(&mut self, display_scale: u8) {
-        let divisor = if crate::platform::OVERLAY_HALF_RESOLUTION
-            && self.monitor.scale_factor >= 2.0
-            && display_scale.is_multiple_of(2)
-        {
-            2
-        } else {
-            1
-        };
+        let divisor = render_divisor(
+            crate::platform::OVERLAY_HALF_RESOLUTION,
+            self.monitor.scale_factor,
+            display_scale,
+        );
         if divisor == self.render_divisor {
             return;
         }
@@ -1665,7 +1662,13 @@ impl OverlayRenderer {
         display_scale: u8,
         occlusion_enabled: f32,
     ) -> [Vertex; 6] {
-        let size = HELD_CELL as f32 * f32::from(display_scale);
+        // A find is a cell of the finds' own sheet, its own size.
+        let cell = if thing.find().is_some() {
+            TRINKET_CELL
+        } else {
+            HELD_CELL
+        };
+        let size = cell as f32 * f32::from(display_scale);
         let centre_x = self.snap(centre_x);
         let centre_y = self.snap(centre_y);
         let left = (centre_x - size * 0.5) / self.layout.width as f32 * 2.0 - 1.0;
@@ -1789,6 +1792,22 @@ pub(crate) fn back_to_front<'a>(
 /// `interaction::ProxyRuntimeState::set_back`), so the two always agree on where its body is.
 pub(crate) fn drawn_set_back(depth: f32, village_out: bool) -> bool {
     village_out && depth >= formiga_core::SET_BACK_DEPTH
+}
+
+/// How many physical pixels each drawable pixel spans: 2, drawing at half the backing resolution,
+/// only where the platform allows it and that loses nothing. Every talk bubble is drawn
+/// [`TALK_DETAIL`] texture pixels to the art pixel, so halving must still leave each of those
+/// texture pixels a whole drawable pixel: an art pixel has to span `2 * TALK_DETAIL` physical
+/// pixels or more, or a bubble's finer strokes are thrown away.
+pub(crate) fn render_divisor(half_allowed: bool, scale_factor: f32, display_scale: u8) -> u32 {
+    if half_allowed
+        && scale_factor >= 2.0
+        && u32::from(display_scale).is_multiple_of(2 * TALK_DETAIL)
+    {
+        2
+    } else {
+        1
+    }
 }
 
 #[cfg(test)]

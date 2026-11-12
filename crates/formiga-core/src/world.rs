@@ -491,8 +491,10 @@ impl World {
         if !self.save.home.is_active() {
             self.behind_houses.clear();
         }
-        // Last, once everyone has got wherever this tick takes them.
-        self.carry_presence(dt, desktop);
+        // Last, once everyone has got wherever this tick takes them. Paused, everyone holds the
+        // pose they were in: no blink, glance or settling comes round while the colony is still.
+        let presence_dt = if self.save.settings.paused { 0.0 } else { dt };
+        self.carry_presence(presence_dt, desktop);
         self.carry_meals(now, dt);
         self.carry_play(now, dt);
         self.carry_talk(now, dt);
