@@ -1301,6 +1301,15 @@ impl crate::Creature {
     pub fn shows(&self, t: Trait) -> bool {
         self.traits().contains(&t)
     }
+
+    /// Whether a pet puts it out: a grump grumbles at the hand, and huffs at it, however much it
+    /// secretly likes it.
+    pub fn grumbles_when_petted(&self) -> bool {
+        self.traits()
+            .iter()
+            .any(|t| matches!(t, Trait::Grumpy | Trait::Irritable))
+            || self.temperament().kind == TemperamentKind::Grump
+    }
 }
 
 #[cfg(test)]

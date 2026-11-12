@@ -76,6 +76,57 @@ fn click_without_drag_pets_and_does_not_dismiss_the_shelter() {
 }
 
 #[test]
+fn a_companion_takes_one_pet_a_second() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([83; 32], created, &desktop);
+    world.tick(created, 0.05, &desktop);
+    let creature_id = world.save.creatures[0].id;
+    let pet = |world: &mut World| {
+        let position = world.save.creatures[0].state.position;
+        world.handle_command(
+            WorldCommand::BeginInteraction {
+                creature_id,
+                cursor: position,
+            },
+            &desktop,
+        );
+        world.handle_command(
+            WorldCommand::EndInteraction {
+                cursor: position,
+                velocity: Point::default(),
+            },
+            &desktop,
+        );
+        world
+            .drain_events()
+            .filter(|event| matches!(event, WorldEvent::CreaturePetted { .. }))
+            .count()
+    };
+    let mut now = created;
+    let mut wait = |world: &mut World, seconds: f32| {
+        for _ in 0..(seconds / 0.05).round() as usize {
+            now += time::Duration::milliseconds(50);
+            world.tick(now, 0.05, &desktop);
+        }
+    };
+    assert_eq!(pet(&mut world), 1);
+    // A burst of clicks within the second is still the one pet, and does not start it over.
+    for _ in 0..4 {
+        wait(&mut world, 0.15);
+        assert_eq!(pet(&mut world), 0);
+    }
+    let creature = &world.save.creatures[0];
+    assert_eq!(creature.state.action, ActionKind::PetReaction);
+    assert!(creature.state.action_elapsed >= 0.55);
+    assert_eq!(creature.memory.times_petted, 1);
+    // Once the second is up, the next click is a pet again.
+    wait(&mut world, 0.5);
+    assert_eq!(pet(&mut world), 1);
+    assert_eq!(world.save.creatures[0].memory.times_petted, 2);
+}
+
+#[test]
 fn drag_out_and_back_uses_maximum_excursion_instead_of_release_position() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();

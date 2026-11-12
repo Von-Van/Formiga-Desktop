@@ -509,6 +509,12 @@ fn what_a_companion_is_doing_shows() {
     }
     creature.state.beat = None;
     creature.state.action = ActionKind::PetReaction;
+    // A grump huffs at a pet instead (see `a_petted_grump_huffs_at_the_hand`).
+    creature.temperament = Some(formiga_core::Temperament {
+        kind: formiga_core::TemperamentKind::Sweetheart,
+        axes: formiga_core::Axes::MIDDLING,
+        tension: None,
+    });
     assert_eq!(
         BodyPresentation::for_creature(&creature).clip,
         BodyClip::Gesture(Gesture::Bask)
@@ -534,6 +540,59 @@ fn what_a_companion_is_doing_shows() {
     };
     assert!(leans(ActionKind::Drink).iter().any(|lean| *lean < 0));
     assert!(leans(ActionKind::Eat).iter().all(|lean| *lean >= 0));
+}
+
+/// A grump being petted huffs at the hand as its bubble grumbles: no lean into it, no heart, no
+/// eyes shut on a smile, and its nose in the air, looking away from the hand.
+#[test]
+fn a_petted_grump_huffs_at_the_hand() {
+    let mut creature = measured(89);
+    creature.state.action = ActionKind::PetReaction;
+    creature.temperament = Some(formiga_core::Temperament {
+        kind: formiga_core::TemperamentKind::Grump,
+        axes: formiga_core::Axes {
+            feistiness: 0.9,
+            playfulness: 0.1,
+            affection: 0.3,
+            ..formiga_core::Axes::MIDDLING
+        },
+        tension: None,
+    });
+    assert!(creature.grumbles_when_petted());
+    assert_eq!(
+        BodyPresentation::for_creature(&creature).clip,
+        BodyClip::Gesture(Gesture::Huff)
+    );
+    let hand = CursorSnapshot {
+        position: formiga_core::Point {
+            x: creature.state.position.x + 20.0,
+            y: creature.state.position.y - 30.0,
+        },
+        available: true,
+        ..CursorSnapshot::default()
+    };
+    let face = CreatureRenderer::resolve_face_state(&creature, hand, true);
+    assert_eq!(face.expression, ExpressionKind::Grumpy);
+    assert_ne!(face.eyelids, EyelidPose::Closed);
+    assert_eq!(
+        face.gaze,
+        GazeDirection::new(-1, -1),
+        "nose up, away from the hand"
+    );
+
+    // A sweetheart still leans into it.
+    creature.temperament = Some(formiga_core::Temperament {
+        kind: formiga_core::TemperamentKind::Sweetheart,
+        axes: formiga_core::Axes::MIDDLING,
+        tension: None,
+    });
+    assert!(!creature.grumbles_when_petted());
+    assert_eq!(
+        BodyPresentation::for_creature(&creature).clip,
+        BodyClip::Gesture(Gesture::Bask)
+    );
+    let face = CreatureRenderer::resolve_face_state(&creature, hand, true);
+    assert_eq!(face.expression, ExpressionKind::Affectionate);
 }
 
 /// A companion a friend is walking over to watches it come.

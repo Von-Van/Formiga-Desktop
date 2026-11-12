@@ -172,12 +172,10 @@ impl Character {
 /// What a companion's bubble says when it is petted: a heart, or for a grump a grumble, and
 /// whether a secretly affectionate grump's heart follows it a moment later.
 pub(super) fn pet_bubble(creature: &Creature) -> (BubbleIcon, bool) {
-    let character = Character::of(creature);
-    let grump = character.has(&[Trait::Grumpy, Trait::Irritable])
-        || character.temperament.kind == TemperamentKind::Grump;
-    if !grump {
+    if !creature.grumbles_when_petted() {
         return (BubbleIcon::Heart, false);
     }
+    let character = Character::of(creature);
     let soft = character.tension(Tension::GrumpyButAffectionate)
         || character.has(&[Trait::SecretlyAffectionate])
         || character.temperament.axes.affection >= 0.62;
