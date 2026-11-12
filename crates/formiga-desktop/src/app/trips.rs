@@ -5,7 +5,10 @@
 use super::*;
 use crate::battle::BATTLE;
 use crate::expansion::Expansion;
-use crate::hill::{HILL, scene::TrainScene};
+use crate::hill::{
+    HILL,
+    scene::{TrainScene, off_the_desktop},
+};
 
 impl FormigaApp {
     /// The app the whole colony is in, or leaving for or coming home from, if any.
@@ -83,7 +86,8 @@ impl FormigaApp {
     }
 
     /// The colony as the overlay draws it this frame, while a trip has it: the platform's copy
-    /// during a scene, or nobody while it is away.
+    /// during a scene, or nobody on the desktop while it is away. Either way the copy is the whole
+    /// colony, so a village that is out still has everyone's house.
     pub(super) fn trip_stage(&self, save: &SaveFile) -> Option<(SaveFile, Option<TrainView>)> {
         if !self.colony_away() {
             return None;
@@ -97,9 +101,9 @@ impl FormigaApp {
                 }),
             ),
             None => {
-                let mut empty = save.clone();
-                empty.creatures.clear();
-                (empty, None)
+                let mut away = save.clone();
+                away.creatures.iter_mut().for_each(off_the_desktop);
+                (away, None)
             }
         })
     }
@@ -110,4 +114,15 @@ impl FormigaApp {
         self.colony_away()
             .then(|| self.train_scene().map(TrainScene::monitor_id))
     }
+}
+
+/// Whether a display shows anything while a trip has the colony, when `station` is the one the
+/// train stops at, if it is on the desktop: that one, and the village's own display when the
+/// village stays out, which it does while everyone is away too.
+pub(super) fn shown_on_trip(
+    station: Option<formiga_core::MonitorId>,
+    monitor: &MonitorInfo,
+    home: &formiga_core::ColonyHome,
+) -> bool {
+    station == Some(monitor.id) || (home.stays_out && home.display == Some(monitor.display_key))
 }

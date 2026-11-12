@@ -3294,9 +3294,15 @@ souvenir and given back with the rest of the notebook's artwork.
 
 `hill/scene.rs` is presentation only: it never touches the world. The same train takes the colony
 to a match in Formiga Battle and back. Each frame it makes a copy of
-the colony for the overlay with whoever is on the platform walking, standing or gone, and an
+the colony for the overlay with whoever is on the platform walking or standing, and an
 `OverlayUi::train` the overlay draws in front of them, so a companion reaching its door walks
-behind the carriage. It always comes in from the left and leaves to the right, engine first, as
+behind the carriage. Whoever is aboard, not there yet or gone on home stays in the copy, marked
+off the desktop (`off_the_desktop`, an endless `arrival_delay_secs`) so it is drawn nowhere and no
+face looks at it: the copy is still the whole colony, so a village out during a trip keeps every
+house and every look, rather than losing a house as each keeper gets on. While the colony is away
+the copy has everyone off the desktop. Only the display the train stops at shows anything during a
+trip, and the village's own display when the village stays out (`shown_on_trip`), its houses
+standing empty until everyone is home. It always comes in from the left and leaves to the right, engine first, as
 Formiga Hill's own train does, so the journey runs one way from the desktop to the Hill and home
 again. The train stops at the middle of the widest stretch of ground on the village's display
 (then the primary); companions there walk to the nearest door from where they
