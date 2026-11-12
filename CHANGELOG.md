@@ -18,6 +18,17 @@ All notable changes are documented here.
 
 ### Fixed
 
+- A grump that grumbles at being petted now looks it: it huffs with its grumpy face, nose in the
+  air and looking away from your hand, instead of leaning into the hand with its eyes shut and a
+  heart over it. A secretly soft grump still shows its heart bubble afterwards, and everyone
+  else still leans into a pet as before.
+- A companion takes one pet a second. Clicking it again within a second of the last pet no
+  longer starts the pet over with a fresh bubble or counts as another pet, so a burst of clicks
+  is one pet rather than a string of them.
+- The village no longer loses a house each time a companion gets on the train for Formiga Hill or
+  Formiga Battle, or gains one back as each gets off, when the colony sets off during a visit home.
+- A village that stays on the desktop stays out while everyone is away on the train too, every
+  house standing empty until they are home, rather than going with the train.
 - A talk bubble that grows in near the top of a display no longer jumps from over a companion's
   head to under its feet as it grows: every step goes on the side the whole bubble takes.
 - On a Retina Mac at display scale 2, the overlay draws at full resolution again, so talk bubbles

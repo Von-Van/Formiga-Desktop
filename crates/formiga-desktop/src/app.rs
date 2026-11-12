@@ -376,7 +376,8 @@ impl FormigaApp {
         let Some(world) = &self.world else { return };
         let settings = &world.save.settings;
         let editor_active = self.habitat_editor.is_some();
-        // While a trip has the colony, only the display the train stops at shows anything.
+        // While a trip has the colony, only the display the train stops at shows anything, and
+        // the village's, if it stays out.
         let trip_display = self.trip_display();
         for overlay in self.overlays.values_mut() {
             overlay.set_hittest_enabled(editor_active);
@@ -386,7 +387,9 @@ impl FormigaApp {
             // whichever Space happened to be active when it was ordered front again.
             let enabled = settings.visible
                 && !accessible_regions(&settings.habitat, &overlay.monitor).is_empty()
-                && trip_display.is_none_or(|station| station == Some(overlay.monitor.id));
+                && trip_display.is_none_or(|station| {
+                    trips::shown_on_trip(station, &overlay.monitor, &world.save.home)
+                });
             overlay.set_visible(enabled);
         }
     }

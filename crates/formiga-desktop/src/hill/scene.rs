@@ -399,18 +399,25 @@ impl TrainScene {
     }
 
     /// The colony as it is drawn this frame: whoever is on the platform, where they are and what
-    /// they are doing. Everyone else is left out of the copy, so nobody is drawn anywhere else.
+    /// they are doing. Everyone else stays in the copy as not on the desktop, so nobody is drawn
+    /// anywhere else, while the colony is still the whole colony: its village keeps a house for
+    /// everyone, aboard or not.
     pub fn stage(&self, save: &SaveFile) -> SaveFile {
         let mut staged = save.clone();
         staged.visitors.settle_after_opening();
         let t = self.elapsed;
-        staged.creatures.retain_mut(|creature| {
-            let Some(walker) = self.walkers.iter().find(|walker| walker.id == creature.id) else {
-                return false;
-            };
-            let (x, facing_right, action, elapsed) = match walker.shown(self.leg, t) {
-                Shown::Hidden => return false,
-                Shown::AsItWas => return true,
+        for creature in &mut staged.creatures {
+            let shown = self
+                .walkers
+                .iter()
+                .find(|walker| walker.id == creature.id)
+                .map_or(Shown::Hidden, |walker| walker.shown(self.leg, t));
+            let (x, facing_right, action, elapsed) = match shown {
+                Shown::Hidden => {
+                    off_the_desktop(creature);
+                    continue;
+                }
+                Shown::AsItWas => continue,
                 Shown::Standing { x, facing_right } => (x, facing_right, ActionKind::Idle, t),
                 Shown::Walking {
                     x,
@@ -445,10 +452,23 @@ impl TrainScene {
             state.nudge = None;
             state.beat = None;
             state.indoors = false;
-            true
-        });
+        }
         staged
     }
+}
+
+/// Mark a companion in a trip's copy of the colony as not on the desktop just now: aboard the
+/// train, away, or not on the platform yet. It is drawn nowhere and nobody looks at it, as with
+/// one that has not arrived yet, but it is still one of the colony, and still keeps its house.
+pub fn off_the_desktop(creature: &mut formiga_core::Creature) {
+    creature.state.arrival_delay_secs = f32::INFINITY;
+}
+
+/// Whether a companion in a trip's copy of the colony is on the desktop to be drawn. The overlay
+/// asks the same of every companion it draws.
+#[cfg(test)]
+pub fn on_the_desktop(creature: &formiga_core::Creature) -> bool {
+    creature.state.arrival_delay_secs <= 0.0
 }
 
 /// Where the train is drawn, in an art frame of [`TRAIN_GROUND`] rows: its top edge sits this many

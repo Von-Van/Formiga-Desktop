@@ -88,6 +88,16 @@ fn colony(display_scale: u8, scale_factor: f32) -> (SaveFile, Vec<MonitorInfo>) 
     (save, monitors)
 }
 
+/// Who is on the desktop in a frame's copy of the colony: on the platform, or home again.
+fn platform(staged: &SaveFile) -> Vec<formiga_core::Creature> {
+    staged
+        .creatures
+        .iter()
+        .filter(|creature| on_the_desktop(creature))
+        .cloned()
+        .collect()
+}
+
 /// Every frame of a scene, in order: the elapsed time, the train and who is on the platform.
 fn play(mut scene: TrainScene, save: &SaveFile) -> Vec<(f32, Option<TrainPose>, SaveFile)> {
     let mut frames = Vec::new();
@@ -116,16 +126,15 @@ fn leaving_everyone_gets_on_and_the_train_pulls_away() {
     assert!(first_train.unwrap().left < monitors[0].bounds.x);
     assert!(first_train.unwrap().facing_right);
     assert!(
-        first
-            .creatures
+        platform(first)
             .iter()
             .all(|c| c.state.surface.monitor_id == 1)
     );
-    assert!(first.creatures.iter().all(|c| c.id != save.creatures[3].id));
+    assert!(platform(first).iter().all(|c| c.id != save.creatures[3].id));
     // Nobody steps aboard a moving train.
     for pair in frames.windows(2) {
         let ((_, train, before), (_, _, after)) = (&pair[0], &pair[1]);
-        if after.creatures.len() < before.creatures.len() {
+        if platform(after).len() < platform(before).len() {
             let train = train.expect("a train to get on");
             assert!(
                 train.frame >= formiga_art::RUNNING_FRAMES,
@@ -134,11 +143,11 @@ fn leaving_everyone_gets_on_and_the_train_pulls_away() {
         }
     }
     let (_, last_train, last) = frames.last().unwrap();
-    assert!(last.creatures.is_empty(), "everyone is aboard");
+    assert!(platform(last).is_empty(), "everyone is aboard");
     assert!(last_train.is_none(), "and the train has gone");
     let seen: std::collections::BTreeSet<_> = frames
         .iter()
-        .flat_map(|(_, _, staged)| staged.creatures.iter().map(|c| c.id))
+        .flat_map(|(_, _, staged)| platform(staged).into_iter().map(|c| c.id))
         .collect();
     assert_eq!(
         seen.len(),
@@ -154,7 +163,7 @@ fn companions_from_another_display_come_in_from_its_side() {
     let frames = play(TrainScene::departure(&save, &monitors).unwrap(), &save);
     let first_seen = frames
         .iter()
-        .find_map(|(_, _, staged)| staged.creatures.iter().find(|c| c.id == traveller))
+        .find_map(|(_, _, staged)| platform(staged).into_iter().find(|c| c.id == traveller))
         .unwrap();
     assert!(
         first_seen.state.position.x < 40.0,
@@ -169,7 +178,7 @@ fn coming_home_everyone_ends_exactly_where_they_were() {
     let (save, monitors) = colony(3, 2.0);
     let frames = play(TrainScene::arrival(&save, &monitors).unwrap(), &save);
     let (_, first_train, first) = &frames[0];
-    assert!(first.creatures.is_empty(), "everyone starts aboard");
+    assert!(platform(first).is_empty(), "everyone starts aboard");
     assert!(first_train.unwrap().facing_right);
     assert!(first_train.unwrap().left < monitors[0].bounds.x);
     let (_, last_train, last) = frames.last().unwrap();
@@ -177,7 +186,7 @@ fn coming_home_everyone_ends_exactly_where_they_were() {
     // Those who live on this floor are standing exactly as they were before they left; the others
     // have gone on to their ledge and their display, where the colony itself puts them.
     let floor: Vec<_> = save.creatures[..2].to_vec();
-    assert_eq!(last.creatures, floor);
+    assert_eq!(platform(last), floor);
 }
 
 #[test]
@@ -236,7 +245,7 @@ fn turned_back_the_train_lets_everyone_off_where_it_stands() {
     assert_eq!(train.facing_right, standing.facing_right);
     let frames = play(back, &save);
     assert_eq!(
-        frames.last().unwrap().2.creatures,
+        platform(&frames.last().unwrap().2),
         save.creatures[..2].to_vec()
     );
 }
@@ -248,4 +257,46 @@ fn a_hidden_colony_or_one_with_no_ground_has_no_scene() {
     assert!(TrainScene::departure(&save, &monitors).is_none());
     let (save, _) = colony(3, 2.0);
     assert!(TrainScene::arrival(&save, &[]).is_none());
+}
+
+#[test]
+fn the_village_keeps_everyones_house_while_they_get_on_and_off() {
+    // The houses are the colony's, not the platform's: whoever is aboard still has one, so the
+    // village does not lose a house each time somebody gets on, or gain one each time somebody
+    // gets off.
+    let (save, monitors) = colony(3, 2.0);
+    let houses = formiga_core::colony_cottages(&save.creatures);
+    let keepers = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
+    let look = formiga_art::VillageLook::of(&save.home, &save.creatures);
+    let mut leaving = TrainScene::departure(&save, &monitors).unwrap();
+    leaving.advance(4.0);
+    for scene in [
+        TrainScene::departure(&save, &monitors).unwrap(),
+        TrainScene::arrival(&save, &monitors).unwrap(),
+        leaving.turn_back(&save, &monitors).unwrap(),
+    ] {
+        let leg = scene.leg();
+        for (t, _, staged) in play(scene, &save) {
+            assert_eq!(
+                staged.creatures.len(),
+                save.creatures.len(),
+                "{leg:?} at {t}s"
+            );
+            assert_eq!(
+                formiga_core::colony_cottages(&staged.creatures),
+                houses,
+                "{leg:?} at {t}s"
+            );
+            assert_eq!(
+                formiga_core::house_owners(&staged.creatures, &staged.home.cottage_order),
+                keepers,
+                "{leg:?} at {t}s"
+            );
+            assert_eq!(
+                formiga_art::VillageLook::of(&staged.home, &staged.creatures),
+                look,
+                "{leg:?} at {t}s"
+            );
+        }
+    }
 }

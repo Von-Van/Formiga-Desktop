@@ -500,7 +500,9 @@ forepaws, which go up the front and the back of the head so the face between the
 Covering the face also closes the eyes, which the layered face still draws over the paws.
 
 `PetReaction` is drawn as a bask, leaning up into the hand with its eyes shut and a heart over it,
-rather than the greeting's wave.
+rather than the greeting's wave. A grump (`Creature::grumbles_when_petted`, the same test that
+picks its Grumble bubble) huffs instead, with its grumpy face and its nose in the air, looking away
+from the hand.
 A newly earned profile descriptor may allocate one small sprout thought-bubble texture for five
 seconds; descriptor text remains available only in the Colony profile. Only one sprout exists
 globally, and the GPU texture and CPU pixels are dropped at expiry, so there is no idle sprout
@@ -750,7 +752,9 @@ offset, captures through release, and sends normalized cursor position and veloc
 simulation. Three fixed-capacity velocity samples cover roughly the final 150 ms without allocation.
 The interaction session tracks maximum excursion from the press point: at most six logical points is
 a pet, even across DPI scales, while moving farther remains a drag even if the cursor returns before
-release. Slow releases use precise placement. Fast releases enter a runtime-only `Tossed` state with gravity,
+release. A companion takes one pet a second (`PET_INTERVAL_SECS`): a click within a second of the
+last pet, while its `PetReaction` is still under way, is let go without another bubble,
+`CreaturePetted` or count, so a burst of clicks is one pet. Slow releases use precise placement. Fast releases enter a runtime-only `Tossed` state with gravity,
 horizontal drag, swept downward support tests, at most one soft bounce, and a three-second recovery
 limit. There is no rotation, wall ricochet, creature collision, or general physics dependency.
 
@@ -1253,7 +1257,8 @@ peeks out from behind its paws once a mishap is over; and a stubborn one stamps 
 declines to join in. Every two and a half to six minutes of visible time a troublemaker creeps up
 on a friend resting nearby and pounces, and the friend jumps a second later, and an impatient
 companion left standing about for sixteen seconds now and then taps its foot. A pet a grump gets
-shows Grumble rather than Heart, and a grump that is secretly soft follows it with a Heart.
+shows Grumble rather than Heart, and a grump that is secretly soft follows it with a Heart; the
+grump huffs at the hand under the Grumble rather than leaning into it.
 
 A cue nobody is free for waits three seconds and is let go, and a companion has 45 to 100 seconds
 to itself after one of these moments. Reduced motion keeps the bubble and leaves out the pose.
@@ -3318,9 +3323,15 @@ souvenir and given back with the rest of the notebook's artwork.
 
 `hill/scene.rs` is presentation only: it never touches the world. The same train takes the colony
 to a match in Formiga Battle and back. Each frame it makes a copy of
-the colony for the overlay with whoever is on the platform walking, standing or gone, and an
+the colony for the overlay with whoever is on the platform walking or standing, and an
 `OverlayUi::train` the overlay draws in front of them, so a companion reaching its door walks
-behind the carriage. It always comes in from the left and leaves to the right, engine first, as
+behind the carriage. Whoever is aboard, not there yet or gone on home stays in the copy, marked
+off the desktop (`off_the_desktop`, an endless `arrival_delay_secs`) so it is drawn nowhere and no
+face looks at it: the copy is still the whole colony, so a village out during a trip keeps every
+house and every look, rather than losing a house as each keeper gets on. While the colony is away
+the copy has everyone off the desktop. Only the display the train stops at shows anything during a
+trip, and the village's own display when the village stays out (`shown_on_trip`), its houses
+standing empty until everyone is home. It always comes in from the left and leaves to the right, engine first, as
 Formiga Hill's own train does, so the journey runs one way from the desktop to the Hill and home
 again. The train stops at the middle of the widest stretch of ground on the village's display
 (then the primary); companions there walk to the nearest door from where they

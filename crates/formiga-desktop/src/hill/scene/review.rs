@@ -122,11 +122,9 @@ fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, nig
         .iter()
         .map(|creature| palette_for(&creature.appearance))
         .collect();
-    for creature in staged
-        .creatures
-        .iter()
-        .filter(|creature| creature.state.surface.monitor_id == scene.monitor_id())
-    {
+    for creature in staged.creatures.iter().filter(|creature| {
+        on_the_desktop(creature) && creature.state.surface.monitor_id == scene.monitor_id()
+    }) {
         let presentation = BodyPresentation::for_creature(creature);
         let dress = creature
             .accessory
