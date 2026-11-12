@@ -954,11 +954,12 @@ pub fn shown_set_back(creature: &Creature, village_out: bool, was: Option<bool>)
         BodyClip::Action(ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint)
             | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
     );
-    if !striding || footfall_frame(&creature.appearance, body.frame) {
-        wanted
-    } else {
-        was
-    }
+    // A skip lands on frames of its own, whatever the body's stride: in between, it is in the air.
+    let planted = match body.clip {
+        BodyClip::Gesture(Gesture::Skip) => pose::skip_landing(usize::from(body.frame % 6)),
+        _ => footfall_frame(&creature.appearance, body.frame),
+    };
+    if !striding || planted { wanted } else { was }
 }
 
 /// Whether `frame` of a walk is a footfall for this body (see [`shown_set_back`]).

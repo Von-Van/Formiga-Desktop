@@ -1111,7 +1111,7 @@ fn hold(guest: &mut Visitor, stop: TourStop, residents: &Residents, dt: f32, red
 
 /// One of the calm moments a visit is made of, shown wherever the guest happens to be standing,
 /// and the next one along once this one has run its own length.
-fn calm_moment(guest: &mut Visitor, at: Point, dt: f32, reduce_motion: bool) {
+fn calm_moment(guest: &mut Visitor, _at: Point, dt: f32, reduce_motion: bool) {
     guest.visit.beat_remaining -= dt;
     if guest.visit.beat_remaining <= 0.0 {
         guest.visit.beat = (guest.visit.beat + 1) % 8;
@@ -1119,10 +1119,9 @@ fn calm_moment(guest: &mut Visitor, at: Point, dt: f32, reduce_motion: bool) {
     }
     let action = shared_moment(guest.visit.beat, reduce_motion).0;
     act(&mut guest.creature, action);
-    // The dance is the one moment with a pose of its own; the rest are still.
-    guest.creature.state.attention = (action == ActionKind::SoloPlay)
-        .then(|| pose(at, Some(Gesture::Bop)))
-        .flatten();
+    // None of them has a pose of its own: the snack is a real meal and the dance a real game,
+    // which a pose over the top would hide.
+    guest.creature.state.attention = None;
 }
 
 fn pose(target: Point, gesture: Option<Gesture>) -> Option<AttentionPose> {

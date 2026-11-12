@@ -197,6 +197,9 @@ pub struct Play {
     /// The colony belonging this is, by its id, while it is borrowed from the yard: the yard
     /// leaves it out until it is put back, so it is only ever in one place.
     pub borrowed: Option<u64>,
+    /// The playing action's own clock when the game was last carried along: the game moves on
+    /// only as far as that clock does, and a clock that has gone back is a new game.
+    pub(crate) action_mark: f32,
     moves: [(PlayMove, f32); MAX_MOVES],
     count: u8,
 }
@@ -324,6 +327,7 @@ impl Play {
             elapsed: 0.0,
             length: length.max(0.5),
             borrowed: None,
+            action_mark: 0.0,
             moves: laid,
             count: kept.len() as u8,
         }
@@ -358,6 +362,7 @@ impl Play {
             elapsed: 0.0,
             length: length.max(0.1),
             borrowed: None,
+            action_mark: 0.0,
             moves,
             count: 1,
         }

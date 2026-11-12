@@ -626,6 +626,64 @@ fn a_friend_coming_over_is_watched() {
     assert!(watched > 540, "watching its friend come: {watched} of 600");
 }
 
+/// Skipping up or down a village path, a companion changes size only as it lands, on the skip's
+/// own landing frames, never up in the air, whatever its body's stride would call a footfall.
+#[test]
+fn a_skip_changes_village_size_as_it_lands() {
+    let mut skipped = 0;
+    for seed in 0..60_u8 {
+        let mut creature = measured(seed);
+        let mut design = formiga_core::CreatureDesign::modular([seed; 32], 0, None);
+        design.body =
+            formiga_core::BodyPlan::ALL[usize::from(seed) % formiga_core::BodyPlan::ALL.len()];
+        creature.appearance.design = Some(design);
+        creature.state.action = ActionKind::Traverse;
+        creature.state.presence.stepping = true;
+        creature.state.drives.comfort = 0.9;
+        creature.state.drives.boredom = 0.1;
+        creature.state.drives.arousal = 0.3;
+        creature.state.drives.energy = 0.9;
+        creature.state.drives.sleep_pressure = 0.1;
+        let mut found = false;
+        for began in 0..40 {
+            creature.state.presence.clock = 30.0 + began as f32 * 0.25;
+            if BodyPresentation::for_creature(&creature).clip == BodyClip::Gesture(Gesture::Skip) {
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            continue;
+        }
+        skipped += 1;
+        for (from, to) in [(0.0, formiga_core::SET_BACK_DEPTH + 0.5), (6.0, 1.0)] {
+            creature.state.depth = from;
+            let mut shown = shown_set_back(&creature, true, None);
+            creature.state.depth = to;
+            for step in 0..24 {
+                creature.state.presence.stride = step as f32 * 0.5;
+                let body = BodyPresentation::for_creature(&creature);
+                assert_eq!(body.clip, BodyClip::Gesture(Gesture::Skip));
+                let now = shown_set_back(&creature, true, Some(shown));
+                if now != shown {
+                    assert!(
+                        pose::skip_landing(usize::from(body.frame % 6)),
+                        "changed size on frame {}, in the air",
+                        body.frame
+                    );
+                    shown = now;
+                }
+            }
+            assert_eq!(
+                shown,
+                creature.state.set_back(),
+                "changed size skipping {from} to {to}"
+            );
+        }
+    }
+    assert!(skipped >= 3, "only {skipped} companions skipped");
+}
+
 /// Walking up or down a village path, a companion changes to its set-back size and back on a
 /// planted step — a frame where a foot is just down — never mid-stride; standing, it changes as
 /// soon as it is far enough back; and it is never set back with the village in.

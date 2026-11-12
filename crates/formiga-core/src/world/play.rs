@@ -16,8 +16,12 @@ impl World {
     /// Start, carry on or clear everyone's play, the guest on stage included. Called once, at the
     /// end of every tick.
     pub(super) fn carry_play(&mut self, now: OffsetDateTime, dt: f32) {
-        // Paused, a game holds where it is, like everything else the colony is doing.
+        // Paused, a game holds where it is, like everything else the colony is doing. A game
+        // under way moves on with the playing action's own clock, so it waits through anything
+        // that holds that clock too.
         let dt = if self.save.settings.paused { 0.0 } else { dt };
+        // A guest's calm moments run by the visit's beat, not an action length of their own.
+        let guest_beat = super::meals::guest_beat_left(&self.save.visitors);
         let finds: Vec<u8> = self
             .save
             .companion
@@ -65,8 +69,17 @@ impl World {
                 state.play = None;
                 continue;
             }
+            // Playing chosen again straight after playing starts its action clock again: that is
+            // a new game, not the last one's put-down held for the whole of it.
+            if state
+                .play
+                .is_some_and(|play| state.action_elapsed + 1e-3 < play.action_mark)
+            {
+                state.play = None;
+            }
             if let Some(play) = &mut state.play {
-                play.elapsed += dt;
+                play.elapsed += (state.action_elapsed - play.action_mark).max(0.0);
+                play.action_mark = state.action_elapsed;
                 continue;
             }
             // A guest plays with what it brought; the colony's belongings and finds are the
@@ -79,7 +92,7 @@ impl World {
                 "play",
                 creature.id ^ (now.unix_timestamp() as u64).rotate_left(23),
             );
-            let left = (state.action_duration - state.action_elapsed).max(0.5);
+            let left = super::meals::action_left(state, creature.id, guest_beat).max(0.5);
             let mut play = if state.action == ActionKind::Landing {
                 // Down off a ledge under the colony's umbrella, now and then.
                 let Some(umbrella) = free
@@ -115,6 +128,7 @@ impl World {
                 play
             };
             play.elapsed = dt.min(left);
+            play.action_mark = state.action_elapsed;
             // A bow before a game comes first, and the game is picked up after it.
             if !reduce_motion
                 && let Some(flourish) = state.flourish
