@@ -4,6 +4,19 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.68.23
+
+The village can stay on the desktop: choose it under Where the village lives, and the houses stay
+out among your windows instead of coming and going. Wonders the colony has found can be put out
+from the journal and moved about or put away again. Visitors no longer wait at the edge of the
+village: after hello they wander in, nap on the cushion, snack on the blanket, sit on the bench and
+stop on doorsteps like the residents do. A grump you pet now huffs at your hand instead of leaning
+into it, and a burst of clicks counts as one pet. Houses no longer vanish one by one as companions
+board the train for Hill or Battle. Meals and games play out whole, Pause holds everything still,
+talk bubbles reach the right friend and stay readable, and clicks go to the companion you see in
+front. Formiga Hill, Home and Battle 0.68.23 come out alongside; for a Battle friend match, both of
+you need Desktop 0.68.23. Once this release has opened your colony, an older Formiga can't open it.
+
 ## New in 0.68.22
 
 Companions have real meals now. Each one picks something to eat from eighteen foods, chosen by the
