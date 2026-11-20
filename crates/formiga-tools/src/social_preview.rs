@@ -30,8 +30,11 @@ const TAGLINE_SHADOW: [u8; 4] = [14, 24, 22, 200];
 const MOON: [u8; 4] = [255, 226, 145, 255];
 const MOON_HALO: [u8; 4] = [255, 246, 221, 60];
 
-pub fn social_preview(path: PathBuf) -> Result<()> {
-    let pixels = render_social_scene();
+/// With a cast (see `cast.rs`), the cast takes the stage in place of the varied companions: the
+/// first greets, the second perches on the window ledge, the third sleeps by the village, and
+/// any more play and idle on the right.
+pub fn social_preview(path: PathBuf, cast: &[Creature]) -> Result<()> {
+    let pixels = render_social_scene(cast);
     crate::write_png(&path, SOCIAL_WIDTH as u32, SOCIAL_HEIGHT as u32, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
@@ -46,7 +49,7 @@ pub fn itch_cover(path: PathBuf) -> Result<()> {
 
 /// GitHub recommends 1280x640 and keeps the central ~1200x560 free of chrome, so every
 /// important element (title, creatures, village) stays inside that safe area.
-fn render_social_scene() -> Vec<u8> {
+fn render_social_scene(cast: &[Creature]) -> Vec<u8> {
     let mut pixels = vec![0_u8; (SOCIAL_WIDTH * SOCIAL_HEIGHT * 4) as usize];
     fill_gradient(
         &mut pixels,
@@ -102,14 +105,25 @@ fn render_social_scene() -> Vec<u8> {
 
     draw_village(&mut pixels, SOCIAL_WIDTH, SOCIAL_HEIGHT, 44, 600, 2);
 
-    let creatures = varied_creatures();
-    let placements = [
+    let mut placements = [
         (400, 600, ActionKind::Sleep, 3),
         (700, 600, ActionKind::Greet, 5),
         (900, 600, ActionKind::SoloPlay, 3),
         (1090, 230, ActionKind::Perch, 3),
         (1100, 600, ActionKind::Idle, 3),
     ];
+    let creatures = if cast.is_empty() {
+        varied_creatures()
+    } else {
+        placements = [
+            placements[1],
+            placements[3],
+            placements[0],
+            placements[2],
+            placements[4],
+        ];
+        cast.to_vec()
+    };
     for (creature, (x, y, action, scale)) in creatures.iter().zip(placements) {
         stamp_creature(
             &mut pixels,
@@ -818,8 +832,8 @@ mod tests {
 
     #[test]
     fn social_scene_is_deterministic_fully_opaque_and_correctly_sized() {
-        let first = render_social_scene();
-        let second = render_social_scene();
+        let first = render_social_scene(&[]);
+        let second = render_social_scene(&[]);
         assert_eq!(first, second);
         assert_eq!(first.len(), (SOCIAL_WIDTH * SOCIAL_HEIGHT * 4) as usize);
         assert!(first.chunks_exact(4).all(|pixel| pixel[3] == 255));

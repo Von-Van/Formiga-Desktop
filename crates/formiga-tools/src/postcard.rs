@@ -3,16 +3,20 @@
 //!   cargo run -p formiga-tools -- postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--output PATH]
 //!   cargo run -p formiga-tools -- postcard-sheet [--output docs/assets/postcards.png]
 //!
+//! Either takes `--cast` (see `cast.rs`) to send the postcards from chosen companions instead.
+//!
 //! The colony is the one the colony portrait is drawn from, grown for a season, so the postcards
 //! and the portrait in the docs show the same companions and the same village.
 
 use crate::write_png;
 use anyhow::{Result, bail};
 use formiga_art::{POSTCARD_HEIGHT, POSTCARD_WIDTH, PostcardRenderer, PostcardScene};
+use formiga_core::Creature;
 use std::path::PathBuf;
 
-pub fn run(path: PathBuf, scene: PostcardScene, caption: &str) -> Result<()> {
-    let save = crate::colony_card::sample_colony();
+pub fn run(path: PathBuf, scene: PostcardScene, caption: &str, cast: &[Creature]) -> Result<()> {
+    let mut save = crate::colony_card::sample_colony();
+    crate::cast::recast(&mut save, cast);
     let card = PostcardRenderer::render(&save, scene, caption);
     write_png(&path, POSTCARD_WIDTH, POSTCARD_HEIGHT, &card.rgba_bytes())?;
     println!("wrote {}", path.display());
@@ -21,8 +25,9 @@ pub fn run(path: PathBuf, scene: PostcardScene, caption: &str) -> Result<()> {
 
 /// Every scene at half size, two across: nap and picnic, then play and dusk, each with a caption
 /// but the last, which shows a card sent without one.
-pub fn sheet(path: PathBuf) -> Result<()> {
-    let save = crate::colony_card::sample_colony();
+pub fn sheet(path: PathBuf, cast: &[Creature]) -> Result<()> {
+    let mut save = crate::colony_card::sample_colony();
+    crate::cast::recast(&mut save, cast);
     let captions = [
         "Everyone fell asleep in the sun",
         "Snacks for all, and a cup each",

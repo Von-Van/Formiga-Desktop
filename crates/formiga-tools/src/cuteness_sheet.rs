@@ -15,7 +15,8 @@ use formiga_art::{
     GazeDirection,
 };
 use formiga_core::{
-    ActionKind, CreatureDesign, Edition, SeedStream, Strangeness, World, apply_creature_design,
+    ActionKind, Creature, CreatureDesign, Edition, SeedStream, Strangeness, World,
+    apply_creature_design,
 };
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -290,8 +291,9 @@ fn report(entries: &[Entry], path: &Path) -> Result<()> {
 
 /// The poses a companion's temperament strikes — a huff, a swoon, begging, a strut, a peek and a
 /// stomp — one row each, every frame of each, on the three original bodies and one new companion
-/// of every body plan, each wearing the face its moment wears.
-pub(crate) fn temperament_sheet(path: PathBuf) -> Result<()> {
+/// of every body plan, each wearing the face its moment wears. With a `--cast`, the cast strikes
+/// them instead.
+pub(crate) fn temperament_sheet(path: PathBuf, cast: &[Creature]) -> Result<()> {
     use formiga_core::{BodyPlan, Gesture};
     const GESTURES: [Gesture; 6] = [
         Gesture::Huff,
@@ -309,7 +311,7 @@ pub(crate) fn temperament_sheet(path: PathBuf) -> Result<()> {
         })
         .collect();
     let streams = SeedStream::new([61; 32]);
-    for plan in BodyPlan::ALL {
+    for plan in BodyPlan::ALL.into_iter().filter(|_| cast.is_empty()) {
         let (design, _) = (0_u64..)
             .map(|index| CreatureDesign::drawn(streams.bytes("temperament-sheet", index), 0))
             .find(|(design, strangeness)| design.body == plan && *strangeness == Strangeness::Cute)
@@ -318,6 +320,9 @@ pub(crate) fn temperament_sheet(path: PathBuf) -> Result<()> {
             World::preview_adult([13; 32], OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
         apply_creature_design(&mut creature, Some(design));
         bodies.push(creature.appearance);
+    }
+    if !cast.is_empty() {
+        bodies = cast.iter().map(|star| star.appearance.clone()).collect();
     }
     let most_frames = GESTURES
         .iter()
