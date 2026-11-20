@@ -59,7 +59,9 @@ pub fn hero_image(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn demo_animation(path: PathBuf) -> Result<()> {
+/// With a cast (see `cast.rs`), the first companion named walks, is dragged and hides, and the
+/// cast gathers at the end in place of the demo colony.
+pub fn demo_animation(path: PathBuf, cast: &[Creature]) -> Result<()> {
     const WIDTH: u32 = 480;
     const HEIGHT: u32 = 270;
     const FPS: u32 = 10;
@@ -67,7 +69,11 @@ pub fn demo_animation(path: PathBuf) -> Result<()> {
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
     let mut encoder = gif::Encoder::new(BufWriter::new(file), WIDTH as u16, HEIGHT as u16, &[])?;
     encoder.set_repeat(gif::Repeat::Infinite)?;
-    let creatures = demo_colony();
+    let creatures = if cast.is_empty() {
+        demo_colony()
+    } else {
+        cast.to_vec()
+    };
     for frame_index in 0..FRAMES {
         let mut pixels = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
         fill_gradient(
@@ -157,20 +163,20 @@ pub fn demo_animation(path: PathBuf) -> Result<()> {
                 );
             }
             _ => {
-                for (index, (x, y, action, scale)) in [
+                for ((x, y, action, scale), creature) in [
                     (80, 245, ActionKind::Idle, 3),
                     (235, 182, ActionKind::Perch, 2),
                     (340, 245, ActionKind::SoloPlay, 2),
                     (430, 245, ActionKind::Sleep, 2),
                 ]
                 .into_iter()
-                .enumerate()
+                .zip(&creatures)
                 {
                     draw_demo_creature(
                         &mut pixels,
                         WIDTH,
                         HEIGHT,
-                        &creatures[index],
+                        creature,
                         action,
                         frame_index,
                         x,

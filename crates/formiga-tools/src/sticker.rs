@@ -47,8 +47,14 @@ pub fn seed_argument(args: &[String]) -> Result<Option<u64>> {
 }
 
 /// With no seed of its own, the sticker poses the same creature the creature card does, so the
-/// two docs assets read as one set.
-pub fn run(path: PathBuf, clip: StickerClip, scale: u32, seed_number: Option<u64>) -> Result<()> {
+/// two docs assets read as one set. With a `--cast`, it poses the first companion named.
+pub fn run(
+    path: PathBuf,
+    clip: StickerClip,
+    scale: u32,
+    seed_number: Option<u64>,
+    cast: &[Creature],
+) -> Result<()> {
     let mut seed = [0_u8; 32];
     seed.copy_from_slice(&match seed_number {
         Some(number) => Sha256::digest(number.to_le_bytes()),
@@ -57,6 +63,9 @@ pub fn run(path: PathBuf, clip: StickerClip, scale: u32, seed_number: Option<u64
     let mut world = World::new(seed, OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
     let creature = &mut world.save.creatures[0];
     creature.name = "Mallow".into();
+    if let Some(star) = cast.first() {
+        *creature = star.clone();
+    }
 
     let sticker = StickerRenderer::render(creature, clip, scale);
     let bytes = sticker
