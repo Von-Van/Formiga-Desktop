@@ -23,6 +23,9 @@ pub(crate) struct JournalState {
     /// Where each moment's pin was drawn last frame, by when the moment was: what a pointer or
     /// the review tests find it by, since it is drawn rather than written.
     pub(crate) pin_spots: Vec<(OffsetDateTime, egui::Rect)>,
+    /// The pictures taped in beside the newest days' best moments, each with what it was drawn
+    /// from, kept while they are on the page.
+    vignettes: Vec<(VignetteKey, TextureHandle, egui::Rect)>,
     /// One still picture of every kind of wonder, side by side, for the page of them.
     wonder_sheet: Option<([u8; 32], TextureHandle)>,
     /// Every souvenir's picture side by side, each on its velvet, made once one has come home.
@@ -37,11 +40,13 @@ impl JournalState {
         self.wonder_sheet
             .iter()
             .map(|(_, t)| t.id())
+            .chain(self.vignettes.iter().map(|(_, t, _)| t.id()))
             .chain(self.souvenir_strip.iter().map(TextureHandle::id))
             .chain(self.cup_strip.iter().map(TextureHandle::id))
     }
 
     pub(super) fn release_images(&mut self) {
+        self.vignettes.clear();
         self.wonder_sheet = None;
         self.souvenir_strip = None;
         self.cup_strip = None;
@@ -70,6 +75,132 @@ fn short_day(at: OffsetDateTime, now: OffsetDateTime, offset: time::UtcOffset) -
             &local.weekday().to_string()[..3],
             dates::short_date(local, today.year())
         ),
+    }
+}
+
+/// What a vignette was drawn from: the moment, and how each companion in it looked.
+type VignetteKey = (
+    (i128, Option<CreatureId>, String),
+    Vec<(CreatureId, AppearanceGenome)>,
+);
+
+/// How many of the newest days have their best moment taped in as a picture.
+const PICTURED_DAYS: usize = 2;
+
+/// Who a moment's picture shows: whoever it is about, the friend for a friendship, and the whole
+/// colony (four at most) for a ritual or a visitor.
+fn vignette_cast<'a>(save: &'a SaveFile, entry: &JournalEntry) -> Vec<&'a Creature> {
+    let find = |id: CreatureId| save.creatures.iter().find(|c| c.id == id);
+    match entry.moment {
+        JournalMoment::Ritual(_) => save.creatures.iter().take(4).collect(),
+        JournalMoment::Friendship(friend) => entry
+            .creature
+            .and_then(find)
+            .into_iter()
+            .chain(find(friend))
+            .collect(),
+        JournalMoment::Visit(_) | JournalMoment::Revisit(..) => entry
+            .creature
+            .and_then(find)
+            .or_else(|| save.creatures.first())
+            .into_iter()
+            .collect(),
+        _ => entry.creature.and_then(find).into_iter().collect(),
+    }
+}
+
+impl JournalState {
+    /// A moment's picture, taped onto the page with its caption under it: composed by the art
+    /// from the companions it is about, at a whole number of points to each of its pixels, the
+    /// find drawn over the finder's paws for a first find.
+    fn vignette(&mut self, ui: &mut Ui, shell: &mut Shell, save: &SaveFile, entry: &JournalEntry) {
+        let Some(vignette) = formiga_art::Vignette::for_moment(&entry.moment) else {
+            return;
+        };
+        let cast = vignette_cast(save, entry);
+        if cast.is_empty() {
+            return;
+        }
+        let key: VignetteKey = (
+            entry_key(entry),
+            cast.iter().map(|c| (c.id, c.appearance.clone())).collect(),
+        );
+        // Only the figures are kept as a picture, cut to the part of it they cover; the sky and
+        // the ground are flat fills painted under them.
+        let (texture, within) = match self.vignettes.iter().find(|(drawn, _, _)| *drawn == key) {
+            Some((_, texture, within)) => (texture.clone(), *within),
+            None => {
+                let genomes: Vec<&AppearanceGenome> = cast.iter().map(|c| &c.appearance).collect();
+                let figures = formiga_art::render_vignette_figures(vignette, &genomes);
+                let (left, top, right, bottom) = figures.alpha_bounds().unwrap_or((0, 0, 0, 0));
+                let mut cut = Canvas::new(right - left + 1, bottom - top + 1);
+                for y in 0..cut.height() as i32 {
+                    for x in 0..cut.width() as i32 {
+                        cut.set(x, y, figures.get(left as i32 + x, top as i32 + y));
+                    }
+                }
+                let within = egui::Rect::from_min_size(
+                    egui::pos2(left as f32, top as f32),
+                    egui::vec2(cut.width() as f32, cut.height() as f32),
+                );
+                let texture = upload(ui.ctx(), "journal-vignette", &cut);
+                self.vignettes.push((key, texture.clone(), within));
+                if self.vignettes.len() > PICTURED_DAYS {
+                    let _ = self.vignettes.remove(0);
+                }
+                (texture, within)
+            }
+        };
+        let width = formiga_art::VIGNETTE_WIDTH as f32;
+        let height = formiga_art::VIGNETTE_HEIGHT as f32;
+        let unit = ((ui.available_width() - 40.0) / width)
+            .floor()
+            .clamp(1.0, 2.0);
+        let atlas = vignette
+            .find_spot()
+            .and(story::find_record(save, entry))
+            .map(|record| (record.variant, shell.trinket_atlas(ui, save)));
+        ui.add_space(6.0);
+        paper::pasted(ui, width * unit + 32.0, 0.0, true, |ui| {
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(width * unit, height * unit),
+                egui::Sense::hover(),
+            );
+            let mut fills = journal::Fills::default();
+            for (x, y, w, h, colour) in vignette.backdrop() {
+                fills.rect(
+                    egui::Rect::from_min_size(
+                        rect.min + egui::vec2(x as f32, y as f32) * unit,
+                        egui::vec2(w as f32, h as f32) * unit,
+                    ),
+                    Color32::from_rgba_unmultiplied(colour.r, colour.g, colour.b, colour.a),
+                );
+            }
+            fills.paint(ui.painter());
+            ui.painter().image(
+                texture.id(),
+                egui::Rect::from_min_size(
+                    rect.min + within.min.to_vec2() * unit,
+                    within.size() * unit,
+                ),
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            if let (Some((x, y)), Some((variant, atlas))) = (vignette.find_spot(), atlas) {
+                ui.painter().image(
+                    atlas.id(),
+                    egui::Rect::from_min_size(
+                        rect.min + egui::vec2(x as f32, y as f32) * unit,
+                        egui::vec2(16.0, 16.0) * unit,
+                    ),
+                    Shell::trinket_uv(variant),
+                    Color32::WHITE,
+                );
+            }
+            ui.add_space(4.0);
+            ui.label(RichText::new(moment_text(save, entry)).color(ink()));
+        });
+        ui.add_space(6.0);
     }
 }
 
@@ -726,10 +857,27 @@ fn page(
             _ => days.push((day, vec![entry])),
         }
     }
-    for (day, entries) in days {
+    for (index, (day, entries)) in days.into_iter().enumerate() {
         // A line left blank before each day.
         ui.add_space(4.0);
+        // The newest days' best moment, taped in as a picture: a landmark first, then anything
+        // else worth one.
+        let pictured = (index < PICTURED_DAYS && !filtering)
+            .then(|| {
+                let worth =
+                    |e: &&&JournalEntry| formiga_art::Vignette::for_moment(&e.moment).is_some();
+                entries
+                    .iter()
+                    .filter(worth)
+                    .find(|e| e.moment.is_landmark())
+                    .or_else(|| entries.iter().find(worth))
+                    .copied()
+            })
+            .flatten();
         if let [entry] = entries.as_slice() {
+            if let Some(entry) = pictured {
+                state.vignette(ui, shell, save, entry);
+            }
             let when = format!(
                 "{} · {}",
                 short_day(entry.at, now, offset),
@@ -748,6 +896,9 @@ fn page(
             continue;
         }
         journal::kicker(ui, &day);
+        if let Some(entry) = pictured {
+            state.vignette(ui, shell, save, entry);
+        }
         for entry in entries {
             moment_card(
                 ui,
@@ -796,29 +947,42 @@ impl JournalState {
         }
         journal::kicker(ui, &format!("The scrapbook · {} found", found.len()));
         ui.add_space(6.0);
-        for record in &found {
-            let Some(info) = formiga_core::trinket_info(record.variant) else {
-                continue;
-            };
-            card(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(Shell::trinket_image(&atlas, info.variant, 48.0));
-                    ui.vertical(|ui| {
-                        ui.strong(info.name);
-                        ui.label(info.description);
-                        // The finder's name was kept when it was found, so a companion who has
-                        // since left is still the one credited.
-                        let finder = record
-                            .finder
-                            .and_then(|id| save.creatures.iter().find(|c| c.id == id))
-                            .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                        let at = record.first_at;
-                        ui.small(format!("Found by {finder} · {}", dates::on(at, offset)));
+        // Pasted in like snapshots, a row at a time: each find drawn large over its name, every
+        // other one taped, with what it is and who found it when on hover.
+        let side = 48.0;
+        let tile = 104.0;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+            for (index, record) in found.iter().enumerate() {
+                let Some(info) = formiga_core::trinket_info(record.variant) else {
+                    continue;
+                };
+                // The finder's name was kept when it was found, so a companion who has since left
+                // is still the one credited.
+                let finder = record
+                    .finder
+                    .and_then(|id| save.creatures.iter().find(|c| c.id == id))
+                    .map_or(record.finder_name.as_str(), |c| c.name.as_str());
+                make_room(ui, tile + 8.0);
+                let pasted = paper::pasted(ui, tile, 0.0, index % 2 == 0, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add(Shell::trinket_image(&atlas, info.variant, side));
+                        ui.label(RichText::new(info.name).color(ink()));
+                        ui.label(
+                            RichText::new(dates::on(record.first_at, offset))
+                                .small()
+                                .color(muted()),
+                        );
                     });
                 });
-            });
-            ui.add_space(8.0);
-        }
+                pasted.response.on_hover_text(format!(
+                    "{} Found by {finder} · {}",
+                    info.description,
+                    dates::on(record.first_at, offset)
+                ));
+            }
+        });
+        ui.add_space(8.0);
         ui.small("Only the first find of each kind is recorded, and only on this computer.");
     }
 

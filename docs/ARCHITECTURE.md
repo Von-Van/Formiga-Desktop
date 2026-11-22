@@ -2502,7 +2502,15 @@ its time would be; where a moment would wrap in beside its time, the time goes o
 the search and the filters are behind a magnifier in the heading's corner, or ⌘F; and a journal
 with nothing but its colony's arrival is the colony's plate and "Day 1. Nothing written down yet;
 I'll jot things here as they happen.", the guest book, scrapbook and wonders appearing only once
-they have something in them),
+they have something in them; the newest two days' best moment — a landmark first, then any
+arrival, friendship, first find, ritual or visit — is taped in above the day's lines as a picture
+with its caption, a `formiga_art::Vignette` composed by `render_vignette` from the companions'
+own frames on a strip of ground under a patch of sky (a 176×72 picture drawn at one or two
+points to its pixel, a first find drawn over the finder's paws from the colony's sheet of found
+things, a visitor as a shape, a late-night ritual under stars), kept while on the page and
+pictured for review by `formiga-tools vignette-sheet`; and the scrapbook's finds are pasted in
+like snapshots, each drawn large over its name and date, with what it is and who found it on
+hover),
 `ColonyState` (`clubhouse/collection.rs`: the Collection, each companion's wardrobe, the sticker),
 `StudioState` (`clubhouse/studio.rs`), `HomeState` (`clubhouse/home.rs`, with the village preview
 and arranging in `clubhouse/arrange.rs`), and `RecoveryState` (`clubhouse/recovery.rs`: the cards
