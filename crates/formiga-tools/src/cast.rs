@@ -93,12 +93,12 @@ pub fn recast(save: &mut SaveFile, cast: &[Creature]) {
     for (stand_in, star) in save.creatures.iter_mut().zip(cast) {
         stand_in.name = star.name.clone();
         stand_in.appearance = star.appearance.clone();
-        stand_in.origin = star.origin.clone();
+        stand_in.origin = star.origin;
         stand_in.personality = star.personality.clone();
-        stand_in.temperament = star.temperament.clone();
+        stand_in.temperament = star.temperament;
         stand_in.display_scale_percent = star.display_scale_percent;
         stand_in.generation = star.generation;
-        stand_in.accessory = star.accessory.clone();
+        stand_in.accessory = star.accessory;
     }
 }
 

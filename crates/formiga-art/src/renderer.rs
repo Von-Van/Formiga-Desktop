@@ -188,6 +188,14 @@ pub struct RenderedBodyFrame {
     pub held: Option<HeldPlacement>,
 }
 
+/// Where one frame holds things, in frame pixels facing right: the paw a toy, a cup or a picked
+/// thing is put in, and the mouth a snack is carried to. See [`CreatureRenderer::hold_points`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HoldPoints {
+    pub hands: PixelPoint,
+    pub mouth: PixelPoint,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlaybackMode {
     Loop,
@@ -1079,6 +1087,37 @@ impl FramePlacement {
         }
     }
 
+    /// How wide the frame is drawn against its height while doing `action`: a squeeze through a
+    /// narrow gap draws the body and face quads narrower, and the atlas and hit mask stay as they
+    /// are.
+    pub fn horizontal_scale(action: ActionKind) -> f32 {
+        if action == ActionKind::SqueezeWindow {
+            0.72
+        } else {
+            1.0
+        }
+    }
+
+    /// Where the frame is drawn for a contact point at `(contact_x, contact_y)`, on a surface with
+    /// `unit` of its pixels to an art pixel: centred across on the contact point and drawn
+    /// `horizontal_scale` as wide as it is tall. The overlay places every companion this way, and
+    /// so does the climb sheet.
+    pub fn frame_rect(
+        self,
+        contact_x: f32,
+        contact_y: f32,
+        unit: f32,
+        horizontal_scale: f32,
+    ) -> FrameRect {
+        let height = FRAME_SIZE as f32 * unit;
+        FrameRect {
+            centre_x: contact_x,
+            top: contact_y + self.origin_y as f32 * unit,
+            width: height * horizontal_scale,
+            height,
+        }
+    }
+
     pub fn for_action(action: ActionKind, resting_baseline: u32) -> Self {
         Self {
             origin_y: if action == ActionKind::Dangle {
@@ -1090,6 +1129,16 @@ impl FramePlacement {
             },
         }
     }
+}
+
+/// Where a body frame is drawn, from [`FramePlacement::frame_rect`]: the middle of it across, its
+/// top, and its drawn size, in the pixels of whatever it is drawn on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameRect {
+    pub centre_x: f32,
+    pub top: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 pub struct CreatureRenderer;
@@ -1220,6 +1269,19 @@ impl CreatureRenderer {
         Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, 1).0
     }
 
+    /// Where a frame of `clip` places what it holds from, in frame pixels facing right: the paw
+    /// a toy, a cup or a picked thing is put in, and the mouth a snack is carried to. These are
+    /// the points the frame's own belongings are placed by, read for the hold sheet, which marks
+    /// them over every frame that holds something so a belonging that misses its paw shows.
+    pub fn hold_points(
+        genome: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        reduce_motion: bool,
+    ) -> HoldPoints {
+        Self::dress_body_frame(genome, None, clip.into(), frame, reduce_motion, 1).2
+    }
+
     /// [`Self::render_dressed_body_frame`], and the same frame drawn `detail` pixels to each of
     /// its own, from 1 to [`crate::forms::FINEST_DETAIL`]. A sculpted form's body is painted that
     /// finely (see [`crate::forms`]); whatever it wears, holds and shows is drawn as at frame
@@ -1234,14 +1296,14 @@ impl CreatureRenderer {
         detail: u32,
     ) -> (RenderedBodyFrame, Canvas) {
         let detail = detail.clamp(1, crate::forms::FINEST_DETAIL);
-        let (rendered, fine) =
+        let (rendered, fine, _) =
             Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, detail);
         let fine = fine.unwrap_or_else(|| crate::forms::blocks(&rendered.canvas, detail));
         (rendered, fine)
     }
 
-    /// A dressed body frame, and a sculpted form's painted `detail` pixels to each of its own
-    /// when that is more than one.
+    /// A dressed body frame, a sculpted form's painted `detail` pixels to each of its own when
+    /// that is more than one, and where the frame holds things.
     fn dress_body_frame(
         genome: &AppearanceGenome,
         dress: Option<AccessoryArt>,
@@ -1249,7 +1311,7 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
         detail: u32,
-    ) -> (RenderedBodyFrame, Option<Canvas>) {
+    ) -> (RenderedBodyFrame, Option<Canvas>, HoldPoints) {
         let frame = if reduce_motion { 0 } else { frame };
         let clip = clip.body();
         let face_genome;
@@ -1290,6 +1352,7 @@ impl CreatureRenderer {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
         let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
+        let hold = prop_hold(genome, pose, face_anchor, clip);
         match clip {
             BodyClip::Action(action) => {
                 draw_activity_marks(
@@ -1337,7 +1400,15 @@ impl CreatureRenderer {
             alpha_mask,
             held: held.map(|held| held.translated(dx, dy)),
         };
-        (rendered, fine)
+        let moved = |at: PixelPoint| PixelPoint {
+            x: at.x + dx,
+            y: at.y + dy,
+        };
+        let hold = HoldPoints {
+            hands: moved(hold.hands),
+            mouth: moved(hold.mouth),
+        };
+        (rendered, fine, hold)
     }
 
     /// A body drawn from its recipe, or from its genes for a look from before recipes.

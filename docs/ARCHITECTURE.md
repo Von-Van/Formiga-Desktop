@@ -2849,6 +2849,21 @@ holder's face, mirrored with facing, kept inside the frame so a prop is clipped 
 whoever is holding it. A prop changing hands is then two anchors meeting, which reads as a
 hand-off rather than as two objects swapping places in mid-air.
 
+Two review sheets check that contact by eye. `formiga-tools hold-sheet` draws every frame of eating,
+drinking, solo play, holding up a find, and the pour, pluck and tend chores at 4x, for each sheet
+body at statures 85 and 115 and for the three original families as a look from before recipes
+draws them, with what the overlay puts in the paws. Over each frame it marks, in colours no palette
+has (a test holds every frame to that), the paw and the mouth the frame places belongings by
+(`CreatureRenderer::hold_points`, read from the same `prop_hold` the frame's own belongings use) and
+where `PropAnchor` centres a find or a village prop, so a crosshair off the limb or the mouth is a
+belonging drawn in the wrong place. `formiga-tools climb-sheet` runs a whole climb in the colony's
+own simulation: `World::begin_window_climb` starts one companion up onto a window 120 points above
+the floor the way it climbs one itself (a look, the walk to the window's side, the climb, the haul,
+the step in), and every tenth of a second up to two seconds into the perch is drawn at 2x against
+the window, placed by `FramePlacement::frame_rect` with `FramePlacement::horizontal_scale`, the
+rule `gpu.rs` places every companion's quad by. Under the climbs, each body dangles from a ledge
+in every frame with its hang at none, half and all of its weight.
+
 Routes are revalidated, never re-searched. A plan is re-examined only when the topology hash
 changes, and then every remaining hop's rectangles are checked against the live snapshot, so a
 stale rectangle can never be walked. A plan whose geometry still holds keeps going; one whose
