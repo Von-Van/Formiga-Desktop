@@ -260,8 +260,10 @@ impl Pose {
             },
             // The plain peek a creature does while it works out what it is looking at. Its own
             // clip still reads, so it keeps it; it only gains a lean toward the thing, so that
-            // even the unposed half of window attention is pointed at something.
-            ActionKind::InspectScreen => Self {
+            // even the unposed half of window attention is pointed at something. Going to see
+            // what the pointer is up to is the same peek with its ears pricked as well, rather
+            // than standing about with a bob.
+            ActionKind::InspectScreen | ActionKind::InvestigateCursor => Self {
                 bob: i32::from(frame % 2),
                 squash_x: 1,
                 squash_y: -1,
@@ -271,6 +273,7 @@ impl Pose {
                 appendage_lift: 1 + walk.abs(),
                 tail_sway: alternate,
                 lean: 1,
+                ear_perk: i32::from(action == ActionKind::InvestigateCursor),
                 ..Self::default()
             },
             ActionKind::PresentDiscovery => Self {

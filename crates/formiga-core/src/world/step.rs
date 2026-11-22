@@ -234,7 +234,11 @@ impl World {
             }) {
                 creature.state.surface = surface.clone();
             }
-            creature.state.facing_right = step.position.x >= creature.state.position.x;
+            // A journey faces the way it is going, held like a walk's: a step straight up a
+            // window, or a pause where it stands, leaves it facing the way it was.
+            let held = facing_held(&self.facing_holds, creature);
+            let going = step.position.x - creature.state.position.x;
+            face_toward(&mut creature.state, held, going);
             creature.state.position = step.position;
             if step.action != previous_action {
                 Self::emit(
@@ -1047,7 +1051,8 @@ impl World {
             .action_choices
             .get(&creature.id)
             .and_then(|choice| choice.target_point);
-        execute_action(creature, desktop, context, dt, nearest, target_point);
+        let held = facing_held(&self.facing_holds, creature);
+        execute_action(creature, desktop, context, dt, nearest, target_point, held);
         // Walking into the end of a ledge, or of the ground a creature is allowed on, is
         // arriving: the constraint turns it round, and letting go of the target it cannot
         // reach is what stops it stepping straight back out and being put back every tick.

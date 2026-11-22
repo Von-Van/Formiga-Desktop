@@ -95,6 +95,8 @@ pub struct World {
     observation_elapsed: f32,
     projected_events: usize,
     sleep_elapsed: BTreeMap<CreatureId, f32>,
+    /// Which way each creature ended the last tick facing, and for how long, so a turn is held.
+    facing_holds: BTreeMap<CreatureId, FacingHold>,
     action_choices: BTreeMap<CreatureId, ActionChoice>,
     bond_plans: BTreeMap<CreatureId, BondPlan>,
     calm_proximity_seconds: BTreeMap<(CreatureId, CreatureId), u16>,
@@ -437,6 +439,7 @@ impl World {
             observation_elapsed: 0.0,
             projected_events: 0,
             sleep_elapsed: BTreeMap::new(),
+            facing_holds: BTreeMap::new(),
             action_choices: BTreeMap::new(),
             bond_plans: BTreeMap::new(),
             calm_proximity_seconds: BTreeMap::new(),
@@ -494,6 +497,7 @@ impl World {
         // Last, once everyone has got wherever this tick takes them. Paused, everyone holds the
         // pose they were in: no blink, glance or settling comes round while the colony is still.
         let presence_dt = if self.save.settings.paused { 0.0 } else { dt };
+        self.carry_facing(presence_dt);
         self.carry_presence(presence_dt, desktop);
         self.carry_meals(now, dt);
         self.carry_play(now, dt);
