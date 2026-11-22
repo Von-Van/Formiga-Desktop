@@ -394,7 +394,14 @@ impl World {
             window_key: Some(spot.window),
             relative_x: ((top.x - bounds.x) / bounds.width).clamp(0.05, 0.95),
         };
-        let journey = build_window_journey(creature, top, surface, desktop);
+        let journey = build_window_journey(
+            creature,
+            top,
+            surface,
+            desktop,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
         if !matches!(journey, WindowJourney::Climb(_)) {
             return false;
         }

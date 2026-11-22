@@ -453,9 +453,21 @@ and the other down at the cheek), a pull (the body up two pixels with its head t
 the reaching side bent up against the wall, the tail down, a glint of effort) and a settle onto the
 new grip. A four-pawed body's forepaws take the strokes in turn, the near one in front of the face
 and the far one behind the head, its hind legs bracing in turn; a winged one's wings open half
-way on the pull. Upward window transfers are staged as ordinary traversal to the nearest inner
-edge, a vertical climb averaging 44–62 points a second, and a 0.7-second mantle; downward
-transfers keep the existing hop, which lands as a hop does. The climb rises a paw at a time rather than
+way on the pull. Upward window transfers are staged as ordinary traversal to the outside of the
+window's nearer side, a vertical climb averaging 44–62 points a second, and a 0.7-second mantle;
+downward transfers keep the existing hop, which lands as a hop does. The climb goes up beside the
+window, hung from the paw gripping its edge, so none of the body is over the window until it tops
+out: the frame's middle is `climb_grip_reach` art pixels out from the edge line, less a two-pixel
+grip (`CLIMB_GRIP_OVER_EDGE`), turned into points for the display the window is on the way
+`world::spacing` sizes a frame. `climb_grip_reach` is the furthest a climb draws on the side it
+faces — 18 pixels for a long body's forepaw held out ahead and a classic hopper's arm, 16 for every
+other body's paws beside the head — an estimate from the genome, since the simulation cannot see
+the art; `a_climbing_paw_reaches_as_far_as_the_simulation_climbs_by` in `formiga-art` holds it to
+the frames of generated companions of every kind. A side with no habitat beside it (a window
+against the side of its display, or of the habitat) is climbed five points inside the edge line, as
+every climb once was, and one with a little room hangs as far out as the whole companion is still
+drawn (`climb_track`). From the moment it reaches the wall until it stands on the ledge a climb
+faces the window (`WindowJourney::facing_right`), whichever way the walk to it went. The climb rises a paw at a time rather than
 sliding up at a steady speed: `climb_progress` in `world/journeys.rs` gives each frame of a stroke
 a share of the rise (0.08 on the reach, 1 on the pull, 0.3 on the settle, never none, so a climbing
 journey never holds still and reads as a pause), normalised over the climb so it starts, ends and
@@ -471,10 +483,14 @@ The climb tops out in a mantle of its own, `Gesture::Mantle`, three frames playe
 knee drawn up to it (`Pose::knee`); the push, raised on both paws planted flat on the ledge, the
 back leg still trailing below it (`Pose::trail`), with a glint of effort; and standing on the ledge
 with a little settle. It begins 10 points below the ledge. The haul is the first
-`MANTLE_HAUL_FRAMES` frames, straight up where the paws are: a little with the chest over the edge,
-then the push, most of it made the moment the paws plant and the rest easing up onto the ledge
-(`haul_rise`), so the planted paws stay on the ledge rather than the body sliding up past them for
-the length of a frame. The step in is the third frame, carried in by the push and coming to a stop.
+`MANTLE_HAUL_FRAMES` frames: a little straight up beside the window with the chest at the edge and
+the forearm already over it, then the push, which heaves the body up and over the edge to
+`MANTLE_PUSH_OVER_EDGE` pixels inside it, where the back paw planted at the hip is on the ledge too
+(`ClimbJourney::over_x`, never past where it will stand). Most of the push, up and across, is made
+the moment the paws plant and the rest eases onto the ledge (`haul_rise`, `haul_across`), so the
+planted paws stay where they were planted rather than the body sliding past them for the length of
+a frame. The step in is the third frame, level along the ledge the rest of the short way to where
+it stands, 18 points in from the edge, carried in by the push and coming to a stop.
 Nothing of it is a landing: the action stays `ClimbWindow`, which keeps the climb's face, cadence
 and every check that treats a climber as carried, and the journey's step carries the pose
 (`JourneyStep::pose`). `strike_journey_pose` shows it on every tick the journey hauls or steps the
@@ -482,9 +498,7 @@ creature, over a scene's own pose if it has one and otherwise as a pose of its o
 along the ledge, and sets `action_elapsed` from the moment the climb topped out, so the frames and
 the haul change over together. `World::let_go_of_journey_poses` lets go of every such pose at the
 start of each tick, before anything moves anyone, so a mantle never outlasts the step that struck
-it — finished, cut short by a window moving, picked up, or taken over by a scene. A climb up the
-window's side and its haul keep facing the way the creature came, the window it is climbing onto,
-rather than turning to face right on every step that goes nowhere across. With reduced motion the
+it — finished, cut short by a window moving, picked up, or taken over by a scene. With reduced motion the
 mantle holds still on its push (`AnimationSpec::still_frame`), which bakes in place of the first
 frame every other clip holds. A wonder's player climbing on its way over mantles the same way.
 A shared `FramePlacement` contract seats normal art by its feet and dangling art by

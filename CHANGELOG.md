@@ -23,6 +23,17 @@ All notable changes are documented here.
   holds still on the push. A hop down still lands as a hop. The three frames fit in cells each
   creature's texture already had spare, so it costs no memory, and no other clip draws
   differently.
+- A companion climbs a window up the outside of its side, hung from the paw that grips the edge,
+  instead of up a track just inside it with half its body or more over the window the whole way
+  up. How far out it hangs follows how wide it is drawn, at every display scale and size, and
+  how far its paws reach in the art. It faces the window from the moment it reaches it, walking out
+  from under the window first if it started there, which makes that walk a little longer. At the
+  top the push heaves it up and over the edge onto both paws on the ledge, and the step in that
+  follows is a short one. A window against the side of the display or of the habitat, with no
+  room beside it, is climbed just inside its edge as before.
+- In a tug of war, whoever is not digging in is hauled toward whoever is, whichever way round the
+  two stand. It was hauled away from its partner when the pair stood one way round, which pulled
+  them apart and set it stepping back and forth on the spot.
 - A companion hanging from a ledge swings its legs slowly from side to side and glances down at
   the drop now and then, for longer when the hang has it worried, instead of hanging still.
 

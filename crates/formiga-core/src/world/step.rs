@@ -191,7 +191,7 @@ impl World {
                 );
                 return true;
             }
-            let (step, surface, into, climbing) = {
+            let (step, surface, into, climbing, facing) = {
                 let journey = self
                     .window_journeys
                     .get_mut(&creature.id)
@@ -202,6 +202,7 @@ impl World {
                     journey.surface().clone(),
                     journey.action_elapsed(),
                     matches!(journey, WindowJourney::Climb(_)),
+                    journey.facing_right(),
                 )
             };
             let route_point_valid = desktop.monitors.iter().any(|monitor| {
@@ -240,10 +241,12 @@ impl World {
             }) {
                 creature.state.surface = surface.clone();
             }
-            // A climb straight up and the haul at its top keep facing the way the creature came,
-            // which is the window it is climbing onto, rather than turning to face right for every
-            // step that goes nowhere across.
-            if !climbing || (step.position.x - creature.state.position.x).abs() >= 0.01 {
+            // A climb faces the window it is climbing onto, up its side and over its edge; the
+            // look before it keeps facing the way the creature already does, rather than turning
+            // to face right for a step that goes nowhere across.
+            if let Some(facing_right) = facing {
+                creature.state.facing_right = facing_right;
+            } else if !climbing || (step.position.x - creature.state.position.x).abs() >= 0.01 {
                 creature.state.facing_right = step.position.x >= creature.state.position.x;
             }
             creature.state.position = step.position;
@@ -297,7 +300,13 @@ impl World {
                     .filter(|plan| plan.geometry_hash == self.topology.geometry_hash())
                     .and_then(|plan| plan.remaining.pop_front());
                 if let Some(hop) = next_hop {
-                    let mut journey = build_route_hop_journey(creature, hop, desktop);
+                    let mut journey = build_route_hop_journey(
+                        creature,
+                        hop,
+                        desktop,
+                        &self.save.settings.habitat,
+                        self.save.settings.display_scale,
+                    );
                     // Look at the next step before taking it, so an ascent reads as a staircase.
                     if let WindowJourney::Climb(climb) = &mut journey {
                         climb.elapsed = -0.3;
@@ -840,7 +849,13 @@ impl World {
             );
             if !route.is_empty() {
                 let first = route.remove(0);
-                let journey = build_route_hop_journey(creature, first, desktop);
+                let journey = build_route_hop_journey(
+                    creature,
+                    first,
+                    desktop,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                );
                 next = journey.initial_action();
                 self.window_routes.insert(
                     creature.id,
@@ -871,7 +886,14 @@ impl World {
                     )
                 })
             {
-                let journey = build_window_journey(creature, target, surface, desktop);
+                let journey = build_window_journey(
+                    creature,
+                    target,
+                    surface,
+                    desktop,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                );
                 next = journey.initial_action();
                 self.window_journeys.insert(creature.id, journey);
             }

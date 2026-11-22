@@ -4,6 +4,7 @@
 use super::*;
 use formiga_core::{DesktopRect, DesktopSnapshot, MonitorInfo, World};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 #[test]
 fn every_family_renders_inside_frame() {
@@ -716,4 +717,70 @@ fn every_companion_is_the_same_echo_fox_in_every_clip() {
         CreatureRenderer::render_body_frame(&plain, ActionKind::Idle, 0, false).canvas,
         CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
     );
+}
+
+/// A climb goes up the outside of a window's side with its frame's middle as far out from the edge
+/// line as `formiga_core::climb_grip_reach` says its paw on that side reaches, less a grip, so the
+/// paw is drawn on the edge and the body beside the window. The simulation cannot see the art, so
+/// this holds the estimate to the frames: across generated companions of every kind, the furthest
+/// a climb draws on the side it faces — its paws, and for a long body the forepaw out ahead —
+/// sits on the estimate for the typical companion of each kind, and within a few pixels of it for
+/// nearly all of them, so the paw lands on the edge or a little over it rather than short of it
+/// or far across the window.
+#[test]
+fn a_climbing_paw_reaches_as_far_as_the_simulation_climbs_by() {
+    const CENTRE: i32 = FRAME_SIZE as i32 / 2;
+    let desktop = DesktopSnapshot::default();
+    let spec = AnimationSpec::for_action(ActionKind::ClimbWindow);
+    // How far past the middle of its frame a companion's climb draws on the side it faces: the
+    // middle one of its frames, so a single frame's ear or flick of a tail does not decide it.
+    let reach = |genome: &AppearanceGenome| {
+        let mut furthest: Vec<i32> = (0..spec.frames)
+            .map(|frame| {
+                let body = CreatureRenderer::render_body_frame(
+                    genome,
+                    ActionKind::ClimbWindow,
+                    frame,
+                    false,
+                );
+                let (_, _, right, _) = body.canvas.alpha_bounds().expect("a climber is drawn");
+                right as i32 + 1 - CENTRE
+            })
+            .collect();
+        furthest.sort_unstable();
+        furthest[furthest.len() / 2]
+    };
+    let mut by_estimate: BTreeMap<i32, Vec<i32>> = BTreeMap::new();
+    for index in 0..120_u8 {
+        let mut seed = [index; 32];
+        seed[1] = index.wrapping_mul(37);
+        let modular =
+            World::preview_adult(seed, time::OffsetDateTime::UNIX_EPOCH, &desktop).appearance;
+        let mut classic = modular.clone();
+        classic.design = None;
+        let mut fox = modular.clone();
+        fox.echo_fox = true;
+        for genome in [modular, classic, fox] {
+            let estimate = formiga_core::climb_grip_reach(&genome) as i32;
+            by_estimate
+                .entry(estimate)
+                .or_default()
+                .push(reach(&genome));
+        }
+    }
+    for (estimate, mut drawn) in by_estimate {
+        drawn.sort_unstable();
+        let typical = drawn[drawn.len() / 2];
+        let near = drawn.iter().filter(|r| (**r - estimate).abs() <= 3).count();
+        assert!(
+            (typical - estimate).abs() <= 1,
+            "companions climbing at {estimate} pixels draw out to {typical}"
+        );
+        assert!(
+            near * 10 >= drawn.len() * 9,
+            "only {near} of {} companions climbing at {estimate} pixels draw within 3 of it: \
+             {drawn:?}",
+            drawn.len()
+        );
+    }
 }

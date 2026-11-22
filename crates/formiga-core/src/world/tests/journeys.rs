@@ -140,7 +140,13 @@ fn narrow_gap_squeeze_repairs_once_then_cancels_on_another_geometry_change() {
     assert_eq!(route.len(), 1);
     assert_eq!(route[0].kind, RouteHopKind::NarrowGap);
     let creature_id = world.save.creatures[0].id;
-    let journey = build_route_hop_journey(&world.save.creatures[0], route[0], &desktop);
+    let journey = build_route_hop_journey(
+        &world.save.creatures[0],
+        route[0],
+        &desktop,
+        &world.save.settings.habitat,
+        world.save.settings.display_scale,
+    );
     world.save.creatures[0].state.action = journey.initial_action();
     world.save.creatures[0].state.action_duration = f32::MAX;
     world.window_journeys.insert(creature_id, journey);
@@ -263,7 +269,14 @@ fn upward_window_routes_stage_traverse_climb_mantle_and_perch() {
         x: start.x,
         y: bounds.y,
     };
-    let mut journey = build_window_journey(creature, target, surface, &desktop);
+    let mut journey = build_window_journey(
+        creature,
+        target,
+        surface,
+        &desktop,
+        &world.save.settings.habitat,
+        world.save.settings.display_scale,
+    );
     assert_eq!(journey.initial_action(), ActionKind::Traverse);
     let WindowJourney::Climb(climb) = &journey else {
         panic!("upward transfer should climb");
@@ -333,7 +346,14 @@ fn downward_window_routes_keep_the_existing_hop() {
         window_key: Some(94),
         relative_x: 0.5,
     };
-    let mut journey = build_window_journey(&creature, target, surface, &desktop);
+    let mut journey = build_window_journey(
+        &creature,
+        target,
+        surface,
+        &desktop,
+        &HabitatPolicy::default(),
+        3,
+    );
     assert!(matches!(journey, WindowJourney::Hop(_)));
     // A hop down still lands as a hop does, with no mantle over it.
     for _ in 0..200 {
@@ -401,6 +421,8 @@ fn climb_cancels_when_its_path_leaves_the_habitat() {
         },
         surface,
         &desktop,
+        &HabitatPolicy::default(),
+        3,
     );
     let creature_id = creature.id;
     creature.state.action = journey.initial_action();
@@ -486,81 +508,216 @@ fn a_window_too_narrow_to_stand_on_is_no_landing_at_all() {
     );
 }
 
-/// The last stretch of a climb used to happen all at once — rising and sliding inward together —
-/// so a creature crossed onto the ledge diagonally and read as clipping along its edge. It pulls
-/// itself straight up where its hands are first, and only then steps in.
+/// A climb used to go up a track five points inside the window's side, so half the body or more
+/// was over the window the whole way up, and its hands never met the edge. It goes up the outside
+/// now, hung beside the window by the paw gripping its edge — as far out as that paw reaches in
+/// the art, at whatever size the companion is drawn — and only crosses the edge at the top: its
+/// chest comes up to the edge straight up beside the window, the push heaves it up and over onto
+/// the ledge, and it steps the rest of the way in level along the ledge, a short way, not a slide.
 #[test]
-fn topping_out_hauls_straight_up_before_stepping_onto_the_ledge() {
+fn a_climb_hangs_beside_the_window_by_its_edge_and_crosses_it_on_the_push() {
     let created = datetime!(2026-01-01 0:00 UTC);
+    let haul_secs = f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
+    let bounds = DesktopRect {
+        x: 400.0,
+        y: 500.0,
+        width: 360.0,
+        height: 220.0,
+    };
     let mut desktop = desktop();
     desktop.windows.push(DesktopWindow {
         key: 95,
-        bounds: DesktopRect {
-            x: 400.0,
-            y: 500.0,
-            width: 360.0,
-            height: 220.0,
-        },
+        bounds,
         z_order: 0,
         visible: true,
         minimized: false,
         application: None,
         application_name: None,
     });
-    let bounds = desktop.windows[desktop.windows.len() - 1].bounds;
     let world = World::new([77; 32], created, &desktop);
-    let mut creature = world.save.creatures[0].clone();
-    creature.state.position = Point {
-        x: bounds.x + 4.0,
-        y: 846.0,
-    };
-    let mut journey = build_window_journey(
-        &creature,
-        Point {
-            x: bounds.x + 18.0,
-            y: bounds.y,
-        },
-        SurfaceAttachment {
-            kind: SurfaceKind::WindowLedge,
-            monitor_id: 1,
-            window_key: Some(95),
-            relative_x: 0.1,
-        },
-        &desktop,
-    );
-    let haul_secs = f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
-    let mut haul = Vec::new();
-    let mut stepping = Vec::new();
-    for _ in 0..400 {
-        let step = journey.advance(0.05);
-        if step.pose.is_some() {
-            // How far into the mantle this step is, as the art counts its frames.
-            if journey.action_elapsed() < haul_secs {
-                haul.push(step.position);
-            } else {
-                stepping.push(step.position);
+    // Both sides, from beside the window and from under it, and drawn at two sizes: an art pixel
+    // a point and a half (the default) and two points.
+    for (start_x, display_scale, left) in [
+        (bounds.x - 30.0, 3, true),
+        (bounds.x + 40.0, 3, true),
+        (bounds.right() + 30.0, 3, false),
+        (bounds.x - 30.0, 4, true),
+    ] {
+        let mut creature = world.save.creatures[0].clone();
+        creature.state.position = Point {
+            x: start_x,
+            y: 846.0,
+        };
+        let mut journey = build_window_journey(
+            &creature,
+            Point {
+                x: bounds.x + 18.0,
+                y: bounds.y,
+            },
+            SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id: 1,
+                window_key: Some(95),
+                relative_x: 0.1,
+            },
+            &desktop,
+            &world.save.settings.habitat,
+            display_scale,
+        );
+        let WindowJourney::Climb(climb) = journey.clone() else {
+            panic!("an upward transfer climbs");
+        };
+        let unit = f32::from(display_scale) / desktop.monitors[0].scale_factor;
+        let (edge, inward) = if left {
+            (bounds.x, 1.0)
+        } else {
+            (bounds.right(), -1.0)
+        };
+        let case = format!("from {start_x} at display scale {display_scale}");
+        // Beside the window, its paw on the window's side two art pixels over the edge line.
+        let paw = climb.approach.x + inward * climb_grip_reach(&creature.appearance) * unit;
+        assert!(
+            (inward * (paw - edge) - 2.0 * unit).abs() < 1e-3,
+            "{case}: the paw is {} over the edge",
+            inward * (paw - edge)
+        );
+        assert_eq!(climb.climb_end.x, climb.approach.x, "{case}");
+        let mut climbing = Vec::new();
+        let mut chest = Vec::new();
+        let mut push = Vec::new();
+        let mut stepping = Vec::new();
+        let mut elapsed = 0.0;
+        for _ in 0..400 {
+            let step = journey.advance(0.05);
+            elapsed += 0.05;
+            assert_eq!(
+                journey.facing_right().is_some(),
+                elapsed >= climb.approach_duration,
+                "{case}: a climb faces the wall from the moment it reaches it"
+            );
+            if let Some(facing_right) = journey.facing_right() {
+                assert_eq!(facing_right, left, "{case}: it faces the window");
+            }
+            if step.pose.is_some() {
+                // How far into the mantle this step is, as the art counts its frames.
+                let into = journey.action_elapsed();
+                if into < haul_secs / 2.0 {
+                    chest.push(step.position);
+                } else if into < haul_secs {
+                    push.push(step.position);
+                } else {
+                    stepping.push(step.position);
+                }
+            } else if step.action == ActionKind::ClimbWindow {
+                climbing.push(step.position);
+            }
+            if step.complete {
+                break;
             }
         }
-        if step.complete {
-            break;
+        assert!(
+            climbing.len() > 4 && chest.len() >= 2 && push.len() >= 2,
+            "{case}"
+        );
+        // Up the outside, and the chest up to the edge straight up beside the window.
+        for at in climbing.iter().chain(&chest) {
+            assert_eq!(at.x, climb.approach.x, "{case}");
+            assert!(
+                inward * (at.x - edge) < 0.0,
+                "{case}: over the window at {at:?}"
+            );
         }
-    }
-    assert!(haul.len() >= 2 && !stepping.is_empty());
-    for pair in haul.windows(2) {
+        // The push takes it over the edge, onto the ledge's height at the end of the haul.
+        let pushed = *push.last().unwrap();
         assert!(
-            (pair[1].x - pair[0].x).abs() < 0.01,
-            "the haul drifted sideways by {}",
-            (pair[1].x - pair[0].x).abs()
+            inward * (pushed.x - edge) > 0.0,
+            "{case}: not over at {pushed:?}"
+        );
+        for pair in push.windows(2) {
+            assert!(inward * (pair[1].x - pair[0].x) >= 0.0, "{case}: slid back");
+            assert!(pair[1].y <= pair[0].y, "{case}: sank on the push");
+        }
+        // The step in is level along the ledge, short, and ends where it stands.
+        for at in &stepping {
+            assert_eq!(at.y, bounds.y, "{case}: the step rose");
+        }
+        let stood = *stepping.last().unwrap();
+        assert_eq!(stood, climb.target, "{case}");
+        assert_eq!(stood.x, edge + inward * 18.0, "{case}");
+        assert!(
+            (stood.x - pushed.x).abs() <= 18.0 - 10.0 * unit.min(1.8) + 2.0,
+            "{case}: stepped in {}",
+            (stood.x - pushed.x).abs()
         );
     }
-    for pair in stepping.windows(2) {
+}
+
+/// A window's side with nothing beside it — the side of the display, or of the habitat — has
+/// nowhere to hang from, so a climb up it goes just inside the edge line as every climb once
+/// did; and one with only a little room hangs as far out as the whole companion is still drawn.
+#[test]
+fn a_window_side_with_no_room_beside_it_is_climbed_just_inside() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    let world = World::new([77; 32], created, &desktop);
+    let settings = &world.save.settings;
+    let unit = f32::from(settings.display_scale) / desktop.monitors[0].scale_factor;
+    let half = body_half_width(&desktop.monitors[0], settings.display_scale);
+    for (window_x, track) in [
+        // Flush with the display's side: just inside.
+        (0.0, 5.0),
+        // Some room, not enough for the whole companion: as far out as it is still drawn whole.
+        (half + 6.0, half),
+        // Plenty of room: hung all the way out.
+        (
+            300.0,
+            300.0 - (climb_grip_reach(&world.save.creatures[0].appearance) - 2.0) * unit,
+        ),
+    ] {
+        desktop.windows = vec![DesktopWindow {
+            key: 95,
+            bounds: DesktopRect {
+                x: window_x,
+                y: 500.0,
+                width: 360.0,
+                height: 220.0,
+            },
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        }];
+        let mut creature = world.save.creatures[0].clone();
+        creature.state.position = Point {
+            x: window_x + 20.0,
+            y: 846.0,
+        };
+        let journey = build_window_journey(
+            &creature,
+            Point {
+                x: window_x + 18.0,
+                y: 500.0,
+            },
+            SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id: 1,
+                window_key: Some(95),
+                relative_x: 0.1,
+            },
+            &desktop,
+            &settings.habitat,
+            settings.display_scale,
+        );
+        let WindowJourney::Climb(climb) = journey else {
+            panic!("an upward transfer climbs");
+        };
         assert!(
-            (pair[1].y - pair[0].y).abs() < 0.01,
-            "the step onto the ledge rose by {}",
-            (pair[1].y - pair[0].y).abs()
+            (climb.approach.x - track).abs() < 1e-3,
+            "a window at {window_x} is climbed at {}, not {track}",
+            climb.approach.x
         );
     }
-    assert_eq!(stepping.last().unwrap().y, bounds.y);
 }
 
 /// The climb sheet's climb is the colony's own: a look, the walk to the window's side, the
@@ -677,6 +834,8 @@ fn a_climb_rises_on_its_pulls_and_keeps_its_time_and_ends() {
                 relative_x: 0.1,
             },
             &desktop,
+            &world.save.settings.habitat,
+            world.save.settings.display_scale,
         );
         let WindowJourney::Climb(climb) = journey.clone() else {
             panic!("an upward transfer climbs");
@@ -906,8 +1065,9 @@ fn topping_out_shows_the_mantle_every_tick_and_never_a_landing() {
                 );
                 assert_eq!(creature.state.attention.map(|pose| pose.hanging), Some(0.0));
                 let into = creature.state.action_elapsed;
-                // The haul is the first two frames, and the step in the third.
-                let hauling = creature.state.position.x == 605.0;
+                // The haul is the first two frames, which bring it up to the ledge, and the step
+                // in along the ledge the third.
+                let hauling = creature.state.position.y > floor - 120.0;
                 assert_eq!(hauling, into < haul_secs, "{into}");
                 frames.push(frame(into).min(2));
             } else {
@@ -915,7 +1075,15 @@ fn topping_out_shows_the_mantle_every_tick_and_never_a_landing() {
             }
             if creature.state.action == ActionKind::Perch {
                 perched = true;
-                assert!(creature.state.attention.is_none());
+                // The mantle is let go of; a scene's own look (the hesitation a climb starts
+                // with may still be running) is the scene's to end.
+                assert_ne!(
+                    creature.state.attention.and_then(|pose| pose.gesture),
+                    Some(Gesture::Mantle)
+                );
+                if !world.attention.has_plan(creature.id) {
+                    assert!(creature.state.attention.is_none());
+                }
                 assert_eq!(creature.state.position.y, floor - 120.0);
                 break;
             }
