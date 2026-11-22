@@ -112,9 +112,11 @@ fn moment_card(
 ) {
     let pinned = save.companion.pinned(entry);
     let pin_side = 20.0;
-    let row = today::moment_row(ui, shell, save, entry, when, new, pin_side + 4.0);
+    // Kept clear of the page's right edge, where the scroll bar answers to the pointer.
+    let edge = 14.0;
+    let row = today::moment_row(ui, shell, save, entry, when, new, pin_side + edge + 4.0);
     let spot = egui::Rect::from_min_size(
-        egui::pos2(row.right() - pin_side, row.bottom() - pin_side - 2.0),
+        egui::pos2(row.right() - edge - pin_side, row.bottom() - pin_side - 2.0),
         egui::vec2(pin_side, pin_side),
     );
     let room = pinned || save.companion.pins.len() < MAX_PINNED_ENTRIES;

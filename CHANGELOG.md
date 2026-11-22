@@ -46,6 +46,14 @@ All notable changes are documented here.
   companion's portrait on its page plays what it is doing, asleep while it sleeps, and holds
   still under Reduce motion. "How everyone gets along" is no longer a row on each companion's
   page, since the colony's own page shows it.
+- The Journal reads as a diary. Each moment is written the way Today's log writes it, with its
+  picture and the faces it is about, each turning to that companion's page. A day with only one
+  moment is a single line with its day beside its time, and in a narrow window at large text the
+  time goes above a moment rather than squeezing it into a column. The search and the filters wait
+  behind a magnifier in the corner (or ⌘F). A pin shows at the end of a moment's line while you
+  point at it, and a kept moment has a strip of tape across its time. A new colony's Journal is
+  everyone on their plate and "Day 1. Nothing written down yet; I'll jot things here as they
+  happen.", and the guest book, scrapbook and wonders appear only once they have something in them.
 
 ### Fixed
 

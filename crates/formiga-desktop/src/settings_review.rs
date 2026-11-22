@@ -3818,3 +3818,50 @@ fn the_journal_reopens_where_it_was_left() {
     }
     assert_eq!(first(&h), left_at);
 }
+
+/// The Journal reads as days: a day with one moment is one line with its day where the time would
+/// be, a moment is pinned from the glyph at its line's end, and in a narrow window at large text
+/// the time goes above a moment that would otherwise wrap in beside it.
+#[test]
+fn the_journal_reads_as_a_diary() {
+    let save = aged_fixture(110);
+    let mut h = Harness::over(SettingsTab::Journal, save);
+    h.screen = egui::vec2(940.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let texts: Vec<&String> = h.labels.iter().map(|(t, _)| t).collect();
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains(" · ") && t.split(" · ").nth(1).is_some_and(|c| c.len() == 5)),
+        "a folded day writes its day beside its time: {texts:?}"
+    );
+    // Pinning, from the glyph at the end of a moment's line.
+    let (at, spot) = h.clubhouse.journal.pin_spots[0];
+    let outcome = h.click_at(spot.center());
+    assert!(
+        outcome.pin_moment.is_some_and(|entry| entry.at == at),
+        "the glyph pins its moment"
+    );
+    // Narrow and large: the time over the moment, not beside it.
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    configure_style(
+        &h.context,
+        AppearancePreferences {
+            text_scale: 150,
+            ..Default::default()
+        },
+    );
+    h.screen = egui::vec2(760.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let line = "The colony took the train to Formiga Hill and came home";
+    let text = h.labels.iter().find(|(t, _)| t == line).expect(line).1;
+    assert!(
+        !h.labels.iter().any(|(t, rect)| t.len() <= 20
+            && t.contains(':')
+            && (rect.center().y - text.center().y).abs() < 4.0
+            && rect.right() < text.left()),
+        "no time beside a moment that would wrap"
+    );
+}

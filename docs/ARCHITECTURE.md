@@ -2493,7 +2493,16 @@ deliberately no history database or telemetry layer. Update preferences live in 
 its shell. A `Shell` holds what every page shares — the portraits companions are drawn with, the
 colony's sheet of found things, the tour, and the footer's line of feedback — and each page has a
 state of its own that draws it: `TodayState` (`clubhouse/today.rs`), `JournalState`
-(`clubhouse/journal_page.rs`, with the guest book, the scrapbook and the page of wonders),
+(`clubhouse/journal_page.rs`, with the guest book, the scrapbook and the page of wonders; it
+reads as a diary: each moment is `today::moment_row`, the same line Today's log writes, with its
+time, its picture, its words and the faces it is about, and a pin drawn at the line's end that
+shows while the line is pointed at or the pin has the keyboard and stays on a kept moment, which
+also has a strip of tape across its time; a day with one moment folds to that line, its day where
+its time would be; where a moment would wrap in beside its time, the time goes on the line above;
+the search and the filters are behind a magnifier in the heading's corner, or ⌘F; and a journal
+with nothing but its colony's arrival is the colony's plate and "Day 1. Nothing written down yet;
+I'll jot things here as they happen.", the guest book, scrapbook and wonders appearing only once
+they have something in them),
 `ColonyState` (`clubhouse/collection.rs`: the Collection, each companion's wardrobe, the sticker),
 `StudioState` (`clubhouse/studio.rs`), `HomeState` (`clubhouse/home.rs`, with the village preview
 and arranging in `clubhouse/arrange.rs`), and `RecoveryState` (`clubhouse/recovery.rs`: the cards
