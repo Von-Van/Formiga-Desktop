@@ -1043,8 +1043,9 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
     // Four portraits, four candidate strips and the tree the large preview stands beside, the
     // village atlas, the ground it stands on, the object atlas, one sheet holding every trinket,
     // and the last companion looked at trying something on in four poses, with everything to
-    // wear pictured on it, and caught in its newest habit on its page.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1 + 1);
+    // wear pictured on it, caught in its newest habit on its page, and its portrait there playing
+    // what it is doing.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1 + 1 + 1);
 }
 
 #[test]
@@ -1070,7 +1071,7 @@ fn all_ui_artwork_together_fits_the_budget() {
     }
     let mut output = h.context.run_ui(egui::RawInput::default(), |ui| {
         for c in &h.save.creatures {
-            h.clubhouse.shell.portrait(ui, c, 48.0);
+            let _ = h.clubhouse.shell.portrait_texture(ui.ctx(), c);
         }
         h.clubhouse.home.show(
             ui,
@@ -3332,11 +3333,18 @@ fn the_notebook_through_a_colonys_life() {
     let mut cut = Vec::new();
     for day in [1, 10, 110] {
         let save = aged_fixture(day);
-        for tab in [
-            SettingsTab::Today,
-            SettingsTab::Colony,
-            SettingsTab::Journal,
+        // Your colony both as it opens, on everyone, and turned to the first companion.
+        for (tab, everyone) in [
+            (SettingsTab::Today, false),
+            (SettingsTab::Colony, true),
+            (SettingsTab::Colony, false),
+            (SettingsTab::Journal, false),
         ] {
+            let name = if everyone {
+                "Everyone".to_owned()
+            } else {
+                format!("{tab:?}")
+            };
             for (theme, text_scale, width) in [
                 (ThemeChoice::Light, 100, 940.0),
                 (ThemeChoice::Light, 150, 760.0),
@@ -3344,6 +3352,9 @@ fn the_notebook_through_a_colonys_life() {
                 (ThemeChoice::Dark, 150, 760.0),
             ] {
                 let mut h = Harness::over(tab, save.clone());
+                if everyone {
+                    h.selected = None;
+                }
                 configure_style(
                     &h.context,
                     AppearancePreferences {
@@ -3357,7 +3368,7 @@ fn the_notebook_through_a_colonys_life() {
                 h.frame(Vec::new());
                 if !h.cut.is_empty() {
                     cut.push(format!(
-                        "day {day}, {tab:?} at {width} and {text_scale}%: {:?}",
+                        "day {day}, {name} at {width} and {text_scale}%: {:?}",
                         h.cut
                     ));
                 }
@@ -3368,7 +3379,7 @@ fn the_notebook_through_a_colonys_life() {
                     std::fs::create_dir_all(path).unwrap();
                     h.picture()
                         .save(path.join(format!(
-                            "life-day{day}-{tab:?}-{width}-{}-{text_scale}.png",
+                            "life-day{day}-{name}-{width}-{}-{text_scale}.png",
                             if theme == ThemeChoice::Dark {
                                 "charcoal"
                             } else {
@@ -3535,6 +3546,13 @@ fn companions_are_chosen_by_face_and_turned_from_the_keyboard() {
     h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
     assert_eq!(h.selected, ids.last().copied());
     assert_eq!(h.tab, SettingsTab::Studio, "past the last, the page turns");
+    // Before the first companion is everyone together, and before that the page turns back.
+    h.tab = SettingsTab::Colony;
+    h.selected = Some(ids[0]);
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.selected, None, "⌘[ from the first turns to everyone");
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Today);
 }
 
 /// A companion that has just arrived still has a page: its portrait, who it is, that it arrived
@@ -3702,4 +3720,78 @@ fn a_companion_is_renamed_where_its_name_is_written() {
     h.frame(Vec::new());
     assert_eq!(outcome.rename_creature, None);
     assert!(h.clubhouse.colony.renaming.is_none());
+}
+
+/// Your colony opens on everyone together: what each is doing, and the pairs who go together as
+/// faces with a word between. Any face there, or on Today, turns to that companion's page.
+#[test]
+fn the_colony_opens_on_everyone_and_every_face_turns_to_its_page() {
+    let save = aged_fixture(110);
+    let mallow = save.creatures[0].id;
+    let mut h = Harness::over(SettingsTab::Colony, save);
+    h.selected = None;
+    h.screen = egui::vec2(940.0, 1600.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Your colony"));
+    assert!(shown(&h, "RIGHT NOW"));
+    assert!(shown(&h, "WHO GOES WITH WHOM"));
+    assert!(
+        h.labels
+            .iter()
+            .any(|(t, _)| t.starts_with("· ") && t.ends_with(" ·")),
+        "a pair with a word between"
+    );
+    assert!(
+        !shown(&h, "Care & share"),
+        "no companion's controls on the spread"
+    );
+    // A face on the plate turns to that companion.
+    // Mallow's name is in the strip at the top, then on the plate, then among the pairs.
+    let mut names: Vec<egui::Rect> = h
+        .labels
+        .iter()
+        .filter(|(t, _)| t == "Mallow")
+        .map(|(_, rect)| *rect)
+        .collect();
+    names.sort_by(|a, b| a.top().total_cmp(&b.top()));
+    let name = names[1];
+    h.click_at(name.center() - egui::vec2(0.0, 30.0));
+    h.frame(Vec::new());
+    assert_eq!(h.selected, Some(mallow));
+    // On Today, a face in the log or the highlight turns to the companion's page too.
+    h.tab = SettingsTab::Today;
+    h.selected = None;
+    let outcome_before = h.tab;
+    h.clubhouse.shell.open_companion = Some(mallow);
+    h.frame(Vec::new());
+    assert_eq!(outcome_before, SettingsTab::Today);
+    assert_eq!(h.tab, SettingsTab::Colony);
+    assert_eq!(h.selected, Some(mallow));
+}
+
+/// Turning away from the Journal and back finds it where it was left.
+#[test]
+fn the_journal_reopens_where_it_was_left() {
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    h.screen = egui::vec2(940.0, 720.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    h.scroll_page(300.0);
+    let first = |h: &Harness| {
+        h.labels
+            .iter()
+            .filter(|(_, rect)| rect.top() > 60.0)
+            .min_by(|a, b| a.1.top().total_cmp(&b.1.top()))
+            .map(|(text, rect)| (text.clone(), rect.top()))
+    };
+    let left_at = first(&h);
+    h.tab = SettingsTab::Today;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    h.tab = SettingsTab::Journal;
+    for _ in 0..30 {
+        h.frame(Vec::new());
+    }
+    assert_eq!(first(&h), left_at);
 }

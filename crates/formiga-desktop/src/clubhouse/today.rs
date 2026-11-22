@@ -616,7 +616,7 @@ impl TodayState {
         );
 
         let today = today(save, local.date(), offset);
-        self.right_now(ui, shell, save, now, &today, tab);
+        Self::right_now(ui, shell, save, now, &today, tab);
         self.highlight_and_tally(ui, shell, save, now, offset, &today, reading, tab);
         self.log(ui, shell, save, now, offset, &today);
         self.noticed(ui, save, monitors, tab);
@@ -639,8 +639,9 @@ impl TodayState {
     /// Right now: the colony standing on a strip of ground, each with its name, what it is
     /// doing, and the bubble of whatever it did today. A colony that has only just moved in gets
     /// a note pasted over it instead of empty boxes further down.
-    fn right_now(
-        &mut self,
+    /// Everyone standing on the ground with what each is doing: the Today page's plate, and the
+    /// colony's own opening spread. A companion's face there turns to its page.
+    pub(crate) fn right_now(
         ui: &mut Ui,
         shell: &mut Shell,
         save: &SaveFile,
@@ -828,12 +829,17 @@ impl TodayState {
                 ),
                 None => format!("{}: {}.", creature.name, doing.to_lowercase()),
             };
-            ui.interact(
+            if companion_page::face_button(
+                ui,
                 spot,
                 ui.id().with(("right-now", creature.id)),
-                egui::Sense::hover(),
+                &creature.name,
             )
-            .on_hover_text(hint);
+            .on_hover_text(hint)
+            .clicked()
+            {
+                shell.open_companion = Some(creature.id);
+            }
         }
 
         if just_begun(save, now) {
@@ -979,6 +985,17 @@ impl TodayState {
                 );
                 let texture = shell.portrait_texture(ui.ctx(), creature);
                 paper::face(&painter, rect, &texture, true);
+                if companion_page::face_button(
+                    ui,
+                    rect,
+                    ui.id().with(("highlight-face", creature.id)),
+                    &creature.name,
+                )
+                .on_hover_text(format!("{}'s page", creature.name))
+                .clicked()
+                {
+                    shell.open_companion = Some(creature.id);
+                }
             }
             shell.bubble(
                 &painter,
@@ -1012,9 +1029,16 @@ impl TodayState {
                     ui.label(RichText::new(evidence).color(muted()));
                 }
                 ui.add_space(4.0);
-                if ui.button("Read all about it ›").clicked() {
-                    *tab = SettingsTab::Journal;
-                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Read all about it ›").clicked() {
+                        *tab = SettingsTab::Journal;
+                    }
+                    if let Some(first) = moment_faces(save, entry).first()
+                        && ui.button(format!("{}'s page ›", first.name)).clicked()
+                    {
+                        shell.open_companion = Some(first.id);
+                    }
+                });
             });
         });
     }
@@ -1074,15 +1098,23 @@ impl TodayState {
                     let (spot, _) =
                         ui.allocate_exact_size(egui::vec2(face, pitch), egui::Sense::hover());
                     let texture = shell.portrait_texture(ui.ctx(), creature);
-                    paper::face(
-                        ui.painter(),
-                        egui::Rect::from_min_size(
-                            egui::pos2(spot.left(), spot.bottom() - face - 2.0),
-                            egui::vec2(face, face),
-                        ),
-                        &texture,
-                        true,
+                    let rect = egui::Rect::from_min_size(
+                        egui::pos2(spot.left(), spot.bottom() - face - 2.0),
+                        egui::vec2(face, face),
                     );
+                    paper::face(ui.painter(), rect, &texture, true);
+                    if companion_page::face_button(
+                        ui,
+                        rect,
+                        ui.id()
+                            .with(("log-face", entry.at.unix_timestamp(), creature.id)),
+                        &creature.name,
+                    )
+                    .on_hover_text(format!("{}'s page", creature.name))
+                    .clicked()
+                    {
+                        shell.open_companion = Some(creature.id);
+                    }
                 }
             });
         }

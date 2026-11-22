@@ -2593,9 +2593,17 @@ researcher's register is named ("Field notes · Nº 02 · Specimen register"); t
 are called by name, and what each is doing is `activity_label`'s plain words ("playing with a
 toy"), one for every action, so a new action cannot reach the page unworded.
 A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
-Your colony opens on the companion itself (`clubhouse/companion_page.rs`): everyone's face along
-the top as the way to choose one, the chosen face taped, with the left and right arrows and ⌘[ ⌘]
-turning between companions before they turn the page; then the portrait, 144 points where there is
+Your colony opens on everyone together, the colony's spread (`colony_spread`): the Today page's
+Right now plate, reused, and the pairs who go together as two faces with the one word for how they
+get along between them ("Mallow · cozy · Tofu"), from `colony_standings` without the pairs still
+getting acquainted. Along the top runs a strip (`clubhouse/companion_page.rs`): Everyone, then each
+companion's face, the page open taped, with the left and right arrows and ⌘[ ⌘] turning from
+everyone through each companion before they turn the notebook's page. A face anywhere in the
+notebook — the strip, the plate, the pairs, a friend, Today's highlight and log — turns to that
+companion's page, by setting `Shell::open_companion` for the notebook to act on once the page is
+drawn. A companion's page opens on the companion: the portrait, playing its current clip at the
+clip's own pace up to six frames a second (`Shell::living_portrait`, one companion's frames kept at
+a time, held still under Reduce motion), 144 points where there is
 room beside it and never under 96, beside the name in the hand, the temperament once, the traits
 run over with a highlighter and one line of what it is doing ("Up on a window, playing with
 Tofu.", naming a companion only for a greeting, a follow or a game within reach); its figures
@@ -2612,8 +2620,7 @@ ways beside a 48-point frame of it doing its newest habit, drawn as the habit sh
 journal line about a find names it ("Moss found a key") where the scrapbook kept the same
 companion's first find of its kind within a minute of the moment. The name is renamed where it is
 written: clicked, it becomes a field, Enter keeps what was typed once `validate_creature_name`
-passes it and Escape leaves it. Then a line for what it wears, one for how everyone gets along,
-and at the foot one for Care & share, which holds everything that changes or shares it: its name
+passes it and Escape leaves it. Then a line for what it wears, and at the foot one for Care & share, which holds everything that changes or shares it: its name
 and where it likes to be, Formiga Farm while Farm is installed, its code, card and sticker, and
 keeping, removing and starting over. Home & keepsakes keeps the village and the house picked out in
 it above lines for the ground's gardens, spots and ornaments, where the village lives, pictures,
