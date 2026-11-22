@@ -373,7 +373,7 @@ fn dish(food: formiga_core::meals::Food) -> &'static str {
     }
 }
 
-fn capitalised(text: &str) -> String {
+pub(crate) fn capitalised(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(chars).collect()
@@ -1370,9 +1370,20 @@ fn tally(ui: &mut Ui, shell: &mut Shell, save: &SaveFile, today: &Today<'_>) {
         return;
     }
     let half = ((ui.available_width() - 10.0) / 2.0).floor();
+    // Two to a row where the longest fits in half the card, else one to a row, so a long word
+    // like "shared moments" never runs off the card's edge.
+    let widest = counts
+        .iter()
+        .map(|(_, n, word)| {
+            34.0 + text_width(ui, bold(n.to_string(), 18.0 * scale))
+                + text_width(ui, *word)
+                + 2.0 * ui.spacing().item_spacing.x
+        })
+        .fold(0.0, f32::max);
+    let columns = if widest <= half { 2 } else { 1 };
     egui::Grid::new("today-tally")
-        .num_columns(2)
-        .min_col_width(half)
+        .num_columns(columns)
+        .min_col_width(if columns == 2 { half } else { 0.0 })
         .spacing(egui::vec2(10.0, 6.0))
         .show(ui, |ui| {
             for (index, (icon, n, word)) in counts.iter().enumerate() {
@@ -1383,7 +1394,7 @@ fn tally(ui: &mut Ui, shell: &mut Shell, save: &SaveFile, today: &Today<'_>) {
                     ui.label(bold(n.to_string(), 18.0 * scale));
                     ui.label(*word);
                 });
-                if index % 2 == 1 {
+                if columns == 1 || index % 2 == 1 {
                     ui.end_row();
                 }
             }
