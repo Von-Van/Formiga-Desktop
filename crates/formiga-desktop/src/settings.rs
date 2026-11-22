@@ -6,9 +6,8 @@ use anyhow::{Context as _, Result};
 use formiga_core::{
     ActionKind, AppearancePreferences, ApplicationOcclusionRule, Creature, CreatureId,
     CreatureRelationship, DesktopRect, DesktopWindow, HabitatPolicy, HabitatPreset, HabitatZone,
-    HabitatZoneKind, MonitorInfo, Settings, SharedCreatureSeed, ThemeChoice, closest_companion,
-    encode_creature_seed, profile_descriptors, relationship_between, validate_creature_name,
-    validate_habitat,
+    HabitatZoneKind, MonitorInfo, Settings, SharedCreatureSeed, ThemeChoice, encode_creature_seed,
+    profile_descriptors, relationship_between, validate_creature_name, validate_habitat,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -1614,19 +1613,9 @@ fn colony_tab(
     };
     *selected_creature = Some(creature.id);
     outcome.viewed_profile = Some(creature.id);
-    // The companion's own page shows who it is and its tally first, then a line for each part of
-    // the rest; a part opens on its own, under a way back.
-    let closest_friend = closest_companion(relationships, creature.id)
-        .and_then(|id| creatures.iter().find(|other| other.id == id));
+    // The companion's own page shows who it is and what the notebook has to say about it first,
+    // then a line for each thing to do; a part opens on its own, under a way back.
     let mut sections = vec![
-        Section::new(
-            "notes",
-            format!("Notes on {}", creature.name),
-            closest_friend.map_or_else(
-                || "Still getting acquainted".to_owned(),
-                |friend| format!("Closest to {}", friend.name),
-            ),
-        ),
         Section::new(
             "name",
             "Name and where they like to be",
@@ -1719,121 +1708,28 @@ fn colony_tab(
             }
         });
         clubhouse::companion_page::tally_stamp(ui, creature, now);
-        // Under it, on the page's own lines: its little ways, or, while there is nothing yet to
-        // say about it, that there will be.
-        let noticed = formiga_core::observations_of(colony.save, creature.id);
-        let befriended = colony.save.companion.journal.iter().any(|entry| {
-            matches!(entry.moment, formiga_core::JournalMoment::Friendship(friend)
-                if friend == creature.id || entry.creature == Some(creature.id))
-        });
-        if noticed.is_empty() && !befriended && creature.memory.habits.is_empty() {
-            clubhouse::journal::write(
-                ui,
-                format!(
-                    "Still getting to know {}. I'll write things here as I see them.",
-                    creature.name
-                ),
-            );
+        // Under it, on the page's own lines, what the notebook has to say about it.
+        let learned: Vec<&str> = profile_descriptors(creature, creatures)
+            .iter()
+            .map(|descriptor| descriptor.label())
+            .collect();
+        let story = clubhouse::story::story(
+            colony.save,
+            monitors,
+            creature,
+            &learned,
+            now,
+            clubhouse::local_offset(),
+        );
+        let habit = page.habit_frame(ui.ctx(), creature);
+        if let Some(friend) =
+            clubhouse::companion_page::write_story(ui, shell, colony.save, creature, &story, &habit)
+        {
+            *selected_creature = Some(friend);
         }
-        let mut habits = egui::text::LayoutJob::default();
-        let size = egui::TextStyle::Body.resolve(ui.style()).size;
-        for (text, colour) in [
-            ("Habits: ".to_owned(), clubhouse::muted()),
-            (little_ways(creature), ink()),
-        ] {
-            habits.append(
-                &text,
-                0.0,
-                egui::text::TextFormat {
-                    font_id: egui::FontId::proportional(size),
-                    color: colour,
-                    ..Default::default()
-                },
-            );
-        }
-        clubhouse::journal::write(ui, habits);
         ui.add_space(14.0);
     }
     match clubhouse::sections::show(ui, shell, SettingsTab::Colony, &sections) {
-        Some("notes") => {
-            let learned = profile_descriptors(creature, creatures);
-            if !learned.is_empty() {
-                ui.label(format!(
-                    "Lately: {}",
-                    learned
-                        .iter()
-                        .map(|descriptor| descriptor.label())
-                        .collect::<Vec<_>>()
-                        .join(" · ")
-                ));
-            }
-            if let Some(preferred) = creature.memory.preferred_region {
-                ui.label(format!(
-                    "Favorite region: {} on {}",
-                    region_label(preferred.cell),
-                    display_label(preferred.display, monitors)
-                ));
-            } else if let Some(favorite) = creature.memory.favorite_display {
-                ui.label(format!(
-                    "Favorite display: {}",
-                    display_label(favorite.display, monitors)
-                ));
-            } else {
-                ui.label("Favorite place: still deciding");
-            }
-
-            if let Some(friend) = closest_friend {
-                ui.label(format!("Closest to {}", friend.name));
-                if let Some(relationship) =
-                    relationship_between(relationships, creature.id, friend.id)
-                {
-                    ui.label(format!(
-                        "Bond: {} • {}",
-                        bond_label(relationship.affinity, relationship.avoidance),
-                        together_label(creature, friend, relationship)
-                    ));
-                }
-            } else {
-                ui.label("Closest friend: still getting acquainted");
-            }
-            // What the notebook can say about this companion with evidence, and the moments it shared
-            // most recently, read from what was recorded and from nothing else.
-            let now = time::OffsetDateTime::now_utc();
-            let offset = clubhouse::local_offset();
-            if let Some(friend) = closest_friend {
-                let (low, high) = (creature.id.min(friend.id), creature.id.max(friend.id));
-                if let Some(grew_close) = colony.save.companion.journal.iter().find(|e| {
-                    e.creature == Some(low)
-                        && e.moment == formiga_core::JournalMoment::Friendship(high)
-                }) {
-                    ui.small(format!(
-                        "Grew close to {} on {}, as the journal has it.",
-                        friend.name,
-                        clubhouse::dates::on(grew_close.at, offset)
-                    ));
-                }
-                if let Some(memory) =
-                    formiga_core::tally_between(&colony.save.tallies, creature.id, friend.id)
-                        .and_then(|pair| pair.tally.memory)
-                {
-                    ui.small(format!(
-                        "Last time together: {} {}.",
-                        clubhouse::today::shared_text(memory.kind),
-                        clubhouse::today::ago_text(memory.at, now, offset)
-                    ));
-                }
-            }
-            let noticed = formiga_core::observations_of(colony.save, creature.id);
-            if !noticed.is_empty() {
-                ui.add_space(6.0);
-                for observation in &noticed {
-                    let (said, evidence) =
-                        clubhouse::today::observation_text(colony.save, monitors, observation);
-                    ui.label(said);
-                    ui.small(egui::RichText::new(evidence).color(clubhouse::muted()));
-                }
-            }
-        }
         Some("name") => {
             let name = clubhouse::card(ui, |ui| {
                 ui.strong("Name");
@@ -2006,13 +1902,6 @@ fn colony_tab(
     }
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_secs(1));
-}
-
-/// How a companion celebrates and the habits it has picked up, in the order it picked them up.
-fn little_ways(creature: &Creature) -> String {
-    let mut ways = vec![formiga_core::Celebration::for_creature(creature).label()];
-    ways.extend(creature.memory.habits.iter().map(|habit| habit.label()));
-    ways.join(" · ")
 }
 
 /// What a companion is doing, in the notebook's own words: "playing with a toy", never the name

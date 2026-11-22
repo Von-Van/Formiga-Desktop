@@ -1043,8 +1043,8 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
     // Four portraits, four candidate strips and the tree the large preview stands beside, the
     // village atlas, the ground it stands on, the object atlas, one sheet holding every trinket,
     // and the last companion looked at trying something on in four poses, with everything to
-    // wear pictured on it.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1);
+    // wear pictured on it, and caught in its newest habit on its page.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1 + 1);
 }
 
 #[test]
@@ -1227,12 +1227,12 @@ fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
     assert!(
         h.labels
             .iter()
-            .any(|(text, _)| *text == format!("Habits: {celebration}")),
+            .any(|(text, _)| *text == format!("{celebration}.")),
         "a companion with no habits yet still has its own celebration"
     );
     h.save.creatures[0].memory.habits = vec![Habit::CirclesBeforeNaps, Habit::WavesHello];
     h.frame(Vec::new());
-    let wanted = format!("Habits: {celebration} · Turns in circles before a nap · Waves hello");
+    let wanted = format!("{celebration}. Turns in circles before a nap. Waves hello.");
     assert!(
         h.labels.iter().any(|(text, _)| *text == wanted),
         "{:?}",
@@ -1688,12 +1688,12 @@ fn first_text(shape: &egui::Shape) -> Option<String> {
 #[test]
 fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     let mut h = Harness::new(SettingsTab::Colony);
-    h.screen = egui::vec2(940.0, 720.0);
+    h.screen = egui::vec2(940.0, 1000.0);
     h.frame(Vec::new());
     h.frame(Vec::new());
     // The page opens on who the companion is, with a line for each of the rest.
     assert!(shown(&h, "Mallow"));
-    assert!(shown(&h, "Notes on Mallow"));
+    assert!(shown(&h, "Something to wear"));
     assert!(!shown(&h, "Save name"), "the name is in its own section");
     h.scroll_page(400.0);
     let list = h.text_top("Share Mallow");
@@ -1702,7 +1702,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     h.frame(Vec::new());
     assert!(shown(&h, "Copy seed"));
     assert!(shown(&h, "\u{2039} Your colony"));
-    assert!(!shown(&h, "Notes on Mallow"));
+    assert!(!shown(&h, "Something to wear"));
     // Back finds the list where it was left.
     h.click("\u{2039} Your colony");
     h.frame(Vec::new());
@@ -1723,7 +1723,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     h.tab = SettingsTab::Colony;
     h.frame(Vec::new());
     assert!(
-        shown(&h, "Notes on Mallow"),
+        shown(&h, "Something to wear"),
         "Your colony is still on its list"
     );
     // A step of the tour pointing into a section opens it.
@@ -1740,7 +1740,6 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
 fn sections_of(page: SettingsTab) -> &'static [&'static str] {
     match page {
         SettingsTab::Colony => &[
-            "notes",
             "name",
             "wardrobe",
             "farm",
@@ -3554,4 +3553,75 @@ fn a_new_companion_still_has_a_page() {
         &h,
         &format!("Still getting to know {name}. I'll write things here as I see them.")
     ));
+}
+
+/// A companion's page writes about it in the notebook's voice: the latest thing seen, dated,
+/// first; its friends as faces with a word under each, which turn to that friend; its firsts;
+/// and its little ways. Nothing is written as a field name.
+#[test]
+fn a_companions_page_speaks() {
+    let save = aged_fixture(110);
+    let mallow = save.creatures[0].id;
+    let mut h = Harness::over(SettingsTab::Colony, save);
+    h.screen = egui::vec2(940.0, 1400.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let texts: Vec<&String> = h.labels.iter().map(|(text, _)| text).collect();
+    assert!(
+        texts.iter().any(|t| t.starts_with("Napped beside Tofu ")),
+        "the newest shared moment comes first: {texts:?}"
+    );
+    assert!(texts.iter().any(|t| t.starts_with("Joined ")), "{texts:?}");
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("first friend Tofu") && t.contains("first find")),
+        "{texts:?}"
+    );
+    for field in ["Favorite region:", "Bond:", "Closest friend:", "Habits:"] {
+        assert!(
+            !texts.iter().any(|t| t.starts_with(field)),
+            "{field} on the page"
+        );
+    }
+    assert!(shown(&h, "Friends"));
+    assert!(shown(&h, "cozy"), "Tofu's word: {texts:?}");
+    let word = h.labels.iter().find(|(t, _)| t == "cozy").unwrap().1;
+    h.click_at(word.center() - egui::vec2(0.0, 24.0));
+    h.frame(Vec::new());
+    assert!(
+        h.selected.is_some_and(|id| id != mallow),
+        "a friend's face turns to that friend"
+    );
+}
+
+/// A find the journal wrote down is named where the scrapbook kept it as the same companion's
+/// first of its kind, within a minute.
+#[test]
+fn a_find_is_named_in_the_journal() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    let finder = h.save.creatures[0].id;
+    let at = h.save.maximum_seen_utc;
+    let entry = JournalEntry {
+        at,
+        creature: Some(finder),
+        moment: JournalMoment::Discovery,
+    };
+    let key = (0..=u8::MAX)
+        .find(|v| trinket_info(*v).is_some_and(|info| info.name == "Key"))
+        .unwrap();
+    assert_eq!(
+        clubhouse::moment_text(&h.save, &entry),
+        "Mallow found a little treasure"
+    );
+    h.save.companion.scrapbook.push(ScrapbookRecord {
+        variant: key,
+        first_at: at + time::Duration::seconds(20),
+        finder: Some(finder),
+        finder_name: "Mallow".into(),
+    });
+    assert_eq!(
+        clubhouse::moment_text(&h.save, &entry),
+        "Mallow found a key"
+    );
 }

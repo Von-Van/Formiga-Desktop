@@ -181,15 +181,46 @@ pub(crate) struct ColonyState {
     /// What became of the last snack or toy offered from a companion's profile, and whose:
     /// written in words, since the answer itself is given out on the desktop.
     pub offer_note: Option<(formiga_core::CreatureId, String)>,
+    /// The companion on the page caught in its newest habit, and what it was drawn from, so it is
+    /// drawn again only when that changes.
+    habit_frame: Option<(HabitFrameKey, TextureHandle)>,
 }
+
+/// Whose habit frame it is, how they looked, and which habit it shows.
+type HabitFrameKey = (CreatureId, AppearanceGenome, Option<formiga_core::Habit>);
 
 impl ColonyState {
     pub(super) fn texture_ids(&self) -> Vec<egui::TextureId> {
-        self.collection.texture_ids()
+        let mut ids = self.collection.texture_ids();
+        ids.extend(self.habit_frame.iter().map(|(_, texture)| texture.id()));
+        ids
     }
 
     pub(super) fn release_images(&mut self) {
         self.collection.release_images();
+        self.habit_frame = None;
+    }
+
+    /// The frame of `creature` doing its newest habit, drawn once for each companion turned to.
+    pub(crate) fn habit_frame(
+        &mut self,
+        ctx: &egui::Context,
+        creature: &Creature,
+    ) -> TextureHandle {
+        let key = (
+            creature.id,
+            creature.appearance.clone(),
+            creature.memory.habits.last().copied(),
+        );
+        if self
+            .habit_frame
+            .as_ref()
+            .is_none_or(|(drawn, _)| *drawn != key)
+        {
+            let canvas = super::companion_page::habit_frame(creature);
+            self.habit_frame = Some((key, upload(ctx, "companion-habit", &canvas)));
+        }
+        self.habit_frame.as_ref().unwrap().1.clone()
     }
 
     /// The scale the sticker export will draw at, from the two the art offers.
