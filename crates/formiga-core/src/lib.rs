@@ -99,8 +99,8 @@ pub use wonders::{
     MAX_PLACED_WONDERS, PlacedWonder, WonderKind, WonderRecord, WonderSeats, WonderView,
 };
 pub use world::{
-    BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, VILLAGE_PATH_DEPTH, WonderPose, World,
-    wonder_length, wonder_motion, wonder_poses,
+    BubbleGrowth, CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES, ColonyEdit, ThoughtBubble,
+    UndoError, VILLAGE_PATH_DEPTH, WonderPose, World, wonder_length, wonder_motion, wonder_poses,
 };
 
 pub const SAVE_VERSION: u32 = 34;

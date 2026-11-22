@@ -1093,3 +1093,13 @@ minutes — 2.71% CPU, 61 MB resident, and an energy impact of 2.51 on average a
 It is 0.66.1, at the 2× scale the owner uses rather than the 3× the budgets are set at, so it is a
 reference rather than a gate result. Energy with the menu open, and anything at all on Windows, is
 still to be measured ([#6](https://github.com/Von-Van/Formiga-Desktop/issues/6)).
+
+## Climbing a paw at a time
+
+The climb's shaped rise is a few multiplications a tick for a companion on a window's side, and
+nothing for anyone else. Measured with `formiga-tools tick-bench` in one sitting against a build of
+the commit before it, run before and after it, `World::tick` costs the same within the noise: the
+medians of the eleven scenarios moved by less than half a microsecond either way, and the saves a
+minute are unchanged (asks a minute in the busy scenarios moved by under one in a hundred, as climbs
+there now start their clip a fraction of a tick earlier). The two frames the climb gained fit in
+cells each creature's body texture already had spare, so its textures stay at 1,704,960 bytes.

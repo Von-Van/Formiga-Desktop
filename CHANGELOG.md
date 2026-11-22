@@ -4,6 +4,16 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- A companion climbs up the side of a window a paw at a time. The climb was four nearly identical
+  frames, the paws alternating three pixels while the body slid up at a steady speed out of step
+  with them; it is six frames now, a reach, a pull and a settle with one paw and then the other,
+  the leg on the reaching side bent up against the wall on the pull. The body rises on the pulls
+  and hardly at all on the reaches, frame for frame, and the climb still starts, ends and takes
+  as long as it did. Every companion climbs on the same beat. The two frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws differently.
+
 ### Added
 
 - Two review sheets for how a companion meets what it holds and what it climbs.

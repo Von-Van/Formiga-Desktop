@@ -236,17 +236,7 @@ impl Pose {
                 tail_sway: walk,
                 ..Self::default()
             },
-            ActionKind::ClimbWindow => Self {
-                bob: -walk.abs(),
-                squash_x: 0,
-                squash_y: 1,
-                step_a: -walk * 2,
-                step_b: walk * 2,
-                play_lift: 1,
-                appendage_lift: 2 + walk.abs(),
-                tail_sway: alternate,
-                ..Self::default()
-            },
+            ActionKind::ClimbWindow => Self::climb(frame),
             ActionKind::Dangle => Self {
                 bob: 0,
                 squash_x: -1,
@@ -302,6 +292,41 @@ impl Pose {
             pose.calm();
         }
         pose
+    }
+
+    /// One frame of a climb up a window's side: a stroke with one paw, frames 0 to 2, and then
+    /// the same with the other. Each stroke is a reach, hanging low and stretched long with the
+    /// shoulders up; a pull, the body hauled two pixels up toward the paw with its head tucked
+    /// in, the leg on the reaching side bent up against the wall and the tail down; and a settle
+    /// onto the new grip, both legs hanging. The world raises the body on the pulls, frame for
+    /// frame (see `formiga_core::CLIMB_FRAMES_PER_SECOND`).
+    fn climb(frame: u8) -> Self {
+        let lead = if frame % 6 < 3 { 1 } else { -1 };
+        match frame % 3 {
+            0 => Self {
+                bob: 1,
+                squash_y: 1,
+                appendage_lift: 3,
+                ..Self::default()
+            },
+            1 => Self {
+                squash_x: 1,
+                squash_y: -1,
+                play_lift: 2,
+                appendage_lift: 1,
+                step_a: if lead < 0 { -2 } else { 0 },
+                step_b: if lead > 0 { 2 } else { 0 },
+                tail_sway: 2,
+                ear_perk: -1,
+                ..Self::default()
+            },
+            _ => Self {
+                play_lift: 1,
+                appendage_lift: 2,
+                tail_sway: 1,
+                ..Self::default()
+            },
+        }
     }
 
     /// One frame of a walk or a run, `phase` of six.

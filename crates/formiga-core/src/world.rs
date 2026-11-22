@@ -56,6 +56,7 @@ use generation::*;
 use habits::*;
 use interaction::*;
 use journeys::*;
+pub use journeys::{CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES};
 use movement::*;
 use objects::*;
 pub(crate) use objects::{scheduled_colony_object_at, scheduled_village_unlock_at};

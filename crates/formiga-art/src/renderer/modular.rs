@@ -806,10 +806,20 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
     match clip {
         // Dangling hands share the existing y=7 ledge anchor.
         BodyClip::Action(ActionKind::Dangle) => both(&|side| to(beside_head(side), 7)),
-        BodyClip::Action(ActionKind::ClimbWindow) => both(&|side| {
-            let hold = if side < 0 { tick * 3 } else { 3 - tick * 3 };
-            to(beside_head(side), hy - 7 + hold)
-        }),
+        // A stroke with one paw and then the other (see `Pose::climb`): the reaching paw goes
+        // high up beside the head while the other holds at the cheek; on the pull the reached paw
+        // comes down to the head as the body rises to it, and on the settle the two meet halfway,
+        // ready for the other paw to reach.
+        BodyClip::Action(ActionKind::ClimbWindow) => {
+            let (lead, held) = climb_grip(frame, hy);
+            let reaching = if frame % 6 < 3 { 1 } else { -1 };
+            both(&|side| {
+                to(
+                    beside_head(side),
+                    if side == reaching { lead } else { held },
+                )
+            })
+        }
         BodyClip::Action(ActionKind::PresentDiscovery) => {
             both(&|side| to(beside_head(side), hy - 5))
         }
@@ -979,6 +989,18 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
             let up = [0, 2, 3, 3][usize::from(frame.min(3))];
             both(&|side| to(hx + side * (head / 2 + 2), hy - head - 2 - up))
         }
+    }
+}
+
+/// How high the two paws of a climber hold on in a frame of its climb, the reaching paw and the
+/// other, for a head at row `hy`: one reached high while the other is down at the cheek, the
+/// reached one pulled down toward the head as the body comes up to it, and the other coming up
+/// on the settle, ready to reach in its turn.
+fn climb_grip(frame: u8, hy: i32) -> (i32, i32) {
+    match frame % 3 {
+        0 => (hy - 10, hy + 1),
+        1 => (hy - 6, hy),
+        _ => (hy - 6, hy - 3),
     }
 }
 
@@ -1201,10 +1223,17 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         // Dangling forepaws share the existing y=7 ledge anchor. Both go up the sides of the
         // head, the near one in front of the face and the far one behind.
         BodyClip::Action(ActionKind::Dangle) => [to(hx - head - 1, 7), to(hx + head + 1, 7)],
-        BodyClip::Action(ActionKind::ClimbWindow) => [
-            to(hx - head - 1, hy - 7 + tick * 3),
-            to(hx + head + 1, hy - 4 - tick * 3),
-        ],
+        // The same strokes as a two-legged climber's, the far forepaw up behind the head and the
+        // near one in front of the face; the hind legs brace in turn on the pulls.
+        BodyClip::Action(ActionKind::ClimbWindow) => {
+            let (lead, held) = climb_grip(frame, hy);
+            let (far, near) = if frame % 6 < 3 {
+                (held, lead)
+            } else {
+                (lead, held)
+            };
+            [to(hx - head - 1, far), to(hx + head + 1, near)]
+        }
         BodyClip::Action(ActionKind::PresentDiscovery) => [rest, lift(near, 6, room - 1)],
         BodyClip::Action(ActionKind::Greet) => [rest, lift(near, 6, room - tick)],
         BodyClip::Action(ActionKind::SocialPlay) => [rest, lift(near, 6 + tick, room - 1)],

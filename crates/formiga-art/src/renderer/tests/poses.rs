@@ -36,16 +36,26 @@ fn a_clip_asked_for_long_after_it_began_still_plays() {
 
 #[test]
 fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
-    for (action, fps) in [
-        (ActionKind::ClimbWindow, 6),
-        (ActionKind::Dangle, 3),
-        (ActionKind::InspectScreen, 4),
-        (ActionKind::PresentDiscovery, 2),
+    for (action, frames, fps) in [
+        // A stroke with each paw, at the rate the world raises a climber by.
+        (
+            ActionKind::ClimbWindow,
+            6,
+            formiga_core::CLIMB_FRAMES_PER_SECOND,
+        ),
+        (ActionKind::Dangle, 4, 3),
+        (ActionKind::InspectScreen, 4, 4),
+        (ActionKind::PresentDiscovery, 4, 2),
     ] {
         let spec = AnimationSpec::for_action(action);
-        assert_eq!(spec.frames, 4);
+        assert_eq!(spec.frames, frames);
         assert_eq!(spec.fps, fps);
     }
+    assert_eq!(formiga_core::CLIMB_FRAMES_PER_SECOND, 6);
+    assert_eq!(
+        AnimationSpec::for_action(ActionKind::ClimbWindow).frames,
+        2 * formiga_core::CLIMB_STROKE_FRAMES
+    );
     let discovery = AnimationSpec::for_action(ActionKind::PresentDiscovery);
     assert_eq!(discovery.playback, PlaybackMode::Hold);
     assert_eq!(discovery.frame_at(20.0), 3);
@@ -65,6 +75,31 @@ fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
         FramePlacement::for_action(ActionKind::Idle, 5).origin_y,
         -43
     );
+}
+
+/// Every companion climbs on the same beat, the world's: its own tempo and phase would put its
+/// pulls out of step with the rise the world gives it on them.
+#[test]
+fn a_climb_is_drawn_on_the_clock_the_world_raises_it_by() {
+    let spec = AnimationSpec::for_action(ActionKind::ClimbWindow);
+    let world = World::new(
+        [61; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    for index in 0..40_u64 {
+        let mut creature = world.save.creatures[0].clone();
+        creature.id ^= index.wrapping_mul(0x9e37_79b9);
+        creature.personality.activity = index as f32 / 40.0;
+        let signature = MotionSignature::for_creature(&creature);
+        for step in 0..200 {
+            let elapsed = step as f32 / 20.0;
+            assert_eq!(
+                signature.frame(ActionKind::ClimbWindow, elapsed),
+                spec.frame_at(elapsed)
+            );
+        }
+    }
 }
 
 #[test]
