@@ -348,6 +348,33 @@ dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A
 something else needs no new frames; sprinting reuses the existing movement tick with a distinct
 six-frame gait.
 
+Every body frame says where it holds things, read from what it actually drew in that frame:
+`RenderedBodyFrame::hands` and `RenderedBodyFrame::mouth`, in frame pixels facing right and
+mirrored with facing as the face anchor is. The mouth is the face anchor plus the face layout's own
+mouth pixel (`face::mouth_offset`, from the same eye row and mouth drop `draw_face` draws by; the
+Echo Fox's under its nose). The hands are the near forepaw each body renderer drew, which it reports
+in its `Figure::hand`: the tip of the near limb for the original families (`draw_forelimbs`, where
+`offset_pair` placed it), the hand a modular limb reaches to or the paw folded at its side
+(`modular::near_hand`, from the same `limbs` the drawing uses), the fox's carried-out or folded
+front paw, and the end of a sculpted form's near arm. A body with no forepaw free in a frame — a
+soft quadruped or a Long body standing on all four, a winged body with its wings folded, a
+sculpted form on four legs — reports none, and carries things in its mouth: the hands point is
+then just forward of and under the mouth, so a thing hangs from the jaw with its top at the mouth.
+So a Long body presents a find in its raised forepaw and plays with its toy at its nose; a blob
+holds things on the folded paw at the edge of its mass at chest height; a winged body holds them in
+an opened wing, or in its beak while its wings are folded. `prop_hold` builds the `PropHold` every
+belonging is placed from out of those two points and the body's floor and ground. A toy rests
+against the paw on the side away from the body, by its own edge on the paw's row
+(`Drawn::edge`), and is knocked up from there (back along the body for an original soft
+quadruped, whose head leads over its paws); a snack is held just in front of the mouth, a cup
+tipped with its rim at the mouth and lowered between sips, a meal's bites at the mouth and its
+chewing and gulping in the paw where there is one. Nothing held goes over the eyes: a toy slides on
+past them (`Drawn::covers`), and on the beats it comes back to a paw held up under the eyes
+that is as little as it takes. The atlas keeps each slot's hands point beside its face anchor
+(`AtlasPixels::hands`), and the overlay centres a held-up find, a watering can or anything picked
+on it through `held_up_at`, which keeps a thing `HELD_UP_REACH` across off the eyes, moving it
+forward, down or back, and up over the head only when nothing else clears them.
+
 A companion eating has a `Meal` (`formiga-core/src/meals.rs`), runtime only like `Presence`:
 `world/meals.rs` gives one to anyone whose action has just become Eat, carries it while they eat,
 and clears it when they stop, at the end of every tick, with dice of its own from the colony seed,
@@ -2844,19 +2871,18 @@ Contact is anchored rather than eyeballed. `FramePlacement` fixes the top of the
 against the simulation's contact point, so feet meet a ledge in every pose and a dangling creature
 hangs from its hands; the native hit proxy and the review sheets take the same placement, which is
 why a catch, a pull-up, a helper's reach, and a grip all land on the pixel the simulation thinks
-they do. `PropAnchor` does the same for a carried thing: one explicit offset in front of the
-holder's face, mirrored with facing, kept inside the frame so a prop is clipped and occluded with
-whoever is holding it. A prop changing hands is then two anchors meeting, which reads as a
-hand-off rather than as two objects swapping places in mid-air.
+they do. A carried thing is anchored the same way, to the paw or the mouth each frame draws (its
+`hands` and `mouth`, above), kept inside the frame so a prop is clipped and occluded with whoever
+is holding it.
 
 Two review sheets check that contact by eye. `formiga-tools hold-sheet` draws every frame of eating,
 drinking, solo play, holding up a find, and the pour, pluck and tend chores at 4x, for each sheet
 body at statures 85 and 115 and for the three original families as a look from before recipes
 draws them, with what the overlay puts in the paws. Over each frame it marks, in colours no palette
-has (a test holds every frame to that), the paw and the mouth the frame places belongings by
-(`CreatureRenderer::hold_points`, read from the same `prop_hold` the frame's own belongings use) and
-where `PropAnchor` centres a find or a village prop, so a crosshair off the limb or the mouth is a
-belonging drawn in the wrong place. `formiga-tools climb-sheet` runs a whole climb in the colony's
+has (a test holds every frame to that), the paw and the mouth the frame places belongings by (its
+`hands` and `mouth`, which `CreatureRenderer::hold_points` also returns), where the overlay also
+holds up a find or a village prop, so a crosshair off the limb or the mouth is a belonging drawn
+in the wrong place. `formiga-tools climb-sheet` runs a whole climb in the colony's
 own simulation: `World::begin_window_climb` starts one companion up onto a window 120 points above
 the floor the way it climbs one itself (a look, the walk to the window's side, the climb, the haul,
 the step in), and every tenth of a second up to two seconds into the perch is drawn at 2x against

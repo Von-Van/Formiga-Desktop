@@ -6,8 +6,8 @@ use formiga_art::{
     COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT,
     HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
-    PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect,
-    TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
+    PixelPoint, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TALK_BUBBLE,
+    TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
     TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
     TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
     UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
@@ -93,6 +93,9 @@ struct SpriteGpu {
     /// Which cell of the face texture each face is drawn from, by face slot.
     face_cells: Vec<u16>,
     face_anchors: Vec<PixelPoint>,
+    /// Where each baked frame holds a thing it carries, by slot: a find held up, a watering can,
+    /// whatever was picked. Art pixels facing right, mirrored with facing as the face anchor is.
+    hands: Vec<PixelPoint>,
     /// What each baked frame holds and where, by slot.
     held: Vec<Option<HeldPlacement>>,
     /// The topmost and just-past-the-lowest drawn rows of each baked body frame, in art pixels
@@ -1486,6 +1489,26 @@ impl OverlayRenderer {
                 occlusion_enabled,
             },
         ];
+        // Where a frame pixel lands on the overlay, with the frame facing the way it is drawn.
+        let on_overlay = |at: PixelPoint| {
+            let across = if facing_right {
+                at.x
+            } else {
+                FRAME_SIZE as i32 - at.x
+            } as f32;
+            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+            (
+                local_x + (unscaled_x - local_x) * horizontal_scale,
+                frame_top + at.y as f32 * display_scale as f32,
+            )
+        };
+        // Where this frame holds up a thing it carries: on the paw it drew, or under its mouth,
+        // and never over its eyes.
+        let hands = on_overlay(formiga_art::held_up_at(
+            sprite.hands[slot as usize],
+            sprite.face_anchors[slot as usize],
+            formiga_art::HELD_UP_REACH,
+        ));
         let trinket = (creature.state.action == ActionKind::PresentDiscovery).then(|| {
             // The colony's own sheet, not this creature's face texture: one quad sampling the
             // cell for the variant it found, on the glint frame for part of the presentation.
@@ -1497,10 +1520,8 @@ impl OverlayRenderer {
             let u_right = (cell_x + TRINKET_CELL) as f32 / TRINKET_ATLAS_WIDTH as f32;
             let v_top = cell_y as f32 / TRINKET_ATLAS_HEIGHT as f32;
             let v_bottom = (cell_y + TRINKET_CELL) as f32 / TRINKET_ATLAS_HEIGHT as f32;
-            // One explicit anchor, shared with the review sheets, rather than a number here.
-            let anchor = PropAnchor::facing(facing_right);
-            let center_x = face_center_x + anchor.dx * display_scale as f32;
-            let center_y = face_center_y + anchor.dy * display_scale as f32;
+            // Held up in the paw the frame raises it in.
+            let (center_x, center_y) = hands;
             let left = (center_x - face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
             let right = (center_x + face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
             let top = 1.0 - (center_y - face_size / 2.0) / self.layout.height as f32 * 2.0;
@@ -1539,22 +1560,10 @@ impl OverlayRenderer {
             ]
         });
         // Something the village has put in its hands — a watering can, something just picked —
-        // held where a keepsake is held, and the water running out of the can while it waters.
+        // held in the paw the frame draws, as a keepsake is, and the water running out of the can
+        // while it waters.
         let mut held = [None, None];
         // What it is eating, sipping or playing with, where this frame holds it.
-        // Where a frame pixel lands on the overlay, with the frame facing the way it is drawn.
-        let on_overlay = |at: PixelPoint| {
-            let across = if facing_right {
-                at.x
-            } else {
-                FRAME_SIZE as i32 - at.x
-            } as f32;
-            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
-            (
-                local_x + (unscaled_x - local_x) * horizontal_scale,
-                frame_top + at.y as f32 * display_scale as f32,
-            )
-        };
         // A kite's string, from the paw holding it up to the kite.
         let tether = formiga_art::held_tether(creature, clip, sprite.held[slot as usize]).map(
             |(paw, kite)| {
@@ -1595,12 +1604,8 @@ impl OverlayRenderer {
         if let Some(beat) = creature.state.beat
             && let Some(prop) = beat.held
         {
-            let anchor = PropAnchor::facing(facing_right);
             let unit = display_scale as f32;
-            let centre = (
-                face_center_x + anchor.dx * unit,
-                face_center_y + anchor.dy * unit,
-            );
+            let centre = hands;
             held[0] = Some(self.object_quad_at(
                 ColonyObjectRenderer::prop_cell(PropSprite::of(prop)),
                 centre,

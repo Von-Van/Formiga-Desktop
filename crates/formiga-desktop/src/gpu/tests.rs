@@ -271,6 +271,7 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_every_time() {
         assert_eq!(atlas.body_cells.len(), total_animation_frames() as usize);
         assert_eq!(atlas.face_cells.len(), face_slot_count() as usize);
         assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+        assert_eq!(atlas.hands.len(), total_animation_frames() as usize);
         assert!(cost(atlas) <= full_layout_bytes(), "{choice:?}");
     }
     assert_eq!(cost(&first[0]), cost(&first[2]));
@@ -552,6 +553,7 @@ fn a_finer_atlas_is_the_same_picture_at_more_pixels() {
     assert_eq!(fine.body_cells, plain.body_cells);
     assert_eq!(fine.face_cells, plain.face_cells);
     assert_eq!(fine.face_anchors, plain.face_anchors);
+    assert_eq!(fine.hands, plain.hands);
     assert_eq!(fine.silhouette, plain.silhouette);
     let pixel = |pixels: &[u8], width: u32, x: u32, y: u32| {
         let at = ((y * width + x) * 4) as usize;
@@ -704,6 +706,31 @@ fn a_sculpted_form_is_baked_no_finer_than_a_half_resolution_overlay_draws_it() {
     assert_eq!(baked_detail(&appearance, 4, 1), 4);
 }
 
+/// The overlay centres a find held up, a watering can and anything picked on the paw each frame
+/// draws, so the atlas keeps that paw for every body slot, exactly as the frame reports it, beside
+/// the face anchor it keeps the same way.
+#[test]
+fn the_atlas_keeps_each_frames_paw_for_every_body_slot() {
+    let world = World::new(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
+    assert_eq!(atlas.hands.len(), total_animation_frames() as usize);
+    assert_eq!(atlas.hands.len(), atlas.face_anchors.len());
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let rendered =
+                CreatureRenderer::render_body_frame(&creature.appearance, clip, frame, false);
+            let slot = atlas_slot(clip, frame) as usize;
+            assert_eq!(atlas.hands[slot], rendered.hands, "{clip:?} frame {frame}");
+            assert_eq!(atlas.face_anchors[slot], rendered.face_anchor);
+        }
+    }
+}
+
 #[test]
 fn layered_atlas_matches_the_baked_budget_per_creature() {
     let desktop = formiga_core::DesktopSnapshot {
@@ -771,6 +798,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     );
     assert_eq!(outlined.body_cells, atlas.body_cells);
     assert_eq!(outlined.face_anchors, atlas.face_anchors);
+    assert_eq!(outlined.hands, atlas.hands);
     let (mut added, mut changed) = (0, 0);
     for (plain, edged) in atlas
         .body_pixels

@@ -165,50 +165,6 @@ fn generated_discoveries_have_sixteen_deterministic_opaque_silhouettes() {
     assert_eq!(hashes.len(), usize::from(formiga_core::TRINKET_VARIANTS));
 }
 
-/// A carried thing rides in front of whoever is holding it. The anchor is one explicit
-/// contract shared by the overlay and the review sheets, so a prop changing hands reads as a
-/// hand-off rather than two objects swapping places in the air.
-#[test]
-fn a_carried_prop_rides_on_the_side_its_holder_is_facing_and_stays_inside_the_frame() {
-    let facing = PropAnchor::facing(true);
-    let away = PropAnchor::facing(false);
-    assert_eq!(facing.dx, -away.dx, "the anchor mirrors with facing");
-    assert_eq!(
-        facing.dy, away.dy,
-        "and rides at the same height either way"
-    );
-    assert!(facing.dx > 0.0, "a held thing is in front, not behind");
-    assert!(
-        facing.dy > 0.0,
-        "and carried at the chest, not floated above the head"
-    );
-    // The prop is drawn from the face anchor, in a face-sized quad. Both offsets have to keep
-    // that quad inside the body frame, or a prop would be clipped differently from its holder.
-    let margin = (FRAME_SIZE - FACE_FRAME_SIZE) as f32 / 2.0;
-    for anchor in [facing, away] {
-        assert!(
-            anchor.dx.abs() <= margin,
-            "{anchor:?} leaves the frame sideways"
-        );
-        assert!(
-            anchor.dy.abs() <= margin,
-            "{anchor:?} leaves the frame vertically"
-        );
-    }
-    // Two creatures facing each other reach toward one another, which is what makes a
-    // hand-off read: the gap between their anchors is smaller than the gap between them.
-    let mut creature = World::preview_adult(
-        [23; 32],
-        time::OffsetDateTime::UNIX_EPOCH,
-        &DesktopSnapshot::default(),
-    );
-    creature.state.facing_right = true;
-    let giver = PropAnchor::for_creature(&creature);
-    creature.state.facing_right = false;
-    let taker = PropAnchor::for_creature(&creature);
-    assert!(giver.dx > taker.dx);
-}
-
 /// Whatever a companion wears shows on it, on every body plan and in every kind of pose — standing,
 /// walking, climbing, up high, eating, asleep, and mid-yawn — and sits on the body: every pixel it
 /// adds is within a few pixels of the companion's own drawing, a hat's height above the crown at
@@ -333,6 +289,195 @@ fn every_piece_can_be_pictured_on_its_own() {
                 (piece.width(), piece.height()),
                 "{family:?}: {accessory:?}"
             );
+        }
+    }
+}
+
+/// Every kind of body a belonging is held by, at the smallest and largest a companion stands:
+/// the three original families, a recipe of each body plan, the Echo Fox, and a sculpted form of
+/// each plan.
+fn holding_subjects() -> Vec<(String, AppearanceGenome)> {
+    use formiga_core::forms::{Design, Form, Plan, Sculpt, plain_face};
+    let preview = World::preview_adult(
+        [29; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    )
+    .appearance;
+    let mut kinds: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        for limbs in 0..=2 {
+            design.classic.limbs = limbs;
+            let mut appearance = preview.clone();
+            appearance.design = Some(design);
+            kinds.push((format!("{plan:?} limbs {limbs}"), appearance));
+        }
+    }
+    kinds.push((
+        "Echo Fox".into(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    for plan in Plan::ALL {
+        let design = Design {
+            form: Form::Sculpted {
+                sculpt: Sculpt::starter(plan),
+            },
+            face: plain_face(),
+        };
+        kinds.push((format!("sculpted {plan:?}"), design.genome(&preview)));
+    }
+    kinds
+        .into_iter()
+        .flat_map(|(name, genome)| {
+            [formiga_core::STATURE_MIN, formiga_core::STATURE_MAX].map(|stature| {
+                let mut sized = genome.clone();
+                sized.logical_size = formiga_core::size_for(stature, 100);
+                (format!("{name} at {stature}"), sized)
+            })
+        })
+        .collect()
+}
+
+/// Every clip whose own frames carry no marks of what is held renders exactly as it did before
+/// belongings were placed from each frame's paw and mouth: holding something moves the thing,
+/// never the body. Eating leaves crumbs and play a trail in the body's own frame, from where
+/// the food and the toy are, so those two are left out. A change that means to redraw one of
+/// these clips records the new digest here.
+#[test]
+fn clips_that_hold_nothing_of_their_own_draw_as_they_did() {
+    let mut digest = Sha256::new();
+    for (_, genome) in holding_subjects() {
+        for clip in BodyClip::baked() {
+            if matches!(
+                clip,
+                BodyClip::Action(ActionKind::Eat | ActionKind::SoloPlay)
+            ) {
+                continue;
+            }
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                digest.update(body.canvas.rgba_bytes());
+                digest.update([body.face_anchor.x as u8, body.face_anchor.y as u8]);
+            }
+        }
+    }
+    let hex: String = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(
+        hex, "45ebc0a21f8339542153f1a59a714161b0bdba0d6fe4e4dec2ec33c2c429b304",
+        "a clip that holds nothing of its own drew differently"
+    );
+}
+
+/// Whatever a frame holds is held by the body drawn in it: at least one of the thing's pixels
+/// meets the paw the frame drew (on it, or beside it along a row or a column) or comes within
+/// two pixels of the mouth the face is drawn with, on every body, at both ends of the size
+/// range, in every frame of every clip that holds something.
+///
+/// Play is the one exception, because a toy never covers the eyes. On the two beats it is up in
+/// the air it is away from both; on the beats it comes back down, a toy too big to rest against
+/// a paw held up under the eyes slides along until it clears them, and is then within three
+/// pixels of that paw. A sculpted form plays at its nose, and a head carried as low as some are
+/// leaves no room under the eyes for a toy as tall as a rattle, so its play is left to the
+/// review sheets.
+#[test]
+fn every_belonging_is_held_in_a_drawn_paw_or_at_the_mouth() {
+    let mut misses = Vec::new();
+    for (name, genome) in holding_subjects() {
+        for clip in BodyClip::baked() {
+            let play = clip == BodyClip::Action(ActionKind::SoloPlay);
+            if play && genome.sculpt.is_some() {
+                continue;
+            }
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                let Some(held) = body.held else {
+                    continue;
+                };
+                if play && matches!(frame % 4, 1 | 2) {
+                    continue;
+                }
+                let mut prop = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+                held.paint(&mut prop, true);
+                let solid = |canvas: &Canvas, x: i32, y: i32| canvas.get(x, y).a > 0;
+                let things: Vec<(i32, i32)> = (0..FRAME_SIZE as i32)
+                    .flat_map(|y| (0..FRAME_SIZE as i32).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&prop, x, y))
+                    .collect();
+                // The paw: the body's own pixels within a pixel of where the frame says it holds
+                // things, which has to be on the drawing itself.
+                let hands = body.hands;
+                let paw: Vec<(i32, i32)> = (hands.y - 1..=hands.y + 1)
+                    .flat_map(|y| (hands.x - 1..=hands.x + 1).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&body.canvas, x, y))
+                    .collect();
+                let touching = |(x, y): (i32, i32)| {
+                    paw.iter().any(|&(px, py)| {
+                        if play {
+                            (x - px).abs().max((y - py).abs()) <= 3
+                        } else {
+                            (x - px).abs() + (y - py).abs() <= 1
+                        }
+                    })
+                };
+                let in_paw =
+                    solid(&body.canvas, hands.x, hands.y) && things.iter().any(|&at| touching(at));
+                let mouth = body.mouth;
+                let at_mouth = things
+                    .iter()
+                    .any(|&(x, y)| (x - mouth.x).abs() <= 2 && (y - mouth.y).abs() <= 2);
+                if !in_paw && !at_mouth {
+                    misses.push(format!("{name} {clip:?} frame {frame}"));
+                }
+            }
+        }
+    }
+    assert!(
+        misses.is_empty(),
+        "{} frames hold something away from both paw and mouth:\n{}",
+        misses.len(),
+        misses.join("\n")
+    );
+}
+
+/// The mouth a frame carries mouthfuls to is the mouth its face draws: an inked pixel of the
+/// face is on it or right beside it, on every body and in every clip.
+#[test]
+fn a_frames_mouth_is_where_its_face_draws_one() {
+    let state = FaceRenderState {
+        expression: ExpressionKind::Neutral,
+        eyelids: EyelidPose::Open,
+        gaze: GazeDirection::default(),
+    };
+    for (name, genome) in holding_subjects() {
+        let face = CreatureRenderer::render_face_frame(&genome, state);
+        for clip in BodyClip::baked() {
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                let half = FACE_FRAME_SIZE as i32 / 2;
+                let x = body.mouth.x - body.face_anchor.x + half;
+                let y = body.mouth.y - body.face_anchor.y + half;
+                assert!(
+                    (-1..=1).any(|dy| (-1..=1).any(|dx| face.get(x + dx, y + dy).a > 0)),
+                    "{name} {clip:?} frame {frame}: no mouth drawn at {:?}",
+                    body.mouth
+                );
+            }
         }
     }
 }

@@ -24,9 +24,10 @@ pub fn prop_variants(genome: &AppearanceGenome) -> (u8, u8, u8) {
     )
 }
 
-/// Where a body holds what it is using. Props are placed from these two points rather than from an
-/// offset guessed against the face, so a toy lands in the paw that is actually drawn and a snack
-/// arrives at the mouth that is eating it.
+/// Where a body holds what it is using, and how low it may go. Props are placed from the frame's
+/// own two points, read from the paw it drew and the mouth its face is drawn with (see
+/// [`HoldPoints`]), so a toy lands in the paw that is actually drawn and a snack arrives at the
+/// mouth that is eating it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PropHold {
     pub(crate) hands: PixelPoint,
@@ -34,49 +35,57 @@ pub(crate) struct PropHold {
     pub(crate) floor: i32,
     /// The lowest row this body's feet reach. Nothing it drops lands below it.
     pub(crate) ground: i32,
-    /// Which way is away from this body's own face: `1` for a body whose paws are in front of its
-    /// head, `-1` for one whose head leads and whose chest trails behind it.
+    /// Which way a toy is knocked from the paw: `1`, the way the frame faces, or `-1`, back along
+    /// a body whose head leads out over its paws.
     pub(crate) forward: i32,
+    /// The face anchor, which a toy in the air keeps clear of.
+    pub(crate) face: PixelPoint,
+    /// Whether `hands` is on a paw the frame drew, rather than under the mouth.
+    pub(crate) paw: bool,
 }
 
+/// What a frame holds from: its own `hold`, the face and paw of its `figure`, and the floor and
+/// ground the body stands on.
 pub(super) fn prop_hold(
     genome: &AppearanceGenome,
     pose: Pose,
-    face: PixelPoint,
     clip: BodyClip,
+    hold: HoldPoints,
+    figure: Figure,
 ) -> PropHold {
-    if genome.echo_fox {
-        return fox::prop_hold(pose, clip);
-    }
-    if let Some(design) = genome.design {
-        return modular::prop_hold(design, pose, scale(genome));
-    }
-    // The original families carry their face on the body itself, so a belonging is placed out to
-    // the side of the mass rather than in front of a separate head.
-    let (dx, dy) = match genome.family {
-        BodyFamily::Blob => (12, 4),
-        BodyFamily::Hopper => (12, 5),
-        // A soft quadruped's head is the anchor and its chest is behind it.
-        BodyFamily::SoftQuadruped => (-12, 7),
+    let (floor, ground) = if genome.echo_fox {
+        fox::footing(pose, clip)
+    } else if let Some(design) = genome.design {
+        modular::footing(design, pose, scale(genome))
+    } else {
+        // A blob's mass is pinned to row 38 and its feet hang two rows below it; the legged
+        // families stand on a ground of their own at row 45.
+        (
+            42,
+            match genome.family {
+                BodyFamily::Blob => 40,
+                BodyFamily::Hopper | BodyFamily::SoftQuadruped => 45,
+            },
+        )
     };
-    // A blob's mass is pinned to row 38 and its feet hang two rows below it; the legged families
-    // stand on a ground of their own at row 45.
-    let ground = match genome.family {
-        BodyFamily::Blob => 40,
-        BodyFamily::Hopper | BodyFamily::SoftQuadruped => 45,
+    // A soft quadruped's head leads over the paws it plays with, so a toy is knocked back along
+    // its body, away from the face; every other body knocks it forward.
+    let forward = if genome.design.is_none() && !genome.echo_fox && genome.sculpt.is_none() {
+        match genome.family {
+            BodyFamily::SoftQuadruped => -1,
+            BodyFamily::Blob | BodyFamily::Hopper => 1,
+        }
+    } else {
+        1
     };
     PropHold {
-        hands: PixelPoint {
-            x: face.x + dx,
-            y: face.y + dy,
-        },
-        mouth: PixelPoint {
-            x: face.x + 6,
-            y: face.y + 5,
-        },
-        floor: 42,
+        hands: hold.hands,
+        mouth: hold.mouth,
+        floor,
         ground,
-        forward: dx.signum(),
+        forward,
+        face: figure.face,
+        paw: figure.hand.is_some(),
     }
 }
 
@@ -85,15 +94,13 @@ pub(super) fn prop_hold(
 /// its middle goes.
 pub(super) fn activity_held(
     genome: &AppearanceGenome,
-    face: PixelPoint,
-    pose: Pose,
+    hold: PropHold,
     clip: BodyClip,
     frame: u8,
     reduce_motion: bool,
 ) -> Option<HeldPlacement> {
     let phase = if reduce_motion { 0 } else { frame % 4 };
     let (toy, snack, drink) = prop_variants(genome);
-    let hold = prop_hold(genome, pose, face, clip);
     let snack_at = |bite: u8, x: i32, y: i32| {
         Some(HeldPlacement::centred(
             HeldThing::Snack { kind: snack, bite },
@@ -105,20 +112,36 @@ pub(super) fn activity_held(
         BodyClip::Action(action) => action,
         // The eating gestures carry their food at the mouth: nibbled at in little dips, pushed in
         // for a big bite, lowered while the mouth works, and up over the face to drop in.
+        // Each is held in front of the mouth with its near edge at it, so what is eaten is seen
+        // going into the mouth rather than laid over the face.
         BodyClip::Gesture(Gesture::Nibble) => {
             let dip = [0, 1, 0, 1][usize::from(phase)];
-            return snack_at(1, hold.mouth.x, hold.mouth.y + 2 - dip);
+            return snack_at(1, hold.mouth.x + 4, hold.mouth.y + 3 - dip);
         }
         BodyClip::Gesture(Gesture::Chomp) => {
             let push = [0, 1, 2, 0][usize::from(phase)];
-            return snack_at(1, hold.mouth.x + 1 - push, hold.mouth.y + 3 - push);
+            return snack_at(1, hold.mouth.x + 5 - push, hold.mouth.y + 4 - push);
         }
+        // Lowered in the paw while the mouth works, or held under the mouth by a body with no
+        // paw free.
         BodyClip::Gesture(Gesture::Chew) => {
-            return snack_at(2, hold.mouth.x + 1, (hold.mouth.y + 6).min(hold.floor - 3));
+            return if hold.paw {
+                snack_at(2, hold.hands.x, hold.hands.y.min(hold.floor - 3))
+            } else {
+                snack_at(2, hold.mouth.x + 3, (hold.mouth.y + 4).min(hold.floor - 3))
+            };
         }
+        // Up over the face in the paw and dropped into the mouth; a body with no paw free
+        // tosses it up off the mouth instead.
         BodyClip::Gesture(Gesture::Gulp) => {
-            let up = [2, 7, 4, 0][usize::from(phase)];
-            return snack_at(0, hold.mouth.x, hold.mouth.y + 1 - up);
+            return match (hold.paw, phase) {
+                (true, 0..=2) => snack_at(0, hold.hands.x, hold.hands.y),
+                (true, _) => snack_at(0, hold.mouth.x + 4, hold.mouth.y + 2),
+                (false, _) => {
+                    let up = [1, 3, 2, 0][usize::from(phase)];
+                    snack_at(0, hold.mouth.x + 5, hold.mouth.y + 2 - up)
+                }
+            };
         }
         // Poses a meal borrows between bites, holding the food where the paws are.
         BodyClip::Gesture(Gesture::Gasp | Gesture::Loaf | Gesture::Worry) => {
@@ -136,7 +159,7 @@ pub(super) fn activity_held(
             // head, caught coming down, and back onto the paw. The toy is the thing that moves,
             // and it passes through the paw twice a loop, so play reads as play even on a body
             // whose forelimbs stay folded.
-            let (x, y, spin) = play_path(hold, phase);
+            let (x, y, spin) = play_path(hold, toy, phase);
             let thing = HeldThing::Toy {
                 kind: toy,
                 colourway: toy_colourway(genome),
@@ -145,30 +168,54 @@ pub(super) fn activity_held(
             Some(HeldPlacement::centred(thing, x, y))
         }
         ActionKind::Eat => {
-            // Carried up to the mouth and taken down to a crumb.
-            let lift = [0, 2, 3, 1][usize::from(phase)];
-            let x = hold.mouth.x - 1 + i32::from(phase == 0) * 2;
-            let y = hold.mouth.y + 2 - lift;
+            // Held up just in front of the mouth, its near edge at the mouth, eaten down bite by
+            // bite to a crumb. It is held no higher, so it never covers the eyes over the mouth.
             let thing = HeldThing::Snack {
                 kind: snack,
                 bite: phase,
             };
-            Some(HeldPlacement::centred(thing, x, y))
+            Some(HeldPlacement::centred(
+                thing,
+                hold.mouth.x + 5 - i32::from(phase == 3),
+                hold.mouth.y + 2,
+            ))
         }
         ActionKind::Drink => {
+            // Tipped up with its rim at the mouth for the sip, and lowered a little out in front
+            // between sips, its rim still under the mouth and the steam off a mug rising clear
+            // of the face.
             let tipped = phase == 1 || phase == 2;
-            let x = hold.mouth.x - 1;
-            let y = hold.mouth.y + 4 - i32::from(tipped) * 3;
+            let (dx, dy) = cup_hold(drink, tipped);
             let thing = HeldThing::Cup {
                 kind: drink,
                 tipped,
                 sip: phase % 2,
             };
-            Some(HeldPlacement::centred(thing, x, y))
+            Some(HeldPlacement::centred(
+                thing,
+                hold.mouth.x + dx,
+                hold.mouth.y + dy,
+            ))
         }
         // Down off a ledge, under an umbrella if the colony has one.
         ActionKind::Landing => snack_at(1, hold.hands.x, hold.hands.y.min(hold.floor - 3)),
         _ => None,
+    }
+}
+
+/// Where a cup's middle goes from the mouth, tipped up to it or lowered between sips. Each kind
+/// is held by its rim: a mug's is five rows above its middle and reaches five columns back, a
+/// shallow bowl's two rows up and wider still, and a bottle's cap six rows up and narrow, so a
+/// bottle is lowered under the mouth rather than out in front of it, and lower, so the straw
+/// standing out of it stays clear of the eyes.
+fn cup_hold(kind: u8, tipped: bool) -> (i32, i32) {
+    match (kind % DRINK_KINDS, tipped) {
+        (0, true) => (3, 4),
+        (0, false) => (5, 6),
+        (1, true) => (3, 1),
+        (1, false) => (5, 3),
+        (_, true) => (3, 5),
+        (_, false) => (1, 8),
     }
 }
 
@@ -180,8 +227,7 @@ pub(super) fn draw_activity_marks(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
     palette: Palette,
-    face: PixelPoint,
-    pose: Pose,
+    hold: PropHold,
     action: ActionKind,
     frame: u8,
     reduce_motion: bool,
@@ -189,10 +235,10 @@ pub(super) fn draw_activity_marks(
     let phase = if reduce_motion { 0 } else { frame % 4 };
     // Marks are coloured against the creature, not from it, so they stay readable on its coat.
     let palette = crate::prop_palette(palette, prop_signature(genome));
-    let hold = prop_hold(genome, pose, face, BodyClip::Action(action));
     match action {
         ActionKind::SoloPlay => {
-            let at = |phase: u8| play_path(hold, phase);
+            let toy = prop_variants(genome).0;
+            let at = |phase: u8| play_path(hold, toy, phase);
             let (x, y, _) = at(phase);
             if !reduce_motion {
                 let (px, py, _) = at((phase + 3) % 4);
@@ -223,30 +269,59 @@ pub(super) fn draw_activity_marks(
     }
 }
 
-/// Where the toy is on each beat of the play loop, and how far it has turned by then.
-pub(super) fn play_path(hold: PropHold, phase: u8) -> (i32, i32, u8) {
-    let (hx, hy) = (hold.hands.x, hold.hands.y);
-    let (dx, dy, spin) = match phase {
-        // Resting on the paw.
-        0 => (0, -1, 0),
+/// Where toy `kind` is on each beat of the play loop, and how far it has turned by then.
+pub(super) fn play_path(hold: PropHold, kind: u8, phase: u8) -> (i32, i32, u8) {
+    let spin = phase % 4;
+    let toy = HeldThing::Toy {
+        kind,
+        colourway: 0,
+        spin,
+    }
+    .drawn();
+    let (left, top, right, bottom) = toy.extent();
+    let forward = hold.forward;
+    // Nothing sinks into the surface underfoot, and the whole toy stays a pixel inside the frame
+    // for the atlas's margin.
+    let fit = |y: i32| {
+        y.min(hold.floor - 1 - bottom)
+            .clamp(1 - top, FRAME_SIZE as i32 - 2 - bottom)
+    };
+    // Resting against the paw on the side away from the body, its near edge on the paw's own
+    // row, so it is held by the paw rather than hung over whatever the paw is in front of. With
+    // no paw free it is kept up off the nose instead, hanging just under the mouth.
+    let (rest_x, rest_y) = if hold.paw {
+        let y = fit(hold.hands.y - 1);
+        (hold.hands.x - toy.edge(hold.hands.y - y, -forward), y)
+    } else {
+        (hold.hands.x, fit(hold.mouth.y + 1 - top))
+    };
+    let (dx, dy) = match spin {
+        0 => (0, 0),
         // Knocked up and away from the body.
-        1 => (3, -5, 1),
+        1 => (3, -4),
         // The top of its arc: clear of the creature, never over its face, and never so high that
         // the paw it came off has visibly let go of it.
-        2 => (5, -8, 2),
+        2 => (5, -7),
         // Coming back down onto the paw.
-        _ => (1, -4, 3),
+        _ => (1, -1),
     };
-    let dx = dx * hold.forward;
-    // Nothing sinks into the surface underfoot, and the widest toy still keeps the one-pixel
-    // margin the atlas needs without the whole sprite being shifted to make room for it.
-    (
-        (hx + dx).clamp(8, FRAME_SIZE as i32 - 9),
-        (hy + dy)
-            .min(hold.floor - 4)
-            .clamp(8, FRAME_SIZE as i32 - 9),
-        spin,
-    )
+    let y = fit(rest_y + dy);
+    let inside = |x: i32| x.clamp(1 - left, FRAME_SIZE as i32 - 2 - right);
+    // Never across the eyes: it slides on past the face, as little as it takes, which on the
+    // beats it rests against the paw is no more than a pixel or two along it.
+    let eyes = (
+        hold.face.x - 5,
+        hold.face.y - 4,
+        hold.face.x + 5,
+        hold.mouth.y - 3,
+    );
+    // Forward first; a face with no room left in front of it sends the toy back the other way.
+    let x = (0..FRAME_SIZE as i32)
+        .map(|slide| inside(rest_x + (dx + slide) * forward))
+        .chain((1..FRAME_SIZE as i32).map(|slide| inside(rest_x + (dx - slide) * forward)))
+        .find(|&x| !toy.covers((x, y), eyes))
+        .unwrap_or_else(|| inside(rest_x + dx * forward));
+    (x, y, spin)
 }
 
 /// Two short dashes along the way the toy has just come. Nothing here is animated on its own: the
