@@ -936,7 +936,7 @@ pub(super) fn gesture_limb_targets(
         }
         // Both paws out low in front, holding the can, tipping it further and back.
         Gesture::Pour => {
-            let tip = [0, 1, 1, 0][usize::from(frame % 4)];
+            let tip = pour_tip(frame);
             (
                 at(middle + 4 + tip, left.y + 3 + tip),
                 at(middle + 6 + tip, right.y + 2 + tip),

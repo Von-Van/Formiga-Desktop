@@ -804,7 +804,7 @@ impl Pose {
             Gesture::Skip | Gesture::Trudge => Self::default(),
             // Leant out over the patch, braced, tipping the can further and back.
             Gesture::Pour => {
-                let tip = [0, 1, 1, 0][usize::from(frame % 4)];
+                let tip = pour_tip(frame);
                 Self {
                     bob: tip,
                     squash_x: 1,
@@ -964,6 +964,14 @@ const SKIP_HOP: [i32; 6] = [0, 2, 1, 0, 2, 1];
 /// Whether `phase` of a skip has it landed, feet on the ground.
 pub(super) fn skip_landing(phase: usize) -> bool {
     SKIP_HOP[phase % 6] == 0
+}
+
+/// How far the can is tipped on each of a pour's four frames: level, over, over, and level again.
+const POUR_TIP: [i32; 4] = [0, 1, 1, 0];
+
+/// How far frame `frame` of a pour has the can tipped over: 0 while it is level.
+pub(super) fn pour_tip(frame: u8) -> i32 {
+    POUR_TIP[usize::from(frame % 4)]
 }
 
 pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {

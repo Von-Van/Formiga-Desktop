@@ -373,7 +373,14 @@ past them (`Drawn::covers`), and on the beats it comes back to a paw held up und
 that is as little as it takes. The atlas keeps each slot's hands point beside its face anchor
 (`AtlasPixels::hands`), and the overlay centres a held-up find, a watering can or anything picked
 on it through `held_up_at`, which keeps a thing `HELD_UP_REACH` across off the eyes, moving it
-forward, down or back, and up over the head only when nothing else clears them.
+forward, down or back, and up over the head only when nothing else clears them. What the village
+puts in a paw comes from `village_held` (`renderer/beats.rs`), from the frame of the pose and
+nothing else: on the frames a pour leans into the can (`pour_tip` in `renderer/pose.rs`, the same
+table the pose and the paws tip by) the can is drawn from its tipped cell and the water from the
+spout `PropSprite::spout` gives that cell, the water cell's stream starting at its own middle so
+its quad centres on the spout either way round; level frames draw the can upright and dry. That is
+still one quad for the can and a second only while it pours, and the village-life, doings and
+hold sheets draw them through the same call.
 
 A companion eating has a `Meal` (`formiga-core/src/meals.rs`), runtime only like `Presence`:
 `world/meals.rs` gives one to anyone whose action has just become Eat, carries it while they eat,
@@ -1090,8 +1097,8 @@ home's corner, display, scale, and accessible region. Lots without room remain s
 all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
 village. The renderer builds one 256×112 seed-derived sheet of 16×16 cells, sixteen to a row — the
 twenty belongings, the fifteen hangout spots, every garden at each of its four stages, the fifteen
-ornaments, and the small things a companion holds or chases in the village: a watering can and its
-water, what is picked from each garden, an apple, a leaf, a blossom, and the Z that drifts up out of
+ornaments, and the small things a companion holds or chases in the village: a watering can upright
+and tipped to pour, its water, what is picked from each garden, an apple, a leaf, a blossom, and the Z that drifts up out of
 a house somebody is asleep in. It rebuilds the ground's vertices only when object state, a garden's
 stage, cottages, home state, habitat, display geometry, or scale changes.
 

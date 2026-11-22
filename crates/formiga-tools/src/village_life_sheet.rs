@@ -545,33 +545,18 @@ pub fn run(path: PathBuf) -> Result<()> {
             if let Some(beat) = creature.state.beat
                 && let Some(prop) = beat.held
             {
-                let frame = CreatureRenderer::render_body_frame(
+                for (sprite, at) in crate::pose_sheets::village_held_cells(
                     &creature.appearance,
+                    prop,
                     body.clip,
                     body.frame,
-                    false,
-                );
-                let hands = formiga_art::held_up_at(
-                    frame.hands,
-                    frame.face_anchor,
-                    formiga_art::HELD_UP_REACH,
-                );
-                let hand_x = if body.facing_right {
-                    hands.x
-                } else {
-                    FRAME_SIZE as i32 - hands.x
-                };
-                let centre_x = frame_left + hand_x;
-                let centre_y = frame_top + hands.y;
-                held.push((PropSprite::of(prop), !body.facing_right, centre_x, centre_y));
-                if beat.kind == BeatKind::Watering {
-                    let ahead = if body.facing_right { 7 } else { -7 };
-                    held.push((
-                        PropSprite::Water,
-                        !body.facing_right,
-                        centre_x + ahead,
-                        centre_y + 7,
-                    ));
+                ) {
+                    let x = if body.facing_right {
+                        at.x
+                    } else {
+                        FRAME_SIZE as i32 - at.x
+                    };
+                    held.push((sprite, !body.facing_right, frame_left + x, frame_top + at.y));
                 }
             }
         }

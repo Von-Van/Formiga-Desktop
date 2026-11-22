@@ -23,6 +23,7 @@ mod playthings;
 mod pose;
 mod props;
 pub use accessories::AccessoryArt;
+pub use beats::village_held;
 use classic::*;
 use effects::*;
 use face::*;

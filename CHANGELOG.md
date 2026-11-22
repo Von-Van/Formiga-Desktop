@@ -22,6 +22,10 @@ All notable changes are documented here.
   presents its find against its chest and a Long body in its raised forepaw, a body standing on
   all four carries things in its mouth, snacks and cups come to the mouth itself, and nothing
   held goes over the eyes. Clips that hold nothing draw exactly as before.
+- Watering pours in time with the pour. The can tips over on the frames the companion leans into
+  it and comes level when it does, and the water runs out of the spout only while it is tipped,
+  rather than appearing beside an upright can for most of the watering whatever the pose. The water
+  starts at the spout facing either way.
 
 ## [0.68.23] - 2026-11-12
 

@@ -1601,27 +1601,18 @@ impl OverlayRenderer {
                 (quad, sheet)
             },
         );
-        if let Some(beat) = creature.state.beat
-            && let Some(prop) = beat.held
-        {
-            let unit = display_scale as f32;
-            let centre = hands;
-            held[0] = Some(self.object_quad_at(
-                ColonyObjectRenderer::prop_cell(PropSprite::of(prop)),
-                centre,
-                !facing_right,
-                display_scale,
-                occlusion_enabled,
-            ));
-            if beat.kind == BeatKind::Watering && (0.15..0.9).contains(&beat.progress()) {
-                let ahead = if facing_right { 1.0 } else { -1.0 };
-                held[1] = Some(self.object_quad_at(
-                    ColonyObjectRenderer::prop_cell(PropSprite::Water),
-                    (centre.0 + ahead * 7.0 * unit, centre.1 + 7.0 * unit),
-                    !facing_right,
-                    display_scale,
-                    occlusion_enabled,
-                ));
+        if let Some(prop) = creature.state.beat.and_then(|beat| beat.held) {
+            let cells = village_held_cells(prop, clip, frame, hands, facing_right, display_scale);
+            for (quad, cell) in held.iter_mut().zip(cells) {
+                *quad = cell.map(|(cell, centre)| {
+                    self.object_quad_at(
+                        cell,
+                        centre,
+                        !facing_right,
+                        display_scale,
+                        occlusion_enabled,
+                    )
+                });
             }
         }
         (body, face, trinket, held, carried, tether)
@@ -1819,6 +1810,32 @@ pub(crate) fn render_divisor(half_allowed: bool, scale_factor: f32, display_scal
     } else {
         1
     }
+}
+
+/// The cells and overlay centres of what the village has put in a companion's paws in `frame` of
+/// `clip`: the can, or whatever it picked, centred on `hands`, and then the water, centred on the
+/// can's spout while the pour has it tipped over. Both are turned with the frame, so the water
+/// still runs from the spout when it faces left.
+fn village_held_cells(
+    prop: VillageProp,
+    clip: BodyClip,
+    frame: u8,
+    hands: (f32, f32),
+    facing_right: bool,
+    display_scale: u8,
+) -> [Option<(u32, (f32, f32))>; 2] {
+    let (sprite, water) = formiga_art::village_held(prop, clip, frame);
+    let unit = f32::from(display_scale);
+    let ahead = if facing_right { unit } else { -unit };
+    [
+        Some((ColonyObjectRenderer::prop_cell(sprite), hands)),
+        water.map(|(x, y)| {
+            (
+                ColonyObjectRenderer::prop_cell(PropSprite::Water),
+                (hands.0 + x as f32 * ahead, hands.1 + y as f32 * unit),
+            )
+        }),
+    ]
 }
 
 #[cfg(test)]

@@ -215,9 +215,9 @@ pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
 /// Every body going about the village's business, frame by frame with its face, at 2x — the
 /// size a desktop at display scale 2 draws a companion — so what reads and what doesn't is judged
 /// where it will be seen: watering, picking, tending, holding up what it grew, eating, drinking,
-/// keeping a toy up, playing with a friend, saying hello, and being petted. What the village puts
-/// in its hands, a watering can or what it picked, is drawn over the body by the overlay and is
-/// not drawn here.
+/// keeping a toy up, playing with a friend, saying hello, and being petted. The watering can is
+/// drawn in its paws as the overlay draws it, tipped and pouring on the frames the pour leans in;
+/// what it picks is left to the hold sheet.
 pub fn doings_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 2;
     let clips: [(formiga_art::BodyClip, FaceRenderState); 10] = {
@@ -258,6 +258,7 @@ pub fn doings_sheet(path: PathBuf) -> Result<()> {
             (G(Gesture::Bask), gesture_face(Gesture::Bask)),
         ]
     };
+    let objects = formiga_art::ColonyObjectRenderer::render_atlas([61_u8; 32]);
     let subjects = gesture_subjects();
     let cell = FRAME_SIZE * SCALE;
     let columns: u32 = clips
@@ -276,9 +277,31 @@ pub fn doings_sheet(path: PathBuf) -> Result<()> {
         let mut column = 0_u32;
         for (clip, face) in clips {
             for frame in 0..formiga_art::AnimationSpec::for_clip(clip).frames {
-                let rendered = CreatureRenderer::render_composited_frame(
+                let mut rendered = CreatureRenderer::render_composited_frame(
                     genome, clip, frame, true, false, face,
                 );
+                if clip == formiga_art::BodyClip::Gesture(Gesture::Pour) {
+                    for (sprite, at) in
+                        village_held_cells(genome, VillageProp::WateringCan, clip, frame)
+                    {
+                        let tile = atlas_cell(
+                            &objects,
+                            formiga_art::ColonyObjectRenderer::cell_origin(
+                                formiga_art::ColonyObjectRenderer::prop_cell(sprite),
+                            ),
+                            formiga_art::COLONY_OBJECT_SIZE,
+                        );
+                        let half = formiga_art::COLONY_OBJECT_SIZE as i32 / 2;
+                        for y in 0..tile.height() as i32 {
+                            for x in 0..tile.width() as i32 {
+                                let pixel = tile.get(x, y);
+                                if pixel.a > 0 {
+                                    rendered.set(at.x - half + x, at.y - half + y, pixel);
+                                }
+                            }
+                        }
+                    }
+                }
                 blit_scaled(
                     &mut pixels,
                     width,
@@ -814,6 +837,32 @@ fn crosshair(
     }
 }
 
+/// What the village has put in a companion's paws in `frame` of `clip`, as the overlay draws it
+/// with the frame facing right: each cell of the colony's object sheet and where in the frame its
+/// middle goes — the can (tipped while it pours) or what was picked on the paw, and the water from
+/// the spout for as long as the can is tipped.
+pub(crate) fn village_held_cells(
+    genome: &AppearanceGenome,
+    prop: VillageProp,
+    clip: formiga_art::BodyClip,
+    frame: u8,
+) -> Vec<(formiga_art::PropSprite, PixelPoint)> {
+    let body = CreatureRenderer::render_body_frame(genome, clip, frame, false);
+    let hands = formiga_art::held_up_at(body.hands, body.face_anchor, formiga_art::HELD_UP_REACH);
+    let (held, water) = formiga_art::village_held(prop, clip, frame);
+    std::iter::once((held, hands))
+        .chain(water.map(|(x, y)| {
+            (
+                formiga_art::PropSprite::Water,
+                PixelPoint {
+                    x: hands.x + x,
+                    y: hands.y + y,
+                },
+            )
+        }))
+        .collect()
+}
+
 /// A cell `size` pixels square cut from an atlas at `origin`.
 fn atlas_cell(atlas: &formiga_art::Canvas, (x0, y0): (u32, u32), size: u32) -> formiga_art::Canvas {
     let mut cell = formiga_art::Canvas::new(size, size);
@@ -945,8 +994,7 @@ pub fn hold_sheet(path: PathBuf) -> Result<()> {
                     body.face_anchor,
                     formiga_art::HELD_UP_REACH,
                 );
-                let centre = (held_up.x, held_up.y);
-                let mut overlay = |thing: &formiga_art::Canvas, (cx, cy): (i32, i32)| {
+                let mut overlay = |thing: &formiga_art::Canvas, PixelPoint { x: cx, y: cy }| {
                     let half = thing.width() as i32 / 2;
                     for y in 0..thing.height() as i32 {
                         for x in 0..thing.width() as i32 {
@@ -957,18 +1005,22 @@ pub fn hold_sheet(path: PathBuf) -> Result<()> {
                         }
                     }
                 };
-                match clip {
+                let village = match clip {
                     formiga_art::BodyClip::Action(ActionKind::PresentDiscovery) => {
-                        overlay(&find, centre);
+                        overlay(&find, held_up);
+                        None
                     }
-                    formiga_art::BodyClip::Gesture(Gesture::Pour) => {
-                        overlay(&prop(PropSprite::WateringCan), centre);
-                        overlay(&prop(PropSprite::Water), (centre.0 + 7, centre.1 + 7));
-                    }
+                    formiga_art::BodyClip::Gesture(Gesture::Pour) => Some(VillageProp::WateringCan),
                     formiga_art::BodyClip::Gesture(Gesture::Pluck) => {
-                        overlay(&prop(PropSprite::Carrot), centre);
+                        Some(VillageProp::Produce(GardenKind::Vegetables))
                     }
-                    _ => {}
+                    _ => None,
+                };
+                for (sprite, at) in village
+                    .map(|held| village_held_cells(genome, held, clip, frame))
+                    .unwrap_or_default()
+                {
+                    overlay(&prop(sprite), at);
                 }
                 let origin = (left, top + HEADER);
                 crate::blit_canvas_scaled(&mut pixels, width, origin.0, origin.1, &picture, SCALE);
