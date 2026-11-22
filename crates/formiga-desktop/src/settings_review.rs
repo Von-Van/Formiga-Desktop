@@ -785,7 +785,7 @@ fn the_sticker_and_colony_portrait_controls_ask_the_app_for_an_export() {
 
     h.tab = SettingsTab::Colony;
     let creature = h.save.creatures[0].id;
-    h.click("Share Mallow");
+    h.click("Care & share");
     // The clip is chosen right beside the button, and carried with the request.
     h.clubhouse.colony.sticker_clip = StickerClip::Dance;
     assert_eq!(
@@ -1078,6 +1078,7 @@ fn all_ui_artwork_together_fits_the_budget() {
             &h.save,
             &h.monitors,
             crate::clubhouse::FormigaHomeView::default(),
+            &mut h.clubhouse.colony,
             &mut SettingsOutcome::default(),
         );
     });
@@ -1584,7 +1585,7 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
         }
         // A section open, as it reads on its own.
         for (tab, section) in [
-            (SettingsTab::Colony, "share"),
+            (SettingsTab::Colony, "care"),
             (SettingsTab::General, "desktop"),
         ] {
             let mut h = Harness::new(tab);
@@ -1602,7 +1603,12 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
             ("wardrobe", ThemeChoice::Dark),
             ("collection", ThemeChoice::Light),
         ] {
-            let mut h = Harness::new(SettingsTab::Colony);
+            // The collection is kept with the village's keepsakes.
+            let mut h = Harness::new(if section == "wardrobe" {
+                SettingsTab::Colony
+            } else {
+                SettingsTab::Home
+            });
             // Tall enough for the page's list of sections to be on it.
             h.screen = egui::vec2(940.0, 1400.0);
             configure_style(
@@ -1639,7 +1645,7 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
             }
             h.frame(Vec::new());
             h.picture()
-                .save(path.join(format!("Colony-940-{theme:?}-100-{section}.png")))
+                .save(path.join(format!("{:?}-940-{theme:?}-100-{section}.png", h.tab)))
                 .unwrap();
             configure_style(&h.context, AppearancePreferences::default());
         }
@@ -1696,9 +1702,9 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     assert!(shown(&h, "Something to wear"));
     assert!(!shown(&h, "Save name"), "the name is in its own section");
     h.scroll_page(400.0);
-    let list = h.text_top("Share Mallow");
+    let list = h.text_top("Care & share");
     // Opened, the section stands alone under a way back, and the companion's summary is gone.
-    h.click("Share Mallow");
+    h.click("Care & share");
     h.frame(Vec::new());
     assert!(shown(&h, "Copy seed"));
     assert!(shown(&h, "\u{2039} Your colony"));
@@ -1707,9 +1713,9 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     h.click("\u{2039} Your colony");
     h.frame(Vec::new());
     assert!(!shown(&h, "Copy seed"));
-    assert!((h.text_top("Share Mallow") - list).abs() < 1.0);
+    assert!((h.text_top("Care & share") - list).abs() < 1.0);
     // Escape goes back the same way, but not while something is being typed.
-    h.click("Name and where they like to be");
+    h.click("Care & share");
     h.frame(Vec::new());
     assert!(shown(&h, "Save name"));
     h.frame(key(egui::Key::Escape, egui::Modifiers::NONE));
@@ -1739,16 +1745,8 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
 /// The sections each page keeps beyond its first view, by the keys the page opens them by.
 fn sections_of(page: SettingsTab) -> &'static [&'static str] {
     match page {
-        SettingsTab::Colony => &[
-            "name",
-            "wardrobe",
-            "farm",
-            "share",
-            "care",
-            "together",
-            "collection",
-        ],
-        SettingsTab::Home => &["ground", "where", "pictures", "belongings"],
+        SettingsTab::Colony => &["wardrobe", "together", "care"],
+        SettingsTab::Home => &["ground", "where", "pictures", "collection", "belongings"],
         SettingsTab::General => &["desktop", "routines", "notebook"],
         SettingsTab::About => &["backups", "apps", "updates", "privacy", "kept"],
         _ => &[],
@@ -1890,8 +1888,8 @@ const TOURED: [SettingsTab; 19] = [
     SettingsTab::Colony,
     SettingsTab::Colony,
     SettingsTab::Colony,
-    SettingsTab::Colony,
     SettingsTab::Studio,
+    SettingsTab::Home,
     SettingsTab::Home,
     SettingsTab::Home,
     SettingsTab::Journal,
@@ -1937,16 +1935,16 @@ fn a_new_colony_is_shown_round_every_page_and_can_finish_the_tour() {
 fn the_tour_goes_back_a_step_and_can_be_skipped_from_any() {
     let mut h = Harness::new(SettingsTab::Colony);
     h.save.companion.onboarding_complete = false;
-    for _ in 0..10 {
+    for _ in 0..9 {
         h.click("Next");
     }
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Studio);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 11 OF 19"));
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 19"));
     h.click("Back");
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Colony);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 19"));
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 9 OF 19"));
     assert!(h.click("Skip the tour").complete_onboarding);
     h.frame(Vec::new());
     assert_eq!(tour_header(&h), None);
@@ -2469,7 +2467,7 @@ fn formiga_farm_is_offered_only_while_it_is_installed() {
     };
     h.clubhouse.formiga_farm = installed;
     let id = h.selected.expect("a companion's page");
-    h.click("A new look");
+    h.click("Care & share");
     assert_eq!(
         h.click("Reshape in Formiga Farm").open_farm,
         Some(FarmRequest::Reshape(id))
@@ -3624,4 +3622,84 @@ fn a_find_is_named_in_the_journal() {
         clubhouse::moment_text(&h.save, &entry),
         "Mallow found a key"
     );
+}
+
+/// Everything that changes or shares a companion is in one place at the foot of its page, and the
+/// collection is with the village's keepsakes; the page itself is for reading.
+#[test]
+fn the_controls_step_back_to_the_foot_of_the_page() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 3000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Something to wear"));
+    assert!(shown(&h, "Care & share"));
+    for gone in [
+        "Name and where they like to be",
+        "Share Mallow",
+        "Keeping and starting over",
+        "The collection",
+        "Save name",
+    ] {
+        assert!(!shown(&h, gone), "{gone} is still on the companion's page");
+    }
+    assert!(
+        h.text_top("Care & share") > h.text_top("Something to wear"),
+        "Care & share is at the foot"
+    );
+    h.click("Care & share");
+    h.frame(Vec::new());
+    for there in ["Save name", "Copy seed", "Export creature card…"] {
+        assert!(shown(&h, there), "{there} is under Care & share");
+    }
+    h.tab = SettingsTab::Home;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "The collection"), "the collection is on Home");
+}
+
+/// A companion is renamed where its name is written: click the name, type, and Enter keeps it;
+/// Escape leaves it as it was.
+#[test]
+fn a_companion_is_renamed_where_its_name_is_written() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 1200.0);
+    let id = h.save.creatures[0].id;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let heading = |h: &Harness| {
+        h.labels
+            .iter()
+            .filter(|(text, _)| text == "Mallow")
+            .max_by(|a, b| a.1.height().total_cmp(&b.1.height()))
+            .expect("the name heading")
+            .1
+    };
+    h.click_at(heading(&h).center());
+    h.frame(Vec::new());
+    assert!(shown(
+        &h,
+        "Enter keeps the new name; Esc leaves it as it was."
+    ));
+    let select_all = egui::Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    h.frame(vec![
+        select_all.clone(),
+        egui::Event::Text("Biscuit".into()),
+    ]);
+    let outcome = h.frame(key(egui::Key::Enter, egui::Modifiers::NONE));
+    assert_eq!(outcome.rename_creature, Some((id, "Biscuit".into())));
+    // Escape leaves the name as it was.
+    h.frame(Vec::new());
+    h.click_at(heading(&h).center());
+    h.frame(vec![select_all, egui::Event::Text("Nope".into())]);
+    let outcome = h.frame(key(egui::Key::Escape, egui::Modifiers::NONE));
+    h.frame(Vec::new());
+    assert_eq!(outcome.rename_creature, None);
+    assert!(h.clubhouse.colony.renaming.is_none());
 }

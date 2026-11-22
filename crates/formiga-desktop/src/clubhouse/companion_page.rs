@@ -247,17 +247,23 @@ pub(crate) fn arrived_today(
     creature.born_at_utc.to_offset(offset).date() >= now.to_offset(offset).date()
 }
 
-/// The companion first: its portrait, `portrait` across, beside its name in the hand, its
-/// temperament once, its traits run over with a highlighter, and what it is doing. `aside` adds
-/// whatever else belongs beside the portrait, under those.
+/// The companion first: its portrait beside its name in the hand, its temperament once, its traits
+/// run over with a highlighter, and what it is doing. `aside` adds whatever else belongs beside
+/// the portrait, under those.
+///
+/// The name is renamed where it is written: clicked, it becomes a field holding the name, Enter
+/// hands back what was typed for the page to check and keep, and Escape, or clicking away, leaves
+/// the name as it was. `renaming` is the name being typed, and whose.
 pub(crate) fn header(
     ui: &mut Ui,
     shell: &mut Shell,
     creature: &Creature,
     creatures: &[Creature],
     now: OffsetDateTime,
+    renaming: &mut Option<(CreatureId, String)>,
     aside: impl FnOnce(&mut Ui),
-) {
+) -> Option<String> {
+    let mut submitted = None;
     let scale = journal::text_scale(ui);
     // 144 points where there is room beside it for the words, and never under 96.
     let portrait = if ui.available_width() >= 480.0 {
@@ -268,12 +274,52 @@ pub(crate) fn header(
     journal::ruled_row(ui, |ui| {
         shell.portrait(ui, creature, portrait);
         ui.vertical(|ui| {
-            journal::write(
-                ui,
-                RichText::new(&creature.name)
-                    .font(formiga_pencil::hand_bold(40.0 * scale.min(1.2)))
-                    .color(ink()),
-            );
+            let field = egui::Id::new(("rename", creature.id));
+            match renaming.as_mut().filter(|(id, _)| *id == creature.id) {
+                Some((_, typed)) => {
+                    let edit = journal::on_the_line(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(typed)
+                                .id(field)
+                                .font(formiga_pencil::hand_bold(28.0 * scale.min(1.2)))
+                                .char_limit(24)
+                                .desired_width((ui.available_width() - 8.0).clamp(120.0, 320.0)),
+                        )
+                    })
+                    .inner;
+                    if edit.lost_focus() {
+                        if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                            submitted = Some(typed.clone());
+                        } else {
+                            *renaming = None;
+                        }
+                    }
+                    journal::write(
+                        ui,
+                        RichText::new("Enter keeps the new name; Esc leaves it as it was.")
+                            .small()
+                            .color(muted()),
+                    );
+                }
+                None => {
+                    let name = journal::write_with(
+                        ui,
+                        RichText::new(&creature.name)
+                            .font(formiga_pencil::hand_bold(40.0 * scale.min(1.2)))
+                            .color(ink()),
+                        None,
+                        egui::Sense::click(),
+                    )
+                    .on_hover_text("Click to rename");
+                    if name.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+                    }
+                    if name.clicked() {
+                        *renaming = Some((creature.id, creature.name.clone()));
+                        ui.memory_mut(|memory| memory.request_focus(field));
+                    }
+                }
+            }
             journal::write(
                 ui,
                 RichText::new(creature.temperament_phrase()).color(forest()),
@@ -313,6 +359,7 @@ pub(crate) fn header(
             aside(ui);
         });
     });
+    submitted
 }
 
 /// A companion caught in the middle of its newest little habit, or of its celebration while it

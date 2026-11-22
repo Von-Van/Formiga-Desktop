@@ -31,6 +31,13 @@ All notable changes are documented here.
   friend Tofu, 9 Sep · first find a key, 12 Sep"), and its little ways beside a picture of it doing
   its newest one. The Notes row is gone, since everything it held is on the page. The journal
   names a first find ("Moss found a key") instead of "found a little treasure".
+- A companion's page is read first and changed second. Everything that changes or shares it is one
+  row at the foot, Care & share: its name, where it likes to be, Formiga Farm, its code, card and
+  sticker, and keeping, removing and starting over. Click its name where it is written to rename
+  it; Enter keeps the new name and Escape leaves it. The collection of everything the colony
+  could find moves to Home & keepsakes, beside the trees its finds hang in. An open section's way
+  back is the page's corner turned up at its foot, "‹ Your colony", as well as Escape, instead of
+  a button above its heading, on every page with sections.
 
 ### Fixed
 

@@ -693,7 +693,7 @@ impl JournalState {
                 ui.label(
                     "When a companion brings something back for the first time, it is recorded \
                      here with the date and who found it. Everything still to find is in the \
-                     Collection, on the Your colony page.",
+                     Collection, on the Home & keepsakes page.",
                 );
             });
             ui.add_space(8.0);
