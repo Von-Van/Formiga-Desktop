@@ -1725,7 +1725,18 @@ fn go_toward(
             creature.state.attention = None;
             if creature.state.action != step.action {
                 creature.state.action = step.action;
-                creature.state.action_elapsed = 0.0;
+                creature.state.action_elapsed = journey.action_elapsed();
+            }
+            // Topping out onto a window on the way over, in the climb's own mantle.
+            if !step.complete
+                && let Some((gesture, looking)) = step.pose
+            {
+                super::journeys::strike_journey_pose(
+                    creature,
+                    gesture,
+                    looking,
+                    journey.action_elapsed(),
+                );
             }
             if step.complete {
                 let surface = journey.surface().clone();

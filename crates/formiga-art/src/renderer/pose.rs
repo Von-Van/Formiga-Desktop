@@ -30,6 +30,12 @@ pub(super) struct Pose {
     /// Feet set out to the sides, in art pixels: sat down on something with its legs out in
     /// front. Only a seated pose asks for it, so no standing clip changes shape.
     pub(super) splay: i32,
+    /// The front foot drawn up this many pixels off the ground, its knee brought up: hooking a
+    /// leg over a ledge. Only the mantle asks for it, so no other clip changes shape.
+    pub(super) knee: i32,
+    /// The back foot hanging this many pixels below the ground: a leg still trailing over the
+    /// edge of a ledge the rest of the body is up on. Only the mantle asks for it.
+    pub(super) trail: i32,
 }
 
 impl Pose {
@@ -237,17 +243,23 @@ impl Pose {
                 ..Self::default()
             },
             ActionKind::ClimbWindow => Self::climb(frame),
-            ActionKind::Dangle => Self {
-                bob: 0,
-                squash_x: -1,
-                squash_y: 1,
-                step_a: walk,
-                step_b: -walk,
-                play_lift: 1,
-                appendage_lift: 2,
-                tail_sway: alternate * 2,
-                ..Self::default()
-            },
+            // Hanging by its paws with its legs swinging slowly together, out to one side and
+            // up a little, back through the middle, and out to the other, the tail following
+            // them round a beat behind. The paws stay where they hold the ledge.
+            ActionKind::Dangle => {
+                let swing = [0, 2, 0, -2][usize::from(frame % 4)];
+                Self {
+                    bob: 0,
+                    squash_x: -1,
+                    squash_y: 1,
+                    step_a: swing,
+                    step_b: swing,
+                    play_lift: 1,
+                    appendage_lift: 2,
+                    tail_sway: alternate * 2,
+                    ..Self::default()
+                }
+            }
             // The plain peek a creature does while it works out what it is looking at. Its own
             // clip still reads, so it keeps it; it only gains a lean toward the thing, so that
             // even the unposed half of window attention is pointed at something.
@@ -478,6 +490,8 @@ impl Pose {
             // Ears up for the look and down again, which is what tells a look from a sway.
             ear_perk: [0, 0, 1, 2, 1, 0][beat],
             splay: 0,
+            knee: 0,
+            trail: 0,
         }
     }
 
@@ -490,6 +504,36 @@ impl Pose {
         // borrowing the two- and four-frame ones every other pose shares.
         let slow = usize::from(frame % 6);
         match gesture {
+            // Topping out onto a ledge, a frame for each beat of it (see
+            // `formiga_core::MANTLE_FRAMES_PER_SECOND`): squat over the edge with the chest on it
+            // and the front knee drawn up to it; raised up on both paws for the push, the back leg
+            // still trailing below; and stood on the ledge, settling onto its legs.
+            Gesture::Mantle => match frame.min(2) {
+                0 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: 1,
+                    tail_sway: -1,
+                    lean: 1,
+                    knee: 5,
+                    ..Self::default()
+                },
+                1 => Self {
+                    play_lift: 2,
+                    tail_sway: 1,
+                    lean: 1,
+                    trail: 3,
+                    ..Self::default()
+                },
+                _ => Self {
+                    bob: 1,
+                    squash_x: 1,
+                    squash_y: -1,
+                    tail_sway: 1,
+                    crouch: 1,
+                    ..Self::default()
+                },
+            },
             // A hop on every other beat, landing squashed and springing up stretched.
             Gesture::Cheer => {
                 let hop = [0, 2, 3, 1][usize::from(frame % 4)];
@@ -608,6 +652,8 @@ impl Pose {
                 // Ears up the whole time, with a single flick on the fourth frame.
                 ear_perk: [2, 2, 2, 1, 2, 2][slow],
                 splay: 0,
+                knee: 0,
+                trail: 0,
             },
             // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
             // mouth, held at the top, and settling down a little lower than it began. Played once:

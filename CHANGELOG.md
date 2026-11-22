@@ -13,6 +13,18 @@ All notable changes are documented here.
   and hardly at all on the reaches, frame for frame, and the climb still starts, ends and takes
   as long as it did. Every companion climbs on the same beat. The two frames fit in cells each
   creature's texture already had spare, so it costs no memory, and no other clip draws differently.
+- Topping out a climb is a mantle of its own rather than the end of a jump. Every climb used to
+  finish by hauling up in the climbing pose and then stepping in on the stiff legs a hop lands
+  on. Now the companion lays its chest and forearms over the edge with a knee drawn up to it,
+  pushes itself up on both paws planted flat on the ledge with its back leg still trailing, and
+  stands on the ledge with a little settle as it steps in. The haul and the step in change over
+  on the frame the art does, and the push is made the moment the paws plant, so they stay on
+  the ledge. It faces the window it is climbing onto the whole way up, and with reduced motion it
+  holds still on the push. A hop down still lands as a hop. The three frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws
+  differently.
+- A companion hanging from a ledge swings its legs slowly from side to side and glances down at
+  the drop now and then, for longer when the hang has it worried, instead of hanging still.
 
 ### Added
 

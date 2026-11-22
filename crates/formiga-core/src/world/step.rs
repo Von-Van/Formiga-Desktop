@@ -191,13 +191,18 @@ impl World {
                 );
                 return true;
             }
-            let (step, surface, into) = {
+            let (step, surface, into, climbing) = {
                 let journey = self
                     .window_journeys
                     .get_mut(&creature.id)
                     .expect("validated journey exists");
                 let step = journey.advance(dt);
-                (step, journey.surface().clone(), journey.action_elapsed())
+                (
+                    step,
+                    journey.surface().clone(),
+                    journey.action_elapsed(),
+                    matches!(journey, WindowJourney::Climb(_)),
+                )
             };
             let route_point_valid = desktop.monitors.iter().any(|monitor| {
                 monitor.bounds.contains(step.position)
@@ -235,7 +240,12 @@ impl World {
             }) {
                 creature.state.surface = surface.clone();
             }
-            creature.state.facing_right = step.position.x >= creature.state.position.x;
+            // A climb straight up and the haul at its top keep facing the way the creature came,
+            // which is the window it is climbing onto, rather than turning to face right for every
+            // step that goes nowhere across.
+            if !climbing || (step.position.x - creature.state.position.x).abs() >= 0.01 {
+                creature.state.facing_right = step.position.x >= creature.state.position.x;
+            }
             creature.state.position = step.position;
             if step.action != previous_action {
                 Self::emit(
@@ -257,6 +267,11 @@ impl World {
                         action: step.action,
                     },
                 );
+            }
+            if !step.complete
+                && let Some((gesture, looking)) = step.pose
+            {
+                strike_journey_pose(creature, gesture, looking, into);
             }
             if step.complete {
                 self.window_journeys.remove(&creature.id);

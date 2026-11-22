@@ -155,6 +155,9 @@ struct Placement {
     tail: i32,
     steps: [i32; 2],
     splay: i32,
+    /// The front foot drawn up and the back foot hanging, topping out onto a ledge.
+    knee: i32,
+    trail: i32,
 }
 
 impl Placement {
@@ -178,6 +181,8 @@ impl Placement {
             tail: pose.tail_sway.clamp(-1, 1),
             steps: [pose.step_a.clamp(-1, 1), pose.step_b.clamp(-1, 1)],
             splay: pose.splay.clamp(0, 2),
+            knee: pose.knee.clamp(0, 6),
+            trail: pose.trail.clamp(0, 3),
         }
     }
 
@@ -229,7 +234,7 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         let step = at.steps[side];
         let out = if side == 0 { -at.splay } else { at.splay };
         let x = at.ground.x + column + step + out;
-        let y = at.ground.y + FOOT_ROW - step.abs();
+        let y = at.ground.y + FOOT_ROW - step.abs() + if side == 0 { at.trail } else { -at.knee };
         for (dy, pixels) in foot.iter().enumerate() {
             row(c, x, y + dy as i32, pixels);
         }
@@ -256,12 +261,14 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
     // the way a companion's does but only a stub's length; holding on to a ledge is the one reach
     // that has to arrive, and goes all the way.
     let limbs = modular::limbs(clip, frame, body, BodyPlan::Upright);
+    // Pulling itself up onto a ledge, a paw has to arrive at the ledge too.
+    let arrives = hanging || clip == BodyClip::Gesture(Gesture::Mantle);
     let arms: [Option<(PixelPoint, PixelPoint)>; 2] = std::array::from_fn(|side| {
         let Limb::Reach(hand) = limbs[side] else {
             return None;
         };
         let root = at.body(SHOULDERS[side].0, SHOULDERS[side].1);
-        Some((root, if hanging { hand } else { stub(root, hand) }))
+        Some((root, if arrives { hand } else { stub(root, hand) }))
     });
     // A paw stretched up to a ledge goes up behind the cheek, which is wider than the body it
     // rises from; every other paw is in front.

@@ -360,18 +360,33 @@ impl AnimationSpec {
             Gesture::Chew => (2, 4),
             // Head back, mouth open, and down it goes.
             Gesture::Gulp => (4, 6),
+            // Chest over, push up, stand: the haul is the first two frames and the step in the
+            // third, at the rate the world times them by.
+            Gesture::Mantle => (3, formiga_core::MANTLE_FRAMES_PER_SECOND),
         };
         Self {
             frames,
             fps,
-            // A stretch and a yawn are done once, from the moment they start, and held at their
-            // last frame until they are let go; every other gesture loops for as long as the
-            // moment asks for it.
-            playback: if matches!(gesture, Gesture::Stretch | Gesture::Yawn | Gesture::Swoon) {
+            // A stretch, a yawn, a swoon and a mantle are done once, from the moment they start,
+            // and held at their last frame until they are let go; every other gesture loops for
+            // as long as the moment asks for it.
+            playback: if matches!(
+                gesture,
+                Gesture::Stretch | Gesture::Yawn | Gesture::Swoon | Gesture::Mantle
+            ) {
                 PlaybackMode::Hold
             } else {
                 PlaybackMode::Loop
             },
+        }
+    }
+
+    /// The frame a clip holds still on with reduced motion: the first for nearly every clip, and
+    /// the push up for a mantle, which says what it is doing better than any other moment of it.
+    pub fn still_frame(clip: impl Into<BodyClip>) -> u8 {
+        match clip.into() {
+            BodyClip::Gesture(Gesture::Mantle) => 1,
+            _ => 0,
         }
     }
 
@@ -1321,7 +1336,11 @@ impl CreatureRenderer {
         reduce_motion: bool,
         detail: u32,
     ) -> (RenderedBodyFrame, Option<Canvas>, HoldPoints) {
-        let frame = if reduce_motion { 0 } else { frame };
+        let frame = if reduce_motion {
+            AnimationSpec::still_frame(clip)
+        } else {
+            frame
+        };
         let clip = clip.body();
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.

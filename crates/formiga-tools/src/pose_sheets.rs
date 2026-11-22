@@ -22,7 +22,9 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Gasp => (ExpressionKind::Startled, EyelidPose::Open),
         Gesture::Cover => (ExpressionKind::Worried, EyelidPose::Closed),
         Gesture::Worry | Gesture::Balance => (ExpressionKind::Worried, EyelidPose::Open),
-        Gesture::Crouch | Gesture::Heave => (ExpressionKind::Determined, EyelidPose::Open),
+        Gesture::Crouch | Gesture::Heave | Gesture::Mantle => {
+            (ExpressionKind::Determined, EyelidPose::Open)
+        }
         Gesture::Reach | Gesture::Watch => (ExpressionKind::Curious, EyelidPose::Open),
         // Shown as the desktop shows the top of it: eyes screwed shut.
         Gesture::Stretch => (ExpressionKind::Content, EyelidPose::Closed),
@@ -457,27 +459,41 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
 /// gestures, so "does this look like anything in particular?" can be answered by looking.
 const REFERENCE_ACTIONS: [ActionKind; 2] = [ActionKind::Idle, ActionKind::InspectScreen];
 
+/// The gestures the gesture sheet shows frame by frame, one row each for every body, after every
+/// pose's own cell: the watching loop, because a held pose is only honest if it keeps moving
+/// while it holds, and a climb's mantle, because it is three beats that only read in order.
+const GESTURE_LOOPS: [Gesture; 2] = [Gesture::Watch, Gesture::Mantle];
+
+/// How many rows of cells the gesture sheet has, `cols` cells to a row.
+fn gesture_sheet_rows(cols: u32) -> u32 {
+    let subjects = gesture_subjects().len() as u32;
+    let references = reference_creatures().len() as u32;
+    let full_rows = ((ActionKind::ALL.len() + Gesture::ALL.len()) as u32).div_ceil(cols);
+    let gesture_rows = ((REFERENCE_ACTIONS.len() + Gesture::ALL.len()) as u32).div_ceil(cols);
+    // Each loop is followed by the same pose on a mini.
+    let loop_rows: u32 = GESTURE_LOOPS
+        .iter()
+        .map(|gesture| {
+            (u32::from(formiga_art::AnimationSpec::for_clip(*gesture).frames) + 1).div_ceil(cols)
+        })
+        .sum();
+    references * full_rows + (subjects - references) * gesture_rows + subjects * loop_rows
+}
+
 /// Three bands, all at 3x so a pose is judged near the size a desktop shows it at.
 ///
 /// First every action then every gesture, for each reference creature; then, for each modular body
 /// plan, standing about and plain peering followed by every gesture, so a new pose can be
-/// compared against both the nine it has to stay distinct from and the two it replaces; then one
-/// band per body of the whole watching loop, frame by frame, because a held pose is only honest
-/// if it keeps moving while it holds.
+/// compared against both the nine it has to stay distinct from and the two it replaces; then, for
+/// each body, a row of each of [`GESTURE_LOOPS`] frame by frame.
 pub fn gesture_sheet(path: PathBuf) -> Result<()> {
     const COLS: u32 = 7;
     const SCALE: u32 = 3;
     let subjects = gesture_subjects();
     let references = reference_creatures().len();
     let cell = FRAME_SIZE * SCALE;
-    let watch_frames = formiga_art::AnimationSpec::for_clip(Gesture::Watch).frames;
-    let full_rows = ((ActionKind::ALL.len() + Gesture::ALL.len()) as u32).div_ceil(COLS);
-    let gesture_rows = ((REFERENCE_ACTIONS.len() + Gesture::ALL.len()) as u32).div_ceil(COLS);
     let width = COLS * cell;
-    let bands = references as u32 * full_rows
-        + (subjects.len() - references) as u32 * gesture_rows
-        + subjects.len() as u32 * u32::from(watch_frames).div_ceil(COLS);
-    let height = bands * cell;
+    let height = gesture_sheet_rows(COLS) * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     let mut row_cursor = 0_u32;
     let place = |pixels: &mut Vec<u8>, row_cursor: &mut u32, frames: Vec<formiga_art::Canvas>| {
@@ -517,32 +533,35 @@ pub fn gesture_sheet(path: PathBuf) -> Result<()> {
         }));
         place(&mut pixels, &mut row_cursor, frames);
     }
-    for genome in &subjects {
-        let mut loop_frames: Vec<_> = (0..watch_frames)
-            .map(|frame| {
-                CreatureRenderer::render_composited_frame(
-                    genome,
-                    Gesture::Watch,
-                    frame,
-                    true,
-                    false,
-                    gesture_face(Gesture::Watch),
-                )
-            })
-            .collect();
-        // The seventh column of each loop is the same pose on a mini, which is the smallest body
-        // the colony grows and therefore the one a held pose has to survive being drawn at.
-        let mut mini = genome.clone();
-        mini.logical_size = 21;
-        loop_frames.push(CreatureRenderer::render_composited_frame(
-            &mini,
-            Gesture::Watch,
-            1,
-            true,
-            false,
-            gesture_face(Gesture::Watch),
-        ));
-        place(&mut pixels, &mut row_cursor, loop_frames);
+    for gesture in GESTURE_LOOPS {
+        let frames = formiga_art::AnimationSpec::for_clip(gesture).frames;
+        for genome in &subjects {
+            let mut loop_frames: Vec<_> = (0..frames)
+                .map(|frame| {
+                    CreatureRenderer::render_composited_frame(
+                        genome,
+                        gesture,
+                        frame,
+                        true,
+                        false,
+                        gesture_face(gesture),
+                    )
+                })
+                .collect();
+            // The last column of each loop is the same pose on a mini, which is the smallest body
+            // the colony grows and therefore the one a held pose has to survive being drawn at.
+            let mut mini = genome.clone();
+            mini.logical_size = 21;
+            loop_frames.push(CreatureRenderer::render_composited_frame(
+                &mini,
+                gesture,
+                1,
+                true,
+                false,
+                gesture_face(gesture),
+            ));
+            place(&mut pixels, &mut row_cursor, loop_frames);
+        }
     }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
@@ -594,25 +613,32 @@ pub fn activity_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// How far below the ledge a companion's contact point is in each frame of its mantle, in art
+/// pixels: partway through each frame, as the world hauls it up (`formiga_core::world::journeys`)
+/// — the chest over the edge low down, the push nearly up, and the stand on it.
+const MANTLE_LEDGE_DROP: [u32; 3] = [9, 1, 0];
+
 pub fn ambient_sheet(path: PathBuf) -> Result<()> {
+    use formiga_art::BodyClip;
     const COLS: u32 = 8;
     const SCALE: u32 = 3;
     const CELL_ART_SIZE: u32 = 64;
-    const ACTIONS: [ActionKind; 4] = [
-        ActionKind::ClimbWindow,
-        ActionKind::Dangle,
-        ActionKind::InspectScreen,
-        ActionKind::PresentDiscovery,
+    const CLIPS: [BodyClip; 5] = [
+        BodyClip::Action(ActionKind::ClimbWindow),
+        BodyClip::Gesture(Gesture::Mantle),
+        BodyClip::Action(ActionKind::Dangle),
+        BodyClip::Action(ActionKind::InspectScreen),
+        BodyClip::Action(ActionKind::PresentDiscovery),
     ];
     let creatures = reference_creatures();
     let cell = CELL_ART_SIZE * SCALE;
     // Every frame of each clip, a clip starting a new row rather than wrapping onto one: the
-    // climb's six on the first row, the dangle and the look on the second, the find on the third,
-    // and the trinkets under them.
+    // climb's six on the first row, the mantle at its top and the dangle on the second, the look
+    // and the find on the third, and the trinkets under them.
     let mut cells = Vec::new();
     let mut next = 0_u32;
-    for action in ACTIONS {
-        let frames = u32::from(formiga_art::AnimationSpec::for_action(action).frames);
+    for clip in CLIPS {
+        let frames = u32::from(formiga_art::AnimationSpec::for_clip(clip).frames);
         if next % COLS + frames > COLS {
             next = next.div_ceil(COLS) * COLS;
         }
@@ -635,26 +661,49 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
     for (family_index, creature) in creatures.iter().enumerate() {
         let family_row = family_index as u32 * rows_per_family;
         let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
-        for (action_index, action) in ACTIONS.into_iter().enumerate() {
-            for frame in 0..formiga_art::AnimationSpec::for_action(action).frames {
-                let cell_index = cells[action_index] + u32::from(frame);
+        for (clip_index, clip) in CLIPS.into_iter().enumerate() {
+            // A gesture is placed standing, as the overlay places one.
+            let action = match clip {
+                BodyClip::Action(action) => action,
+                BodyClip::Gesture(_) => ActionKind::ClimbWindow,
+            };
+            for frame in 0..formiga_art::AnimationSpec::for_clip(clip).frames {
+                let cell_index = cells[clip_index] + u32::from(frame);
                 let column = cell_index % COLS;
                 let row = family_row + cell_index / COLS;
                 let cell_x = column * cell;
                 let cell_y = row * cell;
                 let contact_y = if action == ActionKind::Dangle { 8 } else { 56 };
+                // The ledge a mantle is topping out onto, where the world has it in each frame.
+                let ledge_y = match clip {
+                    BodyClip::Gesture(Gesture::Mantle) => {
+                        contact_y - MANTLE_LEDGE_DROP[usize::from(frame.min(2))]
+                    }
+                    _ => contact_y,
+                };
                 draw_rect_alpha(
                     &mut pixels,
                     width,
                     cell_x + 4 * SCALE,
-                    cell_y + contact_y * SCALE,
+                    cell_y + ledge_y * SCALE,
                     (CELL_ART_SIZE - 8) * SCALE,
                     SCALE,
                     [118, 155, 157, 210],
                 );
                 let placement = formiga_art::FramePlacement::for_action(action, baseline);
-                let rendered =
-                    CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
+                let rendered = match clip {
+                    BodyClip::Action(action) => {
+                        CreatureRenderer::render_frame(&creature.appearance, action, frame, true)
+                    }
+                    BodyClip::Gesture(gesture) => CreatureRenderer::render_composited_frame(
+                        &creature.appearance,
+                        gesture,
+                        frame,
+                        true,
+                        false,
+                        gesture_face(gesture),
+                    ),
+                };
                 blit_scaled_square_alpha(
                     &mut pixels,
                     width,
@@ -1413,6 +1462,17 @@ mod tests {
     /// The hold sheet's marks are only worth anything if they can never be a pixel of the art:
     /// no frame of any body it shows has a mark's colour in it, and every point it marks is inside
     /// the frame it is drawn over.
+    /// The mantle has a row of its own for every body on the gesture sheet, beside the
+    /// watching loop's: one more row per body than the sheet had before it.
+    #[test]
+    fn the_gesture_sheet_gives_the_mantle_a_row_for_every_body() {
+        const COLS: u32 = 7;
+        let subjects = gesture_subjects().len() as u32;
+        let references = reference_creatures().len() as u32;
+        let before = references * 9 + (subjects - references) * 6 + subjects;
+        assert_eq!(gesture_sheet_rows(COLS), before + subjects);
+    }
+
     #[test]
     fn the_hold_sheet_marks_are_no_colour_the_art_uses_and_land_in_the_frame() {
         let marks = [HANDS_MARK, MOUTH_MARK, ANCHOR_MARK].map(|[r, g, b, _]| (r, g, b));
