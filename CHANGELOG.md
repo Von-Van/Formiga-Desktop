@@ -2,6 +2,22 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- The notebook reads less like a settings window. Apply and Revert are only under Habitat,
+  Applications and Preferences, the pages with preferences on them (and under any page while a
+  change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and
+  the last notice. Dates are written one way everywhere: "Monday 14 September" over a day,
+  "14 Sep" beside a find or a visitor, "07:00" for a time and "14 Sep · 07:00" for a kept moment,
+  never as 2026-09-14. A companion's page no longer numbers it as a specimen or a figure or names
+  its body type, the colony is "Four of them, all awake." rather than four specimens observed, and
+  what a companion is doing is said in plain words ("playing with a toy", "following a friend")
+  rather than as "solo play" or "follow". The Journal's guest book, scrapbook, souvenirs, cups and
+  wonders are headed in the same pencil capitals as the rest of the notebook, and the guest book
+  shows its latest three visitors with the rest a click away.
+
 ## [0.68.23] - 2026-11-12
 
 The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released

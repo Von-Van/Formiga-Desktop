@@ -2561,7 +2561,7 @@ fn souvenirs_appear_in_the_journal_only_once_one_has_come_home() {
     ];
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "SOUVENIRS · 2 from Formiga Hill"));
+    assert!(shown(&h, "SOUVENIRS · 2 FROM FORMIGA HILL"));
     let top = |name: &str| {
         h.labels
             .iter()
@@ -2613,7 +2613,7 @@ fn battle_cups_appear_in_the_journal_only_once_one_has_come_home() {
     h.save.battle.record.circuit_points = 15;
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "CUPS · 2 from Formiga Battle"));
+    assert!(shown(&h, "CUPS · 2 FROM FORMIGA BATTLE"));
     assert!(shown(&h, "1 cup won · 15 circuit points"));
     let top = |h: &Harness, name: &str| {
         h.labels
@@ -2685,11 +2685,23 @@ fn the_guest_book_remembers_how_often_a_visitor_has_come() {
         visited_at_utc: again.visited_at_utc + time::Duration::days(1),
         ..again.clone()
     });
-    h.click(&format!(
-        "Visitors before this · {}",
-        h.save.visitors.guest_book.len()
-    ));
+    // The latest few are shown under the book's heading, and the rest when asked for.
     h.frame(Vec::new());
+    assert!(shown(
+        &h,
+        &format!(
+            "VISITORS BEFORE THIS · {}",
+            h.save.visitors.guest_book.len()
+        )
+    ));
+    let codes = |h: &Harness| h.labels.iter().filter(|(t, _)| t == "Copy code").count();
+    let before = codes(&h);
+    h.click(&format!("Show all {}", h.save.visitors.guest_book.len()));
+    h.frame(Vec::new());
+    assert!(
+        codes(&h) > before,
+        "the rest of the book is shown once asked for"
+    );
     assert!(
         h.labels
             .iter()
@@ -3178,4 +3190,286 @@ fn wonders_are_put_out_and_put_away_from_the_journal() {
         out(WonderKind::Seesaw),
     ];
     assert_eq!(h.click("Put it out").put_out_wonder, None);
+}
+
+/// A colony `day` days old, for picturing the notebook through a colony's life: on day 1 nothing
+/// but the founders' arrival; by day 10 a first friendship, a find, a habit and a few shared
+/// moments; by day 110 a colony with a history. Everything in it is something the colony would
+/// have recorded itself.
+fn aged_fixture(day: i64) -> SaveFile {
+    use time::Duration;
+    let now = time::macros::datetime!(2026-09-14 12:00 UTC);
+    let (_, monitors) = fixture();
+    let desktop = DesktopSnapshot {
+        monitors,
+        ..Default::default()
+    };
+    let founded = now - Duration::days(day - 1) - Duration::hours(3);
+    let mut world = World::new([25; 32], founded, &desktop);
+    world.tick(now, 0.05, &desktop);
+    let save = &mut world.save;
+    save.companion.onboarding_complete = true;
+    for (creature, name) in save
+        .creatures
+        .iter_mut()
+        .zip(["Mallow", "Tofu", "Pebble", "Poppy"])
+    {
+        creature.name = name.into();
+    }
+    if day < 10 {
+        return world.save;
+    }
+    let ids: Vec<CreatureId> = save.creatures.iter().map(|c| c.id).collect();
+    let (a, b, c) = (ids[0], ids[1], ids[2 % ids.len()]);
+    let on = |days: i64, hour: i64| founded + Duration::days(days) + Duration::hours(hour);
+    let scale = |n: i64| (n * day / 10) as u32;
+    let mallow = &mut save.creatures[0];
+    mallow.memory.times_petted = scale(4);
+    mallow.memory.discoveries_found = scale(1);
+    mallow.memory.window_climbs = scale(2);
+    mallow.memory.habits = vec![Habit::LooksFoodOver];
+    let mut moments = vec![
+        (on(2, 4), Some(a), JournalMoment::Friendship(b)),
+        (on(3, 2), Some(c), JournalMoment::Discovery),
+        (
+            on(4, 6),
+            Some(a),
+            JournalMoment::Habit(Habit::LooksFoodOver),
+        ),
+        (on(6, 1), None, JournalMoment::Ritual(RitualKind::GroupNap)),
+        (on(8, 5), Some(b), JournalMoment::Discovery),
+    ];
+    save.companion.scrapbook.push(ScrapbookRecord {
+        variant: 9,
+        first_at: on(3, 2),
+        finder: Some(c),
+        finder_name: save.creatures[2 % save.creatures.len()].name.clone(),
+    });
+    if day >= 100 {
+        moments.extend([
+            (on(14, 3), None, JournalMoment::Visit("Pip".into())),
+            (on(21, 2), Some(c), JournalMoment::Friendship(a)),
+            (
+                on(30, 4),
+                Some(a),
+                JournalMoment::Preference(ProfileDescriptor::LovesHighPlaces),
+            ),
+            (on(41, 1), Some(b), JournalMoment::Wonder(WonderKind::Chair)),
+            (on(55, 7), None, JournalMoment::Trip),
+            (on(70, 2), Some(a), JournalMoment::Discovery),
+            (on(90, 5), None, JournalMoment::Revisit("Pip".into(), 2)),
+            (
+                on(day - 2, 6),
+                Some(a),
+                JournalMoment::Habit(Habit::WavesHello),
+            ),
+            (
+                on(day - 1, 2),
+                None,
+                JournalMoment::Ritual(RitualKind::Picnic),
+            ),
+        ]);
+        save.creatures[0].memory.habits.push(Habit::WavesHello);
+        save.companion.scrapbook.push(ScrapbookRecord {
+            variant: 3,
+            first_at: on(70, 2),
+            finder: Some(a),
+            finder_name: "Mallow".into(),
+        });
+    }
+    for (at, creature, moment) in moments {
+        save.companion.journal.push(JournalEntry {
+            at,
+            creature,
+            moment,
+        });
+    }
+    save.companion.journal.sort_by_key(|entry| entry.at);
+    save.companion.journal_seen_until = save.companion.journal.last().map(|entry| entry.at);
+    let (low, high) = (a.min(b), a.max(b));
+    match save
+        .relationships
+        .iter_mut()
+        .find(|r| (r.a, r.b) == (low, high))
+    {
+        Some(bond) => bond.affinity = 140,
+        None => save.relationships.push(CreatureRelationship {
+            a: low,
+            b: high,
+            affinity: 140,
+            familiarity: 160,
+            playfulness: 40,
+            avoidance: 0,
+        }),
+    }
+    if let Some(pair) = tally_mut_or_insert(&mut save.tallies, a, b) {
+        pair.tally.shared_rests = scale(1) as u16;
+        pair.tally.greetings = scale(3) as u16;
+        pair.tally.sought = [scale(2) as u16, scale(1) as u16];
+        pair.tally.memory = Some(PairMemory {
+            at: now - Duration::hours(4),
+            kind: SharedMomentKind::Rest,
+        });
+    }
+    world.save
+}
+
+impl Harness {
+    /// The notebook open on `tab` over a colony of its own rather than the usual fixture.
+    fn over(tab: SettingsTab, save: SaveFile) -> Self {
+        let mut h = Self::new(tab);
+        h.selected = Some(save.creatures[0].id);
+        h.draft = save.settings.clone();
+        h.save = save;
+        h
+    }
+}
+
+/// Today, Your colony and the Journal of a colony on its first day, its tenth and its hundred
+/// and tenth, in both themes, at both text sizes, in the widest and narrowest windows: what the
+/// notebook is judged on. Each is drawn whole, and pictured when `FORMIGA_UI_REVIEW_DIR` is set.
+#[test]
+fn the_notebook_through_a_colonys_life() {
+    let output = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    for day in [1, 10, 110] {
+        let save = aged_fixture(day);
+        for tab in [
+            SettingsTab::Today,
+            SettingsTab::Colony,
+            SettingsTab::Journal,
+        ] {
+            for (theme, text_scale, width) in [
+                (ThemeChoice::Light, 100, 940.0),
+                (ThemeChoice::Light, 150, 760.0),
+                (ThemeChoice::Dark, 100, 940.0),
+                (ThemeChoice::Dark, 150, 760.0),
+            ] {
+                let mut h = Harness::over(tab, save.clone());
+                configure_style(
+                    &h.context,
+                    AppearancePreferences {
+                        theme,
+                        text_scale,
+                        sprite_outline: false,
+                    },
+                );
+                h.screen = egui::vec2(width, 720.0);
+                h.frame(Vec::new());
+                h.frame(Vec::new());
+                assert!(
+                    h.cut.is_empty(),
+                    "day {day}, {tab:?} at {width} and {text_scale}%: {:?}",
+                    h.cut
+                );
+                for unwanted in ["Apply changes", "Revert", "Preferences are saved"] {
+                    assert!(!shown(&h, unwanted), "{unwanted} under {tab:?}");
+                }
+                if let Some(path) = &output {
+                    std::fs::create_dir_all(path).unwrap();
+                    h.picture()
+                        .save(path.join(format!(
+                            "life-day{day}-{tab:?}-{width}-{}-{text_scale}.png",
+                            if theme == ThemeChoice::Dark {
+                                "charcoal"
+                            } else {
+                                "cream"
+                            },
+                        )))
+                        .unwrap();
+                }
+            }
+        }
+    }
+}
+
+/// Apply and Revert are under the pages with preferences on them, and nowhere else unless a
+/// preference is waiting to be applied.
+#[test]
+fn apply_and_revert_are_only_under_the_preferences() {
+    for tab in crate::clubhouse::journal::PAGES {
+        let mut h = Harness::new(tab);
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        let preference_page = matches!(
+            tab,
+            SettingsTab::General | SettingsTab::Habitat | SettingsTab::Applications
+        );
+        assert_eq!(shown(&h, "Apply changes"), preference_page, "{tab:?}");
+        // A preference changed and not yet applied follows the reader to every page.
+        h.draft.reduce_motion = !h.draft.reduce_motion;
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert!(shown(&h, "Apply changes"), "{tab:?} with a change waiting");
+    }
+}
+
+/// A companion's page and the colony's are written as a notebook, not a register: no specimen
+/// numbers, no figure numbers, no body type, and what it is doing in the notebook's own words.
+#[test]
+fn a_companion_is_not_a_specimen() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.save.creatures[0].state.action = ActionKind::SoloPlay;
+    h.save.creatures[0].state.surface.window_key = None;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    for unwanted in [
+        "Specimen Nº",
+        "Fig. Nº",
+        "Body:",
+        "specimens observed",
+        "SPECIMEN Nº",
+    ] {
+        assert!(
+            !h.labels.iter().any(|(text, _)| text.contains(unwanted)),
+            "{unwanted} on the page"
+        );
+    }
+    assert!(shown(&h, "Playing with a toy."));
+    for action in ActionKind::ALL {
+        let label = activity_label(action);
+        assert!(
+            label.starts_with(|c: char| c.is_lowercase()),
+            "{action:?} reads {label:?}"
+        );
+        assert_ne!(
+            label,
+            crate::clubhouse::words(&format!("{action:?}")).to_lowercase(),
+            "{action:?} is named as the code names it"
+        );
+    }
+    let mut colony = h.save.creatures.clone();
+    for creature in &mut colony {
+        creature.state.action = ActionKind::Traverse;
+    }
+    let count = crate::clubhouse::today::count_word(colony.len());
+    assert_eq!(
+        crate::clubhouse::journal::colony_observation(&colony),
+        format!("{count} of them, all awake.")
+    );
+    colony[0].state.action = ActionKind::Sleep;
+    assert_eq!(
+        crate::clubhouse::journal::colony_observation(&colony),
+        format!("{count} of them, one of them napping.")
+    );
+}
+
+/// No date in the notebook is written as an ISO date.
+#[test]
+fn every_date_on_the_journal_is_written_one_way() {
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    h.screen = egui::vec2(940.0, 6000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let iso = |text: &str| {
+        text.as_bytes()
+            .windows(10)
+            .any(|w| w[4] == b'-' && w[7] == b'-' && w[..4].iter().all(u8::is_ascii_digit))
+    };
+    let dated: Vec<&String> = h
+        .labels
+        .iter()
+        .map(|(text, _)| text)
+        .filter(|text| iso(text))
+        .collect();
+    assert!(dated.is_empty(), "{dated:?}");
 }

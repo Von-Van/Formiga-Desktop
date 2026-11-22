@@ -214,14 +214,9 @@ impl ColonyState {
         let hung = hung_keepsakes(save.home.tree_keepsakes.as_ref(), found);
         let hanging = hung.iter().flatten().count();
         let collection = card(ui, |ui| {
-            ui.label(
-                RichText::new(format!(
-                    "COLLECTION · {} of {} found",
-                    found.len(),
-                    TRINKET_VARIANTS
-                ))
-                .color(forest())
-                .size(11.0),
+            journal::kicker(
+                ui,
+                &format!("Collection · {} of {} found", found.len(), TRINKET_VARIANTS),
             );
             ui.small(
                 "Everything the colony could ever bring back. What hasn't turned up yet shows \
@@ -311,12 +306,11 @@ impl ColonyState {
                                 .finder
                                 .and_then(|id| save.creatures.iter().find(|c| c.id == id))
                                 .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                            let at = record.first_at.to_offset(offset);
                             let text = format!(
                                 "{}\n{}\nFound by {finder} · {}\n{}",
                                 info.name,
                                 info.description,
-                                at.date(),
+                                dates::on(record.first_at, offset),
                                 if in_trees {
                                     "Hanging in the trees · click to take it down"
                                 } else {

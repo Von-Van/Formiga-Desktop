@@ -1049,7 +1049,15 @@ fn draw_settings(
             }
             let adoption_footer =
                 *tab == SettingsTab::Studio && clubhouse.studio.adoption_footer(ui, save, outcome);
-            if !adoption_footer || settings != saved {
+            // Apply and Revert belong to the pages with preferences on them. Anywhere else the
+            // footer holds only the undo offer and the last notice, unless preferences are
+            // waiting to be applied, so a change made on one of those pages is never lost from
+            // sight.
+            let preference_page = matches!(
+                *tab,
+                SettingsTab::General | SettingsTab::Habitat | SettingsTab::Applications
+            );
+            if (preference_page && !adoption_footer) || settings != saved {
                 let dirty = settings != saved;
                 let pending = pending_changes(saved, settings);
                 let status_text = if !dirty {
@@ -1578,21 +1586,11 @@ fn colony_tab(
 ) {
     let creatures = colony.creatures;
     let relationships = colony.relationships;
-    // Every specimen by its number in the register and its name.
+    // Everyone by name.
     ui.horizontal_wrapped(|ui| {
         let scale = clubhouse::journal::text_scale(ui);
-        for (index, creature) in creatures.iter().enumerate() {
+        for creature in creatures {
             let mut entry = egui::text::LayoutJob::default();
-            entry.append(
-                &format!("{:02} ", index + 1),
-                0.0,
-                egui::TextFormat {
-                    font_id: egui::FontId::monospace(clubhouse::journal::label_size(scale)),
-                    color: clubhouse::muted(),
-                    valign: egui::Align::Center,
-                    ..Default::default()
-                },
-            );
             entry.append(
                 &creature.name,
                 0.0,
@@ -1684,24 +1682,9 @@ fn colony_tab(
     ]);
     if clubhouse::sections::current(shell, SettingsTab::Colony, &sections).is_none() {
         ui.add_space(16.0);
-        let number = creatures
-            .iter()
-            .position(|c| c.id == creature.id)
-            .map_or(1, |index| index + 1);
         clubhouse::journal::ruled_row(ui, |ui| {
+            shell.portrait(ui, creature, 144.0);
             ui.vertical(|ui| {
-                shell.portrait(ui, creature, 144.0);
-                clubhouse::journal::write(
-                    ui,
-                    clubhouse::journal::label_job(
-                        &format!("Fig. Nº {number:02}"),
-                        clubhouse::journal::label_size(clubhouse::journal::text_scale(ui)),
-                        clubhouse::muted(),
-                    ),
-                );
-            });
-            ui.vertical(|ui| {
-                clubhouse::journal::kicker(ui, &format!("Specimen Nº {number:02}"));
                 clubhouse::journal::write(
                     ui,
                     egui::RichText::new(&creature.name)
@@ -1746,11 +1729,7 @@ fn colony_tab(
                 }
                 clubhouse::journal::write(
                     ui,
-                    small(format!(
-                        "Body: {} · observed {}",
-                        clubhouse::body_label(&creature.appearance),
-                        activity_label(creature.state.action)
-                    )),
+                    small(format!("{}.", clubhouse::today::doing_now(creature))),
                 );
                 if let Some(parent_id) = creature.role.parent_id() {
                     clubhouse::journal::write(
@@ -1897,7 +1876,7 @@ fn colony_tab(
                     ui.small(format!(
                         "Grew close to {} on {}, as the journal has it.",
                         friend.name,
-                        grew_close.at.to_offset(offset).date()
+                        clubhouse::dates::on(grew_close.at, offset)
                     ));
                 }
                 if let Some(memory) =
@@ -2103,13 +2082,35 @@ fn little_ways(creature: &Creature) -> String {
     ways.join(" · ")
 }
 
-pub(crate) fn activity_label(action: ActionKind) -> String {
+/// What a companion is doing, in the notebook's own words: "playing with a toy", never the name
+/// the code gives it. Every action is named here, so a new one cannot reach the page unworded.
+pub(crate) fn activity_label(action: ActionKind) -> &'static str {
     match action {
-        ActionKind::Idle => "taking a quiet moment".into(),
-        ActionKind::Traverse => "exploring".into(),
-        ActionKind::Homebound => "settling at home".into(),
-        ActionKind::PetReaction => "enjoying your company".into(),
-        _ => clubhouse::words(&format!("{action:?}")).to_lowercase(),
+        ActionKind::Idle => "taking a quiet moment",
+        ActionKind::Traverse => "out exploring",
+        ActionKind::SqueezeWindow => "squeezing past a window",
+        ActionKind::Perch => "perched up high",
+        ActionKind::Sleep => "napping",
+        ActionKind::InvestigateCursor => "watching your pointer",
+        ActionKind::AvoidCursor => "dodging your pointer",
+        ActionKind::ReactToWindow => "eyeing a window",
+        ActionKind::RideWindow => "riding a window",
+        ActionKind::SoloPlay => "playing with a toy",
+        ActionKind::Eat => "having a snack",
+        ActionKind::Drink => "having a drink",
+        ActionKind::Sprint => "dashing about",
+        ActionKind::Greet => "saying hello",
+        ActionKind::Follow => "following a friend",
+        ActionKind::SocialPlay => "playing with a friend",
+        ActionKind::Dragged => "being carried",
+        ActionKind::Landing => "touching down",
+        ActionKind::Homebound => "settling at home",
+        ActionKind::ClimbWindow => "climbing a window",
+        ActionKind::Dangle => "hanging on tight",
+        ActionKind::InspectScreen => "peering at the screen",
+        ActionKind::PresentDiscovery => "showing off a find",
+        ActionKind::Tossed => "sailing through the air",
+        ActionKind::PetReaction => "enjoying your company",
     }
 }
 
